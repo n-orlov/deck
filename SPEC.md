@@ -799,6 +799,23 @@ in the help view.
   state is read from a VT100 emulator's cell grid, then normalised (trailing space
   stripped, non-frozen timestamps masked) before matching. Multi-client scenarios spawn N
   ptys against one `DECK_HOME`.
+
+  **A pty is not a terminal emulator.** Bubbletea probes the terminal during start-up —
+  background colour (OSC 11) and cursor position (CPR) — and *waits for the replies* before
+  it renders its first frame. A bare pty transports bytes and answers nothing, so a harness
+  that only reads will hang before frame one and look like a broken TUI. The harness must
+  therefore answer those probes (or drive the program through something that does). This is
+  measured behaviour from the toolchain spike, not a theory — see `ci/SPIKE.md`.
+
+- **Where it runs.** All build and test work happens in a throwaway sibling container
+  carrying Go + tmux (`ci/Dockerfile`, driven by `ci/run.sh`), with the repository
+  bind-mounted from its **host** path and a named volume holding the module/build cache.
+  Proven end to end: Go 1.25 builds, real tmux on a private socket with `capture-pane`
+  read-back, and a real bubbletea program driven through a pty with its frames asserted;
+  cold suite 4.9 s, warm 1.1 s, no root-owned files left behind. Two traps recorded there:
+  a sibling's bind source must be the host path (a container-local `/workspace` mounts
+  empty), and commands must go through `sh -c`, never `sh -lc`, whose login shell resets
+  `PATH` and loses the toolchain.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
   outside the app.
