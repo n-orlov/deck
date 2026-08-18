@@ -9,6 +9,9 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
+// key is defined in tui_test.go and reused here to send synthetic key
+// presses through Model.Update.
+
 // guardAdapter is a throwaway agent.Adapter, distinct from shell/claude/pi,
 // used to prove PRD requirement 1 ("adding an adapter never requires
 // touching internal/tui") end-to-end: it must show up in the Agent field,
@@ -32,6 +35,65 @@ func (guardAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, ni
 // modal, and the extra kind's own declared profiles (plus an explicit
 // degradation reason for a profile it does not support) are exactly what
 // gets offered/shown.
+// TestDefaultCreateAgentPrefersShellRegardlessOfSortOrder pins the rule in
+// defaultCreateAgent: "shell" must be the create modal's opening default
+// whenever it is registered, even when the registry's alphabetical
+// Kinds() order would put some other adapter first (e.g. an adapter kind
+// that sorts before "shell"). A prior regression (task 002/003) silently
+// switched the default to registry.Kinds()[0] == "claude", which broke
+// the shell-only create-session flow the cmd/deck PTY tests depend on;
+// registry_guard_test.go's own case never pinned this because it never
+// exercised a registry where shell was not already first. This test also
+// covers the fallback: when "shell" is absent entirely, the default must
+// be Kinds()[0].
+func TestDefaultCreateAgentPrefersShellRegardlessOfSortOrder(t *testing.T) {
+	registry := agent.NewRegistry()
+	registry.Register(agent.NewShell())
+	registry.Register(agent.NewClaude())
+	registry.Register(guardAdapter{}) // Kind() "zzz-guard-adapter" sorts after shell, so add an adapter that sorts before it too
+	registry.Register(aardvarkAdapter{})
+
+	kinds := registry.Kinds()
+	if kinds[0] == "shell" {
+		t.Fatalf("test setup bug: want a registry where alphabetical order does not put shell first, got %v", kinds)
+	}
+	if got := defaultCreateAgent(kinds); got != "shell" {
+		t.Fatalf("defaultCreateAgent(%v) = %q, want \"shell\" preferred over alphabetical order", kinds, got)
+	}
+
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
+		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, registry,
+	)
+	updated, _ := m.Update(key("n"))
+	nm := updated.(Model)
+	if !nm.creating {
+		t.Fatalf("pressing 'n' did not open the create modal")
+	}
+	if nm.createAgent != "shell" {
+		t.Fatalf("create modal opened with default agent %q, want \"shell\"", nm.createAgent)
+	}
+
+	noShell := agent.NewRegistry()
+	noShell.Register(agent.NewClaude())
+	noShell.Register(agent.NewPi())
+	noShellKinds := noShell.Kinds()
+	if got := defaultCreateAgent(noShellKinds); got != noShellKinds[0] {
+		t.Fatalf("defaultCreateAgent(%v) = %q, want fallback to Kinds()[0] = %q when shell is absent", noShellKinds, got, noShellKinds[0])
+	}
+}
+
+// aardvarkAdapter is a throwaway adapter whose Kind() sorts alphabetically
+// before "shell", used to prove defaultCreateAgent does not just pick
+// Kinds()[0].
+type aardvarkAdapter struct{}
+
+func (aardvarkAdapter) Kind() string { return "aardvark-guard-adapter" }
+func (aardvarkAdapter) Capabilities() agent.Caps {
+	return agent.Caps{Profiles: []string{"safe"}}
+}
+func (aardvarkAdapter) Launch(agent.LaunchInput) ([]string, error) { return nil, nil }
+func (aardvarkAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil }
+
 func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
