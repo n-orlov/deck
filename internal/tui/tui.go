@@ -44,9 +44,13 @@ type Model struct {
 	kill                func(context.Context, store.Session) error
 	reconcile           func(context.Context) error
 	resume              func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	profileSwitch       func(context.Context, string, string) (store.Session, error)
 	selected            int
 	attachError         string
 	resumeNote          string
+	profileSwitching    bool
+	profileSwitchValue  string
+	profileSwitchNote   string
 	width               int
 	height              int
 }
@@ -76,6 +80,11 @@ type sessionKilled struct{ err error }
 type sessionResumed struct {
 	session store.Session
 	outcome service.ResumeOutcome
+	err     error
+}
+
+type profileSwitched struct {
+	session store.Session
 	err     error
 }
 
@@ -120,8 +129,18 @@ func NewWithShellCreatorAttacherKillerAndReconciler(db *store.Store, settings co
 // (service.ResumeStartingElsewhere) is shown "starting elsewhere", not an
 // error.
 func NewWithShellCreatorAttacherKillerReconcilerAndResumer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error)) Model {
+	return NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, nil)
+}
+
+// NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher adds the `P`
+// profile-switch action (SPEC §5/§8, task 020). Switching a session's
+// permission profile only ever persists the new value; it never touches a
+// live pane, and the TUI states plainly that the change applies on the
+// session's next launch/restart rather than implying the running agent's
+// mode changed.
+func NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error)) Model {
 	m := New(db, settings, tmuxNote)
-	m.create, m.attach, m.kill, m.reconcile, m.resume = creator, attacher, killer, reconciler, resumer
+	m.create, m.attach, m.kill, m.reconcile, m.resume, m.profileSwitch = creator, attacher, killer, reconciler, resumer, profileSwitcher
 	return m
 }
 
@@ -197,6 +216,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.resumeNote = ""
 		return m, m.loadSessions
+	case profileSwitched:
+		if msg.err != nil {
+			m.profileSwitchNote = "Cannot change permission profile: " + msg.err.Error()
+			return m, nil
+		}
+		m.profileSwitching = false
+		m.profileSwitchNote = ""
+		return m, m.loadSessions
 	case reconcileTick:
 		loadAfterReconcile := m.loadSessions
 		if m.reconcile != nil {
@@ -221,6 +248,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.creating {
 			return m.updateCreate(msg)
+		}
+		if m.profileSwitching {
+			return m.updateProfileSwitch(msg)
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -276,6 +306,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				resumed, outcome, err := m.resume(context.Background(), sessionID)
 				return sessionResumed{session: resumed, outcome: outcome, err: err}
 			}
+		case "P":
+			if m.profileSwitch == nil || len(m.sessions) == 0 {
+				return m, nil
+			}
+			session := m.sessions[m.selected]
+			if _, applicable := createAgentCapabilities(session.Agent); !applicable {
+				m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
+				return m, nil
+			}
+			m.profileSwitching = true
+			m.profileSwitchValue = session.PermissionProfile
+			m.profileSwitchNote = ""
+			return m, nil
 		case "enter":
 			if m.attach == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -303,6 +346,9 @@ func (m Model) View() string {
 	}
 	if m.creating {
 		return m.createView()
+	}
+	if m.profileSwitching && len(m.sessions) > 0 {
+		return m.profileSwitchView()
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
@@ -342,7 +388,7 @@ func (m Model) View() string {
 	if m.resumeNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.resumeNote)
 	}
-	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · r resume · i detail · ? help · q quit", "up/down select - Enter attach - n new - x kill - r resume - i detail - ? help - q quit") + "\n")
+	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · r resume · P profile · i detail · ? help · q quit", "up/down select - Enter attach - n new - x kill - r resume - P profile - i detail - ? help - q quit") + "\n")
 	return b.String()
 }
 
@@ -356,6 +402,56 @@ func profileBadge(session store.Session) string {
 		return ""
 	}
 	return "[" + session.PermissionProfile + "]"
+}
+
+// updateProfileSwitch handles keys while the `P` permission-profile switch
+// dialog is open (task 020). It only ever cycles a locally-held candidate
+// value and, on confirmation, persists it through m.profileSwitch; it never
+// issues any argv to the selected session's pane, live or otherwise.
+func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	session := m.sessions[m.selected]
+	options := createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
+	switch msg.String() {
+	case "esc":
+		m.profileSwitching = false
+		m.profileSwitchNote = ""
+		return m, nil
+	case "left":
+		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, -1)
+		return m, nil
+	case "right", " ":
+		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, 1)
+		return m, nil
+	case "enter":
+		if m.profileSwitch == nil {
+			m.profileSwitchNote = "changing the permission profile is unavailable"
+			return m, nil
+		}
+		sessionID, profile := session.ID, m.profileSwitchValue
+		return m, func() tea.Msg {
+			updated, err := m.profileSwitch(context.Background(), sessionID, profile)
+			return profileSwitched{session: updated, err: err}
+		}
+	}
+	return m, nil
+}
+
+// profileSwitchView renders the `P` permission-profile switch dialog. It
+// states plainly that the change only applies on the session's next
+// launch/restart; it never claims the live pane's mode changed (SPEC §5).
+func (m Model) profileSwitchView() string {
+	session := m.sessions[m.selected]
+	options := createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Change permission profile for %s\n\n", session.Name)
+	fmt.Fprintf(&b, "Current:   %s\n", session.PermissionProfile)
+	fmt.Fprintf(&b, "New:       %s (left/right cycles: %s)\n", m.profileSwitchValue, strings.Join(options, ", "))
+	b.WriteString("\nThis applies on the session's next launch/restart; it does not change a\nrunning pane's mode.\n")
+	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+	if m.profileSwitchNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.profileSwitchNote)
+	}
+	return b.String()
 }
 
 // detailView renders the selected session's full detail, including an
