@@ -76,8 +76,8 @@ while [ "$i" -le "$runs" ]; do
     i=$((i + 1))
 done
 
-echo "=== FINAL COUNT: $pass / $runs runs passed ===" | tee -a "$summary_log"
 echo "full per-run logs and combined summary log kept in: $outdir" | tee -a "$summary_log"
+echo "$pass/$runs passed" | tee -a "$summary_log"
 
 if [ "$fail" -gt 0 ]; then
     exit 1
