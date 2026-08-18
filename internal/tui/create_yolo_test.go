@@ -42,7 +42,8 @@ func TestCreateProfileOptionsForOffersOnlyDeclaredProfiles(t *testing.T) {
 		{"shell", false, []string{"safe"}},
 	}
 	for _, tc := range cases {
-		got := createProfileOptionsFor(tc.kind, tc.allowYolo)
+		m := New(nil, config.Settings{}, "")
+		got := m.createProfileOptionsFor(tc.kind, tc.allowYolo)
 		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
 			t.Errorf("createProfileOptionsFor(%q, %v) = %v, want %v", tc.kind, tc.allowYolo, got, tc.want)
 		}

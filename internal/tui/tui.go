@@ -391,7 +391,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			if _, applicable := createAgentCapabilities(session.Agent); !applicable {
+			if _, applicable := m.agentCapabilities(session.Agent); !applicable {
 				m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
 				return m, nil
 			}
@@ -405,7 +405,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			caps, applicable := createAgentCapabilities(session.Agent)
+			caps, applicable := m.agentCapabilities(session.Agent)
 			if !applicable || !caps.AssignsConversationID {
 				m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
 				return m, nil
@@ -479,7 +479,7 @@ func (m Model) View() string {
 			if index == m.selected {
 				marker = "> "
 			}
-			badge := profileBadge(session)
+			badge := m.profileBadge(session)
 			fmt.Fprintf(&b, "%s%s  %-10s %-8s %s  created %s\n    %s\n", marker, session.Name, session.Agent, badge, status, m.relativeTime(session.CreatedAt), session.CWD)
 		}
 	}
@@ -495,11 +495,11 @@ func (m Model) View() string {
 
 // profileBadge renders the bracketed permission-profile badge shown next to
 // an agent row in the session list. Shell sessions have no notion of a
-// permission profile at all (SPEC §5/§8): createAgentCapabilities reports
+// permission profile at all (SPEC §5/§8): agentCapabilities reports
 // them as not applicable, so they render no badge rather than a meaningless
 // cosmetic "safe".
-func profileBadge(session store.Session) string {
-	if _, applicable := createAgentCapabilities(session.Agent); !applicable {
+func (m Model) profileBadge(session store.Session) string {
+	if _, applicable := m.agentCapabilities(session.Agent); !applicable {
 		return ""
 	}
 	return "[" + session.PermissionProfile + "]"
@@ -511,7 +511,7 @@ func profileBadge(session store.Session) string {
 // issues any argv to the selected session's pane, live or otherwise.
 func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session := m.sessions[m.selected]
-	options := createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
+	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	switch msg.String() {
 	case "esc":
 		m.profileSwitching = false
@@ -561,7 +561,7 @@ func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // launch/restart; it never claims the live pane's mode changed (SPEC §5).
 func (m Model) profileSwitchView() string {
 	session := m.sessions[m.selected]
-	options := createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
+	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Change permission profile for %s\n\n", session.Name)
 	fmt.Fprintf(&b, "Current:   %s\n", session.PermissionProfile)
@@ -656,7 +656,7 @@ func (m Model) detailView() string {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
 	fmt.Fprintf(&b, "Status:             %s\n", status)
-	if _, applicable := createAgentCapabilities(session.Agent); applicable {
+	if _, applicable := m.agentCapabilities(session.Agent); applicable {
 		fmt.Fprintf(&b, "Permission profile: %s\n", session.PermissionProfile)
 		if session.PermissionProfileReason != "" {
 			fmt.Fprintf(&b, "  degraded: %s\n", session.PermissionProfileReason)
@@ -723,11 +723,11 @@ var createProfileOptions = []string{"safe", "plan", "edits", "yolo"}
 // selected adapter declares (SPEC §5), narrowed further to exclude "yolo"
 // when allowYolo is false so the config gate is honoured before any
 // per-launch confirm gate is even reachable. shell has no notion of
-// permission profiles at all (createAgentCapabilities reports
+// permission profiles at all (agentCapabilities reports
 // !applicable): its field stays a single cosmetic "safe" value, per the
 // existing shell-is-inert-to-profiles rule.
-func createProfileOptionsFor(kind string, allowYolo bool) []string {
-	caps, applicable := createAgentCapabilities(kind)
+func (m Model) createProfileOptionsFor(kind string, allowYolo bool) []string {
+	caps, applicable := m.agentCapabilities(kind)
 	if !applicable {
 		return []string{"safe"}
 	}
@@ -770,20 +770,21 @@ func cycleOption(options []string, current string, delta int) string {
 	return options[index]
 }
 
-// createAgentCapabilities returns the declared capabilities for kind and
-// whether a permission profile is even applicable to it. shell has no
-// notion of permission profiles at all (SPEC §5/§8): its create field is
-// present for consistency but never validated, so a shell session is never
-// rejected for an "unsupported" profile that simply does not apply to it.
-func createAgentCapabilities(kind string) (agent.Caps, bool) {
-	switch kind {
-	case "claude":
-		return agent.NewClaude().Capabilities(), true
-	case "pi":
-		return agent.NewPi().Capabilities(), true
-	default:
+// agentCapabilities returns the declared capabilities for kind, looked up
+// in the model's agent registry, and whether a permission profile is even
+// applicable to it. shell has no notion of permission profiles at all
+// (SPEC §5/§8): its create field is present for consistency but never
+// validated, so a shell session is never rejected for an "unsupported"
+// profile that simply does not apply to it. An adapter that declares no
+// profiles at all (shell) is treated as not applicable, exactly as the old
+// hardcoded switch did.
+func (m Model) agentCapabilities(kind string) (agent.Caps, bool) {
+	adapter, ok := m.registry().Lookup(kind)
+	if !ok {
 		return agent.Caps{}, false
 	}
+	caps := adapter.Capabilities()
+	return caps, len(caps.Profiles) > 0
 }
 
 // validateCreateFields checks the create modal's free-form fields (cwd,
@@ -825,7 +826,7 @@ func (m Model) validateCreateFields() string {
 			}
 		}
 	}
-	if caps, applicable := createAgentCapabilities(m.createAgent); applicable {
+	if caps, applicable := m.agentCapabilities(m.createAgent); applicable {
 		if !caps.SupportsProfile(m.createProfile) {
 			_, _, reason := caps.ResolveProfile(m.createAgent, m.createProfile)
 			return "unsupported permission profile: " + reason
@@ -978,13 +979,13 @@ func (m *Model) cycleCreateField(delta int) {
 	switch m.createField {
 	case 2:
 		m.createAgent = cycleOption(m.registry().Kinds(), m.createAgent, delta)
-		options := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
+		options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
 		if !contains(options, m.createProfile) {
 			m.createProfile = options[0]
 			m.createYoloConfirmed = false
 		}
 	case 3:
-		options := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
+		options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
 		next := cycleOption(options, m.createProfile, delta)
 		if next != m.createProfile {
 			m.createYoloConfirmed = false
@@ -1040,7 +1041,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	if m.createLoginShell {
 		loginShell = "on"
 	}
-	profileOptions := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
+	profileOptions := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
 	profileValue := m.createProfile + " (left/right cycles: " + strings.Join(profileOptions, ", ") + ")"
 	profileHelp := "how much the agent may do without asking; an unsupported profile degrades to safe"
 	if !m.settings.AllowYolo {
