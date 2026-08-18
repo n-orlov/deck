@@ -263,6 +263,35 @@ One documentation nit, deliberately not blocked on: the walkthrough's inspection
 `grep smoke "$DECK_HOME"/log/deck.jsonl` returns nothing, because the audit log keys records by
 session **id**, not name. The record it points at is correct and present.
 
+*Operator hand-test findings, 2026-08-18 (three agents, real binary, real CLIs).* `shell`,
+`claude` and `pi` sessions all launched; `ctrl+c` twice stopped the agent sessions and the rows
+correctly went `stopped`. Three findings, none of which the suite could have caught because all
+three are gaps in what deck *observes*, not in what it does:
+
+1. **The reconciler is blind to dead panes.** `Reconcile` calls `list-sessions` only, so it
+   detects a session disappearing but never a retained dead pane. Typing `exit` in a shell
+   session returns the last command's status; when that is non-zero, `remain-on-exit failed`
+   retains the pane by design (§3.2) and the tmux *session* still exists — so the row reads
+   `starting` indefinitely. SPEC §7 already specifies the fix (`list-panes -F` with
+   `pane_dead`/`pane_dead_status`, mapping a dead pane with non-zero status to `error` plus a
+   crash tail); it is Phase 2's clean-vs-crash split, now called out explicitly in the plan.
+2. **"starting elsewhere" is reported for a row that nobody has leased.** A real Phase 1
+   defect, and a compounding one. `AcquireLaunchLease` returns `LaunchLeaseHeldElsewhere` both
+   when a live owner holds the lease *and* when the row simply is not `stopped`
+   (`internal/store/lease.go:148`), and `Resume` collapses every non-acquired outcome into
+   `ResumeStartingElsewhere` (`internal/service/resume.go:104`). So a row wedged at `starting`
+   by finding 1 reports "starting elsewhere" on `r` with no other client involved, and looks
+   unresumable until the 30 s TTL and a status change. The store already carries the
+   distinction — `HeldStatus` is populated and `HeldBy` is empty — so this is a UI-side
+   conflation, not missing information. **Lesson: a message that names a cause must be derived
+   from that cause**; "not acquired" and "someone else owns it" are different facts.
+3. **A `shell` row would sit at `starting` forever, in every phase.** Not a Phase 1
+   limitation: a shell has no hooks to fire and nothing to probe, so no rule in §7 as written
+   could ever promote it. Fixed in the spec rather than in code — for `shell` rows only, tmux
+   liveness promotes `starting → running`, sound precisely because no higher-precedence source
+   exists for a shell that could contradict it, and explicitly *not* generalised to agent rows
+   where the fabricated-`running` prohibition still binds.
+
 ## Other milestones
 
 | Date | What |
@@ -270,4 +299,5 @@ session **id**, not name. The record it points at is correct and present.
 | 2026-08-17 | Repo created and published as `n-orlov/deck`; initial commit is the product spec |
 | 2026-08-17 | `SPEC.md` v2: TUI-only, four agents, no daemon, pluggable notifications, BDD/black-box testability as a requirement |
 | 2026-08-17 | Spec reviewed adversarially by a second model. Four of its "factual" findings were rejected against verified CLI/docs evidence; the rest were applied — debounce dropped (it required a daemon that the design forbids), `remain-on-exit failed` adopted so crash tails are capturable at all, Codex id discovery made serialised and claim-based, the three conflicting state machines reconciled into one, and dedupe given an epoch so a recurring prompt can't be muted forever |
+| 2026-08-18 | `SPEC.md` §11 rewritten around a session sidebar beside a live preview, with layout modes and their breakpoints (§11.2), panel chrome and visible focus (§11.3), a single dialog contract (§11.4), a settings takeover generated from the config schema (§11.5 + new §6.5), and a semantic theme system with a 16-colour-quantised floor (§11.6). Informed by reading `agent-of-empires/agent-of-empires` — its `DESIGN.md` and `src/tui/responsive.rs`, which documents every breakpoint with a "below this it stops working" reason. Adopted: the three-mode layout, the single panel seam, rounded borders and padding, the settings takeover, and the theme-as-TOML model. Not adopted: the web dashboard (an explicit deck non-goal), the command palette, sounds and plugins. Landed as new **Phase 2b**, after status truth and before lifecycle polish |
 | 2026-08-17 | "Toolchain in a sibling" upstreamed into ralphd itself (`n-orlov/ralphd` `a5a18d2`) as prompt-level guidance, docs, a mountable skill and 6 tests, so any future job gets the capability without a PRD explaining it |

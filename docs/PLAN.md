@@ -45,12 +45,13 @@ Five standing rules for every phase:
 | **Toolchain spike** | Prove all deck work can run in a sibling Go+tmux container with the host workspace mounted: Go build/test, real tmux on a private socket, pty-driven bubbletea, no root-owned litter, warm cache | `ci/Dockerfile`, `ci/run.sh`, `ci/SPIKE.md` | **done** |
 | **Phase 0 — harness & walking skeleton** | Go module; TUI binary rendering an empty list; determinism controls; JSONL log with launch audit; store schema v1 + migrations; tmux layer on a private socket; `shell` sessions create/list/attach/detach/kill; **godog harness driving the real binary through a pty**; fake-agent fixture mechanism | `walking_skeleton`, `determinism`, `store`, `tmux_contract`, `concurrency` (`@multiclient`) features; suite passes ten times from a clean state | **done** (+ Phase 0b hardening) |
 | **Phase 1 — durable identity & agents** | Adapter registry with declared capabilities; Claude adapter with deck-assigned `--session-id`; resume argv, never `--continue`; Pi adapter; pin/cleared; resume-failure handling; permission profiles (§5) incl. the `yolo` gate; the create-modal fields an agent launch needs; launch leases | **T1**, `durable_identity`, `same_directory`, `permission_modes` | **next** |
-| **Phase 2 — status truth** | `deck _hook`; per-session settings injection; hook→status mapping incl. stop-failure and the session-end budget; probe engine + fixture corpus; live/sampled badges; precedence incl. `killed_by_user`; clean-vs-crash exit split via `remain-on-exit failed` and the crash tail | **T3**, `status_claude_hooks`, `status_probe`, `crash` | planned |
+| **Phase 2 — status truth** | `deck _hook`; per-session settings injection; hook→status mapping incl. stop-failure and the session-end budget; probe engine + fixture corpus; live/sampled badges; precedence incl. `killed_by_user`; clean-vs-crash exit split via `remain-on-exit failed` and the crash tail (the reconcile gains `list-panes -F` with `pane_dead`/`pane_dead_status` — today it only lists *sessions*, so a retained dead pane leaves the row reading `starting` forever); shell liveness promotion (§7); and separating "starting elsewhere" from "this row is not leasable" in the resume path | **T3**, `status_claude_hooks`, `status_probe`, `crash` | planned |
+| **Phase 2b — UX shell** | The §11 layout: session sidebar beside the live preview, three layout modes with their breakpoints (§11.2), rounded chrome/padding/single seam/visible focus (§11.3), the dialog contract (§11.4), the settings takeover generated from the config schema (§11.5, §6.5), and the theme system with a 16-colour-quantised floor (§11.6) | `layout_modes`, `settings`, `themes`, plus a frame assertion per mode at 80×24 and above | planned |
 | **Phase 3 — sessions & lifecycle** | Create modal completed; env editor showing winning layer → `env↻` → restart-to-apply (+ shell "inject instead"); kill/undo, `dd` tombstone, purge, archive, bulk marks | `create_session`, `kill_delete_undo`, `environment` | planned |
 | **Phase 4 — Codex adapter** | Serialised claim-based id discovery; `id unresolved` state and picker; never "most recent" | `codex_discovery` | planned |
 | **Phase 5 — notifications** | Channel abstraction (webhook / command / desktop); rules table; epoch dedupe; quiet hours; outbox + retry; redaction | `notifications` against an httptest sink | planned |
 | **Phase 6 — shell state** | Per-session history file; scrollback capture ownership + replay; cwd tracking; `sensitive` | `shell_state` | planned |
-| **Phase 7 — TUI completeness** | Attention sort, grouping, preview pane, send-without-attach (§11.1), cross-session search, health view | `search`, `health`, a scenario per keybinding | planned |
+| **Phase 7 — TUI completeness** | Attention sort, grouping, send-without-attach (§11.1), cross-session search, health view (**preview pane and layout moved to Phase 2b**) | `search`, `health`, a scenario per keybinding | planned |
 
 **T2 (concurrency) is not a phase.** It lands in Phase 0's harness as `@multiclient` and is
 re-run from then on — cheaper to keep green continuously than to retrofit.
@@ -72,8 +73,18 @@ re-run from then on — cheaper to keep green continuously than to retrofit.
    Undo toasts and archiving are worth less than legible status.
 4. **Status before notifications.** Notifications have nothing truthful to fire on until
    status detection is real.
-5. **Polish last.** Preview panes, search and the health view are the cheapest things to
-   defer and the least likely to invalidate anything else.
+5. **The UX shell after status, not before it (Phase 2b).** The sidebar's payload is the
+   attention sort and the preview, and both are worth little while every agent row honestly
+   reads `starting · awaiting signal` — an attention-sorted list would have nothing to
+   sort, and a preview would be the only place status was visible at all. Building the
+   chrome first would also mean building it twice, since Phase 2 changes what a row says.
+   It goes *before* Phase 3 rather than into Phase 7 because it is the phase that makes
+   deck pleasant to use by hand, and because Phase 3's env editor and Phase 5's rules
+   editor should be written against the §11.4 dialog contract rather than retrofitted to
+   it.
+6. **Polish last.** Search and the health view are the cheapest things to defer and the
+   least likely to invalidate anything else. The preview pane moved out of Phase 7 into
+   Phase 2b because it stopped being polish the moment the layout was specified around it.
 
 **Permission modes (`SPEC.md` §5) were unassigned to any phase** until this revision — a
 planning defect, since launching Claude in a skip-permissions mode was one of the first

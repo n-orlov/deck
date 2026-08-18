@@ -338,6 +338,26 @@ Session `env` values are stored literally in `state.db`. Therefore:
   in the pane before the agent starts (typically sourcing a file the user already keeps
   outside deck). Recommended in help over putting tokens in `env`.
 
+### 6.5 The config file
+
+One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
+
+| where | keys |
+|---|---|
+| top level | `allow_yolo` (default false, §5) |
+| `[env]` | the middle PATH/env layer (§6.1) |
+| `[ui]` | `theme` (§11.6), `sidebar_width`, `layout_mode`, `ascii` (§11.2/§11) |
+| `[notify]` | channels and rules (§10) |
+
+Two rules that hold for every key, present and future:
+
+- **The schema is the single source of truth** for parsing the file *and* for generating the
+  settings view (§11.5). A key that exists in one and not the other is a defect; this is
+  what keeps R7's "no capability is file-only" true as configuration grows.
+- **An unknown key is ignored, not rejected**, so a config written by a newer deck still
+  loads in an older one — but an unparseable *value* for a known key is a stated error
+  naming the file and line, never a silent fallback to the default.
+
 ---
 
 ## 7. Status model
@@ -403,6 +423,15 @@ Rules:
   (`remain-on-exit off`) the pane and session vanish on death and there is nothing left to
   capture from. It also stops a shell session where the user typed `exit` from being
   reported as a red `error`.
+- **A `shell` session has no agent signal, ever.** It has no hooks to fire and nothing
+  meaningful to probe, so the rules above would leave it at `starting` for its entire life
+  — not just until some later capability lands. For `shell` rows only, tmux liveness
+  therefore promotes `starting → running`, where `running` means "the pane is alive" rather
+  than "an agent is working". This is the one place `tmux` supplies more than liveness, and
+  it is sound precisely because no higher-precedence source exists for a shell that could
+  ever contradict it. It does **not** generalise to agent rows: inferring `running` for an
+  agent from a live pane is the fabricated status §7 exists to forbid, because there the
+  higher-precedence sources do exist and may disagree.
 - **Crash detection is not instantaneous when unattended.** A `SIGKILL`ed or OOM-killed
   agent fires no hook, so the transition to `error` — and its notification — happens on the
   next TUI tick or the next `_hook` invocation for that session, whichever comes first.
@@ -680,42 +709,65 @@ listener.
 ## 11. TUI
 
 ```
-┌ deck ──────────────────────────── 2 waiting · 1 error · 7 sessions ── socket: deck ┐
-│  service-a                        ~/work/service-a                                │
-│ ●  api-refactor         claude  live     waiting  permission: Bash(git push)  2m   │
-│ ●  flaky-tests          claude  live     waiting  question                    6m   │
-│ ◐  perf-sweep           claude  live     running                              4s   │
-│ ○  dep-audit            codex   sampled  idle     "Updated 14 of 17 …"       31m   │
-│  infra                            ~/work/infra                                    │
-│ ✗  tf-migrate  ⚡yolo    claude  live     error    api_error                   1h   │
-│ ⏸  notes                shell    —        stopped  resumable · 2d                 │
-│ ⏸  triage      env↻     pi      sampled  stopped  resumable · 4d                 │
-├───────────────────────────────────────────────────────────────────────────────────┤
-│ ⏵ perf-sweep · claude · safe · ~/work/service-a · conv 4f9c…a21                   │
-│   (live pane preview, last 40 lines)                                              │
-└ ↵ attach · space next · n new · r resume · x kill · f find · ? help ───────────────┘
+╭ deck ─── 2 waiting · 1 error · 7 sessions ─────┬ ◐ perf-sweep ── claude · safe ─────────╮
+│  service-a              ~/work/service-a       │ ~/work/service-a · conv 4f9c…a21       │
+│ ● api-refactor   claude  live    waiting 2m    │                                        │
+│ ● flaky-tests    claude  live    waiting 6m    │ > run the benchmark suite              │
+│ ◐ perf-sweep     claude  live    running 4s    │   ⠋ bench/throughput … 14/31           │
+│ ○ dep-audit      codex   sampled idle   31m    │                                        │
+│  infra                  ~/work/infra           │ (live pane capture, escapes preserved, │
+│ ✗ tf-migrate  yolo claude live   error   1h    │  1 s tick, selected row only — never   │
+│ ■ notes           shell   —      stopped 2d    │  interactive; ↵ for a real terminal)   │
+│ ■ triage     env↻ pi      sampled stopped 4d   │                                        │
+│                                                │                                        │
+╰────────────────────────────────────────────────┴────────────────────────────────────────╯
+ ↵ attach · space next · n new · r resume · x kill · , settings · f find · ? help
 ```
+
+The shape is a **session sidebar beside a live preview**, not a full-width list. The
+sidebar is the permanent spine of the product — it is what you scan to answer "which
+session needs me" — and the preview is what makes an answer actionable without attaching.
+Both are described below; §11.2 covers what happens when the terminal is too narrow to
+hold them side by side.
 
 - Grouping by `workspace` (default: basename of `cwd`), collapsible. Never by repo.
 - Sort: `waiting` (oldest first) → `error` → `running` → `starting` → `idle` → `stopped`.
 - Live/sampled badge per row (§3), permission badge for non-`safe`, `env↻` when dirty.
+- Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
+  `✗` error · `▣` archived. One column, always in the same column, so the shape of the
+  list is readable before any text is. **Every glyph deck renders must be single-width.**
+  This is a hard rule, not a preference: an East-Asian-Wide codepoint (`⏸` U+23F8, `⚡`
+  U+26A1 and most emoji) occupies two cells in some terminals and one in others, so a
+  column-aligned list built on one silently shears on the other. Badges that would want a
+  pictogram (`yolo`, `env↻`) are text instead.
+- Sidebar default width 35 columns, user-adjustable and persisted; the preview takes the
+  rest.
 - Preview: pane capture with escapes preserved, 1 s tick, selected row only. No embedded
-  PTY emulator in v1.
+  PTY emulator in v1 — the preview is a capture, so it is never interactive. `↵` is how
+  you get a real terminal.
 - Since there is no CLI (R7), **every** capability is reachable and discoverable in the
   UI: create modal (name, cwd picker, agent, permission profile, env, pre_launch, args),
   env editor, permission switcher, pin/unpin, rename, notification rules editor, health
   view (tmux version, socket, agents on PATH, PATH resolvability, optional unit install),
-  event log, search, help overlay with the full keymap.
+  event log, search, **a settings view over every config key (§11.5)**, and a help overlay
+  with the full keymap. A capability that can only be reached by editing a file by hand is
+  a defect against R7, not a documentation gap.
 
 Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `e` env editor · `P` permission profile · `p` pin
 conversation · `E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze ·
-`A` archive · `u` undo · `g`/`G` top/bottom · `?` help · `q` quit.
+`A` archive · `u` undo · `g`/`G` top/bottom · `,` settings (§11.5) · `t` theme picker
+(§11.6) · `|` cycle layout mode (§11.2) · `tab` move focus sidebar↔preview · `?` help ·
+`q` quit.
 
-Constraints: 80×24 minimum, degrades to one line per session under 100 columns,
-resize-safe, no colour assumptions beyond 16 colours (truecolour when advertised), usable
-without a nerd font (glyphs behind a config toggle).
+Constraints: **80×24 minimum**, resize-safe at every size above it, and the degradation
+path is specified rather than emergent (§11.2). No colour assumptions beyond 16 colours:
+a theme's truecolour values are used when the terminal advertises truecolour and are
+otherwise quantised to the 16-colour ANSI set, so **every theme remains legible on a
+16-colour terminal** (§11.6). Usable without a nerd font — the glyphs above are all
+BMP box-drawing/geometric characters, and an ASCII fallback exists for every one of them
+(`DECK_ASCII`, §13.1).
 
 ### 11.1 Sending text without attaching
 
@@ -731,6 +783,163 @@ without a nerd font (glyphs behind a config toggle).
 - Each adapter declares whether it supports send-without-attach at all. One that doesn't
   simply omits the action, rather than having deck guess at its input model.
 - Every send is recorded as an event, so an unexpected agent reaction is traceable to it.
+
+### 11.2 Layout modes
+
+Three modes, one of which is always in force. `|` cycles them and the choice is persisted;
+otherwise the mode is chosen from the viewport width, and a resize re-chooses it.
+
+| mode | when | sidebar | preview |
+|---|---|---|---|
+| `side-by-side` | width ≥ 80 | left, `sidebar_width` (default 35), floor 24 | remainder, floor 40 |
+| `stacked` | width < 80 | full width, top, height `min(max(rows/3, 5), 12)` | full width, below, floor 8 |
+| `collapsed` | user choice, any width | 3-column strip showing `»` and the attention count | everything else |
+
+Every number above is a floor with a reason, and the reasons belong in the spec because
+they are what stops a later change from quietly breaking a size nobody tests:
+
+- **80 columns** is the mode boundary because at the default sidebar width a side-by-side
+  preview at 80 columns is 45 columns, which is below the preview floor — both panes lose.
+  A full-width stacked preview reads better than a cramped side-by-side one.
+- **Preview floor 40** is the narrowest a pane capture renders without wrapping into
+  unreadable hash-soup. Below it the preview is worse than absent, so it is not shown.
+- **Sidebar floor 24** is `glyph + name + status` with nothing elided; a narrower sidebar
+  cannot answer the one question it exists to answer.
+- **Stacked list 5–12 rows**: 5 is selection plus one neighbour plus the spinner row, so
+  the list still conveys movement; 12 keeps a tall terminal from starving the preview.
+- **Collapsed strip 3 columns** is the `»` glyph plus its two borders. It exists so a
+  long-running attach-and-watch session can have the full width without losing the
+  attention count entirely.
+
+Below 80×24 deck does not attempt a fourth layout: it renders the stacked mode as far as
+it fits and states in the footer that the terminal is below the supported minimum. A
+truncated-but-honest frame beats an unpredictable one.
+
+### 11.3 Panel chrome
+
+- **Rounded borders** (`╭╮╰╯`) on every panel, dialog and overlay. One border style
+  throughout; no mixing.
+- **One character of horizontal padding** inside the sidebar and preview so content never
+  touches a border. Dialogs manage their own internal spacing.
+- **A single seam.** The sidebar draws top, left and bottom borders only; the preview draws
+  all four, and its left border *is* the divider. Two adjacent `Borders::ALL` panels
+  produce a heavy `││` seam that reads as two windows rather than one surface.
+- **Focus is visible.** `tab` moves focus between sidebar and preview; the focused panel's
+  border uses the theme's `border_focus` token. Focus changes what `↑`/`↓`/`PgUp`/`PgDn`
+  scroll — the list, or the preview's capture history — and the footer's hints change with
+  it. A keyboard-only UI that cannot show where the keys are going is unusable.
+- **The footer is one line, outside both panels**, in the key/description pattern
+  (`↵ attach · n new · …`). It is contextual: it lists what is bound *now*, in this mode,
+  with this focus. It never lists a key that is not bound (Phase 0 shipped a footer
+  advertising seven unimplemented keys; that is the failure this rule prevents).
+
+### 11.4 Dialogs
+
+Every dialog is a bordered, centred modal over a dimmed backdrop, and they all obey one
+contract so learning any one of them teaches the rest:
+
+- `esc` cancels and changes nothing. `↵` submits. `tab`/`shift+tab` move between fields.
+  `←`/`→`/`space` change a selection. Nothing else is load-bearing.
+- **Validation is in-dialog and specific**, and it retains what the user typed. A dialog
+  never closes to reveal an error somewhere else.
+- **Destructive actions confirm**, and the confirmation names the target and what will
+  survive it (`kill notes — the session's history and conversation id are kept`).
+- Width targets 80% of the viewport, clamped to `[26, 80]` columns; at or below 26 the
+  dialog takes the full viewport, because below that the title hints cannot render at all
+  and preserving the input area matters more than preserving the frame.
+
+The inventory, all reachable from the list: create session · rename · confirm (kill,
+delete, purge) · delete options (tombstone vs purge) · permission profile picker · pin
+conversation · send message (§11.1) · env editor · snooze duration · notification rules ·
+theme picker (§11.6) · event log · health view · find (§12) · help overlay. Settings is
+deliberately *not* a dialog — see below.
+
+### 11.5 Settings
+
+Settings is a **full-screen takeover**, not a modal: a category list on the left, the
+selected category's fields on the right, `/` to fuzzy-search every field by label *and*
+description. Seventeen categories of settings in a centred 80-column box would be a worse
+version of a file editor. The takeover also makes the concession honest — deck has real
+configuration, and R7 means the TUI must be the place you edit it.
+
+- **Every key in `config.toml` is editable here**, and the view is generated from the same
+  schema that parses the file, so a new config key cannot be added without appearing in
+  settings. `allow_yolo` reachable only by hand-editing a file is exactly the R7 violation
+  this closes.
+- Field kinds are explicit: toggle, integer with bounds, string, path (with a picker),
+  enum (cycled), and list-of-strings. Each field states what it does and what changes when
+  it changes.
+- **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
+  changes on `esc`, and the write is atomic — settings must never be able to leave an
+  unparseable `config.toml` behind.
+- **Scope is labelled per field**: global (`config.toml`), or per-session override where
+  one exists (§6.1). A field that only takes effect on the next launch says
+  *restart-to-apply*, consistent with §6.2 and `P` (§5). A setting that claims to have
+  taken effect on a live pane when it has not is the same class of lie as a fabricated
+  status.
+- Settings never edits `SPEC.md`-level facts: it cannot create or delete sessions, and it
+  cannot reach anything that belongs to a session's lifecycle.
+
+### 11.6 Themes
+
+Colour is a first-class, user-owned artifact rather than constants in the render code.
+
+- A theme is one TOML file. Built-ins are embedded in the binary; user themes live in
+  `$XDG_CONFIG_HOME/deck/themes/*.toml` and are discovered at start-up. Adding a built-in
+  is a one-file drop plus one registry entry — no per-theme code, no per-theme test.
+- Selection is `[ui] theme = "<name>"` in `config.toml`, editable in settings (§11.5) and
+  from the `t` picker, which previews the theme live on the real list while you move
+  through the options and reverts on `esc`.
+- **An unknown or unparseable theme name falls back to the default and says so** in the
+  health view and on first paint. It never silently renders the default as though the
+  chosen theme had applied.
+
+The token set is semantic, not positional — tokens name *meanings*, so a theme author never
+has to know which widget draws what:
+
+```toml
+name = "empire"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#0f172a"  # panel interiors
+surface           = "#172033"  # elevated rows, footer, dialog interiors
+border            = "#334155"
+border_focus      = "#0d9488"  # the focused panel (§11.3)
+selection         = "#26324b"  # selected row, focused panel
+selection_idle    = "#37415c"  # selected row, unfocused panel
+title             = "#fbbf24"
+text              = "#cbd5e1"
+dimmed            = "#64748b"  # starting rows, elided detail
+hint              = "#94a3b8"  # footer descriptions
+key               = "#d97706"  # footer/help keycaps
+accent            = "#d97706"
+group             = "#cbd5e1"  # workspace headers
+search_match      = "#fbbf24"
+badge             = "#94a3b8"  # live/sampled, env↻
+badge_warn        = "#fbbf24"  # non-safe permission profiles, yolo
+waiting           = "#fbbf24"  # the seven §7 statuses, one token each
+running           = "#22c55e"
+idle              = "#64748b"
+starting          = "#a16207"
+stopped           = "#64748b"
+error             = "#ef4444"
+archived          = "#475569"
+```
+
+- **The seven status tokens are exactly the seven statuses in §7.** If §7 grows a status,
+  the theme schema grows a token; a status rendered in a colour borrowed from another
+  status is a defect, because the colour is the fastest thing a human reads in the list.
+- **16-colour floor.** Truecolour values are used when the terminal advertises truecolour;
+  otherwise each token is quantised to the nearest of the 16 ANSI colours at load time, and
+  the quantised palette is what renders. Every built-in must remain legible after
+  quantisation, and that is a testable property, not a hope: contrast is asserted over the
+  quantised palette, not only the hex one. `NO_COLOR` drops to monochrome and status is
+  then carried by the glyph column (§11) alone, which is why the glyphs are load-bearing
+  and never decorative.
+- A theme cannot change layout, spacing, glyphs or keybindings. It is colour only. This is
+  what keeps `DECK_ASCII`, the 80×24 floor and the harness's frame assertions independent
+  of whatever theme is loaded.
 
 ---
 
