@@ -1061,14 +1061,44 @@ func helpView(ascii bool) string {
 Keys
   ↑/↓ or j/k select a session
   ↵ attach the selected running session
-  n create a shell session
+  n create a session (shell, or an agent: claude or pi)
   x kill the selected running session
+  r resume the selected stopped session with its own agent argv (never
+    --continue or "most recent"); a resumed row reads "starting · awaiting signal",
+    not "running" — deck cannot yet tell when the agent is ready (a Phase 2
+    rough edge); a client that loses the launch-lease race sees
+    "starting elsewhere" instead of an error
+  P switch the permission profile of the selected session; only takes
+    effect on the next launch or resume ("restart to apply"), never the
+    live pane
+  p pin the selected session's conversation id so future resumes always
+    reuse it, or launch a one-shot fresh conversation (reverts to normal
+    auto-resume afterward, it does not stay pinned or cleared)
   i toggle detail view for the selected session
   ? open/close help; Esc closes help
   q or Ctrl+C quit deck
 
-Create dialog
+Create dialog fields
+  Name                the display name; also the source of the tmux slug
+  Working directory    the session's cwd; must exist and be a directory
+  Agent               shell, claude, or pi; which adapter launches the session
+  Permission profile  how much the agent may do without asking (safe, plan,
+                      edits, yolo); an unsupported profile for the chosen
+                      agent degrades visibly instead of silently
+  Launch args         extra argv appended after the adapter's own argv
+  Env                 session-level environment variables (highest priority
+                      in PATH resolution)
+  Pre-launch command  runs in the pane before the agent starts; the SPEC's
+                      intended use is loading secrets into the pane's
+                      environment without deck ever storing or logging them
+  Login shell         run the pane via $SHELL -lc instead of execing the
+                      agent argv directly
   Tab or ↑/↓ changes field; ↵ advances or submits; Esc cancels
+
+Yolo is gated twice: allow_yolo must be enabled in config.toml, or yolo is
+not offered at all (the UI states why); and even when enabled, choosing
+yolo — at create time or when switching profile with P — requires an
+explicit y confirm keystroke before it takes effect.
 
 Runtime controls
   DECK_HOME             isolated data/config/state root

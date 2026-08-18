@@ -23,6 +23,11 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	for _, want := range []string{
 		"↑/↓ or j/k select", "↵ attach the selected running session", "n create", "x kill",
 		"? open/close help", "Esc closes help", "q or Ctrl+C quit",
+		"r resume", "starting · awaiting signal", "starting elsewhere",
+		"P switch the permission profile", "restart to apply", "live pane",
+		"p pin", "one-shot fresh conversation", "auto-resume",
+		"Permission profile", "Pre-launch command", "loading secrets",
+		"Login shell", "Launch args", "allow_yolo",
 		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "DECK_ID_SEED",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
 		"tmux -L deck ls", "Plain tmux attach does not find deck",
@@ -31,7 +36,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 			t.Errorf("help view missing %q", want)
 		}
 	}
-	for _, unavailable := range []string{"resume/start", "restart preserving", "delete", "send message", "env editor", "permission profile", "event log", "filter list", "snooze", "archive", "undo"} {
+	for _, unavailable := range []string{"resume/start", "restart preserving", "delete", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("help advertises unavailable action %q:\n%s", unavailable, help)
 		}

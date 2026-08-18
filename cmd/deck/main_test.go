@@ -357,7 +357,11 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	if !strings.Contains(help, "up/down - Enter attach - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
 	}
-	for _, unavailable := range []string{"resume/start", "restart preserving", "send message", "env editor", "permission profile", "event log", "filter list", "snooze", "archive", "undo"} {
+	// The help view now exceeds the fixed 24-row PTY, so earlier sections
+	// (Keys, create-dialog field help, the yolo gate) scroll out of the
+	// captured byte stream; presence of that new content is asserted
+	// directly against helpView() in internal/tui, not through this PTY.
+	for _, unavailable := range []string{"resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}
