@@ -21,30 +21,31 @@ import (
 // Model is the base session-list screen. Later modal and action work extends
 // this model rather than providing a separate command-line interface.
 type Model struct {
-	store       *store.Store
-	settings    config.Settings
-	sessions    []store.Session
-	startupNote string
-	help        bool
-	creating         bool
-	createName       string
-	createCWD        string
-	createAgent      string
-	createProfile    string
-	createLaunchArgs string
-	createEnv        string
-	createPreLaunch  string
-	createLoginShell bool
-	createField      int
-	createError      string
-	create      func(context.Context, service.ShellCreateInput) (store.Session, error)
-	attach      func(context.Context, string) (*exec.Cmd, error)
-	kill        func(context.Context, store.Session) error
-	reconcile   func(context.Context) error
-	selected    int
-	attachError string
-	width       int
-	height      int
+	store               *store.Store
+	settings            config.Settings
+	sessions            []store.Session
+	startupNote         string
+	help                bool
+	creating            bool
+	createName          string
+	createCWD           string
+	createAgent         string
+	createProfile       string
+	createLaunchArgs    string
+	createEnv           string
+	createPreLaunch     string
+	createLoginShell    bool
+	createYoloConfirmed bool
+	createField         int
+	createError         string
+	create              func(context.Context, service.ShellCreateInput) (store.Session, error)
+	attach              func(context.Context, string) (*exec.Cmd, error)
+	kill                func(context.Context, store.Session) error
+	reconcile           func(context.Context) error
+	selected            int
+	attachError         string
+	width               int
+	height              int
 }
 
 type sessionsLoaded struct {
@@ -203,6 +204,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createName, m.createCWD = "", ""
 				m.createAgent, m.createProfile = createAgentOptions[0], createProfileOptions[0]
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
+				m.createYoloConfirmed = false
 			}
 		case "up", "k":
 			if m.selected > 0 {
@@ -324,12 +326,38 @@ func (m Model) relativeTime(createdAt int64) string {
 }
 
 // createAgentOptions and createProfileOptions are the values the create
-// modal's Agent and Permission profile fields cycle through. Task 017 will
-// narrow the offered profiles to what the selected adapter actually
-// declares (SPEC §5); for now every named profile is offered so the field
-// is fully keyboard-reachable.
+// modal's Agent and Permission profile fields cycle through.
+// createProfileOptions is the master ordering used only as the initial
+// default ("safe") when the modal opens; the actual offered set while the
+// modal is open is narrowed per selected agent and per allow_yolo by
+// createProfileOptionsFor (SPEC §5, task 017).
 var createAgentOptions = []string{"shell", "claude", "pi"}
 var createProfileOptions = []string{"safe", "plan", "edits", "yolo"}
+
+// createProfileOptionsFor returns exactly the permission profiles the
+// selected adapter declares (SPEC §5), narrowed further to exclude "yolo"
+// when allowYolo is false so the config gate is honoured before any
+// per-launch confirm gate is even reachable. shell has no notion of
+// permission profiles at all (createAgentCapabilities reports
+// !applicable): its field stays a single cosmetic "safe" value, per the
+// existing shell-is-inert-to-profiles rule.
+func createProfileOptionsFor(kind string, allowYolo bool) []string {
+	caps, applicable := createAgentCapabilities(kind)
+	if !applicable {
+		return []string{"safe"}
+	}
+	options := make([]string, 0, len(caps.Profiles))
+	for _, profile := range caps.Profiles {
+		if profile == "yolo" && !allowYolo {
+			continue
+		}
+		options = append(options, profile)
+	}
+	if len(options) == 0 {
+		options = []string{"safe"}
+	}
+	return options
+}
 
 const createFieldCount = 8
 
@@ -418,6 +446,14 @@ func (m Model) validateCreateFields() string {
 			return "unsupported permission profile: " + reason
 		}
 	}
+	if m.createProfile == "yolo" {
+		if !m.settings.AllowYolo {
+			return "yolo permission profile is not available: enable allow_yolo in config.toml"
+		}
+		if !m.createYoloConfirmed {
+			return "yolo requires confirmation: press y on the Permission profile field, then Enter to create"
+		}
+	}
 	return ""
 }
 
@@ -445,6 +481,14 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// to the append logic below, not be swallowed as a keybinding.
 		if !createFieldIsText(m.createField) {
 			m.cycleCreateField(1)
+			return m, nil
+		}
+	case "y":
+		// The yolo double-gate's explicit confirm keystroke; everywhere
+		// else "y" is just a typed character and must fall through to the
+		// append logic below (e.g. typing a name starting with "y").
+		if m.createField == 3 && m.createProfile == "yolo" && m.settings.AllowYolo && !m.createYoloConfirmed {
+			m.createYoloConfirmed = true
 			return m, nil
 		}
 	case "enter":
@@ -492,11 +536,31 @@ func (m *Model) cycleCreateField(delta int) {
 	switch m.createField {
 	case 2:
 		m.createAgent = cycleOption(createAgentOptions, m.createAgent, delta)
+		options := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
+		if !contains(options, m.createProfile) {
+			m.createProfile = options[0]
+			m.createYoloConfirmed = false
+		}
 	case 3:
-		m.createProfile = cycleOption(createProfileOptions, m.createProfile, delta)
+		options := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
+		next := cycleOption(options, m.createProfile, delta)
+		if next != m.createProfile {
+			m.createYoloConfirmed = false
+		}
+		m.createProfile = next
 	case 7:
 		m.createLoginShell = !m.createLoginShell
 	}
+}
+
+// contains reports whether options includes value.
+func contains(options []string, value string) bool {
+	for _, option := range options {
+		if option == value {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) backspaceCreateField() {
@@ -534,11 +598,23 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	if m.createLoginShell {
 		loginShell = "on"
 	}
+	profileOptions := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
+	profileValue := m.createProfile + " (left/right cycles: " + strings.Join(profileOptions, ", ") + ")"
+	profileHelp := "how much the agent may do without asking; an unsupported profile degrades to safe"
+	if !m.settings.AllowYolo {
+		profileHelp += "; yolo is not offered because allow_yolo is not enabled in config.toml"
+	} else if m.createProfile == "yolo" {
+		if m.createYoloConfirmed {
+			profileHelp += "; yolo confirmed"
+		} else {
+			profileHelp += "; press y to confirm yolo before creating"
+		}
+	}
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
 		{"Working directory", m.createCWD, "the session's cwd; must exist and be a directory"},
 		{"Agent", m.createAgent + " (left/right cycles: shell, claude, pi)", "which coding agent adapter launches this session"},
-		{"Permission profile", m.createProfile + " (left/right cycles: safe, plan, edits, yolo)", "how much the agent may do without asking; an unsupported profile degrades to safe"},
+		{"Permission profile", profileValue, profileHelp},
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
 		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
