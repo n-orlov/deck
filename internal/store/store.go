@@ -43,7 +43,26 @@ func OpenPath(home, path string) (*Store, error) {
 	}
 	// Do not change permissions until after the schema compatibility check:
 	// opening a newer database must leave its fixture completely untouched.
-	db, err := sql.Open("sqlite", path)
+	//
+	// _txlock=immediate forces every BeginTx to take SQLite's write lock up
+	// front (BEGIN IMMEDIATE) rather than the driver default deferred
+	// transaction that only upgrades to a write lock on its first write.
+	// Without this, two Store processes racing a read-then-write transaction
+	// against the same row (e.g. AcquireLaunchLease, task 008/027) can hit
+	// SQLITE_BUSY_SNAPSHOT on the upgrade, a stale-snapshot conflict that
+	// busy_timeout does not retry, surfacing as an immediate, un-retried
+	// locked-database error instead of the intended CAS-loses-the-race
+	// outcome. Taking the write lock immediately makes losing that race wait
+	// out busy_timeout and retry like every other contended write, matching
+	// SPEC section 9.3's guarantee that no case wedges the row under real
+	// concurrent callers.
+	dsn := path
+	if strings.Contains(dsn, "?") {
+		dsn += "&_txlock=immediate"
+	} else {
+		dsn += "?_txlock=immediate"
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open state database: %w", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -51,6 +52,8 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the working directory shared by this scenario's sessions no longer exists$`, workingDirectoryRemoved)
 	sc.Step(`^the state database session "([^"]+)"'s captured_path no longer contains the fake "claude" binary$`, sessionCapturedPathStrippedOfAgent)
 	sc.Step(`^the state database session "([^"]+)"'s conversation id is cleared$`, sessionConversationIDCleared)
+	sc.Step(`^deck clients "([^"]+)", "([^"]+)" and "([^"]+)" race pressing r on session "([^"]+)"$`, clientsRacePressingResumeOnNamedSession)
+	sc.Step(`^exactly one of deck clients "([^"]+)", "([^"]+)" and "([^"]+)" screen contains "starting elsewhere"$`, exactlyOneOfClientsShowsStartingElsewhere)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -987,4 +990,107 @@ func sessionConversationIDCleared(ctx context.Context, name string) error {
 		return fmt.Errorf("clear conversation id for session %q: %d rows affected, want 1", name, affected)
 	}
 	return nil
+}
+
+// selectRowByName moves client's selection to the row whose name is want by
+// repeated down-arrows from wherever the cursor currently is, matching the
+// same "> name" marker clientPressesResumeOnNamedSession relies on. It is
+// factored out so the launch-lease race step (task 027) can position every
+// racing client on the same row BEFORE firing `r` concurrently, since the
+// positioning itself must stay sequential (each keystroke is a real PTY
+// write) while only the final `r` needs to land within the race window.
+func selectRowByName(client *ScreenDriver, want string) error {
+	marker := "> " + want
+	for attempt := 0; attempt < 50; attempt++ {
+		if strings.Contains(client.Frame(false), marker) {
+			return nil
+		}
+		if err := client.Send("\x1b[B"); err != nil { // down arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return fmt.Errorf("never selected session %q (marker %q not found):\n%s", want, marker, client.Frame(false))
+}
+
+// clientsRacePressingResumeOnNamedSession positions all three named clients
+// on the same stopped row and then fires `r` on all three concurrently, from
+// separate goroutines, so their real process-level keystrokes land within a
+// tight (well under 100ms) window rather than godog's normal one-step-at-a-
+// time sequencing (task 027, SPEC §9.3's launch-lease race). Positioning
+// happens first, one client at a time, since only the final `r` needs to
+// race; a shared row selection is required for the race to mean anything.
+func clientsRacePressingResumeOnNamedSession(ctx context.Context, first, second, third, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	names := []string{first, second, third}
+	clients := make([]*ScreenDriver, len(names))
+	for i, name := range names {
+		client, err := h.Client(name)
+		if err != nil {
+			return err
+		}
+		if err := selectRowByName(client, sessionName); err != nil {
+			return fmt.Errorf("deck client %q: %w", name, err)
+		}
+		clients[i] = client
+	}
+	var wg sync.WaitGroup
+	errs := make([]error, len(clients))
+	for i, client := range clients {
+		wg.Add(1)
+		go func(i int, client *ScreenDriver) {
+			defer wg.Done()
+			errs[i] = client.Send("r")
+		}(i, client)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			return fmt.Errorf("deck client %q send r: %w", names[i], err)
+		}
+	}
+	return nil
+}
+
+// exactlyOneOfClientsShowsStartingElsewhere polls the three named clients'
+// screens for the losing side of the launch-lease race (internal/tui's
+// resumeNote == "starting elsewhere", SPEC §9.3), asserting exactly one of
+// them ends up showing it — the other two are the winner (whose own row
+// reloads to "starting · awaiting signal") and any client whose own `r`
+// simply never won a lease slot before the winner's launch already
+// completed the acquisition (in this 3-client/1-target race there is
+// exactly one winner and up to two losers, but only one loser is required
+// to prove the lease held: task 027 asks for "the losing client", singular).
+func exactlyOneOfClientsShowsStartingElsewhere(ctx context.Context, first, second, third string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	names := []string{first, second, third}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		count := 0
+		var frames []string
+		for _, name := range names {
+			client, err := h.Client(name)
+			if err != nil {
+				return err
+			}
+			frame := client.Frame(false)
+			frames = append(frames, frame)
+			if strings.Contains(frame, "starting elsewhere") {
+				count++
+			}
+		}
+		if count >= 1 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("no losing client among %v showed 'starting elsewhere':\n%s", names, strings.Join(frames, "\n---\n"))
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
