@@ -52,6 +52,7 @@ type Model struct {
 	profileSwitching    bool
 	profileSwitchValue  string
 	profileSwitchNote   string
+	profileSwitchYoloOK bool
 	resumeMode          func(context.Context, string, string) (store.Session, error)
 	pinning             bool
 	pinValue            string
@@ -361,6 +362,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.profileSwitching = true
 			m.profileSwitchValue = session.PermissionProfile
 			m.profileSwitchNote = ""
+			m.profileSwitchYoloOK = false
 			return m, nil
 		case "p":
 			if m.resumeMode == nil || len(m.sessions) == 0 {
@@ -480,14 +482,33 @@ func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.profileSwitchNote = ""
 		return m, nil
 	case "left":
+		if m.profileSwitchValue != "yolo" {
+			m.profileSwitchYoloOK = false
+		}
 		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, -1)
 		return m, nil
 	case "right", " ":
+		if m.profileSwitchValue != "yolo" {
+			m.profileSwitchYoloOK = false
+		}
 		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, 1)
 		return m, nil
+	case "y":
+		// The yolo double-gate's explicit confirm keystroke, mirroring the
+		// create modal's "y" (SPEC §5: switching to yolo requires the same
+		// explicit confirm as creating with yolo).
+		if m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
+			m.profileSwitchYoloOK = true
+			m.profileSwitchNote = ""
+			return m, nil
+		}
 	case "enter":
 		if m.profileSwitch == nil {
 			m.profileSwitchNote = "changing the permission profile is unavailable"
+			return m, nil
+		}
+		if m.profileSwitchValue == "yolo" && !m.profileSwitchYoloOK {
+			m.profileSwitchNote = "yolo requires confirmation: press y, then Enter to switch"
 			return m, nil
 		}
 		sessionID, profile := session.ID, m.profileSwitchValue
@@ -510,6 +531,9 @@ func (m Model) profileSwitchView() string {
 	fmt.Fprintf(&b, "Current:   %s\n", session.PermissionProfile)
 	fmt.Fprintf(&b, "New:       %s (left/right cycles: %s)\n", m.profileSwitchValue, strings.Join(options, ", "))
 	b.WriteString("\nThis applies on the session's next launch/restart; it does not change a\nrunning pane's mode.\n")
+	if m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
+		b.WriteString("\nyolo requires confirmation: press y, then Enter to switch\n")
+	}
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.profileSwitchNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.profileSwitchNote)
