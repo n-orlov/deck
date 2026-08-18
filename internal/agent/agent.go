@@ -8,7 +8,10 @@
 // under internal/tui.
 package agent
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 // Caps declares what an adapter can honestly do. It is queried, never
 // assumed: a caller must not ask an adapter for a profile or an
@@ -36,6 +39,20 @@ func (c Caps) SupportsProfile(p string) bool {
 		}
 	}
 	return false
+}
+
+// ResolveProfile resolves a requested permission profile against what this
+// adapter honestly declares. If requested is supported, it is returned
+// unchanged with degraded=false. If it is not supported, ResolveProfile
+// falls back to "safe" (the most restrictive profile) and reports
+// degraded=true along with a human-readable reason a caller can surface to
+// the user (SPEC §5) rather than silently pretending the requested profile
+// was honoured.
+func (c Caps) ResolveProfile(kind, requested string) (resolved string, degraded bool, reason string) {
+	if c.SupportsProfile(requested) {
+		return requested, false, ""
+	}
+	return "safe", true, fmt.Sprintf("%s does not support permission profile %q; falling back to safe", kind, requested)
 }
 
 // LaunchInput carries what an adapter needs to build a launch argv. It is
