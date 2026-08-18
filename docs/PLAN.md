@@ -11,8 +11,20 @@ repository as the mounted workspace. A phase is done when its Gherkin features p
 evidence report is written; the reviewing pass re-checks every numbered requirement
 independently, so requirements are written atomic and individually verifiable.
 
-Three standing rules for every phase:
+Five standing rules for every phase:
 
+- **Jobs commit and push their own work, one commit per completed task.** The commit log is
+  the job's durable memory alongside its handoff notes: a later iteration or phase should be
+  able to read `git log` and learn what was done and why. Messages say *why*, not what the
+  diff already shows. Never force-push, amend or rewrite published history — fix forward. Git
+  credentials are mounted into the job (`--creds`), so no token is ever handled in a prompt,
+  a file or a commit message. From Phase 1 onward.
+- **Review blocks on real defects and tolerates documentation nits.** Dead code satisfying a
+  requirement on paper, a vacuous test, a flaky scenario, a false claim about behaviour, or
+  anything touching a session's `cwd` must block. Wording, formatting and stale sentences in
+  derived summaries are recorded as notes and do not fail a phase. The test is whether a
+  reader would be *misled about behaviour*. Phase 0b was rejected three times over three
+  sentences with a finished product in the tree; that is a bug in the process, not diligence.
 - **A suite is "green" only when it is green ten consecutive times from a clean state.**
   Phase 0's "passes twice" bar was satisfied while a scenario failed one run in three, and
   the reviewer's two passing runs concluded it was stable. A flaky harness is worse than a
