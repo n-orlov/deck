@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
@@ -31,6 +32,15 @@ type Service struct {
 	Audit *audit.Logger
 	Clock *config.Clock
 	IDs   *config.IDGenerator
+
+	// Agents looks up an adapter by its declared kind (e.g. "claude", "pi")
+	// for CreateAgent and, later, Resume. Only CreateShell tolerates it
+	// being nil; agent creation requires it.
+	Agents *agent.Registry
+	// ConfigEnv mirrors config.toml's [env] table (SPEC §6.3): the layer
+	// between captured_path and the session's own env in PATH resolution
+	// order. A nil map is the common, valid case of no configured overrides.
+	ConfigEnv map[string]string
 
 	// Shell overrides the user's $SHELL. It is primarily useful to embedded
 	// callers; an empty value selects $SHELL, falling back to /bin/sh.
