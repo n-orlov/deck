@@ -329,7 +329,12 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=deck-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
+	// helpView() (internal/tui) is ~65 lines; a 24-row PTY would clip the
+	// top sections out of the alt-screen redraw before this test can read
+	// them back, so use a tall enough window that the whole overlay is
+	// written to the PTY in one frame and every new key/control can be
+	// asserted through the real terminal, not just via View() directly.
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 90, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,10 +362,21 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	if !strings.Contains(help, "up/down - Enter attach - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
 	}
-	// The help view now exceeds the fixed 24-row PTY, so earlier sections
-	// (Keys, create-dialog field help, the yolo gate) scroll out of the
-	// captured byte stream; presence of that new content is asserted
-	// directly against helpView() in internal/tui, not through this PTY.
+	// Every new key, create-modal field and control this phase added must be
+	// visible through a real PTY, not merely via View() in internal/tui.
+	for _, present := range []string{
+		"r resume", "P switch the permission profile", "p pin the selected session",
+		"starting - awaiting signal", "starting elsewhere", // DECK_ASCII=1 replaces \u00b7 with '-'
+		"Name", "Working directory", "Agent", "Permission profile", "Launch args", "Env",
+		"Pre-launch command", "Login shell",
+		"Yolo is gated twice", "allow_yolo",
+		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "DECK_ID_SEED",
+		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
+	} {
+		if !strings.Contains(help, present) {
+			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
+		}
+	}
 	for _, unavailable := range []string{"resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
