@@ -40,6 +40,7 @@ type Model struct {
 	createField         int
 	createError         string
 	create              func(context.Context, service.ShellCreateInput) (store.Session, error)
+	createAgentSession  func(context.Context, service.AgentCreateInput) (store.Session, error)
 	attach              func(context.Context, string) (*exec.Cmd, error)
 	kill                func(context.Context, store.Session) error
 	reconcile           func(context.Context) error
@@ -159,8 +160,19 @@ func NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(db *store.Store,
 // happened; "auto" clears any pin). None of these ever touch a live pane;
 // they only take effect on the session's next resume.
 func NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error)) Model {
+	return NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, nil)
+}
+
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator
+// adds real coding-agent creation (task 022) to the create modal's Enter
+// handler. Until agentCreator is wired, choosing claude/pi in the create
+// modal keeps the pre-task-022 "not available yet" refusal (agentCreator ==
+// nil); once wired, Enter on a non-shell Agent field calls
+// service.CreateAgent with every other create-modal field (permission
+// profile, launch_args, env, pre_launch, login_shell) exactly as typed.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error)) Model {
 	m := New(db, settings, tmuxNote)
-	m.create, m.attach, m.kill, m.reconcile, m.resume, m.profileSwitch, m.resumeMode = creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer
+	m.create, m.attach, m.kill, m.reconcile, m.resume, m.profileSwitch, m.resumeMode, m.createAgentSession = creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator
 	return m
 }
 
@@ -770,6 +782,42 @@ func (m Model) validateCreateFields() string {
 	return ""
 }
 
+// parseCreateLaunchArgs parses the create modal's launch_args field into the
+// JSON array of strings service.AgentCreateInput expects. An empty field is
+// simply no extra args, matching validateCreateFields' own "" is fine rule.
+func parseCreateLaunchArgs(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return nil, fmt.Errorf("launch_args must be a JSON array of strings: %w", err)
+	}
+	return args, nil
+}
+
+// parseCreateEnv parses the create modal's comma-separated key=value env
+// field into the map service.AgentCreateInput expects, mirroring the same
+// splitting rule validateCreateFields already checked.
+func parseCreateEnv(raw string) (map[string]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	env := make(map[string]string)
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return nil, fmt.Errorf("env entry %q must be key=value", entry)
+		}
+		env[strings.TrimSpace(key)] = value
+	}
+	return env, nil
+}
+
 func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -810,8 +858,29 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.createAgent != "shell" {
-			m.createError = "creating " + m.createAgent + " sessions is not available yet"
-			return m, nil
+			if m.createAgentSession == nil {
+				m.createError = "creating " + m.createAgent + " sessions is not available yet"
+				return m, nil
+			}
+			launchArgs, err := parseCreateLaunchArgs(m.createLaunchArgs)
+			if err != nil {
+				m.createError = err.Error()
+				return m, nil
+			}
+			env, err := parseCreateEnv(m.createEnv)
+			if err != nil {
+				m.createError = err.Error()
+				return m, nil
+			}
+			input := service.AgentCreateInput{
+				Name: m.createName, CWD: m.createCWD, Agent: m.createAgent,
+				PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
+				PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell,
+			}
+			return m, func() tea.Msg {
+				session, err := m.createAgentSession(context.Background(), input)
+				return shellCreated{session: session, err: err}
+			}
 		}
 		if m.create == nil {
 			m.createError = "shell creation is unavailable"

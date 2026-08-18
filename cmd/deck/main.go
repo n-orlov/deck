@@ -45,7 +45,7 @@ func main() {
 	// The TUI invokes this liveness pass immediately before each configured
 	// list refresh, so a real client observes externally removed tmux sessions
 	// and servers without ever bootstrapping a replacement server.
-	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, sessions.Reconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode)
+	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, sessions.Reconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent)
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "deck:", err)
 	}

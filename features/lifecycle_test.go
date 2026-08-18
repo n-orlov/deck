@@ -29,6 +29,11 @@ type ScenarioHarness struct {
 	sentinel        []byte
 	databaseFixture []byte
 	newerRefusal    string
+	// agentPATHDir, when set by fakeClaudeOnPATHForFutureClients, is prepended
+	// to a real PATH for every subsequently started named client, so a real
+	// coding-agent session can find its fixture-provided binary without ever
+	// hiding the real tmux/go that the harness itself still needs.
+	agentPATHDir string
 
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
@@ -75,12 +80,27 @@ func (h *ScenarioHarness) StartClient(ctx context.Context, extraEnv ...string) (
 	if h.Binary == "" {
 		return nil, errors.New("scenario deck binary is required")
 	}
+	if h.agentPATHDir != "" && !hasPATHOverride(extraEnv) {
+		extraEnv = append(extraEnv, "PATH="+h.agentPATHDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
 	client, err := StartScreenDriver(ctx, h.Binary, h.Environment(extraEnv...))
 	if err != nil {
 		return nil, err
 	}
 	h.clients = append(h.clients, client)
 	return client, nil
+}
+
+// hasPATHOverride reports whether extraEnv already sets PATH itself (e.g.
+// startClientWithoutTMux/startClientWithTMuxVersion deliberately replace
+// PATH entirely), so agentPATHDir must not also append a second PATH entry.
+func hasPATHOverride(extraEnv []string) bool {
+	for _, entry := range extraEnv {
+		if strings.HasPrefix(entry, "PATH=") {
+			return true
+		}
+	}
+	return false
 }
 
 // StartNamedClient gives Gherkin steps a stable external-client handle. Names
