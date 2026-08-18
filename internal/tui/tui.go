@@ -59,6 +59,28 @@ type Model struct {
 	pinNote             string
 	width               int
 	height              int
+	agents              *agent.Registry
+}
+
+// defaultAgentRegistry returns the stock shell/claude/pi registry used when a
+// caller does not supply one, so every existing constructor keeps working
+// unchanged.
+func defaultAgentRegistry() *agent.Registry {
+	r := agent.NewRegistry()
+	r.Register(agent.NewShell())
+	r.Register(agent.NewClaude())
+	r.Register(agent.NewPi())
+	return r
+}
+
+// registry returns m.agents, falling back to defaultAgentRegistry() when the
+// model was built without one (e.g. via New or any constructor that predates
+// registry support).
+func (m Model) registry() *agent.Registry {
+	if m.agents != nil {
+		return m.agents
+	}
+	return defaultAgentRegistry()
 }
 
 type sessionsLoaded struct {
@@ -174,6 +196,20 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(db *s
 func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error)) Model {
 	m := New(db, settings, tmuxNote)
 	m.create, m.attach, m.kill, m.reconcile, m.resume, m.profileSwitch, m.resumeMode, m.createAgentSession = creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator
+	return m
+}
+
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry
+// is identical to
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator
+// but additionally accepts the agent registry that drives the create
+// modal's Agent field and capability lookups (SPEC requirement: adding an
+// adapter must not require touching internal/tui). When registry is nil the
+// model falls back to defaultAgentRegistry() (shell/claude/pi), so this is a
+// pure superset of the existing constructor.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator)
+	m.agents = registry
 	return m
 }
 
