@@ -124,7 +124,7 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 | verb | invoked by | contract |
 |---|---|---|
-| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then exits. **Two separate budgets:** the store write completes in < 20 ms (measured on a monotonic clock, §13.1); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
+| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then exits. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
 | `deck _serve-tmux` | optional systemd unit | starts the `deck` tmux server with the right server options and exits. |
 | `deck _debug ...` | developers | inspection helpers, built only with the `debug` build tag. Not in release binaries. |
 
@@ -344,10 +344,14 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5) |
+| top level | `allow_yolo` (default false, §5); `stale_after` and `capture_min_interval` join here when their phases land (§7, §9.4) — listed now so the single-source rule below stays honest |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `sidebar_width`, `layout_mode`, `ascii` (§11.2/§11) |
-| `[notify]` | channels and rules (§10) |
+| `[ui]` | `theme` (§11.6), `ascii` (§11). **Not** `layout_mode` or `sidebar_width` — those are machine-local UI state and persist in `state.db` (§11.2), so a keypress never rewrites this file |
+| `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
+
+Environment always outranks the file: `DECK_ASCII` set in the environment overrides
+`[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
+this — the harness must be able to pin behaviour regardless of what a config file says).
 
 Two rules that hold for every key, present and future:
 
@@ -403,8 +407,19 @@ Rules:
   hook verdict, and `tmux` only ever supplies liveness.
 - `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. Leaving an
   attention state bumps `notify_epoch` (§10.2).
-- Staleness: a `starting` or `running` session with no event for `stale_after` (default
-  45 s) becomes eligible for probing. For non-hook agents, probing is the only source.
+- **Attaching to a `waiting` row also clears the status to `running`** (not only the
+  acknowledgement): answering the prompt is why you attached, deck watched you do it, and
+  no hook fires on a prompt being answered — the subscribed hooks (§8.1) are per-turn, not
+  per-tool-call, so the next event is the turn's `stop`. Without this rule a row you just
+  unblocked stays `waiting` until the turn ends — a standing false positive in the one
+  signal the product exists to provide.
+- Staleness: a `starting`, `running` **or `waiting`** session with no event for
+  `stale_after` (default 45 s) becomes eligible for probing. For non-hook agents, probing
+  is the only source. `waiting` is included for the unattended half of the same hole: a
+  prompt answered from a raw `tmux attach` (not through deck) fires no hook either, so the
+  probe is what corrects it. This does not violate precedence — by the time a `waiting` row
+  is probe-eligible, the hook verdict it would override is at least `stale_after` old, and
+  "a probe never overwrites a *fresher* hook verdict" is unchanged.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
@@ -431,7 +446,13 @@ Rules:
   it is sound precisely because no higher-precedence source exists for a shell that could
   ever contradict it. It does **not** generalise to agent rows: inferring `running` for an
   agent from a live pane is the fabricated status §7 exists to forbid, because there the
-  higher-precedence sources do exist and may disagree.
+  higher-precedence sources do exist and may disagree. Two consequences, stated so the
+  phase that implements this does not trip on them: a shell row's `starting` label is
+  plain `starting` — never `starting · awaiting signal`, which names a signal §7 says a
+  shell will never have; and the Phase 1 suite pins the pre-promotion behaviour in its
+  lease scenarios (shell rows asserted as `starting - awaiting signal`, screens asserted
+  to not contain `running`), so those assertions change *with* this rule, deliberately,
+  and the phase report says so rather than treating the red tests as regressions.
 - **Crash detection is not instantaneous when unattended.** A `SIGKILL`ed or OOM-killed
   agent fires no hook, so the transition to `error` — and its notification — happens on the
   next TUI tick or the next `_hook` invocation for that session, whichever comes first.
@@ -509,8 +530,12 @@ unsound: with two Codex sessions launched in the *same* directory seconds apart,
 "a transcript created after launch whose cwd matches" matches both candidates for both
 sessions — which is the banned "most recent" rule wearing a cwd filter. Therefore:
 
-1. **Serialise.** A process-wide discovery mutex means at most one Codex launch is in its
-   discovery window at a time; a second Codex launch in the same directory queues behind it.
+1. **Serialise — store-backed, not process-wide.** At most one Codex launch is in its
+   discovery window at a time, enforced by a CAS discovery lease in `state.db` with the
+   same shape as the §9.3 launch lease (owner `pid@boot_id`, TTL, stale-break on dead
+   owner). A process-local mutex would be unsound under R4's own model: N concurrent TUIs
+   are N processes, each holding its *own* mutex, and the banned ambiguity returns
+   silently. A second Codex launch — from any client — queues behind the lease.
    Queue position is visible in the UI (`starting · awaiting id`).
 2. **Claim.** Every transcript path already bound to a session is excluded from candidacy,
    and a discovered path is written to the row in the same transaction that clears the
@@ -544,6 +569,10 @@ every session reads `stopped · resumable`, and `r` brings one back:
 - Resume failure (unknown id, missing directory, agent binary gone) → `error` with the
   reason, row retained. Never delete, and never silently start a *fresh* conversation in
   place of a failed resume.
+- **Resume clears `killed_by_user`.** The flag exists so an in-flight hook cannot undo an
+  explicit kill (§7); once the user explicitly resumes, that verdict is spent — if it
+  survived, every future hook for the session would be outranked forever and the row could
+  never leave `stopped` by automation again.
 - Pinning, for forcing a specific conversation: pin sets `resume_state = pinned` and is
   sticky across restarts; a one-shot "start fresh" reverts to `auto` afterwards.
 - `shell` sessions "resume" by recreating the shell with their history file, replayed
@@ -603,6 +632,11 @@ For `shell` sessions, and reused for agent sessions where noted:
   whatever was on screen lands on disk.
 - **Working directory**: snapshot the pane's current path at capture time and resume there
   rather than at the original `cwd`.
+- **Schema home**, so the Phase 6 PRD is not left inventing one: the cwd snapshot is a
+  `last_cwd` column on `sessions` (nullable; `cwd` remains the create-time value and is
+  never overwritten), and captures live under `$DECK_HOME/captures/<session_id>/`,
+  referenced by convention rather than by row — a missing capture file degrades to no
+  replay, never to an error.
 - Not included: environment snapshots on exit (magic, and secret-laden), command journals.
 
 ### 9.5 tmux server lifetime (optional systemd)
@@ -735,11 +769,15 @@ hold them side by side.
 - Live/sampled badge per row (§3), permission badge for non-`safe`, `env↻` when dirty.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. One column, always in the same column, so the shape of the
-  list is readable before any text is. **Every glyph deck renders must be single-width.**
-  This is a hard rule, not a preference: an East-Asian-Wide codepoint (`⏸` U+23F8, `⚡`
-  U+26A1 and most emoji) occupies two cells in some terminals and one in others, so a
-  column-aligned list built on one silently shears on the other. Badges that would want a
-  pictogram (`yolo`, `env↻`) are text instead.
+  list is readable before any text is. **No glyph deck renders may have East Asian Width
+  `Wide` or `Fullwidth`** (`⏸` U+23F8, `⚡` U+26A1 and most emoji): those occupy two cells
+  in some terminals and one in others, so a column-aligned list built on one silently
+  shears on the other. EAW-`Ambiguous` codepoints are accepted — the rule cannot honestly
+  be "single-width everywhere", because even `●` and the box-drawing borders are
+  Ambiguous and no usable glyph set avoids them — with the caveat documented in help that
+  a terminal configured for ambiguous-wide (some CJK setups) should use `DECK_ASCII=1`,
+  whose fallback set is pure ASCII and immune. Badges that would want a pictogram
+  (`yolo`, `env↻`) are text instead.
 - Sidebar default width 35 columns, user-adjustable and persisted; the preview takes the
   rest.
 - Preview: pane capture with escapes preserved, 1 s tick, selected row only. No embedded
@@ -755,11 +793,11 @@ hold them side by side.
 
 Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
-`s` send message (§11.1) · `e` env editor · `P` permission profile · `p` pin
-conversation · `E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze ·
-`A` archive · `u` undo · `g`/`G` top/bottom · `,` settings (§11.5) · `t` theme picker
-(§11.6) · `|` cycle layout mode (§11.2) · `tab` move focus sidebar↔preview · `?` help ·
-`q` quit.
+`s` send message (§11.1) · `i` session detail (§11.4) · `e` env editor · `P` permission
+profile · `p` pin conversation · `E` event log · `f` find (§12) · `/` filter list · `m`
+mark · `z` snooze · `A` archive · `u` undo · `g`/`G` top/bottom · `,` settings (§11.5) ·
+`t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) · `tab`
+move focus sidebar↔preview · `?` help · `q` quit.
 
 Constraints: **80×24 minimum**, resize-safe at every size above it, and the degradation
 path is specified rather than emergent (§11.2). No colour assumptions beyond 16 colours:
@@ -789,30 +827,47 @@ BMP box-drawing/geometric characters, and an ASCII fallback exists for every one
 Three modes, one of which is always in force. `|` cycles them and the choice is persisted;
 otherwise the mode is chosen from the viewport width, and a resize re-chooses it.
 
-| mode | when | sidebar | preview |
+| mode | chosen when (`auto`) | sidebar | preview |
 |---|---|---|---|
-| `side-by-side` | width ≥ 80 | left, `sidebar_width` (default 35), floor 24 | remainder, floor 40 |
-| `stacked` | width < 80 | full width, top, height `min(max(rows/3, 5), 12)` | full width, below, floor 8 |
-| `collapsed` | user choice, any width | 3-column strip showing `»` and the attention count | everything else |
+| `side-by-side` | width ≥ 80 — every supported width | left, `sidebar_width` (default 35), floor 24 | remainder, floor 40 |
+| `stacked` | width < 80 — below deck's minimum, best-effort | full width, top, height `min(max(rows/3, 5), 12)` | full width, below, floor 8 |
+| `collapsed` | user choice only, never automatic | 3-column strip showing `»` above the attention count, rendered vertically | everything else |
+
+**All widths and floors in this table are total columns for that panel, borders and
+padding included** — a floor already pays for §11.3's border and padding cells. At exactly
+80×24 in `auto`, the mode is `side-by-side`: sidebar 35 total, preview 45 total, above its
+40-total floor with the default sidebar. That frame — side-by-side, 35/45, at 80×24 — is
+the golden minimum-size frame the harness asserts.
 
 Every number above is a floor with a reason, and the reasons belong in the spec because
 they are what stops a later change from quietly breaking a size nobody tests:
 
-- **80 columns** is the mode boundary because at the default sidebar width a side-by-side
-  preview at 80 columns is 45 columns, which is below the preview floor — both panes lose.
-  A full-width stacked preview reads better than a cramped side-by-side one.
+- **80 columns** is the boundary because it is deck's own supported minimum (§11). Unlike
+  the tools this layout borrows from, deck does not target phone-width terminals, so
+  `stacked` is not a peer mode: it is the honest degradation for a below-minimum terminal,
+  kept because rendering *something* legible at 70 columns beats rendering a sheared
+  side-by-side. A user may still select `stacked` deliberately at any width via `|`.
 - **Preview floor 40** is the narrowest a pane capture renders without wrapping into
   unreadable hash-soup. Below it the preview is worse than absent, so it is not shown.
 - **Sidebar floor 24** is `glyph + name + status` with nothing elided; a narrower sidebar
   cannot answer the one question it exists to answer.
 - **Stacked list 5–12 rows**: 5 is selection plus one neighbour plus the spinner row, so
   the list still conveys movement; 12 keeps a tall terminal from starving the preview.
-- **Collapsed strip 3 columns** is the `»` glyph plus its two borders. It exists so a
-  long-running attach-and-watch session can have the full width without losing the
-  attention count entirely.
+- **Collapsed strip 3 columns** is the `»` glyph plus its two borders. It exists to give
+  the preview the maximum possible width while keeping the attention count on screen —
+  one glance still answers "does anything need me", and `tab`/`|` restore the sidebar.
 
-Below 80×24 deck does not attempt a fourth layout: it renders the stacked mode as far as
-it fits and states in the footer that the terminal is below the supported minimum. A
+`|` cycles `auto → side-by-side → stacked → collapsed → auto`; the explicit modes pin the
+layout regardless of width, and `auto` returns to width-based selection. When the sidebar
+is focused, `<`/`>` adjust `sidebar_width` by one column, clamped to `[24, width − 40]`.
+**Both `layout_mode` and `sidebar_width` persist in `state.db`, not `config.toml`** —
+they are machine-local UI state, like window geometry, so a keypress never rewrites the
+config file and §11.5's settings takeover remains the config file's only writer. A pinned
+mode that cannot hold its floors at the current width falls back to rendering as `auto`
+for as long as that is true, without overwriting the pinned choice.
+
+Below 80×24 deck does not attempt a fourth layout: `auto` renders the stacked mode as far
+as it fits and states in the footer that the terminal is below the supported minimum. A
 truncated-but-honest frame beats an unpredictable one.
 
 ### 11.3 Panel chrome
@@ -839,20 +894,32 @@ Every dialog is a bordered, centred modal over a dimmed backdrop, and they all o
 contract so learning any one of them teaches the rest:
 
 - `esc` cancels and changes nothing. `↵` submits. `tab`/`shift+tab` move between fields.
-  `←`/`→`/`space` change a selection. Nothing else is load-bearing.
+  `←`/`→`/`space` change a selection. A dialog may declare **additional load-bearing keys
+  of its own**, but only if it states them inline where they apply — §5's mandatory `y`
+  yolo confirm ("press y to confirm yolo before creating") is the canonical example, and
+  it is required by §5, not an exception to be normalised away. Nothing *undeclared* is
+  load-bearing.
 - **Validation is in-dialog and specific**, and it retains what the user typed. A dialog
   never closes to reveal an error somewhere else.
 - **Destructive actions confirm**, and the confirmation names the target and what will
   survive it (`kill notes — the session's history and conversation id are kept`).
-- Width targets 80% of the viewport, clamped to `[26, 80]` columns; at or below 26 the
-  dialog takes the full viewport, because below that the title hints cannot render at all
-  and preserving the input area matters more than preserving the frame.
+- Width targets 80% of the viewport, clamped to `[26, 80]` columns. At every supported
+  width (§11: minimum 80) that resolves to 64–80 columns; the lower clamp and the
+  take-the-full-viewport rule at or below 26 columns apply only on a below-minimum
+  terminal, as best-effort behaviour to preserve the input area, and are not a supported
+  size with test obligations.
 
-The inventory, all reachable from the list: create session · rename · confirm (kill,
-delete, purge) · delete options (tombstone vs purge) · permission profile picker · pin
-conversation · send message (§11.1) · env editor · snooze duration · notification rules ·
-theme picker (§11.6) · event log · health view · find (§12) · help overlay. Settings is
-deliberately *not* a dialog — see below.
+The inventory, all reachable from the list — **each dialog lands with the phase that
+builds its feature** (owner in parentheses; §11.3's "the footer never lists an unbound
+key" is the phasing rule, so an unbuilt dialog is simply absent, never stubbed): create
+session (Phase 1, retrofitted 2b) · session detail `i` (Phase 1, retrofitted 2b — this is
+where §5's degradation reason and the §7 `last_message` live) · confirm (kill, delete,
+purge) (kill: Phase 0; delete/purge: 3) · rename (3) · delete options (tombstone vs
+purge) (3) · permission profile picker (Phase 1, retrofitted 2b) · pin conversation
+(Phase 1, retrofitted 2b) · send message (§11.1) (7) · env editor (3) · snooze duration
+(5) · notification rules (5) · theme picker (§11.6) (2b) · event log (3) · health view
+(7) · find (§12) (7) · help overlay (Phase 0, retrofitted 2b). Settings is deliberately
+*not* a dialog — see below.
 
 ### 11.5 Settings
 
@@ -862,13 +929,20 @@ description. Seventeen categories of settings in a centred 80-column box would b
 version of a file editor. The takeover also makes the concession honest — deck has real
 configuration, and R7 means the TUI must be the place you edit it.
 
-- **Every key in `config.toml` is editable here**, and the view is generated from the same
-  schema that parses the file, so a new config key cannot be added without appearing in
+- **Every flat key in `config.toml` is editable here**, and the view is generated from the
+  same schema that parses the file, so a new flat key cannot be added without appearing in
   settings. `allow_yolo` reachable only by hand-editing a file is exactly the R7 violation
-  this closes.
+  this closes. **Structured tables are the stated exception**: `[notify]`'s channels and
+  `[[notify.rule]]` arrays are edited in their own §11.4 dialog (the notification rules
+  editor, Phase 5), and settings shows them as a single navigable entry that opens that
+  dialog rather than flattening them into fields they don't fit.
 - Field kinds are explicit: toggle, integer with bounds, string, path (with a picker),
-  enum (cycled), and list-of-strings. Each field states what it does and what changes when
-  it changes.
+  enum (cycled), list-of-strings, and *link* (opens the owning dialog, per the exception
+  above). Each field states what it does and what changes when it changes.
+- Navigation, since the takeover is not a §11.4 dialog and the global `tab` (panel focus)
+  does not apply inside it: `tab`/`←`/`→` switch between the category list and the field
+  list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves, `esc` prompts
+  to discard if anything changed and otherwise closes.
 - **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
   changes on `esc`, and the write is atomic — settings must never be able to leave an
   unparseable `config.toml` behind.
@@ -930,16 +1004,31 @@ archived          = "#475569"
 - **The seven status tokens are exactly the seven statuses in §7.** If §7 grows a status,
   the theme schema grows a token; a status rendered in a colour borrowed from another
   status is a defect, because the colour is the fastest thing a human reads in the list.
-- **16-colour floor.** Truecolour values are used when the terminal advertises truecolour;
-  otherwise each token is quantised to the nearest of the 16 ANSI colours at load time, and
-  the quantised palette is what renders. Every built-in must remain legible after
-  quantisation, and that is a testable property, not a hope: contrast is asserted over the
-  quantised palette, not only the hex one. `NO_COLOR` drops to monochrome and status is
-  then carried by the glyph column (§11) alone, which is why the glyphs are load-bearing
-  and never decorative.
+- **16-colour floor, made assertable.** Truecolour values are used when the terminal
+  advertises truecolour; otherwise each token is quantised at load time to the nearest of
+  the 16 ANSI colours by Euclidean RGB distance **against deck's declared reference
+  palette** — the xterm defaults, fixed here because terminals do not agree on what the
+  16 colours are, and both "nearest" and any contrast number are undefined without one:
+  `000000 cd0000 00cd00 cdcd00 0000ee cd00cd 00cdcd e5e5e5` (0–7) and
+  `7f7f7f ff0000 00ff00 ffff00 5c5cff ff00ff 00ffff ffffff` (8–15). The quantised palette
+  is what renders. Legibility after quantisation is a tested property with a stated
+  method: for every built-in theme, `text`, `hint`, `title` and each of the seven status
+  tokens must hold a WCAG contrast ratio ≥ 3:1 against `background`, and `text` against
+  `selection`, computed over **both** the hex palette and its quantisation to the
+  reference palette. This is a loader-level golden test, like §7's probe fixtures — the
+  spec's black-box rule (§13) applies to behaviour, and palette arithmetic is data.
+  Rendering under the quantised palette *is* behaviour, so §13.1 gains
+  `DECK_COLOR_DEPTH=truecolor|16` to force either path deterministically in a pty test
+  regardless of what the harness terminal advertises. `NO_COLOR` drops to monochrome and
+  status is then carried by the glyph column (§11) alone, which is why the glyphs are
+  load-bearing and never decorative.
 - A theme cannot change layout, spacing, glyphs or keybindings. It is colour only. This is
   what keeps `DECK_ASCII`, the 80×24 floor and the harness's frame assertions independent
   of whatever theme is loaded.
+- One naming footnote so a literal reviewer does not burn an approach on it: `archived` is
+  a retention flag in §4's data-model terms and a display state in §7's table; the theme
+  schema follows the *display* taxonomy, which is why it gets a token — the sidebar can
+  render an archived row (behind the filter) and needs a colour for it.
 
 ---
 
@@ -981,6 +1070,7 @@ Without them the app is not black-box testable, so they are in scope from M1:
 | **Frozen / stepped clock** | `DECK_CLOCK=<rfc3339>` pins wall-clock now; `DECK_CLOCK_STEP` advances it on demand. **Wall clock only — durations, timeouts and budgets always use a monotonic clock and are never frozen**, or the §13.5 budget assertions would all measure zero. | Relative times ("2m", "31m") and quiet-hours windows become assertable without making elapsed time unmeasurable. |
 | **Deterministic rendering** | `NO_COLOR`, `DECK_ASCII=1` (no nerd glyphs), `DECK_ANIM=0` (no spinner frames), fixed `COLUMNS`×`LINES`. | Screen text is byte-stable, so golden frames are meaningful. |
 | **Explicit colour override** | `DECK_COLOR` forces colour on or off as a boolean, overriding both `NO_COLOR` and terminal detection. | `NO_COLOR` can only ever *disable*; a test that needs colour deliberately on — or a terminal deck mis-detects — has no other lever. Introduced in Phase 0 and kept deliberately. |
+| **Colour depth override** | `DECK_COLOR_DEPTH=truecolor\|16` forces the render path, overriding COLORTERM/TERM detection. | §11.6's quantised palette is behaviour, and a pty test cannot otherwise deterministically reach it — the harness terminal's advertised depth would decide which renderer runs. |
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 1000) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, notification attempt with outcome. | The observability surface for things not visible on screen — argv, timings, retries. |
@@ -1038,6 +1128,11 @@ in the help view.
 - **Webhook sink.** An `httptest` server registered as a `webhook` channel; steps assert
   on requests received, bodies rendered, dedupe collapses, and non-delivery during quiet
   hours. Notification behaviour is fully black-box because §10 has no built-in service.
+- **Resize and attributes.** §11.2's "a resize re-chooses the mode" needs the driver to
+  resize the pty mid-scenario (`TIOCSWINSZ` + `SIGWINCH`) and re-read the grid, and
+  §11.6's theme assertions need the emulator's per-cell SGR attributes (colour), not only
+  its text. Both are harness capabilities to build *before* the scenarios that need them,
+  named here so they are not discovered mid-phase.
 - **Isolation & teardown.** Per scenario: fresh `DECK_HOME`, fresh socket, fresh sink,
   fake-agent stubs reset. Teardown kills the socket and removes the root, and fails loudly
   on a leaked tmux server or a surviving child.
@@ -1067,6 +1162,10 @@ features/
   search.feature                §12 — metadata/events/transcripts, resume from a hit
   health.feature                §9.5 — no tmux, old tmux, missing agent, PATH unresolvable
   crash.feature                 §7 — error + crash tail + notify, and never auto-relaunch
+  layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
+  settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
+  themes.feature                §11.6 — picker, live preview/revert, fallback says so,
+                                quantised rendering under DECK_COLOR_DEPTH=16
 ```
 
 Tags: `@reboot`, `@slow`, `@multiclient`, `@nightly`, `@real-agents`. Default CI run
