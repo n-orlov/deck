@@ -224,3 +224,78 @@ and the `durable_identity`/`same_directory`/`permission_modes`/
 `resume_failure`/lease-race/lease-stale feature suites) matches `SPEC.md` and
 the Phase 1 PRD as read; no additional contradiction or impossibility was
 found beyond the items recorded above.
+
+## 2026-08-18 — Requirement 1 defect: registry/TUI coupling (tasks 001-005, 009)
+
+**The defect.** The Phase 1 review of PRD requirement 1 ("adding an adapter must
+not require touching the TUI") found the claim verifiably false against the
+tree at that time: `internal/tui/tui.go` hardcoded `createAgentOptions =
+[]string{"shell", "claude", "pi"}` for the create modal's Agent field, and
+`createAgentCapabilities` was a hardcoded `switch` on adapter-name string
+literals constructing `agent.NewClaude()`/`agent.NewPi()` directly — both
+required editing `internal/tui` to add or change an adapter, regardless of
+what was registered in `internal/agent`'s registry.
+
+**Why task 002's original success criterion was vacuous.** Task 002 had been
+marked complete on the strength of `internal/agent/agent_test.go`'s
+`TestRegistry_RegisterAndLookup` and `TestRegistry_KindsIsStableAndSorted`
+(plus `TestCaps_SupportsProfile`) — tests that register a throwaway adapter
+into a *local* `agent.Registry` instance and assert only on that registry's
+own `Kinds()`/`Lookup()` behaviour. None of those tests construct a
+`tui.Model`, open the create modal, or touch `internal/tui` at all, so they
+could pass — and did pass — in a tree where the TUI never consulted the
+registry for anything. The criterion tested the registry component in
+isolation, not the coupling (or lack of it) the requirement is actually
+about, so "requirement 1 is proved" was claimed without evidence that
+mattered to the claim.
+
+**What changed (tasks 001-005).** `tui.Model` gained a registry-backed
+adapter source (task 001, with a nil-safe fallback to the stock
+shell/claude/pi registry so every existing constructor still works); the
+create modal's Agent field now cycles `Kinds()` from that registry instead of
+a literal slice (task 002, re-done properly this time); capability/profile
+applicability (create validation, `createProfileOptionsFor`, profile
+badge/detail, the `P` switch and `p` pin paths) is derived from a registry
+lookup instead of a name-keyed `switch` (task 003); `cmd/deck/main.go` now
+builds one registry and passes the same instance to both `service.Service`
+and the TUI constructor (task 004); and a black-box guard test
+(`internal/tui/registry_guard_test.go:TestBlackBoxRegistrySwapNeedsNoTUIEdit`)
+constructs a `Model` over a registry whose membership differs from
+shell/claude/pi (extra kind present, a stock kind absent) and asserts the
+modal, profile offers and degradation reasons all follow the registry with
+zero edits to `internal/tui` (task 005). Task 009 corrected the R1 evidence
+row in `docs/reports/phase1.md` to cite these tests by name and file instead
+of the registry-only tests, and to state the mechanism now actually proved.
+
+**Distinct sub-finding: the default-create-agent regression (tasks 007,
+008a).** Deriving the Agent field's *order* from `Kinds()` (which sorts
+alphabetically per `TestRegistry_KindsIsStableAndSorted`) silently changed
+which adapter the create modal opens with by default whenever a registry's
+alphabetical order does not put `shell` first — a real behavioural
+regression introduced by the very fix described above, not a pre-existing
+defect. Task 007 fixed this behaviourally: the default-agent selection now
+explicitly prefers `"shell"` when present, falling back to `Kinds()[0]`
+otherwise, rather than trusting alphabetical order. Task 008a then pinned
+this rule with a dedicated test
+(`internal/tui/registry_guard_test.go:TestDefaultCreateAgentPrefersShellRegardlessOfSortOrder`)
+covering both the shell-present (non-alphabetical-first) case and the
+shell-absent fallback case, per operator steering that the original guard
+test could pass either way and didn't actually pin the rule. This is
+recorded separately from the R1 writeup above because it is a regression
+introduced while fixing R1, not an instance of the R1 coupling defect
+itself.
+
+**R13 / health-view deferral status after task 006.** Task 006 addressed the
+non-blocking R13 note above ("the UI says so") by adding one clause to the
+create modal's Login shell field help text stating that enabling it makes
+`captured_path` advisory (not applied), with a test
+(`internal/tui/create_login_shell_help_test.go:TestCreateModalLoginShellHelpStatesCapturedPathIsAdvisory`)
+asserting that wording renders. This closes the specific gap the R13 note
+flagged in the create modal. It does **not** touch the health view itself:
+per `SPEC.md` §6.3 and the existing deferral entry above ("Preview pane,
+search, health view, session send — Target: Phase 7"), the health view
+remains an explicit Phase 7 non-goal and is unaffected by task 006. The R13
+note's underlying concern (operator visibility of the advisory relationship)
+is now satisfied via the create modal instead of the health view; the
+Phase 7 health-view deferral itself is unchanged and still open as recorded
+above.
