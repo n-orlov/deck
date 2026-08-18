@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/store"
@@ -48,6 +51,25 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		return session, ResumeStartingElsewhere, fmt.Errorf("unknown agent kind %q", session.Agent)
 	}
 
+	// Reject the three SPEC-named resume failure causes before ever
+	// touching the launch lease or tmux, so none of them can be mistaken
+	// for (or accidentally produce) a fresh-conversation launch: an
+	// unknown/rejected conversation id, a missing or non-directory cwd,
+	// and (below, once the resume argv and its env are known) the agent
+	// binary not being on PATH.
+	if adapter.Capabilities().AssignsConversationID && session.ConversationID == "" {
+		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("resume session %q: no conversation id is assigned to resume (unknown/rejected conversation id)", session.Name))
+		return session, ResumeStarted, failErr
+	}
+	if info, statErr := os.Stat(session.CWD); statErr != nil || !info.IsDir() {
+		reason := fmt.Sprintf("resume session %q: cwd %q is missing or not a directory", session.Name, session.CWD)
+		if statErr != nil {
+			reason = fmt.Sprintf("resume session %q: cwd %q is missing or not a directory: %v", session.Name, session.CWD, statErr)
+		}
+		session, failErr := s.launchFailed(ctx, session, errors.New(reason))
+		return session, ResumeStarted, failErr
+	}
+
 	lease, err := s.Store.AcquireLaunchLease(ctx, sessionID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL)
 	if err != nil {
 		return session, ResumeStartingElsewhere, fmt.Errorf("acquire launch lease for session %q: %w", session.Name, err)
@@ -82,6 +104,15 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		envCapturedPath = ""
 	}
 	launchEnv := s.resolveLaunchEnv(envCapturedPath, session.Env)
+	// A login shell resolves its own PATH via its own profile/rc scripts
+	// (that is the point of login_shell=1, SPEC §6.4), so deck cannot judge
+	// PATH membership for it and must not fail resume on that basis.
+	if !session.LoginShell {
+		if lookErr := lookPathIn(argv[0], launchEnv["PATH"]); lookErr != nil {
+			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("resume session %q: agent binary %q not found on PATH: %w", session.Name, argv[0], lookErr))
+			return session, ResumeStarted, failErr
+		}
+	}
 	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("resume session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr
@@ -104,4 +135,35 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	}
 	session.StatusSource = "tmux"
 	return session, ResumeStarted, nil
+}
+
+// lookPathIn reports whether file (an adapter launch argv[0], e.g. "claude")
+// is executable under pathEnv (a colon-separated PATH value, not the current
+// process's own environment), mirroring exec.LookPath's search rules but
+// against an arbitrary PATH string rather than os.Getenv("PATH"). A file
+// containing a path separator is checked directly instead of searched.
+func lookPathIn(file, pathEnv string) error {
+	if file == "" {
+		return errors.New("empty command")
+	}
+	if strings.ContainsRune(file, os.PathSeparator) || strings.Contains(file, "/") {
+		info, err := os.Stat(file)
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return fmt.Errorf("%s is a directory", file)
+		}
+		return nil
+	}
+	for _, dir := range filepath.SplitList(pathEnv) {
+		if dir == "" {
+			dir = "."
+		}
+		candidate := filepath.Join(dir, file)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s: executable file not found in $PATH", file)
 }
