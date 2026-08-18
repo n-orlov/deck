@@ -24,6 +24,15 @@ import (
 // than growing a second one.
 func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
+	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
+	sc.Step(`^deck client "([^"]+)" opens the create modal for agent "([^"]+)"$`, clientOpensCreateModalForAgent)
+	sc.Step(`^deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContain)
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "yolo" confirming yolo$`, clientCreatesAgentSessionConfirmingYolo)
+	sc.Step(`^deck client "([^"]+)" attempts ([a-z]+) session "([^"]+)" with permission profile "yolo" without confirming$`, clientAttemptsAgentSessionWithYoloWithoutConfirming)
+	sc.Step(`^deck client "([^"]+)" opens detail for session "([^"]+)"$`, clientOpensDetailForSession)
+	sc.Step(`^the state database session "([^"]+)" is marked degraded from requesting permission profile "([^"]+)" on agent "([^"]+)"$`, sessionMarkedDegraded)
+	sc.Step(`^the state database session "([^"]+)" has permission profile "([^"]+)"$`, sessionHasPermissionProfile)
+	sc.Step(`^the state database does not contain session "([^"]+)"$`, stateDatabaseDoesNotContainSession)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)"$`, clientCreatesAgentSessionWithProfile)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and message "([^"]+)"$`, clientCreatesAgentSessionWithProfileAndMessage)
 	sc.Step(`^deck client "([^"]+)" presses r on session "([^"]+)"$`, clientPressesResumeOnNamedSession)
@@ -115,76 +124,9 @@ func clientCreatesAgentSessionWithProfileAndMessage(ctx context.Context, clientN
 }
 
 func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context, clientName, kind, name, profile, message string) error {
-	h, err := assertionHarness(ctx)
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
-	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	if h.workingDir == "" {
-		cwd := filepath.Join(h.Home, "agent-session-cwd")
-		if err := os.MkdirAll(cwd, 0o700); err != nil {
-			return fmt.Errorf("create scenario working directory: %w", err)
-		}
-		h.workingDir, h.sentinel = cwd, []byte("deck must not alter user cwd\n")
-		if err := os.WriteFile(filepath.Join(cwd, "sentinel"), h.sentinel, 0o600); err != nil {
-			return fmt.Errorf("write working-directory sentinel: %w", err)
-		}
-	}
-	if err := client.Send("n"); err != nil {
-		return err
-	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
-		return err
-	}
-	if err := client.Send(name); err != nil {
-		return err
-	}
-	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + h.workingDir); err != nil {
-		return err
-	}
-	time.Sleep(75 * time.Millisecond)
-	// Tab onto the Agent field, then cycle right until it reads kind; the
-	// field order is fixed (name, cwd, agent, profile, ...), see
-	// internal/tui.createFieldRows.
-	if err := client.Send("\t"); err != nil {
-		return err
-	}
-	time.Sleep(50 * time.Millisecond)
-	for _, want := range createAgentOptionsOrder {
-		if want == kind {
-			break
-		}
-		if err := client.Send("\x1b[C"); err != nil { // right arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	if err := client.WaitForFrame(ctx, false, kind+" (left/right cycles"); err != nil {
-		return fmt.Errorf("cycle Agent field to %q: %w", kind, err)
-	}
-	// Tab onto the Permission profile field, then cycle right until it
-	// reads profile. Options depend on the now-selected agent, so read them
-	// from the current frame rather than hard-coding claude/pi's lists here.
-	if err := client.Send("\t"); err != nil {
-		return err
-	}
-	time.Sleep(50 * time.Millisecond)
-	for attempt := 0; attempt < 4; attempt++ {
-		frame := client.Frame(false)
-		if strings.Contains(frame, profile+" (left/right cycles") {
-			break
-		}
-		if err := client.Send("\x1b[C"); err != nil {
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	if err := client.WaitForFrame(ctx, false, profile+" (left/right cycles"); err != nil {
-		return fmt.Errorf("cycle Permission profile field to %q: %w", profile, err)
 	}
 	if message != "" {
 		// Tab onto the Launch args (JSON array) field, right after Permission
@@ -206,6 +148,159 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// positionCreateModalOnProfileField drives the real create modal by
+// keystrokes only through name, cwd, Agent (cycled to kind) and Permission
+// profile (cycled to profile), leaving the modal open with the cursor on
+// the Permission profile field and not yet submitted. It is the shared
+// prefix behind every create-flow step in this file, including the ones
+// exercising the yolo double-gate (task 025), which need to act (or
+// deliberately not act) between reaching the profile field and pressing
+// enter.
+func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, name, profile string) (*ScenarioHarness, *ScreenDriver, error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return nil, nil, err
+	}
+	if h.workingDir == "" {
+		cwd := filepath.Join(h.Home, "agent-session-cwd")
+		if err := os.MkdirAll(cwd, 0o700); err != nil {
+			return nil, nil, fmt.Errorf("create scenario working directory: %w", err)
+		}
+		h.workingDir, h.sentinel = cwd, []byte("deck must not alter user cwd\n")
+		if err := os.WriteFile(filepath.Join(cwd, "sentinel"), h.sentinel, 0o600); err != nil {
+			return nil, nil, fmt.Errorf("write working-directory sentinel: %w", err)
+		}
+	}
+	if err := client.Send("n"); err != nil {
+		return nil, nil, err
+	}
+	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+		return nil, nil, err
+	}
+	if err := client.Send(name); err != nil {
+		return nil, nil, err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.Send("\t" + h.workingDir); err != nil {
+		return nil, nil, err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := cycleCreateFieldToValue(ctx, client, kind, createAgentOptionsOrder); err != nil {
+		return nil, nil, fmt.Errorf("cycle Agent field to %q: %w", kind, err)
+	}
+	// Tab onto the Permission profile field, then cycle right until it
+	// reads profile. Options depend on the now-selected agent, so read them
+	// from the current frame rather than hard-coding claude/pi's lists here.
+	if err := client.Send("\t"); err != nil {
+		return nil, nil, err
+	}
+	time.Sleep(50 * time.Millisecond)
+	for attempt := 0; attempt < 4; attempt++ {
+		frame := client.Frame(false)
+		if strings.Contains(frame, profile+" (left/right cycles") {
+			break
+		}
+		if err := client.Send("\x1b[C"); err != nil {
+			return nil, nil, err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err := client.WaitForFrame(ctx, false, profile+" (left/right cycles"); err != nil {
+		return nil, nil, fmt.Errorf("cycle Permission profile field to %q: %w", profile, err)
+	}
+	return h, client, nil
+}
+
+// cycleCreateFieldToValue tabs onto the field the caller is currently
+// positioned before (the Agent field, in every current caller) and cycles
+// right until want is on screen, matching one entry of order.
+func cycleCreateFieldToValue(ctx context.Context, client *ScreenDriver, want string, order []string) error {
+	if err := client.Send("\t"); err != nil {
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+	for _, candidate := range order {
+		if candidate == want {
+			break
+		}
+		if err := client.Send("\x1b[C"); err != nil { // right arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return client.WaitForFrame(ctx, false, want+" (left/right cycles")
+}
+
+// clientCreatesAgentSessionConfirmingYolo drives the create modal to the
+// yolo permission profile, presses the yolo double-gate's explicit confirm
+// keystroke ("y", only meaningful while focused on the Permission profile
+// field, see internal/tui.Model's "y" handling), then submits. It requires
+// allow_yolo=true in the scenario's config (SPEC §5); use
+// deckConfigAllowsYolo before starting the client.
+func clientCreatesAgentSessionConfirmingYolo(ctx context.Context, clientName, kind, name string) error {
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, "yolo")
+	if err != nil {
+		return err
+	}
+	if err := client.Send("y"); err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// clientAttemptsAgentSessionWithYoloWithoutConfirming drives the create
+// modal to the yolo permission profile and presses enter without the "y"
+// confirm keystroke, asserting the double-gate refuses to create anything
+// (SPEC §5, task 017/036): the modal states why and stays open rather than
+// silently creating a yolo session.
+func clientAttemptsAgentSessionWithYoloWithoutConfirming(ctx context.Context, clientName, kind, name string) error {
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, "yolo")
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "yolo requires confirmation")
+}
+
+// clientOpensCreateModalForAgent opens the create modal and cycles only the
+// Agent field to kind, leaving the modal open without filling name/cwd or
+// submitting. internal/tui.createFieldRows renders every field's help text
+// unconditionally, so this is enough for a caller to assert the Permission
+// profile field's yolo-availability explanation (task 025) without needing
+// a fully valid, submittable form.
+func clientOpensCreateModalForAgent(ctx context.Context, clientName, kind string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("n"); err != nil {
+		return err
+	}
+	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+		return err
+	}
+	// One tab: Name -> Working directory. cycleCreateFieldToValue's own
+	// leading tab then moves Working directory -> Agent.
+	if err := client.Send("\t"); err != nil {
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+	return cycleCreateFieldToValue(ctx, client, kind, createAgentOptionsOrder)
 }
 
 // createAgentOptionsOrder mirrors internal/tui.createAgentOptions. It is
@@ -590,4 +685,148 @@ func sessionLastMessage(h *ScenarioHarness, name string) (string, error) {
 		last = entry.Message
 	}
 	return last, nil
+}
+
+// deckConfigAllowsYolo writes a config.toml with allow_yolo = true into the
+// scenario's DECK_HOME. It must run before the client(s) it is meant to
+// affect are started: config.toml is read once at process start
+// (internal/config.Load).
+func deckConfigAllowsYolo(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(h.Home, "config.toml")
+	if err := os.WriteFile(path, []byte("allow_yolo = true\n"), 0o600); err != nil {
+		return fmt.Errorf("write scenario config.toml: %w", err)
+	}
+	return nil
+}
+
+// clientScreenDoesNotContain is the negative counterpart to "deck client
+// screen contains": it takes the current frame as-is, without polling,
+// since every caller in this package first waits for the frame that
+// establishes the state being asserted about (e.g. having just cycled the
+// Agent field to a specific value) before checking an absence within it.
+func clientScreenDoesNotContain(ctx context.Context, name, unwanted string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if frame := client.Frame(false); strings.Contains(frame, unwanted) {
+		return fmt.Errorf("deck client %q screen unexpectedly contains %q:\n%s", name, unwanted, frame)
+	}
+	return nil
+}
+
+// clientOpensDetailForSession selects the named row (reusing
+// clientPressesResumeOnNamedSession's marker-matching down-arrow search) and
+// then presses "i" (internal/tui's detail-toggle key) instead of "r".
+func clientOpensDetailForSession(ctx context.Context, clientName, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	marker := "> " + want
+	for attempt := 0; attempt < 50; attempt++ {
+		if strings.Contains(client.Frame(false), marker) {
+			return client.Send("i")
+		}
+		if err := client.Send("\x1b[B"); err != nil { // down arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return fmt.Errorf("deck client %q never selected session %q (marker %q not found):\n%s", clientName, want, marker, client.Frame(false))
+}
+
+// sessionMarkedDegraded writes the exact permission_profile_reason string
+// internal/service.CreateAgent would have stored had this session's agent
+// been asked to honour requested at create time (internal/agent.Caps's
+// ResolveProfile phrasing), directly into the store's own column. This
+// package never imports internal/agent (see registerBlackBoxAssertionSteps'
+// black-box discipline), so the wording is reproduced here deliberately, as
+// a fixture standing in for an adapter capability drift after create time —
+// the only way a stored profile can go stale, since the create modal only
+// ever offers profiles the currently selected adapter declares (task 017),
+// and therefore never lets a caller request an unsupported one to begin
+// with.
+func sessionMarkedDegraded(ctx context.Context, name, requested, agentKind string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	reason := fmt.Sprintf("%s does not support permission profile %q; falling back to safe", agentKind, requested)
+	result, err := db.ExecContext(ctx, `UPDATE sessions SET permission_profile_reason = ? WHERE name = ?`, reason, name)
+	if err != nil {
+		return fmt.Errorf("mark session %q degraded: %w", name, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark session %q degraded: %w", name, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("mark session %q degraded: %d rows affected, want 1", name, affected)
+	}
+	return nil
+}
+
+// sessionHasPermissionProfile asserts the store's own persisted
+// permission_profile column for the named session equals want, e.g. proving
+// yolo survived being persisted at create time (SPEC \u00a75: "Persisted, so a
+// yolo session comes back yolo on resume").
+func sessionHasPermissionProfile(ctx context.Context, name, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var got string
+	if err := db.QueryRowContext(ctx, `SELECT permission_profile FROM sessions WHERE name = ?`, name).Scan(&got); err != nil {
+		return fmt.Errorf("observe session %q permission profile: %w", name, err)
+	}
+	if got != want {
+		return fmt.Errorf("session %q permission profile = %q, want %q", name, got, want)
+	}
+	return nil
+}
+
+// stateDatabaseDoesNotContainSession asserts the yolo double-gate's refusal
+// (task 017/036) never left a row behind: an enter without the "y" confirm
+// closes nothing and creates nothing.
+func stateDatabaseDoesNotContainSession(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE name = ?`, name).Scan(&count); err != nil {
+		return fmt.Errorf("observe session %q count: %w", name, err)
+	}
+	if count != 0 {
+		return fmt.Errorf("state database unexpectedly contains session %q", name)
+	}
+	return nil
 }
