@@ -1061,7 +1061,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
 		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
-		{"Login shell", loginShell + " (space toggles)", "runs the pane through $SHELL -lc instead of execing the agent argv directly"},
+		{"Login shell", loginShell + " (space toggles)", "runs the pane through $SHELL -lc instead of execing the agent argv directly; enabling it makes captured_path advisory only (it is not applied) because the login shell's own profile decides PATH"},
 	}
 }
 
