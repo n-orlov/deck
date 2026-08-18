@@ -11,8 +11,14 @@ repository as the mounted workspace. A phase is done when its Gherkin features p
 evidence report is written; the reviewing pass re-checks every numbered requirement
 independently, so requirements are written atomic and individually verifiable.
 
-Two standing rules for every phase:
+Three standing rules for every phase:
 
+- **A suite is "green" only when it is green ten consecutive times from a clean state.**
+  Phase 0's "passes twice" bar was satisfied while a scenario failed one run in three, and
+  the reviewer's two passing runs concluded it was stable. A flaky harness is worse than a
+  missing one, because it teaches everyone to re-run instead of to trust. Equally, a green
+  suite is not evidence a requirement is met: Phase 0 shipped a reconcile loop with no
+  production caller and a determinism feature that passed vacuously against dead code.
 - **`SPEC.md` is read-only to jobs.** A job that finds a contradiction records it in
   `docs/reports/phase<N>-findings.md`. Otherwise a job that hits a spec problem quietly
   edits the spec to match its own code, and the source of truth rots.
@@ -25,7 +31,7 @@ Two standing rules for every phase:
 | Phase | Scope | Green when | Status |
 |---|---|---|---|
 | **Toolchain spike** | Prove all deck work can run in a sibling Go+tmux container with the host workspace mounted: Go build/test, real tmux on a private socket, pty-driven bubbletea, no root-owned litter, warm cache | `ci/Dockerfile`, `ci/run.sh`, `ci/SPIKE.md` | **done** |
-| **Phase 0 — harness & walking skeleton** | Go module; TUI binary rendering an empty list; determinism controls; JSONL log with launch audit; store schema v1 + migrations; tmux layer on a private socket; `shell` sessions create/list/attach/detach/kill; **godog harness driving the real binary through a pty**; fake-agent fixture mechanism | `walking_skeleton`, `determinism`, `store`, `tmux_contract`, `concurrency` (`@multiclient`) features; suite passes twice from a clean state | **in progress** |
+| **Phase 0 — harness & walking skeleton** | Go module; TUI binary rendering an empty list; determinism controls; JSONL log with launch audit; store schema v1 + migrations; tmux layer on a private socket; `shell` sessions create/list/attach/detach/kill; **godog harness driving the real binary through a pty**; fake-agent fixture mechanism | `walking_skeleton`, `determinism`, `store`, `tmux_contract`, `concurrency` (`@multiclient`) features; suite passes ten times from a clean state | **done** (+ Phase 0b hardening) |
 | **Phase 1 — sessions & lifecycle** | Create modal in full (args, env map, `pre_launch`, `captured_path`/`login_shell`); env edit → `env↻` → restart-to-apply; kill/undo, `dd` tombstone, archive; launch leases; clean-vs-crash exit split via `remain-on-exit failed`; crash tail | `create_session`, `kill_delete_undo`, `environment`, `crash` | planned |
 | **Phase 2 — durable identity** | Claude adapter with deck-assigned `--session-id`; resume argv; pin/cleared; Pi adapter; `starting → running`; resume-failure handling | **T1**, `durable_identity`, `same_directory` | planned |
 | **Phase 3 — status truth** | `deck _hook`; per-session settings injection; hook→status mapping incl. stop-failure and the session-end budget; probe engine + fixture corpus; live/sampled badges; precedence incl. `killed_by_user` | **T3**, `status_claude_hooks`, `status_probe` | planned |
