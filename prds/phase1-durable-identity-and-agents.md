@@ -249,7 +249,13 @@ Do not add a user-facing command line (`SPEC.md` R7).
   excluded by default.
 - deck never writes to or deletes anything inside a session's `cwd` (R1). It is not this
   phase's headline, but it remains true and any violation is a blocking defect.
-- Every sibling container is `--rm`. Leave no stray containers, images beyond
-  `deck-ci:local`, or volumes beyond the shared cache.
+- Every sibling container is `--rm`, so no cleanup sweep is needed or wanted. **Never
+  run `docker rm`/`docker kill` filtered by `label=ralphd.run=...`, and never target the
+  container named `ralphd-deck-phase1`: your own job container carries that label, so such
+  a sweep SIGKILLs the job mid-iteration and loses the verdict.** If you must check for
+  leftovers, do it read-only and scoped to the image, e.g.
+  `docker ps -a --filter ancestor=deck-ci:local --format '{{.ID}} {{.Status}}'`. Removing
+  an image you built yourself (`docker rmi <your-image>`) is fine; sweeping by run label is
+  not.
 - Prefer a small, readable implementation over a complete one. This phase is judged by
   whether a conversation provably survives a reboot, not by feature count.
