@@ -31,6 +31,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database sessions "([^"]+)" and "([^"]+)" have different conversation ids$`, sessionsHaveDifferentConversationIDs)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains "([^"]+)"$`, launchArgvForSessionContains)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain "([^"]+)"$`, launchArgvForSessionDoesNotContain)
+	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain session "([^"]+)"'s conversation id$`, launchArgvForSessionDoesNotContainOthersConversationID)
 	sc.Step(`^the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSession)
 	sc.Step(`^exactly ([0-9]+) private tmux session(?:s)? match(?:es)? slug "([^"]+)"$`, exactlyNPrivateSessionsMatchSlug)
 	sc.Step(`^no private tmux session exists$`, noPrivateTMuxSessionExists)
@@ -356,6 +357,32 @@ func launchArgvForSessionContains(ctx context.Context, name, want string) error 
 	}
 	if !argvContains(argv, want) {
 		return fmt.Errorf("most recent launch argv for session %q = %q, does not contain %q", name, argv, want)
+	}
+	return nil
+}
+
+// launchArgvForSessionDoesNotContainOthersConversationID asserts the named
+// session's most recent launch argv never contains other's conversation id,
+// proving two sessions sharing one cwd cannot leak each other's id into a
+// resume argv (task 024).
+func launchArgvForSessionDoesNotContainOthersConversationID(ctx context.Context, name, other string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	otherID, err := sessionConversationID(h, other)
+	if err != nil {
+		return err
+	}
+	if otherID == "" {
+		return fmt.Errorf("session %q has no conversation id", other)
+	}
+	argv, err := mostRecentLaunchArgvForSession(h, name)
+	if err != nil {
+		return err
+	}
+	if argvContains(argv, otherID) {
+		return fmt.Errorf("most recent launch argv for session %q = %q, unexpectedly contains session %q's conversation id %q", name, argv, other, otherID)
 	}
 	return nil
 }
