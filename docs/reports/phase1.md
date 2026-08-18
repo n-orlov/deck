@@ -137,3 +137,126 @@ under `features/`; every Go test name is a `func Test...` in the named
 | 25 | `@real-agents` smoke scenario, excluded from the default run, runnable by one documented command | `real_agent_smoke.feature: create a real claude session and resume it with the same conversation id` (see the `@real-agents` section above for the exact command and the default-run exclusion proof) |
 
 All capture paths cited in this section — `docs/reports/phase1-full-verbose-run.log` — are repository-relative and exist (verified by `test -f docs/reports/phase1-full-verbose-run.log`).
+
+## Operator smoke-test walkthrough (task 038)
+
+This section is a manual, copy-pasteable walkthrough of the T1 reboot-survival
+promise (SPEC §13.4, PRD requirement 22) against a real `claude` CLI, run from
+a normal shell (not the CI sibling container) with `claude` on `PATH`. Every
+command and keystroke below is consistent with `cmd/deck/main.go` (which takes
+no flags — it only reads `DECK_*` env vars documented in the help overlay, see
+`internal/tui/tui.go`'s `helpView`) and with
+`features/real_agent_smoke.feature` (the one scenario that exercises a real
+CLI in the test suite).
+
+**0. Isolate the run.** deck keeps all mutable state under one `DECK_HOME`
+root (`internal/config/config.go`'s `resolvePaths`) and all tmux panes on one
+named socket (`DECK_TMUX_SOCKET`, default `deck`) — both worth pointing at a
+scratch directory / throwaway socket name so this walkthrough never touches a
+real login tmux server or a real `~/.deck`:
+
+```sh
+export DECK_HOME=$(mktemp -d)
+export DECK_TMUX_SOCKET=deck-smoke-$$
+mkdir -p /tmp/deck-smoke-cwd
+```
+
+**1. Build deck.**
+
+```sh
+go build -o /tmp/deck-smoke ./cmd/deck
+```
+
+What "working" looks like: exit 0, and `/tmp/deck-smoke` exists and is
+executable.
+
+**2. Create a real claude session.** Run `/tmp/deck-smoke`, then:
+
+- press `n` to open the create modal,
+- type a name, e.g. `smoke`,
+- press `tab` to move to the working-directory field and type
+  `/tmp/deck-smoke-cwd`,
+- press `tab` to reach the agent field, press `right` once to cycle from
+  `shell` to `claude`,
+- press `tab` to reach the permission-profile field; leave it at `safe`
+  (the default and first-listed option, `internal/tui/tui.go`'s
+  `createProfileOptions`),
+- press `enter` to create.
+
+What "working" looks like: the modal closes, the row for `smoke` appears in
+the list, and its status reads `starting · awaiting signal` (ASCII fallback
+`starting - awaiting signal` with `DECK_ASCII=1`) — this is the known Phase 1
+rough edge below, not a bug to chase.
+
+**3. Exchange a message.** With `smoke` selected, press `enter` to attach to
+its tmux pane (deck execs into `tmux attach` for that pane); interact with
+the real `claude` CLI directly in the attached pane and send it one message
+so it has conversation history to prove identity with later. Detach with
+tmux's own detach keystroke (`ctrl+b d` under the default tmux prefix) to
+return to the deck list — deck does not intercept or remap this.
+
+What "working" looks like: back in the deck list, `smoke` still shows a
+status; `claude` produced at least one reply in the pane before you detached.
+
+**4. Kill the tmux server as a reboot stand-in.** Quit deck (`q`), then:
+
+```sh
+tmux -L "$DECK_TMUX_SOCKET" kill-server
+```
+
+What "working" looks like: `tmux -L "$DECK_TMUX_SOCKET" list-sessions`
+now fails with "no server running on ..." — there is no live pane anywhere,
+matching SPEC §13.4's reboot stand-in, while `$DECK_HOME/state.db` on disk is
+untouched.
+
+**5. Restart deck.**
+
+```sh
+/tmp/deck-smoke
+```
+
+What "working" looks like: `smoke` is listed with status `stopped`, badged
+resumable, sourced entirely from `$DECK_HOME/state.db` — no tmux session
+exists yet.
+
+**6. Press `r` to resume, and confirm the same conversation returned.** With
+`smoke` selected, press `r`.
+
+What "working" looks like: the row's status becomes
+`starting · awaiting signal` (never `running` — deck does not derive
+liveness from tmux; see task 019). Press `enter` to attach again: the `claude`
+CLI resumes with `--resume <smoke's conversation id>` (never `--continue` or
+a "most recent" form — SPEC §13.4/§2), and the pane shows the same
+conversation history exchanged in step 3, not a fresh session. The exact
+argv used for the resume, and `smoke`'s conversation id, are recorded (argv
+plus env variable *names* only, never values, per SPEC §6.4/task 009) in
+`$DECK_HOME/log/deck.jsonl` and can be inspected with:
+
+```sh
+grep smoke "$DECK_HOME"/log/deck.jsonl | tail -1
+```
+
+**7. Clean up.**
+
+```sh
+tmux -L "$DECK_TMUX_SOCKET" kill-server 2>/dev/null
+rm -rf "$DECK_HOME" /tmp/deck-smoke-cwd /tmp/deck-smoke
+```
+
+**The one documented command to run the automated `@real-agents` scenario**
+(from the repository root, with a real `claude` on `PATH`):
+
+```sh
+DECK_GODOG_TAGS=@real-agents go test -run TestFeatures -v ./features/...
+```
+
+(see the `@real-agents` section above for what it proves and why it is
+excluded from the default suite).
+
+**Known Phase 1 rough edge.** Every agent-adapter row (claude, pi) reads
+`starting · awaiting signal` from the moment it is launched or resumed and
+stays there for the rest of the run — deck deliberately never claims
+`running` because Phase 1 has no hook/probe mechanism to observe the agent's
+own state (that lands in Phase 2; see `docs/reports/phase1-findings.md`).
+This is expected, not a defect: the pane itself is fully live and usable via
+`enter`/attach even while the row still reads `starting · awaiting signal`.
