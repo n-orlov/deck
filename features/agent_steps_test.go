@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,6 +47,10 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^exactly ([0-9]+) private tmux session(?:s)? match(?:es)? slug "([^"]+)"$`, exactlyNPrivateSessionsMatchSlug)
 	sc.Step(`^no private tmux session exists$`, noPrivateTMuxSessionExists)
 	sc.Step(`^session "([^"]+)" replays its own last message, not session "([^"]+)"'s$`, sessionReplaysOwnMessageNotAnothers)
+	sc.Step(`^the state database session "([^"]+)"'s status reason contains "([^"]+)"$`, sessionStatusReasonContains)
+	sc.Step(`^the working directory shared by this scenario's sessions no longer exists$`, workingDirectoryRemoved)
+	sc.Step(`^the state database session "([^"]+)"'s captured_path no longer contains the fake "claude" binary$`, sessionCapturedPathStrippedOfAgent)
+	sc.Step(`^the state database session "([^"]+)"'s conversation id is cleared$`, sessionConversationIDCleared)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -859,6 +864,127 @@ func stateDatabaseDoesNotContainSession(ctx context.Context, name string) error 
 	}
 	if count != 0 {
 		return fmt.Errorf("state database unexpectedly contains session %q", name)
+	}
+	return nil
+}
+
+// sessionStatusReasonContains asserts the store's own persisted
+// status_reason column for the named session contains want, e.g. proving a
+// failed resume's row names its specific cause (unknown conversation id,
+// missing cwd, agent binary not on PATH — task 026) rather than a generic
+// message. It polls briefly since the row is updated asynchronously from
+// the resuming client's own request/response cycle.
+func sessionStatusReasonContains(ctx context.Context, name, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	var got string
+	for {
+		if err := db.QueryRowContext(ctx, `SELECT COALESCE(status_reason, '') FROM sessions WHERE name = ?`, name).Scan(&got); err != nil {
+			return fmt.Errorf("observe session %q status reason: %w", name, err)
+		}
+		if strings.Contains(got, want) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q status reason = %q, want it to contain %q", name, got, want)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// workingDirectoryRemoved deletes the entire directory every session
+// created so far in this scenario shares as its cwd (positionCreateModalOnProfileField
+// creates it lazily on first use and stores it on the harness), proving the
+// resume-failure cause "missing or non-directory cwd" (SPEC §9.3 / task
+// 012) black-box: a session that was perfectly launchable at create time can
+// still fail resume later if its cwd has since vanished.
+func workingDirectoryRemoved(ctx context.Context) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if h.workingDir == "" {
+		return errors.New("no working directory has been created yet for this scenario")
+	}
+	if err := os.RemoveAll(h.workingDir); err != nil {
+		return fmt.Errorf("remove scenario working directory %q: %w", h.workingDir, err)
+	}
+	return nil
+}
+
+// sessionCapturedPathStrippedOfAgent overwrites the named session's own
+// persisted captured_path (SPEC §6.3's PATH-resolution layer recorded at
+// create time) with a freshly created, genuinely empty directory that
+// cannot contain the fake claude binary fakeClaudeOnPATHForFutureClients put
+// on the real PATH, proving the resume-failure cause "agent binary not on
+// PATH" (task 012) black-box: the session was launchable when created, and
+// only its own recorded PATH layer has since gone stale (its session-level
+// env and any config [env] carry no PATH override in these scenarios, so
+// this is the layer that decides resume's PATH).
+func sessionCapturedPathStrippedOfAgent(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	empty := filepath.Join(h.Home, "empty-path-"+name)
+	if err := os.MkdirAll(empty, 0o700); err != nil {
+		return fmt.Errorf("create empty PATH directory: %w", err)
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.ExecContext(ctx, `UPDATE sessions SET captured_path = ? WHERE name = ?`, empty, name)
+	if err != nil {
+		return fmt.Errorf("strip captured_path for session %q: %w", name, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("strip captured_path for session %q: %w", name, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("strip captured_path for session %q: %d rows affected, want 1", name, affected)
+	}
+	return nil
+}
+
+// sessionConversationIDCleared blanks the named session's own persisted
+// conversation_id, proving the resume-failure cause "unknown/rejected
+// conversation id" (task 012) black-box: a session that was assigned one
+// perfectly well at create time can still have nothing valid to resume if
+// its own recorded id has since gone missing (e.g. rejected upstream).
+// internal/service.Resume treats an empty conversation id exactly the same
+// as one the adapter never accepted, since deck itself never validates the
+// id's acceptance with the agent ahead of the resume attempt.
+func sessionConversationIDCleared(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.ExecContext(ctx, `UPDATE sessions SET conversation_id = '' WHERE name = ?`, name)
+	if err != nil {
+		return fmt.Errorf("clear conversation id for session %q: %w", name, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("clear conversation id for session %q: %w", name, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("clear conversation id for session %q: %d rows affected, want 1", name, affected)
 	}
 	return nil
 }
