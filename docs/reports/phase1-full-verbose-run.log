@@ -1,0 +1,890 @@
+=== RUN   TestDeckBinaryShellCreateAndSlugCollisionThroughPTY
+--- PASS: TestDeckBinaryShellCreateAndSlugCollisionThroughPTY (1.46s)
+=== RUN   TestDeckBinaryRefreshesAllConcurrentClients
+--- PASS: TestDeckBinaryRefreshesAllConcurrentClients (2.49s)
+=== RUN   TestDeckBinaryEmptyHelpAndQuitThroughPTY
+--- PASS: TestDeckBinaryEmptyHelpAndQuitThroughPTY (0.72s)
+PASS
+ok  	github.com/n-orlov/deck/cmd/deck	4.678s
+=== RUN   TestAcceptedClaudeFlagsProduceDeterministicTerminalRecord
+--- PASS: TestAcceptedClaudeFlagsProduceDeterministicTerminalRecord (0.00s)
+=== RUN   TestRejectsInvalidUUIDsUnknownFlagsAndModes
+=== RUN   TestRejectsInvalidUUIDsUnknownFlagsAndModes/malformed_session_ID
+=== RUN   TestRejectsInvalidUUIDsUnknownFlagsAndModes/malformed_resume
+=== RUN   TestRejectsInvalidUUIDsUnknownFlagsAndModes/unknown_flag
+=== RUN   TestRejectsInvalidUUIDsUnknownFlagsAndModes/unknown_mode
+--- PASS: TestRejectsInvalidUUIDsUnknownFlagsAndModes (0.00s)
+    --- PASS: TestRejectsInvalidUUIDsUnknownFlagsAndModes/malformed_session_ID (0.00s)
+    --- PASS: TestRejectsInvalidUUIDsUnknownFlagsAndModes/malformed_resume (0.00s)
+    --- PASS: TestRejectsInvalidUUIDsUnknownFlagsAndModes/unknown_flag (0.00s)
+    --- PASS: TestRejectsInvalidUUIDsUnknownFlagsAndModes/unknown_mode (0.00s)
+=== RUN   TestExitCodeIsControlledOnlyByFixtureEnvironment
+--- PASS: TestExitCodeIsControlledOnlyByFixtureEnvironment (0.00s)
+=== RUN   TestResumeReplaysOnlyItsOwnConversationsLastMessage
+--- PASS: TestResumeReplaysOnlyItsOwnConversationsLastMessage (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.007s
+=== RUN   TestAcceptedPiFlagsProduceDeterministicTerminalRecord
+--- PASS: TestAcceptedPiFlagsProduceDeterministicTerminalRecord (0.00s)
+=== RUN   TestRejectsUnknownFlags
+=== RUN   TestRejectsUnknownFlags/unknown_short_flag
+=== RUN   TestRejectsUnknownFlags/unknown_long_flag
+--- PASS: TestRejectsUnknownFlags (0.00s)
+    --- PASS: TestRejectsUnknownFlags/unknown_short_flag (0.00s)
+    --- PASS: TestRejectsUnknownFlags/unknown_long_flag (0.00s)
+=== RUN   TestSessionIDMissingValueIsRejected
+--- PASS: TestSessionIDMissingValueIsRejected (0.00s)
+=== RUN   TestExitStatusIsControlledOnlyByFixtureEnvironment
+--- PASS: TestExitStatusIsControlledOnlyByFixtureEnvironment (0.00s)
+=== RUN   TestSessionIDCreatesSessionIfMissing
+--- PASS: TestSessionIDCreatesSessionIfMissing (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.003s
+=== RUN   TestBlackBoxAssertionsObserveRealSession
+--- PASS: TestBlackBoxAssertionsObserveRealSession (1.15s)
+=== RUN   TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation
+--- PASS: TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation (0.57s)
+=== RUN   TestFeatures
+[1;37mFeature:[0m Real agent session creation and resume through the TUI
+  A user can create a real coding-agent session (not just shell) and resume it
+  through the released deck TUI, and every relevant fact is observable
+  black-box: the assigned conversation id, the exact launch-audit argv, how
+  many launches happened, and how many private tmux sessions exist for the
+  session's slug.
+=== RUN   TestFeatures/create_a_claude_session,_observe_its_facts,_then_resume_it
+
+  [1;37mScenario:[0m create a claude session, observe its facts, then resume it                                 [1;30m# agent_session.feature:8[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                    [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                     [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "claude one" with permission profile "safe"[0m            [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "claude one"[0m                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "claude one" has a non-empty conversation id[0m                        [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" contains "--session-id"[0m       [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" does not contain "--continue"[0m [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "claude one"[0m                                     [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                   [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mexactly 0 private tmux sessions match slug "deck_claude-one"[0m                                   [1;30m# agent_steps_test.go:48 -> github.com/n-orlov/deck/features.exactlyNPrivateSessionsMatchSlug[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "claude one"[0m                                             [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "resumable"[0m                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log has 2 launch records for session "claude one"[0m                                    [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" contains "--resume"[0m           [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" does not contain "--continue"[0m [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                 [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Multi-client session refresh
+  Independent deck clients sharing one home and private tmux socket converge on
+  durable session changes without a restart.
+=== RUN   TestFeatures/create_and_kill_propagate_and_surviving_clients_tolerate_a_peer_crash
+
+  [1;37mScenario:[0m create and kill propagate and surviving clients tolerate a peer crash                  [1;30m# concurrency.feature:6[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                               [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                 [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "C" is started[0m                                                                 [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "shared session"[0m                                    [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "B" screen contains "shared session"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "C" screen contains "shared session"[0m  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "B" kills its selected session[0m                                                [1;30m# assertions_test.go:50 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "resumable"[0m      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "C" screen contains "resumable"[0m       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mthe state database contains session "shared session" with status "stopped"[0m                 [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "C" is killed with SIGKILL[0m                                                    [1;30m# assertions_test.go:51 -> github.com/n-orlov/deck/features.clientIsKilledWithSIGKILL[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "after crash"[0m                                        [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "B" screen contains "after crash"[0m                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "shared session" with status "stopped"[0m                 [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "after crash" with status "starting"[0m                   [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                              [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_live_client_reconciles_an_externally_killed_private_server
+
+  [1;37mScenario:[0m a live client reconciles an externally killed private server                      [1;30m# concurrency.feature:25[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                          [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "externally stopped"[0m                           [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe private tmux server is killed[0m                                                     [1;30m# godog_test.go:50 -> github.com/n-orlov/deck/features.initializeScenario.func2[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "resumable"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mthe state database contains session "externally stopped" with status "stopped"[0m        [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe audit log contains event "tmux.session_gone" for a session[0m                        [1;30m# assertions_test.go:39 -> github.com/n-orlov/deck/features.auditContainsSessionEvent[0m
+    [32mAnd[0m [32mthe private tmux session "deck_externally-stopped" does not exist[0m                     [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mWhen[0m [32mdeck client "A" sends "?"[0m                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Runtime controls"[0m                                   [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                        [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Deterministic runtime controls
+  The released binary remains reproducible when its documented deterministic controls are set.
+=== RUN   TestFeatures/deterministic_frames,_audit_timing,_and_generated_identifiers
+
+  [1;37mScenario:[0m deterministic frames, audit timing, and generated identifiers [1;30m# determinism.feature:4[0m
+    [32mGiven[0m [32mdeck frames are byte-stable with DECK_ASCII and NO_COLOR[0m        [1;30m# determinism_test.go:19 -> github.com/n-orlov/deck/features.deterministicFrames[0m
+    [32mWhen[0m [32ma stepped frozen-clock shell session is created and killed[0m       [1;30m# determinism_test.go:20 -> github.com/n-orlov/deck/features.frozenClockSessionIsCreatedAndKilled[0m
+    [32mThen[0m [32mits wall clock steps while monotonic durations advance[0m           [1;30m# determinism_test.go:21 -> github.com/n-orlov/deck/features.frozenAuditIsSteppedAndAdvances[0m
+    [32mAnd[0m [32mrepeating DECK_ID_SEED reproduces generated ids[0m                   [1;30m# determinism_test.go:22 -> github.com/n-orlov/deck/features.repeatingSeedReproducesID[0m
+
+[1;37mFeature:[0m Durable conversation identity survives a tmux-server kill
+  SPEC §13.4's T1 scenario is the product's headline promise: three claude
+  sessions sharing one working directory each keep their own conversation,
+  and that identity survives losing every live tmux pane (this suite's
+  stand-in for a host reboot, since CI has no host to actually reboot) and a
+  full deck restart. Nothing is ever resumed by "most recent" — only by the
+  session's own persisted conversation id.
+=== RUN   TestFeatures/alpha,_beta_and_gamma_in_one_directory_keep_their_own_conversations
+
+  [1;37mScenario:[0m alpha, beta and gamma in one directory keep their own conversations                                             [1;30m# durable_identity.feature:10[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                         [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                          [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "alpha" with permission profile "safe" and message "alpha distinct message"[0m [1;30m# agent_steps_test.go:39 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "beta" with permission profile "safe" and message "beta distinct message"[0m    [1;30m# agent_steps_test.go:39 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "gamma" with permission profile "safe" and message "gamma distinct message"[0m  [1;30m# agent_steps_test.go:39 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "alpha" with status "stopped"[0m                                                   [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "beta" with status "stopped"[0m                                                    [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "gamma" with status "stopped"[0m                                                   [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database session "alpha" has a non-empty conversation id[0m                                                  [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe state database session "beta" has a non-empty conversation id[0m                                                   [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe state database session "gamma" has a non-empty conversation id[0m                                                  [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe state database sessions "alpha" and "beta" have different conversation ids[0m                                      [1;30m# agent_steps_test.go:42 -> github.com/n-orlov/deck/features.sessionsHaveDifferentConversationIDs[0m
+    [32mAnd[0m [32mthe state database sessions "beta" and "gamma" have different conversation ids[0m                                      [1;30m# agent_steps_test.go:42 -> github.com/n-orlov/deck/features.sessionsHaveDifferentConversationIDs[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                      [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mthe private tmux server is killed[0m                                                                                   [1;30m# godog_test.go:50 -> github.com/n-orlov/deck/features.initializeScenario.func2[0m
+    [32mThen[0m [32mno private tmux session exists[0m                                                                                     [1;30m# agent_steps_test.go:49 -> github.com/n-orlov/deck/features.noPrivateTMuxSessionExists[0m
+    [32mWhen[0m [32mdeck client "B" is started[0m                                                                                         [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mThen[0m [32mdeck client "B" screen contains "resumable"[0m                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "alpha" with status "stopped"[0m                                                   [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "beta" with status "stopped"[0m                                                    [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "gamma" with status "stopped"[0m                                                   [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "B" presses r on session "beta"[0m                                                                        [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "B" screen contains "starting"[0m                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "beta" contains "--resume"[0m                                      [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "beta" contains session "beta"'s conversation id[0m                [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.launchArgvForSessionContainsOwnConversationID[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "beta" does not contain "--continue"[0m                            [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32msession "beta" replays its own last message, not session "alpha"'s[0m                                                  [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.sessionReplaysOwnMessageNotAnothers[0m
+    [32mWhen[0m [32mdeck client "B" exits cleanly[0m                                                                                      [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Fake Claude fixture mechanism
+  The repository-built fake Claude is usable as a real tmux session command,
+  without a deck-only status back channel.
+=== RUN   TestFeatures/accepted_argv_and_controlled_exit_statuses_are_observable_from_panes
+
+  [1;37mScenario:[0m accepted argv and controlled exit statuses are observable from panes            [1;30m# fake_agent.feature:5[0m
+    [32mGiven[0m [32mthe repository-built fake Claude fixture is ready[0m                                 [1;30m# fake_agent_feature_test.go:27 -> *fakeAgentScenario[0m
+    [32mWhen[0m [32mthe fake Claude fixture is launched successfully as a private tmux session command[0m [1;30m# fake_agent_feature_test.go:28 -> *fakeAgentScenario[0m
+    [32mThen[0m [32mits success pane shows the deterministic banner and exact accepted argv[0m            [1;30m# fake_agent_feature_test.go:29 -> *fakeAgentScenario[0m
+    [32mAnd[0m [32mthe successful fake Claude session exits with status 0[0m                              [1;30m# fake_agent_feature_test.go:30 -> *fakeAgentScenario[0m
+    [32mWhen[0m [32mthe fake Claude fixture is launched with controlled failure status 7[0m               [1;30m# fake_agent_feature_test.go:31 -> *fakeAgentScenario[0m
+    [32mThen[0m [32mits failure pane shows the deterministic banner and exact accepted argv[0m            [1;30m# fake_agent_feature_test.go:32 -> *fakeAgentScenario[0m
+    [32mAnd[0m [32mthe failed fake Claude session remains with status 7[0m                                [1;30m# fake_agent_feature_test.go:33 -> *fakeAgentScenario[0m
+
+[1;37mFeature:[0m Godog harness wiring
+  The repository's normal Go test command discovers default feature files.
+=== RUN   TestFeatures/default_feature_suite_is_wired
+
+  [1;37mScenario:[0m default feature suite is wired [1;30m# harness.feature:4[0m
+    [32mGiven[0m [32mthe Godog harness is available[0m   [1;30m# godog_test.go:49 -> github.com/n-orlov/deck/features.initializeScenario.func1[0m
+=== RUN   TestFeatures/a_private_tmux_server_can_be_removed
+
+  [1;37mScenario:[0m a private tmux server can be removed [1;30m# harness.feature:7[0m
+    [32mGiven[0m [32mthe private tmux server is killed[0m      [1;30m# godog_test.go:50 -> github.com/n-orlov/deck/features.initializeScenario.func2[0m
+
+[1;37mFeature:[0m Launch-lease stale/live breaking
+  The SPEC §9.3 launch lease must block a second launch only while a live
+  owner still holds it within its TTL, and must never leave a row wedged: a
+  lease from a dead process or one whose TTL has elapsed is breakable, and
+  the row remains usable by a plain `r` afterwards in every case.
+=== RUN   TestFeatures/a_live_in-TTL_lease_blocks_a_second_launch_and_the_row_stays_usable
+
+  [1;37mScenario:[0m a live in-TTL lease blocks a second launch and the row stays usable                   [1;30m# launch_lease.feature:7[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                              [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "live lease target"[0m                                 [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" kills its selected session[0m                                                [1;30m# assertions_test.go:50 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "live lease target" with status "stopped"[0m            [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mthe state database session "live lease target" has a launch lease held by a live process[0m [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.sessionHasLiveLaunchLease[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "live lease target"[0m                                  [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting elsewhere"[0m                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "live lease target" with status "stopped"[0m             [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mthe state database session "live lease target"'s launch lease is cleared[0m                 [1;30m# agent_steps_test.go:60 -> github.com/n-orlov/deck/features.sessionLaunchLeaseIsCleared[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "live lease target"[0m                                  [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting - awaiting signal"[0m                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "starting elsewhere"[0m                              [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                            [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_lease_from_a_dead_process_is_breakable_and_the_row_stays_usable
+
+  [1;37mScenario:[0m a lease from a dead process is breakable and the row stays usable                      [1;30m# launch_lease.feature:22[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                               [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dead lease target"[0m                                  [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" kills its selected session[0m                                                 [1;30m# assertions_test.go:50 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "dead lease target" with status "stopped"[0m             [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mthe state database session "dead lease target" has a launch lease owned by a dead process[0m [1;30m# agent_steps_test.go:58 -> github.com/n-orlov/deck/features.sessionHasDeadLaunchLease[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "dead lease target"[0m                                   [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting - awaiting signal"[0m                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "starting elsewhere"[0m                               [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_expired-TTL_lease_is_breakable_and_the_row_stays_usable
+
+  [1;37mScenario:[0m an expired-TTL lease is breakable and the row stays usable                    [1;30m# launch_lease.feature:33[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                      [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "expired lease target"[0m                      [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" kills its selected session[0m                                        [1;30m# assertions_test.go:50 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "expired lease target" with status "stopped"[0m [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mthe state database session "expired lease target" has an expired launch lease[0m    [1;30m# agent_steps_test.go:59 -> github.com/n-orlov/deck/features.sessionHasExpiredLaunchLease[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "expired lease target"[0m                       [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting - awaiting signal"[0m                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "starting elsewhere"[0m                      [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                    [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Launch-lease race
+  Multiple independent deck clients racing the resume key on the same
+  stopped row must converge on exactly one real launch (SPEC §9.3).
+=== RUN   TestFeatures/three_clients_racing_resume_on_one_row_produce_exactly_one_launch
+
+  [1;37mScenario:[0m three clients racing resume on one row produce exactly one launch                                 [1;30m# lease_race.feature:6[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                          [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                            [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "C" is started[0m                                                                            [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "race target"[0m                                                  [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" kills its selected session[0m                                                            [1;30m# assertions_test.go:50 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "race target" with status "stopped"[0m                              [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck clients "A", "B" and "C" race pressing r on session "race target"[0m                               [1;30m# agent_steps_test.go:55 -> github.com/n-orlov/deck/features.clientsRacePressingResumeOnNamedSession[0m
+    [32mThen[0m [32mat least one of deck clients "A", "B" and "C" screen contains "starting elsewhere"[0m                   [1;30m# agent_steps_test.go:56 -> github.com/n-orlov/deck/features.atLeastOneOfClientsShowsStartingElsewhere[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "starting - awaiting signal"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "B" screen contains "starting - awaiting signal"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "C" screen contains "starting - awaiting signal"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mexactly 1 private tmux session matches slug "deck_race-target"[0m                                        [1;30m# agent_steps_test.go:48 -> github.com/n-orlov/deck/features.exactlyNPrivateSessionsMatchSlug[0m
+    [32mAnd[0m [32mthe audit log has 2 launch records for session "race target"[0m                                          [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "running"[0m                                                     [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "B" screen does not contain "running"[0m                                                     [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "C" screen does not contain "running"[0m                                                     [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                        [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                                         [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "C" exits cleanly[0m                                                                         [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Permission profile mapping, degradation and the yolo gate
+  SPEC §5's permission profile is a deck-level concept translated per
+  adapter, never a boolean: each declared profile maps to a specific argv, an
+  adapter that does not support a requested profile degrades to safe and
+  says so, yolo stays behind an `allow_yolo` config gate plus an explicit
+  per-launch confirm, and the resolved profile is persisted so it survives a
+  resume.
+=== RUN   TestFeatures/claude_maps_every_declared_permission_profile_to_its_own_argv
+
+  [1;37mScenario:[0m claude maps every declared permission profile to its own argv                             [1;30m# permission_modes.feature:9[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                                 [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                     [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                    [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "csafe" with permission profile "safe"[0m                [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "cplan" with permission profile "plan"[0m                 [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "cedits" with permission profile "edits"[0m               [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "cyolo" with permission profile "yolo" confirming yolo[0m [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionConfirmingYolo[0m
+    [32mThen[0m [32mthe audit log's most recent launch argv for session "csafe" contains "--permission-mode"[0m     [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "csafe" contains "manual"[0m                 [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cplan" contains "--permission-mode"[0m      [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cplan" contains "plan"[0m                   [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cedits" contains "--permission-mode"[0m     [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cedits" contains "acceptEdits"[0m           [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cyolo" contains "--permission-mode"[0m      [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cyolo" contains "bypassPermissions"[0m      [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cyolo" does not contain "--dangerously"[0m  [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/pi_maps_only_its_declared_permission_profiles_to_argv
+
+  [1;37mScenario:[0m pi maps only its declared permission profiles to argv                                 [1;30m# permission_modes.feature:28[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                             [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                 [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates pi session "psafe" with permission profile "safe"[0m                [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates pi session "pedits" with permission profile "edits"[0m               [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates pi session "pyolo" with permission profile "yolo" confirming yolo[0m [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionConfirmingYolo[0m
+    [32mThen[0m [32mthe audit log's most recent launch argv for session "psafe" does not contain "--approve"[0m [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "pedits" contains "--approve"[0m         [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "pyolo" contains "--approve"[0m          [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                            [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_unsupported_profile_degrades_visibly_rather_than_lying
+
+  [1;37mScenario:[0m an unsupported profile degrades visibly rather than lying                                                 [1;30m# permission_modes.feature:40[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                   [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                    [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates pi session "drift" with permission profile "safe"[0m                                    [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mthe state database session "drift" is marked degraded from requesting permission profile "plan" on agent "pi"[0m [1;30m# agent_steps_test.go:35 -> github.com/n-orlov/deck/features.sessionMarkedDegraded[0m
+    [32mAnd[0m [32mdeck client "A" opens detail for session "drift"[0m                                                              [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientOpensDetailForSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "degraded: pi does not support permission profile"[0m                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "falling back to safe"[0m                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/yolo_is_unavailable_without_allow_yolo_enabled
+
+  [1;37mScenario:[0m yolo is unavailable without allow_yolo enabled                [1;30m# permission_modes.feature:50[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m       [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                        [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal for agent "claude"[0m        [1;30m# agent_steps_test.go:30 -> github.com/n-orlov/deck/features.clientOpensCreateModalForAgent[0m
+    [32mThen[0m [32mdeck client "A" screen contains "yolo is not o"[0m                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "yolo (left/right cycles"[0m [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                          [1;30m# assertions_test.go:46 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                     [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/yolo_requires_an_explicit_confirm_even_once_allow_yolo_is_enabled
+
+  [1;37mScenario:[0m yolo requires an explicit confirm even once allow_yolo is enabled                                  [1;30m# permission_modes.feature:59[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                                          [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                              [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                             [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" attempts claude session "noconfirm" with permission profile "yolo" without confirming[0m [1;30m# agent_steps_test.go:33 -> github.com/n-orlov/deck/features.clientAttemptsAgentSessionWithYoloWithoutConfirming[0m
+    [32mThen[0m [32mdeck client "A" screen contains "yolo requires confirmation"[0m                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database does not contain session "noconfirm"[0m                                                [1;30m# agent_steps_test.go:37 -> github.com/n-orlov/deck/features.stateDatabaseDoesNotContainSession[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                               [1;30m# assertions_test.go:46 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "confirmed" with permission profile "yolo" confirming yolo[0m      [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionConfirmingYolo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "confirmed" has permission profile "yolo"[0m                                   [1;30m# agent_steps_test.go:36 -> github.com/n-orlov/deck/features.sessionHasPermissionProfile[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                         [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_permission_profile_survives_a_resume
+
+  [1;37mScenario:[0m the permission profile survives a resume                                                    [1;30m# permission_modes.feature:72[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                                   [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                       [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                      [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "sticky" with permission profile "yolo" confirming yolo[0m [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionConfirmingYolo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "sticky"[0m                                                  [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "sticky" contains "--permission-mode"[0m       [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "sticky" contains "bypassPermissions"[0m       [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "sticky" contains "--resume"[0m                [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                  [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Resume failure causes leave a retained, explained error row
+  SPEC §9.3 names three specific ways a resume can fail: an unknown/rejected
+  conversation id, a missing or non-directory cwd, and the agent binary not
+  being found on PATH. None of these may be mistaken for (or silently
+  produce) a fresh conversation: the row stays present with status "error"
+  and a stated reason naming its own cause, and the audit log gains no
+  additional launch record.
+=== RUN   TestFeatures/an_unknown_conversation_id_keeps_the_row_as_a_retained,_explained_error
+
+  [1;37mScenario:[0m an unknown conversation id keeps the row as a retained, explained error   [1;30m# resume_failure.feature:9[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                   [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                    [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "noid" with permission profile "safe"[0m [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "noid"[0m                          [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mthe state database session "noid"'s conversation id is cleared[0m               [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.sessionConversationIDCleared[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "noid"[0m                                   [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Cannot resume: resume session"[0m              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "noid"[0m                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "noid" with status "error"[0m                [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database session "noid"'s status reason contains "conversation id"[0m  [1;30m# agent_steps_test.go:51 -> github.com/n-orlov/deck/features.sessionStatusReasonContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "noid"[0m                          [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_missing_cwd_keeps_the_row_as_a_retained,_explained_error
+
+  [1;37mScenario:[0m a missing cwd keeps the row as a retained, explained error                             [1;30m# resume_failure.feature:24[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                 [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "gonecwd" with permission profile "safe"[0m           [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "gonecwd"[0m                                    [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mthe working directory shared by this scenario's sessions no longer exists[0m                 [1;30m# agent_steps_test.go:52 -> github.com/n-orlov/deck/features.workingDirectoryRemoved[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "gonecwd"[0m                                             [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Cannot resume: resume session"[0m                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "gonecwd"[0m                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "gonecwd" with status "error"[0m                          [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database session "gonecwd"'s status reason contains "missing or not a directory"[0m [1;30m# agent_steps_test.go:51 -> github.com/n-orlov/deck/features.sessionStatusReasonContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "gonecwd"[0m                                    [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_agent_binary_not_on_PATH_keeps_the_row_as_a_retained,_explained_error
+
+  [1;37mScenario:[0m an agent binary not on PATH keeps the row as a retained, explained error                       [1;30m# resume_failure.feature:39[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                        [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                         [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "nobinary" with permission profile "safe"[0m                  [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "nobinary"[0m                                           [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mthe state database session "nobinary"'s captured_path no longer contains the fake "claude" binary[0m [1;30m# agent_steps_test.go:53 -> github.com/n-orlov/deck/features.sessionCapturedPathStrippedOfAgent[0m
+    [32mAnd[0m [32mdeck client "A" presses r on session "nobinary"[0m                                                    [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Cannot resume: resume session"[0m                                   [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "nobinary"[0m                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "nobinary" with status "error"[0m                                 [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database session "nobinary"'s status reason contains "not found on PATH"[0m                 [1;30m# agent_steps_test.go:51 -> github.com/n-orlov/deck/features.sessionStatusReasonContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "nobinary"[0m                                           [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                     [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Distinct conversation ids in one working directory
+  SPEC §13.4's identity guarantee does not depend on separate directories:
+  two agent sessions sharing one cwd must still be assigned distinct
+  conversation ids, and resuming one must never leak the other's id into
+  its argv.
+=== RUN   TestFeatures/two_claude_sessions_in_one_cwd_keep_separate_conversation_ids
+
+  [1;37mScenario:[0m two claude sessions in one cwd keep separate conversation ids                                          [1;30m# same_directory.feature:7[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                 [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "one" with permission profile "safe" and message "one's message"[0m   [1;30m# agent_steps_test.go:39 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "two" with permission profile "safe" and message "two's message"[0m    [1;30m# agent_steps_test.go:39 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mThen[0m [32mthe state database contains session "one" with status "stopped"[0m                                           [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "two" with status "stopped"[0m                                            [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database session "one" has a non-empty conversation id[0m                                           [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe state database session "two" has a non-empty conversation id[0m                                           [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe state database sessions "one" and "two" have different conversation ids[0m                                [1;30m# agent_steps_test.go:42 -> github.com/n-orlov/deck/features.sessionsHaveDifferentConversationIDs[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "one"[0m                                                                [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "one" contains "--resume"[0m                              [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "one" contains session "one"'s conversation id[0m         [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.launchArgvForSessionContainsOwnConversationID[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "one" does not contain session "two"'s conversation id[0m [1;30m# agent_steps_test.go:45 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContainOthersConversationID[0m
+    [32mAnd[0m [32msession "one" replays its own last message, not session "two"'s[0m                                            [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.sessionReplaysOwnMessageNotAnothers[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Durable SQLite store
+  The released deck binary maintains a private, compatible state database.
+=== RUN   TestFeatures/initialize_a_private_v1_WAL_database
+
+  [1;37mScenario:[0m initialize a private v1 WAL database [1;30m# store.feature:4[0m
+    [32mGiven[0m [32mdeck client "store" is started[0m         [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mThen[0m [32mthe scenario home has mode "700"[0m        [1;30m# assertions_test.go:40 -> github.com/n-orlov/deck/features.scenarioHomeMode[0m
+    [32mAnd[0m [32mthe state database has mode "600"[0m        [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.stateDatabaseMode[0m
+    [32mAnd[0m [32mthe state database journal mode is "wal"[0m [1;30m# assertions_test.go:36 -> github.com/n-orlov/deck/features.databaseJournalMode[0m
+    [32mAnd[0m [32mthe state database has schema version 1[0m  [1;30m# assertions_test.go:35 -> github.com/n-orlov/deck/features.databaseSchemaVersion[0m
+    [32mWhen[0m [32mdeck client "store" exits cleanly[0m       [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/migrate_an_older_supported_database
+
+  [1;37mScenario:[0m migrate an older supported database                [1;30m# store.feature:12[0m
+    [32mGiven[0m [32mthe scenario has an older supported database fixture[0m [1;30m# store_feature_test.go:20 -> github.com/n-orlov/deck/features.olderDatabaseFixture[0m
+    [32mWhen[0m [32mdeck client "migration" is started[0m                    [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mThen[0m [32mthe state database has schema version 1[0m               [1;30m# assertions_test.go:35 -> github.com/n-orlov/deck/features.databaseSchemaVersion[0m
+    [32mAnd[0m [32mthe state database journal mode is "wal"[0m               [1;30m# assertions_test.go:36 -> github.com/n-orlov/deck/features.databaseJournalMode[0m
+    [32mAnd[0m [32mthe state database has mode "600"[0m                      [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.stateDatabaseMode[0m
+    [32mWhen[0m [32mdeck client "migration" exits cleanly[0m                 [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/refuse_a_newer_database_without_corruption
+
+  [1;37mScenario:[0m refuse a newer database without corruption          [1;30m# store.feature:20[0m
+    [32mGiven[0m [32mthe scenario has a newer unsupported database fixture[0m [1;30m# store_feature_test.go:21 -> github.com/n-orlov/deck/features.newerDatabaseFixture[0m
+    [32mWhen[0m [32mthe released deck binary opens the newer database[0m      [1;30m# store_feature_test.go:22 -> github.com/n-orlov/deck/features.releasedBinaryOpensNewerDatabase[0m
+    [32mThen[0m [32mit clearly refuses the newer database[0m                  [1;30m# store_feature_test.go:23 -> github.com/n-orlov/deck/features.clearlyRefusesNewerDatabase[0m
+    [32mAnd[0m [32mthe newer database fixture remains unchanged[0m            [1;30m# store_feature_test.go:24 -> github.com/n-orlov/deck/features.newerDatabaseRemainsUnchanged[0m
+
+[1;37mFeature:[0m Private tmux contract
+  deck keeps managed sessions on its configured private tmux socket.
+=== RUN   TestFeatures/private_server_options,_safe_naming,_and_slug_collisions
+
+  [1;37mScenario:[0m private server options, safe naming, and slug collisions               [1;30m# tmux_contract.feature:4[0m
+    [32mGiven[0m [32mdeck client "contract" is started[0m                                        [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "contract" creates shell session "Dots.And:Colons"[0m            [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_dots-and-colons" exists[0m                    [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe default tmux socket does not have session "deck_dots-and-colons"[0m       [1;30m# assertions_test.go:44 -> github.com/n-orlov/deck/features.defaultSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe private tmux option "exit-empty" is "off"[0m                              [1;30m# assertions_test.go:34 -> github.com/n-orlov/deck/features.privateOptionIs[0m
+    [32mAnd[0m [32mthe private tmux option "remain-on-exit" is "failed"[0m                       [1;30m# assertions_test.go:34 -> github.com/n-orlov/deck/features.privateOptionIs[0m
+    [32mAnd[0m [32mthe private tmux option "window-size" is "latest"[0m                          [1;30m# assertions_test.go:34 -> github.com/n-orlov/deck/features.privateOptionIs[0m
+    [32mAnd[0m [32mthe private tmux option "aggressive-resize" is "on"[0m                        [1;30m# assertions_test.go:34 -> github.com/n-orlov/deck/features.privateOptionIs[0m
+    [32mWhen[0m [32mdeck client "contract" attempts shell session "dots and colons"[0m           [1;30m# assertions_test.go:45 -> github.com/n-orlov/deck/features.clientAttemptsShellSession[0m
+    [32mThen[0m [32mdeck client "contract" screen contains "name collides with existing slug"[0m [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "contract" closes the create modal[0m                            [1;30m# assertions_test.go:46 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "contract" exits cleanly[0m                                       [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/missing_tmux_is_actionable
+
+  [1;37mScenario:[0m missing tmux is actionable                                    [1;30m# tmux_contract.feature:18[0m
+    [32mGiven[0m [32mdeck client "missing" is started without tmux[0m                   [1;30m# assertions_test.go:47 -> github.com/n-orlov/deck/features.startClientWithoutTMux[0m
+    [32mThen[0m [32mdeck client "missing" screen contains "tmux unavailable"[0m         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "missing" screen contains "Install tmux 3.2 or newer"[0m [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "missing" exits cleanly[0m                              [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/old_tmux_is_actionable
+
+  [1;37mScenario:[0m old tmux is actionable                                    [1;30m# tmux_contract.feature:24[0m
+    [32mGiven[0m [32mdeck client "old" is started with tmux version "3.1c"[0m       [1;30m# assertions_test.go:48 -> github.com/n-orlov/deck/features.startClientWithTMuxVersion[0m
+    [32mThen[0m [32mdeck client "old" screen contains "tmux unavailable"[0m         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "old" screen contains "tmux 3.1c is too old"[0m      [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "old" screen contains "Install tmux 3.2 or newer"[0m [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "old" exits cleanly[0m                              [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Phase 0 walking skeleton
+  A user can manage a shell session solely through the released deck TUI.
+=== RUN   TestFeatures/create,_attach,_kill,_and_retain_the_durable_shell_session
+
+  [1;37mScenario:[0m create, attach, kill, and retain the durable shell session                                [1;30m# walking_skeleton.feature:4[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                  [1;30m# assertions_test.go:26 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mThen[0m [32mdeck client "A" screen contains "No sessions yet"[0m                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "walking session"[0m                                      [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "walking session"[0m                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux session "deck_walking-session" exists[0m                                        [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe private tmux session "deck_walking-session" has one pane in the created working directory[0m [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionPaneInCreatedWorkingDir[0m
+    [32mAnd[0m [32mthe private tmux session "deck_walking-session" has exactly one pane running "sh"[0m             [1;30m# assertions_test.go:32 -> github.com/n-orlov/deck/features.privateSessionPaneCommand[0m
+    [32mWhen[0m [32mdeck client "A" attaches to and detaches from its session[0m                                    [1;30m# assertions_test.go:49 -> github.com/n-orlov/deck/features.clientAttachesAndDetaches[0m
+    [32mAnd[0m [32mdeck client "A" kills its selected session[0m                                                    [1;30m# assertions_test.go:50 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_walking-session" does not exist[0m                               [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database contains session "walking session" with status "stopped"[0m                   [1;30m# assertions_test.go:37 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "resumable"[0m                                                   [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log contains event "killed" for a session[0m                                           [1;30m# assertions_test.go:39 -> github.com/n-orlov/deck/features.auditContainsSessionEvent[0m
+    [32mAnd[0m [32mthe created working-directory sentinel is unchanged[0m                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.createdSentinelIsUnchanged[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+29 scenarios ([32m29 passed[0m)
+307 steps ([32m307 passed[0m)
+29.904015112s
+--- PASS: TestFeatures (29.91s)
+    --- PASS: TestFeatures/create_a_claude_session,_observe_its_facts,_then_resume_it (2.33s)
+    --- PASS: TestFeatures/create_and_kill_propagate_and_surviving_clients_tolerate_a_peer_crash (1.18s)
+    --- PASS: TestFeatures/a_live_client_reconciles_an_externally_killed_private_server (0.67s)
+    --- PASS: TestFeatures/deterministic_frames,_audit_timing,_and_generated_identifiers (1.19s)
+    --- PASS: TestFeatures/alpha,_beta_and_gamma_in_one_directory_keep_their_own_conversations (2.42s)
+    --- PASS: TestFeatures/accepted_argv_and_controlled_exit_statuses_are_observable_from_panes (0.51s)
+    --- PASS: TestFeatures/default_feature_suite_is_wired (0.32s)
+    --- PASS: TestFeatures/a_private_tmux_server_can_be_removed (0.33s)
+    --- PASS: TestFeatures/a_live_in-TTL_lease_blocks_a_second_launch_and_the_row_stays_usable (0.57s)
+    --- PASS: TestFeatures/a_lease_from_a_dead_process_is_breakable_and_the_row_stays_usable (0.54s)
+    --- PASS: TestFeatures/an_expired-TTL_lease_is_breakable_and_the_row_stays_usable (0.57s)
+    --- PASS: TestFeatures/three_clients_racing_resume_on_one_row_produce_exactly_one_launch (0.92s)
+    --- PASS: TestFeatures/claude_maps_every_declared_permission_profile_to_its_own_argv (1.98s)
+    --- PASS: TestFeatures/pi_maps_only_its_declared_permission_profiles_to_argv (1.68s)
+    --- PASS: TestFeatures/an_unsupported_profile_degrades_visibly_rather_than_lying (1.02s)
+    --- PASS: TestFeatures/yolo_is_unavailable_without_allow_yolo_enabled (0.68s)
+    --- PASS: TestFeatures/yolo_requires_an_explicit_confirm_even_once_allow_yolo_is_enabled (1.36s)
+    --- PASS: TestFeatures/the_permission_profile_survives_a_resume (1.56s)
+    --- PASS: TestFeatures/an_unknown_conversation_id_keeps_the_row_as_a_retained,_explained_error (1.55s)
+    --- PASS: TestFeatures/a_missing_cwd_keeps_the_row_as_a_retained,_explained_error (1.54s)
+    --- PASS: TestFeatures/an_agent_binary_not_on_PATH_keeps_the_row_as_a_retained,_explained_error (1.52s)
+    --- PASS: TestFeatures/two_claude_sessions_in_one_cwd_keep_separate_conversation_ids (2.10s)
+    --- PASS: TestFeatures/initialize_a_private_v1_WAL_database (0.35s)
+    --- PASS: TestFeatures/migrate_an_older_supported_database (0.38s)
+    --- PASS: TestFeatures/refuse_a_newer_database_without_corruption (0.35s)
+    --- PASS: TestFeatures/private_server_options,_safe_naming,_and_slug_collisions (0.65s)
+    --- PASS: TestFeatures/missing_tmux_is_actionable (0.36s)
+    --- PASS: TestFeatures/old_tmux_is_actionable (0.36s)
+    --- PASS: TestFeatures/create,_attach,_kill,_and_retain_the_durable_shell_session (0.89s)
+=== RUN   TestGodogRejectsUndefinedAndFailedSteps
+=== RUN   TestGodogRejectsUndefinedAndFailedSteps/undefined
+[33mU[0m 1
+
+
+1 scenarios ([33m1 undefined[0m)
+1 steps ([33m1 undefined[0m)
+35.035µs
+
+[33mYou can implement step definitions for undefined steps with these snippets:[0m
+[33m
+func anUnregisteredStep() error {
+	return godog.ErrPending
+}
+
+func InitializeScenario(ctx *godog.ScenarioContext) {
+	ctx.Step(`^an unregistered step$`, anUnregisteredStep)
+}
+[0m
+=== RUN   TestGodogRejectsUndefinedAndFailedSteps/failed
+[31mF[0m 1
+
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: error binding[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed1904545084/001/failure.feature:2[0m
+    [31mGiven a failing step[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed1904545084/001/failure.feature:3[0m
+      [31mError: [0m[1;31mdeliberate step failure[0m
+
+
+1 scenarios ([31m1 failed[0m)
+1 steps ([31m1 failed[0m)
+72.052µs
+--- PASS: TestGodogRejectsUndefinedAndFailedSteps (0.00s)
+    --- PASS: TestGodogRejectsUndefinedAndFailedSteps/undefined (0.00s)
+    --- PASS: TestGodogRejectsUndefinedAndFailedSteps/failed (0.00s)
+=== RUN   TestScenarioHarnessTeardownReportsLeaks
+=== RUN   TestScenarioHarnessTeardownReportsLeaks/surviving_child
+=== RUN   TestScenarioHarnessTeardownReportsLeaks/responding_socket
+=== RUN   TestScenarioHarnessTeardownReportsLeaks/surviving_root
+--- PASS: TestScenarioHarnessTeardownReportsLeaks (1.92s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_child (1.31s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/responding_socket (0.30s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_root (0.31s)
+=== RUN   TestScenarioHarnessSharesIsolationAndCleansUp
+--- PASS: TestScenarioHarnessSharesIsolationAndCleansUp (0.40s)
+=== RUN   TestScreenDriverLaunchesDeckAndAnswersTerminalProbes
+--- PASS: TestScreenDriverLaunchesDeckAndAnswersTerminalProbes (0.36s)
+=== RUN   TestNormalizeFrame
+=== RUN   TestNormalizeFrame/unfrozen_timestamp_and_just_now
+=== RUN   TestNormalizeFrame/unfrozen_numeric_minute_age
+=== RUN   TestNormalizeFrame/unfrozen_numeric_hour_age
+=== RUN   TestNormalizeFrame/unfrozen_numeric_day_age
+=== RUN   TestNormalizeFrame/frozen_values_preserved
+--- PASS: TestNormalizeFrame (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_timestamp_and_just_now (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_numeric_minute_age (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_numeric_hour_age (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_numeric_day_age (0.00s)
+    --- PASS: TestNormalizeFrame/frozen_values_preserved (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/features	34.306s
+=== RUN   TestRegistry_RegisterAndLookup
+--- PASS: TestRegistry_RegisterAndLookup (0.00s)
+=== RUN   TestRegistry_KindsIsStableAndSorted
+--- PASS: TestRegistry_KindsIsStableAndSorted (0.00s)
+=== RUN   TestCaps_SupportsProfile
+--- PASS: TestCaps_SupportsProfile (0.00s)
+=== RUN   TestClaude_Capabilities
+--- PASS: TestClaude_Capabilities (0.00s)
+=== RUN   TestClaude_LaunchAndResumeArgv
+=== RUN   TestClaude_LaunchAndResumeArgv/safe/launch
+=== RUN   TestClaude_LaunchAndResumeArgv/safe/resume
+=== RUN   TestClaude_LaunchAndResumeArgv/plan/launch
+=== RUN   TestClaude_LaunchAndResumeArgv/plan/resume
+=== RUN   TestClaude_LaunchAndResumeArgv/edits/launch
+=== RUN   TestClaude_LaunchAndResumeArgv/edits/resume
+=== RUN   TestClaude_LaunchAndResumeArgv/yolo/launch
+=== RUN   TestClaude_LaunchAndResumeArgv/yolo/resume
+--- PASS: TestClaude_LaunchAndResumeArgv (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/safe/launch (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/safe/resume (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/plan/launch (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/plan/resume (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/edits/launch (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/edits/resume (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/yolo/launch (0.00s)
+    --- PASS: TestClaude_LaunchAndResumeArgv/yolo/resume (0.00s)
+=== RUN   TestClaude_LaunchRequiresConversationID
+--- PASS: TestClaude_LaunchRequiresConversationID (0.00s)
+=== RUN   TestClaude_UnsupportedProfileErrors
+--- PASS: TestClaude_UnsupportedProfileErrors (0.00s)
+=== RUN   TestPi_Capabilities
+--- PASS: TestPi_Capabilities (0.00s)
+=== RUN   TestPi_LaunchAndResumeUseSessionID
+=== RUN   TestPi_LaunchAndResumeUseSessionID/safe/launch
+=== RUN   TestPi_LaunchAndResumeUseSessionID/safe/resume
+=== RUN   TestPi_LaunchAndResumeUseSessionID/edits/launch
+=== RUN   TestPi_LaunchAndResumeUseSessionID/edits/resume
+=== RUN   TestPi_LaunchAndResumeUseSessionID/yolo/launch
+=== RUN   TestPi_LaunchAndResumeUseSessionID/yolo/resume
+--- PASS: TestPi_LaunchAndResumeUseSessionID (0.00s)
+    --- PASS: TestPi_LaunchAndResumeUseSessionID/safe/launch (0.00s)
+    --- PASS: TestPi_LaunchAndResumeUseSessionID/safe/resume (0.00s)
+    --- PASS: TestPi_LaunchAndResumeUseSessionID/edits/launch (0.00s)
+    --- PASS: TestPi_LaunchAndResumeUseSessionID/edits/resume (0.00s)
+    --- PASS: TestPi_LaunchAndResumeUseSessionID/yolo/launch (0.00s)
+    --- PASS: TestPi_LaunchAndResumeUseSessionID/yolo/resume (0.00s)
+=== RUN   TestPi_LaunchRequiresConversationID
+--- PASS: TestPi_LaunchRequiresConversationID (0.00s)
+=== RUN   TestPi_PlanDegradesToSafeWithReason
+--- PASS: TestPi_PlanDegradesToSafeWithReason (0.00s)
+=== RUN   TestPi_SupportedProfileDoesNotDegrade
+--- PASS: TestPi_SupportedProfileDoesNotDegrade (0.00s)
+=== RUN   TestShellCapsNoProfilesNoAssignedID
+--- PASS: TestShellCapsNoProfilesNoAssignedID (0.00s)
+=== RUN   TestShellLaunchArgvIsShellOnly
+--- PASS: TestShellLaunchArgvIsShellOnly (0.00s)
+=== RUN   TestShellResumeArgvIsShellOnly
+--- PASS: TestShellResumeArgvIsShellOnly (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/agent	0.006s
+=== RUN   TestJSONLRecordsTransitionsAndLaunchAudit
+=== PAUSE TestJSONLRecordsTransitionsAndLaunchAudit
+=== RUN   TestDurationAdvancesWithFrozenWallClock
+=== PAUSE TestDurationAdvancesWithFrozenWallClock
+=== RUN   TestSessionAuditRequiresSessionID
+=== PAUSE TestSessionAuditRequiresSessionID
+=== CONT  TestJSONLRecordsTransitionsAndLaunchAudit
+=== CONT  TestSessionAuditRequiresSessionID
+--- PASS: TestSessionAuditRequiresSessionID (0.00s)
+=== CONT  TestDurationAdvancesWithFrozenWallClock
+--- PASS: TestJSONLRecordsTransitionsAndLaunchAudit (0.01s)
+--- PASS: TestDurationAdvancesWithFrozenWallClock (0.03s)
+PASS
+ok  	github.com/n-orlov/deck/internal/audit	0.032s
+=== RUN   TestPathsRespectDeckHomeAndXDG
+--- PASS: TestPathsRespectDeckHomeAndXDG (0.00s)
+=== RUN   TestControlsAndClock
+--- PASS: TestControlsAndClock (0.00s)
+=== RUN   TestSeededUUIDsAreStableAndValid
+--- PASS: TestSeededUUIDsAreStableAndValid (0.00s)
+=== RUN   TestConfigFileMissingDefaultsToNoYoloAndNoEnv
+--- PASS: TestConfigFileMissingDefaultsToNoYoloAndNoEnv (0.00s)
+=== RUN   TestConfigFileAllowYoloTrue
+--- PASS: TestConfigFileAllowYoloTrue (0.00s)
+=== RUN   TestConfigFileAllowYoloFalse
+--- PASS: TestConfigFileAllowYoloFalse (0.00s)
+=== RUN   TestConfigFileEnvTable
+--- PASS: TestConfigFileEnvTable (0.00s)
+=== RUN   TestConfigFileMalformedIsRejected
+=== RUN   TestConfigFileMalformedIsRejected/bad_bool
+=== RUN   TestConfigFileMalformedIsRejected/unterminated_section
+=== RUN   TestConfigFileMalformedIsRejected/unquoted_env_value
+=== RUN   TestConfigFileMalformedIsRejected/empty_key
+=== RUN   TestConfigFileMalformedIsRejected/no_equals
+--- PASS: TestConfigFileMalformedIsRejected (0.02s)
+    --- PASS: TestConfigFileMalformedIsRejected/bad_bool (0.02s)
+    --- PASS: TestConfigFileMalformedIsRejected/unterminated_section (0.00s)
+    --- PASS: TestConfigFileMalformedIsRejected/unquoted_env_value (0.00s)
+    --- PASS: TestConfigFileMalformedIsRejected/empty_key (0.00s)
+    --- PASS: TestConfigFileMalformedIsRejected/no_equals (0.00s)
+=== RUN   TestInvalidControlsAreRejected
+=== RUN   TestInvalidControlsAreRejected/DECK_TMUX_SOCKET
+=== RUN   TestInvalidControlsAreRejected/DECK_ASCII
+=== RUN   TestInvalidControlsAreRejected/DECK_CLOCK
+=== RUN   TestInvalidControlsAreRejected/DECK_CLOCK_STEP
+=== RUN   TestInvalidControlsAreRejected/DECK_RECONCILE_MS
+=== RUN   TestInvalidControlsAreRejected/DECK_PREVIEW_MS
+--- PASS: TestInvalidControlsAreRejected (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_TMUX_SOCKET (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_ASCII (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_CLOCK (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_CLOCK_STEP (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_RECONCILE_MS (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_PREVIEW_MS (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/config	0.040s
+?   	github.com/n-orlov/deck/internal/hookrecv	[no test files]
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+=== RUN   TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv
+--- PASS: TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv (0.12s)
+=== RUN   TestCreateAgentDegradesUnsupportedProfileForPi
+--- PASS: TestCreateAgentDegradesUnsupportedProfileForPi (0.08s)
+=== RUN   TestCreateAgentResolvesPATHInSPECOrder
+--- PASS: TestCreateAgentResolvesPATHInSPECOrder (0.08s)
+=== RUN   TestCreateAgentRunsSucceedingPreLaunchBeforeTheAgent
+--- PASS: TestCreateAgentRunsSucceedingPreLaunchBeforeTheAgent (0.09s)
+=== RUN   TestCreateAgentFailingPreLaunchNeverStartsTheAgent
+--- PASS: TestCreateAgentFailingPreLaunchNeverStartsTheAgent (0.58s)
+=== RUN   TestCreateAgentLoginShellInvocationForm
+--- PASS: TestCreateAgentLoginShellInvocationForm (0.05s)
+=== RUN   TestPinnedResumeSurvivesRestartAndArgv
+--- PASS: TestPinnedResumeSurvivesRestartAndArgv (0.07s)
+=== RUN   TestFreshOnceStartsFreshConversationThenRevertsToAuto
+--- PASS: TestFreshOnceStartsFreshConversationThenRevertsToAuto (0.08s)
+=== RUN   TestResumeModeDispatchesToPinAutoAndFreshOnce
+--- PASS: TestResumeModeDispatchesToPinAutoAndFreshOnce (0.05s)
+=== RUN   TestSetPermissionProfilePersistsAndDoesNotRelaunch
+--- PASS: TestSetPermissionProfilePersistsAndDoesNotRelaunch (0.05s)
+=== RUN   TestSetPermissionProfileRefusesUnsupportedProfile
+--- PASS: TestSetPermissionProfileRefusesUnsupportedProfile (0.04s)
+=== RUN   TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer
+--- PASS: TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer (0.08s)
+=== RUN   TestResumeLaunchesAdapterResumeArgvUnderLease
+--- PASS: TestResumeLaunchesAdapterResumeArgvUnderLease (0.09s)
+=== RUN   TestResumeLosingLeaseCreatesNoTMuxSession
+--- PASS: TestResumeLosingLeaseCreatesNoTMuxSession (0.07s)
+=== RUN   TestResumeFailsOnUnknownConversationID
+--- PASS: TestResumeFailsOnUnknownConversationID (0.03s)
+=== RUN   TestResumeFailsOnMissingCWD
+--- PASS: TestResumeFailsOnMissingCWD (0.06s)
+=== RUN   TestResumeFailsOnAgentBinaryNotOnPath
+--- PASS: TestResumeFailsOnAgentBinaryNotOnPath (0.06s)
+=== RUN   TestCreateShellPersistsLaunchesAndAudits
+--- PASS: TestCreateShellPersistsLaunchesAndAudits (0.05s)
+=== RUN   TestKillStopsSessionPreservesCWDAndRecordsTransition
+--- PASS: TestKillStopsSessionPreservesCWDAndRecordsTransition (0.06s)
+=== RUN   TestCreateShellRecordsCoherentFailureWhenTmuxCannotLaunch
+--- PASS: TestCreateShellRecordsCoherentFailureWhenTmuxCannotLaunch (0.05s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	1.856s
+=== RUN   TestAcquireLaunchLeaseFreshSucceeds
+--- PASS: TestAcquireLaunchLeaseFreshSucceeds (0.07s)
+=== RUN   TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable
+--- PASS: TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable (0.03s)
+=== RUN   TestAcquireLaunchLeaseExpiredTTLIsBreakable
+--- PASS: TestAcquireLaunchLeaseExpiredTTLIsBreakable (0.05s)
+=== RUN   TestAcquireLaunchLeaseDeadPIDIsBreakable
+--- PASS: TestAcquireLaunchLeaseDeadPIDIsBreakable (0.04s)
+=== RUN   TestAcquireLaunchLeaseNeverWedgesTheRow
+--- PASS: TestAcquireLaunchLeaseNeverWedgesTheRow (0.05s)
+=== RUN   TestOpenInitializesPrivateV1WALStore
+--- PASS: TestOpenInitializesPrivateV1WALStore (0.03s)
+=== RUN   TestOpenMigratesSupportedVersionZeroFixture
+--- PASS: TestOpenMigratesSupportedVersionZeroFixture (0.06s)
+=== RUN   TestOpenRefusesNewerFixtureWithoutMutation
+--- PASS: TestOpenRefusesNewerFixtureWithoutMutation (0.03s)
+=== RUN   TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness
+--- PASS: TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness (0.05s)
+=== RUN   TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen
+--- PASS: TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen (0.03s)
+=== RUN   TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull
+--- PASS: TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull (0.02s)
+=== RUN   TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows
+--- PASS: TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows (0.04s)
+=== RUN   TestSetConversationIDPermissionProfileAndResumeStateRecordEvents
+--- PASS: TestSetConversationIDPermissionProfileAndResumeStateRecordEvents (0.05s)
+=== RUN   TestFreshOnceIsOneShotAndRevertsToAutoNotPinned
+--- PASS: TestFreshOnceIsOneShotAndRevertsToAutoNotPinned (0.03s)
+=== RUN   TestSlugContainsOnlyTmuxSafeASCII
+--- PASS: TestSlugContainsOnlyTmuxSafeASCII (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.592s
+=== RUN   TestDiscoverRealTmux
+--- PASS: TestDiscoverRealTmux (0.01s)
+=== RUN   TestDiscoverRejectsMissingTmux
+--- PASS: TestDiscoverRejectsMissingTmux (0.00s)
+=== RUN   TestDiscoverRejectsPre32Tmux
+--- PASS: TestDiscoverRejectsPre32Tmux (0.02s)
+=== RUN   TestCreateListAndKillRealTmux
+--- PASS: TestCreateListAndKillRealTmux (0.06s)
+=== RUN   TestAttachHelper
+--- PASS: TestAttachHelper (0.00s)
+=== RUN   TestAttachThroughPTY
+--- PASS: TestAttachThroughPTY (0.06s)
+=== RUN   TestLifecycleRejectsUnsafeInput
+--- PASS: TestLifecycleRejectsUnsafeInput (0.00s)
+=== RUN   TestBootstrapConfiguresOnlyPrivateServer
+--- PASS: TestBootstrapConfiguresOnlyPrivateServer (0.05s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tmux	0.202s
+=== RUN   TestListShowsProfileBadgeForAgentsAndNoneForShell
+--- PASS: TestListShowsProfileBadgeForAgentsAndNoneForShell (0.00s)
+=== RUN   TestDetailViewShowsProfileAndDegradation
+--- PASS: TestDetailViewShowsProfileAndDegradation (0.00s)
+=== RUN   TestDetailViewOmitsProfileForShell
+--- PASS: TestDetailViewOmitsProfileForShell (0.00s)
+=== RUN   TestDetailKeyTogglesAndEscCloses
+--- PASS: TestDetailKeyTogglesAndEscCloses (0.00s)
+=== RUN   TestCreateModalMissingCWDMessage
+--- PASS: TestCreateModalMissingCWDMessage (0.00s)
+=== RUN   TestCreateModalCWDNotDirectoryMessage
+--- PASS: TestCreateModalCWDNotDirectoryMessage (0.00s)
+=== RUN   TestCreateModalMalformedEnvKeyMessage
+--- PASS: TestCreateModalMalformedEnvKeyMessage (0.00s)
+=== RUN   TestCreateModalMalformedLaunchArgsJSONMessage
+--- PASS: TestCreateModalMalformedLaunchArgsJSONMessage (0.00s)
+=== RUN   TestCreateModalUnsupportedProfileMessage
+--- PASS: TestCreateModalUnsupportedProfileMessage (0.00s)
+=== RUN   TestCreateModalShellIgnoresProfileValidation
+--- PASS: TestCreateModalShellIgnoresProfileValidation (0.00s)
+=== RUN   TestCreateModalDuplicateNameMessage
+--- PASS: TestCreateModalDuplicateNameMessage (0.00s)
+=== RUN   TestCreateModalSlugCollisionMessage
+--- PASS: TestCreateModalSlugCollisionMessage (0.02s)
+=== RUN   TestCreateModalEscapeCreatesNothing
+--- PASS: TestCreateModalEscapeCreatesNothing (0.00s)
+=== RUN   TestCreateProfileOptionsForOffersOnlyDeclaredProfiles
+--- PASS: TestCreateProfileOptionsForOffersOnlyDeclaredProfiles (0.00s)
+=== RUN   TestCreateModalNoYoloOfferedWithAllowYoloFalse
+--- PASS: TestCreateModalNoYoloOfferedWithAllowYoloFalse (0.01s)
+=== RUN   TestCreateModalYoloRequiresConfirmMessage
+--- PASS: TestCreateModalYoloRequiresConfirmMessage (0.00s)
+=== RUN   TestCreateModalYoloConfirmThenCreateSucceeds
+--- PASS: TestCreateModalYoloConfirmThenCreateSucceeds (0.00s)
+=== RUN   TestCreateModalYCharacterStillTypesIntoTextFields
+--- PASS: TestCreateModalYCharacterStillTypesIntoTextFields (0.00s)
+=== RUN   TestPinDialogPersistsPinnedMode
+--- PASS: TestPinDialogPersistsPinnedMode (0.00s)
+=== RUN   TestPinDialogEscCancelsWithoutPersisting
+--- PASS: TestPinDialogEscCancelsWithoutPersisting (0.00s)
+=== RUN   TestPinDialogNotOfferedForShell
+--- PASS: TestPinDialogNotOfferedForShell (0.00s)
+=== RUN   TestProfileSwitchPersistsAndStatesRestartToApply
+--- PASS: TestProfileSwitchPersistsAndStatesRestartToApply (0.00s)
+=== RUN   TestProfileSwitchEscCancelsWithoutPersisting
+--- PASS: TestProfileSwitchEscCancelsWithoutPersisting (0.00s)
+=== RUN   TestProfileSwitchYoloRequiresConfirm
+--- PASS: TestProfileSwitchYoloRequiresConfirm (0.00s)
+=== RUN   TestProfileSwitchAwayFromYoloNeedsNoConfirm
+--- PASS: TestProfileSwitchAwayFromYoloNeedsNoConfirm (0.00s)
+=== RUN   TestProfileSwitchYoloAbsentWhenNotAllowed
+--- PASS: TestProfileSwitchYoloAbsentWhenNotAllowed (0.00s)
+=== RUN   TestProfileSwitchNotOfferedForShell
+--- PASS: TestProfileSwitchNotOfferedForShell (0.00s)
+=== RUN   TestResumeKeyRendersAwaitingSignalNeverRunning
+--- PASS: TestResumeKeyRendersAwaitingSignalNeverRunning (0.00s)
+=== RUN   TestResumeStartingElsewhereIsNotAnError
+--- PASS: TestResumeStartingElsewhereIsNotAnError (0.00s)
+=== RUN   TestResumeFailureRendersAsError
+--- PASS: TestResumeFailureRendersAsError (0.00s)
+=== RUN   TestResumeKeyRequiresStoppedRow
+--- PASS: TestResumeKeyRequiresStoppedRow (0.00s)
+=== RUN   TestEmptyAndHelpViewsAreDiscoverable
+--- PASS: TestEmptyAndHelpViewsAreDiscoverable (0.00s)
+=== RUN   TestASCIIColorAndFrozenRelativeTimeRendering
+--- PASS: TestASCIIColorAndFrozenRelativeTimeRendering (0.01s)
+=== RUN   TestSuccessfulCreationAdvancesConfiguredFrozenClock
+--- PASS: TestSuccessfulCreationAdvancesConfiguredFrozenClock (0.00s)
+=== RUN   TestHelpTogglesAndEscapeCloses
+--- PASS: TestHelpTogglesAndEscapeCloses (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.055s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
