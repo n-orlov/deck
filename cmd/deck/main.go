@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/service"
@@ -33,14 +34,18 @@ func main() {
 		return
 	}
 	client := tmux.Client{Socket: settings.Socket}
+	registry := agent.NewRegistry()
+	registry.Register(agent.NewShell())
+	registry.Register(agent.NewClaude())
+	registry.Register(agent.NewPi())
 	sessions := service.Service{
 		Store: db, TMux: client, Audit: logger,
-		Clock: settings.Clock, IDs: settings.IDs,
+		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
 	}
 	// The TUI invokes this liveness pass immediately before each configured
 	// list refresh, so a real client observes externally removed tmux sessions
 	// and servers without ever bootstrapping a replacement server.
-	model := tui.NewWithShellCreatorAttacherKillerAndReconciler(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, sessions.Reconcile)
+	model := tui.NewWithShellCreatorAttacherKillerReconcilerAndResumer(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, sessions.Reconcile, sessions.Resume)
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "deck:", err)
 	}

@@ -43,8 +43,10 @@ type Model struct {
 	attach              func(context.Context, string) (*exec.Cmd, error)
 	kill                func(context.Context, store.Session) error
 	reconcile           func(context.Context) error
+	resume              func(context.Context, string) (store.Session, service.ResumeOutcome, error)
 	selected            int
 	attachError         string
+	resumeNote          string
 	width               int
 	height              int
 }
@@ -70,6 +72,12 @@ type shellCreated struct {
 type attachFinished struct{ err error }
 
 type sessionKilled struct{ err error }
+
+type sessionResumed struct {
+	session store.Session
+	outcome service.ResumeOutcome
+	err     error
+}
 
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
@@ -103,8 +111,17 @@ func NewWithShellCreatorAttacherAndKiller(db *store.Store, settings config.Setti
 // an external tmux disappearance reaches the visible client in one configured
 // reconciliation cadence, rather than waiting a second refresh interval.
 func NewWithShellCreatorAttacherKillerAndReconciler(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error) Model {
+	return NewWithShellCreatorAttacherKillerReconcilerAndResumer(db, settings, tmuxNote, creator, attacher, killer, reconciler, nil)
+}
+
+// NewWithShellCreatorAttacherKillerReconcilerAndResumer adds the `r` resume
+// action (SPEC §8/§9.3). A resumed row is left `starting`; the TUI never
+// renders `running` for it, and a caller that lost the launch-lease race
+// (service.ResumeStartingElsewhere) is shown "starting elsewhere", not an
+// error.
+func NewWithShellCreatorAttacherKillerReconcilerAndResumer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error)) Model {
 	m := New(db, settings, tmuxNote)
-	m.create, m.attach, m.kill, m.reconcile = creator, attacher, killer, reconciler
+	m.create, m.attach, m.kill, m.reconcile, m.resume = creator, attacher, killer, reconciler, resumer
 	return m
 }
 
@@ -166,6 +183,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.attachError = ""
+		return m, m.loadSessions
+	case sessionResumed:
+		if msg.err != nil {
+			m.attachError = "Cannot resume: " + msg.err.Error()
+			m.resumeNote = ""
+			return m, nil
+		}
+		m.attachError = ""
+		if msg.outcome == service.ResumeStartingElsewhere {
+			m.resumeNote = "starting elsewhere"
+			return m, nil
+		}
+		m.resumeNote = ""
 		return m, m.loadSessions
 	case reconcileTick:
 		loadAfterReconcile := m.loadSessions
@@ -232,6 +262,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return sessionKilled{err: m.kill(context.Background(), session)}
 			}
+		case "r":
+			if m.resume == nil || len(m.sessions) == 0 {
+				return m, nil
+			}
+			session := m.sessions[m.selected]
+			if session.Status != "stopped" {
+				m.attachError = "Cannot resume: session is not stopped"
+				return m, nil
+			}
+			sessionID := session.ID
+			return m, func() tea.Msg {
+				resumed, outcome, err := m.resume(context.Background(), sessionID)
+				return sessionResumed{session: resumed, outcome: outcome, err: err}
+			}
 		case "enter":
 			if m.attach == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -281,6 +325,9 @@ func (m Model) View() string {
 			if status == "stopped" {
 				status += m.glyph(" · resumable", " - resumable")
 			}
+			if status == "starting" {
+				status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
+			}
 			marker := "  "
 			if index == m.selected {
 				marker = "> "
@@ -292,7 +339,10 @@ func (m Model) View() string {
 	if m.attachError != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.attachError)
 	}
-	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · i detail · ? help · q quit", "up/down select - Enter attach - n new - x kill - i detail - ? help - q quit") + "\n")
+	if m.resumeNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.resumeNote)
+	}
+	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · r resume · i detail · ? help · q quit", "up/down select - Enter attach - n new - x kill - r resume - i detail - ? help - q quit") + "\n")
 	return b.String()
 }
 
@@ -321,6 +371,9 @@ func (m Model) detailView() string {
 	status := session.Status
 	if status == "stopped" {
 		status += m.glyph(" · resumable", " - resumable")
+	}
+	if status == "starting" {
+		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
 	fmt.Fprintf(&b, "Status:             %s\n", status)
 	if _, applicable := createAgentCapabilities(session.Agent); applicable {

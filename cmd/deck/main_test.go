@@ -354,7 +354,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// companion lifecycle PTY test exercises n, Enter, attachment, and x.
 	// Help itself must never advertise a later-phase command.
 	help := output.String()
-	if !strings.Contains(help, "up/down select - Enter attach - n new - x kill - i detail - ? help - q quit") {
+	if !strings.Contains(help, "up/down select - Enter attach - n new - x kill - r resume - i detail - ? help - q quit") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
 	}
 	for _, unavailable := range []string{"resume/start", "restart preserving", "send message", "env editor", "permission profile", "event log", "filter list", "snooze", "archive", "undo"} {
