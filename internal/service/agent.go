@@ -57,7 +57,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		return store.Session{}, fmt.Errorf("unknown agent kind %q", input.Agent)
 	}
 	caps := adapter.Capabilities()
-	profile, _, _ := caps.ResolveProfile(adapter.Kind(), input.PermissionProfile)
+	profile, _, degradationReason := caps.ResolveProfile(adapter.Kind(), input.PermissionProfile)
 
 	id, err := s.IDs.UUID()
 	if err != nil {
@@ -81,7 +81,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: adapter.Kind(), CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
-		PermissionProfile: profile, ConversationID: conversationID,
+		PermissionProfile: profile, PermissionProfileReason: degradationReason, ConversationID: conversationID,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable agent session %q: %w", input.Name, err)
@@ -130,6 +130,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	session.StatusSource = "tmux"
 	session.ConversationID = conversationID
 	session.PermissionProfile = profile
+	session.PermissionProfileReason = degradationReason
 	return session, nil
 }
 

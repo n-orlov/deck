@@ -27,6 +27,7 @@ type Model struct {
 	startupNote         string
 	help                bool
 	creating            bool
+	detail              bool
 	createName          string
 	createCWD           string
 	createAgent         string
@@ -198,6 +199,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.help = !m.help
 		case "esc":
 			m.help = false
+			m.detail = false
+		case "i":
+			if !m.help && len(m.sessions) > 0 {
+				m.detail = !m.detail
+			}
 		case "n":
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
@@ -254,6 +260,9 @@ func (m Model) View() string {
 	if m.creating {
 		return m.createView()
 	}
+	if m.detail && len(m.sessions) > 0 {
+		return m.detailView()
+	}
 	var b strings.Builder
 	b.WriteString(m.color("deck") + m.glyph(" — ", " - ") + "sessions")
 	if m.settings.Socket != "" {
@@ -276,13 +285,56 @@ func (m Model) View() string {
 			if index == m.selected {
 				marker = "> "
 			}
-			fmt.Fprintf(&b, "%s%s  %-10s %s  created %s\n    %s\n", marker, session.Name, session.Agent, status, m.relativeTime(session.CreatedAt), session.CWD)
+			badge := profileBadge(session)
+			fmt.Fprintf(&b, "%s%s  %-10s %-8s %s  created %s\n    %s\n", marker, session.Name, session.Agent, badge, status, m.relativeTime(session.CreatedAt), session.CWD)
 		}
 	}
 	if m.attachError != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.attachError)
 	}
-	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · ? help · q quit", "up/down select - Enter attach - n new - x kill - ? help - q quit") + "\n")
+	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · i detail · ? help · q quit", "up/down select - Enter attach - n new - x kill - i detail - ? help - q quit") + "\n")
+	return b.String()
+}
+
+// profileBadge renders the bracketed permission-profile badge shown next to
+// an agent row in the session list. Shell sessions have no notion of a
+// permission profile at all (SPEC §5/§8): createAgentCapabilities reports
+// them as not applicable, so they render no badge rather than a meaningless
+// cosmetic "safe".
+func profileBadge(session store.Session) string {
+	if _, applicable := createAgentCapabilities(session.Agent); !applicable {
+		return ""
+	}
+	return "[" + session.PermissionProfile + "]"
+}
+
+// detailView renders the selected session's full detail, including an
+// explicit degradation sentence when the adapter could not honour the
+// originally requested permission profile (SPEC §5: "say so in the row
+// detail rather than silently lying").
+func (m Model) detailView() string {
+	session := m.sessions[m.selected]
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
+	fmt.Fprintf(&b, "Agent:              %s\n", session.Agent)
+	fmt.Fprintf(&b, "Working directory:  %s\n", session.CWD)
+	status := session.Status
+	if status == "stopped" {
+		status += m.glyph(" · resumable", " - resumable")
+	}
+	fmt.Fprintf(&b, "Status:             %s\n", status)
+	if _, applicable := createAgentCapabilities(session.Agent); applicable {
+		fmt.Fprintf(&b, "Permission profile: %s\n", session.PermissionProfile)
+		if session.PermissionProfileReason != "" {
+			fmt.Fprintf(&b, "  degraded: %s\n", session.PermissionProfileReason)
+		}
+	} else {
+		b.WriteString("Permission profile: n/a (shell has no permission profile)\n")
+	}
+	if session.ConversationID != "" {
+		fmt.Fprintf(&b, "Conversation id:    %s\n", session.ConversationID)
+	}
+	b.WriteString("\n" + m.glyph("i or Esc closes detail", "i or Esc closes detail") + "\n")
 	return b.String()
 }
 
@@ -657,6 +709,7 @@ Keys
   ↵ attach the selected running session
   n create a shell session
   x kill the selected running session
+  i toggle detail view for the selected session
   ? open/close help; Esc closes help
   q or Ctrl+C quit deck
 

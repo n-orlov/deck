@@ -122,6 +122,11 @@ type CreateSessionInput struct {
 	// PermissionProfile selects the adapter's permission mapping (e.g.
 	// safe|plan|edits|yolo); shell sessions use the empty string.
 	PermissionProfile string
+	// PermissionProfileReason, when non-empty, is the human-readable
+	// explanation recorded when the requested profile could not be honoured
+	// as-is and was degraded to PermissionProfile (SPEC §5). Empty when the
+	// stored profile is exactly what was requested.
+	PermissionProfileReason string
 	// ConversationID is the deck-assigned (or caller-pinned) conversation
 	// identity handed to adapters that AssignsConversationID.
 	ConversationID string
@@ -147,14 +152,15 @@ type Session struct {
 	StatusAt     int64
 	CreatedAt    int64
 
-	LaunchArgs        []string
-	Env               map[string]string
-	PreLaunch         string
-	LoginShell        bool
-	PermissionProfile string
-	ConversationID    string
-	ResumePin         string
-	ResumeState       string
+	LaunchArgs              []string
+	Env                     map[string]string
+	PreLaunch               string
+	LoginShell              bool
+	PermissionProfile       string
+	PermissionProfileReason string
+	ConversationID          string
+	ResumePin               string
+	ResumeState             string
 }
 
 // StatusUpdateInput describes one durable state transition. EventKind is kept
@@ -238,12 +244,12 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
-		 launch_args, env, pre_launch, login_shell, permission_profile, conversation_id, resume_pin, resume_state)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
 		launchArgsJSON, envJSON, nullableString(input.PreLaunch), input.LoginShell,
-		input.PermissionProfile, nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState)
+		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return Session{}, fmt.Errorf("session name %q already exists", input.Name)
@@ -260,8 +266,9 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
-		PermissionProfile: input.PermissionProfile, ConversationID: input.ConversationID,
-		ResumePin: input.ResumePin, ResumeState: input.ResumeState,
+		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
+		ConversationID: input.ConversationID,
+		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
 	}, nil
 }
 
@@ -307,12 +314,12 @@ func scanSession(row interface {
 }) (Session, error) {
 	var session Session
 	var launchArgsJSON, envJSON string
-	var preLaunch, conversationID, resumePin sql.NullString
+	var preLaunch, permissionProfileReason, conversationID, resumePin sql.NullString
 	var loginShell int
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &launchArgsJSON, &envJSON, &preLaunch,
-		&loginShell, &session.PermissionProfile, &conversationID, &resumePin, &session.ResumeState); err != nil {
+		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState); err != nil {
 		return Session{}, err
 	}
 	if err := json.Unmarshal([]byte(launchArgsJSON), &session.LaunchArgs); err != nil {
@@ -322,6 +329,7 @@ func scanSession(row interface {
 		return Session{}, fmt.Errorf("decode env: %w", err)
 	}
 	session.PreLaunch = preLaunch.String
+	session.PermissionProfileReason = permissionProfileReason.String
 	session.ConversationID = conversationID.String
 	session.ResumePin = resumePin.String
 	session.LoginShell = loginShell != 0
@@ -330,7 +338,7 @@ func scanSession(row interface {
 
 const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
-		launch_args, env, pre_launch, login_shell, permission_profile, conversation_id, resume_pin, resume_state`
+		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.
@@ -620,7 +628,7 @@ var schemaV1 = []string{
 		cwd TEXT NOT NULL, agent TEXT NOT NULL, launch_args TEXT NOT NULL DEFAULT '[]',
 		env TEXT NOT NULL DEFAULT '{}', env_dirty INTEGER NOT NULL DEFAULT 0,
 		captured_path TEXT NOT NULL, pre_launch TEXT, login_shell INTEGER NOT NULL DEFAULT 0,
-		permission_profile TEXT NOT NULL DEFAULT 'safe', conversation_id TEXT, resume_pin TEXT,
+		permission_profile TEXT NOT NULL DEFAULT 'safe', permission_profile_reason TEXT, conversation_id TEXT, resume_pin TEXT,
 		resume_state TEXT NOT NULL DEFAULT 'auto', status TEXT NOT NULL, status_reason TEXT,
 		status_source TEXT NOT NULL, status_at INTEGER NOT NULL, killed_by_user INTEGER NOT NULL DEFAULT 0,
 		pane_exit_status INTEGER, crash_tail TEXT, notify_epoch INTEGER NOT NULL DEFAULT 0,
