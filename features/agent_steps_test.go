@@ -54,6 +54,10 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)"'s conversation id is cleared$`, sessionConversationIDCleared)
 	sc.Step(`^deck clients "([^"]+)", "([^"]+)" and "([^"]+)" race pressing r on session "([^"]+)"$`, clientsRacePressingResumeOnNamedSession)
 	sc.Step(`^exactly one of deck clients "([^"]+)", "([^"]+)" and "([^"]+)" screen contains "starting elsewhere"$`, exactlyOneOfClientsShowsStartingElsewhere)
+	sc.Step(`^the state database session "([^"]+)" has a launch lease held by a live process$`, sessionHasLiveLaunchLease)
+	sc.Step(`^the state database session "([^"]+)" has a launch lease owned by a dead process$`, sessionHasDeadLaunchLease)
+	sc.Step(`^the state database session "([^"]+)" has an expired launch lease$`, sessionHasExpiredLaunchLease)
+	sc.Step(`^the state database session "([^"]+)"'s launch lease is cleared$`, sessionLaunchLeaseIsCleared)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -1093,4 +1097,82 @@ func exactlyOneOfClientsShowsStartingElsewhere(ctx context.Context, first, secon
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+}
+
+// currentBootID replicates internal/store.bootID's read of the kernel boot
+// id (empty when unreadable) so this deliberately black-box package can
+// construct a launch-lease owner string ("pid@boot_id", SPEC §9.3) that the
+// released binary's own liveness check (internal/store.leaseOwnerAlive)
+// recognizes as belonging to the current boot, without importing
+// internal/store itself.
+func currentBootID() string {
+	data, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// setRawLaunchLease writes launch_lease_owner/launch_lease_until directly,
+// bypassing internal/store.AcquireLaunchLease entirely, so a scenario can
+// plant a lease in a state the released binary's own CAS acquisition path
+// can never itself produce from the outside (task 028, mirroring the
+// sessionConversationIDCleared/sessionMarkedDegraded fixture-only pattern).
+func setRawLaunchLease(ctx context.Context, name, owner string, untilMillis int64) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.ExecContext(ctx,
+		`UPDATE sessions SET launch_lease_owner = ?, launch_lease_until = ? WHERE name = ?`,
+		owner, untilMillis, name)
+	if err != nil {
+		return fmt.Errorf("set launch lease for session %q: %w", name, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set launch lease for session %q: %w", name, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("set launch lease for session %q: %d rows affected, want 1", name, affected)
+	}
+	return nil
+}
+
+// sessionHasLiveLaunchLease plants a lease owned by this very test process
+// (guaranteed alive, and on the current boot by construction) with a
+// far-future TTL: SPEC §9.3's "live owner within TTL" case, which
+// AcquireLaunchLease must refuse to break.
+func sessionHasLiveLaunchLease(ctx context.Context, name string) error {
+	owner := fmt.Sprintf("%d@%s", os.Getpid(), currentBootID())
+	return setRawLaunchLease(ctx, name, owner, time.Now().Add(time.Hour).UnixMilli())
+}
+
+// sessionHasDeadLaunchLease plants a lease naming a pid that (barring an
+// implausible collision) does not exist, still on the current boot and
+// still well within its TTL, so only the dead-pid liveness check — not the
+// TTL — is what makes it breakable (SPEC §9.3's "dead-owner-pid" case).
+func sessionHasDeadLaunchLease(ctx context.Context, name string) error {
+	owner := fmt.Sprintf("999999999@%s", currentBootID())
+	return setRawLaunchLease(ctx, name, owner, time.Now().Add(time.Hour).UnixMilli())
+}
+
+// sessionHasExpiredLaunchLease plants a lease owned by this live, in-boot
+// test process but whose TTL already elapsed, so only the TTL check — not
+// liveness — is what makes it breakable (SPEC §9.3's "expired-TTL" case).
+func sessionHasExpiredLaunchLease(ctx context.Context, name string) error {
+	owner := fmt.Sprintf("%d@%s", os.Getpid(), currentBootID())
+	return setRawLaunchLease(ctx, name, owner, time.Now().Add(-time.Minute).UnixMilli())
+}
+
+// sessionLaunchLeaseIsCleared removes a planted lease so a following `r`
+// exercises a plain fresh acquisition, proving the row was never left
+// wedged by whichever case the scenario just proved breakable/unbreakable.
+func sessionLaunchLeaseIsCleared(ctx context.Context, name string) error {
+	return setRawLaunchLease(ctx, name, "", 0)
 }
