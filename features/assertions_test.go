@@ -308,14 +308,24 @@ func databaseSessionStatus(ctx context.Context, name, want string) error {
 		return err
 	}
 	defer db.Close()
+	// Poll rather than reading once: a session that just finished launching
+	// (e.g. an agent fixture exiting on its own into "stopped") settles on
+	// its own schedule, and this step is also used to observe several
+	// sessions created back-to-back in one scenario.
+	deadline := time.Now().Add(5 * time.Second)
 	var got string
-	if err := db.QueryRowContext(ctx, "SELECT status FROM sessions WHERE name = ?", name).Scan(&got); err != nil {
-		return fmt.Errorf("observe session %q: %w", name, err)
+	for {
+		if err := db.QueryRowContext(ctx, "SELECT status FROM sessions WHERE name = ?", name).Scan(&got); err != nil {
+			return fmt.Errorf("observe session %q: %w", name, err)
+		}
+		if got == want {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q status = %q, want %q", name, got, want)
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	if got != want {
-		return fmt.Errorf("session %q status = %q, want %q", name, got, want)
-	}
-	return nil
 }
 
 func readAudit(h *ScenarioHarness) ([]map[string]json.RawMessage, error) {

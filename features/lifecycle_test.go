@@ -34,6 +34,11 @@ type ScenarioHarness struct {
 	// coding-agent session can find its fixture-provided binary without ever
 	// hiding the real tmux/go that the harness itself still needs.
 	agentPATHDir string
+	// agentHOMEDir, when set by fakeClaudeOnPATHForFutureClients, is passed as
+	// HOME for every subsequently started named client, so a fixture's
+	// per-conversation transcript (cmd/fake-claude's transcriptPath) is written
+	// under a scenario-scoped directory rather than the real developer's home.
+	agentHOMEDir string
 
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
@@ -83,6 +88,9 @@ func (h *ScenarioHarness) StartClient(ctx context.Context, extraEnv ...string) (
 	if h.agentPATHDir != "" && !hasPATHOverride(extraEnv) {
 		extraEnv = append(extraEnv, "PATH="+h.agentPATHDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
+	if h.agentHOMEDir != "" && !hasHOMEOverride(extraEnv) {
+		extraEnv = append(extraEnv, "HOME="+h.agentHOMEDir)
+	}
 	client, err := StartScreenDriver(ctx, h.Binary, h.Environment(extraEnv...))
 	if err != nil {
 		return nil, err
@@ -97,6 +105,17 @@ func (h *ScenarioHarness) StartClient(ctx context.Context, extraEnv ...string) (
 func hasPATHOverride(extraEnv []string) bool {
 	for _, entry := range extraEnv {
 		if strings.HasPrefix(entry, "PATH=") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHOMEOverride mirrors hasPATHOverride for HOME, so a step that already
+// passed its own HOME= entry is never overridden by agentHOMEDir.
+func hasHOMEOverride(extraEnv []string) bool {
+	for _, entry := range extraEnv {
+		if strings.HasPrefix(entry, "HOME=") {
 			return true
 		}
 	}

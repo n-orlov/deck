@@ -25,6 +25,7 @@ import (
 func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)"$`, clientCreatesAgentSessionWithProfile)
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and message "([^"]+)"$`, clientCreatesAgentSessionWithProfileAndMessage)
 	sc.Step(`^deck client "([^"]+)" presses r on session "([^"]+)"$`, clientPressesResumeOnNamedSession)
 	sc.Step(`^the state database session "([^"]+)" has a non-empty conversation id$`, sessionHasNonEmptyConversationID)
 	sc.Step(`^the state database sessions "([^"]+)" and "([^"]+)" have different conversation ids$`, sessionsHaveDifferentConversationIDs)
@@ -32,6 +33,8 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain "([^"]+)"$`, launchArgvForSessionDoesNotContain)
 	sc.Step(`^the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSession)
 	sc.Step(`^exactly ([0-9]+) private tmux session(?:s)? match(?:es)? slug "([^"]+)"$`, exactlyNPrivateSessionsMatchSlug)
+	sc.Step(`^no private tmux session exists$`, noPrivateTMuxSessionExists)
+	sc.Step(`^session "([^"]+)" replays its own last message, not session "([^"]+)"'s$`, sessionReplaysOwnMessageNotAnothers)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -79,6 +82,11 @@ func fakeClaudeOnPATHForFutureClients(ctx context.Context) error {
 		return fmt.Errorf("write claude fixture wrapper: %w", err)
 	}
 	h.agentPATHDir = dir
+	homeDir := filepath.Join(h.Home, "agent-fixture-home")
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
+		return fmt.Errorf("create fixture HOME directory: %w", err)
+	}
+	h.agentHOMEDir = homeDir
 	return nil
 }
 
@@ -89,6 +97,23 @@ func fakeClaudeOnPATHForFutureClients(ctx context.Context) error {
 // clientCreatesShellSession so the created row is comparable to a shell
 // row's contract.
 func clientCreatesAgentSessionWithProfile(ctx context.Context, clientName, kind, name, profile string) error {
+	return clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx, clientName, kind, name, profile, "")
+}
+
+// clientCreatesAgentSessionWithProfileAndMessage is the same keystroke-only
+// creation flow as clientCreatesAgentSessionWithProfile, but also fills the
+// Launch args (JSON array) field with a single-element JSON array holding
+// message. The claude adapter appends launch_args verbatim after its own
+// argv (internal/agent.Claude.Launch/Resume), and the fake-claude fixture
+// records any trailing positional text as that conversation's message and
+// replays it on --resume (cmd/fake-claude's replayAndRecord) — this is how
+// this package proves distinct conversations replay their own message and
+// never another session's (task 023).
+func clientCreatesAgentSessionWithProfileAndMessage(ctx context.Context, clientName, kind, name, profile, message string) error {
+	return clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx, clientName, kind, name, profile, message)
+}
+
+func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context, clientName, kind, name, profile, message string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -159,6 +184,22 @@ func clientCreatesAgentSessionWithProfile(ctx context.Context, clientName, kind,
 	}
 	if err := client.WaitForFrame(ctx, false, profile+" (left/right cycles"); err != nil {
 		return fmt.Errorf("cycle Permission profile field to %q: %w", profile, err)
+	}
+	if message != "" {
+		// Tab onto the Launch args (JSON array) field, right after Permission
+		// profile, and type a one-element JSON array holding message verbatim
+		// (internal/tui.createFieldRows field order).
+		encoded, err := json.Marshal([]string{message})
+		if err != nil {
+			return fmt.Errorf("encode launch_args message %q: %w", message, err)
+		}
+		if err := client.Send("\t" + string(encoded)); err != nil {
+			return err
+		}
+		time.Sleep(75 * time.Millisecond)
+		if err := client.WaitForFrame(ctx, false, string(encoded)); err != nil {
+			return fmt.Errorf("type Launch args field with message %q: %w", message, err)
+		}
 	}
 	if err := client.Send("\r"); err != nil {
 		return err
@@ -388,4 +429,138 @@ func exactlyNPrivateSessionsMatchSlug(ctx context.Context, want int, slug string
 		return fmt.Errorf("private tmux sessions matching slug %q = %d, want %d", slug, got, want)
 	}
 	return nil
+}
+
+// noPrivateTMuxSessionExists asserts the scenario's private tmux server has
+// no live session at all, the black-box fact SPEC §13.4's T1 scenario names
+// ("no tmux session exists"): after a reboot stand-in (kill-server) and a
+// deck restart, nothing is auto-started.
+func noPrivateTMuxSessionExists(ctx context.Context) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(commandCtx, "tmux", "-L", h.Socket, "list-sessions", "-F", "#{session_name}").CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(output), "no server running") || strings.Contains(string(output), "no sessions") {
+			return nil
+		}
+		return fmt.Errorf("tmux -L %s list-sessions: %w: %s", h.Socket, err, strings.TrimSpace(string(output)))
+	}
+	names := strings.Fields(string(output))
+	if len(names) != 0 {
+		return fmt.Errorf("private tmux server has %d live session(s), want none: %v", len(names), names)
+	}
+	return nil
+}
+
+// sessionSlugByName reads the store's own slug column for name (see
+// internal/store.Slug), rather than reimplementing that conversion here, so
+// this file stays a pure observer of what deck itself decided.
+func sessionSlugByName(h *ScenarioHarness, name string) (string, error) {
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	var slug string
+	if err := db.QueryRow(`SELECT slug FROM sessions WHERE name = ?`, name).Scan(&slug); err != nil {
+		return "", fmt.Errorf("observe session %q slug: %w", name, err)
+	}
+	return slug, nil
+}
+
+// sessionReplaysOwnMessageNotAnothers polls the resumed session's own live
+// tmux pane (fixture wrapper lingers ~0.5s after the fixture's own exit, see
+// fakeClaudeOnPATHForFutureClients) for the fixture's "fake-claude replay: "
+// banner, and asserts it carries this session's own last recorded message,
+// never other's. It must run promptly after a resume/press-r step, before
+// the pane exits and deck's private server (remain-on-exit failed) tears
+// the pane, and with it the session, down.
+func sessionReplaysOwnMessageNotAnothers(ctx context.Context, name, other string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	ownMessage, err := sessionLastMessage(h, name)
+	if err != nil {
+		return err
+	}
+	if ownMessage == "" {
+		return fmt.Errorf("session %q has no recorded message to replay", name)
+	}
+	othersMessage, err := sessionLastMessage(h, other)
+	if err != nil {
+		return err
+	}
+	tmuxSession := "deck_" + slug
+	deadline := time.Now().Add(3 * time.Second)
+	var text string
+	for {
+		output, captureErr := tmuxOutput(ctx, h, "capture-pane", "-p", "-S", "-", "-t", tmuxSession)
+		if captureErr == nil {
+			text = string(output)
+			if strings.Contains(text, "fake-claude replay: "+ownMessage) {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			if captureErr != nil {
+				return fmt.Errorf("capture resumed pane %q: %w", tmuxSession, captureErr)
+			}
+			return fmt.Errorf("resumed pane %q never showed replay of session %q's own message %q:\n%s", tmuxSession, name, ownMessage, text)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if othersMessage != "" && strings.Contains(text, "fake-claude replay: "+othersMessage) {
+		return fmt.Errorf("resumed pane %q for session %q unexpectedly replayed session %q's message %q:\n%s", tmuxSession, name, other, othersMessage, text)
+	}
+	return nil
+}
+
+// sessionLastMessage reads the fake-claude transcript fixture path/format
+// directly (cmd/fake-claude's transcriptPath/appendMessage), keyed by the
+// session's own conversation id and the scenario's fixture HOME/cwd, and
+// returns the last recorded message line, or "" if the transcript does not
+// exist yet.
+func sessionLastMessage(h *ScenarioHarness, name string) (string, error) {
+	if h.agentHOMEDir == "" {
+		return "", fmt.Errorf("fixture HOME directory was not configured (call the fake claude PATH step first)")
+	}
+	conversationID, err := sessionConversationID(h, name)
+	if err != nil {
+		return "", err
+	}
+	if conversationID == "" {
+		return "", fmt.Errorf("session %q has no conversation id", name)
+	}
+	project := strings.ReplaceAll(h.workingDir, string(os.PathSeparator), "-")
+	path := filepath.Join(h.agentHOMEDir, ".claude", "projects", project, conversationID+".jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read transcript %q for session %q: %w", path, name, err)
+	}
+	var last string
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return "", fmt.Errorf("decode transcript entry %q: %w", line, err)
+		}
+		last = entry.Message
+	}
+	return last, nil
 }
