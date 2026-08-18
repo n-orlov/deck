@@ -15,12 +15,21 @@ import (
 const defaultTags = "~@real-agents && ~@nightly"
 
 func TestFeatures(t *testing.T) {
+	// DECK_GODOG_TAGS lets an operator opt into scenarios excluded from the
+	// default run (currently only @real-agents; see task 029 and
+	// docs/reports/phase1.md), without changing defaultTags itself, which
+	// stays the one authority for what the ordinary `go test` invocation
+	// covers.
+	tags := defaultTags
+	if override := os.Getenv("DECK_GODOG_TAGS"); override != "" {
+		tags = override
+	}
 	suite := godog.TestSuite{
 		ScenarioInitializer: initializeScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
 			Paths:    []string{"."},
-			Tags:     defaultTags,
+			Tags:     tags,
 			Strict:   true,
 			TestingT: t,
 		},
