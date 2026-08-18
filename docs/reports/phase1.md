@@ -414,3 +414,28 @@ No `Scenario:` line was removed from `features/` across the whole registry
 rework (tasks 001-007 inclusive), and no new `@skip`/`@nightly`-style tag was
 introduced to dodge a scenario; the default godog filter
 (`~@real-agents && ~@nightly`) is unchanged from earlier phase attempts.
+
+## 2026-08-18 — task 008: ten consecutive clean-state suite passes (HEAD 132f725)
+
+Re-ran the stability check after the registry-driven-TUI rework and the
+default-create-agent fix (tasks 001-008a), from HEAD `132f72555aa9ded04c7e9a676e87fe6debbac1e7` — a fixed tree strictly newer than the
+`a99fcb0`-era run captured in the pre-existing
+`docs/reports/phase1-ten-run-stability.log`.
+
+```
+$ time ci/stability.sh 10
+```
+
+Real elapsed: 5m38.6s. Full unedited output committed as
+`docs/reports/phase1-ten-run-stability-132f725.log`:
+
+```
+$ grep -c '^--- FAIL\|^FAIL' docs/reports/phase1-ten-run-stability-132f725.log
+0
+$ tail -1 docs/reports/phase1-ten-run-stability-132f725.log
+10/10 passed
+```
+
+10/10 runs passed with no `--- FAIL` or `^FAIL` line in the combined
+summary log; no flake observed, so no code fix was required for this
+report.
