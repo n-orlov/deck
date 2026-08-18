@@ -330,6 +330,166 @@ func TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows(t *testing
 	}
 }
 
+func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "00000000-0000-4000-8000-000000000020"
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "mutations", CWD: "/work/mut", Agent: "claude", CapturedPath: "/bin",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	eventCountFor := func(t *testing.T, kind string) int {
+		t.Helper()
+		var count int
+		if err := store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = ?`, id, kind).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+
+	const convoA = "11111111-1111-4111-8111-111111111111"
+	if err := store.SetConversationID(ctx, id, convoA, "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ConversationID != convoA {
+		t.Fatalf("conversation_id = %q; want %q", got.ConversationID, convoA)
+	}
+	if eventCountFor(t, "set_conversation_id") != 1 {
+		t.Fatalf("expected exactly one set_conversation_id event")
+	}
+
+	if err := store.SetPermissionProfile(ctx, id, "yolo", "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PermissionProfile != "yolo" {
+		t.Fatalf("permission_profile = %q; want yolo", got.PermissionProfile)
+	}
+	if eventCountFor(t, "set_permission_profile") != 1 {
+		t.Fatalf("expected exactly one set_permission_profile event")
+	}
+
+	const convoB = "22222222-2222-4222-8222-222222222222"
+	if err := store.SetResumePin(ctx, id, convoB, "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeState != "pinned" || got.ResumePin != convoB {
+		t.Fatalf("resume state = %q, pin = %q; want pinned/%q", got.ResumeState, got.ResumePin, convoB)
+	}
+	if eventCountFor(t, "set_resume_pin") != 1 {
+		t.Fatalf("expected exactly one set_resume_pin event")
+	}
+
+	// A pin survives a reopen ("sticky across a deck restart").
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err = reopened.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeState != "pinned" || got.ResumePin != convoB {
+		t.Fatalf("pin did not survive reopen: state=%q pin=%q", got.ResumeState, got.ResumePin)
+	}
+
+	if err := reopened.SetResumeStateAuto(ctx, id, "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = reopened.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeState != "auto" || got.ResumePin != "" {
+		t.Fatalf("resume state = %q, pin = %q; want auto with cleared pin", got.ResumeState, got.ResumePin)
+	}
+
+	if err := reopened.SetConversationID(ctx, "missing", convoA, "user"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("missing session error = %v", err)
+	}
+}
+
+func TestFreshOnceIsOneShotAndRevertsToAutoNotPinned(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "00000000-0000-4000-8000-000000000021"
+	const pin = "33333333-3333-4333-8333-333333333333"
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "fresh-once", CWD: "/work/fresh", Agent: "claude", CapturedPath: "/bin",
+		ResumePin: pin, ResumeState: "pinned",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SetResumeStateFreshOnce(ctx, id, "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeState != "fresh-once" {
+		t.Fatalf("resume_state = %q; want fresh-once", got.ResumeState)
+	}
+	// Arming fresh-once must not silently discard the pin: it can be reused
+	// once the one-shot fresh launch has consumed the fresh-once state.
+	if got.ResumePin != pin {
+		t.Fatalf("resume_pin = %q; want unchanged %q", got.ResumePin, pin)
+	}
+
+	// Simulate the fresh launch having happened, then consume the one-shot.
+	if err := store.ConsumeFreshOnce(ctx, id, "service"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeState != "auto" {
+		t.Fatalf("resume_state after consume = %q; want auto (never left as fresh-once, never reverted to pinned)", got.ResumeState)
+	}
+
+	// Consuming again is a benign no-op, not an error, and does not flip a
+	// fresh state that was never armed.
+	if err := store.ConsumeFreshOnce(ctx, id, "service"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResumeState != "auto" {
+		t.Fatalf("resume_state after redundant consume = %q; want auto", got.ResumeState)
+	}
+}
+
 func TestSlugContainsOnlyTmuxSafeASCII(t *testing.T) {
 	if got := Slug("...:::"); got != "" {
 		t.Fatalf("Slug punctuation = %q, want empty", got)

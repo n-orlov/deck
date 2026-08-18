@@ -389,6 +389,149 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	return nil
 }
 
+// SetConversationID records the conversation identity assigned to (or
+// pinned for) a session, alongside an event so observers can see when and by
+// what source the identity was set.
+func (s *Store) SetConversationID(ctx context.Context, sessionID, conversationID, source string) error {
+	if sessionID == "" || conversationID == "" {
+		return errors.New("session id and conversation id are required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "conversation_id", "set_conversation_id", source, conversationID,
+		`UPDATE sessions SET conversation_id = ? WHERE id = ?`, conversationID)
+}
+
+// SetPermissionProfile persists a new permission profile for an existing
+// session. It never touches a live pane; callers must state separately that
+// the change applies on the next launch/restart.
+func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, source string) error {
+	if sessionID == "" || profile == "" {
+		return errors.New("session id and permission profile are required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "permission_profile", "set_permission_profile", source, profile,
+		`UPDATE sessions SET permission_profile = ? WHERE id = ?`, profile)
+}
+
+// SetResumePin pins a session to resume a specific conversation id going
+// forward (resume_state=pinned), sticky across restarts until changed again.
+func (s *Store) SetResumePin(ctx context.Context, sessionID, conversationID, source string) error {
+	if sessionID == "" || conversationID == "" {
+		return errors.New("session id and conversation id are required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "resume_pin", "set_resume_pin", source, conversationID,
+		`UPDATE sessions SET resume_pin = ?, resume_state = 'pinned' WHERE id = ?`, conversationID)
+}
+
+// SetResumeStateAuto clears any pin and returns the session to the default
+// auto resume behavior (resume the session's own last-known conversation).
+func (s *Store) SetResumeStateAuto(ctx context.Context, sessionID, source string) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "resume_state", "set_resume_state", source, "auto",
+		`UPDATE sessions SET resume_pin = NULL, resume_state = 'auto' WHERE id = ?`)
+}
+
+// SetResumeStateFreshOnce arms a one-shot "start fresh" launch: the very next
+// resume/launch is expected to start a brand-new conversation rather than
+// resuming the pinned or last-known one. Callers must pair this with
+// ConsumeFreshOnce once the fresh launch has actually happened, which reverts
+// resume_state to auto (never back to pinned, and never left as fresh-once).
+func (s *Store) SetResumeStateFreshOnce(ctx context.Context, sessionID, source string) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "resume_state", "set_resume_state", source, "fresh-once",
+		`UPDATE sessions SET resume_state = 'fresh-once' WHERE id = ?`)
+}
+
+// ConsumeFreshOnce reverts resume_state from fresh-once back to auto after
+// the one-shot fresh launch has happened, so a subsequent resume goes back to
+// the normal auto behavior rather than starting fresh again or staying
+// pinned. It is a no-op (but not an error) if the session was not in
+// fresh-once state, since a caller that raced another mutator should not
+// clobber a newer pin.
+func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin consume fresh-once: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET resume_state = 'auto'
+		WHERE id = ? AND resume_state = 'fresh-once'`, sessionID)
+	if err != nil {
+		return fmt.Errorf("consume fresh-once: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check consume fresh-once: %w", err)
+	}
+	if affected == 0 {
+		// Either the session does not exist, or it was not fresh-once; both
+		// are treated as a benign no-op rather than an error so a caller
+		// consuming its own prior fresh-once request cannot be defeated by
+		// a concurrent, unrelated mutation.
+		return tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, time.Now().UnixMilli(), "set_resume_state", source, "auto"); err != nil {
+		return fmt.Errorf("record consume fresh-once event: %w", err)
+	}
+	return tx.Commit()
+}
+
+// mutateSessionWithEvent runs a single targeted UPDATE against exactly one
+// session row and records a matching event in the same transaction, so
+// observers never see a changed row without its corresponding event. eventKind
+// and payload describe the event; query/args describe the row mutation.
+func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName, eventKind, source, payload, query string, args ...any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin set %s: %w", fieldName, err)
+	}
+	defer tx.Rollback()
+	execArgs := append(append([]any{}, args...), sessionID)
+	result, err := tx.ExecContext(ctx, query, execArgs...)
+	if err != nil {
+		return fmt.Errorf("set %s: %w", fieldName, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check set %s: %w", fieldName, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, time.Now().UnixMilli(), eventKind, source, payload); err != nil {
+		return fmt.Errorf("record set %s event: %w", fieldName, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit set %s: %w", fieldName, err)
+	}
+	return nil
+}
+
 // ListSessions returns all durable rows, including stopped rows. The stable
 // order avoids hiding resumable sessions and keeps independently connected
 // clients' views deterministic.
