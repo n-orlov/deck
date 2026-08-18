@@ -260,3 +260,85 @@ stays there for the rest of the run — deck deliberately never claims
 own state (that lands in Phase 2; see `docs/reports/phase1-findings.md`).
 This is expected, not a defect: the pane itself is fully live and usable via
 `enter`/attach even while the row still reads `starting · awaiting signal`.
+
+## Final verification (task 040)
+
+Run from the repository root at `HEAD c9469dd` on branch `main`, using the
+sibling toolchain (`ci/run.sh`, per `ci/SPIKE.md`):
+
+```
+$ ci/run.sh go build ./...
+(no output, exit 0)
+
+$ ci/run.sh go vet ./...
+(no output, exit 0)
+
+$ ci/run.sh go test -count=1 ./...
+ok  	github.com/n-orlov/deck/cmd/deck	4.656s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.008s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.003s
+ok  	github.com/n-orlov/deck/features	33.270s
+ok  	github.com/n-orlov/deck/internal/agent	0.003s
+ok  	github.com/n-orlov/deck/internal/audit	0.021s
+ok  	github.com/n-orlov/deck/internal/config	0.010s
+?   	github.com/n-orlov/deck/internal/hookrecv	[no test files]
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	1.887s
+ok  	github.com/n-orlov/deck/internal/store	0.597s
+ok  	github.com/n-orlov/deck/internal/tmux	0.201s
+ok  	github.com/n-orlov/deck/internal/tui	0.021s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+```
+
+All packages pass, exit 0.
+
+**No scenario disabled to make the suite pass.**
+
+```
+$ grep -rn '@nightly\|@skip\|t.Skip\|godog.ErrPending' features/ cmd/ internal/
+features/godog_test.go:15:const defaultTags = "~@real-agents && ~@nightly"
+```
+
+The only hit is the default godog tag-filter constant itself (excludes
+`@real-agents`, the deliberate real-`claude`-on-`PATH` smoke test documented
+above and in task 029, and `@nightly`, a tag not used by any scenario in this
+phase — `grep -rn '@nightly' features/*.feature` matches nothing). No
+`@skip` tag, `t.Skip` call, or `godog.ErrPending` exists anywhere in the
+tree.
+
+**Read-only baseline untouched.**
+
+```
+$ git diff 758b5dc --stat -- SPEC.md ci/Dockerfile ci/SPIKE.md
+(empty)
+
+$ git diff 2dacc4f --stat -- prds/
+(empty)
+```
+
+`SPEC.md`, `ci/Dockerfile` and `ci/SPIKE.md` remain byte-identical to the
+phase's first commit; `prds/` has no changes beyond the one sanctioned
+operator edit (`2dacc4f`, the docker-sweep guardrail).
+
+**Tree state.**
+
+```
+$ git status --porcelain
+(empty)
+
+$ git rev-parse HEAD origin/main
+c9469dd4a514425410a2404aae20ace5bdd0efce
+c9469dd4a514425410a2404aae20ace5bdd0efce
+
+$ git branch --show-current
+main
+```
+
+The working tree is clean, `HEAD` equals `origin/main`, and the checkout is
+on branch `main` (not detached). No force-push, `commit --amend` or rebase
+was used for any Phase 1 task, including this one — every task's commit is
+a plain fast-forward `git commit` followed by `git push`.
+
+Phase 1 is complete: all 40 tasks in the plan are done, verified against
+their stated success criteria, and pushed to `origin/main`.
