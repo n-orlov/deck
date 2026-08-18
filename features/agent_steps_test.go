@@ -454,19 +454,44 @@ func mostRecentLaunchArgvForSession(h *ScenarioHarness, name string) ([]string, 
 	return records[len(records)-1], nil
 }
 
+// launchArgvForSessionContains is the one entry point that must poll rather
+// than read once: it is always the FIRST audit-log assertion right after a
+// screen-based wait for "starting" following a `r` keypress. "screen
+// contains starting" only proves the deck client's OWN terminal grid shows
+// that string; it gives no cross-process ordering guarantee with the audit
+// JSONL file being written by that same deck subprocess's Resume() call.
+// Program order inside deck does guarantee the audit.Launch write completes
+// before the store row (and therefore the rendered status) ever reaches
+// "starting", but nothing here synchronizes THIS test process's read of the
+// file with that write actually having been scheduled and become visible;
+// the two are only loosely ordered by wall-clock proximity. Polling for up
+// to 2s (the same pattern databaseSessionStatus above already uses for the
+// analogous DB-vs-screen gap) closes that gap without weakening what is
+// asserted: this still fails hard if --resume never appears. Every OTHER
+// launch-argv assertion in this file runs strictly after this one has
+// already observed the record, so they stay single-shot reads.
 func launchArgvForSessionContains(ctx context.Context, name, want string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
 	}
-	argv, err := mostRecentLaunchArgvForSession(h, name)
-	if err != nil {
-		return err
+	deadline := time.Now().Add(2 * time.Second)
+	var lastArgv []string
+	var lastErr error
+	for {
+		argv, argvErr := mostRecentLaunchArgvForSession(h, name)
+		if argvErr == nil && argvContains(argv, want) {
+			return nil
+		}
+		lastArgv, lastErr = argv, argvErr
+		if time.Now().After(deadline) {
+			if lastErr != nil {
+				return lastErr
+			}
+			return fmt.Errorf("most recent launch argv for session %q = %q, does not contain %q", name, lastArgv, want)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if !argvContains(argv, want) {
-		return fmt.Errorf("most recent launch argv for session %q = %q, does not contain %q", name, argv, want)
-	}
-	return nil
 }
 
 // launchArgvForSessionContainsOwnConversationID asserts the named session's

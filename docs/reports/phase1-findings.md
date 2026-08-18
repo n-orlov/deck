@@ -155,6 +155,43 @@ therefore not, and should not be, listed in the help overlay.
 - **systemd units.** No target phase stated in the PRDs read for this phase;
   flagged here rather than silently dropped.
 
+## Task 033: same_directory resume flake root cause
+
+The intermittent failure of `features/same_directory.feature`'s "two claude
+sessions in one cwd keep separate conversation ids" scenario (~15-20% of runs;
+logged in `docs/reports/phase1-ten-run-stability.log` runs 5 and 9, see the
+task 032 stability-loop defect above) was reproduced directly at that rate by
+looping `go test -run 'TestFeatures/two_claude_sessions_in_one_cwd'` inside
+the sibling toolchain, and root-caused by preserving the failing scenario's
+`DECK_HOME` (a temporary debug hook, reverted afterward) and inspecting its
+`log/deck.jsonl`: in every captured failure, the resume's own audit `launch`
+record (containing `--resume <conversation id>`) was genuinely present and
+correctly ordered in the file. Deck's own Resume() correctly writes
+`audit.Launch` strictly before the store row (and therefore the rendered
+`starting` status) ever changes, so the *product* code has no ordering bug.
+The race is entirely in the test harness: the feature file's `Then deck
+client "A" screen contains "starting"` step only proves that client's own
+rendered terminal grid contains that string; it gives no cross-process
+ordering guarantee with the separate `go test` process's later, single-shot
+read of the audit JSONL file written by the deck subprocess. The two
+processes are only loosely ordered by wall-clock proximity around the
+keypress, unlike the store-row assertions in this same file, which already
+poll the database for up to a bounded deadline instead of reading once.
+
+Fix (`features/agent_steps_test.go`, `launchArgvForSessionContains`): poll
+the audit file for up to 2s (matching the existing `databaseSessionStatus`
+pattern) instead of reading it exactly once, immediately after the screen
+assertion returns. This is the one entry point in the file that needs it,
+because every other launch-argv assertion (own/other's conversation id,
+`does not contain`) runs strictly after it in both `same_directory.feature`
+and `durable_identity.feature`, so by the time they run the record is already
+confirmed present. No assertion's substance changed — it still fails hard,
+with the same message, if `--resume` never appears within the deadline.
+Verified with 160 consecutive runs of the isolated scenario (0 failures) after
+the fix, versus a reproduced failure within 40 runs on the pre-fix code in the
+same environment; also verified with the full `ci/run.sh go test -count=1
+./...` suite green.
+
 ## No further Phase 1 contradiction found
 
 Every other behaviour implemented this phase (adapter registry and
