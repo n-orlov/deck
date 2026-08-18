@@ -14,6 +14,7 @@ alone is not an identification. Recover any past version with `git cat-file -p <
 | — | Toolchain spike | `prds/spike-sibling-toolchain.md` | `7ae5e05` | `deck-spike-sibling` | 2026-08-17 14:41 | 2026-08-17 14:54 | `failed / unverified` — iteration budget (10) exhausted at the audit task | **pass**, operator-verified: 4/4 tests re-run independently, ownership clean, both mount directions proven |
 | 0 | Harness & walking skeleton | `prds/phase0-harness-and-skeleton.md` | `40af336` | `deck-phase0` | 2026-08-17 18:09 | 2026-08-17 21:21 | `failed / unverified` — review rejected approach 3 (last of 3) on R22 report defects | **substantially pass, with two defects carried to Phase 0b**: all 23 requirements implemented, suite green twice uncached (operator-run), but the suite is flaky (~1 run in 3) and the evidence report is deficient |
 | 0b | Harness determinism & evidence | `prds/phase0b-harness-hardening.md` | `9b23161` | `deck-phase0b` | 2026-08-17 21:41 | 2026-08-17 22:33 | `failed / unverified` — review rejected all 3 approaches on stale wording in *derived* report text | **pass**, operator-verified: flake eliminated (10/10 consecutive full-suite runs), hold knob gone, evidence persisted in-repo, count convention correct. Three stale sentences fixed by the operator by hand |
+| 1 | Durable identity & agents | `prds/phase1-durable-identity-and-agents.md` | `a1951f8` (in-run snapshot `322a7e0`, see notes) | `deck-phase1` | 2026-08-18 14:50 | 2026-08-18 16:50 | `succeeded / verified` on approach 6 of 12, iteration 121/250 — review rejected approach 5 on a real unmet R1 | **pass**, operator-verified: 10/10 consecutive full-suite runs; R29 walkthrough executed against a **real** `claude` and the conversation provably survived the reboot stand-in. One blocking regression (create-modal default agent) was found by the operator *after* the review passed it |
 
 ### Notes per run
 
@@ -174,6 +175,93 @@ sentences while the product sits finished. Future PRDs should either separate "t
 correct" from "the report is internally consistent" into distinct review gates, or grant more
 approaches for documentation-only defects. A rejection whose findings are all typographical
 should not read the same as one that finds dead code.
+
+**Phase 1** — Opus 5 on planning and review, Sonnet 5 on worker and verify
+(`--model-strategy balanced`), `--vigilant`, `--allow-docker --network host`, 250 iterations,
+40 planned tasks. Under 30-minute operator oversight. This phase committed and pushed its own
+work, so the commit log is the durable record: 40 task commits plus 11 more for the R1 rework.
+
+*Two PRD blobs.* The row cites the committed `prds/` blob, but agents never read that file:
+`build_prompt` passes only the path of `run.prd_file` (`/run/ralphd/prd.md`), a **snapshot
+seeded once** from the config dir `if not run.prd_file.exists()` and **never re-seeded on
+resume**. The operator amended the workspace `prds/` copy first and it had no effect
+whatsoever; the fix had to go into the run snapshot, which is why the two blobs differ.
+**Lesson: mid-run PRD amendments must edit `~/.ralphd/runs/<id>/prd.md`.** Amending the repo
+copy changes nothing until the next fresh run.
+
+*Three self-kills (iterations 17, 75, 95).* The job SIGKILLed itself three times —
+`signal=9`, `exitCode=137`, presenting externally as `API unreachable` while `status.json`
+still said `running`, so it looked like a stall. Each time the last tool call was
+`docker ps -a --filter label=ralphd.run=deck-phase1 -q | xargs -r docker rm -f`. The job's own
+container carries that label. The root cause is **ralphd's own prompt**:
+`_docker_siblings_note()` (`engine/loop.py:219`) instructs agents to label every sibling
+`ralphd.run=$RALPHD_RUN_ID` "so it gets reaped with this job" and to "delete any you did not
+mean to keep" — an instruction whose literal execution is suicide. Steering could not have
+fixed it either: all three happened in the **verify** phase, and
+`STEERING_ACTIONABLE_PHASES = {"planning", "worker"}`, so steering in any other phase is
+injected as read-only "not for this phase" context. Fixed by an explicit counter-instruction in
+the run's PRD snapshot naming the three fatal commands; it held for the remaining 100+
+iterations. Filed against ralphd as issue #11 with a comment on #7.
+
+*A DNS outage consumed two whole approaches (3 and 4, iterations 86–92).* The gateway went
+unresolvable (`getaddrinfo EAI_AGAIN`) for three minutes and the stagnation breaker fired twice
+90 seconds apart. Precise cause: `classify_fault()` (`engine/faults.py:88-101`) computes
+`is_failure` from exit code and timeouts **before** consulting the error text, and these
+iterations exited **0** with an infra error and `totalTokens: 0`. So `classify_fault` returns
+`None` — no `infra_retry`, no refunded iteration — while `_check_instant_failure` requires
+`exit_code not in (0, None)` and therefore *reset* the streak instead of tripping. **An infra
+outage that exits 0 is billed to the model as a quality failure.**
+
+*`max_approaches` cannot be raised in flight either* — same shape as Phase 0's budget lesson.
+`self.cfg.max_approaches` is read once at engine start; editing `job.yaml` mid-run leaves
+`status.json` reporting the old value until a `resume` restarts the engine. Raised 4 → 8 → 12
+here, of which only the restart-backed raises ever took effect.
+
+*Review quality.* The review earned the phase. It rejected approach 5 on a **real unmet R1**:
+the registry existed and `internal/service` consumed it, but the TUI never received it —
+`internal/tui/tui.go` carried a hardcoded `createAgentOptions = {"shell","claude","pi"}` and a
+`createAgentCapabilities` switch constructing adapters by name, so a Phase 4 Codex adapter
+would have been invisible and unusable in the TUI. It also **falsified the vacuity risk**
+rather than asserting it away: it rekeyed `cmd/fake-claude`'s transcripts to a shared
+`shared.jsonl` and confirmed the suite failed at exactly `durable_identity.feature:41` and
+`same_directory.feature:22`, proving T1's "beta replays its own last message" is load-bearing.
+
+*The defect the review missed, and the misdiagnosis that nearly buried it.* Approach 6's R1 fix
+threaded the registry into the TUI correctly, but changed the create modal's default from
+`createAgentOptions[0]` (`"shell"`, deliberately) to `registry.Kinds()[0]` — and `Kinds()` sorts
+alphabetically, so the default silently became **claude**. Pressing `n` and Enter then tried to
+launch a binary most machines do not have, where shell had been the safe default. Two `cmd/deck`
+PTY tests caught it, and the job labelled them "a pre-existing PTY-timing flake in this sandbox,
+confirmed via `git stash`" — reasoning that could not hold, because tasks 001-003 were already
+**committed**, so stashing left the regression in place in both runs. "Identical before and
+after" was true and meant nothing. The operator reproduced both failures, traced them to
+`tui.go:351`, and steered. **Lesson: "confirmed by `git stash`" is only evidence when the
+suspected change is the uncommitted one.** Left alone, the next task would have re-proven ten
+green runs on a tree with two failing tests. The fix (`defaultCreateAgent`, shell-preferred with
+a `Kinds()[0]` fallback) is now pinned by a test registering an adapter that sorts *before*
+shell — the previous guard would have passed either way.
+
+*Operator verification, 2026-08-18 18:00-18:10.* Ten consecutive full-suite runs: 10/10, suite
+exit 0. No `--continue`, `resume --last` or "most recent" form is constructed anywhere; every
+occurrence in the tree is a negative assertion or a comment. Every repository-relative evidence
+path cited by `docs/reports/phase1.md` and `phase1-findings.md` exists.
+
+The R29 walkthrough was then run **for real**, not partially, because the host has a genuine
+`claude` on PATH — and it works end to end. `n` opens on `shell` (fix confirmed black-box in the
+shipped binary), `right` once reaches `claude` exactly as documented, the profile field offers
+only `safe, plan, edits` with `yolo` withheld *and the reason stated*. Creating gave
+`argv: ["claude","--session-id","20c4ecb5-…","--permission-mode","manual"]` with
+`env_keys: ["PATH"]` — names only, no values — a persisted UUID `conversation_id`, and a row
+reading `starting - awaiting signal`, never `running`. A distinctive phrase was exchanged with
+the real CLI; `tmux kill-server` as the reboot stand-in left the row `stopped - resumable` with
+**no tmux server auto-started**; `r` produced
+`["claude","--resume","20c4ecb5-…","--permission-mode","manual"]` — same id, no `--continue` —
+and the attached pane came back carrying the original exchange, with `manual mode on` proving the
+`safe` profile survived. That is the whole promise of the phase, observed rather than inferred.
+
+One documentation nit, deliberately not blocked on: the walkthrough's inspection command
+`grep smoke "$DECK_HOME"/log/deck.jsonl` returns nothing, because the audit log keys records by
+session **id**, not name. The record it points at is correct and present.
 
 ## Other milestones
 
