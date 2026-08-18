@@ -155,6 +155,28 @@ therefore not, and should not be, listed in the help overlay.
 - **systemd units.** No target phase stated in the PRDs read for this phase;
   flagged here rather than silently dropped.
 
+## Task 032: ten-run stability loop's mislabelled-PASS defect
+
+The pre-existing `docs/reports/phase1-ten-run-stability.log` (produced before
+`ci/stability.sh` existed, by an earlier ad-hoc loop) labelled runs 5 and 9
+`PASS (exit 0)` even though both runs' captured output contained a real
+`FAIL github.com/n-orlov/deck/features` line from `go test`. Root cause: that
+earlier loop piped `go test ... | tee run-N.log` (or equivalent) and then
+checked `$?`/the loop's own exit status, which under a plain shell pipeline is
+the exit status of the *last* command in the pipe (`tee`, which always
+succeeds), not of `go test` itself — a classic pipefail-less pipeline bug, not
+a flake in the product or in godog. Because the label came from the wrong
+process's exit status, the log was not truthful evidence of ten green runs at
+all, despite reading that way at a glance.
+- **Consequence:** Any claim of "N consecutive green runs" that is not backed
+  by a script that captures the *actual test command's* own exit status
+  (never a pipeline's tail) is not trustworthy evidence; per this finding,
+  PRD/report language must cite `ci/stability.sh`'s regenerated log (task 034)
+  and never re-cite the original mislabelled file. `ci/stability.sh` (task
+  032) fixes this by redirecting `go test`'s output to a file directly (no
+  pipe) and capturing `$?` immediately, only `cat`-ing the file afterward for
+  display — so PASS/FAIL always reflects the real test-command exit status.
+
 ## Task 033: same_directory resume flake root cause
 
 The intermittent failure of `features/same_directory.feature`'s "two claude
