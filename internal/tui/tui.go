@@ -73,6 +73,24 @@ func defaultAgentRegistry() *agent.Registry {
 	return r
 }
 
+// defaultCreateAgent picks which registered kind the create modal opens on.
+// "shell" is the only adapter that currently supports real session creation
+// (see the createAgent != "shell" guard below), so it is preferred whenever
+// present; otherwise the first kind in the registry's stable order is used.
+// This keeps the modal's opening selection independent of where "shell"
+// happens to sort alphabetically among registered kinds.
+func defaultCreateAgent(kinds []string) string {
+	for _, k := range kinds {
+		if k == "shell" {
+			return k
+		}
+	}
+	if len(kinds) > 0 {
+		return kinds[0]
+	}
+	return ""
+}
+
 // registry returns m.agents, falling back to defaultAgentRegistry() when the
 // model was built without one (e.g. via New or any constructor that predates
 // registry support).
@@ -348,7 +366,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
 				m.createName, m.createCWD = "", ""
-				m.createAgent, m.createProfile = m.registry().Kinds()[0], createProfileOptions[0]
+				m.createAgent, m.createProfile = defaultCreateAgent(m.registry().Kinds()), createProfileOptions[0]
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
 				m.createYoloConfirmed = false
 			}

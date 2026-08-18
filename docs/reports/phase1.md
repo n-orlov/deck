@@ -342,3 +342,75 @@ a plain fast-forward `git commit` followed by `git push`.
 
 Phase 1 is complete: all 40 tasks in the plan are done, verified against
 their stated success criteria, and pushed to `origin/main`.
+
+## Registry/TUI coupling fix re-verification (task 007, R1 rework)
+
+Re-run after tasks 001-006 (agent-registry-derived Agent field, capabilities
+and profile applicability; login_shell/captured_path help wording), which
+closed the Phase 1 review finding that the TUI hardcoded adapter kinds and
+capability logic instead of deriving them from `internal/agent`'s registry.
+
+**Regression found and fixed during this re-run.** The first full-suite run
+after tasks 002/003 landed hung/failed
+`TestDeckBinaryShellCreateAndSlugCollisionThroughPTY` and
+`TestDeckBinaryRefreshesAllConcurrentClients` in `cmd/deck`. Root cause: the
+create modal's default agent on pressing `n` had been
+`m.registry().Kinds()[0]`, and `agent.Registry.Kinds()` returns kinds sorted
+alphabetically (`claude`, `pi`, `shell`) rather than the old hardcoded
+`{"shell", "claude", "pi"}` order. The modal now opens on `claude`, but only
+the `shell` adapter supports real session creation in this phase (see the
+`createAgent != "shell"` guard in `internal/tui/tui.go`), so the PTY tests -
+which drive `n` and expect the shell create flow to start unattended - timed
+out waiting for `"Create shell session"`. This was **not** a sandbox/PTY
+infra flake; earlier attempts had misdiagnosed it as one. Fixed by adding
+`defaultCreateAgent(kinds []string) string` in `internal/tui/tui.go`, which
+prefers `"shell"` when present in the registry's kind list and otherwise
+falls back to the first kind; the `n` key handler now calls it instead of
+indexing `Kinds()[0]` directly. This keeps the Agent field's cycling order
+registry-derived (per task 002) while keeping the modal's opening selection
+independent of where `"shell"` happens to sort alphabetically.
+
+```
+$ ci/run.sh go build ./...
+(no output, exit 0)
+
+$ ci/run.sh go vet ./...
+(no output, exit 0)
+
+$ time ci/run.sh go test -count=1 -timeout=480s ./...
+ok  	github.com/n-orlov/deck/cmd/deck	4.240s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.004s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.002s
+ok  	github.com/n-orlov/deck/features	31.958s
+ok  	github.com/n-orlov/deck/internal/agent	0.002s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.006s
+?   	github.com/n-orlov/deck/internal/hookrecv	[no test files]
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	1.632s
+ok  	github.com/n-orlov/deck/internal/store	0.502s
+ok  	github.com/n-orlov/deck/internal/tmux	0.123s
+ok  	github.com/n-orlov/deck/internal/tui	0.019s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+
+real	0m32.846s
+```
+
+All packages pass, exit 0. `cmd/deck`'s three PTY-driven tests
+(`TestDeckBinaryShellCreateAndSlugCollisionThroughPTY`,
+`TestDeckBinaryRefreshesAllConcurrentClients`,
+`TestDeckBinaryEmptyHelpAndQuitThroughPTY`) are included and green in this
+run — they were the ones affected by the regression above.
+
+**No scenario deleted or newly excluded.**
+
+```
+$ git diff 758b5dc..HEAD -- features/ | grep -c '^-.*Scenario:'
+0
+```
+
+No `Scenario:` line was removed from `features/` across the whole registry
+rework (tasks 001-007 inclusive), and no new `@skip`/`@nightly`-style tag was
+introduced to dodge a scenario; the default godog filter
+(`~@real-agents && ~@nightly`) is unchanged from earlier phase attempts.
