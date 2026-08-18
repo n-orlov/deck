@@ -17,6 +17,7 @@ Feature: Distinct conversation ids in one working directory
     When deck client "A" presses r on session "one"
     Then deck client "A" screen contains "starting"
     And the audit log's most recent launch argv for session "one" contains "--resume"
+    And the audit log's most recent launch argv for session "one" contains session "one"'s conversation id
     And the audit log's most recent launch argv for session "one" does not contain session "two"'s conversation id
     And session "one" replays its own last message, not session "two"'s
     When deck client "A" exits cleanly

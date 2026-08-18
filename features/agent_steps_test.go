@@ -41,6 +41,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains "([^"]+)"$`, launchArgvForSessionContains)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain "([^"]+)"$`, launchArgvForSessionDoesNotContain)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain session "([^"]+)"'s conversation id$`, launchArgvForSessionDoesNotContainOthersConversationID)
+	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains session "([^"]+)"'s conversation id$`, launchArgvForSessionContainsOwnConversationID)
 	sc.Step(`^the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSession)
 	sc.Step(`^exactly ([0-9]+) private tmux session(?:s)? match(?:es)? slug "([^"]+)"$`, exactlyNPrivateSessionsMatchSlug)
 	sc.Step(`^no private tmux session exists$`, noPrivateTMuxSessionExists)
@@ -452,6 +453,37 @@ func launchArgvForSessionContains(ctx context.Context, name, want string) error 
 	}
 	if !argvContains(argv, want) {
 		return fmt.Errorf("most recent launch argv for session %q = %q, does not contain %q", name, argv, want)
+	}
+	return nil
+}
+
+// launchArgvForSessionContainsOwnConversationID asserts the named session's
+// most recent launch argv contains that session's own persisted conversation
+// id, resolved from the state database rather than hard-coded, so a resume
+// argv's `--resume <id>` is proven to carry the session's own id and not
+// merely the literal `--resume` flag (PRD requirement 22 / operator
+// steering 003).
+func launchArgvForSessionContainsOwnConversationID(ctx context.Context, name, self string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if name != self {
+		return fmt.Errorf("expected session name %q to match itself %q", name, self)
+	}
+	selfID, err := sessionConversationID(h, self)
+	if err != nil {
+		return err
+	}
+	if selfID == "" {
+		return fmt.Errorf("session %q has no conversation id", self)
+	}
+	argv, err := mostRecentLaunchArgvForSession(h, name)
+	if err != nil {
+		return err
+	}
+	if !argvContains(argv, selfID) {
+		return fmt.Errorf("most recent launch argv for session %q = %q, does not contain session %q's own conversation id %q", name, argv, self, selfID)
 	}
 	return nil
 }

@@ -36,6 +36,7 @@ Feature: Durable conversation identity survives a tmux-server kill
     When deck client "B" presses r on session "beta"
     Then deck client "B" screen contains "starting"
     And the audit log's most recent launch argv for session "beta" contains "--resume"
+    And the audit log's most recent launch argv for session "beta" contains session "beta"'s conversation id
     And the audit log's most recent launch argv for session "beta" does not contain "--continue"
     And session "beta" replays its own last message, not session "alpha"'s
     When deck client "B" exits cleanly
