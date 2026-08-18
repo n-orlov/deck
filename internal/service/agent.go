@@ -28,8 +28,11 @@ type AgentCreateInput struct {
 	// Env is the session-layer environment, the highest-priority layer in
 	// the SPEC §6.3 PATH resolution order.
 	Env map[string]string
-	// PreLaunch and LoginShell are persisted for a later launch step
-	// (task 010); CreateAgent stores them but does not run them.
+	// PreLaunch, when set, runs in the pane before the agent argv (SPEC
+	// §6.4); a failing pre_launch prevents the agent from ever starting.
+	// LoginShell runs the whole pane command via `$SHELL -lc` instead of
+	// execing the adapter argv directly, and is mutually exclusive with
+	// relying on captured_path for PATH resolution.
 	PreLaunch  string
 	LoginShell bool
 }
@@ -93,12 +96,23 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("build launch argv for agent session %q: %w", session.Name, err))
 	}
+	paneCommand, err := buildPaneCommand(input.PreLaunch, input.LoginShell, argv)
+	if err != nil {
+		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err))
+	}
 
-	launchEnv := s.resolveLaunchEnv(capturedPath, input.Env)
-	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: argv, Env: launchEnv}); err != nil {
+	// login_shell=1 is mutually exclusive with relying on captured_path: the
+	// login shell resolves its own PATH via its own profile/rc scripts, so
+	// deck must not also inject a PATH override here.
+	envCapturedPath := capturedPath
+	if input.LoginShell {
+		envCapturedPath = ""
+	}
+	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
+	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("launch agent session %q: %w", session.Name, err))
 	}
-	if err := s.Audit.Launch(session.ID, argv, launchEnv); err != nil {
+	if err := s.Audit.Launch(session.ID, paneCommand, launchEnv); err != nil {
 		// As with CreateShell, an unaudited launch is not a successful deck
 		// launch: tear the pane back down and leave an observable error row.
 		_ = s.TMux.Kill(ctx, session.Slug)
@@ -117,6 +131,45 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	session.ConversationID = conversationID
 	session.PermissionProfile = profile
 	return session, nil
+}
+
+// buildPaneCommand wraps the adapter's launch/resume argv in a shell so
+// pre_launch (SPEC §6.4) runs first in the same pane, and so login_shell=1
+// runs the whole pane command via `$SHELL -lc` rather than execing the
+// adapter argv directly. When neither is requested the adapter argv passes
+// through unchanged, matching CreateAgent's pre-task-010 behavior exactly.
+//
+// pre_launch and the adapter argv are joined with a shell `&&`, so a
+// failing pre_launch short-circuits: the agent is never exec'd, the pane's
+// shell exits with pre_launch's own non-zero status, and (because deck's
+// tmux server runs with `remain-on-exit failed`) the pane is retained with
+// pre_launch's own output visible rather than silently starting the agent.
+// The launch audit record still captures the full wrapped command, so the
+// failure is recorded even though CreateAgent does not itself wait for
+// pre_launch to finish.
+func buildPaneCommand(preLaunch string, loginShell bool, argv []string) ([]string, error) {
+	if len(argv) == 0 || argv[0] == "" {
+		return nil, errors.New("agent launch argv is empty")
+	}
+	if preLaunch == "" && !loginShell {
+		return argv, nil
+	}
+	shell := "/bin/sh"
+	flag := "-c"
+	if loginShell {
+		if s := os.Getenv("SHELL"); s != "" {
+			shell = s
+		}
+		flag = "-lc"
+	}
+	script := "exec \"$@\""
+	if preLaunch != "" {
+		script = preLaunch + " && " + script
+	}
+	// `$0` after the script is a dummy positional so `"$@"` inside the
+	// script starts at the real argv, not at the script text itself.
+	command := append([]string{shell, flag, script, "deck-agent"}, argv...)
+	return command, nil
 }
 
 // resolveLaunchEnv merges the SPEC §6.3 PATH-resolution layers that sit
