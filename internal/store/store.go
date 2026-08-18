@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -104,6 +105,31 @@ type CreateSessionInput struct {
 	StatusSource string
 	StatusAt     int64
 	CreatedAt    int64
+
+	// LaunchArgs are extra argv tokens appended after the adapter's own
+	// flags. Persisted as a JSON array; a nil slice round-trips as an empty
+	// array, never null, so readers never need to guard against null.
+	LaunchArgs []string
+	// Env is the session-layer environment, the last (highest-priority) layer
+	// in the SPEC §6.3 PATH resolution order. Persisted as a JSON object.
+	Env map[string]string
+	// PreLaunch is an optional shell command run in the pane before the
+	// agent argv, e.g. to source secrets (SPEC §6.4).
+	PreLaunch string
+	// LoginShell runs PreLaunch (and the agent) via "$SHELL -lc" rather than
+	// relying on CapturedPath, when true.
+	LoginShell bool
+	// PermissionProfile selects the adapter's permission mapping (e.g.
+	// safe|plan|edits|yolo); shell sessions use the empty string.
+	PermissionProfile string
+	// ConversationID is the deck-assigned (or caller-pinned) conversation
+	// identity handed to adapters that AssignsConversationID.
+	ConversationID string
+	// ResumePin holds a specific conversation id to prefer on resume when
+	// ResumeState is "pinned".
+	ResumePin string
+	// ResumeState is one of pinned|auto|fresh-once.
+	ResumeState string
 }
 
 // Session is the identity information needed by callers immediately after a
@@ -119,6 +145,15 @@ type Session struct {
 	StatusSource string
 	StatusAt     int64
 	CreatedAt    int64
+
+	LaunchArgs        []string
+	Env               map[string]string
+	PreLaunch         string
+	LoginShell        bool
+	PermissionProfile string
+	ConversationID    string
+	ResumePin         string
+	ResumeState       string
 }
 
 // StatusUpdateInput describes one durable state transition. EventKind is kept
@@ -181,16 +216,33 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	if input.CreatedAt == 0 {
 		input.CreatedAt = now
 	}
+	if input.ResumeState == "" {
+		input.ResumeState = "auto"
+	}
+	if input.PermissionProfile == "" {
+		input.PermissionProfile = "safe"
+	}
+	launchArgsJSON, err := marshalStrings(input.LaunchArgs)
+	if err != nil {
+		return Session{}, fmt.Errorf("encode launch args: %w", err)
+	}
+	envJSON, err := marshalEnv(input.Env)
+	if err != nil {
+		return Session{}, fmt.Errorf("encode env: %w", err)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Session{}, fmt.Errorf("begin create session: %w", err)
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
-		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
+		 launch_args, env, pre_launch, login_shell, permission_profile, conversation_id, resume_pin, resume_state)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
-		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt)
+		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
+		launchArgsJSON, envJSON, nullableString(input.PreLaunch), input.LoginShell,
+		input.PermissionProfile, nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return Session{}, fmt.Errorf("session name %q already exists", input.Name)
@@ -203,7 +255,94 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	if err := tx.Commit(); err != nil {
 		return Session{}, fmt.Errorf("commit create session: %w", err)
 	}
-	return Session{ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent, Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt}, nil
+	return Session{
+		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
+		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
+		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
+		PermissionProfile: input.PermissionProfile, ConversationID: input.ConversationID,
+		ResumePin: input.ResumePin, ResumeState: input.ResumeState,
+	}, nil
+}
+
+// marshalStrings encodes a launch-args slice as a JSON array, defaulting a
+// nil slice to an empty array so no reader ever sees a JSON null.
+func marshalStrings(values []string) (string, error) {
+	if values == nil {
+		values = []string{}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+// marshalEnv encodes the session env layer as a JSON object, defaulting a nil
+// map to an empty object so no reader ever sees a JSON null.
+func marshalEnv(values map[string]string) (string, error) {
+	if values == nil {
+		values = map[string]string{}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+// nullableString turns an empty string into a SQL NULL so the column's
+// nullability matches the schema's intent for "unset".
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+// scanSession reads the extended Phase 1 create fields shared by ListSessions
+// and GetSession.
+func scanSession(row interface {
+	Scan(dest ...any) error
+}) (Session, error) {
+	var session Session
+	var launchArgsJSON, envJSON string
+	var preLaunch, conversationID, resumePin sql.NullString
+	var loginShell int
+	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
+		&session.Agent, &session.Status, &session.StatusReason, &session.StatusSource,
+		&session.StatusAt, &session.CreatedAt, &launchArgsJSON, &envJSON, &preLaunch,
+		&loginShell, &session.PermissionProfile, &conversationID, &resumePin, &session.ResumeState); err != nil {
+		return Session{}, err
+	}
+	if err := json.Unmarshal([]byte(launchArgsJSON), &session.LaunchArgs); err != nil {
+		return Session{}, fmt.Errorf("decode launch args: %w", err)
+	}
+	if err := json.Unmarshal([]byte(envJSON), &session.Env); err != nil {
+		return Session{}, fmt.Errorf("decode env: %w", err)
+	}
+	session.PreLaunch = preLaunch.String
+	session.ConversationID = conversationID.String
+	session.ResumePin = resumePin.String
+	session.LoginShell = loginShell != 0
+	return session, nil
+}
+
+const sessionColumns = `id, name, slug, cwd, agent, status,
+		COALESCE(status_reason, ''), status_source, status_at, created_at,
+		launch_args, env, pre_launch, login_shell, permission_profile, conversation_id, resume_pin, resume_state`
+
+// GetSession returns exactly one session by id, including every Phase 1
+// create field.
+func (s *Store) GetSession(ctx context.Context, id string) (Session, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id)
+	session, err := scanSession(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Session{}, fmt.Errorf("session %q not found", id)
+		}
+		return Session{}, fmt.Errorf("get session: %w", err)
+	}
+	return session, nil
 }
 
 // UpdateSessionStatus changes exactly one session and records its transition in
@@ -254,8 +393,7 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 // order avoids hiding resumable sessions and keeps independently connected
 // clients' views deterministic.
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, cwd, agent, status,
-		COALESCE(status_reason, ''), status_source, status_at, created_at
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
 		FROM sessions ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -263,10 +401,8 @@ func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	defer rows.Close()
 	var sessions []Session
 	for rows.Next() {
-		var session Session
-		if err := rows.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
-			&session.Agent, &session.Status, &session.StatusReason, &session.StatusSource,
-			&session.StatusAt, &session.CreatedAt); err != nil {
+		session, err := scanSession(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sessions = append(sessions, session)

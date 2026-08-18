@@ -158,6 +158,119 @@ func TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "state.db")
+	ctx := context.Background()
+	input := CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000010", Name: "Full Agent", CWD: "/work/full",
+		Agent: "claude", CapturedPath: "/usr/bin:/bin", StatusAt: 200, CreatedAt: 200,
+		LaunchArgs:        []string{"--extra", "flag"},
+		Env:               map[string]string{"FOO": "bar", "BAZ": "qux"},
+		PreLaunch:         "source secrets.sh",
+		LoginShell:        true,
+		PermissionProfile: "yolo",
+		ConversationID:    "11111111-1111-4111-8111-111111111111",
+		ResumePin:         "22222222-2222-4222-8222-222222222222",
+		ResumeState:       "pinned",
+	}
+
+	store, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSession(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+
+	assertRoundTrip := func(t *testing.T, session Session) {
+		t.Helper()
+		if got := strings.Join(session.LaunchArgs, ","); got != "--extra,flag" {
+			t.Fatalf("launch args = %q; want --extra,flag", got)
+		}
+		if len(session.Env) != 2 || session.Env["FOO"] != "bar" || session.Env["BAZ"] != "qux" {
+			t.Fatalf("env = %#v; want FOO=bar,BAZ=qux", session.Env)
+		}
+		if session.PreLaunch != input.PreLaunch {
+			t.Fatalf("pre_launch = %q; want %q", session.PreLaunch, input.PreLaunch)
+		}
+		if !session.LoginShell {
+			t.Fatalf("login_shell = false; want true")
+		}
+		if session.PermissionProfile != input.PermissionProfile {
+			t.Fatalf("permission_profile = %q; want %q", session.PermissionProfile, input.PermissionProfile)
+		}
+		if session.ConversationID != input.ConversationID {
+			t.Fatalf("conversation_id = %q; want %q", session.ConversationID, input.ConversationID)
+		}
+		if session.ResumePin != input.ResumePin {
+			t.Fatalf("resume_pin = %q; want %q", session.ResumePin, input.ResumePin)
+		}
+		if session.ResumeState != input.ResumeState {
+			t.Fatalf("resume_state = %q; want %q", session.ResumeState, input.ResumeState)
+		}
+	}
+
+	got, err := reopened.GetSession(ctx, input.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRoundTrip(t, got)
+
+	listed, err := reopened.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("listed sessions = %d; want 1", len(listed))
+	}
+	assertRoundTrip(t, listed[0])
+}
+
+func TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000011", Name: "Bare Shell", CWD: "/work/bare",
+		Agent: "shell", CapturedPath: "/bin",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, "00000000-0000-4000-8000-000000000011")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LaunchArgs == nil || len(got.LaunchArgs) != 0 {
+		t.Fatalf("launch args = %#v; want non-nil empty slice", got.LaunchArgs)
+	}
+	if got.Env == nil || len(got.Env) != 0 {
+		t.Fatalf("env = %#v; want non-nil empty map", got.Env)
+	}
+	if got.PermissionProfile != "safe" {
+		t.Fatalf("permission_profile = %q; want default safe", got.PermissionProfile)
+	}
+	if got.ResumeState != "auto" {
+		t.Fatalf("resume_state = %q; want default auto", got.ResumeState)
+	}
+	if got.ConversationID != "" || got.ResumePin != "" || got.PreLaunch != "" {
+		t.Fatalf("unset optional fields must be empty strings: conversation_id=%q resume_pin=%q pre_launch=%q", got.ConversationID, got.ResumePin, got.PreLaunch)
+	}
+}
+
 func TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, "state.db")
