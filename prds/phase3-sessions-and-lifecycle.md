@@ -1,12 +1,12 @@
-# Phase 1 — sessions and lifecycle
+# Phase 3 — sessions and lifecycle
 
 ## Goal
 
 Make a session a *managed* thing rather than a row that happens to have a tmux session
-behind it. Phase 0 proved deck can create, list, attach to and kill a shell session. Phase 1
-delivers the lifecycle around that: the full create modal, per-session environment with
-explicit restart-to-apply, kill/delete/archive with undo, launch leases so two TUIs cannot
-double-start one session, and the clean-vs-crash exit split with a captured crash tail.
+behind it. Phase 0 gave create/list/attach/kill; Phase 1 gave agents, durable identity and
+launch leases; Phase 2 made status truthful. Phase 3 delivers the lifecycle around all of it:
+the create modal completed, per-session environment editing with explicit restart-to-apply,
+and kill/delete/purge/archive with undo and bulk marks.
 
 This is the first phase that ships **destructive** operations — kill, delete, tombstone,
 purge, archive. The single most important property in it is the one requirement that is not
@@ -43,13 +43,13 @@ Existing feature files are `walking_skeleton`, `determinism`, `store`, `tmux_con
 `concurrency`, `fake_agent`, `harness` and the tag-excluded `fake_agent_drift`. Extend the
 step library rather than duplicating steps.
 
-### Agents are still out of scope
+### Agents already exist by now
 
-Phase 2 owns the Claude/Pi/Codex adapters. Phase 1 therefore proves lifecycle using **`shell`
-sessions** and, where a controllable exit status is needed, the existing fake fixture. Where
-`SPEC.md` describes agent-specific behaviour (relaunching with *resume* argv, conversation
-ids, permission profiles), implement the shell-session half now and record the agent half as
-explicitly deferred. Do not stub an adapter.
+Phase 1 delivered the Claude and Pi adapters, durable conversation ids and permission
+profiles; Phase 2 made status truthful; Phase 4 adds Codex later. So Phase 3 exercises
+lifecycle across `shell` **and** agent sessions, and `R` (restart-to-apply) must relaunch an
+agent with its **resume** argv — same conversation, new environment (`SPEC.md` §6.2) — not
+merely restart a shell. Use the fake fixture where a controllable exit status is needed.
 
 ## Working practice: commit as you go
 
@@ -78,7 +78,7 @@ able to read `git log` and understand what was done and why.
 ## Requirements
 
 Each requirement must be individually verifiable by a command or scenario whose real output
-is recorded in the phase report (R24).
+is recorded in the phase report (R16).
 
 ### The create modal
 
@@ -126,9 +126,9 @@ is recorded in the phase report (R24).
     undoable for **60 s**, purged after the grace period. A purged row is gone from
     `sessions`; its `events` rows go with it (`ON DELETE CASCADE`).
 12. The delete confirm — and **only** there — offers **purge conversation** as a separate
-    explicit choice. It is never implicit and never the default. In this phase it has no
-    agent transcript to remove, so it must be present, disabled or clearly inert, and honest
-    about why; record the decision as a finding.
+    explicit choice. It is never implicit and never the default. Since Phase 1 gave sessions
+    real conversation ids, purge must genuinely remove that agent's transcript, and a scenario
+    must prove that a delete *without* purge leaves the transcript intact.
 13. `A` archives: the record is kept and hidden from the default list, reachable behind a
     filter. Archiving **requires `stopped`**, and the UI offers "kill and archive" as one
     action (`SPEC.md` §4 invariant). `archived_at` and `deleted_at` are flags, not statuses —
@@ -142,48 +142,19 @@ is recorded in the phase report (R24).
     e.g. `state.db`, and one dotfile) so a naive cleanup would be caught. This is R1 and it
     is the requirement in this phase least acceptable to get wrong.
 
-### Launch leases
-
-16. Two clients pressing `r` on the same `stopped` session must not double-launch
-    (`SPEC.md` §9.3). The transaction that flips `stopped → starting` CAS-acquires
-    `launch_lease_owner` (`pid@boot_id`) and `launch_lease_until` (TTL ~30 s). The losing
-    client shows **"starting elsewhere"** rather than an error.
-17. A **stale** lease is breakable: a lease whose owner pid is dead, or whose TTL has
-    expired, can be taken over by another client. A lease held by a live owner within TTL
-    cannot. Both directions are proved, and neither leaves the row wedged.
-18. A `@multiclient` scenario proves exactly one tmux session is created when N clients race
-    `r` on one row — assert the tmux fact, not just the UI text.
-
-### Clean exit versus crash
-
-19. The reconcile loop distinguishes clean exit from crash using `pane_dead` /
-    `pane_dead_status` under `remain-on-exit failed`, per the table in `SPEC.md` §7:
-    session gone → `stopped`; session present with a dead pane and non-zero status → `error`
-    with `pane_exit_status` recorded; session present with a live pane → status unchanged.
-20. A shell session where the user types `exit` (status 0) becomes **`stopped`, never
-    `error`** — this is the concrete bug the `remain-on-exit failed` choice exists to prevent.
-21. A non-zero exit records `pane_exit_status` and captures a **crash tail** into
-    `crash_tail` *before* the dead session is torn down, and the row shows `error`. Prove the
-    tail contains pane output produced before death, and that a crash tail is captured for a
-    session that dies with **no TUI attached to it** (the next reconcile tick does it).
-22. **Never auto-relaunch** (`SPEC.md` §7, a non-goal): after a crash the session stays in
-    `error` until the user acts. A scenario asserts no new tmux session appears on its own.
-23. `killed_by_user` outranks automation: a user kill sets it, and it is not undone by a
-    later reconcile or status update arriving afterwards (`SPEC.md` §7 precedence).
-
 ### Evidence and stability
 
-24. `docs/reports/phase1.md` records, with **real unedited command output**: the full test
+16. `docs/reports/phase3.md` records, with **real unedited command output**: the full test
     run with feature/scenario/step counts and a top-level Go test count under a stated
     counting convention; one recorded run or named scenario per numbered requirement above;
     resolved tool versions; the wall-clock duration of a full suite run; and every gotcha
     discovered, each with its consequence if forgotten. Every capture it cites must be a
     **repository-relative path that exists** — never a path inside the job's run directory.
-25. **The suite passes ten consecutive times from a clean state**, and the real output of the
+17. **The suite passes ten consecutive times from a clean state**, and the real output of the
     loop proving it is recorded. Two passes are not evidence of stability: Phase 0's
     "passes twice" bar was met while a scenario failed one run in three. If any run in the
     ten fails, fix it and restart the count.
-26. No scenario may be deleted, skipped, or tag-excluded to make the suite pass. If a
+18. No scenario may be deleted, skipped, or tag-excluded to make the suite pass. If a
     scenario is wrong, fix the scenario and say so in the report.
 
 ## Review guidance
@@ -208,7 +179,7 @@ line" is a note.
 
 ## Findings, not spec edits
 
-`SPEC.md` must not be modified. Record in `docs/reports/phase1-findings.md`: anything the
+`SPEC.md` must not be modified. Record in `docs/reports/phase3-findings.md`: anything the
 spec left undefined that you had to decide, anything you found contradictory or impossible,
 and every deferral (with what is deferred and to which phase). If you need a new `DECK_*`
 determinism control to make a timed behaviour testable — the 10 s undo window and 60 s delete
@@ -221,12 +192,12 @@ Durations must use a **monotonic** source and keep advancing while `DECK_CLOCK` 
 
 ## Non-goals for this phase
 
-Do not implement, even partially: the Claude/Pi/Codex adapters or any conversation-id
-handling; `deck _hook`, hook receipt, status probes or live/sampled badges; permission
-profiles; notifications or any channel; cross-session search; the preview pane; scrollback
-capture, history files or cwd tracking on resume (`SPEC.md` §9.4 — Phase 6); the health view;
-systemd units; session send (§11.1); attention sort, grouping or filtering beyond what
-requirement 13 needs to show archived rows.
+Do not implement, even partially: the Codex adapter or its id discovery (Phase 4); any change
+to the hook/probe/status machinery Phase 2 delivered; notifications or any channel (Phase 5);
+cross-session search (Phase 7); the preview pane (Phase 7); scrollback capture, history files
+or cwd tracking on resume (`SPEC.md` §9.4 — Phase 6); the health view; systemd units; session
+send (§11.1); attention sort or grouping beyond the filtering requirement 13 needs to show
+archived rows.
 
 Do not add a user-facing command line (`SPEC.md` R7). The TUI remains the only user-facing
 surface.

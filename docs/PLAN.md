@@ -44,9 +44,9 @@ Five standing rules for every phase:
 |---|---|---|---|
 | **Toolchain spike** | Prove all deck work can run in a sibling Go+tmux container with the host workspace mounted: Go build/test, real tmux on a private socket, pty-driven bubbletea, no root-owned litter, warm cache | `ci/Dockerfile`, `ci/run.sh`, `ci/SPIKE.md` | **done** |
 | **Phase 0 — harness & walking skeleton** | Go module; TUI binary rendering an empty list; determinism controls; JSONL log with launch audit; store schema v1 + migrations; tmux layer on a private socket; `shell` sessions create/list/attach/detach/kill; **godog harness driving the real binary through a pty**; fake-agent fixture mechanism | `walking_skeleton`, `determinism`, `store`, `tmux_contract`, `concurrency` (`@multiclient`) features; suite passes ten times from a clean state | **done** (+ Phase 0b hardening) |
-| **Phase 1 — sessions & lifecycle** | Create modal in full (args, env map, `pre_launch`, `captured_path`/`login_shell`); env edit → `env↻` → restart-to-apply; kill/undo, `dd` tombstone, archive; launch leases; clean-vs-crash exit split via `remain-on-exit failed`; crash tail | `create_session`, `kill_delete_undo`, `environment`, `crash` | planned |
-| **Phase 2 — durable identity** | Claude adapter with deck-assigned `--session-id`; resume argv; pin/cleared; Pi adapter; `starting → running`; resume-failure handling | **T1**, `durable_identity`, `same_directory` | planned |
-| **Phase 3 — status truth** | `deck _hook`; per-session settings injection; hook→status mapping incl. stop-failure and the session-end budget; probe engine + fixture corpus; live/sampled badges; precedence incl. `killed_by_user` | **T3**, `status_claude_hooks`, `status_probe` | planned |
+| **Phase 1 — durable identity & agents** | Adapter registry with declared capabilities; Claude adapter with deck-assigned `--session-id`; resume argv, never `--continue`; Pi adapter; pin/cleared; resume-failure handling; permission profiles (§5) incl. the `yolo` gate; the create-modal fields an agent launch needs; launch leases | **T1**, `durable_identity`, `same_directory`, `permission_modes` | **next** |
+| **Phase 2 — status truth** | `deck _hook`; per-session settings injection; hook→status mapping incl. stop-failure and the session-end budget; probe engine + fixture corpus; live/sampled badges; precedence incl. `killed_by_user`; clean-vs-crash exit split via `remain-on-exit failed` and the crash tail | **T3**, `status_claude_hooks`, `status_probe`, `crash` | planned |
+| **Phase 3 — sessions & lifecycle** | Create modal completed; env editor showing winning layer → `env↻` → restart-to-apply (+ shell "inject instead"); kill/undo, `dd` tombstone, purge, archive, bulk marks | `create_session`, `kill_delete_undo`, `environment` | planned |
 | **Phase 4 — Codex adapter** | Serialised claim-based id discovery; `id unresolved` state and picker; never "most recent" | `codex_discovery` | planned |
 | **Phase 5 — notifications** | Channel abstraction (webhook / command / desktop); rules table; epoch dedupe; quiet hours; outbox + retry; redaction | `notifications` against an httptest sink | planned |
 | **Phase 6 — shell state** | Per-session history file; scrollback capture ownership + replay; cwd tracking; `sensitive` | `shell_state` | planned |
@@ -59,13 +59,26 @@ re-run from then on — cheaper to keep green continuously than to retrofit.
 
 1. **Harness first.** Nothing later is verifiable without it, and the phase that builds the
    thing that proves correctness is the one place where cutting corners costs the most.
-2. **Durable identity early (Phase 2).** It is the product's entire reason to exist. If
-   conversation-preserving resume across a reboot cannot be made to work, that is worth
-   discovering before six phases of polish are built on top of it.
-3. **Status before notifications.** Notifications have nothing truthful to fire on until
+2. **Durable identity immediately after (Phase 1).** It is the product's entire reason to
+   exist. If conversation-preserving resume across a reboot cannot be made to work, that is
+   worth discovering before any polish is built on top of it. It is also the point at which
+   the operator can first run deck against a real agent, so it is where the plan stops being
+   a plan and starts being a product. This phase was originally sequenced second, behind
+   lifecycle polish; it was moved ahead because "can I actually use this with claude" is both
+   the biggest risk and the earliest useful milestone.
+3. **Status before lifecycle polish.** A session list that cannot say *which session needs
+   me* is the reason to run a manager at all. Until hooks land, an agent row honestly reads
+   `starting · awaiting signal` (§7) — usable, but not yet a replacement for what it replaces.
+   Undo toasts and archiving are worth less than legible status.
+4. **Status before notifications.** Notifications have nothing truthful to fire on until
    status detection is real.
-4. **Polish last.** Preview panes, search and the health view are the cheapest things to
+5. **Polish last.** Preview panes, search and the health view are the cheapest things to
    defer and the least likely to invalidate anything else.
+
+**Permission modes (`SPEC.md` §5) were unassigned to any phase** until this revision — a
+planning defect, since launching Claude in a skip-permissions mode was one of the first
+requirements stated. They belong with the Claude adapter, because a profile is only ever
+realised as that adapter's launch flags, so they land in Phase 1.
 
 ## Deliberately not in any phase
 
