@@ -348,7 +348,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
 				m.createName, m.createCWD = "", ""
-				m.createAgent, m.createProfile = createAgentOptions[0], createProfileOptions[0]
+				m.createAgent, m.createProfile = m.registry().Kinds()[0], createProfileOptions[0]
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
 				m.createYoloConfirmed = false
 			}
@@ -710,13 +710,13 @@ func (m Model) relativeTime(createdAt int64) string {
 	return fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
 }
 
-// createAgentOptions and createProfileOptions are the values the create
-// modal's Agent and Permission profile fields cycle through.
-// createProfileOptions is the master ordering used only as the initial
-// default ("safe") when the modal opens; the actual offered set while the
-// modal is open is narrowed per selected agent and per allow_yolo by
-// createProfileOptionsFor (SPEC §5, task 017).
-var createAgentOptions = []string{"shell", "claude", "pi"}
+// createProfileOptions is the values the create modal's Permission profile
+// field cycles through. The Agent field instead cycles m.registry().Kinds(),
+// so adding an adapter to the registry never requires an internal/tui edit
+// (PRD requirement 1). createProfileOptions is the master ordering used
+// only as the initial default ("safe") when the modal opens; the actual
+// offered set while the modal is open is narrowed per selected agent and
+// per allow_yolo by createProfileOptionsFor (SPEC §5, task 017).
 var createProfileOptions = []string{"safe", "plan", "edits", "yolo"}
 
 // createProfileOptionsFor returns exactly the permission profiles the
@@ -977,7 +977,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) cycleCreateField(delta int) {
 	switch m.createField {
 	case 2:
-		m.createAgent = cycleOption(createAgentOptions, m.createAgent, delta)
+		m.createAgent = cycleOption(m.registry().Kinds(), m.createAgent, delta)
 		options := createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
 		if !contains(options, m.createProfile) {
 			m.createProfile = options[0]
@@ -1055,7 +1055,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
 		{"Working directory", m.createCWD, "the session's cwd; must exist and be a directory"},
-		{"Agent", m.createAgent + " (left/right cycles: shell, claude, pi)", "which coding agent adapter launches this session"},
+		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.registry().Kinds(), ", ") + ")", "which coding agent adapter launches this session"},
 		{"Permission profile", profileValue, profileHelp},
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
