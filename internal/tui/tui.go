@@ -3,12 +3,15 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
@@ -354,6 +357,70 @@ func cycleOption(options []string, current string, delta int) string {
 	return options[index]
 }
 
+// createAgentCapabilities returns the declared capabilities for kind and
+// whether a permission profile is even applicable to it. shell has no
+// notion of permission profiles at all (SPEC §5/§8): its create field is
+// present for consistency but never validated, so a shell session is never
+// rejected for an "unsupported" profile that simply does not apply to it.
+func createAgentCapabilities(kind string) (agent.Caps, bool) {
+	switch kind {
+	case "claude":
+		return agent.NewClaude().Capabilities(), true
+	case "pi":
+		return agent.NewPi().Capabilities(), true
+	default:
+		return agent.Caps{}, false
+	}
+}
+
+// validateCreateFields checks the create modal's free-form fields (cwd,
+// launch_args JSON, env pairs, and the selected permission profile) before
+// any create call is attempted, returning a specific message for the first
+// problem found and "" when the fields are acceptable. Name uniqueness and
+// slug collisions are deliberately NOT checked here: those can only be
+// known by the store at create time, and their specific messages already
+// surface through the shellCreated error path (see createView).
+//
+// Retaining whatever the user typed is automatic here: this function never
+// mutates m, so a non-empty result leaves every field exactly as typed.
+func (m Model) validateCreateFields() string {
+	if strings.TrimSpace(m.createCWD) == "" {
+		return "working directory is required"
+	}
+	info, err := os.Stat(m.createCWD)
+	if err != nil {
+		return fmt.Sprintf("working directory %q does not exist", m.createCWD)
+	}
+	if !info.IsDir() {
+		return fmt.Sprintf("working directory %q is not a directory", m.createCWD)
+	}
+	if strings.TrimSpace(m.createLaunchArgs) != "" {
+		var args []string
+		if err := json.Unmarshal([]byte(m.createLaunchArgs), &args); err != nil {
+			return "launch_args must be a JSON array of strings: " + err.Error()
+		}
+	}
+	if strings.TrimSpace(m.createEnv) != "" {
+		for _, entry := range strings.Split(m.createEnv, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			key, _, ok := strings.Cut(entry, "=")
+			if !ok || strings.TrimSpace(key) == "" {
+				return fmt.Sprintf("env entry %q must be key=value", entry)
+			}
+		}
+	}
+	if caps, applicable := createAgentCapabilities(m.createAgent); applicable {
+		if !caps.SupportsProfile(m.createProfile) {
+			_, _, reason := caps.ResolveProfile(m.createAgent, m.createProfile)
+			return "unsupported permission profile: " + reason
+		}
+	}
+	return ""
+}
+
 func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -381,6 +448,10 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "enter":
+		if msg := m.validateCreateFields(); msg != "" {
+			m.createError = msg
+			return m, nil
+		}
 		if m.createAgent != "shell" {
 			m.createError = "creating " + m.createAgent + " sessions is not available yet"
 			return m, nil
