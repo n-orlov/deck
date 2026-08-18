@@ -140,6 +140,7 @@ type Session struct {
 	Slug         string
 	CWD          string
 	Agent        string
+	CapturedPath string
 	Status       string
 	StatusReason string
 	StatusSource string
@@ -309,7 +310,7 @@ func scanSession(row interface {
 	var preLaunch, conversationID, resumePin sql.NullString
 	var loginShell int
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
-		&session.Agent, &session.Status, &session.StatusReason, &session.StatusSource,
+		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &conversationID, &resumePin, &session.ResumeState); err != nil {
 		return Session{}, err
@@ -327,7 +328,7 @@ func scanSession(row interface {
 	return session, nil
 }
 
-const sessionColumns = `id, name, slug, cwd, agent, status,
+const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		launch_args, env, pre_launch, login_shell, permission_profile, conversation_id, resume_pin, resume_state`
 
