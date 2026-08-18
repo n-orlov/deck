@@ -53,7 +53,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)"'s captured_path no longer contains the fake "claude" binary$`, sessionCapturedPathStrippedOfAgent)
 	sc.Step(`^the state database session "([^"]+)"'s conversation id is cleared$`, sessionConversationIDCleared)
 	sc.Step(`^deck clients "([^"]+)", "([^"]+)" and "([^"]+)" race pressing r on session "([^"]+)"$`, clientsRacePressingResumeOnNamedSession)
-	sc.Step(`^exactly one of deck clients "([^"]+)", "([^"]+)" and "([^"]+)" screen contains "starting elsewhere"$`, exactlyOneOfClientsShowsStartingElsewhere)
+	sc.Step(`^at least one of deck clients "([^"]+)", "([^"]+)" and "([^"]+)" screen contains "starting elsewhere"$`, atLeastOneOfClientsShowsStartingElsewhere)
 	sc.Step(`^the state database session "([^"]+)" has a launch lease held by a live process$`, sessionHasLiveLaunchLease)
 	sc.Step(`^the state database session "([^"]+)" has a launch lease owned by a dead process$`, sessionHasDeadLaunchLease)
 	sc.Step(`^the state database session "([^"]+)" has an expired launch lease$`, sessionHasExpiredLaunchLease)
@@ -1059,16 +1059,17 @@ func clientsRacePressingResumeOnNamedSession(ctx context.Context, first, second,
 	return nil
 }
 
-// exactlyOneOfClientsShowsStartingElsewhere polls the three named clients'
+// atLeastOneOfClientsShowsStartingElsewhere polls the three named clients'
 // screens for the losing side of the launch-lease race (internal/tui's
-// resumeNote == "starting elsewhere", SPEC §9.3), asserting exactly one of
+// resumeNote == "starting elsewhere", SPEC §9.3), asserting at least one of
 // them ends up showing it — the other two are the winner (whose own row
 // reloads to "starting · awaiting signal") and any client whose own `r`
 // simply never won a lease slot before the winner's launch already
-// completed the acquisition (in this 3-client/1-target race there is
-// exactly one winner and up to two losers, but only one loser is required
-// to prove the lease held: task 027 asks for "the losing client", singular).
-func exactlyOneOfClientsShowsStartingElsewhere(ctx context.Context, first, second, third string) error {
+// completed the acquisition. This is deliberately >= 1, not == 1: in a real
+// 3-way race both losers can each independently observe and report
+// "starting elsewhere" before the winner's reconcile lands, so asserting
+// exactly one would flake.
+func atLeastOneOfClientsShowsStartingElsewhere(ctx context.Context, first, second, third string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
