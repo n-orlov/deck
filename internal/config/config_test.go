@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,88 @@ func TestSeededUUIDsAreStableAndValid(t *testing.T) {
 	}
 	if len(first) != 36 || first[14] != '4' || !strings.Contains("89ab", string(first[19])) {
 		t.Fatalf("not an RFC4122 v4 UUID: %q", first)
+	}
+}
+
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestConfigFileMissingDefaultsToNoYoloAndNoEnv(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AllowYolo {
+		t.Fatal("AllowYolo should default to false when config.toml is absent")
+	}
+	if settings.Env != nil {
+		t.Fatalf("Env should be nil when config.toml is absent, got %+v", settings.Env)
+	}
+}
+
+func TestConfigFileAllowYoloTrue(t *testing.T) {
+	dir := writeConfigFile(t, "allow_yolo = true\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.AllowYolo {
+		t.Fatal("AllowYolo should be true when allow_yolo = true")
+	}
+}
+
+func TestConfigFileAllowYoloFalse(t *testing.T) {
+	dir := writeConfigFile(t, "allow_yolo = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AllowYolo {
+		t.Fatal("AllowYolo should be false when allow_yolo = false")
+	}
+}
+
+func TestConfigFileEnvTable(t *testing.T) {
+	dir := writeConfigFile(t, "allow_yolo = true\n\n[env]\nPATH = \"/opt/tools:/usr/bin\"\nFOO = \"bar\"\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.AllowYolo {
+		t.Fatal("AllowYolo should be true")
+	}
+	want := map[string]string{"PATH": "/opt/tools:/usr/bin", "FOO": "bar"}
+	if len(settings.Env) != len(want) {
+		t.Fatalf("Env = %+v, want %+v", settings.Env, want)
+	}
+	for k, v := range want {
+		if settings.Env[k] != v {
+			t.Fatalf("Env[%s] = %q, want %q", k, settings.Env[k], v)
+		}
+	}
+}
+
+func TestConfigFileMalformedIsRejected(t *testing.T) {
+	for name, contents := range map[string]string{
+		"no equals":         "allow_yolo true\n",
+		"bad bool":          "allow_yolo = maybe\n",
+		"unterminated section": "[env\nFOO = \"bar\"\n",
+		"unquoted env value": "[env]\nFOO = bar\n",
+		"empty key":         "= \"x\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeConfigFile(t, contents)
+			if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome); err == nil {
+				t.Fatalf("contents %q were accepted", contents)
+			}
+		})
 	}
 }
 

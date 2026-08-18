@@ -42,6 +42,14 @@ type Settings struct {
 	ASCII     bool
 	Animation bool
 	Color     bool
+	// AllowYolo mirrors config.toml's top-level allow_yolo key. It defaults to
+	// false when the file, or the key within it, is absent: the yolo
+	// permission profile stays gated unless an operator opts in explicitly.
+	AllowYolo bool
+	// Env mirrors config.toml's [env] table: additional environment variables
+	// layered under the session env per SPEC §6.1/§6.3. Absent file or absent
+	// section both yield a nil map, never an error.
+	Env map[string]string
 }
 
 // Load reads only documented DECK_ controls from env.
@@ -87,7 +95,11 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 			return Settings{}, err
 		}
 	}
-	return Settings{paths, socket, clock, NewIDGenerator(getenv("DECK_ID_SEED")), reconcile, preview, ascii, animation, color}, nil
+	allowYolo, env, err := loadConfigFile(paths.ConfigFile)
+	if err != nil {
+		return Settings{}, err
+	}
+	return Settings{paths, socket, clock, NewIDGenerator(getenv("DECK_ID_SEED")), reconcile, preview, ascii, animation, color, allowYolo, env}, nil
 }
 
 func resolvePaths(getenv func(string) string, userHome func() (string, error)) (Paths, error) {
