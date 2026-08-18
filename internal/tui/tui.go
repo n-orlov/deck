@@ -23,11 +23,17 @@ type Model struct {
 	sessions    []store.Session
 	startupNote string
 	help        bool
-	creating    bool
-	createName  string
-	createCWD   string
-	createField int
-	createError string
+	creating         bool
+	createName       string
+	createCWD        string
+	createAgent      string
+	createProfile    string
+	createLaunchArgs string
+	createEnv        string
+	createPreLaunch  string
+	createLoginShell bool
+	createField      int
+	createError      string
 	create      func(context.Context, service.ShellCreateInput) (store.Session, error)
 	attach      func(context.Context, string) (*exec.Cmd, error)
 	kill        func(context.Context, store.Session) error
@@ -192,6 +198,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
 				m.createName, m.createCWD = "", ""
+				m.createAgent, m.createProfile = createAgentOptions[0], createProfileOptions[0]
+				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
 			}
 		case "up", "k":
 			if m.selected > 0 {
@@ -312,17 +320,69 @@ func (m Model) relativeTime(createdAt int64) string {
 	return fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
 }
 
+// createAgentOptions and createProfileOptions are the values the create
+// modal's Agent and Permission profile fields cycle through. Task 017 will
+// narrow the offered profiles to what the selected adapter actually
+// declares (SPEC §5); for now every named profile is offered so the field
+// is fully keyboard-reachable.
+var createAgentOptions = []string{"shell", "claude", "pi"}
+var createProfileOptions = []string{"safe", "plan", "edits", "yolo"}
+
+const createFieldCount = 8
+
+// createFieldIsText reports whether field accepts free-typed runes, as
+// opposed to being a cycled selection (agent, permission profile, login
+// shell) that only left/right/space change.
+func createFieldIsText(field int) bool {
+	switch field {
+	case 0, 1, 4, 5, 6:
+		return true
+	default:
+		return false
+	}
+}
+
+func cycleOption(options []string, current string, delta int) string {
+	index := 0
+	for i, option := range options {
+		if option == current {
+			index = i
+			break
+		}
+	}
+	index = (index + delta + len(options)) % len(options)
+	return options[index]
+}
+
 func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.creating, m.createError = false, ""
 		return m, nil
-	case "tab", "shift+tab", "up", "down":
-		m.createField = 1 - m.createField
+	case "tab", "down":
+		m.createField = (m.createField + 1) % createFieldCount
 		return m, nil
+	case "shift+tab", "up":
+		m.createField = (m.createField - 1 + createFieldCount) % createFieldCount
+		return m, nil
+	case "left":
+		m.cycleCreateField(-1)
+		return m, nil
+	case "right":
+		m.cycleCreateField(1)
+		return m, nil
+	case " ":
+		// Space toggles/cycles only the selection fields (agent, permission
+		// profile, login shell); on text fields it is an ordinary typed
+		// character (e.g. a name containing a space) and must fall through
+		// to the append logic below, not be swallowed as a keybinding.
+		if !createFieldIsText(m.createField) {
+			m.cycleCreateField(1)
+			return m, nil
+		}
 	case "enter":
-		if m.createField == 0 {
-			m.createField = 1
+		if m.createAgent != "shell" {
+			m.createError = "creating " + m.createAgent + " sessions is not available yet"
 			return m, nil
 		}
 		if m.create == nil {
@@ -335,21 +395,84 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return shellCreated{session: session, err: err}
 		}
 	case "backspace", "ctrl+h":
-		if m.createField == 0 && len(m.createName) > 0 {
-			m.createName = m.createName[:len(m.createName)-1]
-		} else if m.createField == 1 && len(m.createCWD) > 0 {
-			m.createCWD = m.createCWD[:len(m.createCWD)-1]
-		}
+		m.backspaceCreateField()
 		return m, nil
 	}
-	if runes := msg.Runes; len(runes) > 0 {
-		if m.createField == 0 {
+	if runes := msg.Runes; len(runes) > 0 && createFieldIsText(m.createField) {
+		switch m.createField {
+		case 0:
 			m.createName += string(runes)
-		} else {
+		case 1:
 			m.createCWD += string(runes)
+		case 4:
+			m.createLaunchArgs += string(runes)
+		case 5:
+			m.createEnv += string(runes)
+		case 6:
+			m.createPreLaunch += string(runes)
 		}
 	}
 	return m, nil
+}
+
+// cycleCreateField advances a selection-type field's value by delta; it is a
+// no-op on the free-text fields.
+func (m *Model) cycleCreateField(delta int) {
+	switch m.createField {
+	case 2:
+		m.createAgent = cycleOption(createAgentOptions, m.createAgent, delta)
+	case 3:
+		m.createProfile = cycleOption(createProfileOptions, m.createProfile, delta)
+	case 7:
+		m.createLoginShell = !m.createLoginShell
+	}
+}
+
+func (m *Model) backspaceCreateField() {
+	switch m.createField {
+	case 0:
+		if len(m.createName) > 0 {
+			m.createName = m.createName[:len(m.createName)-1]
+		}
+	case 1:
+		if len(m.createCWD) > 0 {
+			m.createCWD = m.createCWD[:len(m.createCWD)-1]
+		}
+	case 4:
+		if len(m.createLaunchArgs) > 0 {
+			m.createLaunchArgs = m.createLaunchArgs[:len(m.createLaunchArgs)-1]
+		}
+	case 5:
+		if len(m.createEnv) > 0 {
+			m.createEnv = m.createEnv[:len(m.createEnv)-1]
+		}
+	case 6:
+		if len(m.createPreLaunch) > 0 {
+			m.createPreLaunch = m.createPreLaunch[:len(m.createPreLaunch)-1]
+		}
+	}
+}
+
+// createFieldRows describes the create modal's field set: label, current
+// value renderer and a one-line explanation of what the field does. Keeping
+// this as one table (rather than scattered Fprintf calls) is what lets a
+// keyboard-only PTY test assert every label and its explanation are
+// rendered together (task 015).
+func (m Model) createFieldRows() []struct{ label, value, help string } {
+	loginShell := "off"
+	if m.createLoginShell {
+		loginShell = "on"
+	}
+	return []struct{ label, value, help string }{
+		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
+		{"Working directory", m.createCWD, "the session's cwd; must exist and be a directory"},
+		{"Agent", m.createAgent + " (left/right cycles: shell, claude, pi)", "which coding agent adapter launches this session"},
+		{"Permission profile", m.createProfile + " (left/right cycles: safe, plan, edits, yolo)", "how much the agent may do without asking; an unsupported profile degrades to safe"},
+		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
+		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
+		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
+		{"Login shell", loginShell + " (space toggles)", "runs the pane through $SHELL -lc instead of execing the agent argv directly"},
+	}
 }
 
 func (m Model) createView() string {
@@ -360,10 +483,15 @@ func (m Model) createView() string {
 		return "  "
 	}
 	var b strings.Builder
-	b.WriteString("Create shell session\n\n")
-	fmt.Fprintf(&b, "%sName: %s\n", marker(0), m.createName)
-	fmt.Fprintf(&b, "%sWorking directory: %s\n", marker(1), m.createCWD)
-	b.WriteString("\nTab moves fields · Enter advances/submits · Esc cancels\n")
+	title := "Create session"
+	if m.createAgent == "shell" {
+		title = "Create shell session"
+	}
+	b.WriteString(title + "\n\n")
+	for field, row := range m.createFieldRows() {
+		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", marker(field), row.label, row.value, row.help)
+	}
+	b.WriteString("\nTab/Shift+Tab moves fields · Left/Right or Space changes a selection · Enter submits · Esc cancels\n")
 	if m.createError != "" {
 		if strings.Contains(m.createError, "collides with existing slug") {
 			b.WriteString("\nCannot create session: name collides with existing slug.\n")
