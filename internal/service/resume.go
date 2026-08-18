@@ -50,14 +50,39 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if !ok {
 		return session, ResumeStartingElsewhere, fmt.Errorf("unknown agent kind %q", session.Agent)
 	}
+	caps := adapter.Capabilities()
+
+	// SPEC §8/§9.3 resume_state (task 021): "pinned" resumes a specific
+	// conversation id (resume_pin) rather than whatever the session's own
+	// conversation id happens to be; "fresh-once" starts a brand-new
+	// conversation exactly once and then reverts to "auto" below, once
+	// that fresh launch has actually happened.
+	resumeState := session.ResumeState
+	if resumeState == "" {
+		resumeState = "auto"
+	}
+	freshOnce := resumeState == "fresh-once"
+	conversationID := session.ConversationID
+	if resumeState == "pinned" && session.ResumePin != "" {
+		conversationID = session.ResumePin
+	}
+	if freshOnce && caps.AssignsConversationID {
+		freshID, err := s.IDs.UUID()
+		if err != nil {
+			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("assign fresh conversation id for session %q: %w", session.Name, err))
+			return session, ResumeStarted, failErr
+		}
+		conversationID = freshID
+	}
 
 	// Reject the three SPEC-named resume failure causes before ever
 	// touching the launch lease or tmux, so none of them can be mistaken
 	// for (or accidentally produce) a fresh-conversation launch: an
 	// unknown/rejected conversation id, a missing or non-directory cwd,
 	// and (below, once the resume argv and its env are known) the agent
-	// binary not being on PATH.
-	if adapter.Capabilities().AssignsConversationID && session.ConversationID == "" {
+	// binary not being on PATH. A fresh-once launch mints its own
+	// conversation id above, so it can never be missing one.
+	if !freshOnce && caps.AssignsConversationID && conversationID == "" {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("resume session %q: no conversation id is assigned to resume (unknown/rejected conversation id)", session.Name))
 		return session, ResumeStarted, failErr
 	}
@@ -84,9 +109,16 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		return session, ResumeStarted, fmt.Errorf("audit starting resumed session %q: %w", session.Name, err)
 	}
 
-	argv, err := adapter.Resume(agent.ResumeInput{
-		CWD: session.CWD, ConversationID: session.ConversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
-	})
+	var argv []string
+	if freshOnce {
+		argv, err = adapter.Launch(agent.LaunchInput{
+			CWD: session.CWD, ConversationID: conversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
+		})
+	} else {
+		argv, err = adapter.Resume(agent.ResumeInput{
+			CWD: session.CWD, ConversationID: conversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
+		})
+	}
 	if err != nil {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume argv for session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr
@@ -132,6 +164,22 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if err := s.Audit.Transition(session.ID, "launch.ready"); err != nil {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("audit ready resumed session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr
+	}
+	// The fresh-once launch above has now actually happened: persist the
+	// newly minted conversation id and revert resume_state to auto (never
+	// back to pinned, and never left as fresh-once) so a later resume goes
+	// back to normal auto behavior.
+	if freshOnce {
+		if err := s.Store.SetConversationID(ctx, session.ID, conversationID, "resume-fresh-once"); err != nil {
+			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("persist fresh conversation id for session %q: %w", session.Name, err))
+			return session, ResumeStarted, failErr
+		}
+		if err := s.Store.ConsumeFreshOnce(ctx, session.ID, "resume-fresh-once"); err != nil {
+			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("revert fresh-once resume state for session %q: %w", session.Name, err))
+			return session, ResumeStarted, failErr
+		}
+		session.ConversationID = conversationID
+		session.ResumeState = "auto"
 	}
 	session.StatusSource = "tmux"
 	return session, ResumeStarted, nil

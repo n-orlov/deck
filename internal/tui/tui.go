@@ -51,6 +51,10 @@ type Model struct {
 	profileSwitching    bool
 	profileSwitchValue  string
 	profileSwitchNote   string
+	resumeMode          func(context.Context, string, string) (store.Session, error)
+	pinning             bool
+	pinValue            string
+	pinNote             string
 	width               int
 	height              int
 }
@@ -84,6 +88,11 @@ type sessionResumed struct {
 }
 
 type profileSwitched struct {
+	session store.Session
+	err     error
+}
+
+type resumeModeChanged struct {
 	session store.Session
 	err     error
 }
@@ -139,8 +148,19 @@ func NewWithShellCreatorAttacherKillerReconcilerAndResumer(db *store.Store, sett
 // session's next launch/restart rather than implying the running agent's
 // mode changed.
 func NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error)) Model {
+	return NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, nil)
+}
+
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer adds
+// the `p` pin/start-fresh dialog (SPEC §8/§9.3, task 021). resumeModer picks
+// resume_state ("pinned" pins to the session's own current conversation id,
+// sticky across a deck restart; "fresh-once" arms exactly one fresh
+// conversation launch and reverts to "auto" once that launch has actually
+// happened; "auto" clears any pin). None of these ever touch a live pane;
+// they only take effect on the session's next resume.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error)) Model {
 	m := New(db, settings, tmuxNote)
-	m.create, m.attach, m.kill, m.reconcile, m.resume, m.profileSwitch = creator, attacher, killer, reconciler, resumer, profileSwitcher
+	m.create, m.attach, m.kill, m.reconcile, m.resume, m.profileSwitch, m.resumeMode = creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer
 	return m
 }
 
@@ -224,6 +244,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.profileSwitching = false
 		m.profileSwitchNote = ""
 		return m, m.loadSessions
+	case resumeModeChanged:
+		if msg.err != nil {
+			m.pinNote = "Cannot change resume mode: " + msg.err.Error()
+			return m, nil
+		}
+		m.pinning = false
+		m.pinNote = ""
+		return m, m.loadSessions
 	case reconcileTick:
 		loadAfterReconcile := m.loadSessions
 		if m.reconcile != nil {
@@ -251,6 +279,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.profileSwitching {
 			return m.updateProfileSwitch(msg)
+		}
+		if m.pinning {
+			return m.updatePinDialog(msg)
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -319,6 +350,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.profileSwitchValue = session.PermissionProfile
 			m.profileSwitchNote = ""
 			return m, nil
+		case "p":
+			if m.resumeMode == nil || len(m.sessions) == 0 {
+				return m, nil
+			}
+			session := m.sessions[m.selected]
+			caps, applicable := createAgentCapabilities(session.Agent)
+			if !applicable || !caps.AssignsConversationID {
+				m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
+				return m, nil
+			}
+			m.pinning = true
+			m.pinValue = session.ResumeState
+			if m.pinValue == "" {
+				m.pinValue = "auto"
+			}
+			m.pinNote = ""
+			return m, nil
 		case "enter":
 			if m.attach == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -349,6 +397,9 @@ func (m Model) View() string {
 	}
 	if m.profileSwitching && len(m.sessions) > 0 {
 		return m.profileSwitchView()
+	}
+	if m.pinning && len(m.sessions) > 0 {
+		return m.pinView()
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
@@ -388,7 +439,7 @@ func (m Model) View() string {
 	if m.resumeNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.resumeNote)
 	}
-	b.WriteString("\n" + m.glyph("↑/↓ select · ↵ attach · n new · x kill · r resume · P profile · i detail · ? help · q quit", "up/down select - Enter attach - n new - x kill - r resume - P profile - i detail - ? help - q quit") + "\n")
+	b.WriteString("\n" + m.glyph("↑/↓ · ↵ attach · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") + "\n")
 	return b.String()
 }
 
@@ -450,6 +501,67 @@ func (m Model) profileSwitchView() string {
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.profileSwitchNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.profileSwitchNote)
+	}
+	return b.String()
+}
+
+// resumeModeOptions lists the SPEC §8/§9.3 resume_state choices the `p`
+// dialog cycles through: auto (resume the session's own last-known
+// conversation), pinned (always resume the session's own current
+// conversation id, sticky across a deck restart), and fresh-once (start a
+// brand-new conversation exactly once, then revert to auto).
+var resumeModeOptions = []string{"auto", "pinned", "fresh-once"}
+
+// updatePinDialog handles keys while the `p` pin/start-fresh dialog is open
+// (task 021). It only ever cycles a locally-held candidate resume_state
+// and, on confirmation, persists it through m.resumeMode; it never issues
+// any argv to the selected session's pane, live or otherwise, and takes
+// effect only on the session's next resume.
+func (m Model) updatePinDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	session := m.sessions[m.selected]
+	switch msg.String() {
+	case "esc":
+		m.pinning = false
+		m.pinNote = ""
+		return m, nil
+	case "left":
+		m.pinValue = cycleOption(resumeModeOptions, m.pinValue, -1)
+		return m, nil
+	case "right", " ":
+		m.pinValue = cycleOption(resumeModeOptions, m.pinValue, 1)
+		return m, nil
+	case "enter":
+		if m.resumeMode == nil {
+			m.pinNote = "changing the resume mode is unavailable"
+			return m, nil
+		}
+		sessionID, mode := session.ID, m.pinValue
+		return m, func() tea.Msg {
+			updated, err := m.resumeMode(context.Background(), sessionID, mode)
+			return resumeModeChanged{session: updated, err: err}
+		}
+	}
+	return m, nil
+}
+
+// pinView renders the `p` pin/start-fresh dialog. "pinned" always resumes
+// the session's own current conversation id, sticky across a deck restart;
+// "fresh-once" starts a brand-new conversation exactly once and then
+// reverts to auto; neither ever touches a live pane.
+func (m Model) pinView() string {
+	session := m.sessions[m.selected]
+	state := session.ResumeState
+	if state == "" {
+		state = "auto"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Change resume mode for %s\n\n", session.Name)
+	fmt.Fprintf(&b, "Current:   %s\n", state)
+	fmt.Fprintf(&b, "New:       %s (left/right cycles: %s)\n", m.pinValue, strings.Join(resumeModeOptions, ", "))
+	b.WriteString("\npinned always resumes this session's own current conversation id, sticky\nacross a deck restart. fresh-once starts a brand-new conversation exactly\nonce, then reverts to auto. Neither changes a running pane.\n")
+	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+	if m.pinNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.pinNote)
 	}
 	return b.String()
 }
