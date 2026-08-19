@@ -26,6 +26,9 @@ func (guardAdapter) Capabilities() agent.Caps {
 }
 func (guardAdapter) Launch(agent.LaunchInput) ([]string, error) { return nil, nil }
 func (guardAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil }
+func (guardAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
+	return nil, nil
+}
 
 // TestBlackBoxRegistrySwapNeedsNoTUIEdit proves (PRD requirement 1) that a
 // registry whose adapter membership differs from the stock shell/claude/pi
@@ -93,6 +96,9 @@ func (aardvarkAdapter) Capabilities() agent.Caps {
 }
 func (aardvarkAdapter) Launch(agent.LaunchInput) ([]string, error) { return nil, nil }
 func (aardvarkAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil }
+func (aardvarkAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
+	return nil, nil
+}
 
 func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	registry := agent.NewRegistry()

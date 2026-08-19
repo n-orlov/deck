@@ -46,3 +46,6 @@ func (Shell) Resume(in ResumeInput) ([]string, error) {
 	argv := []string{userShell()}
 	return append(argv, in.ExtraArgs...), nil
 }
+
+// Instrument deliberately returns nothing: a shell has no agent hook source.
+func (Shell) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }

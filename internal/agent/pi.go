@@ -59,3 +59,6 @@ func (p Pi) Resume(in ResumeInput) ([]string, error) {
 	}
 	return append(argv, in.ExtraArgs...), nil
 }
+
+// Instrument is empty until Pi has a verified event source (SPEC §8.1).
+func (Pi) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }

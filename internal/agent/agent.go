@@ -71,6 +71,14 @@ type LaunchInput struct {
 	// ExtraArgs are additional launch_args from the session row, appended
 	// verbatim after the adapter's own argv.
 	ExtraArgs []string
+	// DeckExecutable is the absolute path to the running deck binary. Hook
+	// commands embed this path rather than relying on the pane's PATH.
+	DeckExecutable string
+	// DeckSessionID is deck's row identity, which may differ from the agent's
+	// conversation id. It is the fallback identity supplied to hook processes.
+	DeckSessionID string
+	// DeckHome is the resolved data root whose state database receives hooks.
+	DeckHome string
 }
 
 // ResumeInput carries what an adapter needs to build a resume argv.
@@ -95,6 +103,9 @@ type Adapter interface {
 	// Resume returns the argv to resume an existing conversation. Callers
 	// must not call this when Capabilities().Resumable is false.
 	Resume(in ResumeInput) (argv []string, err error)
+	// Instrument returns per-process argv and environment additions. It is a
+	// pure function: adapters never write settings files or mutate user env.
+	Instrument(in LaunchInput) (argv []string, env map[string]string)
 }
 
 // Registry looks adapters up by kind. The zero value is not usable; use

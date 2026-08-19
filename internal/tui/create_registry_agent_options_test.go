@@ -20,6 +20,9 @@ func (throwawayAdapter) Capabilities() agent.Caps {
 }
 func (throwawayAdapter) Launch(agent.LaunchInput) ([]string, error) { return nil, nil }
 func (throwawayAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil }
+func (throwawayAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
+	return nil, nil
+}
 
 // newModelWithRegistry builds a Model wired to registry via the
 // registry-accepting constructor (task 001), with the create modal open.

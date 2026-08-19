@@ -1,6 +1,11 @@
 package agent
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -72,6 +77,76 @@ func TestClaude_LaunchAndResumeArgv(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestClaude_InstrumentReturnsInlineHooksAndDeckEnvironmentWithoutIO(t *testing.T) {
+	home := t.TempDir()
+	cwd := filepath.Join(t.TempDir(), "session-cwd")
+	if err := os.Mkdir(cwd, 0o755); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+	t.Setenv("HOME", home)
+
+	deckExecutable := "/opt/deck builds/deck's-bin"
+	argv, env := (Claude{}).Instrument(LaunchInput{
+		CWD:            cwd,
+		ConversationID: "claude-conversation",
+		DeckExecutable: deckExecutable,
+		DeckSessionID:  "deck-row-42",
+		DeckHome:       "/tmp/scenario-deck-home",
+	})
+	if len(argv) != 2 || argv[0] != "--settings" {
+		t.Fatalf("Instrument argv = %#v, want one inline --settings value", argv)
+	}
+	wantEnv := map[string]string{
+		"DECK_SESSION_ID": "deck-row-42",
+		"DECK_HOME":       "/tmp/scenario-deck-home",
+	}
+	if !reflect.DeepEqual(env, wantEnv) {
+		t.Fatalf("Instrument env = %#v, want %#v", env, wantEnv)
+	}
+
+	var settings struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(argv[1]), &settings); err != nil {
+		t.Fatalf("decode inline settings: %v", err)
+	}
+	gotEvents := make([]string, 0, len(settings.Hooks))
+	for event := range settings.Hooks {
+		gotEvents = append(gotEvents, event)
+	}
+	sort.Strings(gotEvents)
+	wantEvents := []string{"Notification", "SessionEnd", "SessionStart", "Stop", "StopFailure", "UserPromptSubmit"}
+	if !reflect.DeepEqual(gotEvents, wantEvents) {
+		t.Fatalf("instrumented events = %v, want %v", gotEvents, wantEvents)
+	}
+	wantCommand := `'/opt/deck builds/deck'"'"'s-bin' _hook`
+	for _, event := range wantEvents {
+		groups := settings.Hooks[event]
+		if len(groups) != 1 || len(groups[0].Hooks) != 1 {
+			t.Fatalf("%s hook shape = %#v, want one command hook", event, groups)
+		}
+		hook := groups[0].Hooks[0]
+		if hook.Type != "command" || hook.Command != wantCommand {
+			t.Fatalf("%s hook = %#v, want command %q", event, hook, wantCommand)
+		}
+	}
+
+	for label, directory := range map[string]string{"HOME": home, "session cwd": cwd} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			t.Fatalf("read %s: %v", label, err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("Instrument wrote under %s: %v", label, entries)
+		}
 	}
 }
 

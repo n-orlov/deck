@@ -1,6 +1,10 @@
 package agent
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
 
 // claudeProfileFlags maps SPEC §5 permission profile names to the exact
 // `--permission-mode` value Claude Code accepts. Only structured mode flags
@@ -57,6 +61,53 @@ func (c Claude) Resume(in ResumeInput) ([]string, error) {
 	}
 	argv := []string{"claude", "--resume", in.ConversationID, "--permission-mode", flag}
 	return append(argv, in.ExtraArgs...), nil
+}
+
+var claudeHookEvents = []string{
+	"SessionStart",
+	"UserPromptSubmit",
+	"Notification",
+	"Stop",
+	"StopFailure",
+	"SessionEnd",
+}
+
+type claudeHookSettings struct {
+	Hooks map[string][]claudeHookGroup `json:"hooks"`
+}
+
+type claudeHookGroup struct {
+	Hooks []claudeHook `json:"hooks"`
+}
+
+type claudeHook struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+}
+
+// Instrument supplies Claude's per-process --settings JSON. Claude merges
+// this settings source with user and project settings, so deck adds its hooks
+// without reading or modifying either source. Marshal cannot fail for these
+// concrete string-only structures.
+func (Claude) Instrument(in LaunchInput) ([]string, map[string]string) {
+	command := shellQuote(in.DeckExecutable) + " _hook"
+	hooks := make(map[string][]claudeHookGroup, len(claudeHookEvents))
+	for _, event := range claudeHookEvents {
+		hooks[event] = []claudeHookGroup{{Hooks: []claudeHook{{
+			Type: "command", Command: command,
+		}}}}
+	}
+	settings, _ := json.Marshal(claudeHookSettings{Hooks: hooks})
+	return []string{"--settings", string(settings)}, map[string]string{
+		"DECK_SESSION_ID": in.DeckSessionID,
+		"DECK_HOME":       in.DeckHome,
+	}
+}
+
+// shellQuote quotes one argv path for Claude's command-hook shell. Always
+// quoting also prevents a path beginning with '-' from becoming an option.
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func claudePermissionFlag(profile string) (string, error) {

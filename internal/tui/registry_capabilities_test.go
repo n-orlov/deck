@@ -28,6 +28,9 @@ func (capsAdapter) Capabilities() agent.Caps {
 }
 func (capsAdapter) Launch(agent.LaunchInput) ([]string, error) { return nil, nil }
 func (capsAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil }
+func (capsAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
+	return nil, nil
+}
 
 // newModelWithSessionAndRegistry builds a Model wired to registry (task 001
 // constructor) with a single session already loaded and both the P and p

@@ -49,6 +49,17 @@ func TestShellLaunchArgvIsShellOnly(t *testing.T) {
 	}
 }
 
+func TestShellInstrumentIsEmpty(t *testing.T) {
+	argv, env := (Shell{}).Instrument(LaunchInput{
+		DeckExecutable: "/absolute/deck",
+		DeckSessionID:  "row-id",
+		DeckHome:       "/deck-home",
+	})
+	if argv != nil || env != nil {
+		t.Fatalf("shell Instrument = %#v, %#v; want no instrumentation", argv, env)
+	}
+}
+
 func TestShellResumeArgvIsShellOnly(t *testing.T) {
 	old, hadOld := os.LookupEnv("SHELL")
 	os.Setenv("SHELL", "/bin/bash")
