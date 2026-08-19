@@ -29,6 +29,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" screen contains "([^"]+)"$`, clientScreenContains)
 	sc.Step(`^within one configured reconcile interval deck client "([^"]+)" screen contains "([^"]+)"$`, clientScreenContainsWithinReconcileInterval)
 	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" screen still contains "([^"]+)"$`, clientScreenStillContainsAfterReconcileInterval)
+	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" row "([^"]+)" does not contain "([^"]+)"$`, clientRowDoesNotContainAfterReconcileInterval)
 	sc.Step(`^the private tmux session "([^"]+)" exists$`, privateSessionExists)
 	sc.Step(`^the private tmux session "([^"]+)" has one pane in "([^"]+)"$`, privateSessionPaneCWD)
 	sc.Step(`^the private tmux session "([^"]+)" has exactly one pane running "([^"]+)"$`, privateSessionPaneCommand)
@@ -127,6 +128,17 @@ func clientScreenStillContainsAfterReconcileInterval(ctx context.Context, name, 
 		return fmt.Errorf("client %q does not still show %q after reconcile interval %s:\n%s", name, want, scenarioReconcileInterval, frame)
 	}
 	return nil
+}
+
+func clientRowDoesNotContainAfterReconcileInterval(ctx context.Context, clientName, sessionName, unwanted string) error {
+	timer := time.NewTimer(scenarioReconcileInterval + 100*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	return clientRowDoesNotContain(ctx, clientName, sessionName, unwanted)
 }
 
 func clientScreenContainsBefore(ctx context.Context, name, want string, timeout time.Duration) error {
