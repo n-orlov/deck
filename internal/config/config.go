@@ -209,6 +209,12 @@ func (c *Clock) Now() time.Time {
 	return c.base.Add(time.Duration(c.ticks) * c.step)
 }
 
+// StepEnabled reports whether an on-demand step has both a frozen base and a
+// positive increment. A running deck client exposes that operation through
+// SIGUSR1; clocks without both DECK_CLOCK and DECK_CLOCK_STEP do not claim the
+// signal or alter normal process signal handling.
+func (c *Clock) StepEnabled() bool { return c.frozen && c.step > 0 }
+
 // Advance moves a frozen clock one configured step and returns its new wall time.
 // Clocks loaded through Load persist the resulting absolute instant under the
 // resolved data root, so already-running clients and later subprocesses agree.

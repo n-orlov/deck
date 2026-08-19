@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -22,6 +23,48 @@ type ptyOutput struct {
 	mu sync.Mutex
 	b  bytes.Buffer
 	ch chan struct{}
+}
+
+func TestRunningClientSIGUSR1AdvancesSharedClock(t *testing.T) {
+	home := t.TempDir()
+	settings, err := config.LoadFrom(func(key string) string {
+		return map[string]string{
+			"DECK_HOME":       home,
+			"DECK_CLOCK":      "2025-01-02T03:04:05Z",
+			"DECK_CLOCK_STEP": "45s",
+		}[key]
+	}, os.UserHomeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	stop := startClockStepTrigger(settings.Clock, &stderr)
+	defer stop()
+
+	if err := syscall.Kill(os.Getpid(), syscall.SIGUSR1); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	want := "2025-01-02T03:04:50Z"
+	for settings.Clock.Now().Format(time.RFC3339) != want && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := settings.Clock.Now().Format(time.RFC3339); got != want {
+		t.Fatalf("now after SIGUSR1 = %s, want %s; stderr=%q", got, want, stderr.String())
+	}
+	other, err := config.LoadFrom(func(key string) string {
+		return map[string]string{
+			"DECK_HOME":       home,
+			"DECK_CLOCK":      "2025-01-02T03:04:05Z",
+			"DECK_CLOCK_STEP": "45s",
+		}[key]
+	}, os.UserHomeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := other.Clock.Now().Format(time.RFC3339); got != want {
+		t.Fatalf("second process clock = %s, want %s", got, want)
+	}
 }
 
 func newPTYOutput() *ptyOutput { return &ptyOutput{ch: make(chan struct{}, 1)} }

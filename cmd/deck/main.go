@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/agent"
@@ -41,6 +43,9 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 		return 0
 	}
+
+	stopClockStep := startClockStepTrigger(settings.Clock, stderr)
+	defer stopClockStep()
 
 	db, err := store.Open(settings.Paths)
 	if err != nil {
@@ -86,6 +91,36 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// startClockStepTrigger makes SIGUSR1 the on-demand DECK_CLOCK_STEP trigger for
+// a running client. AdvanceShared's file lock serializes signals handled by
+// different clients that share DECK_HOME, and clock.now publishes the result to
+// every already-running client and later deck subprocess. No signal is claimed
+// unless both DECK_CLOCK and DECK_CLOCK_STEP configure a step-capable clock.
+func startClockStepTrigger(clock *config.Clock, stderr io.Writer) func() {
+	if !clock.StepEnabled() {
+		return func() {}
+	}
+	requests := make(chan os.Signal, 16)
+	done := make(chan struct{})
+	signal.Notify(requests, syscall.SIGUSR1)
+	go func() {
+		for {
+			select {
+			case <-requests:
+				if _, err := clock.AdvanceShared(); err != nil {
+					fmt.Fprintln(stderr, "deck clock step:", err)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() {
+		signal.Stop(requests)
+		close(done)
+	}
 }
 
 // runHook is intentionally selected before opening the normal application

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -122,6 +123,66 @@ func TestDeckHomeClocksShareOnDemandAdvance(t *testing.T) {
 	}
 	if got := third.Clock.Now().Format(time.RFC3339); got != want {
 		t.Fatalf("later subprocess now = %s, want %s", got, want)
+	}
+}
+
+func TestConcurrentSharedClockStepsAreSerialized(t *testing.T) {
+	home := t.TempDir()
+	env := environment(map[string]string{"DECK_HOME": home, "DECK_CLOCK": "2025-01-02T03:04:05Z", "DECK_CLOCK_STEP": "2m"})
+	clock, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clock.Clock.StepEnabled() {
+		t.Fatal("clock with DECK_CLOCK and DECK_CLOCK_STEP is not step-enabled")
+	}
+
+	const invocations = 12
+	errors := make(chan error, invocations)
+	var workers sync.WaitGroup
+	for range invocations {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			_, err := clock.Clock.AdvanceShared()
+			errors <- err
+		}()
+	}
+	workers.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "2025-01-02T03:28:05Z"
+	if got := clock.Clock.Now().Format(time.RFC3339); got != want {
+		t.Fatalf("now after %d concurrent steps = %s, want %s", invocations, got, want)
+	}
+	later, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := later.Clock.Now().Format(time.RFC3339); got != want {
+		t.Fatalf("later process now = %s, want %s", got, want)
+	}
+}
+
+func TestStepRequiresFrozenClockAndIncrement(t *testing.T) {
+	for name, values := range map[string]map[string]string{
+		"neither":   {},
+		"wall only": {"DECK_CLOCK": "2025-01-02T03:04:05Z"},
+		"step only": {"DECK_CLOCK_STEP": "2m"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			settings, err := LoadFrom(environment(values), fakeHome)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if settings.Clock.StepEnabled() {
+				t.Fatal("incomplete frozen-clock configuration claimed the step trigger")
+			}
+		})
 	}
 }
 
