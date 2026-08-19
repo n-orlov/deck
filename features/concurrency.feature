@@ -24,6 +24,24 @@ Feature: Multi-client session refresh
     When deck client "A" exits cleanly
     And deck client "B" exits cleanly
 
+  Scenario: one hook-driven status change propagates to every client
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    And deck client "B" is started
+    And deck client "C" is started
+    When deck client "A" creates claude session "hook shared" with permission profile "safe"
+    Then within one configured reconcile interval deck client "B" screen contains "hook shared"
+    And within one configured reconcile interval deck client "C" screen contains "hook shared"
+    When fake Claude session "hook shared" fires "SessionStart" for itself using conversation identity:
+      | source | propagation |
+    Then within one configured reconcile interval deck client "A" row "hook shared" contains "running"
+    And within one configured reconcile interval deck client "B" row "hook shared" contains "running"
+    And within one configured reconcile interval deck client "C" row "hook shared" contains "running"
+    And session "hook shared" has one "session_start" event with payload field "source" equal to "propagation"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+    And deck client "C" exits cleanly
+
   Scenario: a live client reconciles an externally killed private server
     Given deck client "A" is started
     When deck client "A" creates shell session "externally stopped"

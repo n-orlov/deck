@@ -39,6 +39,16 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 	if s.Store == nil || s.Audit == nil || s.Clock == nil {
 		return errors.New("reconciliation requires store, audit logger, and clock")
 	}
+	// Read durable intent before observing tmux. A resume atomically changes a
+	// row to starting before it creates the pane; this ordering means a pass
+	// racing that launch sees either the old stopped row (which is skipped) or
+	// the newly-created pane. Listing tmux first could combine an old "absent"
+	// snapshot with the later launch.ready row and falsely stop a successful
+	// agent launch on another client.
+	rows, err := s.Store.ListSessions(ctx)
+	if err != nil {
+		return fmt.Errorf("list durable sessions for reconciliation: %w", err)
+	}
 	live, err := s.TMux.List(ctx)
 	if err != nil {
 		return fmt.Errorf("list tmux sessions for reconciliation: %w", err)
@@ -46,10 +56,6 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 	liveByName := make(map[string]tmux.Session, len(live))
 	for _, session := range live {
 		liveByName[session.Name] = session
-	}
-	rows, err := s.Store.ListSessions(ctx)
-	if err != nil {
-		return fmt.Errorf("list durable sessions for reconciliation: %w", err)
 	}
 	for _, session := range rows {
 		if session.Status == "stopped" || session.PaneExitStatus != nil || (session.Status == "starting" && session.StatusSource == "user") {
