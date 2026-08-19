@@ -105,6 +105,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		return session, ResumeStartingElsewhere, nil
 	}
 	session.Status = "starting"
+	session.KilledByUser = false
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
 		return session, ResumeStarted, fmt.Errorf("audit starting resumed session %q: %w", session.Name, err)
 	}

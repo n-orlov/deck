@@ -107,8 +107,10 @@ func leaseOwnerAlive(owner string) bool {
 
 // AcquireLaunchLease implements the SPEC §9.3 launch lease: the transaction
 // that flips a stopped session to starting also CAS-acquires
-// launch_lease_owner/launch_lease_until. A lease is breakable when it is
-// unset, its TTL has elapsed, or its owning process is no longer alive (dead
+// launch_lease_owner/launch_lease_until and clears killed_by_user: an explicit
+// resume is the user action that releases the terminal kill guard. A lease is
+// breakable when it is unset, its TTL has elapsed, or its owning process is no
+// longer alive (dead
 // pid, or a pid from a previous boot). Every outcome — including a lost
 // race — leaves the row in a state where a subsequent legitimate acquire can
 // still succeed; no case wedges it.
@@ -168,7 +170,8 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 	}
 	result, err := tx.ExecContext(ctx,
 		`UPDATE sessions
-		 SET status = 'starting', launch_lease_owner = ?, launch_lease_until = ?
+		 SET status = 'starting', killed_by_user = 0,
+		     launch_lease_owner = ?, launch_lease_until = ?
 		 WHERE id = ? AND status = 'stopped'
 		   AND launch_lease_owner IS ?
 		   AND launch_lease_until = ?`,

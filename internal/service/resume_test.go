@@ -53,7 +53,12 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
 		t.Fatalf("kill original pane: %v", err)
 	}
-	stopSession(t, db, created.ID)
+	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: created.ID, Status: "stopped", Source: "user", At: 1,
+		EventKind: "killed", KilledByUser: true,
+	}); err != nil {
+		t.Fatalf("mark original session killed by user: %v", err)
+	}
 
 	session, outcome, err := service.Resume(context.Background(), created.ID)
 	if err != nil {
@@ -65,6 +70,9 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	if session.Status != "starting" {
 		t.Fatalf("row status = %q, want starting", session.Status)
 	}
+	if session.KilledByUser {
+		t.Fatal("returned resumed session remains killed_by_user")
+	}
 
 	row, err := db.GetSession(context.Background(), created.ID)
 	if err != nil {
@@ -72,6 +80,9 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	}
 	if row.Status != "starting" {
 		t.Fatalf("persisted row status = %q, want starting", row.Status)
+	}
+	if row.KilledByUser {
+		t.Fatal("persisted resumed session remains killed_by_user")
 	}
 
 	live, err := service.TMux.List(context.Background())
