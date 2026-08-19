@@ -58,6 +58,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerFakeAgentFeatureSteps(sc)
 	registerAgentSessionSteps(sc)
 	registerHookContractSteps(sc)
+	registerClaudeHookStatusSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
