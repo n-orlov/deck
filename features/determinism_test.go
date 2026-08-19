@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -18,7 +19,8 @@ const frozenClock = "2025-01-02T03:04:05Z"
 func registerDeterminismSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck frames are byte-stable with DECK_ASCII and NO_COLOR$`, deterministicFrames)
 	sc.Step(`^a stepped frozen-clock shell session is created and killed$`, frozenClockSessionIsCreatedAndKilled)
-	sc.Step(`^its shared wall clock steps on demand while monotonic durations advance$`, frozenAuditIsSteppedAndAdvances)
+	sc.Step(`^both running clients and a later hook subprocess share the stepped wall clock$`, steppedClockIsSharedWithHook)
+	sc.Step(`^its audit wall clock steps on demand while monotonic durations advance$`, frozenAuditIsSteppedAndAdvances)
 	sc.Step(`^repeating DECK_ID_SEED reproduces generated ids$`, repeatingSeedReproducesID)
 }
 
@@ -122,10 +124,11 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := client.WaitForFrame(ctx, true, "created just now"); err != nil {
 		return fmt.Errorf("creation unexpectedly stepped frozen time: %w", err)
 	}
-	// clock.now is the documented on-demand control while both clients run.
-	// A subprocess started only after the write must independently agree.
-	if err := os.WriteFile(filepath.Join(h.Home, "clock.now"), []byte("2025-01-02T03:06:05Z\n"), 0o600); err != nil {
-		return fmt.Errorf("advance shared frozen clock: %w", err)
+	// Exercise the production trigger while both released clients are already
+	// running. The signalled client advances by exactly DECK_CLOCK_STEP; neither
+	// the scenario nor an external caller calculates or writes an absolute time.
+	if err := client.cmd.Process.Signal(syscall.SIGUSR1); err != nil {
+		return fmt.Errorf("signal shared frozen-clock step: %w", err)
 	}
 	if err := client.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
 		return fmt.Errorf("running client did not read shared frozen now: %w", err)
@@ -133,12 +136,27 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := observer.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
 		return fmt.Errorf("already-running observer did not read shared frozen now: %w", err)
 	}
-	subprocess, err := h.StartNamedClient(ctx, "frozen-clock-subprocess", deterministicEnvironment()...)
+	// Start a later released deck _hook subprocess only after both clients have
+	// rendered the stepped age. Hooks intentionally reject shell rows, so create
+	// an external Claude target in the already-bootstrapped scenario store.
+	db, err := openObservedDatabase(h)
 	if err != nil {
 		return err
 	}
-	if err := subprocess.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
-		return fmt.Errorf("later deck subprocess did not read shared frozen now: %w", err)
+	_, insertErr := db.ExecContext(ctx, `INSERT INTO sessions
+		(id, name, slug, cwd, agent, captured_path, conversation_id,
+		 status, status_source, status_at, created_at)
+		VALUES ('clock-step-hook', 'clock step hook', 'clock-step-hook', ?, 'claude', ?,
+		 'clock-step-conversation', 'starting', 'user', 1735787165000, 1735787165000)`, h.Home, os.Getenv("PATH"))
+	closeErr := db.Close()
+	if insertErr != nil {
+		return fmt.Errorf("create later hook target: %w", insertErr)
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := releasedHookForSession(ctx, "clock step hook", `{"hook_event_name":"SessionStart","source":"clock-step-proof"}`); err != nil {
+		return err
 	}
 	// The delay makes the externally logged monotonic duration observably
 	// advance even though every wall-clock timestamp remains frozen.
@@ -149,13 +167,34 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := client.WaitForFrame(ctx, true, "resumable"); err != nil {
 		return err
 	}
-	for _, running := range []*ScreenDriver{client, observer, subprocess} {
+	for _, running := range []*ScreenDriver{client, observer} {
 		if err := running.Send("q"); err != nil {
 			return err
 		}
 		if err := running.Stop(5 * time.Second); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func steppedClockIsSharedWithHook(ctx context.Context) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var statusAt int64
+	if err := db.QueryRowContext(ctx, `SELECT status_at FROM sessions WHERE name = 'clock step hook'`).Scan(&statusAt); err != nil {
+		return fmt.Errorf("read later hook timestamp: %w", err)
+	}
+	want := time.Date(2025, time.January, 2, 3, 6, 5, 0, time.UTC).UnixMilli()
+	if statusAt != want {
+		return fmt.Errorf("later hook persisted status_at=%d, want stepped shared time %d", statusAt, want)
 	}
 	return nil
 }

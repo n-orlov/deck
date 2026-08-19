@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -278,8 +279,14 @@ func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) erro
 	if err := os.WriteFile(arm, []byte(strings.TrimSpace(string(paneIDRaw))), 0o600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(h.Home, "clock.now"), []byte("2025-01-02T03:04:50Z\n"), 0o600); err != nil {
-		return fmt.Errorf("advance frozen probe clock: %w", err)
+	client, err := h.Client("A")
+	if err != nil {
+		return err
+	}
+	// Reach stale_after through the released client's on-demand increment. This
+	// deliberately does not calculate or write an absolute clock.now value.
+	if err := client.cmd.Process.Signal(syscall.SIGUSR1); err != nil {
+		return fmt.Errorf("signal frozen probe clock step: %w", err)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
