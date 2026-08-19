@@ -1,0 +1,3 @@
+pi coding agent
+> implement the probe table
+⠹ Working · ctrl-c to stop

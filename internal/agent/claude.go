@@ -89,6 +89,9 @@ type claudeHook struct {
 // this settings source with user and project settings, so deck adds its hooks
 // without reading or modifying either source. Marshal cannot fail for these
 // concrete string-only structures.
+// Probe provides the sampled fallback used when Claude's live hook verdict is stale.
+func (Claude) Probe(pane string) (string, string) { return probe("claude", pane) }
+
 func (Claude) Instrument(in LaunchInput) ([]string, map[string]string) {
 	command := shellQuote(in.DeckExecutable) + " _hook"
 	hooks := make(map[string][]claudeHookGroup, len(claudeHookEvents))

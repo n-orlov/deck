@@ -28,6 +28,7 @@ func (throwawayAdapter) Resume(in ResumeInput) (argv []string, err error) {
 	return []string{"throwaway", "--resume", in.ConversationID}, nil
 }
 func (throwawayAdapter) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+func (throwawayAdapter) Probe(string) (string, string)                        { return "", "" }
 
 func TestRegistry_RegisterAndLookup(t *testing.T) {
 	r := NewRegistry()
@@ -92,3 +93,4 @@ func (f fakeAdapter) Resume(ResumeInput) (argv []string, err error) {
 	return nil, nil
 }
 func (f fakeAdapter) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+func (f fakeAdapter) Probe(string) (string, string)                        { return "", "" }

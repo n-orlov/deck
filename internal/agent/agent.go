@@ -106,6 +106,9 @@ type Adapter interface {
 	// Instrument returns per-process argv and environment additions. It is a
 	// pure function: adapters never write settings files or mutate user env.
 	Instrument(in LaunchInput) (argv []string, env map[string]string)
+	// Probe classifies captured pane text into a sampled status verdict. An
+	// empty status means the adapter cannot justify a verdict from these bytes.
+	Probe(pane string) (status, reason string)
 }
 
 // Registry looks adapters up by kind. The zero value is not usable; use

@@ -49,3 +49,6 @@ func (Shell) Resume(in ResumeInput) ([]string, error) {
 
 // Instrument deliberately returns nothing: a shell has no agent hook source.
 func (Shell) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+
+// Probe always declines: shell pane text has no meaningful agent verdict.
+func (Shell) Probe(string) (string, string) { return "", "" }

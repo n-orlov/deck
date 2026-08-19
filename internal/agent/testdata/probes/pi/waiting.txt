@@ -1,0 +1,4 @@
+pi coding agent
+Allow tool execution?
+❯ Yes
+  No

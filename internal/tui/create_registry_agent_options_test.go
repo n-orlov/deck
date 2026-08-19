@@ -23,6 +23,7 @@ func (throwawayAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil
 func (throwawayAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
 	return nil, nil
 }
+func (throwawayAdapter) Probe(string) (string, string) { return "", "" }
 
 // newModelWithRegistry builds a Model wired to registry via the
 // registry-accepting constructor (task 001), with the create modal open.

@@ -29,6 +29,7 @@ func (guardAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, ni
 func (guardAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
 	return nil, nil
 }
+func (guardAdapter) Probe(string) (string, string) { return "", "" }
 
 // TestBlackBoxRegistrySwapNeedsNoTUIEdit proves (PRD requirement 1) that a
 // registry whose adapter membership differs from the stock shell/claude/pi
@@ -99,6 +100,7 @@ func (aardvarkAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil,
 func (aardvarkAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
 	return nil, nil
 }
+func (aardvarkAdapter) Probe(string) (string, string) { return "", "" }
 
 func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	registry := agent.NewRegistry()

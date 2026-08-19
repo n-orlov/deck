@@ -1,0 +1,4 @@
+╭─ Claude Code ─────────────────╮
+│ ❯ refactor the status parser │
+╰───────────────────────────────╯
+✳ Working…  (esc to interrupt)

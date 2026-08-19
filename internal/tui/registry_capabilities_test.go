@@ -31,6 +31,7 @@ func (capsAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil
 func (capsAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
 	return nil, nil
 }
+func (capsAdapter) Probe(string) (string, string) { return "", "" }
 
 // newModelWithSessionAndRegistry builds a Model wired to registry (task 001
 // constructor) with a single session already loaded and both the P and p

@@ -62,3 +62,6 @@ func (p Pi) Resume(in ResumeInput) ([]string, error) {
 
 // Instrument is empty until Pi has a verified event source (SPEC §8.1).
 func (Pi) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+
+// Probe is Pi's sampled status source until it has a verified event source.
+func (Pi) Probe(pane string) (string, string) { return probe("pi", pane) }
