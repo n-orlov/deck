@@ -35,6 +35,7 @@ set -- docker run --rm \
     --mount "type=bind,src=$workspace,dst=/w" \
     --mount "type=volume,src=$volume,dst=/go-cache" \
     ${RALPHD_RUN_ID:+--label ralphd.run=$RALPHD_RUN_ID} \
+    ${RALPHD_RUN_ID:+--label ralphd.role=sibling} \
     "$image" "$@"
 
 exec "$@"
