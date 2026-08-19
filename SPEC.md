@@ -141,7 +141,7 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 | verb | invoked by | contract |
 |---|---|---|
-| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then exits. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
+| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
 | `deck _serve-tmux` | optional systemd unit | starts the `deck` tmux server with the right server options and exits. |
 | `deck _debug ...` | developers | inspection helpers, built only with the `debug` build tag. Not in release binaries. |
 
@@ -205,6 +205,7 @@ CREATE TABLE sessions (
   pre_launch         TEXT,                  -- one shell line run in the pane before the agent
   login_shell        INTEGER NOT NULL DEFAULT 0, -- run argv via `$SHELL -lc`
   permission_profile TEXT NOT NULL DEFAULT 'safe', -- safe|plan|edits|yolo (§5)
+  permission_profile_reason TEXT,        -- why the profile degraded (§5); NULL = it didn't
   conversation_id    TEXT,                  -- the agent's own session id; NULL until known
   resume_pin         TEXT,                  -- forced conversation id
   resume_state       TEXT NOT NULL DEFAULT 'auto', -- auto | pinned | cleared
@@ -214,7 +215,7 @@ CREATE TABLE sessions (
   status_at          INTEGER NOT NULL,
   killed_by_user     INTEGER NOT NULL DEFAULT 0, -- terminal user verdict; hooks can't undo it
   pane_exit_status   INTEGER,               -- from tmux pane_dead_status; NULL = not dead
-  crash_tail         TEXT,                  -- captured pane tail for the error state
+  crash_tail         TEXT,                  -- pane tail at death, last 200 lines (§7)
   notify_epoch       INTEGER NOT NULL DEFAULT 0, -- bumped when an attention state resolves (§10.2)
   last_message       TEXT,                  -- last assistant message, truncated 2 KiB
   sensitive          INTEGER NOT NULL DEFAULT 0, -- suppress scrollback capture (§8)
@@ -473,6 +474,19 @@ Rules:
   (`remain-on-exit off`) the pane and session vanish on death and there is nothing left to
   capture from. It also stops a shell session where the user typed `exit` from being
   reported as a red `error`.
+
+  **A dead pane is collected on sight, never retained.** The same pass that observes it
+  captures the tail, writes `error` with `pane_exit_status` and `crash_tail`, and *then* kills
+  the session. So the stored tail is the only crash artifact, and `tmux -L deck ls` agrees
+  with the list within one tick. Keeping the corpse around for forensics would mean two
+  answers to "what did it print" — a bounded tail in the store and a full frozen scrollback on
+  the socket — while also holding the session name against the next resume and leaving crashed
+  sessions on the socket indefinitely. Two properties follow and both are load-bearing under
+  R4: collection is **idempotent and unleased** — the tail is written once (`WHERE
+  pane_exit_status IS NULL`, first writer wins) and killing an already-gone session is a
+  no-op, not an error, so N clients seeing one corpse need no lease between them — and with
+  no TUI running nothing collects at all, which is the unattended gap stated below rather
+  than a new one.
 - **A `shell` session has no agent signal, ever.** It has no hooks to fire and nothing
   meaningful to probe, so the rules above would leave it at `starting` for its entire life
   — not just until some later capability lands. For `shell` rows only, tmux liveness
@@ -1427,6 +1441,3 @@ redesign upstream is a one-fixture fix.
 8. **Shared attach geometry** (§3.3). Living with `window-size latest` is the plan. If
    two-terminals-at-once turns out to be a daily annoyance rather than a rare one, the only
    real fix is one tmux session per client per agent, which is a different architecture.
-9. **`remain-on-exit failed` side effects.** Dead panes linger until the reconciler collects
-   them, so a crashed session is briefly visible in a raw `tmux -L deck ls`. Confirm the
-   collection policy (how long a dead pane is kept for its crash tail before teardown).
