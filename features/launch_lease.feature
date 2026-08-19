@@ -15,7 +15,7 @@ Feature: Launch-lease stale/live breaking
     And the state database contains session "live lease target" with status "stopped"
     When the state database session "live lease target"'s launch lease is cleared
     And deck client "A" presses r on session "live lease target"
-    Then deck client "A" screen contains "starting - awaiting signal"
+    Then deck client "A" screen contains "running"
     And deck client "A" screen does not contain "starting elsewhere"
     When deck client "A" exits cleanly
 
@@ -26,7 +26,7 @@ Feature: Launch-lease stale/live breaking
     Then the state database contains session "dead lease target" with status "stopped"
     When the state database session "dead lease target" has a launch lease owned by a dead process
     And deck client "A" presses r on session "dead lease target"
-    Then deck client "A" screen contains "starting - awaiting signal"
+    Then deck client "A" screen contains "running"
     And deck client "A" screen does not contain "starting elsewhere"
     When deck client "A" exits cleanly
 
@@ -37,6 +37,6 @@ Feature: Launch-lease stale/live breaking
     Then the state database contains session "expired lease target" with status "stopped"
     When the state database session "expired lease target" has an expired launch lease
     And deck client "A" presses r on session "expired lease target"
-    Then deck client "A" screen contains "starting - awaiting signal"
+    Then deck client "A" screen contains "running"
     And deck client "A" screen does not contain "starting elsewhere"
     When deck client "A" exits cleanly

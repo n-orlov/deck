@@ -18,7 +18,9 @@ Feature: Multi-client session refresh
     And deck client "A" creates shell session "after crash"
     Then deck client "B" screen contains "after crash"
     And the state database contains session "shared session" with status "stopped"
-    And the state database contains session "after crash" with status "starting"
+    # The durable-row assertion protects creation after a peer SIGKILL; shell
+    # promotion legitimately changes its transient status to running.
+    And the state database contains session "after crash"
     When deck client "A" exits cleanly
     And deck client "B" exits cleanly
 

@@ -30,6 +30,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^deck client "([^"]+)" opens the create modal for agent "([^"]+)"$`, clientOpensCreateModalForAgent)
 	sc.Step(`^deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContain)
+	sc.Step(`^deck client "([^"]+)" row "([^"]+)" does not contain "([^"]+)"$`, clientRowDoesNotContain)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "yolo" confirming yolo$`, clientCreatesAgentSessionConfirmingYolo)
 	sc.Step(`^deck client "([^"]+)" attempts ([a-z]+) session "([^"]+)" with permission profile "yolo" without confirming$`, clientAttemptsAgentSessionWithYoloWithoutConfirming)
 	sc.Step(`^deck client "([^"]+)" opens detail for session "([^"]+)"$`, clientOpensDetailForSession)
@@ -804,6 +805,30 @@ func clientScreenDoesNotContain(ctx context.Context, name, unwanted string) erro
 		return fmt.Errorf("deck client %q screen unexpectedly contains %q:\n%s", name, unwanted, frame)
 	}
 	return nil
+}
+
+// clientRowDoesNotContain scopes a negative status assertion to one rendered
+// session row. This keeps anti-fabrication coverage meaningful when another
+// row (for example, a live shell) truthfully has the unwanted status.
+func clientRowDoesNotContain(ctx context.Context, clientName, sessionName, unwanted string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.Contains(line, sessionName) {
+			if strings.Contains(line, unwanted) {
+				return fmt.Errorf("deck client %q row %q unexpectedly contains %q: %s", clientName, sessionName, unwanted, line)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("deck client %q has no rendered row %q:\n%s", clientName, sessionName, frame)
 }
 
 // clientOpensDetailForSession selects the named row (reusing

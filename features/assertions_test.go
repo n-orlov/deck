@@ -37,6 +37,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database has schema version ([0-9]+)$`, databaseSchemaVersion)
 	sc.Step(`^the state database journal mode is "([^"]+)"$`, databaseJournalMode)
 	sc.Step(`^the state database contains session "([^"]+)" with status "([^"]+)"$`, databaseSessionStatus)
+	sc.Step(`^the state database contains session "([^"]+)"$`, databaseContainsSession)
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with killed_by_user=([01])$`, databaseSessionTerminalFields)
 	sc.Step(`^the released running hook fires for session "([^"]+)"$`, releasedRunningHookForSession)
 	sc.Step(`^the released waiting hook fires for session "([^"]+)"$`, releasedWaitingHookForSession)
@@ -493,6 +494,26 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 	if status != wantStatus || source != wantSource || acknowledged != wantAcknowledged || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
 		return fmt.Errorf("session %q attention fields = status %q source %q acknowledged=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
 			name, status, source, acknowledged, epoch, attachedEvents, wantStatus, wantSource, wantAcknowledged, wantEpoch, wantAttachedEvents)
+	}
+	return nil
+}
+
+func databaseContainsSession(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE name = ?", name).Scan(&count); err != nil {
+		return fmt.Errorf("observe durable session %q: %w", name, err)
+	}
+	if count != 1 {
+		return fmt.Errorf("durable session %q count = %d, want 1", name, count)
 	}
 	return nil
 }
