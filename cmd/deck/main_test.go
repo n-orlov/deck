@@ -416,14 +416,15 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"Pre-launch command", "Login shell",
 		"Yolo is gated twice", "allow_yolo",
 		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "clock.now",
-		"resolved data root", "write it", "every running process sharing that root", "DECK_ID_SEED",
+		"kill -USR1 <deck-client-pid>", "each invocation advances", "shared clock by exactly DECK_CLOCK_STEP",
+		"resolved data root", "the trigger updates it and every process reads it", "DECK_ID_SEED",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
 		}
 	}
-	for _, unavailable := range []string{"_hook", "resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}

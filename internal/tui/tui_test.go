@@ -29,6 +29,8 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"Permission profile", "Pre-launch command", "loading secrets",
 		"Login shell", "Launch args", "allow_yolo",
 		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "clock.now", "resolved data root", "DECK_ID_SEED",
+		"kill -USR1 <deck-client-pid>", "each invocation advances", "shared clock by exactly DECK_CLOCK_STEP",
+		"the trigger updates it and every process reads it",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
 		"tmux -L deck ls", "Plain tmux attach does not find deck",
 	} {
@@ -36,7 +38,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 			t.Errorf("help view missing %q", want)
 		}
 	}
-	for _, unavailable := range []string{"_hook", "> advance", "resume/start", "restart preserving", "delete", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "restart preserving", "delete", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("help advertises unavailable action %q:\n%s", unavailable, help)
 		}

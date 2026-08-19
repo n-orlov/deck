@@ -1276,9 +1276,11 @@ Runtime controls
   DECK_HOME             isolated data/config/state root
   DECK_TMUX_SOCKET      private tmux socket (default: deck)
   DECK_CLOCK            freeze wall clock (RFC3339); clock.now overrides it
-  DECK_CLOCK_STEP       suggested increment for on-demand clock advancement
-  clock.now             RFC3339 instant under the resolved data root; write it
-                        to advance every running process sharing that root
+  DECK_CLOCK_STEP       exact amount advanced by each on-demand trigger
+  Trigger               kill -USR1 <deck-client-pid>; each invocation advances
+                        the shared clock by exactly DECK_CLOCK_STEP
+  clock.now             shared RFC3339 state under the resolved data root;
+                        the trigger updates it and every process reads it
   DECK_ID_SEED          deterministic generated UUIDs
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds
