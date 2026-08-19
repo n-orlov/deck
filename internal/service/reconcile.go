@@ -44,8 +44,24 @@ func (s Service) Reconcile(ctx context.Context) error {
 		if present {
 			pane, crashed := crashedPane(observed)
 			if !crashed {
-				// A live pane is liveness evidence only. In particular it cannot
-				// fabricate running for an agent row.
+				// Shells have no higher-quality signal or probe, so a live pane is
+				// their sound starting → running transition. For agents it remains
+				// liveness evidence only and must never fabricate working state.
+				if session.Agent == "shell" && session.Status == "starting" {
+					if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+						SessionID: session.ID,
+						Status:    "running",
+						Reason:    "tmux pane is alive",
+						Source:    "tmux",
+						At:        s.Clock.Now().UnixMilli(),
+						EventKind: "tmux.shell_live",
+					}); err != nil {
+						return fmt.Errorf("promote live shell session %q: %w", session.ID, err)
+					}
+					if err := s.Audit.Transition(session.ID, "tmux.shell_live"); err != nil {
+						return fmt.Errorf("audit live shell session %q: %w", session.ID, err)
+					}
+				}
 				continue
 			}
 			captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-", EndLine: "-"})

@@ -483,7 +483,7 @@ func (m Model) View() string {
 			if status == "stopped" {
 				status += m.glyph(" · resumable", " - resumable")
 			}
-			if status == "starting" {
+			if status == "starting" && session.Agent != "shell" {
 				status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 			}
 			marker := "  "
@@ -663,7 +663,7 @@ func (m Model) detailView() string {
 	if status == "stopped" {
 		status += m.glyph(" · resumable", " - resumable")
 	}
-	if status == "starting" {
+	if status == "starting" && session.Agent != "shell" {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
 	fmt.Fprintf(&b, "Status:             %s\n", status)

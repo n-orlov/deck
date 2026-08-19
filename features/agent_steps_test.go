@@ -26,6 +26,7 @@ import (
 // than growing a second one.
 func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
+	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^deck client "([^"]+)" opens the create modal for agent "([^"]+)"$`, clientOpensCreateModalForAgent)
 	sc.Step(`^deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContain)
@@ -68,6 +69,14 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 // consumed). It must run before the client it is meant to affect is started:
 // a deck client's environment is fixed at process start.
 func fakeClaudeOnPATHForFutureClients(ctx context.Context) error {
+	return installFakeClaudeOnPATH(ctx, false)
+}
+
+func longRunningFakeClaudeOnPATHForFutureClients(ctx context.Context) error {
+	return installFakeClaudeOnPATH(ctx, true)
+}
+
+func installFakeClaudeOnPATH(ctx context.Context, longRunning bool) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
 		return err
@@ -101,6 +110,11 @@ func fakeClaudeOnPATHForFutureClients(ctx context.Context) error {
 	// about deck's own contract.
 	claudeWrapper := filepath.Join(dir, "claude")
 	script := "#!/bin/sh\n\"" + realBinary + "\" \"$@\"\ncode=$?\nsleep 0.5\nexit \"$code\"\n"
+	if longRunning {
+		// Command mode reads from the pane until it receives a command or EOF,
+		// providing an unsignalled live agent without sleeps or network access.
+		script = "#!/bin/sh\nFAKE_CLAUDE_COMMANDS=1 exec \"" + realBinary + "\" \"$@\"\n"
+	}
 	if err := os.WriteFile(claudeWrapper, []byte(script), 0o700); err != nil {
 		return fmt.Errorf("write claude fixture wrapper: %w", err)
 	}

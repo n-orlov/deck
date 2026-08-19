@@ -470,7 +470,8 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	// tmux supplies terminal liveness, plus the one explicit shell promotion;
 	// it cannot invent an agent's working state.
 	tmuxLaunchObservation := input.Status == "starting" && currentStatus == "starting" && currentSource == "user"
-	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !(input.Status == "running" && agent == "shell") && !tmuxLaunchObservation {
+	tmuxShellPromotion := input.Status == "running" && agent == "shell" && currentStatus == "starting"
+	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !tmuxShellPromotion && !tmuxLaunchObservation {
 		apply = false
 	}
 	// Crash collection is first-writer-only. A racing observer still records

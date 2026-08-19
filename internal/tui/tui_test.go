@@ -43,6 +43,36 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	}
 }
 
+func TestStartingCopyDistinguishesShellFromSignalledAgents(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{
+		{Name: "shell row", Agent: "shell", Status: "starting"},
+		{Name: "claude row", Agent: "claude", Status: "starting"},
+		{Name: "pi row", Agent: "pi", Status: "starting"},
+	}
+	view := model.View()
+	var shellLine string
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "shell row") {
+			shellLine = line
+			break
+		}
+	}
+	if !strings.Contains(shellLine, "starting") || strings.Contains(shellLine, "awaiting signal") {
+		t.Fatalf("shell starting copy is not plain: %q\n%s", shellLine, view)
+	}
+	if strings.Count(view, "starting · awaiting signal") != 2 {
+		t.Fatalf("awaiting-signal copy should appear only on the two agent rows:\n%s", view)
+	}
+
+	model.sessions = model.sessions[:1]
+	model.detail = true
+	detail := model.View()
+	if !strings.Contains(detail, "Status:             starting") || strings.Contains(detail, "awaiting signal") {
+		t.Fatalf("shell detail starting copy is not plain:\n%s", detail)
+	}
+}
+
 func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
 	if err != nil {

@@ -94,6 +94,63 @@ func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T)
 	}
 }
 
+func TestReconcilePromotesOnlyLiveStartingShell(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.Paths{Home: home, LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
+	db, err := store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	logger, err := audit.New(paths, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := "deck-shell-live-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
+	svc := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock}
+
+	shell := reconcileSession(t, db, "00000000-0000-4000-8000-000000000024", "live shell", cwd, "shell", "starting", "tmux")
+	claude := reconcileSession(t, db, "00000000-0000-4000-8000-000000000025", "unsignalled agent", cwd, "claude", "starting", "tmux")
+	for _, session := range []store.Session{shell, claude} {
+		if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "sleep 30"}}); err != nil {
+			t.Fatalf("create live tmux session %q: %v", session.Name, err)
+		}
+	}
+
+	if err := svc.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	gotShell, err := db.GetSession(context.Background(), shell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotClaude, err := db.GetSession(context.Background(), claude.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotShell.Status != "running" || gotShell.StatusSource != "tmux" || gotShell.StatusReason != "tmux pane is alive" {
+		t.Fatalf("live shell verdict = %#v", gotShell)
+	}
+	if gotClaude.Status != "starting" || gotClaude.StatusSource != "tmux" {
+		t.Fatalf("live unsignalled agent verdict = %#v", gotClaude)
+	}
+	var shellEvents, agentEvents int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'tmux.shell_live'`, shell.ID).Scan(&shellEvents); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'tmux.shell_live'`, claude.ID).Scan(&agentEvents); err != nil {
+		t.Fatal(err)
+	}
+	if shellEvents != 1 || agentEvents != 0 || !auditContains(t, logger.Path(), shell.ID, "tmux.shell_live") {
+		t.Fatalf("shell promotion evidence: shell events=%d agent events=%d", shellEvents, agentEvents)
+	}
+}
+
 func TestReconcilerCapturesAndCollectsCrashFirstWriterOnly(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
