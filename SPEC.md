@@ -10,6 +10,17 @@ user-facing command line.
 > Name note: `deck` collides on `$PATH` with Kong's `decK` CLI if that's ever installed.
 > Binary name is one constant; flagged, not blocking.
 
+**How this document works.** It describes the product as it is meant to be, in the present
+tense: one design, with the reasons that constrain it. It does **not** narrate its own
+revisions — no "changed from", no "previously", no "the reviewer found", no phase numbers.
+Three other places carry that record and are the only ones that should: `git log` on this
+file for how the design changed and why, `docs/PLAN.md` for what gets built when, and
+`docs/DELIVERY-LOG.md` for what actually happened. **A sentence that only makes sense if
+you already know what the spec used to say, or which phase is in flight, is a defect here**
+— it rots on its own schedule and it makes a reader trust the least reliable copy of the
+history. Reasons are not history: "the preview floor is 40 columns because narrower wraps
+into hash-soup" is a constraint and belongs; "the preview floor was raised to 40" does not.
+
 ---
 
 ## 1. Why
@@ -40,7 +51,8 @@ worktree per task. What's actually needed is three things:
 ### Non-goals (out — do not add)
 
 Git worktrees, branches, PRs, CI · web UI / HTTP server / PWA / tunnels · Docker or
-sandboxing · ACP or any structured-render protocol · plugins, theme engine · **a
+sandboxing · ACP or any structured-render protocol · plugins · **a theme *engine***
+(themes are colour-only data files, and a theme can change nothing but colour — §11.6) · **a
 user-facing CLI or scripting surface** · **multi-host / remote sessions** · declarative
 config files describing the session set · multiple windows or a shell drawer per session
 (one agent or shell per session, full stop) · orchestration, task queues, kanban,
@@ -59,17 +71,22 @@ idle reaping or any timer that stops a running session · **inbound remote contr
   `remain-on-exit failed` (§7) and the `window-size` option (§3.3).
 - Runtime deps: `tmux`, plus whichever agent CLIs the user has. Nothing else.
 - Test tooling (never linked into the release binary): `cucumber/godog` for Gherkin, a
-  VT100 emulator for screen parsing, `net/http/httptest` for webhook capture, and fake
-  agent binaries built from `testdata/`. The harness drives the real `deck` binary
-  (§13).
+  VT100 emulator for screen parsing, `net/http/httptest` for webhook capture, and the
+  `cmd/fake-*` agent binaries. The harness drives the real `deck` binary (§13).
 - Paths: XDG with fallbacks — `$XDG_DATA_HOME/deck/` (default `~/.local/share/deck/`),
   `$XDG_CONFIG_HOME/deck/config.toml`, `$XDG_STATE_HOME/deck/log`. `state.db` is `0600`.
 
 ```
 cmd/deck/main.go          TUI entrypoint; hidden internal verbs (§3.1)
-internal/tui/             bubbletea model, views, modals, keymap
+cmd/fake-*/               fake agent binaries honouring the real argv contracts (§13.2)
+internal/tui/             bubbletea model, views, dialogs, keymap, layout, theme
 internal/store/           sqlite schema, migrations, queries — the only writer API
 internal/tmux/            new-session/list/kill/attach/send-keys/capture-pane/env
+internal/service/         the layer between TUI and store/tmux: create, resume, kill,
+                          reconcile — every state transition in §7 has its home here
+internal/config/          config.toml schema: parse, defaults, and the settings view's
+                          field set generated from the same declaration (§6.5, §11.5)
+internal/audit/           JSONL structured log incl. the launch audit (§13.1)
 internal/agent/           Adapter interface + registry
 internal/agent/claude.go  hook injection, assigned session id
 internal/agent/pi.go      assigned session id
@@ -178,7 +195,8 @@ CREATE TABLE sessions (
   id                 TEXT PRIMARY KEY,      -- deck's own uuid, stable forever
   name               TEXT NOT NULL UNIQUE,
   slug               TEXT NOT NULL UNIQUE,  -- tmux session = deck_<slug>
-  cwd                TEXT NOT NULL,         -- no git requirement, NOT unique (R2)
+  cwd                TEXT NOT NULL,         -- create-time, never overwritten; NOT unique (R2)
+  last_cwd           TEXT,                  -- pane's cwd at the last capture (§9.4); resume target
   agent              TEXT NOT NULL,         -- claude | pi | codex | shell
   launch_args        TEXT NOT NULL DEFAULT '[]', -- JSON array, extra agent args
   env                TEXT NOT NULL DEFAULT '{}', -- JSON map, per-session overrides
@@ -254,8 +272,10 @@ Invariants:
 - `events` retained 30 days by default, pruned on TUI start.
 - `ui_state` and `recent_cwds` are the only tables not keyed to a session, and neither is
   load-bearing: losing them costs a remembered layout and a prefilled path, never a
-  session or a conversation. Both arrive by migration, in the phase that first needs them
-  (§11.2 → Phase 2b, §11.7 → Phase 3), so neither is speculative schema.
+  session or a conversation. Dropping either is therefore a legal recovery action, and a
+  missing row degrades to the documented default rather than to an error.
+- Every column above is reachable by migration from schema version 1 — the store is never
+  rebuilt and a session row is never recreated to gain a field.
 
 ---
 
@@ -263,11 +283,11 @@ Invariants:
 
 A deck-level profile per session, translated per adapter — never a boolean.
 
-Flag names in this section were verified against the installed CLIs (`--help`) when this
-spec was written; Claude's `--permission-mode` accepts
-`manual | plan | acceptEdits | auto | dontAsk | bypassPermissions`. Keeping that true over
-time is exactly the job of the `@real-agents` suite (§13.5). Codex's approval surface is
-**not yet verified** — candidates are `--ask-for-approval`, `--full-auto`,
+The flag names below are upstream contracts, not deck's: Claude's `--permission-mode`
+accepts `manual | plan | acceptEdits | auto | dontAsk | bypassPermissions`. Keeping this
+table true as those CLIs move is the job of the `@real-agents` suite (§13.5), never of a
+reader's memory. Codex's approval surface is **unverified** — candidates are
+`--ask-for-approval`, `--full-auto`,
 `--dangerously-bypass-approvals-and-sandbox`; the adapter declares no `edits`/`yolo`
 support until one is confirmed.
 
@@ -358,7 +378,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5); `stale_after` and `capture_min_interval` join here when their phases land (§7, §9.4) — listed now so the single-source rule below stays honest |
+| top level | `allow_yolo` (default false, §5), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
@@ -382,27 +402,28 @@ Two rules that hold for every key, present and future:
 
 This is the single authoritative state machine. §8.1 and §9.1 defer to it.
 
-```
-                      ┌──────────────────────────────────────────┐
-                      │                                          │  new prompt
-   ┌──────────┐  r    │   ┌──────────┐  first signal  ┌──────────▼──┐
-   │ stopped  ├───────┴──►│ starting ├───────────────►│   running   │
-   └────▲─────┘           └────┬─────┘                └─┬─────┬───┬─┘
-        │                      │ no signal               │     │   │
-        │                      │ within stale_after       │     │   │
-        │                      └──────────┐   needs input│ done│   │failed
-        │                                 │       ┌──────▼─┐ ┌─▼───▼──┐ ┌───────┐
-        │  pane exit 0 · kill · SessionEnd│       │waiting │ │  idle  │ │ error │
-        ├─────────────────────────────────┴──────►└───┬────┘ └──┬─────┘ └──┬────┘
-        │                                             │ answered│ prompt   │ retry
-        │◄── pane exit ≠ 0 ──► error                  └─────────┴──────────┘
-        │    (crash, §7 crash policy)                      all return to running
-        └──────────────────────────────────────────────────────────────────────┘
-```
+Transitions, exhaustively. This table and the status table under it **are** the machine; no
+other section restates a transition, they only refer here:
 
-Return edges are load-bearing, not decoration: answering a prompt (`waiting → running`),
+| from | trigger | to |
+|---|---|---|
+| `stopped` | `r` — start or resume (§9.1) | `starting` |
+| `starting` | first agent signal | `running` |
+| `starting` | no signal for `stale_after` | stays `starting`, becomes probe-eligible |
+| `starting` | pane is alive, **`shell` rows only** | `running` — see the shell rule below |
+| `running` | needs input: permission prompt, question, idle prompt | `waiting` |
+| `running` | turn finished cleanly | `idle` |
+| `running` | turn or API failure | `error` |
+| `waiting` | answered: probe verdict, or the user attaches | `running` |
+| `idle` | new prompt | `running` |
+| `error` | new prompt, or a retry that succeeds | `running` |
+| *any* | pane exit 0 · `x` kill · session-end hook | `stopped` |
+| *any* | pane exit ≠ 0 | `error`, with `pane_exit_status` and a crash tail |
+
+The return edges are load-bearing, not decoration: answering a prompt (`waiting → running`),
 sending a new prompt after a turn (`idle → running`), and recovering from a transient
-failure (`error → running`) are the product's core loop.
+failure (`error → running`) are the product's core loop. `archived` is absent from the table
+on purpose — it is a flag (§4), orthogonal to status, settable only on a `stopped` session.
 
 | status | meaning | UI |
 |---|---|---|
@@ -460,13 +481,9 @@ Rules:
   it is sound precisely because no higher-precedence source exists for a shell that could
   ever contradict it. It does **not** generalise to agent rows: inferring `running` for an
   agent from a live pane is the fabricated status §7 exists to forbid, because there the
-  higher-precedence sources do exist and may disagree. Two consequences, stated so the
-  phase that implements this does not trip on them: a shell row's `starting` label is
-  plain `starting` — never `starting · awaiting signal`, which names a signal §7 says a
-  shell will never have; and the Phase 1 suite pins the pre-promotion behaviour in its
-  lease scenarios (shell rows asserted as `starting - awaiting signal`, screens asserted
-  to not contain `running`), so those assertions change *with* this rule, deliberately,
-  and the phase report says so rather than treating the red tests as regressions.
+  higher-precedence sources do exist and may disagree. One consequence in the UI: a shell
+  row's `starting` label is plain `starting`, never `starting · awaiting signal` — that
+  suffix names a signal a shell will never have, so it is agent-only copy.
 - **Crash detection is not instantaneous when unattended.** A `SIGKILL`ed or OOM-killed
   agent fires no hook, so the transition to `error` — and its notification — happens on the
   next TUI tick or the next `_hook` invocation for that session, whichever comes first.
@@ -479,18 +496,41 @@ Rules:
 
 ## 8. Agent adapters
 
+An adapter turns a session into **argv**, and nothing else: it never starts a process, never
+writes to the store, and never reaches into the TUI. `internal/service` owns the pane and
+the row; `internal/tui` consumes adapters only through this interface and the registry, so
+adding an agent kind is one file plus one registry entry and no TUI change (R1).
+
 ```go
 type Adapter interface {
-    Kind() string
-    Capabilities() Caps            // assigned ids? hooks? permission profiles? resume?
-    Launch(s Session) (argv []string, assignedID string, err error)
-    Resume(s Session, id string) (argv []string, err error)
-    DiscoverID(ctx context.Context, s Session, since time.Time) (string, error)
-    Instrument(s Session) (argv []string, env map[string]string)
-    Probe(pane string) (Status, reason string)
-    TranscriptPaths(s Session) ([]string, error)   // for search (§11)
+    Kind() string                                      // claude | pi | codex | shell
+    Capabilities() Caps                                // declared, never assumed
+    Launch(in LaunchInput) (argv []string, err error)
+    Resume(in ResumeInput) (argv []string, err error)
+}
+
+type Caps struct {
+    Profiles              []string // the §5 profiles this adapter really supports
+    AssignsConversationID bool     // accepts a deck-minted id at launch
+    Resumable             bool     // Resume is meaningful at all
 }
 ```
+
+`LaunchInput`/`ResumeInput` carry the cwd, the conversation id (when deck assigns it), the
+already-resolved permission profile, and the row's extra `launch_args`. They are
+deliberately not store rows: `internal/agent` has no dependency on the persistence layer,
+which is what keeps an adapter unit-testable as a pure function of its input.
+
+Four further methods join the interface with the capabilities they serve. Each is asked only
+of an adapter whose `Caps` claim it, so a kind that lacks one omits the behaviour rather
+than faking it:
+
+| method | serves |
+|---|---|
+| `Instrument(in LaunchInput) (argv []string, env map[string]string)` | per-session hook injection (§8.1) |
+| `Probe(pane string) (status, reason string)` | pane-text classification where no hook exists (§7) |
+| `DiscoverID(ctx, in, since) (string, error)` | post-launch conversation-id discovery (§8.2) |
+| `TranscriptPaths(in) ([]string, error)` | cross-session search over transcripts (§12) |
 
 | | Claude Code | Pi / oh-my-pi | Codex CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|
@@ -527,11 +567,12 @@ Subscribed events — a handful per turn, never per tool call:
 identity in its environment. Unresolvable events are stored as orphans, never dropped
 silently. Budget: read stdin, one `UPDATE`, one `INSERT`, dispatch or enqueue, exit.
 
-The event set, payload fields (`session_id`, `cwd`, `transcript_path`, `permission_mode`),
-the enumerated notification types, the last-assistant-message field on stop, and the
-existence of a stop-failure event were all verified against the current hooks reference
-while writing this spec. They are upstream contracts, so they are re-verified by
-`@real-agents` (§13.5) rather than trusted indefinitely — and each has a probe fallback.
+The event set, the payload fields (`session_id`, `cwd`, `transcript_path`,
+`permission_mode`), the enumerated notification types, the last-assistant-message field on
+stop and the stop-failure event are all upstream contracts, not deck's. They are re-verified
+by `@real-agents` (§13.5) rather than trusted indefinitely, and every one of them has a probe
+fallback (§7) — so an upstream change degrades a row from live to sampled instead of
+breaking it.
 
 Adapter-specific event sources for Pi and Codex (both have plausible hooks — an extension
 API and a notify command respectively) are deferred; until then they are honestly labelled
@@ -612,8 +653,17 @@ deck never writes to or deletes anything inside a session's `cwd`.
 
 Two TUIs pressing `r` on the same `stopped` session must not double-launch. The
 transaction that flips `stopped → starting` also CAS-acquires
-`launch_lease_owner`/`launch_lease_until` (owner = `pid@boot_id`, TTL ~30 s). A losing
-client shows "starting elsewhere". A stale lease (dead pid or expired TTL) is breakable.
+`launch_lease_owner`/`launch_lease_until` (owner = `pid@boot_id`, TTL ~30 s). A stale lease
+(dead pid or expired TTL) is breakable.
+
+**"starting elsewhere" is a claim about another client, so it is only made when one is
+actually there.** A failed acquisition has two unrelated causes and they must not share a
+message: another client holds a live lease → *starting elsewhere*; or the row was never
+leasable in the first place because it is not `stopped` → the row's own status and reason
+(*already running*, *already starting*). Reporting the second as the first sends the user
+hunting for a second TUI that does not exist, and it hides the real state of the row — the
+same class of lie as a fabricated status (§7). The store's answer therefore distinguishes
+"held by <owner>" from "not leasable, status is <status>", and the UI says which.
 
 ### 9.4 Shell-session state
 
@@ -646,11 +696,10 @@ For `shell` sessions, and reused for agent sessions where noted:
   whatever was on screen lands on disk.
 - **Working directory**: snapshot the pane's current path at capture time and resume there
   rather than at the original `cwd`.
-- **Schema home**, so the Phase 6 PRD is not left inventing one: the cwd snapshot is a
-  `last_cwd` column on `sessions` (nullable; `cwd` remains the create-time value and is
-  never overwritten), and captures live under `$DECK_HOME/captures/<session_id>/`,
-  referenced by convention rather than by row — a missing capture file degrades to no
-  replay, never to an error.
+- **Where this lives on disk**: the cwd snapshot is the `last_cwd` column on `sessions`
+  (nullable; `cwd` stays the create-time value and is never overwritten), and captures live
+  under `$DECK_HOME/captures/<session_id>/`, referenced by convention rather than by row —
+  so a missing capture file degrades to no replay, never to an error.
 - Not included: environment snapshots on exit (magic, and secret-laden), command journals.
 
 ### 9.5 tmux server lifetime (optional systemd)
@@ -772,6 +821,10 @@ listener.
  ↵ attach · space next · n new · r resume · x kill · , settings · f find · ? help
 ```
 
+That frame is an illustration drawn at 91 columns with the sidebar widened to 49; the
+default width, the floors, and what happens at deck's 80-column minimum are §11.2's, not
+this drawing's.
+
 The shape is a **session sidebar beside a live preview**, not a full-width list. The
 sidebar is the permanent spine of the product — it is what you scan to answer "which
 session needs me" — and the preview is what makes an answer actionable without attaching.
@@ -807,11 +860,17 @@ hold them side by side.
 
 Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
-`s` send message (§11.1) · `i` session detail (§11.4) · `e` env editor · `P` permission
-profile · `p` pin conversation · `E` event log · `f` find (§12) · `/` filter list · `m`
-mark · `z` snooze · `A` archive · `u` undo · `g`/`G` top/bottom · `,` settings (§11.5) ·
-`t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) · `tab`
-move focus sidebar↔preview · `?` help · `q` quit.
+`s` send message (§11.1) · `i` session detail (§11.4 — **rename is an action inside it**,
+not a top-level key) · `e` env editor · `P` permission profile · `p` pin conversation ·
+`E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze · `A` archive ·
+`u` undo · `g`/`G` top/bottom · `,` settings (§11.5) · `t` theme picker (§11.6) · `|` cycle
+layout mode, `<`/`>` sidebar width (§11.2) · `tab` move focus sidebar↔preview · `?` help ·
+`q` quit.
+
+**Every capability in this section has a key or a documented entry point here, and every
+key here has a scenario (§13.5).** A capability listed above with nowhere to reach it is an
+R7 defect, and a key listed here with no binding is a §11.3 defect — the two lists are
+checked against each other, not maintained independently.
 
 Constraints: **80×24 minimum**, resize-safe at every size above it, and the degradation
 path is specified rather than emergent (§11.2). No colour assumptions beyond 16 colours:
@@ -899,8 +958,9 @@ truncated-but-honest frame beats an unpredictable one.
   it. A keyboard-only UI that cannot show where the keys are going is unusable.
 - **The footer is one line, outside both panels**, in the key/description pattern
   (`↵ attach · n new · …`). It is contextual: it lists what is bound *now*, in this mode,
-  with this focus. It never lists a key that is not bound (Phase 0 shipped a footer
-  advertising seven unimplemented keys; that is the failure this rule prevents).
+  with this focus. **It never lists a key that is not bound** — a footer advertising a verb
+  the binary does not have is worse than no footer, because it is the one place a user is
+  entitled to trust.
 
 ### 11.4 Dialogs
 
@@ -923,33 +983,32 @@ contract so learning any one of them teaches the rest:
   terminal, as best-effort behaviour to preserve the input area, and are not a supported
   size with test obligations.
 
-The inventory, all reachable from the list — **each dialog lands with the phase that
-builds its feature** (owner in parentheses; §11.3's "the footer never lists an unbound
-key" is the phasing rule, so an unbuilt dialog is simply absent, never stubbed): create
-session (Phase 1, retrofitted 2b) · session detail `i` (Phase 1, retrofitted 2b — this is
-where §5's degradation reason and the §7 `last_message` live) · confirm (kill, delete,
-purge) (kill: Phase 0; delete/purge: 3) · rename (3) · delete options (tombstone vs
-purge) (3) · permission profile picker (Phase 1, retrofitted 2b) · pin conversation
-(Phase 1, retrofitted 2b) · send message (§11.1) (7) · env editor (3) · snooze duration
-(5) · notification rules (5) · theme picker (§11.6) (2b) · event log (3) · health view
-(7) · find (§12) (7) · help overlay (Phase 0, retrofitted 2b). Settings is deliberately
-*not* a dialog — see below.
+The inventory, all reachable from the list. **A dialog exists only once the behaviour behind
+it does**: §11.3's "never list a key that is not bound" applies here too, so a dialog for
+unbuilt behaviour is simply absent rather than a stub that opens onto nothing
+(`docs/PLAN.md` is where each one is assigned to a phase). Create session · session detail
+`i` — which is where §5's degradation reason and §7's `last_message` live, and from which
+**rename** is reached · confirm (kill, delete, purge) · delete options (tombstone vs purge) ·
+permission profile picker · pin conversation · send message (§11.1) · env editor · snooze
+duration · notification rules · theme picker (§11.6) · event log · health view · find
+(§12) · help overlay. Settings is deliberately *not* a dialog — see below.
 
 ### 11.5 Settings
 
 Settings is a **full-screen takeover**, not a modal: a category list on the left, the
 selected category's fields on the right, `/` to fuzzy-search every field by label *and*
-description. Seventeen categories of settings in a centred 80-column box would be a worse
-version of a file editor. The takeover also makes the concession honest — deck has real
-configuration, and R7 means the TUI must be the place you edit it.
+description. A category list plus per-field descriptions inside a centred 80-column box
+would be a worse version of the file editor the user already has, and the field set only
+grows. The takeover is also the honest concession: deck has real configuration, and R7 means
+the TUI must be the place it is edited.
 
 - **Every flat key in `config.toml` is editable here**, and the view is generated from the
   same schema that parses the file, so a new flat key cannot be added without appearing in
   settings. `allow_yolo` reachable only by hand-editing a file is exactly the R7 violation
   this closes. **Structured tables are the stated exception**: `[notify]`'s channels and
-  `[[notify.rule]]` arrays are edited in their own §11.4 dialog (the notification rules
-  editor, Phase 5), and settings shows them as a single navigable entry that opens that
-  dialog rather than flattening them into fields they don't fit.
+  `[[notify.rule]]` arrays are edited in the notification rules dialog (§11.4), and settings
+  shows them as a single navigable entry that opens it rather than flattening them into
+  fields they don't fit.
 - Field kinds are explicit: toggle, integer with bounds, string, path (with a picker),
   enum (cycled), list-of-strings, and *link* (opens the owning dialog, per the exception
   above). Each field states what it does and what changes when it changes.
@@ -965,8 +1024,8 @@ configuration, and R7 means the TUI must be the place you edit it.
   *restart-to-apply*, consistent with §6.2 and `P` (§5). A setting that claims to have
   taken effect on a live pane when it has not is the same class of lie as a fabricated
   status.
-- Settings never edits `SPEC.md`-level facts: it cannot create or delete sessions, and it
-  cannot reach anything that belongs to a session's lifecycle.
+- Settings edits configuration and nothing else: it cannot create, kill, resume or delete a
+  session, and nothing in a session's lifecycle (§9) is reachable from it.
 
 ### 11.6 Themes
 
@@ -1039,10 +1098,10 @@ archived          = "#475569"
 - A theme cannot change layout, spacing, glyphs or keybindings. It is colour only. This is
   what keeps `DECK_ASCII`, the 80×24 floor and the harness's frame assertions independent
   of whatever theme is loaded.
-- One naming footnote so a literal reviewer does not burn an approach on it: `archived` is
-  a retention flag in §4's data-model terms and a display state in §7's table; the theme
-  schema follows the *display* taxonomy, which is why it gets a token — the sidebar can
-  render an archived row (behind the filter) and needs a colour for it.
+- One naming note, since the word does double duty: `archived` is a retention flag in §4's
+  data-model terms and a display state in §7's table. The theme schema follows the *display*
+  taxonomy, which is why it gets a token — the sidebar renders archived rows behind the
+  filter and needs a colour for them.
 
 ### 11.7 Path entry and recent working directories
 
@@ -1065,8 +1124,8 @@ front, deduplicated by resolved absolute path, evicting the oldest beyond the li
   so the user knows both where they are and that more exist. This is a declared
   per-field key set under §11.4's contract.
 - Recency is ordered by a **monotonic sequence, not the wall clock**, so the order stays
-  deterministic and assertable while `DECK_CLOCK` is frozen (§13.1) — the same trap Phase
-  0's durations hit.
+  deterministic and assertable while `DECK_CLOCK` is frozen (§13.1): anything ordered by a
+  frozen clock has no order at all.
 - The list is history, and paths can themselves be sensitive: settings (§11.5) offers
   clearing it, and it is never included in notification payloads.
 
@@ -1077,10 +1136,10 @@ last `/`; hidden directories are candidates only when that segment starts with `
 leading `~` expands. A single match completes to it plus a trailing `/`, so the next
 segment can be typed immediately.
 
-**Where deck deliberately differs from the tool this borrows from:** when several
-directories match and there is no further common prefix, deck ghosts **nothing** and shows
-the match count (`3 matches — tab to list`) rather than ghosting the alphabetically-first
-candidate. Ghosting one arbitrary candidate makes `→` a coin flip that silently sends the
+**Ambiguity ghosts nothing.** When several directories match and there is no further common
+prefix, deck shows the match count (`3 matches — tab to list`) and ghosts **nothing** — it
+never ghosts the alphabetically-first candidate, which is the tempting shortcut here.
+Ghosting one arbitrary candidate makes `→` a coin flip that silently sends the
 session to the wrong directory, and a wrong `cwd` is not a typo the user notices — it is a
 session that works and is in the wrong place. `tab` completes to the longest common prefix
 when that advances, and otherwise lists the candidates for selection: bash's contract,
@@ -1116,8 +1175,9 @@ no assertions on internal Go APIs.
 
 ### 13.1 What the binary must expose to be testable
 
-These are product features (documented, supported, harmless in normal use), not scaffolding.
-Without them the app is not black-box testable, so they are in scope from M1:
+These are product features — documented, supported, harmless in normal use — not
+scaffolding. Without them the binary is not black-box testable at all, which is why they are
+listed here rather than left to a test package:
 
 | control | mechanism | why |
 |---|---|---|
@@ -1125,7 +1185,7 @@ Without them the app is not black-box testable, so they are in scope from M1:
 | **tmux isolation** | `DECK_TMUX_SOCKET` overrides the socket name (default `deck`). | Scenarios run concurrently against private servers; teardown kills exactly one. |
 | **Frozen / stepped clock** | `DECK_CLOCK=<rfc3339>` pins wall-clock now; `DECK_CLOCK_STEP` advances it on demand. **Wall clock only — durations, timeouts and budgets always use a monotonic clock and are never frozen**, or the §13.5 budget assertions would all measure zero. | Relative times ("2m", "31m") and quiet-hours windows become assertable without making elapsed time unmeasurable. |
 | **Deterministic rendering** | `NO_COLOR`, `DECK_ASCII=1` (no nerd glyphs), `DECK_ANIM=0` (no spinner frames), fixed `COLUMNS`×`LINES`. | Screen text is byte-stable, so golden frames are meaningful. |
-| **Explicit colour override** | `DECK_COLOR` forces colour on or off as a boolean, overriding both `NO_COLOR` and terminal detection. | `NO_COLOR` can only ever *disable*; a test that needs colour deliberately on — or a terminal deck mis-detects — has no other lever. Introduced in Phase 0 and kept deliberately. |
+| **Explicit colour override** | `DECK_COLOR` forces colour on or off as a boolean, overriding both `NO_COLOR` and terminal detection. | `NO_COLOR` can only ever *disable*; a test that needs colour deliberately on — or a terminal deck mis-detects — has no other lever. |
 | **Colour depth override** | `DECK_COLOR_DEPTH=truecolor\|16` forces the render path, overriding COLORTERM/TERM detection. | §11.6's quantised palette is behaviour, and a pty test cannot otherwise deterministically reach it — the harness terminal's advertised depth would decide which renderer runs. |
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 1000) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
@@ -1161,17 +1221,15 @@ in the help view.
   it renders its first frame. A bare pty transports bytes and answers nothing, so a harness
   that only reads will hang before frame one and look like a broken TUI. The harness must
   therefore answer those probes (or drive the program through something that does). This is
-  measured behaviour from the toolchain spike, not a theory — see `ci/SPIKE.md`.
+  measured behaviour of the toolchain, not a theory — `ci/SPIKE.md` has the evidence.
 
 - **Where it runs.** All build and test work happens in a throwaway sibling container
   carrying Go + tmux (`ci/Dockerfile`, driven by `ci/run.sh`), with the repository
-  bind-mounted from its **host** path and a named volume holding the module/build cache.
-  Proven end to end: Go 1.25 builds, real tmux on a private socket with `capture-pane`
-  read-back, and a real bubbletea program driven through a pty with its frames asserted;
-  cold suite 4.9 s, warm 1.1 s, no root-owned files left behind. Two traps recorded there:
-  a sibling's bind source must be the host path (a container-local `/workspace` mounts
-  empty), and commands must go through `sh -c`, never `sh -lc`, whose login shell resets
-  `PATH` and loses the toolchain.
+  bind-mounted from its **host** path and a named volume holding the module/build cache. Two
+  constraints that are easy to get wrong and fail confusingly: a sibling container's bind
+  source must be the *host* path (a container-local `/workspace` mounts empty), and commands
+  must go through `sh -c`, never `sh -lc`, whose login shell resets `PATH` and loses the
+  toolchain. Leaving root-owned files in the workspace is a defect, not a nuisance.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
   outside the app.
@@ -1184,11 +1242,11 @@ in the help view.
 - **Webhook sink.** An `httptest` server registered as a `webhook` channel; steps assert
   on requests received, bodies rendered, dedupe collapses, and non-delivery during quiet
   hours. Notification behaviour is fully black-box because §10 has no built-in service.
-- **Resize and attributes.** §11.2's "a resize re-chooses the mode" needs the driver to
-  resize the pty mid-scenario (`TIOCSWINSZ` + `SIGWINCH`) and re-read the grid, and
-  §11.6's theme assertions need the emulator's per-cell SGR attributes (colour), not only
-  its text. Both are harness capabilities to build *before* the scenarios that need them,
-  named here so they are not discovered mid-phase.
+- **Resize and attributes.** §11.2's "a resize re-chooses the mode" requires the driver to
+  resize the pty mid-scenario (`TIOCSWINSZ` + `SIGWINCH`) and re-read the grid; §11.6's
+  theme assertions require the emulator's per-cell SGR attributes, not only its text. Both
+  are harness capabilities in their own right, and each is a prerequisite of the scenarios
+  that depend on it rather than something those scenarios can fake.
 - **Isolation & teardown.** Per scenario: fresh `DECK_HOME`, fresh socket, fresh sink,
   fake-agent stubs reset. Teardown kills the socket and removes the root, and fails loudly
   on a leaked tmux server or a surviving child.
@@ -1201,28 +1259,44 @@ in the help view.
 
 ### 13.3 Feature layout
 
+One file per area of behaviour, named for the area — never for the phase or the change that
+introduced it, so a file is renamed only if the behaviour it covers is redefined:
+
 ```
 features/
+  harness.feature               the driver itself: the pty answers OSC 11/CPR, the grid is
+                                readable, and isolation/teardown are per-scenario
+  walking_skeleton.feature      the real binary starts, renders a frame, exits cleanly
+  determinism.feature           §13.1 — every DECK_* control does exactly what it claims
+  store.feature                 §4 — schema, migrations, targeted-UPDATE discipline
+  tmux_contract.feature         §3.2 — private socket, server options, naming, env
+  fake_agent.feature            the §13.2 fixtures honour the real argv contracts
+  fake_agent_drift.feature      a fixture that stops matching its real CLI fails loudly
+  agent_session.feature         registry → launch argv → live pane, per adapter kind
   create_session.feature        agent choice, cwd, args, env, pre_launch, name collisions,
                                 §11.7 recent-cwd prefill/cycling and ghost/tab completion
   same_directory.feature        R2 — N sessions, one cwd, no conversation cross-talk
   durable_identity.feature      R3 — @reboot: stopped·resumable, resume by id, no autostart
+  resume_failure.feature        §9.1 — unknown id, missing cwd, agent gone: error, not fresh
+  launch_lease.feature          §9.3 — CAS acquire, TTL, stale-break, held vs not-leasable
+  lease_race.feature            §9.3 — two clients press r, exactly one launch
+  concurrency.feature           R4 — N clients, propagation, SIGKILL survival
+  permission_modes.feature      §5 — profile → argv mapping, badge, yolo gate, degradation
   status_claude_hooks.feature   R6 — waiting/running/idle/error via hook payloads, live badge
   status_probe.feature          R6 — sampled badge, staleness, precedence over probe
-  permissions.feature           §5 — profile → argv mapping, badge, yolo gate, degradation
+  crash.feature                 §7 — error + crash tail + notify, and never auto-relaunch
   environment.feature           §6 — layering, env↻, restart applies (and only restart)
   kill_delete_undo.feature      §9.2 — x/dd, undo windows, tombstone, cwd never touched
-  concurrency.feature           R4 — N clients, propagation, launch lease, SIGKILL survival
   shell_state.feature           §9.4 — history, scrollback replay, cwd restore, sensitive
   notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
   codex_discovery.feature       §8.2 — serialised discovery, claims, ambiguity, unresolved
-  search.feature                §12 — metadata/events/transcripts, resume from a hit
-  health.feature                §9.5 — no tmux, old tmux, missing agent, PATH unresolvable
-  crash.feature                 §7 — error + crash tail + notify, and never auto-relaunch
   layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
   themes.feature                §11.6 — picker, live preview/revert, fallback says so,
                                 quantised rendering under DECK_COLOR_DEPTH=16
+  search.feature                §12 — metadata/events/transcripts, resume from a hit
+  health.feature                §9.5 — no tmux, old tmux, missing agent, PATH unresolvable
+  real_agent_smoke.feature      @real-agents — the thin conformance subset (§13.5)
 ```
 
 Tags: `@reboot`, `@slow`, `@multiclient`, `@nightly`, `@real-agents`. Default CI run
@@ -1270,7 +1344,8 @@ Scenario: waiting is truthful, deduped per episode, and cleared         # R6
   Then the webhook sink receives a 2nd request                 # new epoch after resolution
 ```
 
-Two more that exist because the first review of this spec found the underlying bugs:
+And three that pin the distinctions most easily got wrong — a clean exit read as a crash, a
+crash read as nothing at all, and two conversations collapsed into one:
 
 ```gherkin
 Scenario: a shell session that exits cleanly is stopped, not an error    # §7
@@ -1332,7 +1407,9 @@ redesign upstream is a one-fixture fix.
 
 1. **Pi and Codex event sources.** Both plausibly support real event hooks (extension API;
    notify command). Each removes a probe path and upgrades a row from sampled to live.
-   Worth a spike each before M3 freezes the adapter interface.
+   Worth a spike each: `Instrument` is part of the adapter interface by design (§8), so an
+   event source is additive per adapter rather than a redesign — but the answer decides
+   whether the probe corpus for those kinds is a permanent fixture or a stopgap.
 2. **Codex conversation naming.** Its resume path accepts a name as well as an id; if a
    name can be assigned at launch, Codex joins the assigned-id group and `DiscoverID`
    disappears.
