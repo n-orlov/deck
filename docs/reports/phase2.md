@@ -80,7 +80,7 @@ paths are repository-relative.
 | 35 | `concurrency.feature: one hook-driven status change propagates to every client`. |
 | 36 | Opt-in `real_agent_smoke.feature: real claude accepts injected hooks and supplies the upstream payload contract`, runnable exactly as documented below. No Claude binary was installed here, so this conformance scenario is intentionally excluded from the default capture and is not claimed as executed. `features/real_agent_hooks_test.go` does execute the strict field/type rejection logic in the default run. |
 | 37 | This report and the three repository-relative raw captures above. |
-| 38 | A real fixed-commit `ci/stability.sh 10` attempt at `a017146` is retained in [`phase2-stability.log`](phase2-stability.log). It failed honestly at **3/10**, exposing timing and SQLite-lock failures; therefore R38 is **not yet proved**. The successful 10/10 fixed-commit run must replace this failed evidence after those defects are fixed. |
+| 38 | A real `ci/stability.sh 10` run from clean fixed commit `ccdc26d6ec15c6db528d2923ff621aa89e509bf4` passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
 | 39 | The run uses the unchanged default tag expression. No Phase 1 scenario was removed; shell assertions were re-aimed to live-shell promotion while `shell_liveness.feature` retains the unsignalled-agent negative assertion. Final protected-file/no-exclusion proof is paired with the fixed-commit stability checkpoint. |
 | 40 | The operator walkthrough below. |
 | 41 | `cmd/fake-claude: TestPaneCommandsFireEveryInjectedHookWithControllablePayload` and `TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly`; the Claude-hook feature fires commands from the pane. |
@@ -227,11 +227,13 @@ opt-in scenario is run in that environment.
   environment. Declared events/fields and the exact permission-dialog label
   remain strict upstream assumptions, documented in
   [`phase2-findings.md`](phase2-findings.md), not silently normalized facts.
-- The first real fixed-commit stability attempt passed only 3/10. Its retained
-  summary names the commit and exit status; the per-run failures included
-  multiclient one-second refresh deadlines, PTY shutdown deadlines, hook
-  latency over 20 ms, a SQLite busy read, and raced post-resume source
-  expectations. R38 remains open rather than being inferred from one green
+- The first real fixed-commit stability attempt passed only 3/10 and exposed
+  package-load-sensitive deadlines, an observer lacking SQLite busy handling,
+  a modal-close/quit race, and hook-write latency. The fixes serialize packages
+  only in the repetition runner, retain one-tick assertions with bounded render
+  grace, align observer busy handling with the store, wait for the list before
+  quitting, and use SQLite WAL `synchronous=NORMAL`. A subsequent clean fixed-
+  commit run passed 10/10; the report does not infer stability from one green
   full-suite run.
 - Shell liveness means `running`; agent pane liveness does not. Re-aimed Phase
   1 shell assertions preserve the original protection with a separate live,
