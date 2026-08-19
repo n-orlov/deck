@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	exitCodeEnvironment = "FAKE_CLAUDE_EXIT_CODE"
-	commandsEnvironment = "FAKE_CLAUDE_COMMANDS"
+	exitCodeEnvironment         = "FAKE_CLAUDE_EXIT_CODE"
+	commandsEnvironment         = "FAKE_CLAUDE_COMMANDS"
+	fixtureDirectoryEnvironment = "FAKE_AGENT_FIXTURE_DIR"
 )
 
 var permissionModes = map[string]bool{
@@ -86,7 +87,7 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 	}
 
 	if getenv(commandsEnvironment) == "1" {
-		if err := runCommands(stdin, stdout, stderr, options.settings); err != nil {
+		if err := runCommands(stdin, stdout, stderr, options.settings, getenv(fixtureDirectoryEnvironment)); err != nil {
 			return 0, err
 		}
 	}
@@ -278,6 +279,7 @@ type fixtureCommand struct {
 	Command string         `json:"command"`
 	Event   string         `json:"event"`
 	Payload map[string]any `json:"payload"`
+	Name    string         `json:"name"`
 }
 
 type claudeSettings struct {
@@ -312,10 +314,10 @@ func hookCommands(raw string) (map[string]string, error) {
 }
 
 // runCommands is the pane-side control surface used by black-box scenarios. Each
-// input line asks the fake agent to fire one real configured hook command. The
-// subprocess inherits the fake agent's environment, exactly as a Claude hook does;
-// the harness does not invoke deck _hook itself.
-func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings string) error {
+// input line asks the fake agent to fire an injected hook or render a corpus file.
+// Hook subprocesses inherit the fake agent's environment, exactly as a Claude hook
+// does; the harness does not invoke deck _hook itself.
+func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixtureDirectory string) error {
 	commands, err := hookCommands(rawSettings)
 	if err != nil {
 		return fmt.Errorf("decode hook settings: %w", err)
@@ -326,37 +328,62 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings string) 
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
-		if request.Command != "hook" {
+		switch request.Command {
+		case "fixture":
+			if err := renderFixture(stdout, fixtureDirectory, request.Name); err != nil {
+				return err
+			}
+		case "hook":
+			if !supportedHookEvents[request.Event] {
+				return fmt.Errorf("unsupported hook event %q", request.Event)
+			}
+			command := commands[request.Event]
+			if command == "" {
+				return fmt.Errorf("hook event %q was not injected in --settings", request.Event)
+			}
+			if request.Payload == nil {
+				request.Payload = make(map[string]any)
+			}
+			if _, exists := request.Payload["hook_event_name"]; !exists {
+				request.Payload["hook_event_name"] = request.Event
+			}
+			payload, err := json.Marshal(request.Payload)
+			if err != nil {
+				return fmt.Errorf("encode %s payload: %w", request.Event, err)
+			}
+			process := exec.Command("sh", "-c", command)
+			process.Stdin = bytes.NewReader(append(payload, '\n'))
+			process.Stdout = stdout
+			process.Stderr = stderr
+			if err := process.Run(); err != nil {
+				return fmt.Errorf("fire %s hook: %w", request.Event, err)
+			}
+			fmt.Fprintf(stdout, "fake-claude hook fired: %s\n", request.Event)
+		default:
 			return fmt.Errorf("unknown command %q", request.Command)
 		}
-		if !supportedHookEvents[request.Event] {
-			return fmt.Errorf("unsupported hook event %q", request.Event)
-		}
-		command := commands[request.Event]
-		if command == "" {
-			return fmt.Errorf("hook event %q was not injected in --settings", request.Event)
-		}
-		if request.Payload == nil {
-			request.Payload = make(map[string]any)
-		}
-		if _, exists := request.Payload["hook_event_name"]; !exists {
-			request.Payload["hook_event_name"] = request.Event
-		}
-		payload, err := json.Marshal(request.Payload)
-		if err != nil {
-			return fmt.Errorf("encode %s payload: %w", request.Event, err)
-		}
-		process := exec.Command("sh", "-c", command)
-		process.Stdin = bytes.NewReader(append(payload, '\n'))
-		process.Stdout = stdout
-		process.Stderr = stderr
-		if err := process.Run(); err != nil {
-			return fmt.Errorf("fire %s hook: %w", request.Event, err)
-		}
-		fmt.Fprintf(stdout, "fake-claude hook fired: %s\n", request.Event)
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read command: %w", err)
+	}
+	return nil
+}
+
+// renderFixture copies the named corpus file without adding a marker or newline.
+// This lets probe golden tests and pane-driven scenarios consume identical bytes.
+func renderFixture(output io.Writer, directory, name string) error {
+	if directory == "" {
+		return errors.New("FAKE_AGENT_FIXTURE_DIR is not set")
+	}
+	if name == "" || !filepath.IsLocal(name) {
+		return fmt.Errorf("invalid fixture name %q", name)
+	}
+	contents, err := os.ReadFile(filepath.Join(directory, name))
+	if err != nil {
+		return fmt.Errorf("read fixture %q: %w", name, err)
+	}
+	if _, err := output.Write(contents); err != nil {
+		return fmt.Errorf("render fixture %q: %w", name, err)
 	}
 	return nil
 }
@@ -394,7 +421,9 @@ Set FAKE_CLAUDE_EXIT_CODE to an integer from 0 through 125 to control this fixtu
 Set FAKE_CLAUDE_COMMANDS=1 to read newline-delimited commands from the pane. A hook
 command has the form {"command":"hook","event":"SessionStart","payload":{...}}.
 It invokes that event's command from --settings with the payload on stdin and with
-this process's injected environment; it never calls deck _hook directly.
+this process's injected environment; it never calls deck _hook directly. A fixture
+command has the form {"command":"fixture","name":"claude/running.txt"} and copies
+that file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
 
 When $HOME is set and writable, trailing prompt text given with --session-id or
 --resume is appended to a per-conversation transcript at the real Claude Code

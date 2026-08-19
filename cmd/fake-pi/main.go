@@ -5,15 +5,21 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
-const exitCodeEnvironment = "FAKE_PI_EXIT_CODE"
+const (
+	exitCodeEnvironment         = "FAKE_PI_EXIT_CODE"
+	commandsEnvironment         = "FAKE_PI_COMMANDS"
+	fixtureDirectoryEnvironment = "FAKE_AGENT_FIXTURE_DIR"
+)
 
 type options struct {
 	sessionID string
@@ -22,7 +28,7 @@ type options struct {
 }
 
 func main() {
-	code, err := run(os.Args[1:], os.Stdout)
+	code, err := runWithIO(os.Args[1:], os.Stdin, os.Stdout, os.Getenv)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake-pi:", err)
 		code = 2
@@ -31,6 +37,10 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) (int, error) {
+	return runWithIO(args, os.Stdin, stdout, os.Getenv)
+}
+
+func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string) (int, error) {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprint(stdout, helpText)
 		return 0, nil
@@ -61,7 +71,57 @@ func run(args []string, stdout io.Writer) (int, error) {
 		fmt.Fprintln(stdout, "fake-pi approve: true")
 	}
 
-	return configuredExitCode(os.Getenv(exitCodeEnvironment))
+	if getenv(commandsEnvironment) == "1" {
+		if err := runCommands(stdin, stdout, getenv(fixtureDirectoryEnvironment)); err != nil {
+			return 0, err
+		}
+	}
+
+	return configuredExitCode(getenv(exitCodeEnvironment))
+}
+
+type fixtureCommand struct {
+	Command string `json:"command"`
+	Name    string `json:"name"`
+}
+
+func runCommands(input io.Reader, output io.Writer, fixtureDirectory string) error {
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		var request fixtureCommand
+		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
+			return fmt.Errorf("decode command: %w", err)
+		}
+		if request.Command != "fixture" {
+			return fmt.Errorf("unknown command %q", request.Command)
+		}
+		if err := renderFixture(output, fixtureDirectory, request.Name); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read command: %w", err)
+	}
+	return nil
+}
+
+// renderFixture copies the named corpus file without adding a marker or newline.
+// This lets probe golden tests and pane-driven scenarios consume identical bytes.
+func renderFixture(output io.Writer, directory, name string) error {
+	if directory == "" {
+		return errors.New("FAKE_AGENT_FIXTURE_DIR is not set")
+	}
+	if name == "" || !filepath.IsLocal(name) {
+		return fmt.Errorf("invalid fixture name %q", name)
+	}
+	contents, err := os.ReadFile(filepath.Join(directory, name))
+	if err != nil {
+		return fmt.Errorf("read fixture %q: %w", name, err)
+	}
+	if _, err := output.Write(contents); err != nil {
+		return fmt.Errorf("render fixture %q: %w", name, err)
+	}
+	return nil
 }
 
 func parse(args []string) (options, error) {
@@ -121,4 +181,7 @@ Options:
   --help, -h          Show this help.
 
 Set FAKE_PI_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
+Set FAKE_PI_COMMANDS=1 to read newline-delimited commands from the pane. A fixture
+command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies that
+file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
 `

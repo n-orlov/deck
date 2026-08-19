@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -166,6 +167,44 @@ func TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly(t 
 	_, err := runWithIO(nil, strings.NewReader(input), &stdout, &stderr, getenv, testGetwd(t))
 	if err == nil || !strings.Contains(err.Error(), `was not injected in --settings`) {
 		t.Fatalf("runWithIO error = %v, want missing injected hook", err)
+	}
+}
+
+func TestPaneFixtureCommandRendersNamedFileByteForByte(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, "claude"), 0o755); err != nil {
+		t.Fatalf("create corpus directory: %v", err)
+	}
+	want := []byte("first line\r\n\x1b[35mwaiting\x1b[0m") // Deliberately no trailing newline.
+	if err := os.WriteFile(filepath.Join(directory, "claude", "waiting.txt"), want, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	input := strings.NewReader(`{"command":"fixture","name":"claude/waiting.txt"}` + "\n")
+	getenv := func(key string) string {
+		switch key {
+		case commandsEnvironment:
+			return "1"
+		case fixtureDirectoryEnvironment:
+			return directory
+		}
+		return ""
+	}
+	var output bytes.Buffer
+	if code, err := runWithIO(nil, input, &output, io.Discard, getenv, testGetwd(t)); err != nil || code != 0 {
+		t.Fatalf("runWithIO = (%d, %v)", code, err)
+	}
+	got := bytes.TrimPrefix(output.Bytes(), []byte("Fake Claude Code\nfake-claude argv: null\n"))
+	if !bytes.Equal(got, want) {
+		t.Fatalf("rendered bytes = %q, want %q (complete output %q)", got, want, output.Bytes())
+	}
+}
+
+func TestPaneFixtureCommandRejectsNamesOutsideCorpus(t *testing.T) {
+	var output bytes.Buffer
+	err := runCommands(strings.NewReader(`{"command":"fixture","name":"../secret"}`+"\n"), &output, io.Discard, "", t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "invalid fixture name") {
+		t.Fatalf("runCommands error = %v, want invalid fixture name", err)
 	}
 }
 

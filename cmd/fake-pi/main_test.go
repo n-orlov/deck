@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -75,4 +77,43 @@ func TestSessionIDCreatesSessionIfMissing(t *testing.T) {
 	if !strings.Contains(output.String(), "fake-pi session-id: brand-new-id") {
 		t.Fatalf("output %q missing session-id record", output.String())
 	}
+}
+
+func TestPaneFixtureCommandRendersNamedFileByteForByte(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, "pi"), 0o755); err != nil {
+		t.Fatalf("create corpus directory: %v", err)
+	}
+	want := []byte("⠹ working\r\n\x1b[2mctrl-c to stop\x1b[0m") // Deliberately no trailing newline.
+	if err := os.WriteFile(filepath.Join(directory, "pi", "running.txt"), want, 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	input := strings.NewReader(`{"command":"fixture","name":"pi/running.txt"}` + "\n")
+	getenv := func(key string) string {
+		switch key {
+		case commandsEnvironment:
+			return "1"
+		case fixtureDirectoryEnvironment:
+			return directory
+		}
+		return ""
+	}
+	var output bytes.Buffer
+	if code, err := runWithIO(nil, input, &output, getenv); err != nil || code != 0 {
+		t.Fatalf("runWithIO = (%d, %v)", code, err)
+	}
+	got := bytes.TrimPrefix(output.Bytes(), []byte("Fake pi\nfake-pi argv: null\n"))
+	if !bytes.Equal(got, want) {
+		t.Fatalf("rendered bytes = %q, want %q (complete output %q)", got, want, output.Bytes())
+	}
+}
+
+func TestPaneFixtureCommandNeedsConfiguredCorpus(t *testing.T) {
+	var output bytes.Buffer
+	err := runCommands(strings.NewReader(`{"command":"fixture","name":"pi/running.txt"}`+"\n"), &output, "")
+	if err == nil || !strings.Contains(err.Error(), "FAKE_AGENT_FIXTURE_DIR is not set") {
+		t.Fatalf("runCommands error = %v, want missing corpus", err)
+	}
+
 }
