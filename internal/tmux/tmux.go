@@ -282,7 +282,7 @@ func (c Client) Kill(ctx context.Context, slug string) error {
 		return err
 	}
 	if _, err := c.run(ctx, "kill-session", "-t", name); err != nil {
-		if tmuxTargetAbsent(err) {
+		if IsTargetAbsent(err) {
 			return nil
 		}
 		return fmt.Errorf("kill session %q: %w", name, err)
@@ -347,7 +347,10 @@ func sessionDisappeared(err error) bool {
 		strings.Contains(message, "no such session")
 }
 
-func tmuxTargetAbsent(err error) bool {
+// IsTargetAbsent reports that an operation lost a race with removal of its
+// target session or private server. Callers use it to make unleased collection
+// idempotent without hiding unrelated tmux command failures.
+func IsTargetAbsent(err error) bool {
 	if sessionDisappeared(err) {
 		return true
 	}
