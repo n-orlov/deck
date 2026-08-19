@@ -37,6 +37,8 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database has schema version ([0-9]+)$`, databaseSchemaVersion)
 	sc.Step(`^the state database journal mode is "([^"]+)"$`, databaseJournalMode)
 	sc.Step(`^the state database contains session "([^"]+)" with status "([^"]+)"$`, databaseSessionStatus)
+	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with killed_by_user=([01])$`, databaseSessionTerminalFields)
+	sc.Step(`^the released running hook fires for session "([^"]+)"$`, releasedRunningHookForSession)
 	sc.Step(`^the audit log is valid JSONL$`, auditLogIsJSONL)
 	sc.Step(`^the audit log contains event "([^"]+)" for a session$`, auditContainsSessionEvent)
 	sc.Step(`^the scenario home has mode "([0-7]+)"$`, scenarioHomeMode)
@@ -399,6 +401,61 @@ func databaseJournalMode(ctx context.Context, want string) error {
 	}
 	if !strings.EqualFold(got, want) {
 		return fmt.Errorf("journal mode = %q, want %q", got, want)
+	}
+	return nil
+}
+
+func databaseSessionTerminalFields(ctx context.Context, name, wantStatus, wantSource string, wantKilled int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var status, source string
+	var killed int
+	if err := db.QueryRowContext(ctx, `SELECT status, status_source, killed_by_user FROM sessions WHERE name = ?`, name).Scan(&status, &source, &killed); err != nil {
+		return fmt.Errorf("observe terminal fields for session %q: %w", name, err)
+	}
+	if status != wantStatus || source != wantSource || killed != wantKilled {
+		return fmt.Errorf("session %q terminal fields = status %q, source %q, killed_by_user=%d; want %q, %q, %d", name, status, source, killed, wantStatus, wantSource, wantKilled)
+	}
+	return nil
+}
+
+// releasedRunningHookForSession invokes the hidden released-binary receiver
+// immediately, with no clock advance or fixture sleep between the preceding
+// user-kill assertion and this process. Using the injected durable row ID
+// exercises the same fallback identity that deck supplies to a real pane.
+func releasedRunningHookForSession(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	var sessionID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM sessions WHERE name = ?`, name).Scan(&sessionID); err != nil {
+		db.Close()
+		return fmt.Errorf("resolve hook target %q: %w", name, err)
+	}
+	if err := db.Close(); err != nil {
+		return err
+	}
+
+	commandCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(commandCtx, h.Binary, "_hook")
+	cmd.Env = append(os.Environ(), h.Environment("DECK_SESSION_ID="+sessionID)...)
+	cmd.Stdin = strings.NewReader(`{"hook_event_name":"SessionStart","source":"resume"}`)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("released running hook for session %q: %w: %s", name, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

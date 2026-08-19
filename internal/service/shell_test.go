@@ -119,7 +119,7 @@ func TestKillStopsSessionPreservesCWDAndRecordsTransition(t *testing.T) {
 		t.Fatalf("live sessions after kill = %#v, %v", live, err)
 	}
 	rows, err := db.ListSessions(context.Background())
-	if err != nil || len(rows) != 1 || rows[0].Status != "stopped" {
+	if err != nil || len(rows) != 1 || rows[0].Status != "stopped" || rows[0].StatusSource != "user" || !rows[0].KilledByUser {
 		t.Fatalf("durable rows after kill = %#v, %v", rows, err)
 	}
 	var events int

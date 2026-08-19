@@ -27,12 +27,13 @@ func (s Service) Kill(ctx context.Context, session store.Session) error {
 		return fmt.Errorf("kill tmux session %q: %w", session.Name, err)
 	}
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-		SessionID: session.ID,
-		Status:    "stopped",
-		Reason:    "killed by user",
-		Source:    "user",
-		At:        s.Clock.Now().UnixMilli(),
-		EventKind: "killed",
+		SessionID:    session.ID,
+		Status:       "stopped",
+		Reason:       "killed by user",
+		Source:       "user",
+		At:           s.Clock.Now().UnixMilli(),
+		EventKind:    "killed",
+		KilledByUser: true,
 	}); err != nil {
 		return fmt.Errorf("record killed session %q: %w", session.Name, err)
 	}
