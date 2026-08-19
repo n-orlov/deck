@@ -3,6 +3,7 @@ package audit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,9 +20,10 @@ const fileName = "deck.jsonl"
 // safe for concurrent callers in one process. The append flag also means that
 // independently started deck clients never truncate prior audit records.
 type Logger struct {
-	path  string
-	clock *config.Clock
-	mu    sync.Mutex
+	path         string
+	clock        *config.Clock
+	monotonicNow func() time.Time
+	mu           sync.Mutex
 }
 
 // Record is the common envelope for every audit line. DurationMS is deliberately
@@ -42,6 +44,16 @@ type LaunchRecord struct {
 	EnvKeys []string `json:"env_keys"`
 }
 
+// HookStoreWriteRecord reports the duration of exactly one hook's store
+// callback. StoreDurationMS is separate from Record.DurationMS: the latter is
+// process lifetime, while this value excludes hook parsing, store setup,
+// notification work, and the audit append itself.
+type HookStoreWriteRecord struct {
+	Record
+	StoreDurationMS float64 `json:"store_duration_ms"`
+	Succeeded       bool    `json:"succeeded"`
+}
+
 // New creates the log directory if needed and returns a logger rooted at paths.
 // It intentionally does not retain an open descriptor: each append is visible
 // promptly to another deck client or an external black-box observer.
@@ -52,7 +64,7 @@ func New(paths config.Paths, clock *config.Clock) (*Logger, error) {
 	if err := os.MkdirAll(paths.LogDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create audit log directory: %w", err)
 	}
-	return &Logger{path: filepath.Join(paths.LogDir, fileName), clock: clock}, nil
+	return &Logger{path: filepath.Join(paths.LogDir, fileName), clock: clock, monotonicNow: time.Now}, nil
 }
 
 // Path returns the JSONL file path for external observers and diagnostics.
@@ -88,6 +100,36 @@ func (l *Logger) Launch(sessionID string, argv []string, env map[string]string) 
 		Record: Record{Event: "launch", SessionID: sessionID, Timestamp: l.clock.Now().Format(time.RFC3339Nano), DurationMS: positiveMilliseconds(l.clock.Elapsed())},
 		Argv:   append([]string(nil), argv...), EnvKeys: keys,
 	})
+}
+
+// HookStoreWrite runs one hook store transaction callback and audits only that
+// callback's monotonic duration. Callers must put no parsing, database opening,
+// notification, liveness, or other hook work inside write. An empty sessionID is
+// valid for an orphan hook. Failed writes are timed and audited too; their store
+// error remains the primary returned error.
+func (l *Logger) HookStoreWrite(sessionID string, write func() error) error {
+	if write == nil {
+		return errors.New("audit hook store write requires a callback")
+	}
+	started := l.monotonicNow()
+	writeErr := write()
+	duration := l.monotonicNow().Sub(started)
+	if duration < 0 {
+		duration = 0
+	}
+	auditErr := l.write(HookStoreWriteRecord{
+		Record: Record{
+			Event:     "hook.store_write",
+			SessionID: sessionID,
+			Timestamp: l.clock.Now().Format(time.RFC3339Nano),
+		},
+		StoreDurationMS: float64(duration) / float64(time.Millisecond),
+		Succeeded:       writeErr == nil,
+	})
+	if writeErr != nil {
+		return errors.Join(writeErr, auditErr)
+	}
+	return auditErr
 }
 
 func positiveMilliseconds(elapsed time.Duration) int64 {

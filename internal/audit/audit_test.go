@@ -3,6 +3,7 @@ package audit
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,6 +109,97 @@ func TestDurationAdvancesWithFrozenWallClock(t *testing.T) {
 	first, second := records[0]["duration_ms"].(float64), records[1]["duration_ms"].(float64)
 	if first < 1 || second <= first {
 		t.Errorf("durations must be positive and advancing: %v, %v", first, second)
+	}
+}
+
+func TestHookStoreWriteMeasuresOnlyCallbackWithMonotonicClock(t *testing.T) {
+	t.Parallel()
+	clock, err := config.NewClock("2030-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger, err := New(config.Paths{LogDir: filepath.Join(t.TempDir(), "log")}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Unix(100, 0)
+	callbackRan := false
+	monotonicCalls := 0
+	logger.monotonicNow = func() time.Time {
+		monotonicCalls++
+		switch monotonicCalls {
+		case 1:
+			if callbackRan {
+				t.Fatal("duration started after the store callback")
+			}
+			return base
+		case 2:
+			if !callbackRan {
+				t.Fatal("duration ended before the store callback")
+			}
+			return base.Add(7250 * time.Microsecond)
+		default:
+			t.Fatalf("monotonic clock called %d times, want exactly twice", monotonicCalls)
+			return time.Time{}
+		}
+	}
+	if err := logger.HookStoreWrite("session-1", func() error {
+		callbackRan = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatalf("decode hook store audit: %v", err)
+	}
+	if record["event"] != "hook.store_write" || record["session_id"] != "session-1" {
+		t.Fatalf("hook store audit envelope = %#v", record)
+	}
+	if got := record["store_duration_ms"]; got != 7.25 {
+		t.Fatalf("store_duration_ms = %v, want callback span 7.25", got)
+	}
+	if _, exists := record["duration_ms"]; exists {
+		t.Fatalf("hook store audit reused process-lifetime duration_ms: %#v", record)
+	}
+	if record["timestamp"] != "2030-01-02T03:04:05Z" || record["succeeded"] != true {
+		t.Fatalf("hook store audit metadata = %#v", record)
+	}
+}
+
+func TestHookStoreWriteAuditsFailedOrphanWrite(t *testing.T) {
+	t.Parallel()
+	clock, _ := config.NewClock("", "")
+	logger, err := New(config.Paths{LogDir: filepath.Join(t.TempDir(), "log")}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeErr := errors.New("store rejected hook")
+	if err := logger.HookStoreWrite("", func() error { return storeErr }); !errors.Is(err, storeErr) {
+		t.Fatalf("HookStoreWrite error = %v, want %v", err, storeErr)
+	}
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatal(err)
+	}
+	if record["succeeded"] != false {
+		t.Fatalf("failed hook record = %#v", record)
+	}
+	if _, exists := record["session_id"]; exists {
+		t.Fatalf("orphan hook acquired a session id: %#v", record)
+	}
+	if _, exists := record["store_duration_ms"]; !exists {
+		t.Fatalf("failed hook lacks operation duration: %#v", record)
 	}
 }
 
