@@ -95,7 +95,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		return session, ResumeStarted, failErr
 	}
 
-	lease, err := s.Store.AcquireLaunchLease(ctx, sessionID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL)
+	lease, err := s.Store.AcquireLaunchLease(ctx, sessionID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL, s.Clock.Now().UnixMilli())
 	if err != nil {
 		return session, ResumeStartingElsewhere, fmt.Errorf("acquire launch lease for session %q: %w", session.Name, err)
 	}

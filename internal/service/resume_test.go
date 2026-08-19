@@ -120,7 +120,7 @@ func TestResumeLosingLeaseCreatesNoTMuxSession(t *testing.T) {
 	// Acquire the lease ourselves first, simulating a concurrent winner:
 	// AcquireLaunchLease treats our own live pid as unbreakable, so the
 	// service's own Resume call below must lose the race.
-	winner, err := db.AcquireLaunchLease(context.Background(), created.ID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL)
+	winner, err := db.AcquireLaunchLease(context.Background(), created.ID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL, service.Clock.Now().UnixMilli())
 	if err != nil {
 		t.Fatalf("pre-acquire lease: %v", err)
 	}

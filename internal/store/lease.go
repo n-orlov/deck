@@ -112,19 +112,20 @@ func leaseOwnerAlive(owner string) bool {
 // pid, or a pid from a previous boot). Every outcome — including a lost
 // race — leaves the row in a state where a subsequent legitimate acquire can
 // still succeed; no case wedges it.
-func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string, ttl time.Duration) (LaunchLeaseResult, error) {
+func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string, ttl time.Duration, at int64) (LaunchLeaseResult, error) {
 	if sessionID == "" {
 		return LaunchLeaseResult{}, errors.New("session id is required")
 	}
 	if owner == "" {
 		return LaunchLeaseResult{}, errors.New("lease owner is required")
 	}
+	if at == 0 {
+		return LaunchLeaseResult{}, errors.New("launch lease timestamp is required")
+	}
 	if ttl <= 0 {
 		ttl = DefaultLaunchLeaseTTL
 	}
-	now := time.Now()
-	nowMillis := now.UnixMilli()
-	until := now.Add(ttl).UnixMilli()
+	until := at + ttl.Milliseconds()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -149,7 +150,7 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 	}
 
 	breakable := !curOwner.Valid || curOwner.String == "" ||
-		curUntil <= nowMillis || !leaseOwnerAlive(curOwner.String)
+		curUntil <= at || !leaseOwnerAlive(curOwner.String)
 	if !breakable {
 		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere, HeldBy: curOwner.String, HeldStatus: status}, nil
 	}
@@ -186,7 +187,7 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere}, nil
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, nowMillis, "launch_lease_acquired", "user", owner); err != nil {
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", owner); err != nil {
 		return LaunchLeaseResult{}, fmt.Errorf("record launch lease event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

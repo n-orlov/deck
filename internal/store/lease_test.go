@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const leaseTestNow int64 = 1_735_789_245_000
+
 func newLeaseTestSession(t *testing.T, store *Store, id, status string) {
 	t.Helper()
 	ctx := context.Background()
@@ -26,6 +28,29 @@ func setRawLease(t *testing.T, store *Store, id, owner string, until int64) {
 	}
 }
 
+func TestAcquireLaunchLeaseRequiresTimestamp(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	const id = "00000000-0000-4000-8000-000000000100"
+	newLeaseTestSession(t, store, id, "stopped")
+
+	_, err = store.AcquireLaunchLease(context.Background(), id, "12345@boot-a", 30*time.Second, 0)
+	if err == nil || err.Error() != "launch lease timestamp is required" {
+		t.Fatalf("missing timestamp error = %v; want launch lease timestamp is required", err)
+	}
+	got, err := store.GetSession(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "stopped" {
+		t.Fatalf("status = %q after rejected missing timestamp; want stopped", got.Status)
+	}
+}
+
 func TestAcquireLaunchLeaseFreshSucceeds(t *testing.T) {
 	home := t.TempDir()
 	store, err := OpenPath(home, filepath.Join(home, "state.db"))
@@ -37,7 +62,7 @@ func TestAcquireLaunchLeaseFreshSucceeds(t *testing.T) {
 	newLeaseTestSession(t, store, id, "stopped")
 
 	owner := "12345@boot-a"
-	result, err := store.AcquireLaunchLease(context.Background(), id, owner, time.Second*30)
+	result, err := store.AcquireLaunchLease(context.Background(), id, owner, time.Second*30, leaseTestNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,12 +77,22 @@ func TestAcquireLaunchLeaseFreshSucceeds(t *testing.T) {
 		t.Fatalf("status = %q; want starting", got.Status)
 	}
 	var eventCount int
-	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = 'launch_lease_acquired'`, id).
-		Scan(&eventCount); err != nil {
+	var eventAt, leaseUntil int64
+	if err := store.DB().QueryRow(`SELECT COUNT(*), at FROM events WHERE session_id = ? AND kind = 'launch_lease_acquired'`, id).
+		Scan(&eventCount, &eventAt); err != nil {
 		t.Fatal(err)
 	}
 	if eventCount != 1 {
 		t.Fatalf("launch_lease_acquired events = %d; want 1", eventCount)
+	}
+	if eventAt != leaseTestNow {
+		t.Fatalf("launch_lease_acquired at = %d; want explicit timestamp %d", eventAt, leaseTestNow)
+	}
+	if err := store.DB().QueryRow(`SELECT launch_lease_until FROM sessions WHERE id = ?`, id).Scan(&leaseUntil); err != nil {
+		t.Fatal(err)
+	}
+	if want := leaseTestNow + (30 * time.Second).Milliseconds(); leaseUntil != want {
+		t.Fatalf("launch_lease_until = %d; want %d derived from explicit timestamp", leaseUntil, want)
 	}
 }
 
@@ -75,10 +110,10 @@ func TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable(t *testing.T) {
 	// whatever CurrentLaunchLeaseOwner reports, so a lease "owned" by this
 	// process is a live, in-boot owner by construction.
 	liveOwner := CurrentLaunchLeaseOwner()
-	future := time.Now().Add(time.Minute).UnixMilli()
+	future := leaseTestNow + time.Minute.Milliseconds()
 	setRawLease(t, store, id, liveOwner, future)
 
-	result, err := store.AcquireLaunchLease(context.Background(), id, "99999@boot-other", time.Second*30)
+	result, err := store.AcquireLaunchLease(context.Background(), id, "99999@boot-other", time.Second*30, leaseTestNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,11 +143,11 @@ func TestAcquireLaunchLeaseExpiredTTLIsBreakable(t *testing.T) {
 	newLeaseTestSession(t, store, id, "stopped")
 
 	liveOwner := CurrentLaunchLeaseOwner()
-	past := time.Now().Add(-time.Minute).UnixMilli()
+	past := leaseTestNow - time.Minute.Milliseconds()
 	setRawLease(t, store, id, liveOwner, past)
 
 	newOwner := "22222@boot-new"
-	result, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30)
+	result, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30, leaseTestNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +176,11 @@ func TestAcquireLaunchLeaseDeadPIDIsBreakable(t *testing.T) {
 	// A pid this large is never a real process; boot id matches the current
 	// boot deliberately so only the pid liveness check is exercised.
 	deadOwner := "9999999@" + currentBootIDForTest()
-	future := time.Now().Add(time.Minute).UnixMilli()
+	future := leaseTestNow + time.Minute.Milliseconds()
 	setRawLease(t, store, id, deadOwner, future)
 
 	newOwner := "33333@boot-new"
-	result, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30)
+	result, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30, leaseTestNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,11 +200,11 @@ func TestAcquireLaunchLeaseNeverWedgesTheRow(t *testing.T) {
 	newLeaseTestSession(t, store, id, "stopped")
 
 	liveOwner := CurrentLaunchLeaseOwner()
-	future := time.Now().Add(time.Minute).UnixMilli()
+	future := leaseTestNow + time.Minute.Milliseconds()
 	setRawLease(t, store, id, liveOwner, future)
 
 	// First attempt is correctly refused (live, in-TTL owner).
-	blocked, err := store.AcquireLaunchLease(context.Background(), id, "44444@boot-x", time.Second*30)
+	blocked, err := store.AcquireLaunchLease(context.Background(), id, "44444@boot-x", time.Second*30, leaseTestNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +218,7 @@ func TestAcquireLaunchLeaseNeverWedgesTheRow(t *testing.T) {
 	// wedged just because it was once refused.
 	setRawLease(t, store, id, "", 0)
 	newOwner := "55555@boot-y"
-	retry, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30)
+	retry, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30, leaseTestNow)
 	if err != nil {
 		t.Fatal(err)
 	}
