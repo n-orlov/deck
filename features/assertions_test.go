@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -49,6 +50,8 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" attaches to and detaches from its session$`, clientAttachesAndDetaches)
 	sc.Step(`^deck client "([^"]+)" kills its selected session$`, clientKillsSelectedSession)
 	sc.Step(`^deck client "([^"]+)" is killed with SIGKILL$`, clientIsKilledWithSIGKILL)
+	sc.Step(`^the agent process "([^"]+)" in private tmux session "([^"]+)" is killed with SIGKILL$`, agentProcessInPrivateSessionIsKilledWithSIGKILL)
+	sc.Step(`^the private tmux session "([^"]+)" retains a dead pane with a nonzero termination$`, privateSessionRetainsNonzeroDeadPane)
 	sc.Step(`^the created working-directory sentinel is unchanged$`, createdSentinelIsUnchanged)
 	sc.Step(`^deck client "([^"]+)" exits cleanly$`, clientExitsCleanly)
 }
@@ -116,6 +119,79 @@ func tmuxOutput(ctx context.Context, h *ScenarioHarness, args ...string) ([]byte
 		return output, fmt.Errorf("tmux -L %s %s: %w: %s", h.Socket, strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 	return output, nil
+}
+
+// agentProcessInPrivateSessionIsKilledWithSIGKILL deliberately discovers the
+// process through tmux's pane facts and signals that OS process. It does not
+// use kill-pane/kill-session and does not touch any ScreenDriver (deck client).
+func agentProcessInPrivateSessionIsKilledWithSIGKILL(ctx context.Context, wantCommand, session string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	output, err := tmuxOutput(ctx, h, "list-panes", "-t", session, "-F", "#{pane_pid}|#{pane_current_command}|#{pane_dead}")
+	if err != nil {
+		return fmt.Errorf("locate agent process in session %q: %w", session, err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) != 1 {
+		return fmt.Errorf("session %q has %d panes, want exactly one: %q", session, len(lines), strings.TrimSpace(string(output)))
+	}
+	fields := strings.Split(lines[0], "|")
+	if len(fields) != 3 {
+		return fmt.Errorf("parse pane facts for session %q: %q", session, lines[0])
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return fmt.Errorf("parse pane PID for session %q from %q: %w", session, fields[0], err)
+	}
+	if pid <= 0 {
+		return fmt.Errorf("pane PID for session %q = %d, want positive", session, pid)
+	}
+	if fields[1] != wantCommand {
+		return fmt.Errorf("session %q pane process command = %q, want agent %q", session, fields[1], wantCommand)
+	}
+	if fields[2] != "0" {
+		return fmt.Errorf("session %q pane is already dead", session)
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("find agent process %d in session %q: %w", pid, session, err)
+	}
+	if err := process.Signal(syscall.SIGKILL); err != nil {
+		return fmt.Errorf("SIGKILL agent process %d in session %q: %w", pid, session, err)
+	}
+	return nil
+}
+
+func privateSessionRetainsNonzeroDeadPane(ctx context.Context, session string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	var facts string
+	for time.Now().Before(deadline) {
+		output, queryErr := tmuxOutput(ctx, h, "list-panes", "-t", session, "-F", "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}")
+		if queryErr == nil {
+			facts = strings.TrimSpace(string(output))
+			fields := strings.Split(facts, "|")
+			if len(fields) == 3 && fields[0] == "1" {
+				// tmux reports an ordinary nonzero exit in pane_dead_status,
+				// but a SIGKILL in pane_dead_signal with an empty status.
+				// Either is a nonzero process termination retained by
+				// remain-on-exit=failed.
+				for _, value := range fields[1:] {
+					termination, parseErr := strconv.Atoi(value)
+					if parseErr == nil && termination != 0 {
+						return nil
+					}
+				}
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return fmt.Errorf("private tmux session %q did not retain a nonzero dead pane; last facts %q", session, facts)
 }
 
 func waitForPrivateSession(ctx context.Context, name string) error {

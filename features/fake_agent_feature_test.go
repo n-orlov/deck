@@ -28,6 +28,7 @@ func registerFakeAgentFeatureSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake Claude fixture is launched successfully as a private tmux session command$`, scenario.launchSuccess)
 	sc.Step(`^its success pane shows the deterministic banner and exact accepted argv$`, scenario.successOutput)
 	sc.Step(`^the successful fake Claude session exits with status 0$`, scenario.successExited)
+	sc.Step(`^the fake Claude fixture is launched as a long-running private tmux session "([^"]+)"$`, scenario.launchLongRunning)
 	sc.Step(`^the fake Claude fixture is launched with controlled failure status ([0-9]+)$`, scenario.launchFailure)
 	sc.Step(`^its failure pane shows the deterministic banner and exact accepted argv$`, scenario.failureOutput)
 	sc.Step(`^the failed fake Claude session remains with status ([0-9]+)$`, scenario.failureStatus)
@@ -57,6 +58,35 @@ func (s *fakeAgentScenario) launchSuccess(ctx context.Context) error {
 
 func (s *fakeAgentScenario) launchFailure(ctx context.Context, status int) error {
 	return s.launch(ctx, s.failureName, status)
+}
+
+// launchLongRunning uses the same private-server options as deck and leaves
+// fake-claude blocked reading pane input. The SIGKILL harness scenario can
+// therefore discover its pane PID while live and verify that
+// remain-on-exit=failed retains the process's nonzero death.
+func (s *fakeAgentScenario) launchLongRunning(ctx context.Context, session string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if s.binary == "" {
+		return fmt.Errorf("fake Claude fixture was not built")
+	}
+	if _, err := tmuxOutput(ctx, h,
+		"start-server", ";",
+		"set-option", "-s", "exit-empty", "off", ";",
+		"set-option", "-g", "remain-on-exit", "failed", ";",
+		"set-option", "-g", "window-size", "latest", ";",
+		"set-window-option", "-g", "aggressive-resize", "on",
+	); err != nil {
+		return fmt.Errorf("bootstrap private tmux server: %w", err)
+	}
+	if _, err := tmuxOutput(ctx, h, "new-session", "-d", "-s", session, "-c", h.Home, "--", "env",
+		"FAKE_CLAUDE_COMMANDS=1", s.binary,
+		"--session-id", "123e4567-e89b-12d3-a456-426614174000"); err != nil {
+		return fmt.Errorf("launch long-running fake Claude as pane command: %w", err)
+	}
+	return nil
 }
 
 func (s *fakeAgentScenario) launch(ctx context.Context, session string, status int) error {
