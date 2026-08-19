@@ -94,11 +94,11 @@ func clientScreenContains(ctx context.Context, name, want string) error {
 }
 
 // clientScreenContainsWithinReconcileInterval makes the multi-client timing
-// contract observable. Its deadline is exactly the DECK_RECONCILE_MS value
-// configured by ScenarioHarness, rather than the general-purpose five-second
-// UI assertion timeout.
+// contract observable. The deadline is one DECK_RECONCILE_MS cadence plus a
+// bounded allowance for the scheduled tick's tmux/SQLite work and PTY render;
+// unlike the general-purpose timeout, it cannot conceal a missed tick.
 func clientScreenContainsWithinReconcileInterval(ctx context.Context, name, want string) error {
-	return clientScreenContainsBefore(ctx, name, want, scenarioReconcileInterval)
+	return clientScreenContainsBefore(ctx, name, want, scenarioReconcileInterval+250*time.Millisecond)
 }
 
 // clientScreenStillContainsAfterReconcileInterval is deliberately not a

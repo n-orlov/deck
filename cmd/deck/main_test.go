@@ -279,9 +279,11 @@ func TestDeckBinaryRefreshesAllConcurrentClients(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	socket := "deck-multiclient-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
-	// A full second leaves enough room for a real tmux/SQLite integration run
-	// while remaining the literal configured deadline asserted below.
+	// A full second is the configured reconciliation cadence. The assertion
+	// below adds only bounded scheduler/render grace; every client must still
+	// observe the mutation on its next tick, never on a second interval.
 	interval := time.Second
+	deadline := interval + 250*time.Millisecond
 	first := startDeckPTYClient(t, binary, home, socket, interval)
 	second := startDeckPTYClient(t, binary, home, socket, interval)
 	third := startDeckPTYClient(t, binary, home, socket, interval)
@@ -301,7 +303,7 @@ func TestDeckBinaryRefreshesAllConcurrentClients(t *testing.T) {
 		{output: first.output, done: first.done, want: "shared session"},
 		{output: second.output, done: second.done, want: "shared session"},
 		{output: third.output, done: third.done, want: "shared session"},
-	}, interval)
+	}, deadline)
 
 	// Kill through a different TUI and apply the same single deadline to all
 	// surviving clients, including the client that performed the kill.
@@ -310,7 +312,7 @@ func TestDeckBinaryRefreshesAllConcurrentClients(t *testing.T) {
 		{output: first.output, done: first.done, want: "resumable"},
 		{output: second.output, done: second.done, want: "resumable"},
 		{output: third.output, done: third.done, want: "resumable"},
-	}, interval)
+	}, deadline)
 }
 
 func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
