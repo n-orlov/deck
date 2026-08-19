@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/n-orlov/deck/internal/config"
 	_ "modernc.org/sqlite"
@@ -235,12 +234,8 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	if input.StatusSource == "" {
 		input.StatusSource = "user"
 	}
-	now := time.Now().UnixMilli()
-	if input.StatusAt == 0 {
-		input.StatusAt = now
-	}
-	if input.CreatedAt == 0 {
-		input.CreatedAt = now
+	if input.StatusAt == 0 || input.CreatedAt == 0 {
+		return Session{}, errors.New("session status_at and created_at timestamps are required")
 	}
 	if input.ResumeState == "" {
 		input.ResumeState = "auto"
@@ -384,7 +379,7 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		input.Source = "user"
 	}
 	if input.At == 0 {
-		input.At = time.Now().UnixMilli()
+		return errors.New("session status timestamp is required")
 	}
 	if input.EventKind == "" {
 		input.EventKind = input.Status
@@ -420,54 +415,54 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 // SetConversationID records the conversation identity assigned to (or
 // pinned for) a session, alongside an event so observers can see when and by
 // what source the identity was set.
-func (s *Store) SetConversationID(ctx context.Context, sessionID, conversationID, source string) error {
+func (s *Store) SetConversationID(ctx context.Context, sessionID, conversationID, source string, at int64) error {
 	if sessionID == "" || conversationID == "" {
 		return errors.New("session id and conversation id are required")
 	}
 	if source == "" {
 		source = "user"
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "conversation_id", "set_conversation_id", source, conversationID,
+	return s.mutateSessionWithEvent(ctx, sessionID, "conversation_id", "set_conversation_id", source, conversationID, at,
 		`UPDATE sessions SET conversation_id = ? WHERE id = ?`, conversationID)
 }
 
 // SetPermissionProfile persists a new permission profile for an existing
 // session. It never touches a live pane; callers must state separately that
 // the change applies on the next launch/restart.
-func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, source string) error {
+func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, source string, at int64) error {
 	if sessionID == "" || profile == "" {
 		return errors.New("session id and permission profile are required")
 	}
 	if source == "" {
 		source = "user"
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "permission_profile", "set_permission_profile", source, profile,
+	return s.mutateSessionWithEvent(ctx, sessionID, "permission_profile", "set_permission_profile", source, profile, at,
 		`UPDATE sessions SET permission_profile = ? WHERE id = ?`, profile)
 }
 
 // SetResumePin pins a session to resume a specific conversation id going
 // forward (resume_state=pinned), sticky across restarts until changed again.
-func (s *Store) SetResumePin(ctx context.Context, sessionID, conversationID, source string) error {
+func (s *Store) SetResumePin(ctx context.Context, sessionID, conversationID, source string, at int64) error {
 	if sessionID == "" || conversationID == "" {
 		return errors.New("session id and conversation id are required")
 	}
 	if source == "" {
 		source = "user"
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "resume_pin", "set_resume_pin", source, conversationID,
+	return s.mutateSessionWithEvent(ctx, sessionID, "resume_pin", "set_resume_pin", source, conversationID, at,
 		`UPDATE sessions SET resume_pin = ?, resume_state = 'pinned' WHERE id = ?`, conversationID)
 }
 
 // SetResumeStateAuto clears any pin and returns the session to the default
 // auto resume behavior (resume the session's own last-known conversation).
-func (s *Store) SetResumeStateAuto(ctx context.Context, sessionID, source string) error {
+func (s *Store) SetResumeStateAuto(ctx context.Context, sessionID, source string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
 	if source == "" {
 		source = "user"
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "resume_state", "set_resume_state", source, "auto",
+	return s.mutateSessionWithEvent(ctx, sessionID, "resume_state", "set_resume_state", source, "auto", at,
 		`UPDATE sessions SET resume_pin = NULL, resume_state = 'auto' WHERE id = ?`)
 }
 
@@ -476,14 +471,14 @@ func (s *Store) SetResumeStateAuto(ctx context.Context, sessionID, source string
 // resuming the pinned or last-known one. Callers must pair this with
 // ConsumeFreshOnce once the fresh launch has actually happened, which reverts
 // resume_state to auto (never back to pinned, and never left as fresh-once).
-func (s *Store) SetResumeStateFreshOnce(ctx context.Context, sessionID, source string) error {
+func (s *Store) SetResumeStateFreshOnce(ctx context.Context, sessionID, source string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
 	if source == "" {
 		source = "user"
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "resume_state", "set_resume_state", source, "fresh-once",
+	return s.mutateSessionWithEvent(ctx, sessionID, "resume_state", "set_resume_state", source, "fresh-once", at,
 		`UPDATE sessions SET resume_state = 'fresh-once' WHERE id = ?`)
 }
 
@@ -493,9 +488,12 @@ func (s *Store) SetResumeStateFreshOnce(ctx context.Context, sessionID, source s
 // pinned. It is a no-op (but not an error) if the session was not in
 // fresh-once state, since a caller that raced another mutator should not
 // clobber a newer pin.
-func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string) error {
+func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
 	}
 	if source == "" {
 		source = "user"
@@ -522,7 +520,7 @@ func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string) 
 		return tx.Commit()
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, time.Now().UnixMilli(), "set_resume_state", source, "auto"); err != nil {
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "set_resume_state", source, "auto"); err != nil {
 		return fmt.Errorf("record consume fresh-once event: %w", err)
 	}
 	return tx.Commit()
@@ -532,7 +530,10 @@ func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string) 
 // session row and records a matching event in the same transaction, so
 // observers never see a changed row without its corresponding event. eventKind
 // and payload describe the event; query/args describe the row mutation.
-func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName, eventKind, source, payload, query string, args ...any) error {
+func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName, eventKind, source, payload string, at int64, query string, args ...any) error {
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin set %s: %w", fieldName, err)
@@ -551,7 +552,7 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 		return fmt.Errorf("session %q not found", sessionID)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, time.Now().UnixMilli(), eventKind, source, payload); err != nil {
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, eventKind, source, payload); err != nil {
 		return fmt.Errorf("record set %s event: %w", fieldName, err)
 	}
 	if err := tx.Commit(); err != nil {

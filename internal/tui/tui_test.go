@@ -73,17 +73,22 @@ func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 	}
 }
 
-func TestSuccessfulCreationAdvancesConfiguredFrozenClock(t *testing.T) {
+func TestFrozenClockAdvancesOnDemandNotOnCreation(t *testing.T) {
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "2m")
 	if err != nil {
 		t.Fatal(err)
 	}
 	model := New(nil, config.Settings{Clock: clock}, "")
+	updated, _ := model.Update(shellCreated{})
+	model = updated.(Model)
+	if got := clock.Now().Format(time.RFC3339); got != "2025-01-02T03:04:05Z" {
+		t.Fatalf("creation advanced clock to %s", got)
+	}
 	before := clock.Elapsed()
 	time.Sleep(2 * time.Millisecond)
-	updated, _ := model.Update(shellCreated{})
+	updated, _ = model.Update(key(">"))
 	if got := clock.Now().Format(time.RFC3339); got != "2025-01-02T03:06:05Z" {
-		t.Fatalf("successful creation clock = %s, want one 2m step", got)
+		t.Fatalf("on-demand clock = %s, want one 2m step", got)
 	}
 	if clock.Elapsed() <= before {
 		t.Fatal("monotonic elapsed time did not advance through clock step")

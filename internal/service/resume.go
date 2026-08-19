@@ -170,11 +170,11 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	// back to pinned, and never left as fresh-once) so a later resume goes
 	// back to normal auto behavior.
 	if freshOnce {
-		if err := s.Store.SetConversationID(ctx, session.ID, conversationID, "resume-fresh-once"); err != nil {
+		if err := s.Store.SetConversationID(ctx, session.ID, conversationID, "resume-fresh-once", s.Clock.Now().UnixMilli()); err != nil {
 			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("persist fresh conversation id for session %q: %w", session.Name, err))
 			return session, ResumeStarted, failErr
 		}
-		if err := s.Store.ConsumeFreshOnce(ctx, session.ID, "resume-fresh-once"); err != nil {
+		if err := s.Store.ConsumeFreshOnce(ctx, session.ID, "resume-fresh-once", s.Clock.Now().UnixMilli()); err != nil {
 			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("revert fresh-once resume state for session %q: %w", session.Name, err))
 			return session, ResumeStarted, failErr
 		}

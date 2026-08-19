@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/audit"
@@ -113,12 +112,11 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 }
 
 func (s Service) launchFailed(ctx context.Context, session store.Session, cause error) (store.Session, error) {
-	at := time.Now().UnixMilli()
-	if s.Clock != nil {
-		at = s.Clock.Now().UnixMilli()
+	if s.Clock == nil {
+		return session, fmt.Errorf("%w (cannot record launch failure without clock)", cause)
 	}
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-		SessionID: session.ID, Status: "error", Reason: cause.Error(), Source: "tmux", At: at, EventKind: "launch.failed",
+		SessionID: session.ID, Status: "error", Reason: cause.Error(), Source: "tmux", At: s.Clock.Now().UnixMilli(), EventKind: "launch.failed",
 	}); err != nil {
 		return session, fmt.Errorf("%w (also record launch failure: %v)", cause, err)
 	}

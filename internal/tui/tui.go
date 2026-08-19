@@ -269,13 +269,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.createError = msg.err.Error()
 			return m, nil
 		}
-		// A completed creation is the documented interaction that advances a
-		// frozen deterministic wall clock. It happens after the service has
-		// persisted the row, so its CreatedAt remains the preceding wall time.
-		// Elapsed measurements remain monotonic through Clock.Advance.
-		if m.settings.Clock != nil {
-			m.settings.Clock.Advance()
-		}
 		m.creating, m.createError = false, ""
 		return m, m.loadSessions
 	case attachFinished:
@@ -355,6 +348,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.help = !m.help
+		case ">":
+			if m.settings.Clock == nil {
+				return m, nil
+			}
+			advanced, err := m.settings.Clock.AdvanceShared()
+			if err != nil {
+				m.attachError = "Cannot advance frozen clock: " + err.Error()
+			} else {
+				m.attachError = "Frozen clock advanced to " + advanced.Format(time.RFC3339)
+			}
+			return m, m.loadSessions
 		case "esc":
 			m.help = false
 			m.detail = false
@@ -1130,6 +1134,8 @@ Keys
     reuse it, or launch a one-shot fresh conversation (reverts to normal
     auto-resume afterward, it does not stay pinned or cleared)
   i toggle detail view for the selected session
+  > advance the shared frozen wall clock by one DECK_CLOCK_STEP on demand;
+    every deck process using the same DECK_HOME observes the new time
   ? open/close help; Esc closes help
   q or Ctrl+C quit deck
 
@@ -1159,7 +1165,7 @@ Runtime controls
   DECK_HOME             isolated data/config/state root
   DECK_TMUX_SOCKET      private tmux socket (default: deck)
   DECK_CLOCK            freeze wall clock (RFC3339)
-  DECK_CLOCK_STEP       advance frozen clock after each successful shell creation
+  DECK_CLOCK_STEP       step size used when > advances the shared frozen clock
   DECK_ID_SEED          deterministic generated UUIDs
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds

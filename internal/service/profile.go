@@ -17,8 +17,8 @@ import (
 // with a specific error rather than silently degraded, so the TUI can show
 // the user why nothing changed.
 func (s Service) SetPermissionProfile(ctx context.Context, sessionID, profile string) (store.Session, error) {
-	if s.Store == nil || s.Agents == nil {
-		return store.Session{}, errors.New("changing the permission profile requires a store and an adapter registry")
+	if s.Store == nil || s.Agents == nil || s.Clock == nil {
+		return store.Session{}, errors.New("changing the permission profile requires a store, adapter registry, and clock")
 	}
 	if sessionID == "" || profile == "" {
 		return store.Session{}, errors.New("session id and permission profile are required")
@@ -38,7 +38,7 @@ func (s Service) SetPermissionProfile(ctx context.Context, sessionID, profile st
 	if !caps.SupportsProfile(profile) {
 		return store.Session{}, fmt.Errorf("agent %q does not support permission profile %q", session.Agent, profile)
 	}
-	if err := s.Store.SetPermissionProfile(ctx, sessionID, profile, "user"); err != nil {
+	if err := s.Store.SetPermissionProfile(ctx, sessionID, profile, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)

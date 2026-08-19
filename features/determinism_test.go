@@ -18,7 +18,7 @@ const frozenClock = "2025-01-02T03:04:05Z"
 func registerDeterminismSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck frames are byte-stable with DECK_ASCII and NO_COLOR$`, deterministicFrames)
 	sc.Step(`^a stepped frozen-clock shell session is created and killed$`, frozenClockSessionIsCreatedAndKilled)
-	sc.Step(`^its wall clock steps while monotonic durations advance$`, frozenAuditIsSteppedAndAdvances)
+	sc.Step(`^its shared wall clock steps on demand while monotonic durations advance$`, frozenAuditIsSteppedAndAdvances)
 	sc.Step(`^repeating DECK_ID_SEED reproduces generated ids$`, repeatingSeedReproducesID)
 }
 
@@ -92,6 +92,13 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := client.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
 		return err
 	}
+	observer, err := h.StartNamedClient(ctx, "frozen-clock-observer", deterministicEnvironment()...)
+	if err != nil {
+		return err
+	}
+	if err := observer.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
+		return err
+	}
 	cwd := filepath.Join(h.Home, "frozen-clock-cwd")
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		return err
@@ -112,25 +119,46 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := waitForPrivateSession(ctx, "deck_frozen-clock"); err != nil {
 		return err
 	}
-	// Successful creation is the normal released-binary interaction that steps
-	// the frozen wall clock. The persisted row predates that step, so this
-	// external frame observes the exact two-minute relative age.
-	if err := client.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
-		return fmt.Errorf("successful creation did not step frozen relative time: %w", err)
+	if err := client.WaitForFrame(ctx, true, "created just now"); err != nil {
+		return fmt.Errorf("creation unexpectedly stepped frozen time: %w", err)
+	}
+	// The documented > control advances while both clients are already running.
+	// Since now is persisted under DECK_HOME, the observer and a subprocess
+	// started only after the advance must independently render the same age.
+	if err := client.Send(">"); err != nil {
+		return err
+	}
+	if err := client.WaitForFrame(ctx, true, "Frozen clock advanced to 2025-01-02T03:06:05Z"); err != nil {
+		return err
+	}
+	if err := observer.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
+		return fmt.Errorf("already-running observer did not read shared frozen now: %w", err)
+	}
+	subprocess, err := h.StartNamedClient(ctx, "frozen-clock-subprocess", deterministicEnvironment()...)
+	if err != nil {
+		return err
+	}
+	if err := subprocess.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
+		return fmt.Errorf("later deck subprocess did not read shared frozen now: %w", err)
 	}
 	// The delay makes the externally logged monotonic duration observably
 	// advance even though every wall-clock timestamp remains frozen.
 	time.Sleep(30 * time.Millisecond)
-	if err := client.Send("x"); err != nil {
+	if err := observer.Send("x"); err != nil {
 		return err
 	}
 	if err := client.WaitForFrame(ctx, true, "resumable"); err != nil {
 		return err
 	}
-	if err := client.Send("q"); err != nil {
-		return err
+	for _, running := range []*ScreenDriver{client, observer, subprocess} {
+		if err := running.Send("q"); err != nil {
+			return err
+		}
+		if err := running.Stop(5 * time.Second); err != nil {
+			return err
+		}
 	}
-	return client.Stop(5 * time.Second)
+	return nil
 }
 
 func frozenAuditIsSteppedAndAdvances(ctx context.Context) error {

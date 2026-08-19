@@ -16,8 +16,8 @@ import (
 // conversation id" is the only sensible action here; an agent without an
 // assigned conversation id (e.g. shell) cannot be pinned.
 func (s Service) PinResume(ctx context.Context, sessionID string) (store.Session, error) {
-	if s.Store == nil {
-		return store.Session{}, errors.New("pinning a resume conversation requires a store")
+	if s.Store == nil || s.Clock == nil {
+		return store.Session{}, errors.New("pinning a resume conversation requires a store and clock")
 	}
 	if sessionID == "" {
 		return store.Session{}, errors.New("session id is required")
@@ -29,7 +29,7 @@ func (s Service) PinResume(ctx context.Context, sessionID string) (store.Session
 	if session.ConversationID == "" {
 		return store.Session{}, fmt.Errorf("session %q has no conversation id to pin", session.Name)
 	}
-	if err := s.Store.SetResumePin(ctx, sessionID, session.ConversationID, "user"); err != nil {
+	if err := s.Store.SetResumePin(ctx, sessionID, session.ConversationID, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)
@@ -38,13 +38,13 @@ func (s Service) PinResume(ctx context.Context, sessionID string) (store.Session
 // SetResumeAuto returns a session's resume behavior to the default (auto):
 // resume the session's own last-known conversation, clearing any pin.
 func (s Service) SetResumeAuto(ctx context.Context, sessionID string) (store.Session, error) {
-	if s.Store == nil {
-		return store.Session{}, errors.New("clearing a resume pin requires a store")
+	if s.Store == nil || s.Clock == nil {
+		return store.Session{}, errors.New("clearing a resume pin requires a store and clock")
 	}
 	if sessionID == "" {
 		return store.Session{}, errors.New("session id is required")
 	}
-	if err := s.Store.SetResumeStateAuto(ctx, sessionID, "user"); err != nil {
+	if err := s.Store.SetResumeStateAuto(ctx, sessionID, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)
@@ -57,13 +57,13 @@ func (s Service) SetResumeAuto(ctx context.Context, sessionID string) (store.Ses
 // resume_state back to auto once that fresh launch has actually happened —
 // never back to pinned, and never left as fresh-once.
 func (s Service) ArmFreshOnce(ctx context.Context, sessionID string) (store.Session, error) {
-	if s.Store == nil {
-		return store.Session{}, errors.New("arming a fresh-once resume requires a store")
+	if s.Store == nil || s.Clock == nil {
+		return store.Session{}, errors.New("arming a fresh-once resume requires a store and clock")
 	}
 	if sessionID == "" {
 		return store.Session{}, errors.New("session id is required")
 	}
-	if err := s.Store.SetResumeStateFreshOnce(ctx, sessionID, "user"); err != nil {
+	if err := s.Store.SetResumeStateFreshOnce(ctx, sessionID, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -64,6 +65,9 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	clock, err := NewClock(getenv("DECK_CLOCK"), getenv("DECK_CLOCK_STEP"))
 	if err != nil {
 		return Settings{}, err
+	}
+	if getenv("DECK_HOME") != "" {
+		clock.sharedPath = filepath.Join(paths.Home, "clock.now")
 	}
 	reconcile, err := milliseconds(getenv("DECK_RECONCILE_MS"), DefaultReconcileMS, "DECK_RECONCILE_MS")
 	if err != nil {
@@ -151,12 +155,13 @@ func boolEnv(raw string, fallback bool, name string) (bool, error) {
 // Clock freezes wall time when DECK_CLOCK is set. Elapsed intentionally uses
 // time.Since, whose monotonic component is unaffected by this frozen wall clock.
 type Clock struct {
-	frozen bool
-	base   time.Time
-	step   time.Duration
-	start  time.Time
-	mu     sync.Mutex
-	ticks  uint64
+	frozen     bool
+	base       time.Time
+	step       time.Duration
+	start      time.Time
+	sharedPath string
+	mu         sync.Mutex
+	ticks      uint64
 }
 
 func NewClock(wall, step string) (*Clock, error) {
@@ -183,22 +188,71 @@ func (c *Clock) Now() time.Time {
 	if !c.frozen {
 		return time.Now()
 	}
+	if c.sharedPath != "" {
+		if raw, err := os.ReadFile(c.sharedPath); err == nil {
+			if shared, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(raw))); err == nil {
+				return shared
+			}
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.base.Add(time.Duration(c.ticks) * c.step)
 }
 
 // Advance moves a frozen clock one configured step and returns its new wall time.
+// Clocks loaded with DECK_HOME persist the resulting absolute instant there, so
+// already-running clients and later subprocesses all observe the same value.
 func (c *Clock) Advance() time.Time {
-	if !c.frozen || c.step == 0 {
-		return c.Now()
-	}
-	c.mu.Lock()
-	c.ticks++
-	value := c.base.Add(time.Duration(c.ticks) * c.step)
-	c.mu.Unlock()
+	value, _ := c.AdvanceShared()
 	return value
 }
+
+// AdvanceShared is the error-reporting form used by the on-demand TUI control.
+func (c *Clock) AdvanceShared() (time.Time, error) {
+	if !c.frozen || c.step == 0 {
+		return c.Now(), nil
+	}
+	if c.sharedPath == "" {
+		c.mu.Lock()
+		c.ticks++
+		value := c.base.Add(time.Duration(c.ticks) * c.step)
+		c.mu.Unlock()
+		return value, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(c.sharedPath), 0o700); err != nil {
+		return c.Now(), fmt.Errorf("create shared clock directory: %w", err)
+	}
+	lock, err := os.OpenFile(c.sharedPath+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return c.Now(), fmt.Errorf("open shared clock lock: %w", err)
+	}
+	defer lock.Close()
+	if err := lockFile(lock); err != nil {
+		return c.Now(), err
+	}
+	defer unlockFile(lock)
+	current := c.Now()
+	value := current.Add(c.step)
+	temporary := c.sharedPath + ".tmp-" + strconv.Itoa(os.Getpid())
+	if err := os.WriteFile(temporary, []byte(value.Format(time.RFC3339Nano)+"\n"), 0o600); err != nil {
+		return current, fmt.Errorf("write shared clock: %w", err)
+	}
+	if err := os.Rename(temporary, c.sharedPath); err != nil {
+		_ = os.Remove(temporary)
+		return current, fmt.Errorf("publish shared clock: %w", err)
+	}
+	return value, nil
+}
+
+func lockFile(file *os.File) error {
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock shared clock: %w", err)
+	}
+	return nil
+}
+
+func unlockFile(file *os.File) { _ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN) }
 
 // Elapsed is always an actual monotonic elapsed duration, including with DECK_CLOCK.
 func (c *Clock) Elapsed() time.Duration { return time.Since(c.start) }

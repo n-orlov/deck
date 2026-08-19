@@ -12,7 +12,7 @@ func newLeaseTestSession(t *testing.T, store *Store, id, status string) {
 	ctx := context.Background()
 	if _, err := store.CreateSession(ctx, CreateSessionInput{
 		ID: id, Name: "lease-" + id, CWD: "/work/" + id, Agent: "claude", CapturedPath: "/bin",
-		Status: status,
+		Status: status, StatusAt: 1, CreatedAt: 1,
 	}); err != nil {
 		t.Fatalf("create lease test session: %v", err)
 	}

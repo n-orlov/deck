@@ -32,7 +32,7 @@ func stubExecutableOnPath(t *testing.T, name string) {
 func stopSession(t *testing.T, db *store.Store, sessionID string) {
 	t.Helper()
 	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
-		SessionID: sessionID, Status: "stopped", Source: "tmux",
+		SessionID: sessionID, Status: "stopped", Source: "tmux", At: 1,
 	}); err != nil {
 		t.Fatalf("stop session: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestResumeFailsOnUnknownConversationID(t *testing.T) {
 	// adapter's --resume flag to name.
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "unknown-id-session", Name: "Claude: no id", CWD: cwd, Agent: "claude",
-		CapturedPath: os.Getenv("PATH"), Status: "stopped", StatusSource: "user",
+		CapturedPath: os.Getenv("PATH"), Status: "stopped", StatusSource: "user", StatusAt: 1, CreatedAt: 1,
 	})
 	if err != nil {
 		t.Fatalf("create durable session directly: %v", err)

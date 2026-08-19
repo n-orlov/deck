@@ -145,8 +145,8 @@ func TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness(t *testing.T) {
 		t.Fatalf("duplicate cwd was not retained: %q != %q", second.CWD, first.CWD)
 	}
 	for _, input := range []CreateSessionInput{
-		{ID: "00000000-0000-4000-8000-000000000003", Name: "Other", CWD: "/x", Agent: "shell", CapturedPath: "/bin"},
-		{ID: "00000000-0000-4000-8000-000000000004", Name: "Build API v1", CWD: "/x", Agent: "shell", CapturedPath: "/bin"},
+		{ID: "00000000-0000-4000-8000-000000000003", Name: "Other", CWD: "/x", Agent: "shell", CapturedPath: "/bin", StatusAt: 102, CreatedAt: 102},
+		{ID: "00000000-0000-4000-8000-000000000004", Name: "Build API v1", CWD: "/x", Agent: "shell", CapturedPath: "/bin", StatusAt: 103, CreatedAt: 103},
 	} {
 		if _, err := store.CreateSession(ctx, input); err == nil || !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "collides") {
 			t.Fatalf("collision error = %v; want useful name or slug collision", err)
@@ -155,6 +155,34 @@ func TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness(t *testing.T) {
 	var count int
 	if err := store.DB().QueryRow(`SELECT count(*) FROM sessions`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("session count = %d, %v; failed insert must not rewrite rows", count, err)
+	}
+}
+
+func TestStatusWritersRequireExplicitTimestamps(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	input := CreateSessionInput{ID: "timestamp-required", Name: "timestamp required", CWD: "/work", Agent: "shell", CapturedPath: "/bin"}
+	if _, err := store.CreateSession(ctx, input); err == nil || !strings.Contains(err.Error(), "timestamps are required") {
+		t.Fatalf("create without clock timestamp = %v", err)
+	}
+	input.StatusAt, input.CreatedAt = 123, 123
+	if _, err := store.CreateSession(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: input.ID, Status: "stopped"}); err == nil || !strings.Contains(err.Error(), "timestamp is required") {
+		t.Fatalf("status/event write without clock timestamp = %v", err)
+	}
+	if err := store.SetPermissionProfile(ctx, input.ID, "safe", "user", 0); err == nil || !strings.Contains(err.Error(), "timestamp is required") {
+		t.Fatalf("event mutation without clock timestamp = %v", err)
+	}
+	var events int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events`).Scan(&events); err != nil || events != 0 {
+		t.Fatalf("rejected fallback write produced %d events: %v", events, err)
 	}
 }
 
@@ -246,7 +274,7 @@ func TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull(t *testing.T) {
 	ctx := context.Background()
 	if _, err := store.CreateSession(ctx, CreateSessionInput{
 		ID: "00000000-0000-4000-8000-000000000011", Name: "Bare Shell", CWD: "/work/bare",
-		Agent: "shell", CapturedPath: "/bin",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 1, CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +350,7 @@ func TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows(t *testing
 	if eventCount != 1 || kind != "stopped" || reason != "killed" {
 		t.Fatalf("transition event = count %d, kind %q, reason %q", eventCount, kind, reason)
 	}
-	if err := firstStore.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: "missing", Status: "stopped"}); err == nil || !strings.Contains(err.Error(), "not found") {
+	if err := firstStore.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: "missing", Status: "stopped", At: 21}); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("missing session error = %v", err)
 	}
 	if err := secondStore.DB().QueryRow(`SELECT count(*) FROM events`).Scan(&eventCount); err != nil || eventCount != 1 {
@@ -340,7 +368,7 @@ func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing
 	ctx := context.Background()
 	const id = "00000000-0000-4000-8000-000000000020"
 	if _, err := store.CreateSession(ctx, CreateSessionInput{
-		ID: id, Name: "mutations", CWD: "/work/mut", Agent: "claude", CapturedPath: "/bin",
+		ID: id, Name: "mutations", CWD: "/work/mut", Agent: "claude", CapturedPath: "/bin", StatusAt: 1, CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +383,7 @@ func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing
 	}
 
 	const convoA = "11111111-1111-4111-8111-111111111111"
-	if err := store.SetConversationID(ctx, id, convoA, "user"); err != nil {
+	if err := store.SetConversationID(ctx, id, convoA, "user", 10); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.GetSession(ctx, id)
@@ -369,7 +397,7 @@ func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing
 		t.Fatalf("expected exactly one set_conversation_id event")
 	}
 
-	if err := store.SetPermissionProfile(ctx, id, "yolo", "user"); err != nil {
+	if err := store.SetPermissionProfile(ctx, id, "yolo", "user", 11); err != nil {
 		t.Fatal(err)
 	}
 	got, err = store.GetSession(ctx, id)
@@ -384,7 +412,7 @@ func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing
 	}
 
 	const convoB = "22222222-2222-4222-8222-222222222222"
-	if err := store.SetResumePin(ctx, id, convoB, "user"); err != nil {
+	if err := store.SetResumePin(ctx, id, convoB, "user", 12); err != nil {
 		t.Fatal(err)
 	}
 	got, err = store.GetSession(ctx, id)
@@ -415,7 +443,7 @@ func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing
 		t.Fatalf("pin did not survive reopen: state=%q pin=%q", got.ResumeState, got.ResumePin)
 	}
 
-	if err := reopened.SetResumeStateAuto(ctx, id, "user"); err != nil {
+	if err := reopened.SetResumeStateAuto(ctx, id, "user", 13); err != nil {
 		t.Fatal(err)
 	}
 	got, err = reopened.GetSession(ctx, id)
@@ -426,7 +454,7 @@ func TestSetConversationIDPermissionProfileAndResumeStateRecordEvents(t *testing
 		t.Fatalf("resume state = %q, pin = %q; want auto with cleared pin", got.ResumeState, got.ResumePin)
 	}
 
-	if err := reopened.SetConversationID(ctx, "missing", convoA, "user"); err == nil || !strings.Contains(err.Error(), "not found") {
+	if err := reopened.SetConversationID(ctx, "missing", convoA, "user", 14); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("missing session error = %v", err)
 	}
 }
@@ -443,12 +471,12 @@ func TestFreshOnceIsOneShotAndRevertsToAutoNotPinned(t *testing.T) {
 	const pin = "33333333-3333-4333-8333-333333333333"
 	if _, err := store.CreateSession(ctx, CreateSessionInput{
 		ID: id, Name: "fresh-once", CWD: "/work/fresh", Agent: "claude", CapturedPath: "/bin",
-		ResumePin: pin, ResumeState: "pinned",
+		ResumePin: pin, ResumeState: "pinned", StatusAt: 1, CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.SetResumeStateFreshOnce(ctx, id, "user"); err != nil {
+	if err := store.SetResumeStateFreshOnce(ctx, id, "user", 20); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.GetSession(ctx, id)
@@ -465,7 +493,7 @@ func TestFreshOnceIsOneShotAndRevertsToAutoNotPinned(t *testing.T) {
 	}
 
 	// Simulate the fresh launch having happened, then consume the one-shot.
-	if err := store.ConsumeFreshOnce(ctx, id, "service"); err != nil {
+	if err := store.ConsumeFreshOnce(ctx, id, "service", 21); err != nil {
 		t.Fatal(err)
 	}
 	got, err = store.GetSession(ctx, id)
@@ -478,7 +506,7 @@ func TestFreshOnceIsOneShotAndRevertsToAutoNotPinned(t *testing.T) {
 
 	// Consuming again is a benign no-op, not an error, and does not flip a
 	// fresh state that was never armed.
-	if err := store.ConsumeFreshOnce(ctx, id, "service"); err != nil {
+	if err := store.ConsumeFreshOnce(ctx, id, "service", 22); err != nil {
 		t.Fatal(err)
 	}
 	got, err = store.GetSession(ctx, id)

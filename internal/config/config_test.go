@@ -65,6 +65,37 @@ func TestControlsAndClock(t *testing.T) {
 	}
 }
 
+func TestDeckHomeClocksShareOnDemandAdvance(t *testing.T) {
+	home := t.TempDir()
+	env := environment(map[string]string{"DECK_HOME": home, "DECK_CLOCK": "2025-01-02T03:04:05Z", "DECK_CLOCK_STEP": "2m"})
+	first, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanced, err := first.Clock.AdvanceShared()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "2025-01-02T03:06:05Z"
+	if got := advanced.Format(time.RFC3339); got != want {
+		t.Fatalf("advanced = %s, want %s", got, want)
+	}
+	if got := second.Clock.Now().Format(time.RFC3339); got != want {
+		t.Fatalf("second process now = %s, want %s", got, want)
+	}
+	third, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := third.Clock.Now().Format(time.RFC3339); got != want {
+		t.Fatalf("later subprocess now = %s, want %s", got, want)
+	}
+}
+
 func TestSeededUUIDsAreStableAndValid(t *testing.T) {
 	left, right := NewIDGenerator("same"), NewIDGenerator("same")
 	first, err := left.UUID()
@@ -154,11 +185,11 @@ func TestConfigFileEnvTable(t *testing.T) {
 
 func TestConfigFileMalformedIsRejected(t *testing.T) {
 	for name, contents := range map[string]string{
-		"no equals":         "allow_yolo true\n",
-		"bad bool":          "allow_yolo = maybe\n",
+		"no equals":            "allow_yolo true\n",
+		"bad bool":             "allow_yolo = maybe\n",
 		"unterminated section": "[env\nFOO = \"bar\"\n",
-		"unquoted env value": "[env]\nFOO = bar\n",
-		"empty key":         "= \"x\"\n",
+		"unquoted env value":   "[env]\nFOO = bar\n",
+		"empty key":            "= \"x\"\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := writeConfigFile(t, contents)
