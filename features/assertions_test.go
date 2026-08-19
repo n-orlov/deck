@@ -39,6 +39,8 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database contains session "([^"]+)" with status "([^"]+)"$`, databaseSessionStatus)
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with killed_by_user=([01])$`, databaseSessionTerminalFields)
 	sc.Step(`^the released running hook fires for session "([^"]+)"$`, releasedRunningHookForSession)
+	sc.Step(`^the released waiting hook fires for session "([^"]+)"$`, releasedWaitingHookForSession)
+	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with acknowledged=([01]), notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionAttentionFields)
 	sc.Step(`^the audit log is valid JSONL$`, auditLogIsJSONL)
 	sc.Step(`^the audit log contains event "([^"]+)" for a session$`, auditContainsSessionEvent)
 	sc.Step(`^the scenario home has mode "([0-7]+)"$`, scenarioHomeMode)
@@ -51,6 +53,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is started without tmux$`, startClientWithoutTMux)
 	sc.Step(`^deck client "([^"]+)" is started with tmux version "([^"]+)"$`, startClientWithTMuxVersion)
 	sc.Step(`^deck client "([^"]+)" attaches to and detaches from its session$`, clientAttachesAndDetaches)
+	sc.Step(`^deck client "([^"]+)" attaches to and detaches from its selected agent$`, clientAttachesToSelectedAgentAndDetaches)
 	sc.Step(`^deck client "([^"]+)" kills its selected session$`, clientKillsSelectedSession)
 	sc.Step(`^deck client "([^"]+)" is killed with SIGKILL$`, clientIsKilledWithSIGKILL)
 	sc.Step(`^the agent process "([^"]+)" in private tmux session "([^"]+)" is killed with SIGKILL$`, agentProcessInPrivateSessionIsKilledWithSIGKILL)
@@ -432,6 +435,14 @@ func databaseSessionTerminalFields(ctx context.Context, name, wantStatus, wantSo
 // user-kill assertion and this process. Using the injected durable row ID
 // exercises the same fallback identity that deck supplies to a real pane.
 func releasedRunningHookForSession(ctx context.Context, name string) error {
+	return releasedHookForSession(ctx, name, `{"hook_event_name":"SessionStart","source":"resume"}`)
+}
+
+func releasedWaitingHookForSession(ctx context.Context, name string) error {
+	return releasedHookForSession(ctx, name, `{"hook_event_name":"Notification","notification_type":"permission_prompt"}`)
+}
+
+func releasedHookForSession(ctx context.Context, name, payload string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -453,9 +464,35 @@ func releasedRunningHookForSession(ctx context.Context, name string) error {
 	defer cancel()
 	cmd := exec.CommandContext(commandCtx, h.Binary, "_hook")
 	cmd.Env = append(os.Environ(), h.Environment("DECK_SESSION_ID="+sessionID)...)
-	cmd.Stdin = strings.NewReader(`{"hook_event_name":"SessionStart","source":"resume"}`)
+	cmd.Stdin = strings.NewReader(payload)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("released running hook for session %q: %w: %s", name, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("released hook for session %q: %w: %s", name, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantSource string, wantAcknowledged, wantEpoch, wantAttachedEvents int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var status, source, sessionID string
+	var acknowledged, epoch, attachedEvents int
+	if err := db.QueryRowContext(ctx, `SELECT id, status, status_source, acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(
+		&sessionID, &status, &source, &acknowledged, &epoch); err != nil {
+		return fmt.Errorf("observe attention fields for session %q: %w", name, err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ? AND kind = 'attached'`, sessionID).Scan(&attachedEvents); err != nil {
+		return fmt.Errorf("observe attached events for session %q: %w", name, err)
+	}
+	if status != wantStatus || source != wantSource || acknowledged != wantAcknowledged || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
+		return fmt.Errorf("session %q attention fields = status %q source %q acknowledged=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
+			name, status, source, acknowledged, epoch, attachedEvents, wantStatus, wantSource, wantAcknowledged, wantEpoch, wantAttachedEvents)
 	}
 	return nil
 }
@@ -725,6 +762,27 @@ func clientAttachesAndDetaches(ctx context.Context, name string) error {
 		return err
 	}
 	return client.WaitForFrame(wait, false, "deck - sessions")
+}
+
+func clientAttachesToSelectedAgentAndDetaches(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	// Wait until Bubble Tea has yielded the PTY to tmux before sending tmux's
+	// detach binding. The durable transition itself is asserted separately.
+	time.Sleep(250 * time.Millisecond)
+	if err := client.Send("\x02d"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "deck - sessions")
 }
 
 func clientKillsSelectedSession(ctx context.Context, name string) error {

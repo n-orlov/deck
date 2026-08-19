@@ -213,6 +213,10 @@ type StatusUpdateInput struct {
 	// Acknowledged explicitly changes the durable unseen marker. Independently,
 	// every waiting/error transition resets it to false.
 	Acknowledged *bool
+	// ExpectedStatus makes a transition conditional on the row still having the
+	// status the caller observed. Attach uses this to clear only a waiting
+	// episode; a hook racing the keypress must not be overwritten by stale UI.
+	ExpectedStatus string
 	// PaneExitStatus and CrashTail persist a crash observation atomically with
 	// its error verdict. The first pane observation wins.
 	PaneExitStatus *int
@@ -463,6 +467,12 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		return fmt.Errorf("read session status: %w", err)
 	}
 
+	// A conditional transition that lost its race is a complete no-op: it must
+	// not append an event claiming an action against a different current state.
+	if input.ExpectedStatus != "" && currentStatus != input.ExpectedStatus {
+		return nil
+	}
+
 	apply := killedByUser == 0 || input.ClearKilledByUser || input.KilledByUser
 	if apply && input.Source == "probe" && currentSource == "hook" && input.At-currentAt < input.StaleAfter {
 		apply = false
@@ -520,6 +530,17 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		return fmt.Errorf("commit session status update: %w", err)
 	}
 	return nil
+}
+
+// AttachWaitingSession atomically records that a deck-mediated attachment
+// answered the currently observed waiting episode. If the row stopped waiting
+// after the UI loaded it, ExpectedStatus turns the stale keypress into a no-op.
+func (s *Store) AttachWaitingSession(ctx context.Context, sessionID string, at int64) error {
+	acknowledged := true
+	return s.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: sessionID, Status: "running", Source: "user", At: at,
+		EventKind: "attached", Acknowledged: &acknowledged, ExpectedStatus: "waiting",
+	})
 }
 
 // AcknowledgeSession durably clears the selected row's unseen marker without

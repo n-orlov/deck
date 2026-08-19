@@ -42,6 +42,7 @@ type Model struct {
 	create              func(context.Context, service.ShellCreateInput) (store.Session, error)
 	createAgentSession  func(context.Context, service.AgentCreateInput) (store.Session, error)
 	attach              func(context.Context, string) (*exec.Cmd, error)
+	prepareAttach       func(context.Context, string) error
 	kill                func(context.Context, store.Session) error
 	acknowledge         func(context.Context, string) error
 	reconcile           func(context.Context) error
@@ -148,6 +149,12 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 	m := Model{store: db, settings: settings, startupNote: tmuxNote}
 	if db != nil {
 		m.acknowledge = db.AcknowledgeSession
+		m.prepareAttach = func(ctx context.Context, sessionID string) error {
+			if settings.Clock == nil {
+				return fmt.Errorf("attach status clock is unavailable")
+			}
+			return db.AttachWaitingSession(ctx, sessionID, settings.Clock.Now().UnixMilli())
+		}
 	}
 	return m
 }
@@ -463,6 +470,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				m.attachError = "Cannot attach: " + err.Error()
 				return m, nil
+			}
+			// Consult the durable row on every attachment. The list frame may lag a
+			// hook that just made it waiting; the store-side expected-status guard
+			// makes non-waiting attachments and raced resolutions harmless no-ops.
+			if m.prepareAttach != nil {
+				if err := m.prepareAttach(context.Background(), session.ID); err != nil {
+					m.attachError = "Cannot attach: " + err.Error()
+					return m, nil
+				}
 			}
 			m.attachError = ""
 			return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
