@@ -19,7 +19,11 @@ const (
 	MinimumMinor = 2
 )
 
-var versionPattern = regexp.MustCompile(`^tmux ([0-9]+)\.([0-9]+)`) // tmux 3.5a, tmux 3.2
+var (
+	versionPattern     = regexp.MustCompile(`^tmux ([0-9]+)\.([0-9]+)`) // tmux 3.5a, tmux 3.2
+	paneIDPattern      = regexp.MustCompile(`^%[0-9]+$`)
+	captureLinePattern = regexp.MustCompile(`^(?:-|[-]?[0-9]+)$`)
+)
 
 // Client runs tmux exclusively against deck's configured private socket.
 // Binary defaults to "tmux" and Timeout defaults to five seconds.
@@ -60,6 +64,17 @@ type Pane struct {
 	Dead        bool
 	DeadStatus  *int
 	Command     string
+}
+
+// CaptureOptions describes an explicit tmux pane range. Line positions use
+// tmux's capture-pane notation: integers are relative to the top of the visible
+// pane, negative integers address history, and "-" means the beginning (for
+// StartLine) or end (for EndLine) of the available pane contents. Including
+// escape sequences is useful for replay; crash tails should leave it false.
+type CaptureOptions struct {
+	StartLine              string
+	EndLine                string
+	IncludeEscapeSequences bool
 }
 
 func (v Version) String() string { return v.Raw }
@@ -229,14 +244,47 @@ func (c Client) List(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
+// CapturePane returns exactly the requested range from a pane previously
+// obtained from List or Create. Requiring both bounds keeps capture ownership
+// explicit and allows the same primitive to serve bounded crash tails and
+// escape-preserving replay.
+func (c Client) CapturePane(ctx context.Context, paneID string, options CaptureOptions) ([]byte, error) {
+	if c.Socket == "" {
+		return nil, errors.New("tmux socket name is required")
+	}
+	if !paneIDPattern.MatchString(paneID) {
+		return nil, fmt.Errorf("invalid tmux pane id %q", paneID)
+	}
+	if !captureLinePattern.MatchString(options.StartLine) {
+		return nil, fmt.Errorf("invalid capture start line %q", options.StartLine)
+	}
+	if !captureLinePattern.MatchString(options.EndLine) {
+		return nil, fmt.Errorf("invalid capture end line %q", options.EndLine)
+	}
+	args := []string{"capture-pane", "-p"}
+	if options.IncludeEscapeSequences {
+		args = append(args, "-e")
+	}
+	args = append(args, "-S", options.StartLine, "-E", options.EndLine, "-t", paneID)
+	output, err := c.run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("capture pane %q: %w", paneID, err)
+	}
+	return output, nil
+}
+
 // Kill removes a deck-owned tmux session without touching a similarly named
-// user session on the default tmux socket.
+// user session on the default tmux socket. A concurrently removed session (or
+// private server) is already in the desired state and therefore succeeds.
 func (c Client) Kill(ctx context.Context, slug string) error {
 	name, err := sessionName(slug)
 	if err != nil {
 		return err
 	}
 	if _, err := c.run(ctx, "kill-session", "-t", name); err != nil {
+		if tmuxTargetAbsent(err) {
+			return nil
+		}
 		return fmt.Errorf("kill session %q: %w", name, err)
 	}
 	return nil
@@ -297,6 +345,17 @@ func sessionDisappeared(err error) bool {
 	return strings.Contains(message, "can't find session") ||
 		strings.Contains(message, "can't find window") ||
 		strings.Contains(message, "no such session")
+}
+
+func tmuxTargetAbsent(err error) bool {
+	if sessionDisappeared(err) {
+		return true
+	}
+	message := err.Error()
+	return strings.Contains(message, "no server running") ||
+		strings.Contains(message, "no sessions") ||
+		strings.Contains(message, "no current target") ||
+		strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory")
 }
 
 func (c Client) session(ctx context.Context, name string) (Session, error) {

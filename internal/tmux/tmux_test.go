@@ -84,12 +84,99 @@ func TestCreateListAndKillRealTmux(t *testing.T) {
 	if err := client.Kill(context.Background(), "shell_test"); err != nil {
 		t.Fatalf("kill private tmux session: %v", err)
 	}
+	if err := client.Kill(context.Background(), "shell_test"); err != nil {
+		t.Fatalf("repeat kill of disappeared session: %v", err)
+	}
+	if err := client.command(context.Background(), "kill-server").Run(); err != nil {
+		t.Fatalf("kill private tmux server: %v", err)
+	}
+	if err := client.Kill(context.Background(), "shell_test"); err != nil {
+		t.Fatalf("kill after server disappeared: %v", err)
+	}
 	listed, err = client.List(context.Background())
 	if err != nil {
 		t.Fatalf("list after kill: %v", err)
 	}
 	if len(listed) != 0 {
 		t.Fatalf("sessions after kill = %#v, want none", listed)
+	}
+}
+
+func TestCapturePaneRealTmuxUsesExplicitRange(t *testing.T) {
+	socket := fmt.Sprintf("deck-capture-%d-%d", os.Getpid(), time.Now().UnixNano())
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
+	created, err := client.Create(context.Background(), Launch{
+		Slug: "capture_test", CWD: t.TempDir(),
+		Command: []string{"sh", "-c", `i=1; while [ "$i" -le 260 ]; do printf 'line-%03d\n' "$i"; i=$((i+1)); done; printf '\033[31mcolored-marker\033[0m\n'; sleep 30`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paneID := created.Panes[0].ID
+	all := CaptureOptions{StartLine: "-", EndLine: "-"}
+	var plain []byte
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		plain, err = client.CapturePane(context.Background(), paneID, all)
+		if err == nil && bytes.Contains(plain, []byte("colored-marker")) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("capture complete pane range: %v", err)
+	}
+	if !bytes.Contains(plain, []byte("line-001")) || !bytes.Contains(plain, []byte("line-260")) {
+		t.Fatalf("full capture did not retain range needed for a 200-line tail: first/last missing from %d bytes", len(plain))
+	}
+	if bytes.Contains(plain, []byte("\x1b[")) {
+		t.Fatalf("plain capture contains terminal escapes: %q", plain)
+	}
+
+	escaped, err := client.CapturePane(context.Background(), paneID, CaptureOptions{
+		StartLine: "-", EndLine: "-", IncludeEscapeSequences: true,
+	})
+	if err != nil {
+		t.Fatalf("capture replay range with escapes: %v", err)
+	}
+	if !bytes.Contains(escaped, []byte("\x1b[")) || !bytes.Contains(escaped, []byte("colored-marker")) {
+		t.Fatalf("escape-preserving capture = %q, want colored marker and SGR", escaped)
+	}
+
+	oneLine, err := client.CapturePane(context.Background(), paneID, CaptureOptions{StartLine: "0", EndLine: "0"})
+	if err != nil {
+		t.Fatalf("capture explicit single-line range: %v", err)
+	}
+	if got := bytes.Count(oneLine, []byte("\n")); got != 1 {
+		t.Fatalf("single-line capture has %d lines (%q), want 1", got, oneLine)
+	}
+}
+
+func TestCapturePaneRejectsUnsafeOrImplicitRange(t *testing.T) {
+	client := Client{Socket: "deck-validation"}
+	for _, test := range []struct {
+		pane    string
+		options CaptureOptions
+	}{
+		{"deck_session", CaptureOptions{StartLine: "-", EndLine: "-"}},
+		{"%1", CaptureOptions{EndLine: "-"}},
+		{"%1", CaptureOptions{StartLine: "-", EndLine: "1;kill-server"}},
+	} {
+		if _, err := client.CapturePane(context.Background(), test.pane, test.options); err == nil {
+			t.Fatalf("CapturePane(%q, %#v) accepted unsafe or implicit range", test.pane, test.options)
+		}
+	}
+}
+
+func TestKillStillReportsRealCommandErrors(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "tmux")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\necho 'permission denied' >&2\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := (Client{Binary: binary, Socket: "deck-errors"}).Kill(context.Background(), "valid_slug")
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("Kill real command error = %v, want permission-denied diagnostic", err)
 	}
 }
 
