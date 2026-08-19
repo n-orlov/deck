@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/n-orlov/deck/internal/config"
 	_ "modernc.org/sqlite"
@@ -170,6 +171,13 @@ type Session struct {
 	StatusAt     int64
 	CreatedAt    int64
 
+	KilledByUser   bool
+	PaneExitStatus *int
+	CrashTail      string
+	NotifyEpoch    int64
+	LastMessage    string
+	Acknowledged   bool
+
 	LaunchArgs              []string
 	Env                     map[string]string
 	PreLaunch               string
@@ -192,6 +200,36 @@ type StatusUpdateInput struct {
 	At        int64
 	EventKind string
 	Payload   string
+
+	// StaleAfter is required for probe verdicts and is expressed in the same
+	// milliseconds as At. A probe may replace a hook verdict only after this
+	// interval; the check and update happen under one write transaction.
+	StaleAfter int64
+	// KilledByUser marks an explicit terminal user action. ClearKilledByUser
+	// is reserved for resume, which is the only operation allowed to make the
+	// row automation-writable again.
+	KilledByUser      bool
+	ClearKilledByUser bool
+	// Acknowledged explicitly changes the durable unseen marker. Independently,
+	// every waiting/error transition resets it to false.
+	Acknowledged *bool
+	// PaneExitStatus and CrashTail persist a crash observation atomically with
+	// its error verdict. The first pane observation wins.
+	PaneExitStatus *int
+	CrashTail      string
+	// LastMessage is sourced from the hook payload, not the transcript. It is
+	// stored as valid UTF-8 no larger than 2 KiB.
+	LastMessage string
+}
+
+// EventInput records an event which could not be resolved to a session. It is
+// deliberately separate from status transitions: a resolved event must use
+// UpdateSessionStatus so the row and event cannot diverge.
+type EventInput struct {
+	At      int64
+	Kind    string
+	Reason  string
+	Payload string
 }
 
 // Slug derives a tmux-safe session name component. In particular it never
@@ -279,7 +317,8 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	return Session{
 		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
-		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
+		Acknowledged: true,
+		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
 		ConversationID: input.ConversationID,
 		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
@@ -328,11 +367,13 @@ func scanSession(row interface {
 }) (Session, error) {
 	var session Session
 	var launchArgsJSON, envJSON string
-	var preLaunch, permissionProfileReason, conversationID, resumePin sql.NullString
-	var loginShell int
+	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage sql.NullString
+	var loginShell, killedByUser, acknowledged int
+	var paneExitStatus sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
-		&session.StatusAt, &session.CreatedAt, &launchArgsJSON, &envJSON, &preLaunch,
+		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
+		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState); err != nil {
 		return Session{}, err
 	}
@@ -347,11 +388,20 @@ func scanSession(row interface {
 	session.ConversationID = conversationID.String
 	session.ResumePin = resumePin.String
 	session.LoginShell = loginShell != 0
+	session.KilledByUser = killedByUser != 0
+	if paneExitStatus.Valid {
+		status := int(paneExitStatus.Int64)
+		session.PaneExitStatus = &status
+	}
+	session.CrashTail = crashTail.String
+	session.LastMessage = lastMessage.String
+	session.Acknowledged = acknowledged != 0
 	return session, nil
 }
 
 const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
+		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state`
 
 // GetSession returns exactly one session by id, including every Phase 1
@@ -368,9 +418,10 @@ func (s *Store) GetSession(ctx context.Context, id string) (Session, error) {
 	return session, nil
 }
 
-// UpdateSessionStatus changes exactly one session and records its transition in
-// the append-only event log. Both writes share a transaction, so observers
-// never see a changed status without its corresponding event.
+// UpdateSessionStatus applies one verdict and records its source event in the
+// same transaction. Losing verdicts are still events (important evidence that
+// a probe ran), but cannot change the row. The immediate transaction configured
+// by OpenPath makes the read/precedence/write sequence atomic across clients.
 func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput) error {
 	if input.SessionID == "" || input.Status == "" {
 		return errors.New("session id and status are required")
@@ -381,27 +432,85 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	if input.At == 0 {
 		return errors.New("session status timestamp is required")
 	}
+	if input.Source == "probe" && input.StaleAfter <= 0 {
+		return errors.New("probe stale_after is required")
+	}
+	if input.KilledByUser && (input.Source != "user" || input.Status != "stopped") {
+		return errors.New("killed_by_user requires a user-sourced stopped transition")
+	}
 	if input.EventKind == "" {
 		input.EventKind = input.Status
 	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin session status update: %w", err)
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE sessions
-		SET status = ?, status_reason = ?, status_source = ?, status_at = ?
-		WHERE id = ?`, input.Status, input.Reason, input.Source, input.At, input.SessionID)
-	if err != nil {
-		return fmt.Errorf("update session status: %w", err)
+
+	var currentStatus, currentSource, agent string
+	var currentAt, notifyEpoch int64
+	var killedByUser, acknowledged int
+	var paneExitStatus sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
+		killed_by_user, acknowledged, notify_epoch, pane_exit_status
+		FROM sessions WHERE id = ?`, input.SessionID).Scan(
+		&currentStatus, &currentSource, &currentAt, &agent, &killedByUser,
+		&acknowledged, &notifyEpoch, &paneExitStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("session %q not found", input.SessionID)
+		}
+		return fmt.Errorf("read session status: %w", err)
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("check session status update: %w", err)
+
+	apply := killedByUser == 0 || input.ClearKilledByUser || input.KilledByUser
+	if apply && input.Source == "probe" && currentSource == "hook" && input.At-currentAt < input.StaleAfter {
+		apply = false
 	}
-	if affected != 1 {
-		return fmt.Errorf("session %q not found", input.SessionID)
+	// tmux supplies terminal liveness, plus the one explicit shell promotion;
+	// it cannot invent an agent's working state.
+	tmuxLaunchObservation := input.Status == "starting" && currentStatus == "starting" && currentSource == "user"
+	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !(input.Status == "running" && agent == "shell") && !tmuxLaunchObservation {
+		apply = false
 	}
+	// Crash collection is first-writer-only. A racing observer still records
+	// what it saw, but does not replace the stored verdict or tail.
+	if apply && input.PaneExitStatus != nil && paneExitStatus.Valid {
+		apply = false
+	}
+
+	if apply {
+		leavingAttention := isAttentionStatus(currentStatus) && !isAttentionStatus(input.Status)
+		if leavingAttention {
+			notifyEpoch++
+		}
+		if isAttentionStatus(input.Status) {
+			acknowledged = 0
+		} else if input.Acknowledged != nil {
+			acknowledged = boolInt(*input.Acknowledged)
+		}
+		newKilled := killedByUser
+		if input.ClearKilledByUser {
+			newKilled = 0
+		}
+		if input.KilledByUser {
+			newKilled = 1
+		}
+		lastMessage := truncateUTF8(input.LastMessage, 2*1024)
+		_, err = tx.ExecContext(ctx, `UPDATE sessions SET
+			status = ?, status_reason = ?, status_source = ?, status_at = ?,
+			killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
+			pane_exit_status = COALESCE(?, pane_exit_status),
+			crash_tail = CASE WHEN ? IS NULL THEN crash_tail ELSE ? END,
+			last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
+			WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
+			newKilled, acknowledged, notifyEpoch, input.PaneExitStatus,
+			input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
+		if err != nil {
+			return fmt.Errorf("update session status: %w", err)
+		}
+	}
+
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
 		VALUES (?, ?, ?, ?, ?)`, input.SessionID, input.At, input.EventKind, input.Reason, input.Payload); err != nil {
 		return fmt.Errorf("record session status event: %w", err)
@@ -410,6 +519,42 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		return fmt.Errorf("commit session status update: %w", err)
 	}
 	return nil
+}
+
+// RecordOrphanEvent preserves a hook event which could not be resolved to a
+// session. NULL (not an empty id) is used so the foreign key remains honest.
+func (s *Store) RecordOrphanEvent(ctx context.Context, input EventInput) error {
+	if input.At == 0 {
+		return errors.New("event timestamp is required")
+	}
+	if input.Kind == "" {
+		return errors.New("event kind is required")
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (NULL, ?, ?, ?, ?)`, input.At, input.Kind, input.Reason, input.Payload); err != nil {
+		return fmt.Errorf("record orphan event: %w", err)
+	}
+	return nil
+}
+
+func isAttentionStatus(status string) bool { return status == "waiting" || status == "error" }
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func truncateUTF8(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	value = value[:limit]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 // SetConversationID records the conversation identity assigned to (or

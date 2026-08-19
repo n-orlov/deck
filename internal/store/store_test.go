@@ -518,6 +518,203 @@ func TestFreshOnceIsOneShotAndRevertsToAutoNotPinned(t *testing.T) {
 	}
 }
 
+func TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "status-machine"
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "status machine", CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 100, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A fresh hook outranks a probe. The losing probe is nevertheless durable
+	// evidence that sampling ran rather than dead code accidentally passing.
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "waiting", Source: "probe", At: 120,
+		StaleAfter: 50, EventKind: "probe.waiting", Payload: `{"fixture":"prompt"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusSource != "hook" || got.StatusAt != 100 {
+		t.Fatalf("fresh-hook verdict was overwritten: %#v", got)
+	}
+	var probeEvents int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'probe.waiting'`, id).Scan(&probeEvents); err != nil || probeEvents != 1 {
+		t.Fatalf("losing probe events = %d, %v; want 1", probeEvents, err)
+	}
+
+	// Once stale, the same lower-quality source may correct the verdict.
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "waiting", Reason: "permission_prompt", Source: "probe", At: 150,
+		StaleAfter: 50, EventKind: "probe.waiting",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "waiting" || got.StatusSource != "probe" || got.Acknowledged {
+		t.Fatalf("stale correction/attention reset = %#v", got)
+	}
+
+	acknowledged := true
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "running", Source: "user", At: 160,
+		EventKind: "attached", Acknowledged: &acknowledged,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || !got.Acknowledged || got.NotifyEpoch != 1 {
+		t.Fatalf("leaving attention state = %#v; want acknowledged and epoch 1", got)
+	}
+
+	// An event failure rolls the status mutation back with it.
+	if _, err := store.DB().Exec(`CREATE TRIGGER reject_atomic_event BEFORE INSERT ON events
+		WHEN NEW.kind = 'reject.me' BEGIN SELECT RAISE(ABORT, 'reject event'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "idle", Source: "hook", At: 170, EventKind: "reject.me",
+	}); err == nil {
+		t.Fatal("transition unexpectedly succeeded when matching event was rejected")
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusAt != 160 {
+		t.Fatalf("event failure left a partial row update: %#v", got)
+	}
+}
+
+func TestStatusTransitionProtectsUserKillAndPersistsHookAndCrashFields(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "terminal-fields"
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "terminal fields", CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 1, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "stopped", Reason: "killed", Source: "user", At: 10,
+		EventKind: "killed", KilledByUser: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "running", Source: "hook", At: 11, EventKind: "session.start",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "stopped" || !got.KilledByUser || got.StatusAt != 10 {
+		t.Fatalf("hook undid terminal user kill: %#v", got)
+	}
+	var startEvents int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'session.start'`, id).Scan(&startEvents); err != nil || startEvents != 1 {
+		t.Fatalf("protected hook event count = %d, %v; want 1", startEvents, err)
+	}
+
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "starting", Source: "user", At: 12,
+		EventKind: "resume", ClearKilledByUser: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	message := strings.Repeat("x", 2047) + "€trailing"
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "idle", Source: "hook", At: 13,
+		EventKind: "stop", LastMessage: message,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.KilledByUser || len(got.LastMessage) > 2*1024 || !strings.HasSuffix(got.LastMessage, "x") {
+		t.Fatalf("resume/last message fields = killed:%v bytes:%d suffix:%q", got.KilledByUser, len(got.LastMessage), got.LastMessage[len(got.LastMessage)-1:])
+	}
+
+	exit := 137
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "error", Reason: "pane exit", Source: "tmux", At: 14,
+		EventKind: "tmux.pane_crash", PaneExitStatus: &exit, CrashTail: "first tail",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	otherExit := 1
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "error", Reason: "racing observer", Source: "tmux", At: 15,
+		EventKind: "tmux.pane_crash", PaneExitStatus: &otherExit, CrashTail: "replacement",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "first tail" || got.StatusAt != 14 || got.Acknowledged {
+		t.Fatalf("first-writer crash fields = %#v", got)
+	}
+}
+
+func TestRecordOrphanEventUsesNullSessionAndRequiresTimestamp(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if err := store.RecordOrphanEvent(ctx, EventInput{Kind: "notification"}); err == nil || !strings.Contains(err.Error(), "timestamp") {
+		t.Fatalf("orphan without timestamp error = %v", err)
+	}
+	input := EventInput{At: 42, Kind: "notification", Reason: "permission_prompt", Payload: `{"unresolved":true}`}
+	if err := store.RecordOrphanEvent(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	var sessionID sql.NullString
+	var at int64
+	var kind, reason, payload string
+	if err := store.DB().QueryRow(`SELECT session_id, at, kind, reason, payload FROM events`).Scan(&sessionID, &at, &kind, &reason, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if sessionID.Valid || at != input.At || kind != input.Kind || reason != input.Reason || payload != input.Payload {
+		t.Fatalf("orphan event = session:%#v at:%d kind:%q reason:%q payload:%q", sessionID, at, kind, reason, payload)
+	}
+	var version int
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != 1 || SchemaVersion != 1 {
+		t.Fatalf("schema version changed: db=%d constant=%d err=%v", version, SchemaVersion, err)
+	}
+}
+
 func TestSlugContainsOnlyTmuxSafeASCII(t *testing.T) {
 	if got := Slug("...:::"); got != "" {
 		t.Fatalf("Slug punctuation = %q, want empty", got)
