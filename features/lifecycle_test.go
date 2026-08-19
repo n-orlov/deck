@@ -39,6 +39,10 @@ type ScenarioHarness struct {
 	// per-conversation transcript (cmd/fake-claude's transcriptPath) is written
 	// under a scenario-scoped directory rather than the real developer's home.
 	agentHOMEDir string
+	// clientEnv holds scenario-scoped runtime controls that must be present in
+	// every subsequently started released client (for example a frozen probe
+	// clock). Steps set it before starting any client.
+	clientEnv []string
 
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
@@ -76,6 +80,7 @@ func (h *ScenarioHarness) Environment(extra ...string) []string {
 		"DECK_ASCII=1", "DECK_ANIM=0", "NO_COLOR=1",
 		"DECK_RECONCILE_MS=" + fmt.Sprintf("%d", scenarioReconcileInterval.Milliseconds()), "DECK_PREVIEW_MS=50",
 	}
+	env = append(env, h.clientEnv...)
 	return append(env, extra...)
 }
 
