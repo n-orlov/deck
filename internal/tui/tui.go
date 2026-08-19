@@ -490,8 +490,9 @@ func (m Model) View() string {
 			if index == m.selected {
 				marker = "> "
 			}
-			badge := m.profileBadge(session)
-			fmt.Fprintf(&b, "%s%s  %-10s %-8s %s  created %s\n    %s\n", marker, session.Name, session.Agent, badge, status, m.relativeTime(session.CreatedAt), session.CWD)
+			profileBadge := m.profileBadge(session)
+			sourceBadge := statusSourceQuality(session.StatusSource)
+			fmt.Fprintf(&b, "%s%s  %-10s %-8s %-8s %s  created %s\n    %s\n", marker, session.Name, session.Agent, profileBadge, sourceBadge, status, m.relativeTime(session.CreatedAt), session.CWD)
 		}
 	}
 	if m.attachError != "" {
@@ -514,6 +515,20 @@ func (m Model) profileBadge(session store.Session) string {
 		return ""
 	}
 	return "[" + session.PermissionProfile + "]"
+}
+
+// statusSourceQuality describes only the quality of an agent verdict. Hook
+// events are live and pane probes are sampled; user and tmux transitions make
+// no claim about what an agent is doing and therefore receive no badge.
+func statusSourceQuality(source string) string {
+	switch source {
+	case "hook":
+		return "live"
+	case "probe":
+		return "sampled"
+	default:
+		return ""
+	}
 }
 
 // updateProfileSwitch handles keys while the `P` permission-profile switch
@@ -667,6 +682,18 @@ func (m Model) detailView() string {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
 	fmt.Fprintf(&b, "Status:             %s\n", status)
+	source := session.StatusSource
+	if source == "" {
+		source = "unknown"
+	}
+	if quality := statusSourceQuality(session.StatusSource); quality != "" {
+		fmt.Fprintf(&b, "Verdict source:     %s (%s)\n", source, quality)
+	} else {
+		fmt.Fprintf(&b, "Verdict source:     %s\n", source)
+	}
+	if session.StatusAt > 0 {
+		fmt.Fprintf(&b, "Verdict age:        %s\n", m.relativeAge(session.StatusAt))
+	}
 	if _, applicable := m.agentCapabilities(session.Agent); applicable {
 		fmt.Fprintf(&b, "Permission profile: %s\n", session.PermissionProfile)
 		if session.PermissionProfileReason != "" {
@@ -678,8 +705,36 @@ func (m Model) detailView() string {
 	if session.ConversationID != "" {
 		fmt.Fprintf(&b, "Conversation id:    %s\n", session.ConversationID)
 	}
+	if session.LastMessage != "" {
+		fmt.Fprintf(&b, "\nLast message:\n%s\n", session.LastMessage)
+	}
+	if session.CrashTail != "" {
+		crashTail := m.renderCrashTail(session.CrashTail)
+		if session.PaneExitStatus != nil {
+			fmt.Fprintf(&b, "\nCrash tail (exit status %d):\n%s\n", *session.PaneExitStatus, crashTail)
+		} else {
+			fmt.Fprintf(&b, "\nCrash tail:\n%s\n", crashTail)
+		}
+	}
 	b.WriteString("\n" + m.glyph("i or Esc closes detail", "i or Esc closes detail") + "\n")
 	return b.String()
+}
+
+// renderCrashTail keeps the non-scrolling detail screen usable even when the
+// durable 200-line capture contains a full terminal of blank or noisy output.
+// The stored artifact is unchanged; detail shows both ends and says exactly
+// how much was omitted.
+func (m Model) renderCrashTail(tail string) string {
+	lines := strings.Split(strings.Trim(tail, "\n"), "\n")
+	const maxLines = 8
+	if len(lines) <= maxLines {
+		return strings.Join(lines, "\n")
+	}
+	omitted := len(lines) - maxLines
+	visible := append([]string(nil), lines[:maxLines/2]...)
+	visible = append(visible, fmt.Sprintf(m.glyph("… %d lines omitted …", "... %d lines omitted ..."), omitted))
+	visible = append(visible, lines[len(lines)-maxLines/2:]...)
+	return strings.Join(visible, "\n")
 }
 
 // glyph selects the documented ASCII fallback for terminals where optional
@@ -704,21 +759,32 @@ func (m Model) color(text string) string {
 // DECK_CLOCK therefore keeps this rendered value stable while Clock.Elapsed
 // remains monotonic for measurements and audit durations.
 func (m Model) relativeTime(createdAt int64) string {
+	age := m.relativeAge(createdAt)
+	if age == "just now" {
+		return age
+	}
+	return age + " ago"
+}
+
+// relativeAge is wall-clock-derived so verdict freshness remains honest and
+// deterministic under DECK_CLOCK. A timestamp in the future is treated as new
+// rather than rendering a misleading negative age.
+func (m Model) relativeAge(at int64) string {
 	now := time.Now()
 	if m.settings.Clock != nil {
 		now = m.settings.Clock.Now()
 	}
-	age := now.Sub(time.UnixMilli(createdAt))
+	age := now.Sub(time.UnixMilli(at))
 	if age < time.Minute {
 		return "just now"
 	}
 	if age < time.Hour {
-		return fmt.Sprintf("%dm ago", int(age/time.Minute))
+		return fmt.Sprintf("%dm", int(age/time.Minute))
 	}
 	if age < 24*time.Hour {
-		return fmt.Sprintf("%dh ago", int(age/time.Hour))
+		return fmt.Sprintf("%dh", int(age/time.Hour))
 	}
-	return fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
+	return fmt.Sprintf("%dd", int(age/(24*time.Hour)))
 }
 
 // createProfileOptions is the values the create modal's Permission profile

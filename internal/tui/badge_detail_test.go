@@ -68,6 +68,98 @@ func TestDetailViewOmitsProfileForShell(t *testing.T) {
 	}
 }
 
+// TestListBadgesStatusSourceQuality proves the status badge reports evidence
+// quality rather than agent kind: hooks are live, probes (including Pi) are
+// sampled, and tmux/user verdicts make no agent-quality claim.
+func TestListBadgesStatusSourceQuality(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{
+		{Name: "hook-claude", Agent: "claude", Status: "waiting", StatusSource: "hook"},
+		{Name: "probe-claude", Agent: "claude", Status: "running", StatusSource: "probe"},
+		{Name: "probe-pi", Agent: "pi", Status: "idle", StatusSource: "probe"},
+		{Name: "tmux-shell", Agent: "shell", Status: "running", StatusSource: "tmux"},
+		{Name: "user-claude", Agent: "claude", Status: "stopped", StatusSource: "user"},
+	}
+	view := model.View()
+	for _, want := range []struct{ name, badge string }{
+		{"hook-claude", "live"},
+		{"probe-claude", "sampled"},
+		{"probe-pi", "sampled"},
+	} {
+		line := lineContaining(view, want.name)
+		if !strings.Contains(line, want.badge) {
+			t.Fatalf("row %q missing %q source badge:\n%s", want.name, want.badge, view)
+		}
+	}
+	for _, name := range []string{"tmux-shell", "user-claude"} {
+		line := lineContaining(view, name)
+		if strings.Contains(line, "live") || strings.Contains(line, "sampled") {
+			t.Fatalf("row %q falsely claims agent source quality: %q", name, line)
+		}
+	}
+}
+
+// TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts proves stale verdicts
+// are not presented as current and the status payloads needed for diagnosis
+// remain visible. Advancing only the frozen clock changes the displayed age.
+func TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts(t *testing.T) {
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "2m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exitStatus := 137
+	at := clock.Now().UnixMilli()
+	model := New(nil, config.Settings{Clock: clock}, "")
+	model.sessions = []store.Session{{
+		Name: "diagnostic", Agent: "claude", Status: "error", StatusSource: "hook", StatusAt: at,
+		LastMessage: "the last assistant answer", PaneExitStatus: &exitStatus, CrashTail: "final output\nprocess killed",
+	}}
+	model.detail = true
+
+	fresh := model.View()
+	for _, want := range []string{
+		"Verdict source:     hook (live)",
+		"Verdict age:        just now",
+		"Last message:\nthe last assistant answer",
+		"Crash tail (exit status 137):\nfinal output\nprocess killed",
+	} {
+		if !strings.Contains(fresh, want) {
+			t.Fatalf("fresh detail missing %q:\n%s", want, fresh)
+		}
+	}
+	clock.Advance()
+	aged := model.View()
+	if !strings.Contains(aged, "Verdict age:        2m") || strings.Contains(aged, "Verdict age:        just now") {
+		t.Fatalf("detail did not expose frozen-clock-controlled verdict age:\n%s", aged)
+	}
+
+	// Probes keep their sampled label in detail too; tmux/user sources have no
+	// parenthesized quality claim.
+	model.sessions[0].StatusSource = "probe"
+	if got := model.View(); !strings.Contains(got, "Verdict source:     probe (sampled)") {
+		t.Fatalf("probe detail missing sampled quality:\n%s", got)
+	}
+	model.sessions[0].StatusSource = "tmux"
+	if got := model.View(); !strings.Contains(got, "Verdict source:     tmux\n") || strings.Contains(got, "tmux (") {
+		t.Fatalf("tmux detail falsely claims agent quality:\n%s", got)
+	}
+
+	model.sessions[0].CrashTail = strings.Join([]string{"first", "2", "3", "4", "5", "6", "7", "8", "9", "last"}, "\n")
+	bounded := model.View()
+	if !strings.Contains(bounded, "first\n2\n3\n4\n… 2 lines omitted …\n7\n8\n9\nlast") {
+		t.Fatalf("long crash tail did not retain both ends in bounded detail:\n%s", bounded)
+	}
+}
+
+func lineContaining(view, value string) string {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, value) {
+			return line
+		}
+	}
+	return ""
+}
+
 // TestDetailKeyTogglesAndEscCloses proves i opens and closes the detail
 // pane, and Esc also closes it without disturbing the list.
 func TestDetailKeyTogglesAndEscCloses(t *testing.T) {
