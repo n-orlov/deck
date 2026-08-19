@@ -40,6 +40,11 @@ type Service struct {
 	// between captured_path and the session's own env in PATH resolution
 	// order. A nil map is the common, valid case of no configured overrides.
 	ConfigEnv map[string]string
+	// DeckExecutable and DeckHome are deck-owned launch facts supplied to
+	// adapters for hook instrumentation. They are never persisted as user
+	// launch arguments or session environment.
+	DeckExecutable string
+	DeckHome       string
 
 	// Shell overrides the user's $SHELL. It is primarily useful to embedded
 	// callers; an empty value selects $SHELL, falling back to /bin/sh.

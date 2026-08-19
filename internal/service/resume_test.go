@@ -41,7 +41,7 @@ func stopSession(t *testing.T, db *store.Store, sessionID string) {
 func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	cwd := t.TempDir()
 	stubExecutableOnPath(t, "claude")
-	service, db, logger, _ := newAgentTestService(t, nil, "resume-test")
+	service, db, logger, socket := newAgentTestService(t, nil, "resume-test")
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
 		Name: "Claude: resume", CWD: cwd, Agent: "claude", PermissionProfile: "edits",
@@ -91,10 +91,15 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	if launches != 2 {
 		t.Fatalf("launch records = %d, want 2 (create + resume)", launches)
 	}
-	wantArgv := []string{"claude", "--resume", created.ConversationID, "--permission-mode", "acceptEdits"}
-	if strings.Join(argv, "\x00") != strings.Join(wantArgv, "\x00") {
-		t.Fatalf("resume argv = %#v, want %#v", argv, wantArgv)
+	wantPrefix := []string{"claude", "--resume", created.ConversationID, "--permission-mode", "acceptEdits"}
+	if len(argv) != len(wantPrefix)+2 || strings.Join(argv[:len(wantPrefix)], "\x00") != strings.Join(wantPrefix, "\x00") || argv[len(wantPrefix)] != "--settings" {
+		t.Fatalf("resume argv = %#v, want base argv followed by deck --settings", argv)
 	}
+	if !strings.Contains(argv[len(argv)-1], "'"+service.DeckExecutable+"' _hook") {
+		t.Fatalf("resume settings = %q, want absolute deck executable %q", argv[len(argv)-1], service.DeckExecutable)
+	}
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", session.ID)
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_HOME", service.DeckHome)
 	for _, token := range argv {
 		if strings.Contains(token, "--session-id") || strings.Contains(token, "--continue") {
 			t.Fatalf("resume argv = %#v must not reuse launch/--continue forms", argv)

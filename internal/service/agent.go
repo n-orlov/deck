@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/store"
@@ -90,15 +91,13 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		return session, fmt.Errorf("audit starting agent session %q: %w", session.Name, err)
 	}
 
-	argv, err := adapter.Launch(agent.LaunchInput{
+	launchInput := agent.LaunchInput{
 		CWD: session.CWD, ConversationID: conversationID, Profile: profile, ExtraArgs: input.LaunchArgs,
-	})
+		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
+	}
+	argv, err := adapter.Launch(launchInput)
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("build launch argv for agent session %q: %w", session.Name, err))
-	}
-	paneCommand, err := buildPaneCommand(input.PreLaunch, input.LoginShell, argv)
-	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err))
 	}
 
 	// login_shell=1 is mutually exclusive with relying on captured_path: the
@@ -109,6 +108,14 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		envCapturedPath = ""
 	}
 	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
+	argv, launchEnv, err = applyInstrumentation(adapter, launchInput, argv, launchEnv)
+	if err != nil {
+		return s.launchFailed(ctx, session, fmt.Errorf("instrument agent session %q: %w", session.Name, err))
+	}
+	paneCommand, err := buildPaneCommand(input.PreLaunch, input.LoginShell, argv)
+	if err != nil {
+		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err))
+	}
 	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("launch agent session %q: %w", session.Name, err))
 	}
@@ -171,6 +178,28 @@ func buildPaneCommand(preLaunch string, loginShell bool, argv []string) ([]strin
 	// script starts at the real argv, not at the script text itself.
 	command := append([]string{shell, flag, script, "deck-agent"}, argv...)
 	return command, nil
+}
+
+// applyInstrumentation appends adapter-owned argv and merges its environment
+// last, so deck's hook routing facts cannot be replaced by user configuration.
+func applyInstrumentation(adapter agent.Adapter, input agent.LaunchInput, argv []string, launchEnv map[string]string) ([]string, map[string]string, error) {
+	instrumentArgv, instrumentEnv := adapter.Instrument(input)
+	if len(instrumentArgv) == 0 && len(instrumentEnv) == 0 {
+		return argv, launchEnv, nil
+	}
+	if !filepath.IsAbs(input.DeckExecutable) {
+		return nil, nil, errors.New("deck executable for instrumentation must be absolute")
+	}
+	if input.DeckHome == "" {
+		return nil, nil, errors.New("deck home for instrumentation is required")
+	}
+	argv = append(argv, instrumentArgv...)
+	// Instrumentation is deck-owned and wins over config/session keys with
+	// the same names, without mutating either persisted input map.
+	for key, value := range instrumentEnv {
+		launchEnv[key] = value
+	}
+	return argv, launchEnv, nil
 }
 
 // resolveLaunchEnv merges the SPEC §6.3 PATH-resolution layers that sit

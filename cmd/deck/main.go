@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/agent"
@@ -33,6 +34,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "deck audit:", err)
 		return
 	}
+	executable, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "deck executable:", err)
+		return
+	}
+	executable, err = filepath.Abs(executable)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "deck executable:", err)
+		return
+	}
 	client := tmux.Client{Socket: settings.Socket}
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
@@ -41,6 +52,7 @@ func main() {
 	sessions := service.Service{
 		Store: db, TMux: client, Audit: logger,
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
+		ConfigEnv: settings.Env, DeckExecutable: executable, DeckHome: settings.Paths.Home,
 	}
 	// The TUI invokes this liveness pass immediately before each configured
 	// list refresh, so a real client observes externally removed tmux sessions

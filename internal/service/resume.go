@@ -109,11 +109,13 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		return session, ResumeStarted, fmt.Errorf("audit starting resumed session %q: %w", session.Name, err)
 	}
 
+	launchInput := agent.LaunchInput{
+		CWD: session.CWD, ConversationID: conversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
+		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
+	}
 	var argv []string
 	if freshOnce {
-		argv, err = adapter.Launch(agent.LaunchInput{
-			CWD: session.CWD, ConversationID: conversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
-		})
+		argv, err = adapter.Launch(launchInput)
 	} else {
 		argv, err = adapter.Resume(agent.ResumeInput{
 			CWD: session.CWD, ConversationID: conversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
@@ -121,11 +123,6 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	}
 	if err != nil {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume argv for session %q: %w", session.Name, err))
-		return session, ResumeStarted, failErr
-	}
-	paneCommand, err := buildPaneCommand(session.PreLaunch, session.LoginShell, argv)
-	if err != nil {
-		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume pane command for session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr
 	}
 
@@ -136,6 +133,16 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		envCapturedPath = ""
 	}
 	launchEnv := s.resolveLaunchEnv(envCapturedPath, session.Env)
+	argv, launchEnv, err = applyInstrumentation(adapter, launchInput, argv, launchEnv)
+	if err != nil {
+		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("instrument resumed session %q: %w", session.Name, err))
+		return session, ResumeStarted, failErr
+	}
+	paneCommand, err := buildPaneCommand(session.PreLaunch, session.LoginShell, argv)
+	if err != nil {
+		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume pane command for session %q: %w", session.Name, err))
+		return session, ResumeStarted, failErr
+	}
 	// A login shell resolves its own PATH via its own profile/rc scripts
 	// (that is the point of login_shell=1, SPEC §6.4), so deck cannot judge
 	// PATH membership for it and must not fail resume on that basis.

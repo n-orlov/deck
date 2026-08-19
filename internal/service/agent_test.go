@@ -42,13 +42,14 @@ func newAgentTestService(t *testing.T, configEnv map[string]string, idSeed strin
 	service := Service{
 		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
 		IDs: config.NewIDGenerator(idSeed), Agents: registry, ConfigEnv: configEnv,
+		DeckExecutable: filepath.Join(home, "bin", "deck"), DeckHome: home,
 	}
 	return service, db, logger, socket
 }
 
 func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 	cwd := t.TempDir()
-	service, db, logger, _ := newAgentTestService(t, nil, "create-agent-test")
+	service, db, logger, socket := newAgentTestService(t, nil, "create-agent-test")
 
 	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
 		Name: "Claude: session", CWD: cwd, Agent: "claude", PermissionProfile: "edits",
@@ -67,6 +68,12 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 	}
 	if rows[0].ConversationID != session.ConversationID {
 		t.Fatalf("persisted conversation id = %q, want %q", rows[0].ConversationID, session.ConversationID)
+	}
+	if len(rows[0].Env) != 2 || rows[0].Env["VISIBLE"] != "yes" || rows[0].Env["SECRET_TOKEN"] != "not-in-audit" {
+		t.Fatalf("persisted user env = %#v, want only the two user-supplied keys", rows[0].Env)
+	}
+	if _, ok := rows[0].Env["DECK_SESSION_ID"]; ok {
+		t.Fatalf("deck-owned instrumentation leaked into persisted user env: %#v", rows[0].Env)
 	}
 	if rows[0].StatusSource != "tmux" || rows[0].Status != "starting" {
 		t.Fatalf("row status = %#v, want tmux-observed starting row", rows[0])
@@ -88,14 +95,19 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 		t.Fatalf("no launch audit record among %#v", records)
 	}
 	argv := jsonStrings(launch["argv"])
-	wantArgv := []string{"claude", "--session-id", session.ConversationID, "--permission-mode", "acceptEdits"}
-	if strings.Join(argv, "\x00") != strings.Join(wantArgv, "\x00") {
-		t.Fatalf("launch argv = %#v, want %#v", argv, wantArgv)
+	wantPrefix := []string{"claude", "--session-id", session.ConversationID, "--permission-mode", "acceptEdits"}
+	if len(argv) != len(wantPrefix)+2 || strings.Join(argv[:len(wantPrefix)], "\x00") != strings.Join(wantPrefix, "\x00") || argv[len(wantPrefix)] != "--settings" {
+		t.Fatalf("launch argv = %#v, want base argv followed by deck --settings", argv)
+	}
+	if !strings.Contains(argv[len(argv)-1], "'"+service.DeckExecutable+"' _hook") {
+		t.Fatalf("instrument settings = %q, want absolute deck executable %q", argv[len(argv)-1], service.DeckExecutable)
 	}
 	envKeys := jsonStrings(launch["env_keys"])
-	if strings.Join(envKeys, ",") != "PATH,SECRET_TOKEN,VISIBLE" {
-		t.Fatalf("launch env_keys = %#v, want PATH, SECRET_TOKEN, VISIBLE", envKeys)
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_ID,PATH,SECRET_TOKEN,VISIBLE" {
+		t.Fatalf("launch env_keys = %#v, want user and deck-owned launch keys", envKeys)
 	}
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", session.ID)
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_HOME", service.DeckHome)
 	contents, err := readAuditFile(t, logger.Path())
 	if err != nil {
 		t.Fatal(err)
@@ -158,8 +170,8 @@ func TestCreateAgentResolvesPATHInSPECOrder(t *testing.T) {
 			envKeys = jsonStrings(record["env_keys"])
 		}
 	}
-	if strings.Join(envKeys, ",") != "FROM_CONFIG,FROM_SESSION,PATH" {
-		t.Fatalf("launch env_keys = %#v, want config PATH override plus session key present", envKeys)
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_ID,FROM_CONFIG,FROM_SESSION,PATH" {
+		t.Fatalf("launch env_keys = %#v, want config, session, and instrumentation keys present", envKeys)
 	}
 }
 
@@ -274,6 +286,45 @@ func TestCreateAgentLoginShellInvocationForm(t *testing.T) {
 	}
 	if strings.Join(envKeys, ",") != "FROM_SESSION" {
 		t.Fatalf("login_shell launch env_keys = %#v, want only FROM_SESSION", envKeys)
+	}
+}
+
+func TestCreateAgentShellHasNoInstrumentation(t *testing.T) {
+	cwd := t.TempDir()
+	service, _, logger, socket := newAgentTestService(t, nil, "shell-no-instrumentation")
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "plain shell", CWD: cwd, Agent: "shell", LaunchArgs: []string{"-c", "sleep 2"},
+	})
+	if err != nil {
+		t.Fatalf("create shell adapter session: %v", err)
+	}
+	for _, record := range auditRecords(t, logger.Path()) {
+		if record["event"] != "launch" {
+			continue
+		}
+		if argv := jsonStrings(record["argv"]); strings.Contains(strings.Join(argv, " "), "--settings") {
+			t.Fatalf("shell launch argv contains instrumentation: %#v", argv)
+		}
+		for _, key := range jsonStrings(record["env_keys"]) {
+			if strings.HasPrefix(key, "DECK_") {
+				t.Fatalf("shell launch environment contains instrumentation key %q", key)
+			}
+		}
+	}
+	out, err := exec.Command("tmux", "-L", socket, "show-environment", "-t", "deck_"+session.Slug, "DECK_SESSION_ID").CombinedOutput()
+	if err == nil {
+		t.Fatalf("shell tmux environment unexpectedly has DECK_SESSION_ID: %s", out)
+	}
+}
+
+func assertTMuxEnvironment(t *testing.T, socket, slug, key, want string) {
+	t.Helper()
+	out, err := exec.Command("tmux", "-L", socket, "show-environment", "-t", "deck_"+slug, key).CombinedOutput()
+	if err != nil {
+		t.Fatalf("show tmux environment %s: %v (%s)", key, err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != key+"="+want {
+		t.Fatalf("tmux environment %s = %q, want %q", key, got, key+"="+want)
 	}
 }
 
