@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +77,95 @@ func TestExitCodeIsControlledOnlyByFixtureEnvironment(t *testing.T) {
 	}
 	if _, err := configuredExitCode("126"); err == nil {
 		t.Fatal("out-of-range fixture exit code was accepted")
+	}
+}
+
+func TestPaneCommandsFireEveryInjectedHookWithControllablePayload(t *testing.T) {
+	directory := t.TempDir()
+	record := filepath.Join(directory, "hook-record.jsonl")
+	hook := filepath.Join(directory, "injected-hook")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s|' \"$DECK_SESSION_ID\" >> %q\ncat >> %q\n", record, record)
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatalf("write hook recorder: %v", err)
+	}
+
+	events := []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd"}
+	hooks := make(map[string]any, len(events))
+	var input strings.Builder
+	for index, event := range events {
+		hooks[event] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook}}}}
+		command := map[string]any{
+			"command": "hook",
+			"event":   event,
+			"payload": map[string]any{"session_id": firstUUID, "controlled": index, "kind": event},
+		}
+		encoded, err := json.Marshal(command)
+		if err != nil {
+			t.Fatalf("encode command: %v", err)
+		}
+		input.Write(encoded)
+		input.WriteByte('\n')
+	}
+	settings, err := json.Marshal(map[string]any{"hooks": hooks})
+	if err != nil {
+		t.Fatalf("encode settings: %v", err)
+	}
+
+	t.Setenv("DECK_SESSION_ID", "injected-deck-session")
+	getenv := func(key string) string {
+		switch key {
+		case commandsEnvironment:
+			return "1"
+		case "HOME":
+			return directory
+		default:
+			return ""
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	code, err := runWithIO([]string{"--settings", string(settings)}, strings.NewReader(input.String()), &stdout, &stderr, getenv, testGetwd(t))
+	if err != nil || code != 0 {
+		t.Fatalf("runWithIO = (%d, %v), stderr %q", code, err, stderr.String())
+	}
+
+	recorded, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("read hook record: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(recorded)), "\n")
+	if len(lines) != len(events) {
+		t.Fatalf("recorded %d hook calls, want %d: %q", len(lines), len(events), recorded)
+	}
+	for index, line := range lines {
+		const inherited = "injected-deck-session|"
+		if !strings.HasPrefix(line, inherited) {
+			t.Fatalf("hook %d did not inherit deck's pane environment: %q", index, line)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, inherited)), &payload); err != nil {
+			t.Fatalf("decode payload %d: %v", index, err)
+		}
+		if payload["hook_event_name"] != events[index] || payload["kind"] != events[index] || payload["controlled"] != float64(index) {
+			t.Fatalf("payload %d = %#v", index, payload)
+		}
+		if !strings.Contains(stdout.String(), "fake-claude hook fired: "+events[index]) {
+			t.Fatalf("stdout does not acknowledge %s: %q", events[index], stdout.String())
+		}
+	}
+}
+
+func TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly(t *testing.T) {
+	input := `{"command":"hook","event":"SessionStart","payload":{"session_id":"controlled"}}` + "\n"
+	var stdout, stderr bytes.Buffer
+	getenv := func(key string) string {
+		if key == commandsEnvironment {
+			return "1"
+		}
+		return ""
+	}
+	_, err := runWithIO(nil, strings.NewReader(input), &stdout, &stderr, getenv, testGetwd(t))
+	if err == nil || !strings.Contains(err.Error(), `was not injected in --settings`) {
+		t.Fatalf("runWithIO error = %v, want missing injected hook", err)
 	}
 }
 
