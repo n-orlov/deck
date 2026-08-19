@@ -60,6 +60,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerHookContractSteps(sc)
 	registerClaudeHookStatusSteps(sc)
 	registerProbeStatusSteps(sc)
+	registerCrashStatusSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
