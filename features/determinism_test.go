@@ -260,6 +260,12 @@ func generatedIDForSeed(ctx context.Context, binary, seed string) (string, error
 	if err := db.QueryRowContext(ctx, `SELECT id FROM sessions WHERE name = 'seed session'`).Scan(&id); err != nil {
 		return "", err
 	}
+	// tmux can exist before Bubble Tea has consumed the modal submit. Wait for
+	// the list footer so q is unambiguously a quit key rather than text typed
+	// into a still-closing form field.
+	if err := client.WaitForFrame(ctx, false, "up/down - Enter attach"); err != nil {
+		return "", err
+	}
 	if err := client.Send("q"); err != nil {
 		return "", err
 	}

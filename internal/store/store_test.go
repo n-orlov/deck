@@ -26,7 +26,10 @@ func TestOpenInitializesPrivateV1WALStore(t *testing.T) {
 	if err := store.DB().QueryRow(`PRAGMA journal_mode`).Scan(&journal); err != nil || strings.ToLower(journal) != "wal" {
 		t.Fatalf("journal mode = %q, %v; want wal", journal, err)
 	}
-	var timeout, foreignKeys, version int
+	var synchronous, timeout, foreignKeys, version int
+	if err := store.DB().QueryRow(`PRAGMA synchronous`).Scan(&synchronous); err != nil || synchronous != 1 {
+		t.Fatalf("synchronous = %d, %v; want NORMAL (1)", synchronous, err)
+	}
 	if err := store.DB().QueryRow(`PRAGMA busy_timeout`).Scan(&timeout); err != nil || timeout != 5000 {
 		t.Fatalf("busy_timeout = %d, %v; want 5000", timeout, err)
 	}

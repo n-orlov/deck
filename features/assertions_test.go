@@ -366,7 +366,20 @@ func privateOptionIs(ctx context.Context, option, want string) error {
 }
 
 func openObservedDatabase(h *ScenarioHarness) (*sql.DB, error) {
-	return sql.Open("sqlite", filepath.Join(h.Home, "state.db"))
+	db, err := sql.Open("sqlite", filepath.Join(h.Home, "state.db"))
+	if err != nil {
+		return nil, err
+	}
+	// Observers race real released clients. Keep the connection-local busy
+	// policy aligned with the product store so a transient WAL writer never
+	// turns an external read assertion into an immediate SQLITE_BUSY failure.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("configure observed database: %w", err)
+	}
+	return db, nil
 }
 
 func databaseSchemaVersion(ctx context.Context, want int) error {

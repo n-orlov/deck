@@ -87,7 +87,7 @@ func OpenPath(home, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("secure store directory: %w", err)
 	}
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON`); err != nil {
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure state database: %w", err)
 	}
