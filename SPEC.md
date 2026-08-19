@@ -232,6 +232,16 @@ CREATE TABLE outbox (               -- notifications; dispatched inline, retried
   attempts   INTEGER NOT NULL DEFAULT 0,
   last_error TEXT
 );
+
+CREATE TABLE ui_state (             -- machine-local UI state, never in config.toml (§6.5)
+  key        TEXT PRIMARY KEY,      -- layout_mode, sidebar_width (§11.2)
+  value      TEXT NOT NULL
+);
+
+CREATE TABLE recent_cwds (          -- the create modal's directory history (§11.7)
+  path       TEXT PRIMARY KEY,      -- resolved absolute path, deduplicated
+  used_seq   INTEGER NOT NULL       -- monotonic, NOT a timestamp: order stays assertable
+);                                  -- under a frozen DECK_CLOCK (§13.1)
 ```
 
 Invariants:
@@ -242,6 +252,10 @@ Invariants:
 - Every mutation is a targeted `UPDATE … WHERE id = ?` in a transaction. Never rewrite a
   table from in-memory state (R4).
 - `events` retained 30 days by default, pruned on TUI start.
+- `ui_state` and `recent_cwds` are the only tables not keyed to a session, and neither is
+  load-bearing: losing them costs a remembered layout and a prefilled path, never a
+  session or a conversation. Both arrive by migration, in the phase that first needs them
+  (§11.2 → Phase 2b, §11.7 → Phase 3), so neither is speculative schema.
 
 ---
 
@@ -346,7 +360,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5); `stale_after` and `capture_min_interval` join here when their phases land (§7, §9.4) — listed now so the single-source rule below stays honest |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11). **Not** `layout_mode` or `sidebar_width` — those are machine-local UI state and persist in `state.db` (§11.2), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -1030,6 +1044,48 @@ archived          = "#475569"
   schema follows the *display* taxonomy, which is why it gets a token — the sidebar can
   render an archived row (behind the filter) and needs a colour for it.
 
+### 11.7 Path entry and recent working directories
+
+Typing a full path by hand is the single most common keystroke cost in deck, because every
+session starts with one. Three mechanisms, all on the same text-input behaviour so the
+create modal's `cwd`, and any later path field, behave identically:
+
+**Recent working directories.** deck remembers the last **5** distinct directories a
+session was created in, most-recent-first, in `state.db` (§4's `recent_cwds`) — not in
+`config.toml`, since it is machine-local history rather than preference. The limit is
+`[ui] recent_cwd_limit` (default 5, §6.5). Creating a session promotes its `cwd` to the
+front, deduplicated by resolved absolute path, evicting the oldest beyond the limit.
+
+- The `cwd` field is **pre-filled with the most recent entry**, so the common case —
+  another session where you just were — is `n`, a name, `↵`. On a first run with no
+  history it pre-fills the directory deck itself was started in. Typing replaces the
+  pre-filled value wholesale (it is offered, not committed), and the field labels it as
+  the last used so nothing is silently assumed on the user's behalf.
+- `↑`/`↓` in the field cycle the recent list, shell-history style, showing `recent 2/5`
+  so the user knows both where they are and that more exist. This is a declared
+  per-field key set under §11.4's contract.
+- Recency is ordered by a **monotonic sequence, not the wall clock**, so the order stays
+  deterministic and assertable while `DECK_CLOCK` is frozen (§13.1) — the same trap Phase
+  0's durations hit.
+- The list is history, and paths can themselves be sensitive: settings (§11.5) offers
+  clearing it, and it is never included in notification payloads.
+
+**Ghost completion.** With the cursor at the end of the field, deck shows the completion
+inline in the theme's `dimmed` token, and `→` (or `end`) accepts it. Directories only —
+deck is never asking for a file here. The segment being completed is the text after the
+last `/`; hidden directories are candidates only when that segment starts with `.`; a
+leading `~` expands. A single match completes to it plus a trailing `/`, so the next
+segment can be typed immediately.
+
+**Where deck deliberately differs from the tool this borrows from:** when several
+directories match and there is no further common prefix, deck ghosts **nothing** and shows
+the match count (`3 matches — tab to list`) rather than ghosting the alphabetically-first
+candidate. Ghosting one arbitrary candidate makes `→` a coin flip that silently sends the
+session to the wrong directory, and a wrong `cwd` is not a typo the user notices — it is a
+session that works and is in the wrong place. `tab` completes to the longest common prefix
+when that advances, and otherwise lists the candidates for selection: bash's contract,
+which is the one users already have in their fingers.
+
 ---
 
 ## 12. Cross-session search
@@ -1147,7 +1203,8 @@ in the help view.
 
 ```
 features/
-  create_session.feature        agent choice, cwd, args, env, pre_launch, name collisions
+  create_session.feature        agent choice, cwd, args, env, pre_launch, name collisions,
+                                §11.7 recent-cwd prefill/cycling and ghost/tab completion
   same_directory.feature        R2 — N sessions, one cwd, no conversation cross-talk
   durable_identity.feature      R3 — @reboot: stopped·resumable, resume by id, no autostart
   status_claude_hooks.feature   R6 — waiting/running/idle/error via hook payloads, live badge
