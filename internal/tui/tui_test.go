@@ -23,7 +23,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	for _, want := range []string{
 		"↑/↓ or j/k select", "↵ attach the selected running session", "Y acknowledge", "unseen marker", "n create", "x kill",
 		"? open/close help", "Esc closes help", "q or Ctrl+C quit",
-		"r resume", "starting · awaiting signal", "starting elsewhere",
+		"r resume", "resumed agents", "starting · awaiting", "live shells", "become \"running\"", "starting elsewhere",
 		"P switch the permission profile", "restart to apply", "live pane",
 		"p pin", "one-shot fresh conversation", "auto-resume",
 		"Permission profile", "Pre-launch command", "loading secrets",

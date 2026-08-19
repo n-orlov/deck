@@ -957,7 +957,12 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {
 		t.Fatal(err)
 	}
-	if err := databaseSessionStatus(stepCtx, "black-box", "starting"); err != nil {
+	// Once the pane exists, a released client must reconcile this live shell
+	// to running rather than pinning it to the transient launch state.
+	if err := clientScreenContainsWithinReconcileInterval(stepCtx, "A", "running"); err != nil {
+		t.Fatal(err)
+	}
+	if err := databaseSessionStatus(stepCtx, "black-box", "running"); err != nil {
 		t.Fatal(err)
 	}
 	if err := auditLogIsJSONL(stepCtx); err != nil {

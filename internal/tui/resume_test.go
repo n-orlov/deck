@@ -13,8 +13,8 @@ import (
 
 // TestResumeKeyRendersAwaitingSignalNeverRunning proves `r` on a stopped row
 // calls the wired resume function, and that a successfully resumed row
-// renders exactly "starting · awaiting signal" and never "running" (SPEC
-// §8/§9.3: an agent row's real liveness is not knowable in Phase 1).
+// renders exactly "starting · awaiting signal" and never "running" until
+// an agent hook or sampled probe supplies a real readiness verdict.
 func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 	resumed := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "starting"}
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
@@ -50,7 +50,7 @@ func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 		t.Fatalf("resumed row did not render 'starting · awaiting signal':\n%s", view)
 	}
 	if strings.Contains(view, "running") {
-		t.Fatalf("resumed row rendered 'running', which Phase 1 must never claim:\n%s", view)
+		t.Fatalf("resumed agent row rendered 'running' without a readiness verdict:\n%s", view)
 	}
 }
 

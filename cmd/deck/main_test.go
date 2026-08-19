@@ -366,11 +366,12 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// visible through a real PTY, not merely via View() in internal/tui.
 	for _, present := range []string{
 		"Y acknowledge", "clear its unseen marker", "r resume", "P switch the permission profile", "p pin the selected session",
-		"starting - awaiting signal", "starting elsewhere", // DECK_ASCII=1 replaces \u00b7 with '-'
+		"resumed agents", "starting - awaiting", "live shells", "become \"running\"", "starting elsewhere", // DECK_ASCII=1 replaces \u00b7 with '-'
 		"Name", "Working directory", "Agent", "Permission profile", "Launch args", "Env",
 		"Pre-launch command", "Login shell",
 		"Yolo is gated twice", "allow_yolo",
-		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "DECK_ID_SEED",
+		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "clock.now",
+		"resolved data root", "write it", "every running process sharing that root", "DECK_ID_SEED",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
 	} {
 		if !strings.Contains(help, present) {

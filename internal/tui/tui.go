@@ -1221,10 +1221,10 @@ Keys
   n create a session (shell, or an agent: claude or pi)
   x kill the selected running session
   r resume the selected stopped session with its own agent argv (never
-    --continue or "most recent"); a resumed row reads "starting · awaiting signal",
-    not "running" — deck cannot yet tell when the agent is ready (a Phase 2
-    rough edge); a client that loses the launch-lease race sees
-    "starting elsewhere" instead of an error
+    --continue or "most recent"); resumed agents read "starting · awaiting
+    signal" until a hook or sampled probe reports readiness, while live shells
+    become "running" on reconciliation; a client that loses the launch-lease
+    race sees "starting elsewhere" instead of an error
   P switch the permission profile of the selected session; only takes
     effect on the next launch or resume ("restart to apply"), never the
     live pane
