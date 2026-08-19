@@ -15,7 +15,7 @@ Feature: Shell liveness does not fabricate agent status
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "unsignalled" with permission profile "safe"
-    Then within one configured reconcile interval deck client "A" screen contains "starting - awaiting signal"
+    Then after one configured reconcile interval deck client "A" screen still contains "starting - awaiting signal"
     And deck client "A" screen does not contain "running"
     And the state database contains session "unsignalled" with status "starting"
     And the private tmux session "deck_unsignalled" exists

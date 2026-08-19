@@ -28,6 +28,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" sends "([^"]*)"$`, sendClientKeys)
 	sc.Step(`^deck client "([^"]+)" screen contains "([^"]+)"$`, clientScreenContains)
 	sc.Step(`^within one configured reconcile interval deck client "([^"]+)" screen contains "([^"]+)"$`, clientScreenContainsWithinReconcileInterval)
+	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" screen still contains "([^"]+)"$`, clientScreenStillContainsAfterReconcileInterval)
 	sc.Step(`^the private tmux session "([^"]+)" exists$`, privateSessionExists)
 	sc.Step(`^the private tmux session "([^"]+)" has one pane in "([^"]+)"$`, privateSessionPaneCWD)
 	sc.Step(`^the private tmux session "([^"]+)" has exactly one pane running "([^"]+)"$`, privateSessionPaneCommand)
@@ -92,6 +93,34 @@ func clientScreenContains(ctx context.Context, name, want string) error {
 // UI assertion timeout.
 func clientScreenContainsWithinReconcileInterval(ctx context.Context, name, want string) error {
 	return clientScreenContainsBefore(ctx, name, want, scenarioReconcileInterval)
+}
+
+// clientScreenStillContainsAfterReconcileInterval is deliberately not a
+// polling assertion: it waits out a complete cadence before inspecting the
+// current frame. This proves a value visible immediately after creation also
+// survives a subsequent released-binary reconciliation pass.
+func clientScreenStillContainsAfterReconcileInterval(ctx context.Context, name, want string) error {
+	timer := time.NewTimer(scenarioReconcileInterval + 100*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	if !strings.Contains(frame, want) {
+		return fmt.Errorf("client %q does not still show %q after reconcile interval %s:\n%s", name, want, scenarioReconcileInterval, frame)
+	}
+	return nil
 }
 
 func clientScreenContainsBefore(ctx context.Context, name, want string, timeout time.Duration) error {
