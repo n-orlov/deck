@@ -1,3 +1,4 @@
+@launch-lease
 Feature: Launch-lease stale/live breaking
   The SPEC §9.3 launch lease must block a second launch only while a live
   owner still holds it within its TTL, and must never leave a row wedged: a
@@ -17,6 +18,21 @@ Feature: Launch-lease stale/live breaking
     And deck client "A" presses r on session "live lease target"
     Then deck client "A" screen contains "running"
     And deck client "A" screen does not contain "starting elsewhere"
+    When deck client "A" exits cleanly
+
+  Scenario: a stale stopped row reports its new non-leasable verdict instead of a lease conflict
+    Given deck client "A" is started with a slow reconcile interval
+    And deck client "A" creates shell session "changed verdict target"
+    And deck client "A" kills its selected session
+    Then the state database contains session "changed verdict target" with status "stopped"
+    And deck client "A" screen contains "stopped - resumable"
+    When the state database session "changed verdict target" changes to a non-leasable error with reason "pane failed after the stale frame"
+    And deck client "A" presses r on session "changed verdict target"
+    Then deck client "A" screen contains "error"
+    And deck client "A" screen does not contain "starting elsewhere"
+    When deck client "A" opens detail for session "changed verdict target"
+    Then deck client "A" screen contains "Status reason:      pane failed after the stale frame"
+    And the state database contains session "changed verdict target" with status "error"
     When deck client "A" exits cleanly
 
   Scenario: a lease from a dead process is breakable and the row stays usable

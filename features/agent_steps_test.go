@@ -40,6 +40,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)"$`, clientCreatesAgentSessionWithProfile)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and message "([^"]+)"$`, clientCreatesAgentSessionWithProfileAndMessage)
 	sc.Step(`^deck client "([^"]+)" presses r on session "([^"]+)"$`, clientPressesResumeOnNamedSession)
+	sc.Step(`^deck client "([^"]+)" is started with a slow reconcile interval$`, startNamedClientWithSlowReconcile)
 	sc.Step(`^the state database session "([^"]+)" has a non-empty conversation id$`, sessionHasNonEmptyConversationID)
 	sc.Step(`^the state database sessions "([^"]+)" and "([^"]+)" have different conversation ids$`, sessionsHaveDifferentConversationIDs)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains "([^"]+)"$`, launchArgvForSessionContains)
@@ -57,6 +58,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck clients "([^"]+)", "([^"]+)" and "([^"]+)" race pressing r on session "([^"]+)"$`, clientsRacePressingResumeOnNamedSession)
 	sc.Step(`^at least one of deck clients "([^"]+)", "([^"]+)" and "([^"]+)" screen contains "starting elsewhere"$`, atLeastOneOfClientsShowsStartingElsewhere)
 	sc.Step(`^the state database session "([^"]+)" has a launch lease held by a live process$`, sessionHasLiveLaunchLease)
+	sc.Step(`^the state database session "([^"]+)" changes to a non-leasable error with reason "([^"]+)"$`, sessionChangesToNonLeasableError)
 	sc.Step(`^the state database session "([^"]+)" has a launch lease owned by a dead process$`, sessionHasDeadLaunchLease)
 	sc.Step(`^the state database session "([^"]+)" has an expired launch lease$`, sessionHasExpiredLaunchLease)
 	sc.Step(`^the state database session "([^"]+)"'s launch lease is cleared$`, sessionLaunchLeaseIsCleared)
@@ -335,6 +337,21 @@ func clientOpensCreateModalForAgent(ctx context.Context, clientName, kind string
 // duplicated here, not imported, because this file is deliberately a
 // black-box observer of the released binary (see registerBlackBoxAssertionSteps).
 var createAgentOptionsOrder = []string{"shell", "claude", "pi"}
+
+// startNamedClientWithSlowReconcile gives stale-frame race scenarios a
+// deterministic window in which a durable external write cannot be picked up
+// by the periodic list refresh before the scenario sends its next key.
+func startNamedClientWithSlowReconcile(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClient(ctx, name, "DECK_RECONCILE_MS=5000")
+	if err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "deck - sessions")
+}
 
 // clientPressesResumeOnNamedSession moves the list selection to the row
 // whose name is want (by repeated down-arrows from the top of the list,
@@ -1216,6 +1233,41 @@ func setRawLaunchLease(ctx context.Context, name, owner string, untilMillis int6
 func sessionHasLiveLaunchLease(ctx context.Context, name string) error {
 	owner := fmt.Sprintf("%d@%s", os.Getpid(), currentBootID())
 	return setRawLaunchLease(ctx, name, owner, time.Now().Add(time.Hour).UnixMilli())
+}
+
+// sessionChangesToNonLeasableError simulates a terminal pane verdict landing
+// after the selected client rendered its stopped row but before that client
+// dispatches r. The non-nil pane exit status makes this a durable terminal
+// error that reconciliation must preserve, giving the released binary a
+// stable black-box race to report rather than allowing the missing-pane pass
+// to turn the fixture back into a stopped row.
+func sessionChangesToNonLeasableError(ctx context.Context, name, reason string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.ExecContext(ctx, `
+		UPDATE sessions
+		SET status = 'error', status_reason = ?, status_source = 'tmux',
+			status_at = ?, killed_by_user = 0, pane_exit_status = 17,
+			crash_tail = 'injected terminal pane verdict'
+		WHERE name = ? AND status = 'stopped'`, reason, time.Now().UnixMilli(), name)
+	if err != nil {
+		return fmt.Errorf("change session %q to non-leasable error: %w", name, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check non-leasable change for session %q: %w", name, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("change session %q to non-leasable error: %d stopped rows affected, want 1", name, affected)
+	}
+	return nil
 }
 
 // sessionHasDeadLaunchLease plants a lease naming a pid that (barring an
