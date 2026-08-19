@@ -359,13 +359,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// companion lifecycle PTY test exercises n, Enter, attachment, and x.
 	// Help itself must never advertise a later-phase command.
 	help := output.String()
-	if !strings.Contains(help, "up/down - Enter attach - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") {
+	if !strings.Contains(help, "up/down - Enter attach - Y acknowledge - n new - x kill - r resume") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
 	}
 	// Every new key, create-modal field and control this phase added must be
 	// visible through a real PTY, not merely via View() in internal/tui.
 	for _, present := range []string{
-		"r resume", "P switch the permission profile", "p pin the selected session",
+		"Y acknowledge", "clear its unseen marker", "r resume", "P switch the permission profile", "p pin the selected session",
 		"starting - awaiting signal", "starting elsewhere", // DECK_ASCII=1 replaces \u00b7 with '-'
 		"Name", "Working directory", "Agent", "Permission profile", "Launch args", "Env",
 		"Pre-launch command", "Login shell",

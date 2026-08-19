@@ -43,6 +43,7 @@ type Model struct {
 	createAgentSession  func(context.Context, service.AgentCreateInput) (store.Session, error)
 	attach              func(context.Context, string) (*exec.Cmd, error)
 	kill                func(context.Context, store.Session) error
+	acknowledge         func(context.Context, string) error
 	reconcile           func(context.Context) error
 	resume              func(context.Context, string) (store.Session, service.ResumeOutcome, error)
 	profileSwitch       func(context.Context, string, string) (store.Session, error)
@@ -123,6 +124,8 @@ type attachFinished struct{ err error }
 
 type sessionKilled struct{ err error }
 
+type sessionAcknowledged struct{ err error }
+
 type sessionResumed struct {
 	session store.Session
 	outcome service.ResumeOutcome
@@ -142,7 +145,11 @@ type resumeModeChanged struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	return Model{store: db, settings: settings, startupNote: tmuxNote}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote}
+	if db != nil {
+		m.acknowledge = db.AcknowledgeSession
+	}
+	return m
 }
 
 // NewWithShellCreator creates a list model that can create plain shell sessions.
@@ -283,6 +290,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.attachError = ""
 		return m, m.loadSessions
+	case sessionAcknowledged:
+		if msg.err != nil {
+			m.attachError = "Cannot acknowledge: " + msg.err.Error()
+			return m, nil
+		}
+		m.attachError = ""
+		return m, m.loadSessions
 	case sessionResumed:
 		if msg.err != nil {
 			m.attachError = "Cannot resume: " + msg.err.Error()
@@ -370,6 +384,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			if m.selected+1 < len(m.sessions) {
 				m.selected++
+			}
+		case "Y":
+			if m.acknowledge == nil || len(m.sessions) == 0 {
+				return m, nil
+			}
+			sessionID := m.sessions[m.selected].ID
+			return m, func() tea.Msg {
+				return sessionAcknowledged{err: m.acknowledge(context.Background(), sessionID)}
 			}
 		case "x":
 			if m.kill == nil || len(m.sessions) == 0 {
@@ -490,9 +512,13 @@ func (m Model) View() string {
 			if index == m.selected {
 				marker = "> "
 			}
+			unseen := " "
+			if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
+				unseen = m.glyph("●", "!")
+			}
 			profileBadge := m.profileBadge(session)
 			sourceBadge := statusSourceQuality(session.StatusSource)
-			fmt.Fprintf(&b, "%s%s  %-10s %-8s %-8s %s  created %s\n    %s\n", marker, session.Name, session.Agent, profileBadge, sourceBadge, status, m.relativeTime(session.CreatedAt), session.CWD)
+			fmt.Fprintf(&b, "%s%s %s  %-10s %-8s %-8s %s  created %s\n    %s\n", marker, session.Name, unseen, session.Agent, profileBadge, sourceBadge, status, m.relativeTime(session.CreatedAt), session.CWD)
 		}
 	}
 	if m.attachError != "" {
@@ -501,7 +527,7 @@ func (m Model) View() string {
 	if m.resumeNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.resumeNote)
 	}
-	b.WriteString("\n" + m.glyph("↑/↓ · ↵ attach · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") + "\n")
+	b.WriteString("\n" + m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") + "\n")
 	return b.String()
 }
 
@@ -1175,6 +1201,7 @@ func helpView(ascii bool) string {
 Keys
   ↑/↓ or j/k select a session
   ↵ attach the selected running session
+  Y acknowledge the selected waiting/error session and clear its unseen marker
   n create a session (shell, or an agent: claude or pi)
   x kill the selected running session
   r resume the selected stopped session with its own agent argv (never

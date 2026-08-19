@@ -522,6 +522,26 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	return nil
 }
 
+// AcknowledgeSession durably clears the selected row's unseen marker without
+// changing its status verdict, source, timestamp, or notification epoch. It is
+// intentionally a targeted update rather than a status transition: pressing Y
+// acknowledges waiting/error but does not claim that the user answered it.
+func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1 WHERE id = ?`, sessionID)
+	if err != nil {
+		return fmt.Errorf("acknowledge session: %w", err)
+	}
+	if changed, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("read acknowledged session count: %w", err)
+	} else if changed == 0 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	return nil
+}
+
 // RecordOrphanEvent preserves a hook event which could not be resolved to a
 // session. NULL (not an empty id) is used so the foreign key remains honest.
 func (s *Store) RecordOrphanEvent(ctx context.Context, input EventInput) error {
