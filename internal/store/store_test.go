@@ -606,6 +606,98 @@ func TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically(t *t
 	}
 }
 
+func TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	for _, id := range []string{"waiting-attach", "error-attach", "raced-attach"} {
+		if _, err := store.CreateSession(ctx, CreateSessionInput{
+			ID: id, Name: id, CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+			Status: "running", StatusSource: "hook", StatusAt: 100, CreatedAt: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: "waiting-attach", Status: "waiting", Reason: "permission_prompt",
+		Source: "hook", At: 110, EventKind: "notification",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordAttachment(ctx, "waiting-attach", 120); err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := store.GetSession(ctx, "waiting-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waiting.Status != "running" || waiting.StatusReason != "" || waiting.StatusSource != "user" || waiting.StatusAt != 120 || !waiting.Acknowledged || waiting.NotifyEpoch != 1 {
+		t.Fatalf("waiting attachment = %#v", waiting)
+	}
+
+	exit := 137
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: "error-attach", Status: "error", Reason: "pane exited", Source: "tmux", At: 210,
+		EventKind: "tmux.pane_crash", PaneExitStatus: &exit, CrashTail: "fatal output", LastMessage: "last hook message",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Populate the remaining orthogonal fields to prove the targeted error
+	// acknowledgement cannot accidentally reset them.
+	if _, err := store.DB().Exec(`UPDATE sessions SET killed_by_user = 1, notify_epoch = 7 WHERE id = 'error-attach'`); err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.GetSession(ctx, "error-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordAttachment(ctx, "error-attach", 220); err != nil {
+		t.Fatal(err)
+	}
+	after, err := store.GetSession(ctx, "error-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.Acknowledged || after.Status != before.Status || after.StatusReason != before.StatusReason ||
+		after.StatusSource != before.StatusSource || after.StatusAt != before.StatusAt ||
+		after.KilledByUser != before.KilledByUser || after.NotifyEpoch != before.NotifyEpoch ||
+		after.PaneExitStatus == nil || before.PaneExitStatus == nil || *after.PaneExitStatus != *before.PaneExitStatus ||
+		after.CrashTail != before.CrashTail || after.LastMessage != before.LastMessage {
+		t.Fatalf("error attachment changed verdict fields: before=%#v after=%#v", before, after)
+	}
+
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: "raced-attach", Status: "error", Reason: "old error", Source: "hook", At: 310,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: "raced-attach", Status: "idle", Reason: "resolved", Source: "hook", At: 320,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordAttachment(ctx, "raced-attach", 330); err != nil {
+		t.Fatal(err)
+	}
+	raced, err := store.GetSession(ctx, "raced-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raced.Status != "idle" || raced.StatusReason != "resolved" || raced.StatusSource != "hook" || raced.StatusAt != 320 || raced.Acknowledged || raced.NotifyEpoch != 1 {
+		t.Fatalf("raced status was overwritten: %#v", raced)
+	}
+	var racedAttachEvents int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = 'raced-attach' AND kind = 'attached'`).Scan(&racedAttachEvents); err != nil || racedAttachEvents != 0 {
+		t.Fatalf("raced attachment events = %d, %v; want 0", racedAttachEvents, err)
+	}
+}
+
 func TestStatusTransitionProtectsUserKillAndPersistsHookAndCrashFields(t *testing.T) {
 	home := t.TempDir()
 	store, err := OpenPath(home, filepath.Join(home, "state.db"))

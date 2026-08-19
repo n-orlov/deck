@@ -56,6 +56,50 @@ func TestEnterAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
 	}
 }
 
+func TestEnterAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
+	home := t.TempDir()
+	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
+		ID: "error", Name: "error", CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 100, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	exit := 137
+	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: "error", Status: "error", Reason: "pane exited", Source: "tmux", At: 110,
+		EventKind: "tmux.pane_crash", PaneExitStatus: &exit, CrashTail: "fatal output",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := NewWithShellCreatorAndAttacher(db, config.Settings{ASCII: true, Clock: clock}, "", nil,
+		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
+	updated, _ := model.Update(model.loadSessions())
+	model = updated.(Model)
+	updated, command := model.Update(key("enter"))
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on error row did not schedule attachment")
+	}
+	got, err := db.GetSession(ctx, "error")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "error" || got.StatusReason != "pane exited" || got.StatusSource != "tmux" || got.StatusAt != 110 ||
+		!got.Acknowledged || got.NotifyEpoch != 0 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal output" {
+		t.Fatalf("error attachment changed verdict fields: %#v", got)
+	}
+}
+
 func TestYAcknowledgesOnlySelectedRowDurably(t *testing.T) {
 	home := t.TempDir()
 	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))

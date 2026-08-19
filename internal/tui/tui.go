@@ -153,7 +153,7 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 			if settings.Clock == nil {
 				return fmt.Errorf("attach status clock is unavailable")
 			}
-			return db.AttachWaitingSession(ctx, sessionID, settings.Clock.Now().UnixMilli())
+			return db.RecordAttachment(ctx, sessionID, settings.Clock.Now().UnixMilli())
 		}
 	}
 	return m
@@ -484,8 +484,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Consult the durable row on every attachment. The list frame may lag a
-			// hook that just made it waiting; the store-side expected-status guard
-			// makes non-waiting attachments and raced resolutions harmless no-ops.
+			// hook that just made it waiting or error; the store transaction applies
+			// only that row's current status and leaves raced resolutions untouched.
 			if m.prepareAttach != nil {
 				if err := m.prepareAttach(context.Background(), session.ID); err != nil {
 					m.attachError = "Cannot attach: " + err.Error()

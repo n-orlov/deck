@@ -532,15 +532,58 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	return nil
 }
 
-// AttachWaitingSession atomically records that a deck-mediated attachment
-// answered the currently observed waiting episode. If the row stopped waiting
-// after the UI loaded it, ExpectedStatus turns the stale keypress into a no-op.
-func (s *Store) AttachWaitingSession(ctx context.Context, sessionID string, at int64) error {
-	acknowledged := true
-	return s.UpdateSessionStatus(ctx, StatusUpdateInput{
-		SessionID: sessionID, Status: "running", Source: "user", At: at,
-		EventKind: "attached", Acknowledged: &acknowledged, ExpectedStatus: "waiting",
-	})
+// RecordAttachment atomically applies the status-side effects of a
+// deck-mediated attachment. A waiting row is answered and becomes running; an
+// error row is acknowledged without changing its durable verdict or diagnostic
+// fields. Any other status is a no-op, so a hook racing a stale list frame is
+// never overwritten.
+func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("attachment timestamp is required")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin attachment: %w", err)
+	}
+	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM sessions WHERE id = ?`, sessionID).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("session %q not found", sessionID)
+		}
+		return fmt.Errorf("read attachment status: %w", err)
+	}
+
+	switch status {
+	case "waiting":
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET
+			status = 'running', status_reason = '', status_source = 'user', status_at = ?,
+			acknowledged = 1, notify_epoch = notify_epoch + 1
+			WHERE id = ? AND status = 'waiting'`, at, sessionID); err != nil {
+			return fmt.Errorf("answer waiting attachment: %w", err)
+		}
+	case "error":
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1
+			WHERE id = ? AND status = 'error'`, sessionID); err != nil {
+			return fmt.Errorf("acknowledge error attachment: %w", err)
+		}
+	default:
+		return nil
+	}
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, 'attached', '', '')`, sessionID, at); err != nil {
+		return fmt.Errorf("record attachment event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit attachment: %w", err)
+	}
+	return nil
 }
 
 // AcknowledgeSession durably clears the selected row's unseen marker without
