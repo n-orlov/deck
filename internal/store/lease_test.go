@@ -132,6 +132,31 @@ func TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable(t *testing.T) {
 	}
 }
 
+func TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	const id = "00000000-0000-4000-8000-000000000106"
+	newLeaseTestSession(t, store, id, "waiting")
+
+	result, err := store.AcquireLaunchLease(context.Background(), id, "99999@boot-other", 30*time.Second, leaseTestNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome != LaunchLeaseNotLeasable {
+		t.Fatalf("outcome = %v; want not leasable", result.Outcome)
+	}
+	if result.HeldStatus != "waiting" {
+		t.Fatalf("held status = %q; want waiting", result.HeldStatus)
+	}
+	if result.Outcome == LaunchLeaseHeldElsewhere {
+		t.Fatal("non-stopped row was misreported as a live held lease")
+	}
+}
+
 func TestAcquireLaunchLeaseExpiredTTLIsBreakable(t *testing.T) {
 	home := t.TempDir()
 	store, err := OpenPath(home, filepath.Join(home, "state.db"))

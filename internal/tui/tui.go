@@ -316,6 +316,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.resumeNote = ""
+		if msg.outcome == service.ResumeNotLeasable {
+			// The resume command was dispatched from a stale stopped frame.
+			// Render the durable status/reason returned by the service rather
+			// than describing it as a launch in another client.
+			for i := range m.sessions {
+				if m.sessions[i].ID == msg.session.ID {
+					m.sessions[i] = msg.session
+					break
+				}
+			}
+			return m, nil
+		}
 		return m, m.loadSessions
 	case profileSwitched:
 		if msg.err != nil {
@@ -724,6 +736,9 @@ func (m Model) detailView() string {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
 	fmt.Fprintf(&b, "Status:             %s\n", status)
+	if session.StatusReason != "" {
+		fmt.Fprintf(&b, "Status reason:      %s\n", session.StatusReason)
+	}
 	source := session.StatusSource
 	if source == "" {
 		source = "unknown"

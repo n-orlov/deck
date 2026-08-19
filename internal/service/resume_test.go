@@ -162,6 +162,46 @@ func TestResumeLosingLeaseCreatesNoTMuxSession(t *testing.T) {
 	}
 }
 
+func TestResumeNonLeasableReturnsActualStatusAndReason(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, _ := newAgentTestService(t, nil, "resume-not-leasable")
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: already waiting", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
+		t.Fatalf("kill original pane: %v", err)
+	}
+	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: created.ID, Status: "waiting", Reason: "permission_prompt", Source: "hook",
+		At: service.Clock.Now().UnixMilli(), EventKind: "notification",
+	}); err != nil {
+		t.Fatalf("make row non-leasable: %v", err)
+	}
+
+	session, outcome, err := service.Resume(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if outcome != ResumeNotLeasable {
+		t.Fatalf("outcome = %v, want ResumeNotLeasable", outcome)
+	}
+	if session.Status != "waiting" || session.StatusReason != "permission_prompt" {
+		t.Fatalf("returned verdict = %q/%q, want waiting/permission_prompt", session.Status, session.StatusReason)
+	}
+
+	live, err := service.TMux.List(context.Background())
+	if err != nil {
+		t.Fatalf("list tmux: %v", err)
+	}
+	if len(live) != 0 {
+		t.Fatalf("live tmux sessions = %#v, want no launch for non-leasable row", live)
+	}
+}
+
 func TestResumeFailsOnUnknownConversationID(t *testing.T) {
 	cwd := t.TempDir()
 	service, db, logger, _ := newAgentTestService(t, nil, "resume-unknown-id")

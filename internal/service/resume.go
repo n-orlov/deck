@@ -13,8 +13,8 @@ import (
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
-// ResumeOutcome distinguishes a resume that actually launched a pane from
-// one that lost the SPEC §9.3 launch-lease race to another deck client.
+// ResumeOutcome distinguishes a resume that launched a pane, a genuine
+// launch-lease loser, and a row that became non-leasable before the attempt.
 type ResumeOutcome int
 
 const (
@@ -25,6 +25,9 @@ const (
 	// holds the launch lease for this session; this call created no tmux
 	// session and left the row untouched.
 	ResumeStartingElsewhere
+	// ResumeNotLeasable means the durable row is no longer stopped. The
+	// returned session contains its current status and reason for display.
+	ResumeNotLeasable
 )
 
 // Resume relaunches an existing session's conversation (SPEC §8/§9.3): it
@@ -99,9 +102,19 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if err != nil {
 		return session, ResumeStartingElsewhere, fmt.Errorf("acquire launch lease for session %q: %w", session.Name, err)
 	}
+	if lease.Outcome == store.LaunchLeaseNotLeasable {
+		// The list may have shown a stale stopped row. Return the durable row
+		// instead of misreporting its real verdict as a launch happening in
+		// another client.
+		current, getErr := s.Store.GetSession(ctx, sessionID)
+		if getErr != nil {
+			return session, ResumeNotLeasable, fmt.Errorf("refresh non-leasable session %q: %w", session.Name, getErr)
+		}
+		return current, ResumeNotLeasable, nil
+	}
 	if lease.Outcome != store.LaunchLeaseAcquired {
-		// Another (live, in-TTL) owner holds the lease, or the row was not
-		// leasable at all: no tmux session is created for this loser.
+		// Another live, in-TTL owner holds the lease: no tmux session is
+		// created for this loser.
 		return session, ResumeStartingElsewhere, nil
 	}
 	session.Status = "starting"

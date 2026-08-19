@@ -17,8 +17,8 @@ import (
 // wedge the row for long.
 const DefaultLaunchLeaseTTL = 30 * time.Second
 
-// LaunchLeaseOutcome distinguishes a successful lease acquisition from one
-// held (and not currently breakable) by another owner.
+// LaunchLeaseOutcome distinguishes successful acquisition, a lease genuinely
+// held by another live launcher, and a row whose status is not leasable.
 type LaunchLeaseOutcome int
 
 const (
@@ -26,10 +26,12 @@ const (
 	// status has been flipped from stopped to starting in the same
 	// transaction.
 	LaunchLeaseAcquired LaunchLeaseOutcome = iota
-	// LaunchLeaseHeldElsewhere means another (live, in-TTL) owner holds the
-	// lease, or the row was not in a leasable (stopped) status at all; the
-	// row was not modified.
+	// LaunchLeaseHeldElsewhere means another live, in-TTL owner holds the
+	// lease; the row was not modified.
 	LaunchLeaseHeldElsewhere
+	// LaunchLeaseNotLeasable means the row's status is not stopped. HeldStatus
+	// reports the status observed in the acquisition transaction.
+	LaunchLeaseNotLeasable
 )
 
 // LaunchLeaseResult reports the outcome of AcquireLaunchLease and, when the
@@ -147,14 +149,13 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		return LaunchLeaseResult{}, fmt.Errorf("read launch lease: %w", err)
 	}
 
-	if status != "stopped" {
+	leaseHeld := curOwner.Valid && curOwner.String != "" &&
+		curUntil > at && leaseOwnerAlive(curOwner.String)
+	if leaseHeld {
 		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere, HeldBy: curOwner.String, HeldStatus: status}, nil
 	}
-
-	breakable := !curOwner.Valid || curOwner.String == "" ||
-		curUntil <= at || !leaseOwnerAlive(curOwner.String)
-	if !breakable {
-		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere, HeldBy: curOwner.String, HeldStatus: status}, nil
+	if status != "stopped" {
+		return LaunchLeaseResult{Outcome: LaunchLeaseNotLeasable, HeldBy: curOwner.String, HeldStatus: status}, nil
 	}
 
 	// CAS on the exact previously-observed owner/until pair: within this one

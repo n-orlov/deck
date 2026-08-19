@@ -85,6 +85,40 @@ func TestResumeStartingElsewhereIsNotAnError(t *testing.T) {
 	}
 }
 
+func TestResumeNonLeasableRendersActualStatusAndReason(t *testing.T) {
+	actual := store.Session{
+		ID: "s1", Name: "alpha", Agent: "claude", Status: "waiting",
+		StatusReason: "permission_prompt", StatusSource: "hook",
+	}
+	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
+		nil, config.Settings{}, "", nil, nil, nil, nil,
+		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+			return actual, service.ResumeNotLeasable, nil
+		},
+	)
+	// This stopped row is deliberately stale: it is what made r available.
+	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}}
+	model.selected = 0
+
+	updated, cmd := model.Update(key("r"))
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+
+	view := model.View()
+	if !strings.Contains(view, "waiting") {
+		t.Fatalf("non-leasable resume did not render actual status:\n%s", view)
+	}
+	if strings.Contains(view, "starting elsewhere") {
+		t.Fatalf("non-leasable row was misreported as starting elsewhere:\n%s", view)
+	}
+	model.detail = true
+	detail := model.View()
+	if !strings.Contains(detail, "Status reason:      permission_prompt") {
+		t.Fatalf("detail did not render actual status reason:\n%s", detail)
+	}
+}
+
 // TestResumeFailureRendersAsError proves a genuine resume failure (e.g. the
 // three SPEC-named causes from task 012) is still surfaced as an error,
 // distinct from losing the lease race.
