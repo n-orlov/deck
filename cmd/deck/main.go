@@ -124,8 +124,28 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) err
 		return fmt.Errorf("open audit log: %w", err)
 	}
 	timed := timedHookStore{Store: db, Audit: logger}
-	_, err = hookrecv.Receive(ctx, timed, trimmed, os.Getenv("DECK_SESSION_ID"), settings.Clock.Now().UnixMilli())
-	return err
+	result, err := hookrecv.Receive(ctx, timed, trimmed, os.Getenv("DECK_SESSION_ID"), settings.Clock.Now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	// SessionEnd shares the agent's tight shutdown budget and is deliberately
+	// one store write and exit. Every other hook pays for one bounded liveness
+	// pass after (and therefore outside) the measured store callback. This is
+	// the unattended path that notices and collects a different crashed pane;
+	// ReconcileWithin is liveness-only and never runs pane-text probes.
+	if result.Kind == "session_end" {
+		return nil
+	}
+	liveness := service.Service{
+		Store: db,
+		TMux:  tmux.Client{Socket: settings.Socket},
+		Audit: logger,
+		Clock: settings.Clock,
+	}
+	if err := liveness.ReconcileWithin(ctx, settings.Reconcile); err != nil {
+		return fmt.Errorf("post-hook liveness pass: %w", err)
+	}
+	return nil
 }
 
 // timedHookStore leaves resolution reads outside the measured span and wraps

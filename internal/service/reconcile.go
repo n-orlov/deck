@@ -193,7 +193,7 @@ func (s Service) RunReconciler(ctx context.Context, interval time.Duration) erro
 	if interval <= 0 {
 		return errors.New("reconciliation interval must be positive")
 	}
-	if err := s.reconcileWithin(ctx, interval); err != nil {
+	if err := s.ReconcileWithin(ctx, interval); err != nil {
 		return err
 	}
 	ticker := time.NewTicker(interval)
@@ -203,19 +203,21 @@ func (s Service) RunReconciler(ctx context.Context, interval time.Duration) erro
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := s.reconcileWithin(ctx, interval); err != nil {
+			if err := s.ReconcileWithin(ctx, interval); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-// reconcileWithin gives every liveness pass the same bounded budget as the
-// configured cadence. In particular, a stalled tmux command cannot consume
-// many reconcile intervals and make an otherwise healthy client report stale
-// liveness indefinitely.
-func (s Service) reconcileWithin(ctx context.Context, interval time.Duration) error {
-	passCtx, cancel := context.WithTimeout(ctx, interval)
+// ReconcileWithin runs one liveness-only pass with a hard budget. It is shared
+// by the TUI loop and the post-hook path: neither caller may be held forever by
+// a stalled tmux command, and this surface deliberately contains no probing.
+func (s Service) ReconcileWithin(ctx context.Context, budget time.Duration) error {
+	if budget <= 0 {
+		return errors.New("reconciliation budget must be positive")
+	}
+	passCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	return s.Reconcile(passCtx)
 }

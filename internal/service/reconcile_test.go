@@ -248,6 +248,39 @@ func TestReconcilerCapturesAndCollectsCrashFirstWriterOnly(t *testing.T) {
 	}
 }
 
+func TestReconcileWithinBoundsAStalledTmuxCommand(t *testing.T) {
+	home := t.TempDir()
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.Paths{Home: home, LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
+	db, err := store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	logger, err := audit.New(paths, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stalled := filepath.Join(home, "stalled-tmux")
+	if err := os.WriteFile(stalled, []byte("#!/bin/sh\nexec sleep 10\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	svc := Service{Store: db, TMux: tmux.Client{Binary: stalled, Socket: "stalled", Timeout: time.Hour}, Audit: logger, Clock: clock}
+
+	started := time.Now()
+	err = svc.ReconcileWithin(context.Background(), 30*time.Millisecond)
+	elapsed := time.Since(started)
+	if err == nil {
+		t.Fatal("bounded reconcile unexpectedly succeeded")
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("stalled tmux held liveness pass for %s, want < 1s", elapsed)
+	}
+}
+
 func TestCrashTailStripsControlsAndKeepsLast200Lines(t *testing.T) {
 	var captured strings.Builder
 	for i := 1; i <= 202; i++ {
