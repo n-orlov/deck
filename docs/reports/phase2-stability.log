@@ -1,0 +1,27 @@
+commit: a017146c2c101777241d30a4dbc1c383ff356a5c
+worktree before run:
+?? docs/reports/phase2-stability.log
+command: ci/stability.sh 10
+=== RUN 1 ===
+=== RUN 1: PASS (exit 0) ===
+=== RUN 2 ===
+=== RUN 2: PASS (exit 0) ===
+=== RUN 3 ===
+=== RUN 3: FAIL (exit 1) ===
+=== RUN 4 ===
+=== RUN 4: FAIL (exit 1) ===
+=== RUN 5 ===
+=== RUN 5: PASS (exit 0) ===
+=== RUN 6 ===
+=== RUN 6: FAIL (exit 1) ===
+=== RUN 7 ===
+=== RUN 7: FAIL (exit 1) ===
+=== RUN 8 ===
+=== RUN 8: FAIL (exit 1) ===
+=== RUN 9 ===
+=== RUN 9: FAIL (exit 1) ===
+=== RUN 10 ===
+=== RUN 10: FAIL (exit 1) ===
+full per-run logs and combined summary log kept in: /tmp/deck-stability.eFQoZw
+3/10 passed
+exit: 1

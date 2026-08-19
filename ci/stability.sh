@@ -18,7 +18,12 @@
 # appended into the same buffer before the pass/fail decision), and
 # ci/run.sh's sibling container is --rm per invocation so any tmux sockets
 # or other run-scoped state inside it die with the container at the end of
-# that one run and cannot leak into the next.
+# that one run and cannot leak into the next. -p=1 serializes Go packages:
+# the black-box package deliberately asserts sub-second tmux/SQLite deadlines,
+# so loading it beside the separate full Godog package would turn a stability
+# run into a host-scheduler benchmark rather than ten repetitions of the same
+# uncontended product contract. Tests and scenarios within each package remain
+# unchanged and fully executed.
 #
 # Self-test / demonstration hook: set DECK_STABILITY_SELFTEST_FAIL=1 to make
 # every run a deliberate injected failure instead of invoking the real
@@ -59,7 +64,7 @@ while [ "$i" -le "$runs" ]; do
     else
         # NOT piped: this is the real exit status of go test, captured
         # immediately, before any tee/cat touches the output.
-        (cd "$repo_root" && "$repo_root/ci/run.sh" go test -count=1 ./...) > "$run_log" 2>&1
+        (cd "$repo_root" && "$repo_root/ci/run.sh" go test -p=1 -count=1 ./...) > "$run_log" 2>&1
         status=$?
     fi
 

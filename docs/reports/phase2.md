@@ -11,12 +11,14 @@ complete, unedited command output is retained at repository-relative paths:
 | `ci/run.sh go vet ./...` | [`phase2-vet.log`](phase2-vet.log) | exit 0 |
 | `time ci/run.sh go test -v -count=1 ./...` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; `real 1m5.282s` |
 
-The full run reports **45 scenarios (45 passed)** and **501 steps (501
-passed)** under the default `~@real-agents && ~@nightly` tag expression.
-Godog's deliberately undefined and deliberately failing private harness
-self-tests also appear in the raw log; their enclosing Go test passes because
-rejecting those outcomes is what it tests. They are not members of the real
-45-scenario/501-step suite.
+The full run reports **21 features**, **45 scenarios (45 passed)**, and **501
+steps (501 passed)** under the default `~@real-agents && ~@nightly` tag
+expression. The feature count is the 21 ANSI-coloured `Feature:` headings in
+the retained Godog output (one heading per executed `.feature` file). Godog's
+deliberately undefined and deliberately failing private harness self-tests
+also appear in the raw log; their enclosing Go test passes because rejecting
+those outcomes is what it tests. They are not members of the real
+21-feature/45-scenario/501-step suite.
 
 **Top-level Go-test counting convention.** Count lines matching
 `^=== RUN   Test[A-Za-z0-9_]*$` in the verbose capture. This counts each
@@ -78,7 +80,7 @@ paths are repository-relative.
 | 35 | `concurrency.feature: one hook-driven status change propagates to every client`. |
 | 36 | Opt-in `real_agent_smoke.feature: real claude accepts injected hooks and supplies the upstream payload contract`, runnable exactly as documented below. No Claude binary was installed here, so this conformance scenario is intentionally excluded from the default capture and is not claimed as executed. `features/real_agent_hooks_test.go` does execute the strict field/type rejection logic in the default run. |
 | 37 | This report and the three repository-relative raw captures above. |
-| 38 | The full clean `-count=1` run above is the recorded baseline pass. The required fixed-commit **10/10** capture is deliberately the next scheduler checkpoint (`ci/stability.sh 10`, task 032); this report does not mislabel one pass as ten. |
+| 38 | A real fixed-commit `ci/stability.sh 10` attempt at `a017146` is retained in [`phase2-stability.log`](phase2-stability.log). It failed honestly at **3/10**, exposing timing and SQLite-lock failures; therefore R38 is **not yet proved**. The successful 10/10 fixed-commit run must replace this failed evidence after those defects are fixed. |
 | 39 | The run uses the unchanged default tag expression. No Phase 1 scenario was removed; shell assertions were re-aimed to live-shell promotion while `shell_liveness.feature` retains the unsignalled-agent negative assertion. Final protected-file/no-exclusion proof is paired with the fixed-commit stability checkpoint. |
 | 40 | The operator walkthrough below. |
 | 41 | `cmd/fake-claude: TestPaneCommandsFireEveryInjectedHookWithControllablePayload` and `TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly`; the Claude-hook feature fires commands from the pane. |
@@ -126,20 +128,31 @@ Press `Enter` to attach; detach back to deck with tmux's default `Ctrl-b d`.
 
 ### 3. Observe `running → waiting → idle`, then acknowledge with `Y`
 
-Attach with `Enter` and ask Claude to perform an action that requires a
-permission confirmation. After submitting the prompt, UserPromptSubmit keeps
-the row at `running live`. Detach with `Ctrl-b d` while the permission dialog
-is outstanding. The Notification hook changes the row to **`waiting live`**,
-shows reason `permission_prompt`, and adds the unseen marker.
+Attach with `Enter`, type this prompt exactly, and press `Enter`:
+
+```text
+Use the Bash tool to run exactly: printf 'phase2 permission check\n' >> /tmp/deck-phase2-cwd/permission-check.txt
+```
+
+Under the selected `safe`/Claude `manual` permission profile, wait until the
+Bash permission dialog appears, but do not approve it yet. UserPromptSubmit
+keeps the row at `running live`. Detach with the exact tmux sequence
+`Ctrl-b`, release both keys, then `d` while that dialog is outstanding. The
+Notification hook changes the row to **`waiting live`**, shows reason
+`permission_prompt`, and adds the unseen marker.
 
 With that row selected, press uppercase **`Y`**. Working means the unseen
 marker clears and stays clear after quitting with `q` and reopening
 `/tmp/deck-phase2`; `Y` acknowledges but deliberately does not falsify the
-waiting verdict. Alternatively, pressing `Enter` on a waiting row both
-acknowledges it and changes it to `running` as the observed answer action.
-Answer the prompt and let Claude finish, then detach. The Stop hook changes the
-row to **`idle live`**. Press `i` to open detail: it shows `source: hook`, the
-frozen-wall-clock-controlled verdict age, and Claude's last assistant message.
+waiting verdict. To continue the exact smoke path, press `Enter` on the
+waiting row; deck acknowledges it and changes it to `running` before attaching.
+In Claude's permission dialog, press `Down` until **Yes, allow once** is
+highlighted and press `Enter`. (If that option is already highlighted, press
+`Enter` without `Down`; do not choose the persistent-allow option.) Wait for
+Claude to report completion, then detach with `Ctrl-b`, release, `d`. The Stop
+hook changes the row to **`idle live`**. Press `i` to open detail: it shows
+`source: hook`, the frozen-wall-clock-controlled verdict age, and Claude's last
+assistant message.
 
 Working sequence: `starting` only before a signal, then `running live` →
 `waiting live` with an unseen marker/reason → marker cleared by `Y` (status
@@ -211,8 +224,15 @@ opt-in scenario is run in that environment.
   exclusions.
 - The default suite cannot establish real Claude conformance: `@real-agents`
   is intentionally opt-in and no Claude executable was available in this
-  environment. Declared events/fields remain strict assumptions, documented
-  in [`phase2-findings.md`](phase2-findings.md), not silently normalized facts.
+  environment. Declared events/fields and the exact permission-dialog label
+  remain strict upstream assumptions, documented in
+  [`phase2-findings.md`](phase2-findings.md), not silently normalized facts.
+- The first real fixed-commit stability attempt passed only 3/10. Its retained
+  summary names the commit and exit status; the per-run failures included
+  multiclient one-second refresh deadlines, PTY shutdown deadlines, hook
+  latency over 20 ms, a SQLite busy read, and raced post-resume source
+  expectations. R38 remains open rather than being inferred from one green
+  full-suite run.
 - Shell liveness means `running`; agent pane liveness does not. Re-aimed Phase
   1 shell assertions preserve the original protection with a separate live,
   unsignalled-agent negative scenario.
