@@ -6,27 +6,29 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// loadConfigFile reads config.toml's documented Phase 1 surface: the
-// top-level allow_yolo key and the [env] table. It intentionally does not
+// loadConfigFile reads config.toml's implemented top-level controls and the
+// [env] table. It intentionally does not
 // attempt a general TOML parser — deck's config.toml also carries [notify]
 // and [[notify.rule]] tables (SPEC \u00a710) that are out of scope here, so
 // unrecognised sections are skipped rather than misparsed. A missing file
 // yields the documented defaults (allow_yolo=false, no env) and no error; a
 // file that exists but cannot be understood yields a stated error, never a
 // silent default.
-func loadConfigFile(path string) (bool, map[string]string, error) {
+func loadConfigFile(path string) (bool, time.Duration, map[string]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, nil, nil
+			return false, DefaultStaleAfter, nil, nil
 		}
-		return false, nil, fmt.Errorf("open %s: %w", path, err)
+		return false, 0, nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
 	allowYolo := false
+	staleAfter := DefaultStaleAfter
 	var env map[string]string
 	section := ""
 
@@ -43,31 +45,52 @@ func loadConfigFile(path string) (bool, map[string]string, error) {
 		if strings.HasPrefix(text, "[") {
 			name, err := parseSectionHeader(text)
 			if err != nil {
-				return false, nil, fmt.Errorf("%s:%d: %w", path, line, err)
+				return false, 0, nil, fmt.Errorf("%s:%d: %w", path, line, err)
 			}
 			section = name
 			continue
 		}
 		key, value, err := parseKeyValue(text)
 		if err != nil {
-			return false, nil, fmt.Errorf("%s:%d: %w", path, line, err)
+			return false, 0, nil, fmt.Errorf("%s:%d: %w", path, line, err)
 		}
 		switch section {
 		case "":
-			if key == "allow_yolo" {
+			switch key {
+			case "allow_yolo":
 				parsed, err := strconv.ParseBool(value)
 				if err != nil {
-					return false, nil, fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
+					return false, 0, nil, fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
 				}
 				allowYolo = parsed
+			case "stale_after":
+				var parsed time.Duration
+				if strings.HasPrefix(value, "\"") {
+					text, err := unquoteString(value)
+					if err == nil {
+						parsed, err = time.ParseDuration(text)
+					}
+					if err != nil {
+						return false, 0, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
+					}
+				} else {
+					seconds, err := strconv.Atoi(value)
+					if err != nil {
+						return false, 0, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
+					}
+					parsed = time.Duration(seconds) * time.Second
+				}
+				if parsed <= 0 {
+					return false, 0, nil, fmt.Errorf("%s:%d: stale_after must be positive, got %q", path, line, value)
+				}
+				staleAfter = parsed
 			}
-			// Other top-level keys are not part of Phase 1's documented
-			// surface; they are ignored rather than rejected so future
-			// phases can add keys without breaking this parser.
+			// Other top-level keys are ignored so future phases can add keys
+			// without breaking this deliberately small parser.
 		case "env":
 			unquoted, err := unquoteString(value)
 			if err != nil {
-				return false, nil, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
+				return false, 0, nil, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
 			}
 			if env == nil {
 				env = make(map[string]string)
@@ -79,9 +102,9 @@ func loadConfigFile(path string) (bool, map[string]string, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return false, nil, fmt.Errorf("read %s: %w", path, err)
+		return false, 0, nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return allowYolo, env, nil
+	return allowYolo, staleAfter, env, nil
 }
 
 func stripComment(line string) string {

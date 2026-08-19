@@ -20,6 +20,7 @@ const (
 	DefaultSocket      = "deck"
 	DefaultReconcileMS = 500
 	DefaultPreviewMS   = 1000
+	DefaultStaleAfter  = 45 * time.Second
 )
 
 // Paths are the locations used by deck at runtime. DECK_HOME deliberately
@@ -40,9 +41,13 @@ type Settings struct {
 	IDs       *IDGenerator
 	Reconcile time.Duration
 	Preview   time.Duration
-	ASCII     bool
-	Animation bool
-	Color     bool
+	// StaleAfter is the wall-clock age after which an agent verdict may be
+	// sampled from its pane. It is loaded from config.toml, not an elapsed
+	// process timer, so frozen-clock scenarios can advance it on demand.
+	StaleAfter time.Duration
+	ASCII      bool
+	Animation  bool
+	Color      bool
 	// AllowYolo mirrors config.toml's top-level allow_yolo key. It defaults to
 	// false when the file, or the key within it, is absent: the yolo
 	// permission profile stays gated unless an operator opts in explicitly.
@@ -99,11 +104,15 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 			return Settings{}, err
 		}
 	}
-	allowYolo, env, err := loadConfigFile(paths.ConfigFile)
+	allowYolo, staleAfter, env, err := loadConfigFile(paths.ConfigFile)
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{paths, socket, clock, NewIDGenerator(getenv("DECK_ID_SEED")), reconcile, preview, ascii, animation, color, allowYolo, env}, nil
+	return Settings{
+		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
+		Reconcile: reconcile, Preview: preview, StaleAfter: staleAfter,
+		ASCII: ascii, Animation: animation, Color: color, AllowYolo: allowYolo, Env: env,
+	}, nil
 }
 
 func resolvePaths(getenv func(string) string, userHome func() (string, error)) (Paths, error) {

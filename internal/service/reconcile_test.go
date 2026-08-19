@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
@@ -148,6 +149,186 @@ func TestReconcilePromotesOnlyLiveStartingShell(t *testing.T) {
 	}
 	if shellEvents != 1 || agentEvents != 0 || !auditContains(t, logger.Path(), shell.ID, "tmux.shell_live") {
 		t.Fatalf("shell promotion evidence: shell events=%d agent events=%d", shellEvents, agentEvents)
+	}
+}
+
+func TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary(t *testing.T) {
+	now := time.UnixMilli(100_000)
+	for _, status := range []string{"starting", "running", "waiting"} {
+		t.Run(status, func(t *testing.T) {
+			row := store.Session{Status: status, StatusAt: now.Add(-45 * time.Second).UnixMilli()}
+			if !probeEligible(row, now, 45*time.Second) {
+				t.Fatalf("%s row was not eligible at stale_after boundary", status)
+			}
+			row.StatusAt++
+			if probeEligible(row, now, 45*time.Second) {
+				t.Fatalf("%s row became eligible one millisecond early", status)
+			}
+		})
+	}
+	for _, status := range []string{"idle", "error", "stopped"} {
+		if probeEligible(store.Session{Status: status, StatusAt: 1}, now, time.Millisecond) {
+			t.Fatalf("%s row must never be probe-eligible", status)
+		}
+	}
+}
+
+func TestTUIProbeReconcileUsesWallClockStalenessAndHookPrecedence(t *testing.T) {
+	cwd := t.TempDir()
+	svc, db, _, _ := newAgentTestService(t, nil, "probe-reconcile")
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "45s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Clock = clock
+	now := svc.Clock.Now().UnixMilli()
+	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000026", Name: "sampled claude", CWD: cwd,
+		Agent: "claude", CapturedPath: "/bin", Status: "starting", StatusSource: "tmux", StatusAt: now, CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile(filepath.Join("..", "agent", "testdata", "probes", "claude", "waiting.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{
+		Slug: session.Slug, CWD: cwd,
+		Command: []string{"/bin/sh", "-c", `printf '%s' "$1"; sleep 30`, "probe-fixture", string(fixture)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	const staleAfter = 45 * time.Second
+	if err := svc.ReconcileWithProbes(context.Background(), staleAfter); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "starting" || got.StatusSource != "tmux" {
+		t.Fatalf("early probe changed row = %#v", got)
+	}
+	var probeEvents int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind LIKE 'probe.%'`, session.ID).Scan(&probeEvents); err != nil || probeEvents != 0 {
+		t.Fatalf("early probe events = %d, %v; want 0", probeEvents, err)
+	}
+
+	// Advance the frozen wall clock on demand instead of sleeping 45 seconds.
+	// The liveness-only path used by deck _hook must still decline pane sampling
+	// even when an adapter and a classifiable fixture are present.
+	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: session.ID, Status: "running", Source: "hook", At: now, EventKind: "test.hook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.Clock.Advance().UnixMilli(); got != now+staleAfter.Milliseconds() {
+		t.Fatalf("advanced wall clock = %d, want %d", got, now+staleAfter.Milliseconds())
+	}
+	if err := svc.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusSource != "hook" {
+		t.Fatalf("liveness-only reconcile probed = %#v", got)
+	}
+
+	if err := svc.ReconcileWithProbes(context.Background(), staleAfter); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "waiting" || got.StatusSource != "probe" || got.StatusReason != "permission prompt" {
+		t.Fatalf("stale hook correction = %#v", got)
+	}
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'probe.waiting'`, session.ID).Scan(&probeEvents); err != nil || probeEvents != 1 {
+		t.Fatalf("probe evidence = %d, %v; want 1", probeEvents, err)
+	}
+}
+
+type racingProbeAdapter struct {
+	agent.Adapter
+	probe func() (string, string)
+}
+
+func (a racingProbeAdapter) Probe(string) (string, string) { return a.probe() }
+
+func TestRecordedProbeLosesToHookThatBecomesFreshDuringClassification(t *testing.T) {
+	cwd := t.TempDir()
+	svc, db, _, _ := newAgentTestService(t, nil, "probe-race")
+	now := svc.Clock.Now().UnixMilli()
+	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000027", Name: "raced probe", CWD: cwd,
+		Agent: "claude", CapturedPath: "/bin", Status: "running", StatusSource: "hook", StatusAt: now - 60_000, CreatedAt: now - 60_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "echo pane; sleep 30"}}); err != nil {
+		t.Fatal(err)
+	}
+	svc.Agents.Register(racingProbeAdapter{Adapter: agent.NewClaude(), probe: func() (string, string) {
+		if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+			SessionID: session.ID, Status: "idle", Source: "hook", At: now, EventKind: "test.fresh_hook",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return "waiting", "permission prompt"
+	}})
+	if err := svc.ReconcileWithProbes(context.Background(), 45*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "idle" || got.StatusSource != "hook" || got.StatusAt != now {
+		t.Fatalf("fresh hook lost precedence = %#v", got)
+	}
+	var events int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'probe.waiting'`, session.ID).Scan(&events); err != nil || events != 1 {
+		t.Fatalf("losing probe evidence = %d, %v; want 1", events, err)
+	}
+}
+
+func TestProbeReconcileNeverProbesShell(t *testing.T) {
+	cwd := t.TempDir()
+	svc, db, _, _ := newAgentTestService(t, nil, "shell-no-probe")
+	now := svc.Clock.Now().UnixMilli()
+	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000028", Name: "unprobeable shell", CWD: cwd,
+		Agent: "shell", CapturedPath: "/bin", Status: "running", StatusSource: "tmux", StatusAt: now - 60_000, CreatedAt: now - 60_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "echo 'API Error:'; sleep 30"}}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	svc.Agents.Register(racingProbeAdapter{Adapter: agent.NewShell(), probe: func() (string, string) {
+		calls++
+		return "error", "must not run"
+	}})
+	if err := svc.ReconcileWithProbes(context.Background(), 45*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("shell Probe called %d times, want 0", calls)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusSource != "tmux" {
+		t.Fatalf("shell changed by probe reconcile = %#v", got)
 	}
 }
 

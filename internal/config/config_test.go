@@ -165,6 +165,9 @@ func TestConfigFileMissingDefaultsToNoYoloAndNoEnv(t *testing.T) {
 	if settings.AllowYolo {
 		t.Fatal("AllowYolo should default to false when config.toml is absent")
 	}
+	if settings.StaleAfter != DefaultStaleAfter {
+		t.Fatalf("StaleAfter = %s, want default %s", settings.StaleAfter, DefaultStaleAfter)
+	}
 	if settings.Env != nil {
 		t.Fatalf("Env should be nil when config.toml is absent, got %+v", settings.Env)
 	}
@@ -192,6 +195,21 @@ func TestConfigFileAllowYoloFalse(t *testing.T) {
 	}
 }
 
+func TestConfigFileStaleAfter(t *testing.T) {
+	for name, value := range map[string]string{"seconds": "90", "duration": `"1m30s"`} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeConfigFile(t, "stale_after = "+value+"\n")
+			settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if settings.StaleAfter != 90*time.Second {
+				t.Fatalf("StaleAfter = %s, want 90s", settings.StaleAfter)
+			}
+		})
+	}
+}
+
 func TestConfigFileEnvTable(t *testing.T) {
 	dir := writeConfigFile(t, "allow_yolo = true\n\n[env]\nPATH = \"/opt/tools:/usr/bin\"\nFOO = \"bar\"\n")
 	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
@@ -216,6 +234,7 @@ func TestConfigFileMalformedIsRejected(t *testing.T) {
 	for name, contents := range map[string]string{
 		"no equals":            "allow_yolo true\n",
 		"bad bool":             "allow_yolo = maybe\n",
+		"bad stale duration":   "stale_after = \"0s\"\n",
 		"unterminated section": "[env\nFOO = \"bar\"\n",
 		"unquoted env value":   "[env]\nFOO = bar\n",
 		"empty key":            "= \"x\"\n",

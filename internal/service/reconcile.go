@@ -17,6 +17,25 @@ import (
 // never launches a replacement. Each observed disappearance is recorded both
 // in the store's event log and in the JSONL audit log.
 func (s Service) Reconcile(ctx context.Context) error {
+	return s.reconcile(ctx, 0)
+}
+
+// ReconcileWithProbes is the TUI-only reconciliation path. In addition to the
+// same liveness observations as Reconcile, it samples eligible live agent panes
+// whose last accepted verdict is at least staleAfter old. Hook callers must use
+// Reconcile or ReconcileWithin instead so pane heuristics never enter the hook
+// critical path.
+func (s Service) ReconcileWithProbes(ctx context.Context, staleAfter time.Duration) error {
+	if staleAfter <= 0 {
+		return errors.New("probe stale_after must be positive")
+	}
+	if s.Agents == nil {
+		return errors.New("probe reconciliation requires an agent registry")
+	}
+	return s.reconcile(ctx, staleAfter)
+}
+
+func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil {
 		return errors.New("reconciliation requires store, audit logger, and clock")
 	}
@@ -60,6 +79,32 @@ func (s Service) Reconcile(ctx context.Context) error {
 					}
 					if err := s.Audit.Transition(session.ID, "tmux.shell_live"); err != nil {
 						return fmt.Errorf("audit live shell session %q: %w", session.ID, err)
+					}
+				}
+				if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
+					if len(observed.Panes) == 0 {
+						continue
+					}
+					captured, err := s.TMux.CapturePane(ctx, observed.Panes[0].ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
+					if err != nil {
+						if tmux.IsTargetAbsent(err) {
+							continue
+						}
+						return fmt.Errorf("capture probe pane for session %q: %w", session.ID, err)
+					}
+					adapter, ok := s.Agents.Lookup(session.Agent)
+					if !ok {
+						return fmt.Errorf("probe session %q: unknown agent %q", session.ID, session.Agent)
+					}
+					status, reason := adapter.Probe(string(captured))
+					if status != "" {
+						now := s.Clock.Now().UnixMilli()
+						if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+							SessionID: session.ID, Status: status, Reason: reason, Source: "probe", At: now,
+							StaleAfter: staleAfter.Milliseconds(), EventKind: "probe." + status,
+						}); err != nil {
+							return fmt.Errorf("record probe for session %q: %w", session.ID, err)
+						}
 					}
 				}
 				continue
@@ -111,6 +156,15 @@ func (s Service) Reconcile(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func probeEligible(session store.Session, now time.Time, staleAfter time.Duration) bool {
+	switch session.Status {
+	case "starting", "running", "waiting":
+		return now.UnixMilli()-session.StatusAt >= staleAfter.Milliseconds()
+	default:
+		return false
+	}
 }
 
 func crashedPane(session tmux.Session) (tmux.Pane, bool) {

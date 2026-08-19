@@ -74,10 +74,13 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
 		ConfigEnv: settings.Env, DeckExecutable: executable, DeckHome: settings.Paths.Home,
 	}
-	// The TUI invokes this liveness pass immediately before each configured
-	// list refresh, so a real client observes externally removed tmux sessions
-	// and servers without ever bootstrapping a replacement server.
-	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, sessions.Reconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry)
+	// The TUI owns pane-text sampling. Its reconcile callback performs liveness
+	// first and then probes stale eligible agents; the hidden hook command below
+	// deliberately wires only ReconcileWithin and can therefore never probe.
+	tuiReconcile := func(ctx context.Context) error {
+		return sessions.ReconcileWithProbes(ctx, settings.StaleAfter)
+	}
+	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry)
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(stderr, "deck:", err)
 		return 0
