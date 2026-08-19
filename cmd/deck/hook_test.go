@@ -15,6 +15,106 @@ import (
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
+func TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd(t *testing.T) {
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "deck")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build released deck: %v: %s", err, output)
+	}
+
+	home := t.TempDir()
+	paths := config.Paths{Home: home, DataDir: home, ConfigFile: filepath.Join(home, "config.toml"), LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
+	db, err := store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct{ id, conversation string }{
+		{id: "ending", conversation: "conversation-ending"},
+		{id: "notifying", conversation: "conversation-notifying"},
+		{id: "sentinel"},
+	} {
+		status, source := "starting", "user"
+		if fixture.id == "sentinel" {
+			status, source = "running", "hook"
+		}
+		if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+			ID: fixture.id, Name: fixture.id, CWD: home, Agent: "claude", CapturedPath: "/bin",
+			Status: status, StatusSource: source, StatusAt: 1000, CreatedAt: 1000,
+			ConversationID: fixture.conversation,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	fakeBin := t.TempDir()
+	marker := filepath.Join(home, "tmux-invoked")
+	fakeTmux := filepath.Join(fakeBin, "tmux")
+	if err := os.WriteFile(fakeTmux, []byte("#!/bin/sh\nprintf invoked > \"$DECK_TEST_TMUX_MARKER\"\nexec /bin/sleep 10\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run := func(payload string) (time.Duration, string, error) {
+		t.Helper()
+		cmd := exec.Command(binary, "_hook")
+		cmd.Stdin = strings.NewReader(payload)
+		cmd.Env = append(os.Environ(),
+			"DECK_HOME="+home,
+			"DECK_TMUX_SOCKET=deck-hook-stalled",
+			"DECK_RECONCILE_MS=30",
+			"DECK_TEST_TMUX_MARKER="+marker,
+			"PATH="+fakeBin,
+		)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		started := time.Now()
+		err := cmd.Run()
+		return time.Since(started), stderr.String(), err
+	}
+
+	elapsed, stderr, err := run(`{"hook_event_name":"SessionEnd","session_id":"conversation-ending","reason":"logout"}`)
+	if err != nil {
+		t.Fatalf("released SessionEnd failed: %v, stderr=%q", err, stderr)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("SessionEnd took %s despite its no-liveness contract", elapsed)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("SessionEnd invoked tmux: %v", err)
+	}
+	db, err = store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel, err := db.GetSession(context.Background(), "sentinel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sentinel.Status != "running" || sentinel.StatusSource != "hook" {
+		t.Fatalf("SessionEnd reconciled unrelated sentinel: %#v", sentinel)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	elapsed, stderr, err = run(`{"hook_event_name":"Notification","session_id":"conversation-notifying","notification_type":"permission_prompt"}`)
+	if err == nil || !strings.Contains(stderr, "post-hook liveness pass") {
+		t.Fatalf("stalled released hook err=%v stderr=%q", err, stderr)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("stalled tmux held released hook for %s, want < 1s", elapsed)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("nonterminal hook did not invoke stalled tmux fixture: %v", err)
+	}
+}
+
 func TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux(t *testing.T) {
 	root, err := os.Getwd()
 	if err != nil {

@@ -19,10 +19,12 @@ import (
 // invoked, making the latency scenario genuinely single-writer.
 func registerHookContractSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^an uncontended Claude hook target "([^"]+)" exists in the scenario store$`, uncontendedClaudeHookTarget)
+	sc.Step(`^an active liveness sentinel exists in the scenario store$`, activeLivenessSentinelExists)
 	sc.Step(`^the released hook receiver handles a "([^"]+)" event for "([^"]+)"$`, releasedHookHandlesEvent)
 	sc.Step(`^exactly one hook store write is recorded$`, exactlyOneHookStoreWrite)
 	sc.Step(`^its operation-scoped store duration is below ([0-9]+) milliseconds$`, hookStoreDurationBelow)
 	sc.Step(`^the scenario store session "([^"]+)" is stopped by session end$`, sessionStoppedBySessionEnd)
+	sc.Step(`^the liveness sentinel remains untouched$`, livenessSentinelRemainsUntouched)
 	sc.Step(`^the hook audit records no liveness, probe, dispatch, or enqueue attempt$`, hookAuditHasNoSubsequentWork)
 }
 
@@ -59,6 +61,27 @@ func uncontendedClaudeHookTarget(ctx context.Context, name string) error {
 		"hook-"+name, name, "hook-"+name, h.Home, os.Getenv("PATH"), "conversation-"+name)
 	if err != nil {
 		return fmt.Errorf("insert Claude hook target %q: %w", name, err)
+	}
+	return nil
+}
+
+func activeLivenessSentinelExists(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("sqlite", filepath.Join(h.Home, "state.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.ExecContext(ctx, `INSERT INTO sessions
+		(id, name, slug, cwd, agent, captured_path,
+		 status, status_source, status_at, created_at)
+		VALUES ('hook-liveness-sentinel', 'liveness sentinel', 'hook-liveness-sentinel',
+			?, 'claude', ?, 'running', 'hook', 1, 1)`, h.Home, os.Getenv("PATH"))
+	if err != nil {
+		return fmt.Errorf("insert active liveness sentinel: %w", err)
 	}
 	return nil
 }
@@ -171,6 +194,33 @@ func sessionStoppedBySessionEnd(ctx context.Context, name string) error {
 	}
 	if eventCount != 1 {
 		return fmt.Errorf("session_end event count = %d, want 1", eventCount)
+	}
+	return nil
+}
+
+func livenessSentinelRemainsUntouched(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("sqlite", filepath.Join(h.Home, "state.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var status, source string
+	var eventCount int
+	if err := db.QueryRowContext(ctx, `SELECT status, status_source FROM sessions WHERE id = 'hook-liveness-sentinel'`).Scan(&status, &source); err != nil {
+		return fmt.Errorf("read liveness sentinel: %w", err)
+	}
+	if status != "running" || source != "hook" {
+		return fmt.Errorf("liveness sentinel changed to status %q source %q", status, source)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = 'hook-liveness-sentinel'`).Scan(&eventCount); err != nil {
+		return err
+	}
+	if eventCount != 0 {
+		return fmt.Errorf("liveness sentinel received %d events, want none", eventCount)
 	}
 	return nil
 }

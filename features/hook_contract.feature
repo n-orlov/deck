@@ -11,7 +11,9 @@ Feature: Hook receiver write contract
 
   Scenario: Session end performs one write and no subsequent work
     Given an uncontended Claude hook target "ending" exists in the scenario store
+    And an active liveness sentinel exists in the scenario store
     When the released hook receiver handles a "SessionEnd" event for "ending"
     Then the scenario store session "ending" is stopped by session end
+    And the liveness sentinel remains untouched
     And exactly one hook store write is recorded
     And the hook audit records no liveness, probe, dispatch, or enqueue attempt
