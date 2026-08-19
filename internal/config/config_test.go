@@ -42,7 +42,7 @@ func TestPathsRespectDeckHomeAndXDG(t *testing.T) {
 
 func TestControlsAndClock(t *testing.T) {
 	settings, err := LoadFrom(environment(map[string]string{
-		"DECK_TMUX_SOCKET": "scenario_42", "DECK_CLOCK": "2025-01-02T03:04:05Z", "DECK_CLOCK_STEP": "2s",
+		"DECK_HOME": t.TempDir(), "DECK_TMUX_SOCKET": "scenario_42", "DECK_CLOCK": "2025-01-02T03:04:05Z", "DECK_CLOCK_STEP": "2s",
 		"DECK_RECONCILE_MS": "9", "DECK_PREVIEW_MS": "11", "DECK_ASCII": "true", "DECK_ANIM": "false", "NO_COLOR": "1",
 	}), fakeHome)
 	if err != nil {
@@ -62,6 +62,35 @@ func TestControlsAndClock(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 	if settings.Clock.Elapsed() <= before {
 		t.Fatal("elapsed duration did not advance under frozen wall clock")
+	}
+}
+
+func TestFrozenClockUsesResolvedDataRootWithoutDeckHome(t *testing.T) {
+	data := t.TempDir()
+	env := environment(map[string]string{
+		"XDG_DATA_HOME": data,
+		"DECK_CLOCK":    "2025-01-02T03:04:05Z",
+	})
+	first, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clockFile := filepath.Join(data, "deck", "clock.now")
+	if err := os.MkdirAll(filepath.Dir(clockFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(clockFile, []byte("2025-01-02T03:08:05Z\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := first.Clock.Now().Format(time.RFC3339); got != "2025-01-02T03:08:05Z" {
+		t.Fatalf("clock.now under resolved data root = %s", got)
+	}
+	second, err := LoadFrom(env, fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := second.Clock.Now().Format(time.RFC3339); got != "2025-01-02T03:08:05Z" {
+		t.Fatalf("second process now = %s", got)
 	}
 }
 

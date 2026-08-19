@@ -348,17 +348,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.help = !m.help
-		case ">":
-			if m.settings.Clock == nil {
-				return m, nil
-			}
-			advanced, err := m.settings.Clock.AdvanceShared()
-			if err != nil {
-				m.attachError = "Cannot advance frozen clock: " + err.Error()
-			} else {
-				m.attachError = "Frozen clock advanced to " + advanced.Format(time.RFC3339)
-			}
-			return m, m.loadSessions
 		case "esc":
 			m.help = false
 			m.detail = false
@@ -1134,8 +1123,6 @@ Keys
     reuse it, or launch a one-shot fresh conversation (reverts to normal
     auto-resume afterward, it does not stay pinned or cleared)
   i toggle detail view for the selected session
-  > advance the shared frozen wall clock by one DECK_CLOCK_STEP on demand;
-    every deck process using the same DECK_HOME observes the new time
   ? open/close help; Esc closes help
   q or Ctrl+C quit deck
 
@@ -1164,8 +1151,10 @@ explicit y confirm keystroke before it takes effect.
 Runtime controls
   DECK_HOME             isolated data/config/state root
   DECK_TMUX_SOCKET      private tmux socket (default: deck)
-  DECK_CLOCK            freeze wall clock (RFC3339)
-  DECK_CLOCK_STEP       step size used when > advances the shared frozen clock
+  DECK_CLOCK            freeze wall clock (RFC3339); clock.now overrides it
+  DECK_CLOCK_STEP       suggested increment for on-demand clock advancement
+  clock.now             RFC3339 instant under the resolved data root; write it
+                        to advance every running process sharing that root
   DECK_ID_SEED          deterministic generated UUIDs
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds

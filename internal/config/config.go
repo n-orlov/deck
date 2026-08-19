@@ -66,9 +66,9 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if err != nil {
 		return Settings{}, err
 	}
-	if getenv("DECK_HOME") != "" {
-		clock.sharedPath = filepath.Join(paths.Home, "clock.now")
-	}
+	// A frozen clock is shared under the resolved data root even when DECK_HOME
+	// is unset, so every process using the same normal installation agrees.
+	clock.sharedPath = filepath.Join(paths.Home, "clock.now")
 	reconcile, err := milliseconds(getenv("DECK_RECONCILE_MS"), DefaultReconcileMS, "DECK_RECONCILE_MS")
 	if err != nil {
 		return Settings{}, err
@@ -201,14 +201,14 @@ func (c *Clock) Now() time.Time {
 }
 
 // Advance moves a frozen clock one configured step and returns its new wall time.
-// Clocks loaded with DECK_HOME persist the resulting absolute instant there, so
-// already-running clients and later subprocesses all observe the same value.
+// Clocks loaded through Load persist the resulting absolute instant under the
+// resolved data root, so already-running clients and later subprocesses agree.
 func (c *Clock) Advance() time.Time {
 	value, _ := c.AdvanceShared()
 	return value
 }
 
-// AdvanceShared is the error-reporting form used by the on-demand TUI control.
+// AdvanceShared is the error-reporting form for clock-control tooling and tests.
 func (c *Clock) AdvanceShared() (time.Time, error) {
 	if !c.frozen || c.step == 0 {
 		return c.Now(), nil

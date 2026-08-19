@@ -28,7 +28,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"p pin", "one-shot fresh conversation", "auto-resume",
 		"Permission profile", "Pre-launch command", "loading secrets",
 		"Login shell", "Launch args", "allow_yolo",
-		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "DECK_ID_SEED",
+		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "clock.now", "resolved data root", "DECK_ID_SEED",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
 		"tmux -L deck ls", "Plain tmux attach does not find deck",
 	} {
@@ -36,7 +36,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 			t.Errorf("help view missing %q", want)
 		}
 	}
-	for _, unavailable := range []string{"resume/start", "restart preserving", "delete", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
+	for _, unavailable := range []string{"> advance", "resume/start", "restart preserving", "delete", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("help advertises unavailable action %q:\n%s", unavailable, help)
 		}
@@ -73,7 +73,7 @@ func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 	}
 }
 
-func TestFrozenClockAdvancesOnDemandNotOnCreation(t *testing.T) {
+func TestFrozenClockDoesNotClaimSidebarWidthKey(t *testing.T) {
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "2m")
 	if err != nil {
 		t.Fatal(err)
@@ -84,14 +84,9 @@ func TestFrozenClockAdvancesOnDemandNotOnCreation(t *testing.T) {
 	if got := clock.Now().Format(time.RFC3339); got != "2025-01-02T03:04:05Z" {
 		t.Fatalf("creation advanced clock to %s", got)
 	}
-	before := clock.Elapsed()
-	time.Sleep(2 * time.Millisecond)
 	updated, _ = model.Update(key(">"))
-	if got := clock.Now().Format(time.RFC3339); got != "2025-01-02T03:06:05Z" {
-		t.Fatalf("on-demand clock = %s, want one 2m step", got)
-	}
-	if clock.Elapsed() <= before {
-		t.Fatal("monotonic elapsed time did not advance through clock step")
+	if got := clock.Now().Format(time.RFC3339); got != "2025-01-02T03:04:05Z" {
+		t.Fatalf("> key advanced clock to %s; it is reserved for sidebar width", got)
 	}
 	if updated.(Model).creating {
 		t.Fatal("successful creation left create dialog open")

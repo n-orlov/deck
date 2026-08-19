@@ -122,14 +122,13 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := client.WaitForFrame(ctx, true, "created just now"); err != nil {
 		return fmt.Errorf("creation unexpectedly stepped frozen time: %w", err)
 	}
-	// The documented > control advances while both clients are already running.
-	// Since now is persisted under DECK_HOME, the observer and a subprocess
-	// started only after the advance must independently render the same age.
-	if err := client.Send(">"); err != nil {
-		return err
+	// clock.now is the documented on-demand control while both clients run.
+	// A subprocess started only after the write must independently agree.
+	if err := os.WriteFile(filepath.Join(h.Home, "clock.now"), []byte("2025-01-02T03:06:05Z\n"), 0o600); err != nil {
+		return fmt.Errorf("advance shared frozen clock: %w", err)
 	}
-	if err := client.WaitForFrame(ctx, true, "Frozen clock advanced to 2025-01-02T03:06:05Z"); err != nil {
-		return err
+	if err := client.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
+		return fmt.Errorf("running client did not read shared frozen now: %w", err)
 	}
 	if err := observer.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
 		return fmt.Errorf("already-running observer did not read shared frozen now: %w", err)
