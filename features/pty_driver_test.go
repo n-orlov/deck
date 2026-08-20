@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/hinshun/vt10x"
 )
 
 // ScreenDriver drives a released deck binary through a real PTY.  It is kept
@@ -24,7 +24,7 @@ import (
 type ScreenDriver struct {
 	terminal *os.File
 	cmd      *exec.Cmd
-	screen   vt10x.Terminal
+	screen   vt.Terminal
 
 	mu          sync.Mutex
 	raw         bytes.Buffer
@@ -55,12 +55,13 @@ func StartScreenDriver(ctx context.Context, binary string, env []string) (*Scree
 	d := &ScreenDriver{
 		terminal: terminal,
 		cmd:      cmd,
-		screen:   vt10x.New(vt10x.WithSize(int(terminalColumns), int(terminalRows))),
+		screen:   vt.NewEmulator(int(terminalColumns), int(terminalRows)),
 		updated:  make(chan struct{}, 1),
 		done:     make(chan struct{}),
 		readDone: make(chan struct{}),
 	}
 	go d.read()
+	go d.drainScreenInput()
 	go func() {
 		err := cmd.Wait()
 		d.mu.Lock()
@@ -69,6 +70,20 @@ func StartScreenDriver(ctx context.Context, binary string, env []string) (*Scree
 		close(d.done)
 	}()
 	return d, nil
+}
+
+// drainScreenInput discards synthetic terminal-query responses the emulator
+// queues on its own input pipe (for example, answering its own OSC 11
+// background-colour query). Nothing needs to consume them, but leaving the
+// pipe unread would block the emulator's Write call forever the first time a
+// query fires, since io.Pipe writes are synchronous.
+func (d *ScreenDriver) drainScreenInput() {
+	buf := make([]byte, 256)
+	for {
+		if _, err := d.screen.Read(buf); err != nil {
+			return
+		}
+	}
 }
 
 func (d *ScreenDriver) read() {
@@ -286,4 +301,4 @@ func TestNormalizeFrame(t *testing.T) {
 	}
 }
 
-var _ io.Writer = vt10x.New(vt10x.WithSize(1, 1))
+var _ io.Writer = vt.NewEmulator(1, 1)
