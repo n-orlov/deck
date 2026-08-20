@@ -180,6 +180,13 @@ type Session struct {
 	StatusSource string
 	StatusAt     int64
 	CreatedAt    int64
+	// Workspace is SPEC requirement 30's sidebar grouping key: the
+	// sessions.workspace column verbatim when a row has recorded one,
+	// defaulting to the basename of CWD when it has not (see
+	// DefaultWorkspace and scanSession below). It is never derived from
+	// any notion of "repo" — the column and this default are the only
+	// two sources.
+	Workspace string
 
 	KilledByUser   bool
 	PaneExitStatus *int
@@ -385,15 +392,21 @@ func scanSession(row interface {
 }) (Session, error) {
 	var session Session
 	var launchArgsJSON, envJSON string
-	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage sql.NullString
+	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace sql.NullString
 	var loginShell, killedByUser, acknowledged int
 	var paneExitStatus sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
-		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState); err != nil {
+		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
+		&workspace); err != nil {
 		return Session{}, err
+	}
+	if workspace.Valid && workspace.String != "" {
+		session.Workspace = workspace.String
+	} else {
+		session.Workspace = DefaultWorkspace(session.CWD)
 	}
 	if err := json.Unmarshal([]byte(launchArgsJSON), &session.LaunchArgs); err != nil {
 		return Session{}, fmt.Errorf("decode launch args: %w", err)
@@ -417,10 +430,26 @@ func scanSession(row interface {
 	return session, nil
 }
 
+// DefaultWorkspace is SPEC requirement 30's fallback grouping key when a
+// session row has no explicit sessions.workspace value: the basename of
+// its cwd, never anything repo-related. filepath.Base of an empty string
+// or "." both return ".", which is an honest (if unhelpful) label for a
+// cwd deck could not otherwise identify. Exported so internal/tui can apply
+// the identical fallback to a Session built directly in a test (bypassing
+// scanSession) without re-deriving the rule.
+func DefaultWorkspace(cwd string) string {
+	base := filepath.Base(strings.TrimRight(cwd, "/"))
+	if base == "" {
+		return cwd
+	}
+	return base
+}
+
 const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
-		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state`
+		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
+		workspace`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.

@@ -50,6 +50,7 @@ type Model struct {
 	resume              func(context.Context, string) (store.Session, service.ResumeOutcome, error)
 	profileSwitch       func(context.Context, string, string) (store.Session, error)
 	selected            int
+	collapsedGroups     map[string]bool
 	attachError         string
 	resumeNote          string
 	profileSwitching    bool
@@ -522,12 +523,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createYoloConfirmed = false
 			}
 		case "up", "k":
-			if m.selected > 0 {
-				m.selected--
+			if next, ok := m.prevVisibleSelection(m.selected); ok {
+				m.selected = next
 			}
 		case "down", "j":
-			if m.selected+1 < len(m.sessions) {
-				m.selected++
+			if next, ok := m.nextVisibleSelection(m.selected); ok {
+				m.selected = next
 			}
 		case "pgup":
 			// ·11.3 requirement 19: PgUp/PgDn always drive the list, since the
@@ -537,11 +538,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selected < 0 {
 				m.selected = 0
 			}
+			m.selected = m.nearestVisibleSelection(m.selected)
 		case "pgdown":
 			m.selected += m.sidebarRowsPerPage()
 			if last := len(m.sessions) - 1; m.selected > last {
 				m.selected = max(last, 0)
 			}
+			m.selected = m.nearestVisibleSelection(m.selected)
 		case "Y":
 			if m.acknowledge == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -923,8 +926,14 @@ func (m Model) sidebarBodyLines(contentWidth int) []string {
 		lines = append(lines, wrapText("No sessions yet. Press n to create a session.", contentWidth)...)
 		return lines
 	}
-	for index, session := range m.sessions {
-		lines = append(lines, m.sidebarRowLines(index, session)...)
+	for _, group := range m.groupSessions() {
+		lines = append(lines, m.groupHeaderText(group))
+		if m.isGroupCollapsed(group.Workspace) {
+			continue
+		}
+		for _, is := range group.Sessions {
+			lines = append(lines, m.sidebarRowLines(is.Index, is.Session)...)
+		}
 	}
 	return lines
 }

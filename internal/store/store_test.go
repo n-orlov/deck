@@ -1018,6 +1018,61 @@ func TestSlugContainsOnlyTmuxSafeASCII(t *testing.T) {
 	}
 }
 
+// TestListSessionsDefaultsWorkspaceToCWDBasename covers SPEC requirement 30's
+// grouping key: sessions.workspace defaults to the basename of cwd when a
+// row has never had one recorded (every CreateSession call today, since
+// there is no create-time input for it yet), and an explicit column value
+// — written directly, the only way a workspace ever gets set right now —
+// is preserved verbatim rather than being overridden by the default. Never
+// derived from anything "repo"-shaped.
+func TestListSessionsDefaultsWorkspaceToCWDBasename(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000a1", Name: "defaulted", CWD: "/work/svc-a",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000a2", Name: "explicit", CWD: "/work/svc-b",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 101, CreatedAt: 101,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB().ExecContext(ctx, `UPDATE sessions SET workspace = ? WHERE id = ?`, "team-shared", "00000000-0000-4000-8000-0000000000a2"); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d, want 2", len(sessions))
+	}
+	if sessions[0].Workspace != "svc-a" {
+		t.Fatalf("defaulted workspace = %q, want basename of cwd %q", sessions[0].Workspace, "svc-a")
+	}
+	if sessions[1].Workspace != "team-shared" {
+		t.Fatalf("explicit workspace = %q, want the recorded value unchanged by the default", sessions[1].Workspace)
+	}
+	// GetSession goes through the same scanSession/sessionColumns path;
+	// prove it independently rather than assuming ListSessions and GetSession
+	// can never drift.
+	got, err := st.GetSession(ctx, "00000000-0000-4000-8000-0000000000a1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Workspace != "svc-a" {
+		t.Fatalf("GetSession workspace = %q, want %q", got.Workspace, "svc-a")
+	}
+}
+
 func assertMode(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
 	info, err := os.Stat(path)
