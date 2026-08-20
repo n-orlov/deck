@@ -151,6 +151,88 @@ func TestCollapsedGroupStaysNavigable(t *testing.T) {
 	}
 }
 
+// TestGKeyTogglesOnlySelectedRowsGroup is task 039's SPEC §11.8 keyboard
+// duplicate of toggleGroupCollapse: pressing "g" on a selected row flips
+// only that row's own workspace group, leaving every other group's
+// collapse state exactly as it was.
+func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
+	// Single-workspace round trip: with nothing else to move selection to,
+	// setGroupCollapsed's own "fall back to 0" behaviour (internal/tui/
+	// group.go's nearestVisibleSelection) keeps m.selected pointing at the
+	// same row across both collapse and the following expand, so two "g"
+	// presses in a row toggle the same group closed then open again.
+	one := groupTestModel([]store.Session{
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+	})
+	one.selected = 0
+
+	updated, _ := one.Update(key("g"))
+	one = updated.(Model)
+	if !one.isGroupCollapsed("infra") {
+		t.Fatalf("g did not collapse the selected row's only group")
+	}
+
+	updated, _ = one.Update(key("g"))
+	one = updated.(Model)
+	if one.isGroupCollapsed("infra") {
+		t.Fatalf("a second g did not expand the group back")
+	}
+
+	// Multi-workspace: collapsing the selected row's group must never touch
+	// a different, unrelated group's own collapse state (this is the case
+	// setGroupCollapsed's "move selection to the nearest still-visible
+	// session" fixup actually triggers, since the collapsed group's own
+	// rows all become unselectable).
+	two := groupTestModel([]store.Session{
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+	})
+	two.selected = 0 // "a1", inside "infra"
+
+	updated, _ = two.Update(key("g"))
+	two = updated.(Model)
+	if !two.isGroupCollapsed("infra") {
+		t.Fatalf("g did not collapse the selected row's group")
+	}
+	if two.isGroupCollapsed("service-a") {
+		t.Fatalf("g collapsed a group other than the selected row's own")
+	}
+	if !two.isSessionVisible(two.selected) {
+		t.Fatalf("selection %d landed on a hidden row after g collapsed its group", two.selected)
+	}
+}
+
+// TestGKeyNoopUnderOverlaysAndWithNoSessions proves "g" behaves like every
+// other bare-letter binding: a no-op while help or the `i` detail dialog
+// covers the sidebar, and a no-op (not a panic) with no session to resolve
+// a group from.
+func TestGKeyNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
+	m := groupTestModel([]store.Session{
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+	})
+	m.selected = 0
+
+	m.help = true
+	updated, _ := m.Update(key("g"))
+	m = updated.(Model)
+	if m.isGroupCollapsed("infra") {
+		t.Fatalf("g collapsed a group while help was open")
+	}
+	m.help = false
+
+	m.detail = true
+	updated, _ = m.Update(key("g"))
+	m = updated.(Model)
+	if m.isGroupCollapsed("infra") {
+		t.Fatalf("g collapsed a group while the detail dialog was open")
+	}
+	m.detail = false
+
+	empty := groupTestModel(nil)
+	updated, _ = empty.Update(key("g"))
+	_ = updated.(Model) // must not panic with no sessions to select from
+}
+
 // TestToggleGroupCollapseFlipsState is the direct collapse/expand unit
 // test task 028's mouse header click will drive.
 func TestToggleGroupCollapseFlipsState(t *testing.T) {

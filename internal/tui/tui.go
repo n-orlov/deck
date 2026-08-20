@@ -637,6 +637,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected = next
 				}
 			}
+		case "g":
+			// SPEC §11.8 gap (requirement 30's collapsible headers had no key):
+			// toggle the selected row's own workspace group collapsed/expanded,
+			// via the identical helper task 028's mouse header click will call
+			// (toggleGroupCollapse), so neither path is ever the only way to
+			// reach this capability. A no-op, like every other bare-letter
+			// binding, while help or the `i` detail overlay covers the sidebar,
+			// or when there is no row to resolve a group from.
+			if !m.help && !m.detail && len(m.sessions) > 0 {
+				m.toggleGroupCollapse(sessionWorkspace(m.sessions[m.selected]))
+			}
 		case "|":
 			if !m.help {
 				m.layoutMode = nextLayoutMode(m.layoutMode)
