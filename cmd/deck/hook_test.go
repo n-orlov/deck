@@ -135,7 +135,7 @@ func TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux(t *testing.T) {
 	}
 	target, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "row-1", Name: "hook target", CWD: t.TempDir(), Agent: "claude", CapturedPath: "/bin",
-		Status: "starting", StatusSource: "user", StatusAt: 1000, CreatedAt: 1000,
+		Status: "running", StatusSource: "hook", StatusAt: 1000, CreatedAt: 1000,
 		ConversationID: "conversation-1",
 	})
 	if err != nil {
