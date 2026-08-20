@@ -224,6 +224,10 @@ type StatusUpdateInput struct {
 	// LastMessage is sourced from the hook payload, not the transcript. It is
 	// stored as valid UTF-8 no larger than 2 KiB.
 	LastMessage string
+	// AllowedCurrentStatuses makes a caller's exhaustive transition policy part
+	// of this transaction. A non-matching event is still recorded, but cannot
+	// mutate any session metadata.
+	AllowedCurrentStatuses []string
 }
 
 // EventInput records an event which could not be resolved to a session. It is
@@ -474,6 +478,14 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	}
 
 	apply := killedByUser == 0 || input.ClearKilledByUser || input.KilledByUser
+	if apply && len(input.AllowedCurrentStatuses) > 0 && !containsString(input.AllowedCurrentStatuses, currentStatus) {
+		apply = false
+	}
+	// An error carrying a pane exit status is a terminal process-crash verdict,
+	// not the recoverable turn/API failure represented by error -> running.
+	if apply && input.Source == "hook" && input.Status == "running" && paneExitStatus.Valid {
+		apply = false
+	}
 	if apply && input.Source == "probe" && currentSource == "hook" && input.At-currentAt < input.StaleAfter {
 		apply = false
 	}
@@ -623,6 +635,15 @@ func (s *Store) RecordOrphanEvent(ctx context.Context, input EventInput) error {
 }
 
 func isAttentionStatus(status string) bool { return status == "waiting" || status == "error" }
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
 
 func boolInt(value bool) int {
 	if value {

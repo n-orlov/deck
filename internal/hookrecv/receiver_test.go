@@ -16,22 +16,23 @@ func TestReceiveMappingTable(t *testing.T) {
 		name        string
 		event       string
 		extra       string
+		current     string
 		wantStatus  string
 		wantReason  string
 		wantMessage string
 	}{
-		{name: "session start fresh", event: "SessionStart", extra: `,"source":"startup"`, wantStatus: "running", wantReason: "startup"},
-		{name: "session start resumed", event: "SessionStart", extra: `,"source":"resume"`, wantStatus: "running", wantReason: "resume"},
-		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, wantStatus: "running", wantReason: "compact"},
-		{name: "user prompt", event: "UserPromptSubmit", wantStatus: "running"},
-		{name: "permission notification", event: "Notification", extra: `,"notification_type":"permission_prompt"`, wantStatus: "waiting", wantReason: "permission_prompt"},
-		{name: "question notification", event: "Notification", extra: `,"notification_type":"question"`, wantStatus: "waiting", wantReason: "question"},
-		{name: "needs input notification", event: "Notification", extra: `,"notification_type":"needs_input"`, wantStatus: "waiting", wantReason: "needs_input"},
-		{name: "idle notification", event: "Notification", extra: `,"notification_type":"idle_prompt"`, wantStatus: "waiting", wantReason: "idle_prompt"},
-		{name: "stop", event: "Stop", extra: `,"last_assistant_message":"done ✓"`, wantStatus: "idle", wantMessage: "done ✓"},
-		{name: "API failure", event: "StopFailure", extra: `,"error_type":"api_error"`, wantStatus: "error", wantReason: "api_error"},
-		{name: "turn failure", event: "StopFailure", extra: `,"error_type":"turn_error"`, wantStatus: "error", wantReason: "turn_error"},
-		{name: "session end", event: "SessionEnd", extra: `,"reason":"logout"`, wantStatus: "stopped", wantReason: "logout"},
+		{name: "session start fresh", event: "SessionStart", extra: `,"source":"startup"`, current: "starting", wantStatus: "running", wantReason: "startup"},
+		{name: "session start resumed", event: "SessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "running", wantReason: "resume"},
+		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, current: "starting", wantStatus: "running", wantReason: "compact"},
+		{name: "user prompt", event: "UserPromptSubmit", current: "idle", wantStatus: "running"},
+		{name: "permission notification", event: "Notification", extra: `,"notification_type":"permission_prompt"`, current: "running", wantStatus: "waiting", wantReason: "permission_prompt"},
+		{name: "question notification", event: "Notification", extra: `,"notification_type":"question"`, current: "running", wantStatus: "waiting", wantReason: "question"},
+		{name: "needs input notification", event: "Notification", extra: `,"notification_type":"needs_input"`, current: "running", wantStatus: "waiting", wantReason: "needs_input"},
+		{name: "idle notification", event: "Notification", extra: `,"notification_type":"idle_prompt"`, current: "running", wantStatus: "waiting", wantReason: "idle_prompt"},
+		{name: "stop", event: "Stop", extra: `,"last_assistant_message":"done ✓"`, current: "running", wantStatus: "idle", wantMessage: "done ✓"},
+		{name: "API failure", event: "StopFailure", extra: `,"error_type":"api_error"`, current: "running", wantStatus: "error", wantReason: "api_error"},
+		{name: "turn failure", event: "StopFailure", extra: `,"error_type":"turn_error"`, current: "running", wantStatus: "error", wantReason: "turn_error"},
+		{name: "session end", event: "SessionEnd", extra: `,"reason":"logout"`, current: "waiting", wantStatus: "stopped", wantReason: "logout"},
 	}
 	for index, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -39,6 +40,9 @@ func TestReceiveMappingTable(t *testing.T) {
 			id := fmt.Sprintf("row-%d", index)
 			conversationID := fmt.Sprintf("conversation-%d", index)
 			createHookSession(t, db, id, "claude", conversationID)
+			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_source = 'hook', status_at = 2 WHERE id = ?`, tc.current, id); err != nil {
+				t.Fatal(err)
+			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q%s}`, tc.event, conversationID, tc.extra))
 
 			result, err := Receive(context.Background(), db, raw, "wrong-fallback", int64(100+index))
@@ -64,6 +68,102 @@ func TestReceiveMappingTable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReceiveEnforcesEveryHookTransitionAndStillAuditsRejectedEvents(t *testing.T) {
+	statuses := []string{"starting", "running", "waiting", "idle", "error", "stopped"}
+	expected := map[string][]string{
+		"SessionStart":     {"starting"},
+		"UserPromptSubmit": {"idle", "error"},
+		"Notification":     {"running"},
+		"Stop":             {"running"},
+		"StopFailure":      {"running"},
+		"SessionEnd":       {"starting", "running", "waiting", "idle", "error", "stopped"},
+	}
+	for event, allowed := range expected {
+		mapping, ok := Mappings[event]
+		if !ok || fmt.Sprint(mapping.AllowedFrom) != fmt.Sprint(allowed) {
+			t.Fatalf("%s AllowedFrom = %v; want %v", event, mapping.AllowedFrom, allowed)
+		}
+		for _, current := range statuses {
+			t.Run(event+"/from_"+current, func(t *testing.T) {
+				db := newHookStore(t)
+				id := event + "-" + current
+				createHookSession(t, db, id, "claude", id)
+				if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = 'user', status_at = 7, notify_epoch = 3, acknowledged = 1, last_message = 'before message' WHERE id = ?`, current, id); err != nil {
+					t.Fatal(err)
+				}
+				raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"question","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
+				if _, err := Receive(context.Background(), db, raw, "", 20); err != nil {
+					t.Fatal(err)
+				}
+				got, err := db.GetSession(context.Background(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				allowedTransition := stringIn(allowed, current)
+				if allowedTransition {
+					if got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20 {
+						t.Fatalf("allowed transition persisted %#v", got)
+					}
+				} else if got.Status != current || got.StatusReason != "before" || got.StatusSource != "user" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+					t.Fatalf("rejected transition changed metadata: %#v", got)
+				}
+				var events int
+				if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = ? AND payload = ?`, id, mapping.Kind, string(raw)).Scan(&events); err != nil || events != 1 {
+					t.Fatalf("event audit count = %d, %v; want 1", events, err)
+				}
+			})
+		}
+	}
+}
+
+func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     string
+		event      string
+		paneStatus any
+	}{
+		{name: "clean stopped row", status: "stopped", event: "SessionStart"},
+		{name: "process crash row", status: "error", event: "UserPromptSubmit", paneStatus: 137},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newHookStore(t)
+			createHookSession(t, db, tc.name, "claude", tc.name)
+			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'terminal', status_source = 'tmux', status_at = 9, pane_exit_status = ?, crash_tail = 'fatal', notify_epoch = 4, acknowledged = 0, last_message = 'last' WHERE id = ?`, tc.status, tc.paneStatus, tc.name); err != nil {
+				t.Fatal(err)
+			}
+			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume"}`, tc.event, tc.name))
+			if _, err := Receive(context.Background(), db, raw, "", 30); err != nil {
+				t.Fatal(err)
+			}
+			got, err := db.GetSession(context.Background(), tc.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status != tc.status || got.StatusReason != "terminal" || got.StatusSource != "tmux" || got.StatusAt != 9 || got.CrashTail != "fatal" || got.NotifyEpoch != 4 || got.Acknowledged || got.LastMessage != "last" {
+				t.Fatalf("terminal metadata changed: %#v", got)
+			}
+			if tc.paneStatus != nil && (got.PaneExitStatus == nil || *got.PaneExitStatus != 137) {
+				t.Fatalf("pane exit status changed: %#v", got.PaneExitStatus)
+			}
+			var events int
+			if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ?`, tc.name).Scan(&events); err != nil || events != 1 {
+				t.Fatalf("rejected hook events = %d, %v; want 1", events, err)
+			}
+		})
+	}
+}
+
+func stringIn(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity(t *testing.T) {

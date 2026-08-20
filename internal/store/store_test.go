@@ -606,6 +606,94 @@ func TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically(t *t
 	}
 }
 
+func TestStatusTransitionEnforcesCallerPolicyInsideEventTransaction(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "policy-guard"
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: id, CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 10, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	input := StatusUpdateInput{
+		SessionID: id, Status: "waiting", Reason: "question", Source: "hook", At: 20,
+		EventKind: "notification", Payload: `{"late":true}`, LastMessage: "must not apply",
+		AllowedCurrentStatuses: []string{"idle"},
+	}
+	if err := store.UpdateSessionStatus(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusReason != "" || got.StatusSource != "hook" || got.StatusAt != 10 || got.LastMessage != "" || !got.Acknowledged || got.NotifyEpoch != 0 {
+		t.Fatalf("rejected policy transition changed row: %#v", got)
+	}
+	var events int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'notification' AND payload = ?`, id, input.Payload).Scan(&events); err != nil || events != 1 {
+		t.Fatalf("rejected transition audit events = %d, %v; want 1", events, err)
+	}
+
+	input.At = 21
+	input.AllowedCurrentStatuses = []string{"running"}
+	if err := store.UpdateSessionStatus(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "waiting" || got.StatusReason != "question" || got.StatusAt != 21 || got.Acknowledged {
+		t.Fatalf("allowed policy transition did not apply: %#v", got)
+	}
+}
+
+func TestStatusTransitionDoesNotReviveProcessCrashWithHook(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "crash-policy-guard"
+	exit := 137
+	if _, err := store.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: id, CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+		Status: "error", StatusSource: "tmux", StatusAt: 10, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().Exec(`UPDATE sessions SET status_reason = 'pane exit', pane_exit_status = ?, crash_tail = 'fatal', acknowledged = 0 WHERE id = ?`, exit, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "running", Source: "hook", At: 20,
+		EventKind: "user_prompt_submitted", AllowedCurrentStatuses: []string{"error"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "error" || got.StatusReason != "pane exit" || got.StatusSource != "tmux" || got.StatusAt != 10 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal" || got.Acknowledged {
+		t.Fatalf("hook revived process crash: %#v", got)
+	}
+	var events int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'user_prompt_submitted'`, id).Scan(&events); err != nil || events != 1 {
+		t.Fatalf("rejected crash hook events = %d, %v; want 1", events, err)
+	}
+}
+
 func TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically(t *testing.T) {
 	home := t.TempDir()
 	store, err := OpenPath(home, filepath.Join(home, "state.db"))

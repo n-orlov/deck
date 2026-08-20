@@ -22,25 +22,27 @@ type Store interface {
 	RecordOrphanEvent(context.Context, store.EventInput) error
 }
 
-// Mapping is one row of SPEC §8.1's hook-to-status table. ReasonField and
-// MessageField keep payload interpretation reviewable as table data rather
-// than scattering event-specific conditionals through Receive.
+// Mapping combines SPEC §8.1's hook-to-status mapping with §7's exhaustive
+// legal source states. ReasonField and MessageField keep payload interpretation
+// reviewable as table data rather than scattering event-specific conditionals
+// through Receive.
 type Mapping struct {
 	Status       string
 	Kind         string
+	AllowedFrom  []string
 	ReasonField  string
 	MessageField string
 }
 
-// Mappings is the single hook mapping table. Its keys are Claude's upstream
-// event names, not names invented by deck.
+// Mappings is the single hook mapping and transition-policy table. Its keys are
+// Claude's upstream event names, not names invented by deck.
 var Mappings = map[string]Mapping{
-	"SessionStart":     {Status: "running", Kind: "session_start", ReasonField: "source"},
-	"UserPromptSubmit": {Status: "running", Kind: "user_prompt_submitted"},
-	"Notification":     {Status: "waiting", Kind: "notification", ReasonField: "notification_type"},
-	"Stop":             {Status: "idle", Kind: "stop", MessageField: "last_assistant_message"},
-	"StopFailure":      {Status: "error", Kind: "stop_failure", ReasonField: "error_type"},
-	"SessionEnd":       {Status: "stopped", Kind: "session_end", ReasonField: "reason"},
+	"SessionStart":     {Status: "running", Kind: "session_start", AllowedFrom: []string{"starting"}, ReasonField: "source"},
+	"UserPromptSubmit": {Status: "running", Kind: "user_prompt_submitted", AllowedFrom: []string{"idle", "error"}},
+	"Notification":     {Status: "waiting", Kind: "notification", AllowedFrom: []string{"running"}, ReasonField: "notification_type"},
+	"Stop":             {Status: "idle", Kind: "stop", AllowedFrom: []string{"running"}, MessageField: "last_assistant_message"},
+	"StopFailure":      {Status: "error", Kind: "stop_failure", AllowedFrom: []string{"running"}, ReasonField: "error_type"},
+	"SessionEnd":       {Status: "stopped", Kind: "session_end", AllowedFrom: []string{"starting", "running", "waiting", "idle", "error", "stopped"}, ReasonField: "reason"},
 }
 
 // Result describes the durable write attempted by Receive.
@@ -105,14 +107,15 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string
 
 	result.SessionID = session.ID
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-		SessionID:   session.ID,
-		Status:      mapping.Status,
-		Reason:      reason,
-		Source:      "hook",
-		At:          at,
-		EventKind:   mapping.Kind,
-		Payload:     string(raw),
-		LastMessage: payloadField(p, mapping.MessageField),
+		SessionID:              session.ID,
+		Status:                 mapping.Status,
+		Reason:                 reason,
+		Source:                 "hook",
+		At:                     at,
+		EventKind:              mapping.Kind,
+		Payload:                string(raw),
+		LastMessage:            payloadField(p, mapping.MessageField),
+		AllowedCurrentStatuses: mapping.AllowedFrom,
 	}); err != nil {
 		return result, fmt.Errorf("apply %s hook: %w", p.EventName, err)
 	}
