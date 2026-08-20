@@ -87,6 +87,13 @@ func (h *ScenarioHarness) Environment(extra ...string) []string {
 // StartClient starts another independent PTY client while retaining ownership
 // for teardown. This is the only supported way feature steps create clients.
 func (h *ScenarioHarness) StartClient(ctx context.Context, extraEnv ...string) (*ScreenDriver, error) {
+	return h.StartClientWithSize(ctx, terminalColumns, terminalRows, extraEnv...)
+}
+
+// StartClientWithSize is StartClient with an explicit initial geometry, for
+// scenarios that start at a size other than the harness default and
+// optionally resize mid-scenario (requirement 1).
+func (h *ScenarioHarness) StartClientWithSize(ctx context.Context, cols, rows uint16, extraEnv ...string) (*ScreenDriver, error) {
 	if h.Binary == "" {
 		return nil, errors.New("scenario deck binary is required")
 	}
@@ -96,7 +103,7 @@ func (h *ScenarioHarness) StartClient(ctx context.Context, extraEnv ...string) (
 	if h.agentHOMEDir != "" && !hasHOMEOverride(extraEnv) {
 		extraEnv = append(extraEnv, "HOME="+h.agentHOMEDir)
 	}
-	client, err := StartScreenDriver(ctx, h.Binary, h.Environment(extraEnv...))
+	client, err := StartScreenDriverWithSize(ctx, h.Binary, h.Environment(extraEnv...), cols, rows)
 	if err != nil {
 		return nil, err
 	}
@@ -130,13 +137,19 @@ func hasHOMEOverride(extraEnv []string) bool {
 // StartNamedClient gives Gherkin steps a stable external-client handle. Names
 // are harness bookkeeping only; no data is passed into the deck binary.
 func (h *ScenarioHarness) StartNamedClient(ctx context.Context, name string, extraEnv ...string) (*ScreenDriver, error) {
+	return h.StartNamedClientWithSize(ctx, name, terminalColumns, terminalRows, extraEnv...)
+}
+
+// StartNamedClientWithSize is StartNamedClient with an explicit initial
+// geometry (requirement 1).
+func (h *ScenarioHarness) StartNamedClientWithSize(ctx context.Context, name string, cols, rows uint16, extraEnv ...string) (*ScreenDriver, error) {
 	if name == "" {
 		return nil, errors.New("client name is required")
 	}
 	if _, exists := h.namedClients[name]; exists {
 		return nil, fmt.Errorf("deck client %q is already running", name)
 	}
-	client, err := h.StartClient(ctx, extraEnv...)
+	client, err := h.StartClientWithSize(ctx, cols, rows, extraEnv...)
 	if err != nil {
 		return nil, err
 	}

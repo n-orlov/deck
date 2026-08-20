@@ -44,6 +44,7 @@ func TestFeatures(t *testing.T) {
 func initializeScenario(sc *godog.ScenarioContext) {
 	registerScenarioLifecycle(sc)
 	registerEmulatorPlacementSteps(sc)
+	registerResizeSteps(sc)
 	registerBlackBoxAssertionSteps(sc)
 	registerDeterminismSteps(sc)
 	registerStoreFeatureSteps(sc)
