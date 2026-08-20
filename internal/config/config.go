@@ -19,7 +19,7 @@ import (
 const (
 	DefaultSocket      = "deck"
 	DefaultReconcileMS = 500
-	DefaultPreviewMS   = 1000
+	DefaultPreviewMS   = 250
 	DefaultStaleAfter  = 45 * time.Second
 )
 

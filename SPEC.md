@@ -163,6 +163,14 @@ Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
 - Session naming: `deck_<slug>`, slug `[a-z0-9_-]+` derived from the name, uniqueness
   enforced in SQLite. Rename renames both. **`.` and `:` are excluded from slugs** —
   tmux rejects them in session names because they are target-syntax separators.
+- **A blank name in the create modal is filled in, not rejected.** deck defaults it to
+  `<workspace>-<MMDD-HHMM>` from local wall-clock time (`deck-0820-1443`), because the
+  common case is "start something here, now", and making the user invent a name first is a
+  toll on the product's fastest path. Names are unique, so a collision appends the smallest
+  free `-2`, `-3` suffix rather than failing the create. Two consequences worth stating: the
+  default is only *derived*, not special — rename (§11.4) treats it like any other name; and
+  under §13.1's frozen clock it is deterministic, so a second session created in the same
+  scenario exercises the collision suffix instead of flaking on it.
 - One window, one pane per session (R6/non-goals). No drawers, no extra windows.
 - Env is applied by launching the pane's command as `env K=V … <argv>` — portable across
   tmux versions — and mirrored with `set-environment -t` so any future pane agrees.
@@ -656,12 +664,31 @@ no-confirm UI:
 | action | key | effect |
 |---|---|---|
 | kill | `x` | `tmux kill-session` immediately. Row → `stopped`. Conversation untouched, resumable. 10 s undo toast (`u` = resume). |
-| delete | `dd` | kill + tombstone the row (`deleted_at`). Hidden immediately, undoable for 60 s, purged after. |
+| delete | `dd` | kill + tombstone the row (`deleted_at`). Hidden immediately, undoable for 60 s, **reaped** after — see below. |
 | purge conversation | in the delete confirm only | additionally deletes the agent's transcript. Never implicit, never default, always a separate explicit choice. |
 | archive | `A` | keep the record, hide from the default list. |
 | bulk | `m` marks | `x` / `dd` act on the mark set. |
 
 deck never writes to or deletes anything inside a session's `cwd`.
+
+**What `dd` removes, exactly.** *Purge* was doing two unrelated jobs in that table, so they
+are named apart: the conversation purge is the checkbox, and the tombstone is **reaped**.
+Reaping deletes the `sessions` row and every deck-owned row hanging off it — events,
+notification outbox entries, the `waiting` and `notify_epoch` state — together with deck's
+own per-session files, meaning §9.4's history file and captured scrollback. Afterwards
+nothing remains to list, to search (§12) or to resume: the session is gone from deck without
+a trace. The one deliberate exception is the JSONL log (§13.1), which keeps its append-only
+record of what happened, because a log that rewrites itself when a row is deleted is not a
+log.
+
+**Deleting a deck session never touches the agent's own history.** Claude's and Pi's
+transcripts live where those tools put them, and they belong to those tools — R1's "no
+session owns anything on disk" cuts both ways. So `dd` kills the pane and forgets the row
+while the conversation itself remains resumable by the agent's own CLI, and a user who
+deletes a row in deck has not lost their transcript. The single exception is the explicit
+**purge conversation** choice in the delete confirm — the one place deck removes a file it
+did not create, which is why it is never implicit, never the default, and names the exact
+path it will delete before doing it.
 
 ### 9.3 Launch leases (R4)
 
@@ -861,9 +888,33 @@ hold them side by side.
   (`yolo`, `env↻`) are text instead.
 - Sidebar default width 35 columns, user-adjustable and persisted; the preview takes the
   rest.
-- Preview: pane capture with escapes preserved, 1 s tick, selected row only. No embedded
-  PTY emulator in v1 — the preview is a capture, so it is never interactive. `↵` is how
-  you get a real terminal.
+- Preview: pane capture with escapes preserved (`capture-pane -e`), **250 ms tick**,
+  selected row only. No embedded PTY emulator in v1 — the preview is a capture, so it is
+  never interactive. `↵` is how you get a real terminal.
+- **The preview attaches no tmux client and never resizes a pane.** This is the
+  load-bearing property, not an implementation detail. A second client sized to the preview
+  reflows the shared window under §3.2's `window-size latest` and sends the agent
+  `SIGWINCH`, so the pane would be perturbed by the act of previewing it, and the only
+  escape — pinning the window — regresses every ordinary `↵` attach instead
+  (`docs/spikes/tmux-embedded-preview.md` measured both). Capture reads; it does not
+  participate in geometry.
+- **A pane larger than the preview panel is cropped — never resized, never reflowed.** The
+  crop is anchored **bottom-left**: the newest rows, from column one, because that is where
+  an agent's current activity and its prompt are. Lines cut at the right edge are marked,
+  and the panel states the real geometry (`45×22 of 120×40`) so the user knows they are
+  looking at a window rather than the whole pane. The alternative is to size the pane to
+  the panel, which is exactly how a preview starts corrupting what it previews; deck does
+  not buy a prettier preview with the agent's layout.
+- **The preview does not scroll.** It shows the pane's current visible content and nothing
+  behind it — no capture history, no wheel scroll, no `PgUp`. `↵` is how you read what
+  scrolled past, and it is one keystroke away. The alternatives are a second history
+  mechanism alongside §9.4's, or a ring of deck's own frames with 250 ms holes in it, and
+  neither earns its keep against a real terminal that already has scrollback.
+- **A row with no live pane shows what deck knows, not nothing.** An `error` row renders
+  the crash tail §7 captured, headed with the fact that it is the last output before the
+  exit and is not live — the preview's best moment is answering *why did it die* without an
+  attach. `stopped`, `archived`, and a `starting` row whose pane does not exist yet render
+  a one-line placeholder naming the state. Stale bytes are never presented as live.
 - Since there is no CLI (R7), **every** capability is reachable and discoverable in the
   UI: create modal (name, cwd picker, agent, permission profile, env, pre_launch, args),
   env editor, permission switcher, pin/unpin, rename, notification rules editor, health
@@ -878,7 +929,7 @@ resume/start · `R` restart preserving conversation · `x` kill (undo toast) · 
 not a top-level key) · `e` env editor · `P` permission profile · `p` pin conversation ·
 `E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze · `A` archive ·
 `u` undo · `g`/`G` top/bottom · `,` settings (§11.5) · `t` theme picker (§11.6) · `|` cycle
-layout mode, `<`/`>` sidebar width (§11.2) · `tab` move focus sidebar↔preview · `?` help ·
+layout mode, `<`/`>` sidebar width (§11.2) · `?` help ·
 `q` quit.
 
 **Every capability in this section has a key or a documented entry point here, and every
@@ -939,15 +990,16 @@ they are what stops a later change from quietly breaking a size nobody tests:
   `stacked` is not a peer mode: it is the honest degradation for a below-minimum terminal,
   kept because rendering *something* legible at 70 columns beats rendering a sheared
   side-by-side. A user may still select `stacked` deliberately at any width via `|`.
-- **Preview floor 40** is the narrowest a pane capture renders without wrapping into
-  unreadable hash-soup. Below it the preview is worse than absent, so it is not shown.
+- **Preview floor 40** is the narrowest crop that still carries meaning. Agents print at 80
+  columns or wider, so a 40-column window already shows half a line and asks the reader to
+  infer the rest; below that the preview is worse than absent, so it is not shown.
 - **Sidebar floor 24** is `glyph + name + status` with nothing elided; a narrower sidebar
   cannot answer the one question it exists to answer.
 - **Stacked list 5–12 rows**: 5 is selection plus one neighbour plus the spinner row, so
   the list still conveys movement; 12 keeps a tall terminal from starving the preview.
 - **Collapsed strip 3 columns** is the `»` glyph plus its two borders. It exists to give
   the preview the maximum possible width while keeping the attention count on screen —
-  one glance still answers "does anything need me", and `tab`/`|` restore the sidebar.
+  one glance still answers "does anything need me", and `|` restores the sidebar.
 
 `|` cycles `auto → side-by-side → stacked → collapsed → auto`; the explicit modes pin the
 layout regardless of width, and `auto` returns to width-based selection. When the sidebar
@@ -971,10 +1023,15 @@ truncated-but-honest frame beats an unpredictable one.
 - **A single seam.** The sidebar draws top, left and bottom borders only; the preview draws
   all four, and its left border *is* the divider. Two adjacent `Borders::ALL` panels
   produce a heavy `││` seam that reads as two windows rather than one surface.
-- **Focus is visible.** `tab` moves focus between sidebar and preview; the focused panel's
-  border uses the theme's `border_focus` token. Focus changes what `↑`/`↓`/`PgUp`/`PgDn`
-  scroll — the list, or the preview's capture history — and the footer's hints change with
-  it. A keyboard-only UI that cannot show where the keys are going is unusable.
+- **Focus is visible, and the main view has only one place for it.** The sidebar is the
+  single focusable region, because the preview is a non-interactive, non-scrolling crop
+  (§11) and there is nothing a second focus stop could do: `↑`/`↓`/`PgUp`/`PgDn` always
+  drive the list, and there is no `tab` panel cycle to learn. Focus is still drawn — the
+  focused surface's border uses the theme's `border_focus` token, so a dialog that opens
+  takes focus and the sidebar's border reverts to `border`. A keyboard-only UI that cannot
+  show where the keys are going is unusable; equally, a focus stop that changes nothing is
+  worse than none at all, because the footer would then have to advertise keys that do
+  nothing.
 - **The footer is one line, outside both panels**, in the key/description pattern
   (`↵ attach · n new · …`). It is contextual: it lists what is bound *now*, in this mode,
   with this focus. **It never lists a key that is not bound** — a footer advertising a verb
@@ -1033,10 +1090,10 @@ the TUI must be the place it is edited.
 - Field kinds are explicit: toggle, integer with bounds, string, path (with a picker),
   enum (cycled), list-of-strings, and *link* (opens the owning dialog, per the exception
   above). Each field states what it does and what changes when it changes.
-- Navigation, since the takeover is not a §11.4 dialog and the global `tab` (panel focus)
-  does not apply inside it: `tab`/`←`/`→` switch between the category list and the field
-  list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves, `esc` prompts
-  to discard if anything changed and otherwise closes.
+- Navigation, spelled out because the takeover is not a §11.4 dialog and the main view has
+  no `tab` binding for it to echo (§11.3): `tab`/`←`/`→` switch between the category list
+  and the field list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves,
+  `esc` prompts to discard if anything changed and otherwise closes.
 - **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
   changes on `esc`, and the write is atomic — settings must never be able to leave an
   unparseable `config.toml` behind.
@@ -1181,13 +1238,18 @@ scroll, no close button that is the only way to dismiss.
 
 | event | effect | key it duplicates |
 |---|---|---|
-| click a sidebar row | selects that row and focuses the sidebar; the preview follows on its next tick | `↑`/`↓` |
+| click a sidebar row | selects that row; the preview follows on its next tick | `↑`/`↓` |
 | **double**-click a sidebar row | attach | `↵` |
 | click a workspace group header | toggle collapse | the grouping key (§11) |
-| click inside the preview | focus the preview | `tab` |
-| wheel over a panel | scroll that panel's viewport — the list, or the preview's capture history | `↑`/`↓`/`PgUp`/`PgDn` on the focused panel |
+| wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
+
+**A click or a wheel over the preview does nothing**, and that is a binding too. The preview
+is a non-interactive, non-scrolling crop (§11): there is no focus to take and no viewport to
+move, and a gesture aimed at the preview must not fall through to the sidebar instead. A
+mis-aimed click that quietly moved the selection would fire §7's status side effects from
+what the user experienced as a click on some text.
 
 Four decisions in that table are load-bearing, and each is the safer of two options rather
 than the obvious one:
@@ -1197,10 +1259,11 @@ than the obvious one:
   deliberate second act that `↵` already is. This is also what makes the single click a
   *switch* rather than a commitment: one click moves the preview to that session, which is
   the fast path the sidebar exists to provide.
-- **The wheel scrolls the panel under the pointer, not the focused one, and changes neither
-  focus nor selection.** Scrolling to look at something is not selecting it. A wheel that
-  moved the selection would fire status-changing side effects (§7's attach-clears-`waiting`
-  is one keystroke away) from an idle gesture.
+- **The wheel scrolls the list under the pointer and changes neither focus nor selection.**
+  Scrolling to look at something is not selecting it. A wheel that moved the selection would
+  fire status-changing side effects (§7's attach-clears-`waiting` is one keystroke away)
+  from an idle gesture. Over the preview it scrolls nothing, because there is nothing there
+  to scroll.
 - **A click outside a dialog does nothing.** It neither cancels nor confirms; `esc` cancels
   (§11.4). "Click outside to dismiss" puts cancel and confirm a few cells apart on a
   destructive confirmation, which is precisely where an accidental click is least
@@ -1282,7 +1345,7 @@ listed here rather than left to a test package:
 | **Colour depth override** | `DECK_COLOR_DEPTH=truecolor\|16` forces the render path, overriding COLORTERM/TERM detection. | §11.6's quantised palette is behaviour, and a pty test cannot otherwise deterministically reach it — the harness terminal's advertised depth would decide which renderer runs. |
 | **Mouse reporting override** | `DECK_MOUSE` forces mouse reporting on or off as a boolean, overriding `[ui] mouse` (§11.8). | Enabling reporting writes enable/disable sequences into the stream, so byte-exact frame assertions (§11.2's golden frame) need it off; mouse scenarios need it on regardless of the config file. |
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
-| **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 1000) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
+| **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 250) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, notification attempt with outcome. | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
 
@@ -1326,13 +1389,18 @@ in the help view.
   toolchain. Leaving root-owned files in the workspace is a defect, not a nuisance.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
-  outside the app.
+  outside the app. Two of those facts carry §11's central preview guarantee and are
+  therefore named here: **`list-clients` is empty** while a preview is live, and
+  `#{window_width}x#{window_height}` is unchanged across any amount of previewing.
 - **Fake agents.** `fake-claude`, `fake-pi`, `fake-codex` on `PATH`: tiny programs that
   honour the real argument contracts (`--session-id`, `--resume`, `--permission-mode`),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,
-  tagged suite (§13.5).
+  tagged suite (§13.5). They also **record every terminal size they observe** — the initial
+  one and each `SIGWINCH` — where a step can read it, which is what makes §11's "the preview
+  never resizes a pane" an assertion about the agent's own experience rather than an
+  inference from tmux's bookkeeping.
 - **Webhook sink.** An `httptest` server registered as a `webhook` channel; steps assert
   on requests received, bodies rendered, dedupe collapses, and non-delivery during quiet
   hours. Notification behaviour is fully black-box because §10 has no built-in service.
@@ -1386,11 +1454,14 @@ features/
   status_probe.feature          R6 — sampled badge, staleness, precedence over probe
   crash.feature                 §7 — error + crash tail + notify, and never auto-relaunch
   environment.feature           §6 — layering, env↻, restart applies (and only restart)
-  kill_delete_undo.feature      §9.2 — x/dd, undo windows, tombstone, cwd never touched
+  kill_delete_undo.feature      §9.2 — x/dd, undo windows, tombstone, cwd never touched,
+                                reap leaves no trace, the agent's transcript survives `dd`
   shell_state.feature           §9.4 — history, scrollback replay, cwd restore, sensitive
   notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
   codex_discovery.feature       §8.2 — serialised discovery, claims, ambiguity, unresolved
   layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
+  preview.feature               §11 — crop not resize, no attached client, no SIGWINCH,
+                                no scroll, crash tail for error, placeholder with no pane
   attention_sort.feature        §7/§11 — attention order, the collapsed strip's count,
                                 workspace grouping and collapse, space walks what needs me
   mouse.feature                 §11.8 — click selects, double-click attaches, wheel scrolls
