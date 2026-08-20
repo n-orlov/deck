@@ -1,5 +1,5 @@
 command: ci/run.sh go build ./...
-commit: 7bcb96e96915f6fef1b0a5958eeb463051e6a7c0
+commit: 96a655423be9c21723575e2723275c935cfaf9b5
 branch: main
 clean_worktree_before: true
 --- command output begins ---
