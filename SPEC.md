@@ -381,7 +381,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -886,6 +886,11 @@ key here has a scenario (§13.5).** A capability listed above with nowhere to re
 R7 defect, and a key listed here with no binding is a §11.3 defect — the two lists are
 checked against each other, not maintained independently.
 
+The mouse is a **shortcut over that keymap and never an alternative to it** (§11.8): click a
+row to switch to it, double-click to attach, wheel to scroll, drag the seam to resize the
+sidebar. Every mouse action names the key it duplicates, so the keymap above stays the
+complete description of what deck can do.
+
 Constraints: **80×24 minimum**, resize-safe at every size above it, and the degradation
 path is specified rather than emergent (§11.2). No colour assumptions beyond 16 colours:
 a theme's truecolour values are used when the terminal advertises truecolour and are
@@ -991,6 +996,8 @@ contract so learning any one of them teaches the rest:
   never closes to reveal an error somewhere else.
 - **Destructive actions confirm**, and the confirmation names the target and what will
   survive it (`kill notes — the session's history and conversation id are kept`).
+- **The mouse can neither cancel nor confirm.** A click outside a dialog does nothing, and
+  no dialog action is reachable by mouse alone (§11.8).
 - Width targets 80% of the viewport, clamped to `[26, 80]` columns. At every supported
   width (§11: minimum 80) that resolves to 64–80 columns; the lower clamp and the
   take-the-full-viewport rule at or below 26 columns apply only on a below-minimum
@@ -1159,6 +1166,78 @@ session that works and is in the wrong place. `tab` completes to the longest com
 when that advances, and otherwise lists the candidates for selection: bash's contract,
 which is the one users already have in their fingers.
 
+### 11.8 Mouse navigation
+
+The sidebar exists to be switched between, and a click is the cheapest switch there is. So
+deck reports mouse events and binds them — under one rule that governs everything else in
+this section:
+
+**No capability is ever mouse-only.** Every binding below duplicates a key from §11's
+keymap, and the key remains the primary, documented path. A mouse-only affordance is an R7
+defect in exactly the way a file-only one is: it makes a capability unreachable for a user
+who cannot or does not use a mouse, and unreachable for the harness. Correspondingly, deck
+renders no control that only a mouse can operate — no scrollbar that is the only way to
+scroll, no close button that is the only way to dismiss.
+
+| event | effect | key it duplicates |
+|---|---|---|
+| click a sidebar row | selects that row and focuses the sidebar; the preview follows on its next tick | `↑`/`↓` |
+| **double**-click a sidebar row | attach | `↵` |
+| click a workspace group header | toggle collapse | the grouping key (§11) |
+| click inside the preview | focus the preview | `tab` |
+| wheel over a panel | scroll that panel's viewport — the list, or the preview's capture history | `↑`/`↓`/`PgUp`/`PgDn` on the focused panel |
+| drag the seam | adjust `sidebar_width` live | `<`/`>` |
+| click the collapsed strip | restore the previous non-collapsed mode | `|` |
+
+Four decisions in that table are load-bearing, and each is the safer of two options rather
+than the obvious one:
+
+- **A single click never attaches.** Attaching hands the whole terminal to another program,
+  and a stray or mis-aimed click must not be able to do that. A double-click is the
+  deliberate second act that `↵` already is. This is also what makes the single click a
+  *switch* rather than a commitment: one click moves the preview to that session, which is
+  the fast path the sidebar exists to provide.
+- **The wheel scrolls the panel under the pointer, not the focused one, and changes neither
+  focus nor selection.** Scrolling to look at something is not selecting it. A wheel that
+  moved the selection would fire status-changing side effects (§7's attach-clears-`waiting`
+  is one keystroke away) from an idle gesture.
+- **A click outside a dialog does nothing.** It neither cancels nor confirms; `esc` cancels
+  (§11.4). "Click outside to dismiss" puts cancel and confirm a few cells apart on a
+  destructive confirmation, which is precisely where an accidental click is least
+  affordable. Inside a dialog the wheel scrolls a scrollable body and a click focuses a
+  field — nothing more.
+- **Hit-testing asks the layout what it drew.** A click resolves to a row by consulting the
+  same layout that rendered the frame, never by independently recomputing row heights or
+  panel offsets. Two implementations of the geometry drift the moment grouping, elision or
+  a mode change touches one of them, and the symptom is a click that selects the wrong
+  session — silent, intermittent, and indistinguishable from a user's mis-click.
+
+**What it costs, stated plainly.** Enabling mouse reporting takes the terminal's own
+selection behaviour over: click-drag no longer selects text for copy, and the user needs
+their terminal's override modifier (usually `shift`) to select and paste. That is a real
+loss for a tool people read output in, so mouse reporting is **opt-outable** — `[ui] mouse`
+(default true, §6.5) and `DECK_MOUSE` (§13.1) — and the `shift` caveat is documented in the
+help view rather than left to be discovered.
+
+**Encoding and hygiene.** deck uses SGR extended reporting (1006), so coordinates past
+column 223 are correct rather than wrapped; it must not depend on X10 encoding. Reporting is
+enabled on start and **disabled on every exit path, including a panic** — a deck that exits
+without turning it off leaves the user's shell printing escape sequences at every mouse
+move, which reads as a corrupted terminal rather than as deck's fault. Because those
+enable/disable sequences are bytes in the stream, scenarios asserting an exact byte stream
+(§11.2's golden frame) set `DECK_MOUSE=0`.
+
+**Degradation.** A terminal that reports no mouse events loses the shortcuts and nothing
+else. Below deck's 80×24 minimum, and in `stacked` and `collapsed` modes (§11.2), hit-testing
+follows whatever the layout actually drew, on the same best-effort footing as the rest of the
+frame.
+
+**Deliberately not, on top of §1's non-goals:** no right-click and no context menus (deck has
+no menu concept to hang them on, and a menu would become the second place every action is
+declared); no drag-to-reorder (§11's sort order is defined by status and age, not arranged by
+hand — a hand-arranged list would stop answering "which session needs me"); no clickable
+footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is bound *now*).
+
 ---
 
 ## 12. Cross-session search
@@ -1201,6 +1280,7 @@ listed here rather than left to a test package:
 | **Deterministic rendering** | `NO_COLOR`, `DECK_ASCII=1` (no nerd glyphs), `DECK_ANIM=0` (no spinner frames), fixed `COLUMNS`×`LINES`. | Screen text is byte-stable, so golden frames are meaningful. |
 | **Explicit colour override** | `DECK_COLOR` forces colour on or off as a boolean, overriding both `NO_COLOR` and terminal detection. | `NO_COLOR` can only ever *disable*; a test that needs colour deliberately on — or a terminal deck mis-detects — has no other lever. |
 | **Colour depth override** | `DECK_COLOR_DEPTH=truecolor\|16` forces the render path, overriding COLORTERM/TERM detection. | §11.6's quantised palette is behaviour, and a pty test cannot otherwise deterministically reach it — the harness terminal's advertised depth would decide which renderer runs. |
+| **Mouse reporting override** | `DECK_MOUSE` forces mouse reporting on or off as a boolean, overriding `[ui] mouse` (§11.8). | Enabling reporting writes enable/disable sequences into the stream, so byte-exact frame assertions (§11.2's golden frame) need it off; mouse scenarios need it on regardless of the config file. |
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 1000) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, notification attempt with outcome. | The observability surface for things not visible on screen — argv, timings, retries. |
@@ -1261,6 +1341,12 @@ in the help view.
   theme assertions require the emulator's per-cell SGR attributes, not only its text. Both
   are harness capabilities in their own right, and each is a prerequisite of the scenarios
   that depend on it rather than something those scenarios can fake.
+- **Mouse events.** §11.8's bindings require the driver to synthesise **SGR (1006) mouse
+  reports** into the pty — press, release, double-click within the terminal's own interval,
+  wheel up/down, and motion for a seam drag — addressed by cell coordinates. This is a third
+  harness capability of the same kind, and it is what keeps "no capability is mouse-only"
+  checkable rather than aspirational: a click's effect is asserted against the same rendered
+  grid as the keystroke it duplicates, so the two paths are proven to agree.
 - **Isolation & teardown.** Per scenario: fresh `DECK_HOME`, fresh socket, fresh sink,
   fake-agent stubs reset. Teardown kills the socket and removes the root, and fails loudly
   on a leaked tmux server or a surviving child.
@@ -1305,6 +1391,8 @@ features/
   notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
   codex_discovery.feature       §8.2 — serialised discovery, claims, ambiguity, unresolved
   layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
+  mouse.feature                 §11.8 — click selects, double-click attaches, wheel scrolls
+                                without selecting, seam drag resizes, DECK_MOUSE=0 disables
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
   themes.feature                §11.6 — picker, live preview/revert, fallback says so,
                                 quantised rendering under DECK_COLOR_DEPTH=16
