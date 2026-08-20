@@ -905,6 +905,12 @@ hold them side by side.
   looking at a window rather than the whole pane. The alternative is to size the pane to
   the panel, which is exactly how a preview starts corrupting what it previews; deck does
   not buy a prettier preview with the agent's layout.
+- **Cropping and elision are cell-aware, and never split a wide cell.** Foreign pane output
+  is the one place deck cannot enforce its own no-wide-glyphs rule (§11's glyph list binds
+  deck, not the agent), and a session name is user-supplied text. So where a crop or an
+  ellipsis boundary falls inside a double-width cell, deck emits a **space** for that cell
+  and never half a glyph: half a wide character is not a character, and a terminal handed one
+  shifts every cell after it, which shears the panel border the frame is measured against.
 - **The preview does not scroll.** It shows the pane's current visible content and nothing
   behind it — no capture history, no wheel scroll, no `PgUp`. `↵` is how you read what
   scrolled past, and it is one keystroke away. The alternatives are a second history
@@ -1033,10 +1039,16 @@ truncated-but-honest frame beats an unpredictable one.
   worse than none at all, because the footer would then have to advertise keys that do
   nothing.
 - **The footer is one line, outside both panels**, in the key/description pattern
-  (`↵ attach · n new · …`). It is contextual: it lists what is bound *now*, in this mode,
-  with this focus. **It never lists a key that is not bound** — a footer advertising a verb
-  the binary does not have is worse than no footer, because it is the one place a user is
-  entitled to trust.
+  (`↵ attach · n new · …`). It is contextual: it lists what is bound *now*, in this mode.
+  **It never lists a key that is not bound** — a footer advertising a verb the binary does
+  not have is worse than no footer, because it is the one place a user is entitled to trust.
+- **The footer also carries the selected row's status reason**, on its left, separated from
+  the keys. §7's reasons are prose — `awaiting signal`, `resumable`, `pane failed after the
+  stale frame` — and a sidebar with 31 content columns cannot hold a name and a reason on the
+  same line without eliding one of them. The footer has the whole terminal width, and the
+  reason is only ever wanted for the row the user is on, so this is where it costs nothing.
+  The row itself carries **glyph, name, status word and badges, and no reason text**; the full
+  reason is also in the `i` detail dialog, which is where it belongs when it is long.
 
 ### 11.4 Dialogs
 
