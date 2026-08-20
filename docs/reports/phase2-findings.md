@@ -4,17 +4,16 @@ This report records Phase 2 decisions, disagreements, upstream assumptions, and 
 
 ## Final verification and review-gap disposition
 
-The clean fixed-commit default capture at `db12950a18eccaf86ba112e704ce79301b202d74`
+The clean fixed-commit default capture at `d562d6fbe53b9f1db296c1f54d8ab1b8bce15baf`
 is [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log): **21 features,
-47 scenarios, and 525 steps passed**, with **183 top-level Go tests** under the
-report's stated counting convention. Its wall time was **55.889 seconds**. Build
-and vet output from the same source commit are retained in
+48 scenarios, and 546 steps passed**, with **187 top-level Go tests** under the
+report's stated counting convention. Its wall time was **55.277 seconds**. Build
+and vet output for the transition-fixed source are retained in
 [`phase2-build.log`](phase2-build.log) and [`phase2-vet.log`](phase2-vet.log).
-After the deterministic shared-clock hook fix, a clean fixed-commit
-`ci/stability.sh 10` run at `7089568ee9d03bf690a66596b11506162ff2ff0a`
-passed **10/10** with final exit 0; its complete output is
-[`phase2-stability.log`](phase2-stability.log). No production or test source
-changes follow that stability commit.
+A clean `ci/stability.sh 10` run at the final production/test checkpoint
+`20b19dd5e30fc1af0801229c2df36ff30447290b` passed **10/10** with final exit 0;
+its complete output is [`phase2-stability.log`](phase2-stability.log). Changes
+after that checkpoint are evidence/report files only.
 
 The four review gaps have these dispositions:
 
@@ -101,6 +100,55 @@ strings and remains opt-in so the default suite stays network-free.
 - Real emission and field coverage for the remaining four events should be added to `@real-agents` when stable, non-destructive ways to provoke each event are known. Probe fallback remains the deliberate degradation path in the meantime.
 
 ## Hook mapping and persistence decisions
+
+### Exhaustive transition-policy review resolution
+
+Review found that the original §8.1 mapping treated every resolved hook as an
+unconditional target-status assignment. Store precedence protected a row killed
+by the user, but there was no exhaustive current-state check: for example, a
+late `SessionStart` could change a clean `stopped` row back to `running`. A
+similar stale running hook could replace the terminal `error` verdict and crash
+metadata of a dead pane. This contradicted §7's statement that its transition
+table is exhaustive.
+
+The resolution makes legal source states declarative beside each hook mapping
+in [`internal/hookrecv/receiver.go`](../../internal/hookrecv/receiver.go):
+`SessionStart` accepts only `starting`; `UserPromptSubmit` accepts `idle` or
+recoverable `error`; `Notification`, `Stop`, and `StopFailure` accept only
+`running`; and `SessionEnd` accepts every state and moves it to `stopped`. The
+receiver passes that policy into
+[`Store.UpdateSessionStatus`](../../internal/store/store.go), which reads the
+current state, decides whether the transition is legal, updates accepted status
+metadata, and inserts the event in one database transaction. It also rejects a
+hook-to-running update when `pane_exit_status` marks the current error as a
+process-crash terminal row. Thus a rejected hook leaves status, reason, source,
+timestamp, acknowledgement, epoch, last message, and crash evidence unchanged,
+but its original payload is still committed to the session's event audit trail.
+Retention is intentional: it proves the stale event arrived and keeps upstream
+drift diagnosable without letting the event resurrect a terminal session.
+
+The ambiguity was the apparent tension between §8.1's event-to-status prose and
+§7's exhaustive edges, plus §7's general recoverable `error → running` edge
+versus an `error` row carrying terminal pane-death evidence. Phase 2 treats §8.1
+as a mapping constrained by §7, permits `UserPromptSubmit` to recover an
+agent/API error, and treats `pane_exit_status` as the discriminator that makes a
+process-crash error non-recoverable by hooks. It does not change `SPEC.md`.
+
+Evidence is layered:
+
+- [`internal/hookrecv/receiver_test.go`](../../internal/hookrecv/receiver_test.go)
+  exhaustively crosses all six hook events with all six current states, checks
+  accepted metadata, and proves every rejected payload is still audited; its
+  terminal regressions cover both clean stop and process crash.
+- [`internal/store/store_test.go`](../../internal/store/store_test.go) proves the
+  allow-list check and event insertion share the transaction and that a
+  pane-exit error cannot be revived.
+- [`features/status_claude_hooks.feature`](../../features/status_claude_hooks.feature)
+  fires the released pane-instrumented `_hook` path, preserves the legal return
+  edges, and proves stale hooks cannot revive a clean stop, user-terminal row,
+  or process-crash row while their payloads remain queryable.
+- The passing cases and exact unit-test names are retained in the clean
+  [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log).
 
 - §8.1's prose names user-facing events while §4's `events.kind` comment lists a different vocabulary (`started`, `prompt`, `waiting`, and so on) and does not define the translation. Phase 2 stores stable upstream-derived snake-case kinds: `session_start`, `user_prompt_submitted`, `notification`, `stop`, `stop_failure`, and `session_end`. Status, reason-field, message-field, and event kind are reviewable in one mapping table.
 - Session resolution follows the specified order: a unique payload conversation id, then injected deck row id. A duplicate conversation id is not guessed; the injected row id may disambiguate it. An unresolved payload is preserved as an event with `NULL session_id` and returned as a documented diagnostic.
