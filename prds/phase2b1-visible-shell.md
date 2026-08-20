@@ -130,7 +130,7 @@ surface is a defect even though the suite is green.
 ## Requirements
 
 Each requirement must be individually verifiable by a command or scenario whose real output is
-recorded in the phase report (requirement 46).
+recorded in the phase report (requirement 45).
 
 **Numbering is not build order. Requirements 1–7 are harness prerequisites and land first**,
 because nearly every scenario below is impossible without them, and discovering that halfway
