@@ -6,3 +6,11 @@ Feature: Godog harness wiring
 
   Scenario: a private tmux server can be removed
     Given the private tmux server is killed
+
+  @requirement-6-eaw-placement
+  Scenario: the screen emulator places an East-Asian-Wide cell without splitting it
+    Given a fresh terminal emulator sized 12x4
+    When the emulator receives "界┌"
+    Then the emulator cell at column 0 has width 2 and content "界"
+    And the emulator cell at column 1 is a continuation cell
+    And the emulator cell at column 2 has content "┌"

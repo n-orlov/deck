@@ -43,6 +43,7 @@ func TestFeatures(t *testing.T) {
 // step that has not been registered, rather than silently accepting it.
 func initializeScenario(sc *godog.ScenarioContext) {
 	registerScenarioLifecycle(sc)
+	registerEmulatorPlacementSteps(sc)
 	registerBlackBoxAssertionSteps(sc)
 	registerDeterminismSteps(sc)
 	registerStoreFeatureSteps(sc)
