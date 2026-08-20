@@ -11,9 +11,9 @@ but it does not preserve deck's more important geometry guarantee. With deck's c
 45×22 and sends the real program `SIGWINCH`; read-only mode does not prevent this. The only
 measured way to keep the real 120×40 pane untouched is to switch to `window-size manual` and
 pin it, which makes ordinary smaller `↵` attaches cropped/pannable rather than allowing the
-latest real terminal to govern the window. The embedded path also used **13.118280× CPU** and
-**9.699860× peak RSS** in the 30-second synthetic benchmark. Its latency advantage
-(0.060538 ms median versus 496.904196 ms) and deterministic composition do not outweigh the
+latest real terminal to govern the window. The embedded path also used **12.488948× CPU** and
+**9.360418× peak RSS** in the 30-second synthetic benchmark. Its latency advantage
+(0.052257 ms median versus 496.897047 ms) and deterministic composition do not outweigh the
 geometry regression, ordinary-attach behavior change, dependency/lifecycle complexity, and
 continuous resource cost.
 
@@ -30,6 +30,7 @@ experiment through `ci/run.sh`:
 ci/run.sh sh -c 'cd .spike-preview && go test ./...'
 ci/run.sh sh -c 'cd .spike-preview && geometry/run.sh'
 ci/run.sh sh -c 'cd .spike-preview && pinned/run.sh'
+ci/run.sh sh -c 'cd .spike-preview && composition/run.sh'
 ci/run.sh sh -c 'cd .spike-preview && ./conformance/run.sh'
 ci/run.sh sh -c 'cd .spike-preview && benchmark/run.sh'
 ci/run.sh sh -c 'cd .spike-preview && latency/run.sh'
@@ -44,7 +45,7 @@ cleanup check. The evidence entry points are:
 
 | Question | Summary / raw evidence |
 |---|---|
-| load generator and 45×22 composition | `.spike-preview/README.md`, `.spike-preview/preview/`, `.spike-preview/evidence/composition/go-test.log` |
+| load generator and live tmux-pane-backed 45×22 Bubble Tea composition | `.spike-preview/README.md`, `.spike-preview/composition/README.md`, `.spike-preview/preview/`, `.spike-preview/evidence/composition/go-test.log` |
 | geometry matrix | `.spike-preview/geometry/README.md`, `.spike-preview/evidence/geometry/results.tsv`, `.spike-preview/evidence/geometry/raw/` |
 | pinned window | `.spike-preview/pinned/README.md`, `.spike-preview/evidence/pinned/results.tsv`, `.spike-preview/evidence/pinned/raw/` |
 | emulator conformance and provenance | `.spike-preview/conformance/README.md`, `.spike-preview/evidence/conformance/` |
@@ -60,6 +61,13 @@ controls live redraws; `SPIKE_PREVIEW_MODE=fixed` produces byte-identical input.
 also exercise `SIGWINCH` telemetry.
 
 ## Geometry: read-only clients still participate
+
+Before the no-preview control was captured, every matrix server explicitly applied and
+snapshotted `exit-empty off`, `remain-on-exit failed`, the row's `window-size` value, and
+the row's `aggressive-resize` value. Thus the `latest`/`on` control is deck's complete
+four-option contract, while the other rows vary only the two options under test. The eight
+snapshots are retained as
+`.spike-preview/evidence/geometry/raw/*.pre-control.options.txt`.
 
 Each matrix case kept an ordinary read-only 120×40 PTY and a read-only 45×22 control-client
 PTY attached concurrently. `control`, `during`, and `after` mean before preview attach,
@@ -100,10 +108,12 @@ normalization is what distinguishes animation from a geometry/rendering change.
 
 ## Pinned-window alternative and its user-visible cost
 
-The separate pinned experiment used `window-size manual` followed by
-`resize-window -x 120 -y 40`. The original ordinary read-only 120×40 client, a read-only
-45×22 control preview (`refresh-client -C 45x22`), and an ordinary read-only 80×24 client
-were attached together.
+The separate pinned experiment explicitly applied `exit-empty off`,
+`remain-on-exit failed`, `window-size manual`, and `aggressive-resize on`, snapshotted them
+in `.spike-preview/evidence/pinned/raw/pre-measurement.options.txt`, and only then measured
+the result of `resize-window -x 120 -y 40`. The original ordinary read-only 120×40 client,
+a read-only 45×22 control preview (`refresh-client -C 45x22`), and an ordinary read-only
+80×24 client were attached together.
 
 * The window and original client remained 120×40. The normalized capture hash stayed
   `258b9f…f10a`; the original rendering did not change and the retained telemetry count was
@@ -122,12 +132,22 @@ users. It is not a free preview-only option.
 
 ## Composition and emulator choice
 
-The Bubble Tea spike feeds pane bytes through a terminal emulator cell grid; it never
-passes foreign escape sequences through to deck's outer terminal. The composed panel is
-45×22 total with rounded `╭╮╰╯` borders and one column of horizontal padding. The automated
-test processes 50 changing generator frames and checks all 22 lines at display width 45,
-including the border on every line. The retained `go test ./...` output is in
+This is a genuinely live tmux-pane-backed Bubble Tea run, not an in-model frame generator.
+The integration starts `cmd/loadgen` inside target `preview:0.0` on a unique private
+`deck-spike-live-*` socket, streams that pane's bytes through `tmux pipe-pane`, and delivers
+each read through the Bubble Tea model's `Update` path into the `x/vt` cell grid. The live
+path does not call `loadgen.Frame` or otherwise synthesize pane frames in the model.
+
+The composed panel is 45×22 total with rounded `╭╮╰╯` borders and one column of horizontal
+padding. `composition/run.sh` requires at least 50 distinct live generator frames and checks
+every resulting Bubble Tea view for exactly 22 lines at display width 45 and the expected
+border glyph at both ends of every line. The retained run processed 50 distinct pane frames,
+validated 50 views, identified socket
+`deck-spike-live-79-1787223839502585211` and target `preview:0.0`, and confirmed both the
+private socket and FIFO directory were removed. Its verbose output is in
 `.spike-preview/evidence/composition/go-test.log`.
+
+The emulator never passes foreign escape sequences through to deck's outer terminal.
 
 Passing pane bytes directly through would let cursor movement, alternate-screen, erase, and
 SGR control sequences act on deck's terminal and corrupt its chrome; it is not a viable
@@ -169,11 +189,11 @@ discarded.
 
 | metric | 1 s capture baseline | embedded emulator | embedded / baseline |
 |---|---:|---:|---:|
-| elapsed seconds | 30.002625 | 30.007483 | 1.000162× |
-| user CPU seconds | 0.044856 | 1.129839 | 25.188135× |
-| system CPU seconds | 0.055203 | 0.182763 | 3.310744× |
-| **total CPU seconds** | **0.100059** | **1.312602** | **13.118280×** |
-| **peak RSS KiB** | **11,408** | **110,656** | **9.699860×** |
+| elapsed seconds | 30.003678 | 30.008996 | 1.000177× |
+| user CPU seconds | 0.047329 | 1.065542 | 22.513512× |
+| system CPU seconds | 0.051201 | 0.164994 | 3.222476× |
+| **total CPU seconds** | **0.098530** | **1.230536** | **12.488948×** |
+| **peak RSS KiB** | **11,864** | **111,052** | **9.360418×** |
 
 These are synthetic process-scope measurements, not whole-machine claims. They nevertheless
 measure the incremental long-running preview paths on the same workload and show an
@@ -190,17 +210,17 @@ contained it. Units are milliseconds.
 
 | sample | capture polling | embedded composition |
 |---:|---:|---:|
-| 1 | 946.718421 | 0.060376 |
-| 2 | 847.000972 | 0.054684 |
-| 3 | 747.821693 | 0.075632 |
-| 4 | 648.000029 | 0.060931 |
-| 5 | 546.325175 | 0.075979 |
-| 6 | 447.483217 | 0.058177 |
-| 7 | 346.627894 | 0.039759 |
-| 8 | 247.956414 | 0.060701 |
-| 9 | 146.158858 | 0.064334 |
-| 10 | 46.973673 | 0.047880 |
-| **min / median / max** | **46.973673 / 496.904196 / 946.718421** | **0.039759 / 0.060538 / 0.075979** |
+| 1 | 947.467561 | 0.048257 |
+| 2 | 847.025838 | 0.051973 |
+| 3 | 747.261263 | 0.055501 |
+| 4 | 647.730289 | 0.054453 |
+| 5 | 546.868053 | 0.051610 |
+| 6 | 446.926042 | 0.052541 |
+| 7 | 348.257474 | 0.049133 |
+| 8 | 247.540729 | 0.072465 |
+| 9 | 145.778566 | 0.061220 |
+| 10 | 46.430261 | 0.050147 |
+| **min / median / max** | **46.430261 / 496.897047 / 947.467561** | **0.048257 / 0.052257 / 0.072465** |
 
 The embedded result is decisively faster. The capture distribution is the expected phase
 relationship to a one-second tick rather than evidence of a confused emission clock.
@@ -229,32 +249,43 @@ chosen; use a separate live scenario for transport behavior.
 
 ## Failure modes
 
-All cases ran under a host wrapper that emitted `HOST_CHROME_SURVIVED` only after the tmux
-client returned. This is an observable transport-level stand-in for deck regaining control;
-it is not a claim that production Bubble Tea integration already exists.
+These are actual host-TUI survival checks. In every case `cmd/hostprobe` runs the tmux
+transport under a real Bubble Tea `preview.HostModel`, sends transport results through its
+`Init`/`Update` command chain, and renders again after the event. A case passes only when
+the post-event frame is exactly 45×22, has rounded corner glyphs, side borders on all
+interior lines, and the required padding. The six retained ANSI host frames (two for the
+concurrent case) are under `.spike-preview/evidence/failures/raw/`.
 
 1. **Session killed with default `detach-on-destroy on`:** `kill-session` forced the
-   attached preview client out (`%exit` in the retained control transcript). The host
-   wrapper survived. The shared window was 120×40 before destruction; generator
+   attached preview transport out with the typed exact result
+   `preview transport detach: tmux control client detached`. The Bubble Tea host then
+   rendered valid chrome. The shared window was 120×40 before destruction; generator
    `SIGWINCH` count was zero.
 2. **Pane exits non-zero with `remain-on-exit failed`:** exit status 7 left
-   `pane_dead=1 pane_dead_status=7 pane_current_command=sleep`. The client stayed attached
-   to the retained dead pane until explicitly detached; the host wrapper then survived.
-   A product transport must recognize dead-pane metadata rather than wait forever for
-   further output.
-3. **Missing preview target:** tmux exited 1 with the exact error
-   `can't find session: definitely-missing`; no client attached and the host path
-   continued. This must render an in-panel unavailable state, not terminate deck.
+   `pane_dead=1 pane_dead_status=7 pane_current_command=sleep`; the typed result was
+   `preview transport exit: pane_dead=1 pane_dead_status=7`. The client remained attached
+   to the retained dead pane until explicit detach, after which the Bubble Tea host
+   rendered valid chrome. A product transport must recognize dead-pane metadata rather
+   than wait forever for output.
+3. **Missing preview target:** tmux transport status was 1 with exact tmux error
+   `can't find session: definitely-missing` and typed host result
+   `preview transport target: can't find session: definitely-missing`. No client attached;
+   hostprobe itself returned 0 because the Bubble Tea host correctly survived and rendered
+   the valid unavailable frame.
 4. **Outer terminal resized during preview:** resizing the preview PTY from 45×22 to 70×30
    changed the latest-policy shared window from 45×22 to 70×30 and produced two observed
-   `SIGWINCH` records. The client remained attached and the host survived explicit detach.
-   Resize propagation therefore amplifies, rather than fixes, the geometry problem.
-5. **Two deck-like clients preview the same session:** both read-only control clients
+   `SIGWINCH` records. After explicit detach produced
+   `preview transport detach: tmux control client detached`, the host rendered valid
+   45×22 chrome. Resize propagation therefore amplifies, rather than fixes, the geometry
+   problem.
+5. **Two deck-like clients preview the same session:** both read-only control transports
    coexisted. Geometry went 120×40 → 45×22 → 45×22 and the generator recorded one
-   `SIGWINCH`; both wrappers survived detach. Read-only prevents input, not geometry
-   participation, and a second preview does not create an independent pane grid.
+   `SIGWINCH`; after each received the exact typed detach result, **both** Bubble Tea hosts
+   rendered valid 45×22 frames. Read-only prevents input, not geometry participation, and
+   a second preview does not create an independent pane grid.
 
-Every server was cleaned up; see each experiment's `socket-cleanup.txt`.
+Every uniquely named private server was cleaned up; the aggregate retained check reports
+`no deck-spike-failures tmux servers remain` in `socket-cleanup.txt`.
 
 ## Interactivity: possible, deliberately not implemented
 
