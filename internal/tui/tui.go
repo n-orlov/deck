@@ -136,6 +136,11 @@ type sessionKilled struct{ err error }
 
 type sessionAcknowledged struct{ err error }
 
+// uiStatePersisted reports the outcome of persisting layout_mode or
+// sidebar_width to state.db's ui_state table after a `|`/`<`/`>` keypress
+// (task 016, SPEC §11.2). It never touches config.toml.
+type uiStatePersisted struct{ err error }
+
 type sessionResumed struct {
 	session store.Session
 	outcome service.ResumeOutcome
@@ -163,6 +168,20 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 				return fmt.Errorf("attach status clock is unavailable")
 			}
 			return db.RecordAttachment(ctx, sessionID, settings.Clock.Now().UnixMilli())
+		}
+		// Task 016: layout_mode and sidebar_width (SPEC §11.2) live only in
+		// state.db's ui_state table, read once here so a restarted client
+		// (a fresh New(db, ...) call, exactly as acknowledge_test.go's
+		// "restarted" model simulates it) renders the persisted pin/width
+		// rather than falling back to the in-memory zero values. A read
+		// failure is not load-bearing: ui_state degrades to the Go zero
+		// value (""/0), which ComputeLayout already treats as auto/default.
+		ctx := context.Background()
+		if mode, err := db.GetLayoutMode(ctx); err == nil {
+			m.layoutMode = mode
+		}
+		if width, err := db.GetSidebarWidth(ctx); err == nil {
+			m.sidebarWidth = width
 		}
 	}
 	return m
@@ -313,6 +332,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.attachError = ""
 		return m, m.loadSessions
+	case uiStatePersisted:
+		// A failed write to ui_state is not load-bearing (SPEC §11.2): the
+		// pin/width already changed in memory and keeps rendering; only the
+		// error note surfaces so a persistent failure is still visible.
+		if msg.err != nil {
+			m.attachError = "Cannot persist layout: " + msg.err.Error()
+		}
+		return m, nil
 	case sessionResumed:
 		if msg.err != nil {
 			m.attachError = "Cannot resume: " + msg.err.Error()
@@ -494,14 +521,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "|":
 			if !m.help {
 				m.layoutMode = nextLayoutMode(m.layoutMode)
+				return m, m.persistLayoutMode()
 			}
 		case "<":
 			if !m.help {
 				m.sidebarWidth = m.adjustSidebarWidth(-1)
+				return m, m.persistSidebarWidth()
 			}
 		case ">":
 			if !m.help {
 				m.sidebarWidth = m.adjustSidebarWidth(1)
+				return m, m.persistSidebarWidth()
 			}
 		case "enter":
 			if m.attach == nil || len(m.sessions) == 0 {
@@ -531,6 +561,31 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// persistLayoutMode returns a command that writes the just-updated
+// layoutMode pin to state.db's ui_state table (task 016, SPEC §11.2), never
+// to config.toml. With no store attached (most unit tests) it is a no-op so
+// callers can always chain it after mutating m.layoutMode.
+func (m Model) persistLayoutMode() tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	mode := m.layoutMode
+	return func() tea.Msg {
+		return uiStatePersisted{err: m.store.SetLayoutMode(context.Background(), mode)}
+	}
+}
+
+// persistSidebarWidth is persistLayoutMode's sidebar_width counterpart.
+func (m Model) persistSidebarWidth() tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	width := m.sidebarWidth
+	return func() tea.Msg {
+		return uiStatePersisted{err: m.store.SetSidebarWidth(context.Background(), width)}
+	}
 }
 
 func (m Model) View() string {
