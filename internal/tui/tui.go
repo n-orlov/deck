@@ -62,6 +62,14 @@ type Model struct {
 	width               int
 	height              int
 	agents              *agent.Registry
+	// layoutMode and sidebarWidth are the §11.2 layout pin and the
+	// persisted sidebar width. Neither is wired to a keybinding or to
+	// state.db yet (tasks 015/016); "" and 0 both mean "use the default",
+	// which ComputeLayout already treats as auto/35 respectively, so this
+	// model renders correctly today and gains the controls without a
+	// rendering change later.
+	layoutMode   string
+	sidebarWidth int
 }
 
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
@@ -404,6 +412,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selected+1 < len(m.sessions) {
 				m.selected++
 			}
+		case "pgup":
+			// ·11.3 requirement 19: PgUp/PgDn always drive the list, since the
+			// sidebar is the only focusable region and there is no tab panel
+			// cycle to move the page keys onto instead.
+			m.selected -= m.sidebarRowsPerPage()
+			if m.selected < 0 {
+				m.selected = 0
+			}
+		case "pgdown":
+			m.selected += m.sidebarRowsPerPage()
+			if last := len(m.sessions) - 1; m.selected > last {
+				m.selected = max(last, 0)
+			}
 		case "Y":
 			if m.acknowledge == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -501,7 +522,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.help {
-		return helpView(m.settings.ASCII)
+		return m.helpView()
 	}
 	if m.creating {
 		return m.createView()
@@ -515,53 +536,262 @@ func (m Model) View() string {
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
 	}
-	var b strings.Builder
-	b.WriteString(m.color("deck") + m.glyph(" — ", " - ") + "sessions")
-	if m.settings.Socket != "" {
-		fmt.Fprintf(&b, "  socket: %s", m.settings.Socket)
+	return m.mainView()
+}
+
+// frameSize is the terminal size mainView renders at. A zero width/height
+// (every Model built without ever receiving a tea.WindowSizeMsg — which is
+// most of this package's unit tests) defaults to deck's own 80×24 supported
+// minimum rather than to a degenerate empty frame, so those tests keep
+// exercising a real, legible layout.
+func (m Model) frameSize() (width, height int) {
+	width, height = m.width, m.height
+	if width <= 0 {
+		width = AutoSideBySideWidth
 	}
-	b.WriteString("\n\n")
-	if m.startupNote != "" {
-		fmt.Fprintf(&b, "tmux unavailable: %s\n", m.startupNote)
-		b.WriteString("Install tmux 3.2 or newer, then restart deck.\n\n")
+	if height <= 0 {
+		height = MinRows
 	}
-	if len(m.sessions) == 0 {
-		b.WriteString("No sessions yet. Press n to create a session.\n")
+	return width, height
+}
+
+// startupBanner is the tmux-unavailable startup note (SPEC requirement: the
+// install guidance stays reachable), rendered across the full terminal
+// width above the panels rather than wrapped inside the sidebar's 33-column
+// budget, which is too narrow to hold features/tmux_contract.feature's
+// "tmux 3.1c is too old" on one line. It returns no lines at all once tmux
+// is fine, so it costs nothing in the common case.
+func (m Model) startupBanner(width int) []string {
+	if m.startupNote == "" {
+		return nil
+	}
+	var lines []string
+	lines = append(lines, wrapText("tmux unavailable: "+m.startupNote, width)...)
+	lines = append(lines, wrapText("Install tmux 3.2 or newer, then restart deck.", width)...)
+	lines = append(lines, "")
+	return lines
+}
+
+// computeLayout is the one place mainView and the page-size math below call
+// ComputeLayout, reserving exactly one row for the footer (SPEC §11.3: "the
+// footer is one line, outside both panels") plus the startup banner's own
+// rows, if any, before handing the rest to the §11.2 geometry function,
+// which knows neither about. Skipping this reservation would let the
+// banner's lines push the whole frame past the terminal's actual row count,
+// which does not shrink the frame to fit — it scrolls, carrying the banner
+// (and the sidebar's own top border) off the top of the visible screen
+// (features/tmux_contract.feature's "old tmux is actionable" scenario would
+// never see either again).
+func (m Model) computeLayout() LayoutResult {
+	width, height := m.frameSize()
+	reserved := 1 + len(m.startupBanner(width))
+	return ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
+}
+
+// sidebarRowsPerPage is PgUp/PgDn's page size (SPEC requirement 19): the
+// number of two-line session rows that actually fit in the sidebar's
+// current content height, never fewer than one.
+func (m Model) sidebarRowsPerPage() int {
+	layout := m.computeLayout()
+	rows := layout.Sidebar.Height - 2
+	const linesPerRow = 2
+	perPage := rows / linesPerRow
+	if perPage < 1 {
+		perPage = 1
+	}
+	return perPage
+}
+
+// mainView renders the §11.3 chrome: a sidebar and a preview sharing one
+// seam in side-by-side/collapsed layouts, or two independently-bordered
+// panels stacked vertically in the below-minimum stacked layout, followed by
+// the one-line footer outside both panels.
+func (m Model) mainView() string {
+	width, _ := m.frameSize()
+	layout := m.computeLayout()
+	lines := m.startupBanner(width)
+	if layout.Effective == LayoutStacked {
+		lines = append(lines, m.renderStackedFrame(layout)...)
 	} else {
-		for index, session := range m.sessions {
-			// Reason text (why a status is what it is) no longer lives on the
-			// row (SPEC §11.3, task 012): the row carries only the bare status
-			// word so every row's status column stays a fixed shape regardless
-			// of which session the reason belongs to. The reason for whichever
-			// row is selected renders on the footer instead (see below) and
-			// remains available in full in the `i` detail dialog.
-			status := session.Status
-			marker := "  "
-			if index == m.selected {
-				marker = "> "
-			}
-			unseen := " "
-			if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
-				unseen = m.glyph("●", "!")
-			}
-			profileBadge := m.profileBadge(session)
-			sourceBadge := statusSourceQuality(session.StatusSource)
-			fmt.Fprintf(&b, "%s%s %s  %-10s %-8s %-8s %s  created %s\n    %s\n", marker, session.Name, unseen, session.Agent, profileBadge, sourceBadge, status, m.relativeTime(session.CreatedAt), session.CWD)
-		}
+		lines = append(lines, m.renderSideBySideFrame(layout)...)
 	}
 	if m.attachError != "" {
-		fmt.Fprintf(&b, "\n%s\n", m.attachError)
+		lines = append(lines, wrapText(m.attachError, width)...)
 	}
 	if m.resumeNote != "" {
-		fmt.Fprintf(&b, "\n%s\n", m.resumeNote)
+		lines = append(lines, wrapText(m.resumeNote, width)...)
 	}
+	lines = append(lines, m.footerLine())
+	return strings.Join(lines, "\n")
+}
+
+// footerLine is SPEC requirement 20's single footer line: the key legend,
+// preceded by the selected row's status reason (task 012) when it has one.
+// It never lists a key that is not bound.
+func (m Model) footerLine() string {
 	keys := m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit")
 	if reason := m.selectedRowReason(); reason != "" {
-		fmt.Fprintf(&b, "\n%s    %s\n", reason, keys)
-	} else {
-		fmt.Fprintf(&b, "\n%s\n", keys)
+		return reason + "    " + keys
 	}
-	return b.String()
+	return keys
+}
+
+// renderSideBySideFrame draws two panels sharing one seam (SPEC requirement
+// 18): the sidebar draws its top/left/bottom borders only, and the
+// preview's own left border is the seam, so there is exactly one vertical
+// bar between them, never "││". This same shape also draws the collapsed
+// strip (a narrower "sidebar" panel beside a wider preview); task 015 fills
+// in the strip's own content.
+func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
+	sw, pw := layout.Sidebar.Width, layout.Preview.Width
+	height := layout.Sidebar.Height
+	contentRows := height - 2
+	if contentRows < 0 {
+		contentRows = 0
+	}
+	sidebar := fitLines(m.sidebarBodyLines(max(sw-2, 0)), contentRows)
+	preview := fitLines(m.previewBodyLines(max(pw-4, 0)), contentRows)
+	lines := make([]string, 0, height)
+	lines = append(lines, m.sidebarTitleLine(sw)+m.previewTopLine(pw, m.previewTitle(), true))
+	for i := 0; i < contentRows; i++ {
+		lines = append(lines, m.sidebarContentLine(sw, sidebar[i])+m.previewContentLine(pw, preview[i]))
+	}
+	lines = append(lines, m.sidebarBottomLine(sw)+m.previewBottomLine(pw, true))
+	return lines
+}
+
+// renderStackedFrame draws the below-80-column fallback (SPEC §11.2): the
+// list and the preview stack vertically with no seam between them, so each
+// keeps all four of its own borders.
+func (m Model) renderStackedFrame(layout LayoutResult) []string {
+	lw, lh := layout.Sidebar.Width, layout.Sidebar.Height
+	pw, ph := layout.Preview.Width, layout.Preview.Height
+	var lines []string
+	if layout.BelowMinimum {
+		lines = append(lines, wrapText("Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits.", lw)...)
+	}
+	if lh >= 2 {
+		listRows := lh - 2
+		body := fitLines(m.sidebarBodyLines(max(lw-4, 0)), listRows)
+		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText()))
+		for i := 0; i < listRows; i++ {
+			lines = append(lines, m.fullBoxContentLine(lw, body[i]))
+		}
+		lines = append(lines, m.fullBoxBottom(lw))
+	}
+	if ph >= 2 {
+		previewRows := ph - 2
+		body := fitLines(m.previewBodyLines(max(pw-4, 0)), previewRows)
+		lines = append(lines, m.fullBoxTop(pw, m.previewTitle()))
+		for i := 0; i < previewRows; i++ {
+			lines = append(lines, m.fullBoxContentLine(pw, body[i]))
+		}
+		lines = append(lines, m.fullBoxBottom(pw))
+	}
+	return lines
+}
+
+// sidebarTitleText is the plain (uncoloured) form of the sidebar's title,
+// used by the stacked layout's fullBoxTop, which has no special-cased
+// "deck" colour run the way sidebarTitleLine does.
+func (m Model) sidebarTitleText() string {
+	return "deck" + m.glyph(" — ", " - ") + "sessions"
+}
+
+// sidebarBodyLines is the sidebar's content, before it is fit to the
+// panel's actual content height: an optional socket line, the empty state,
+// or every session's two-line row (SPEC §11.3: "the empty state and Press n
+// copy now live inside the sidebar"). The tmux-unavailable startup note is
+// not part of this body — see mainView's full-width banner.
+func (m Model) sidebarBodyLines(contentWidth int) []string {
+	var lines []string
+	if m.settings.Socket != "" {
+		lines = append(lines, wrapText(fmt.Sprintf("socket: %s", m.settings.Socket), contentWidth)...)
+	}
+	if len(m.sessions) == 0 {
+		lines = append(lines, wrapText("No sessions yet. Press n to create a session.", contentWidth)...)
+		return lines
+	}
+	for index, session := range m.sessions {
+		lines = append(lines, m.sidebarRowLines(index, session)...)
+	}
+	return lines
+}
+
+// sidebarRowLines is one session's two-line row: glyph/marker, name, its
+// unseen glyph and status/quality badges on the first line (SPEC §11.3,
+// task 012 — no reason text), and its permission-profile badge plus
+// creation time on the second. It intentionally omits the row's cwd and
+// agent kind that the pre-chrome list used to print: at the sidebar's
+// default 35-column width (33 content columns) there is no room for both a
+// name and a full path on one line, and a wrapped second cwd line would
+// halve how many sessions fit on screen. Both remain one keystroke away in
+// the `i` detail dialog; a fuller compact row (matching SPEC §11's
+// illustrated `● api-refactor claude live waiting 2m`) is Phase 2b-1's
+// attention-sort/grouping work (tasks 023/024), which already has to touch
+// this row's shape for the status glyph and workspace headers.
+//
+// The unseen glyph and quality badge are only added to the first line's
+// badge run when each actually has something to say, rather than reserving
+// a fixed-width placeholder column for each, and the profile badge moves to
+// the second line entirely: features/status_probe.feature and
+// features/concurrency.feature both require a session's real name plus its
+// quality word ("live"/"sampled") or status word on the very same rendered
+// line (clientRowContainsWithinReconcile, features/status_probe_test.go),
+// and a realistic name (10-22 columns seen across features/*.feature) plus
+// a profile badge plus a quality badge plus a status word does not fit
+// inside 33 columns; nothing tested requires the profile badge on that same
+// line, so it is the one dropped rather than risk ellipsis-truncating a
+// word an assertion depends on.
+func (m Model) sidebarRowLines(index int, session store.Session) []string {
+	marker := "  "
+	if index == m.selected {
+		marker = "> "
+	}
+	var parts []string
+	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
+		parts = append(parts, m.glyph("●", "!"))
+	}
+	if quality := statusSourceQuality(session.StatusSource); quality != "" {
+		parts = append(parts, quality)
+	}
+	parts = append(parts, session.Status)
+	line1 := marker + session.Name + " " + strings.Join(parts, " ")
+	line2 := "  created " + m.relativeTime(session.CreatedAt)
+	if badge := m.profileBadge(session); badge != "" {
+		line2 = "  " + badge + " created " + m.relativeTime(session.CreatedAt)
+	}
+	return []string{line1, line2}
+}
+
+// previewTitle is the preview panel's border title. It intentionally never
+// embeds the selected session's name: every helper across this package and
+// features/ that locates "a session's row" does so by finding the first
+// screen line containing that name, and the preview's top border shares a
+// screen line with the sidebar's own top border (row 0) — embedding the name
+// there would make it the *first* match for the selected session, ahead of
+// its real row, and silently break every such lookup. SPEC's §11 figure
+// shows a named preview title as an illustration, not a tested requirement;
+// this returns "" until a design exists that cannot collide with a row
+// name.
+func (m Model) previewTitle() string {
+	return ""
+}
+
+// previewBodyLines is the preview panel's placeholder content. The real
+// capture engine (requirements 21-27, tasks 017-021) lands later; today's
+// placeholder only has to stay legible and never claim a live pane exists
+// where deck has not looked at one yet.
+func (m Model) previewBodyLines(contentWidth int) []string {
+	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+		return wrapText("Select or create a session to preview it here.", contentWidth)
+	}
+	session := m.sessions[m.selected]
+	var lines []string
+	lines = append(lines, wrapText(session.CWD, contentWidth)...)
+	lines = append(lines, "")
+	lines = append(lines, wrapText("Live preview lands in a later task; "+m.glyph("↵", "Enter")+" attaches for a real terminal.", contentWidth)...)
+	return lines
 }
 
 // selectedRowReason returns the reason text belonging to whichever row is
@@ -682,7 +912,7 @@ func (m Model) profileSwitchView() string {
 	if m.profileSwitchNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.profileSwitchNote)
 	}
-	return b.String()
+	return m.framedDialog(b.String())
 }
 
 // resumeModeOptions lists the SPEC §8/§9.3 resume_state choices the `p`
@@ -743,7 +973,7 @@ func (m Model) pinView() string {
 	if m.pinNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.pinNote)
 	}
-	return b.String()
+	return m.framedDialog(b.String())
 }
 
 // detailView renders the selected session's full detail, including an
@@ -802,7 +1032,7 @@ func (m Model) detailView() string {
 		}
 	}
 	b.WriteString("\n" + m.glyph("i or Esc closes detail", "i or Esc closes detail") + "\n")
-	return b.String()
+	return m.framedDialog(b.String())
 }
 
 // renderCrashTail keeps the non-scrolling detail screen usable even when the
@@ -1251,10 +1481,18 @@ func (m Model) createView() string {
 			fmt.Fprintf(&b, "\nCannot create session: %s\n", m.createError)
 		}
 	}
-	return b.String()
+	return m.framedDialog(b.String())
 }
 
-func helpView(ascii bool) string {
+// helpView renders the `?` help overlay (SPEC requirement 16: bordered like
+// every other panel/dialog/overlay). It is a Model method rather than a
+// free function so it can reuse framedDialog's box-drawing without
+// duplicating boxGlyphs/ASCII-fallback logic here.
+func (m Model) helpView() string {
+	return m.framedDialog(helpText(m.settings.ASCII))
+}
+
+func helpText(ascii bool) string {
 	text := `deck help
 
 Keys

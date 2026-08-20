@@ -120,12 +120,16 @@ func TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts(t *testing.T) {
 	for _, want := range []string{
 		"Verdict source:     hook (live)",
 		"Verdict age:        just now",
-		"Last message:\nthe last assistant answer",
-		"Crash tail (exit status 137):\nfinal output\nprocess killed",
 	} {
 		if !strings.Contains(fresh, want) {
 			t.Fatalf("fresh detail missing %q:\n%s", want, fresh)
 		}
+	}
+	if !consecutiveLinesContain(fresh, []string{"Last message:", "the last assistant answer"}) {
+		t.Fatalf("fresh detail missing consecutive lines %q:\n%s", []string{"Last message:", "the last assistant answer"}, fresh)
+	}
+	if !consecutiveLinesContain(fresh, []string{"Crash tail (exit status 137):", "final output", "process killed"}) {
+		t.Fatalf("fresh detail missing consecutive lines %q:\n%s", []string{"Crash tail (exit status 137):", "final output", "process killed"}, fresh)
 	}
 	clock.Advance()
 	aged := model.View()
@@ -140,13 +144,13 @@ func TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts(t *testing.T) {
 		t.Fatalf("probe detail missing sampled quality:\n%s", got)
 	}
 	model.sessions[0].StatusSource = "tmux"
-	if got := model.View(); !strings.Contains(got, "Verdict source:     tmux\n") || strings.Contains(got, "tmux (") {
+	if got := model.View(); !strings.Contains(lineContaining(got, "Verdict source:"), "tmux") || strings.Contains(got, "tmux (") {
 		t.Fatalf("tmux detail falsely claims agent quality:\n%s", got)
 	}
 
 	model.sessions[0].CrashTail = strings.Join([]string{"first", "2", "3", "4", "5", "6", "7", "8", "9", "last"}, "\n")
 	bounded := model.View()
-	if !strings.Contains(bounded, "first\n2\n3\n4\n… 2 lines omitted …\n7\n8\n9\nlast") {
+	if !consecutiveLinesContain(bounded, []string{"first", "2", "3", "4", "… 2 lines omitted …", "7", "8", "9", "last"}) {
 		t.Fatalf("long crash tail did not retain both ends in bounded detail:\n%s", bounded)
 	}
 }
@@ -158,6 +162,30 @@ func lineContaining(view, value string) string {
 		}
 	}
 	return ""
+}
+
+// consecutiveLinesContain reports whether some run of len(wants) adjacent
+// rendered lines each contain the corresponding wants[i] substring, in
+// order. Since task 014 boxed every dialog (SPEC requirement 16), a
+// multi-line value like a crash tail no longer survives as one literal
+// "line one\nline two" substring — each of its lines now has its own
+// border/padding wrapped around it — so assertions on multi-line content
+// walk adjacent rendered lines instead of the raw joined text.
+func consecutiveLinesContain(view string, wants []string) bool {
+	lines := strings.Split(view, "\n")
+	for start := 0; start+len(wants) <= len(lines); start++ {
+		ok := true
+		for i, want := range wants {
+			if !strings.Contains(lines[start+i], want) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
 }
 
 // TestDetailKeyTogglesAndEscCloses proves i opens and closes the detail
