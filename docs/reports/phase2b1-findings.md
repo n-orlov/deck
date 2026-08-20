@@ -352,3 +352,53 @@ Evidence: `internal/tui/layout_test.go`'s
 `internal/tui/preview_capture_test.go`'s
 `TestCapturePreviewStopsWhenPreviewNotShown`. `ci/run.sh go build ./...`,
 `go vet ./...` and `go test -p=1 -count=1 ./...` all green.
+
+## Task 023: attention sort with a documented, total tie-break (SPEC requirements 28, 29)
+
+### The function
+
+`internal/tui/attention.go`'s `sortSessionsByAttention` is the sort's only
+implementation. It takes an unordered `[]store.Session`, returns a new
+slice (the input is never mutated — proved by
+`TestSortSessionsByAttentionDoesNotMutateInput`), ordered by:
+
+1. **Group** (requirement 28), via `attentionRank`: `waiting` → `error` →
+   `running` → `starting` → `idle` → `stopped`. Any status outside that
+   six-member enumeration (there is no reachable path to one today —
+   `archived`'s column exists but nothing reads/writes it yet, per task
+   020's own finding above) ranks after `stopped` rather than vanishing or
+   jumping ahead of it (`TestSortSessionsByAttentionUnknownStatusSortsLast`).
+2. **The tie-break key (requirement 29)**, applied inside every group:
+   ascending `StatusAt`, then ascending session `ID`. `StatusAt` is the
+   timestamp of the session's *current* status, so within the `waiting`
+   group this key alone already reads as "oldest first" — the session
+   that has been waiting longest sorts first
+   (`TestSortSessionsByAttentionWaitingOldestFirst`) — and every other
+   group orders its members by the same rule for one consistent
+   definition rather than a special case per status. `ID` is unique and
+   stable for a session's lifetime, so it is a total order; combined with
+   `StatusAt` (also total once `ID` breaks its ties), the whole key is
+   total. A frozen clock — two sessions sharing both status and
+   `StatusAt` — therefore still resolves to exactly one order, every time
+   (`TestSortSessionsByAttentionTiesBrokenByID`, run 20 times to rule out
+   `sort.SliceStable`'s ever depending on inbound order for that case —
+   it doesn't, because `ID` fully resolves the tie before stability would
+   matter).
+
+**The tie-break key, stated plainly for requirement 29: `(StatusAt asc,
+ID asc)`, evaluated only after the requirement-28 group rank.**
+
+### Scope of this task vs. 024/025/026
+
+This task lands the pure sort function with full unit coverage; it is not
+yet wired into `Model.sessions`' render order. `Model` still renders
+sessions in `store.ListSessions`' `created_at, id` order (unchanged since
+task 001). Wiring is deliberately deferred to task 024 (grouping by
+workspace restructures how the sidebar's rows are built, which is the
+natural point to also apply this sort within each group) and task 025
+(the "one shared attention source" that the sort, the collapsed strip's
+count, and `space` all consult) — task 026's `attention_sort.feature`
+proves the fully-wired, visible order.
+
+Evidence: `internal/tui/attention_test.go`, `ci/run.sh go build ./...`,
+`go vet ./...` and `go test -p=1 -count=1 ./...` all green.
