@@ -85,6 +85,12 @@ type Model struct {
 	previewSessionID string
 	previewLive      bool
 	previewBytes     []byte
+	// previewPaneWidth/previewPaneHeight are the real tmux pane geometry at
+	// the moment previewBytes was captured (SPEC requirement 23's "45x22 of
+	// 120x40" line, task 018) — independent of previewBytes' own line count,
+	// since tmux trims trailing blank lines/columns from a capture.
+	previewPaneWidth  int
+	previewPaneHeight int
 }
 
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
@@ -470,6 +476,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.previewSessionID = msg.sessionID
 			m.previewLive = msg.capture.Live
 			m.previewBytes = msg.capture.Bytes
+			m.previewPaneWidth = msg.capture.Width
+			m.previewPaneHeight = msg.capture.Height
 		}
 		return m, nil
 	case animationTick:
@@ -818,7 +826,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 		sidebarBody = m.collapsedStripLines()
 	}
 	sidebar := fitLines(sidebarBody, contentRows)
-	preview := fitLines(m.previewBodyLines(max(pw-4, 0)), contentRows)
+	preview := m.previewBodyLines(max(pw-4, 0), contentRows)
 	lines := make([]string, 0, height)
 	lines = append(lines, sidebarTop+m.previewTopLine(pw, m.previewTitle(), true))
 	for i := 0; i < contentRows; i++ {
@@ -878,7 +886,7 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 	}
 	if ph >= 2 {
 		previewRows := ph - 2
-		body := fitLines(m.previewBodyLines(max(pw-4, 0)), previewRows)
+		body := m.previewBodyLines(max(pw-4, 0), previewRows)
 		lines = append(lines, m.fullBoxTop(pw, m.previewTitle()))
 		for i := 0; i < previewRows; i++ {
 			lines = append(lines, m.fullBoxContentLine(pw, body[i]))
@@ -975,20 +983,27 @@ func (m Model) previewTitle() string {
 	return ""
 }
 
-// previewBodyLines is the preview panel's placeholder content. The real
-// capture engine (requirements 21-27, tasks 017-021) lands later; today's
-// placeholder only has to stay legible and never claim a live pane exists
-// where deck has not looked at one yet.
-func (m Model) previewBodyLines(contentWidth int) []string {
+// previewBodyLines is the preview panel's content: the real cropped pane
+// capture (task 018, SPEC requirement 23) when the selected session has a
+// live capture on file, otherwise a placeholder that stays legible and
+// never claims a live pane exists where deck has not looked at one (or has
+// looked and found none -- naming which of those states applies for every
+// row is task 020's job, SPEC requirement 26). It always returns exactly
+// contentHeight lines, each exactly contentWidth runes, so callers no
+// longer need their own fitLines pass for the preview panel.
+func (m Model) previewBodyLines(contentWidth, contentHeight int) []string {
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
-		return wrapText("Select or create a session to preview it here.", contentWidth)
+		return fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
 	}
 	session := m.sessions[m.selected]
+	if m.previewLive && m.previewSessionID == session.ID {
+		return m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
+	}
 	var lines []string
 	lines = append(lines, wrapText(session.CWD, contentWidth)...)
 	lines = append(lines, "")
-	lines = append(lines, wrapText("Live preview lands in a later task; "+m.glyph("↵", "Enter")+" attaches for a real terminal.", contentWidth)...)
-	return lines
+	lines = append(lines, wrapText("No live preview captured for this row yet.", contentWidth)...)
+	return fitLines(lines, contentHeight)
 }
 
 // selectedRowReason returns the reason text belonging to whichever row is
