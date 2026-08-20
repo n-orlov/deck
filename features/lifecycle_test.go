@@ -56,6 +56,16 @@ type ScenarioHarness struct {
 	// clock). Steps set it before starting any client.
 	clientEnv []string
 
+	// windowGeometrySnapshots and sizeLogSnapshots back task 022's preview.
+	// feature invariant checks (requirement 21/27): a step captures a
+	// private tmux window's own #{window_width}x#{window_height} (or a fake
+	// agent's own SIGWINCH size-recording log content) under a label, and a
+	// later step asserts the current value is byte-identical to it, proving
+	// the preview capture engine never resized a pane or triggered a
+	// SIGWINCH across whatever gestures ran in between.
+	windowGeometrySnapshots map[string]string
+	sizeLogSnapshots        map[string]string
+
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
 	tmuxProbe  func() bool
