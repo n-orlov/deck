@@ -87,14 +87,18 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	client, err := h.StartNamedClient(ctx, "frozen-clock", deterministicEnvironment()...)
+	// Keep the deterministic controls on the scenario harness, not only on
+	// individual clients: the later released _hook process must join the same
+	// shared clock after SIGUSR1 advances it.
+	h.clientEnv = deterministicEnvironment()
+	client, err := h.StartNamedClient(ctx, "frozen-clock")
 	if err != nil {
 		return err
 	}
 	if err := client.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
 		return err
 	}
-	observer, err := h.StartNamedClient(ctx, "frozen-clock-observer", deterministicEnvironment()...)
+	observer, err := h.StartNamedClient(ctx, "frozen-clock-observer")
 	if err != nil {
 		return err
 	}
@@ -143,11 +147,15 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Seed the row at the unstepped time. The subsequent assertion reads the
+	// hook's durable event, so it cannot pass merely because fixture status_at
+	// already happened to equal the expected stepped timestamp.
+	fixtureAt := time.Date(2025, time.January, 2, 3, 4, 5, 0, time.UTC).UnixMilli()
 	_, insertErr := db.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, conversation_id,
 		 status, status_source, status_at, created_at)
 		VALUES ('clock-step-hook', 'clock step hook', 'clock-step-hook', ?, 'claude', ?,
-		 'clock-step-conversation', 'starting', 'user', 1735787165000, 1735787165000)`, h.Home, os.Getenv("PATH"))
+		 'clock-step-conversation', 'starting', 'user', ?, ?)`, h.Home, os.Getenv("PATH"), fixtureAt, fixtureAt)
 	closeErr := db.Close()
 	if insertErr != nil {
 		return fmt.Errorf("create later hook target: %w", insertErr)
@@ -188,13 +196,14 @@ func steppedClockIsSharedWithHook(ctx context.Context) error {
 		return err
 	}
 	defer db.Close()
-	var statusAt int64
-	if err := db.QueryRowContext(ctx, `SELECT status_at FROM sessions WHERE name = 'clock step hook'`).Scan(&statusAt); err != nil {
-		return fmt.Errorf("read later hook timestamp: %w", err)
+	var hookAt int64
+	if err := db.QueryRowContext(ctx, `SELECT at FROM events
+		WHERE session_id = 'clock-step-hook' AND kind = 'session_start'`).Scan(&hookAt); err != nil {
+		return fmt.Errorf("read later hook event timestamp: %w", err)
 	}
 	want := time.Date(2025, time.January, 2, 3, 6, 5, 0, time.UTC).UnixMilli()
-	if statusAt != want {
-		return fmt.Errorf("later hook persisted status_at=%d, want stepped shared time %d", statusAt, want)
+	if hookAt != want {
+		return fmt.Errorf("later hook persisted event timestamp=%d, want stepped shared time %d", hookAt, want)
 	}
 	return nil
 }
