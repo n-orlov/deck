@@ -976,7 +976,7 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := privateOptionIs(stepCtx, "exit-empty", "off"); err != nil {
 		t.Fatal(err)
 	}
-	if err := databaseSchemaVersion(stepCtx, 1); err != nil {
+	if err := databaseSchemaVersion(stepCtx, 2); err != nil {
 		t.Fatal(err)
 	}
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {

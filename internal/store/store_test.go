@@ -39,7 +39,7 @@ func TestOpenInitializesPrivateV1WALStore(t *testing.T) {
 	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatalf("schema version = %d, %v; want %d", version, err, SchemaVersion)
 	}
-	for _, table := range []string{"sessions", "events", "meta"} {
+	for _, table := range []string{"sessions", "events", "meta", "ui_state"} {
 		var name string
 		if err := store.DB().QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name); err != nil || name != table {
 			t.Fatalf("missing %s table: %v", table, err)
@@ -92,7 +92,7 @@ func TestOpenRefusesNewerFixtureWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 2)`); err != nil {
+	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 3)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.Close(); err != nil {
@@ -893,8 +893,119 @@ func TestRecordOrphanEventUsesNullSessionAndRequiresTimestamp(t *testing.T) {
 		t.Fatalf("orphan event = session:%#v at:%d kind:%q reason:%q payload:%q", sessionID, at, kind, reason, payload)
 	}
 	var version int
-	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != 1 || SchemaVersion != 1 {
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatalf("schema version changed: db=%d constant=%d err=%v", version, SchemaVersion, err)
+	}
+}
+
+func TestUIStateAccessorsDegradeToDocumentedDefaults(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	mode, err := store.GetLayoutMode(ctx)
+	if err != nil || mode != DefaultLayoutMode {
+		t.Fatalf("GetLayoutMode before any write = %q, %v; want %q", mode, err, DefaultLayoutMode)
+	}
+	width, err := store.GetSidebarWidth(ctx)
+	if err != nil || width != DefaultSidebarWidth {
+		t.Fatalf("GetSidebarWidth before any write = %d, %v; want %d", width, err, DefaultSidebarWidth)
+	}
+
+	if err := store.SetLayoutMode(ctx, "stacked"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetSidebarWidth(ctx, 50); err != nil {
+		t.Fatal(err)
+	}
+	mode, err = store.GetLayoutMode(ctx)
+	if err != nil || mode != "stacked" {
+		t.Fatalf("GetLayoutMode after write = %q, %v; want %q", mode, err, "stacked")
+	}
+	width, err = store.GetSidebarWidth(ctx)
+	if err != nil || width != 50 {
+		t.Fatalf("GetSidebarWidth after write = %d, %v; want 50", width, err)
+	}
+
+	// Overwriting an existing key updates in place rather than duplicating a
+	// row — ui_state.key is a PRIMARY KEY, exercised here via the accessor
+	// rather than raw SQL.
+	if err := store.SetSidebarWidth(ctx, 60); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM ui_state WHERE key = 'sidebar_width'`).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("ui_state sidebar_width rows = %d, %v; want 1", rows, err)
+	}
+	width, err = store.GetSidebarWidth(ctx)
+	if err != nil || width != 60 {
+		t.Fatalf("GetSidebarWidth after overwrite = %d, %v; want 60", width, err)
+	}
+}
+
+func TestOpenMigratesV1FixtureToUIStateWithoutRecreatingSessionRow(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "deck")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, "state.db")
+	fixture, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exactly schemaV1 (no ui_state) plus a real schema_version=1 marker and
+	// one pre-existing session row, mirroring a database created by a
+	// pre-task-010 binary.
+	for _, statement := range schemaV1 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fixture.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	const fixtureID = "v1-fixture-session"
+	if _, err := fixture.Exec(`INSERT INTO sessions (
+		id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at
+	) VALUES (?, 'kept', 'kept', '/tmp', 'shell', '/bin/sh', 'stopped', 'test', 1, 1)`, fixtureID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var version int
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
+		t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
+	}
+	var name string
+	if err := store.DB().QueryRow(`SELECT name FROM sessions WHERE id = ?`, fixtureID).Scan(&name); err != nil || name != "kept" {
+		t.Fatalf("session row after v1->v2 migration = %q, %v; want the original row still at id %s", name, err, fixtureID)
+	}
+	var sessionCount int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM sessions`).Scan(&sessionCount); err != nil || sessionCount != 1 {
+		t.Fatalf("session count after migration = %d, %v; want 1 (no row recreated)", sessionCount, err)
+	}
+	var uiStateTables int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'ui_state'`).Scan(&uiStateTables); err != nil || uiStateTables != 1 {
+		t.Fatalf("ui_state table after migration = %d, %v; want 1", uiStateTables, err)
+	}
+
+	// The accessors work against the freshly migrated database too.
+	ctx := context.Background()
+	mode, err := store.GetLayoutMode(ctx)
+	if err != nil || mode != DefaultLayoutMode {
+		t.Fatalf("GetLayoutMode after migration = %q, %v; want %q", mode, err, DefaultLayoutMode)
 	}
 }
 

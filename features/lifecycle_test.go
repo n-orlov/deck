@@ -29,6 +29,12 @@ type ScenarioHarness struct {
 	sentinel        []byte
 	databaseFixture []byte
 	newerRefusal    string
+	// v1FixtureSessionID, when set by v1DatabaseFixtureWithSession, is the id
+	// a fixture inserted directly into a v1 sessions table before the
+	// released binary opened and migrated the database (task 010), so a
+	// later step can prove the row was migrated in place rather than
+	// recreated.
+	v1FixtureSessionID string
 	// agentPATHDir, when set by fakeClaudeOnPATHForFutureClients, is prepended
 	// to a real PATH for every subsequently started named client, so a real
 	// coding-agent session can find its fixture-provided binary without ever

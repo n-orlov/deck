@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -16,7 +17,16 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 1
+const SchemaVersion = 2
+
+// DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
+// values a missing ui_state row implies (SPEC §11.2): ui_state is
+// explicitly not load-bearing, so losing it (or never having written it)
+// must fall back to these rather than to an error.
+const (
+	DefaultLayoutMode   = "auto"
+	DefaultSidebarWidth = 35
+)
 
 // Store is deck's sole SQLite writer API. Call Close when the client exits.
 type Store struct {
@@ -874,17 +884,25 @@ func (s *Store) migrate(version int) error {
 		return fmt.Errorf("begin state database migration: %w", err)
 	}
 	defer tx.Rollback()
-	if version == 0 {
+	switch version {
+	case 0:
 		for _, statement := range schemaV1 {
 			if _, err := tx.Exec(statement); err != nil {
 				return fmt.Errorf("create schema v1: %w", err)
 			}
 		}
-		if _, err := tx.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET version = excluded.version`, SchemaVersion); err != nil {
-			return fmt.Errorf("record schema version: %w", err)
+		fallthrough
+	case 1:
+		for _, statement := range schemaV2 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v2: %w", err)
+			}
 		}
-	} else {
+	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
+	}
+	if _, err := tx.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET version = excluded.version`, SchemaVersion); err != nil {
+		return fmt.Errorf("record schema version: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit state database migration: %w", err)
@@ -913,4 +931,68 @@ var schemaV1 = []string{
 		seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
 		at INTEGER NOT NULL, kind TEXT NOT NULL, reason TEXT, payload TEXT
 	)`,
+}
+
+// schemaV2 adds ui_state (SPEC §11.2, §6.5): machine-local UI state
+// (layout_mode, sidebar_width) that never lives in config.toml. It is
+// applied on top of schemaV1 for a fresh database and standalone for an
+// existing v1 database, and never touches the sessions table — an upgrade
+// from v1 to v2 recreates no session row.
+var schemaV2 = []string{
+	`CREATE TABLE IF NOT EXISTS ui_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+}
+
+// getUIState returns the persisted value for key, or def when no row exists
+// yet. Per SPEC §11.2, ui_state is not load-bearing: a missing row degrades
+// to the documented default rather than to an error.
+func (s *Store) getUIState(ctx context.Context, key, def string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM ui_state WHERE key = ?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return def, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read ui_state %s: %w", key, err)
+	}
+	return value, nil
+}
+
+func (s *Store) setUIState(ctx context.Context, key, value string) error {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO ui_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value); err != nil {
+		return fmt.Errorf("write ui_state %s: %w", key, err)
+	}
+	return nil
+}
+
+// GetLayoutMode returns the persisted §11.2 layout_mode, defaulting to
+// DefaultLayoutMode when nothing has been persisted yet.
+func (s *Store) GetLayoutMode(ctx context.Context) (string, error) {
+	return s.getUIState(ctx, "layout_mode", DefaultLayoutMode)
+}
+
+// SetLayoutMode persists the §11.2 layout_mode in state.db, never in
+// config.toml.
+func (s *Store) SetLayoutMode(ctx context.Context, mode string) error {
+	return s.setUIState(ctx, "layout_mode", mode)
+}
+
+// GetSidebarWidth returns the persisted §11.2 sidebar_width, defaulting to
+// DefaultSidebarWidth when nothing has been persisted yet or the stored
+// value is not a valid integer (ui_state is not load-bearing).
+func (s *Store) GetSidebarWidth(ctx context.Context) (int, error) {
+	value, err := s.getUIState(ctx, "sidebar_width", strconv.Itoa(DefaultSidebarWidth))
+	if err != nil {
+		return 0, err
+	}
+	width, err := strconv.Atoi(value)
+	if err != nil {
+		return DefaultSidebarWidth, nil
+	}
+	return width, nil
+}
+
+// SetSidebarWidth persists the §11.2 sidebar_width in state.db, never in
+// config.toml.
+func (s *Store) SetSidebarWidth(ctx context.Context, width int) error {
+	return s.setUIState(ctx, "sidebar_width", strconv.Itoa(width))
 }
