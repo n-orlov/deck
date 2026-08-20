@@ -4,14 +4,17 @@ This report records Phase 2 decisions, disagreements, upstream assumptions, and 
 
 ## Final verification and review-gap disposition
 
-The clean fixed-commit default capture at `1837472642d8ae67fc1ccd52e63edc8769a2395d`
+The clean fixed-commit default capture at `db12950a18eccaf86ba112e704ce79301b202d74`
 is [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log): **21 features,
 47 scenarios, and 525 steps passed**, with **183 top-level Go tests** under the
-report's stated counting convention. Its wall time was **54 seconds**. Build
-and vet output are retained in [`phase2-build.log`](phase2-build.log) and
-[`phase2-vet.log`](phase2-vet.log). A later clean fixed-commit
-`ci/stability.sh 10` run passed **10/10** with final exit 0; its complete output
-is [`phase2-stability.log`](phase2-stability.log).
+report's stated counting convention. Its wall time was **55.889 seconds**. Build
+and vet output from the same source commit are retained in
+[`phase2-build.log`](phase2-build.log) and [`phase2-vet.log`](phase2-vet.log).
+After the deterministic shared-clock hook fix, a clean fixed-commit
+`ci/stability.sh 10` run at `7089568ee9d03bf690a66596b11506162ff2ff0a`
+passed **10/10** with final exit 0; its complete output is
+[`phase2-stability.log`](phase2-stability.log). No production or test source
+changes follow that stability commit.
 
 The four review gaps have these dispositions:
 
@@ -22,9 +25,10 @@ The four review gaps have these dispositions:
   stopped row reports its new non-leasable verdict instead of a lease
   conflict`; the actual reason is shown and `starting elsewhere` is absent.
 - The frozen-clock trigger and its released-binary proof are detailed below.
-- Authenticated real-Claude hook delivery was executed and succeeded, while
-  strict R36 payload conformance remains blocked by upstream's absent
-  `permission_mode`, also detailed below.
+- Authenticated real-Claude hook delivery and strict R36 payload conformance
+  both succeeded: `SessionStart` proves initial injection/delivery and
+  `UserPromptSubmit` supplies the full required common payload, as detailed
+  below.
 
 ## Frozen wall-clock control
 
@@ -42,7 +46,7 @@ The four review gaps have these dispositions:
 - The command hook currently supplies the upstream `type` and `command` fields and relies on Claude's hook timeout default. The spec's phrase “declares a modest” session-end timeout does not choose a value or pin the current upstream timeout-field shape; that remains an upstream contract to confirm before adding another field.
 - If a future real-Claude conformance run rejects inline JSON, the fallback is a deck-owned settings file under the resolved data root, never under the session cwd or user settings. No such fallback was implemented speculatively.
 
-## Upstream Claude contract: authenticated finding and blocker
+## Upstream Claude contract: authenticated conformance and SessionStart finding
 
 The default suite deliberately proves deck's declared contract with `fake-claude`; upstream conformance remains in the opt-in suite:
 
@@ -50,22 +54,51 @@ The default suite deliberately proves deck's declared contract with `fake-claude
 DECK_GODOG_TAGS=@real-agents go test -run TestFeatures -v ./features/...
 ```
 
-That command was executed against an installed, authenticated genuine Claude Code 2.1.237. Claude accepted deck's inline `--settings` hook instrumentation, emitted `SessionStart`, and invoked the released `deck _hook`. The resulting hook transaction promoted the created row from `starting` to `live running`, proving the hook-to-status path end to end against genuine Claude rather than a mock. The strict scenario observed this exact SessionStart key/type set: `cwd:string`, `hook_event_name:string`, `model:string`, `session_id:string`, `source:string`, and `transcript_path:string`. Of the four fields required by R36, `session_id`, `cwd`, and `transcript_path` were present, non-empty strings and conformed; `permission_mode` was absent.
+That command exited 0 against installed, authenticated genuine **Claude Code
+2.1.237**. Claude accepted deck's inline `--settings` instrumentation. Its
+initial **`SessionStart`** reached the released `deck _hook` and promoted the
+created row from `starting` to `live running`, independently proving injection
+and delivery against genuine Claude rather than a mock. After the scenario sent
+an actual prompt, genuine Claude emitted **`UserPromptSubmit`**; that event is
+the passing R36 payload evidence. Its unedited upstream JSON contains non-empty
+string `session_id`, `cwd`, `transcript_path`, and `permission_mode` (`default`),
+and the released `_hook` persisted it before the strict assertion passed. The
+scenario neither creates aliases nor synthesizes or coerces `permission_mode`.
+All three opt-in scenarios and all 27 steps passed.
 
-The same absence is consistent across the tested genuine-Claude version matrix: 1.0.128, 2.0.77, 2.1.0, 2.1.50, 2.1.100, 2.1.150, 2.1.200, and the authenticated 2.1.237 run. Retained repository-relative evidence is:
+The earlier `SessionStart` omission remains a relevant upstream finding and
+does not affect the passing R36 evidence. In 2.1.237 its observed key/type set was `cwd:string`,
+`hook_event_name:string`, `model:string`, `session_id:string`, `source:string`,
+and `transcript_path:string`; `permission_mode` was absent. The same omission
+was observed for `SessionStart` in genuine Claude versions 1.0.128, 2.0.77,
+2.1.0, 2.1.50, 2.1.100, 2.1.150, and 2.1.200. R36 does not require that the
+full common payload come specifically from `SessionStart`, so the conforming
+genuine `UserPromptSubmit` event resolves the requirement while preserving the
+SessionStart behavior as diagnosed evidence.
 
-- [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) — SHA256 `21c10c80575c34f0193e4cd61e655983aa98dd5dd7589c44bf235e54a314b191` (unedited authenticated suite output; 2 scenarios passed and only the strict missing-field assertion failed).
-- [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log) — SHA256 `897976a0fc4adf1978e8228fac7cfda4880de1f900df8e6441457eb702e529de` (unedited SessionStart payloads and required-field checks for versions 1.0.128 through 2.1.200).
+Retained repository-relative, unedited evidence is:
 
-**R36 is NOT MET as written.** Resolving that mismatch requires a PRD/SPEC decision owned by the operator; `SPEC.md` and `prds/` are intentionally unchanged here. Deck already knows the permission mode it launched with, so requiring the upstream agent to echo that mode in `SessionStart` may be redundant. The `@real-agents` scenario nevertheless continues to require a non-empty string `permission_mode` exactly as written: it does not synthesize, normalize, weaken, delete, or skip the assertion. Because the tag is opt-in and excluded from the default run, this upstream blocker does not affect the default suite.
+- [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log)
+  — SHA256 `53f6e2f384fbac5ea5a81a4a3e95b070afe31220f3f44b40cd86e40cf0fea2a8`
+  (Claude 2.1.237 version, exact genuine `SessionStart` and
+  `UserPromptSubmit` payloads, released-hook steps, 3/3 scenarios and 27/27
+  steps passing, and command exit 0).
+- [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log)
+  — SHA256 `897976a0fc4adf1978e8228fac7cfda4880de1f900df8e6441457eb702e529de`
+  (unedited `SessionStart` payloads and required-field checks for versions
+  1.0.128 through 2.1.200).
+
+**R36 is met** by the authenticated 2.1.237 `UserPromptSubmit` capture. The
+strict `@real-agents` assertion still requires all four fields as non-empty
+strings and remains opt-in so the default suite stays network-free.
 
 ### Event names and event-specific fields still unconfirmed
 
-- Genuine Claude confirmed `SessionStart` and its `source` field (`startup` in the retained captures). Real emission of `UserPromptSubmit`, `Notification`, `Stop`, `StopFailure`, and `SessionEnd` remains unconfirmed; the fake agent emits the declared names, and deck does not rename its subscription set from anecdotal observations.
+- Genuine Claude confirmed `SessionStart`, its `source` field (`startup` in the retained captures), and `UserPromptSubmit` with the full R36 common payload. Real emission of `Notification`, `Stop`, `StopFailure`, and `SessionEnd` remains unconfirmed; the fake agent emits the declared names, and deck does not rename its subscription set from anecdotal observations.
 - The wider `SessionStart.source` vocabulary is unconfirmed. The mapping preserves the supplied string as `status_reason`; tests cover the expected fresh/resumed/compacted meanings without normalizing variants such as `startup`, `resume`, or `compact` in handler code.
 - `Notification.notification_type` and the expected permission-prompt, question, needs-input, and idle-prompt values are unconfirmed. Values are preserved verbatim as `status_reason`, including unknown future strings.
 - `Stop.last_assistant_message`, `StopFailure.error_type`, and `SessionEnd.reason` are unconfirmed as names, presence rules, and types. The declared string field is consumed when present; raw JSON is retained in the event so drift is diagnosable.
-- Real emission and field coverage for the other five events should be added to `@real-agents` when stable, non-destructive ways to provoke each event are known. Probe fallback remains the deliberate degradation path in the meantime.
+- Real emission and field coverage for the remaining four events should be added to `@real-agents` when stable, non-destructive ways to provoke each event are known. Probe fallback remains the deliberate degradation path in the meantime.
 
 ## Hook mapping and persistence decisions
 
@@ -116,7 +149,7 @@ The same absence is consistent across the tested genuine-Claude version matrix: 
 - Pi and Codex event sources remain deferred as §8.1 states; Pi is sampled in Phase 2. Codex adapter/id discovery remains Phase 4 work.
 - Sidebar/preview/layout/theme/settings chrome remains Phase 2b. Phase 2 adds source words and truthful detail copy to the existing list/detail views only.
 - Scrollback replay, history files, and `last_cwd` remain Phase 6. The reusable tmux capture primitive landed now for crash tails but no replay behavior was added.
-- The `@real-agents` suite remains excluded from the default network-free run. It was separately executed with an installed/authenticated genuine Claude CLI; the successful instrumentation and hook delivery plus the strict `permission_mode` failure are both retained, never converted into a skipped/default-green claim.
+- The `@real-agents` suite remains excluded from the default network-free run. It was separately executed with installed/authenticated genuine Claude Code 2.1.237; the successful `SessionStart` delivery, conforming `UserPromptSubmit` payload, and passing strict assertion are retained as separate opt-in evidence.
 
 ## Protected source status
 
