@@ -1391,6 +1391,8 @@ features/
   notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
   codex_discovery.feature       §8.2 — serialised discovery, claims, ambiguity, unresolved
   layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
+  attention_sort.feature        §7/§11 — attention order, the collapsed strip's count,
+                                workspace grouping and collapse, space walks what needs me
   mouse.feature                 §11.8 — click selects, double-click attaches, wheel scrolls
                                 without selecting, seam drag resizes, DECK_MOUSE=0 disables
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
