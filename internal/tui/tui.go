@@ -64,13 +64,27 @@ type Model struct {
 	height              int
 	agents              *agent.Registry
 	// layoutMode and sidebarWidth are the §11.2 layout pin and the
-	// persisted sidebar width. Neither is wired to a keybinding or to
-	// state.db yet (tasks 015/016); "" and 0 both mean "use the default",
-	// which ComputeLayout already treats as auto/35 respectively, so this
-	// model renders correctly today and gains the controls without a
-	// rendering change later.
+	// persisted sidebar width, both persisted to state.db's ui_state table
+	// by persistLayoutMode/persistSidebarWidth (task 016). "" and 0 both
+	// mean "use the default", which ComputeLayout already treats as
+	// auto/35 respectively.
 	layoutMode   string
 	sidebarWidth int
+	// previewCapture is the read-only preview capture engine (SPEC
+	// requirements 21, 22): given the selected row's slug, it returns
+	// exactly one tmux.PreviewCapture per call, never attaching a client,
+	// spawning a control-mode server, using pipe-pane, or resizing a pane.
+	// nil (the zero value, and every constructor below New) leaves the
+	// preview exactly as inert as before this task landed.
+	previewCapture func(context.Context, string) (tmux.PreviewCapture, error)
+	// previewSessionID, previewLive and previewBytes hold the most recent
+	// successful capture, keyed by the session it was captured for so a
+	// stale reply arriving after the selection moved on is never rendered
+	// against the wrong row. Rendering these (crop, geometry line, cell-aware
+	// truncation) is tasks 018-021; this task only maintains them.
+	previewSessionID string
+	previewLive      bool
+	previewBytes     []byte
 }
 
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
@@ -135,6 +149,18 @@ type attachFinished struct{ err error }
 type sessionKilled struct{ err error }
 
 type sessionAcknowledged struct{ err error }
+
+// previewCaptured reports one previewCapture tick's result for the session
+// selected at the moment the capture was issued (SPEC requirements 21, 22).
+// err is only ever a real tmux/transport failure; a session with no live
+// pane is reported as capture.Live == false with err == nil, never as an
+// error, so a stopped/starting/archived selection does not spam attachError
+// every tick.
+type previewCaptured struct {
+	sessionID string
+	capture   tmux.PreviewCapture
+	err       error
+}
 
 // uiStatePersisted reports the outcome of persisting layout_mode or
 // sidebar_width to state.db's ui_state table after a `|`/`<`/`>` keypress
@@ -273,6 +299,20 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryAndPreviewCapturer
+// additionally wires the read-only preview capture engine (SPEC
+// requirements 21, 22, task 017). previewCapturer is called with the
+// selected row's slug once per DECK_PREVIEW_MS tick; tmux.Client.CapturePreview
+// is the released implementation — a single capture-pane per tick, no
+// client attach, no control-mode server, no pipe-pane, no resize. nil keeps
+// the preview exactly as inert as every constructor above this one leaves
+// it.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryAndPreviewCapturer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error)) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry)
+	m.previewCapture = previewCapturer
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -291,6 +331,23 @@ func (m Model) loadSessions() tea.Msg {
 	}
 	rows, err := m.store.ListSessions(context.Background())
 	return sessionsLoaded{sessions: rows, err: err}
+}
+
+// capturePreview issues exactly one read-only capture-pane for the
+// currently selected row (SPEC requirement 21, task 017), or nil when there
+// is no engine wired or no row to capture. The command captures the slug
+// selected at the moment the tick fired, not whatever is selected when the
+// reply arrives, so a selection change mid-flight cannot mislabel a frame.
+func (m Model) capturePreview() tea.Cmd {
+	if m.previewCapture == nil || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+		return nil
+	}
+	session := m.sessions[m.selected]
+	capture := m.previewCapture
+	return func() tea.Msg {
+		result, err := capture(context.Background(), session.Slug)
+		return previewCaptured{sessionID: session.ID, capture: result, err: err}
+	}
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -393,10 +450,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(loadAfterReconcile, tea.Tick(m.settings.Reconcile, func(t time.Time) tea.Msg { return reconcileTick(t) }))
 	case previewTick:
-		// Phase 0 intentionally has no preview pane. Retaining this independent
-		// wake-up means DECK_PREVIEW_MS is already honored by the released UI
-		// rather than being silently parsed and ignored.
-		return m, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) })
+		// The capture engine (task 017, SPEC requirements 21, 22) samples the
+		// selected row's live pane once per tick; rendering it (crop, geometry
+		// line, placeholders) is tasks 018-021, so DECK_PREVIEW_MS's cadence is
+		// already honoured end-to-end even though the panel still shows its
+		// pre-capture placeholder.
+		cmds := []tea.Cmd{tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) })}
+		if cmd := m.capturePreview(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+	case previewCaptured:
+		// A session with no live pane reports capture.Live == false and a nil
+		// err (see tmux.CapturePreview); only a genuine tmux/transport failure
+		// reaches err, and even that is not load-bearing — the previous frame
+		// (or, before the first successful capture, the placeholder) keeps
+		// rendering rather than the tick disrupting the view.
+		if msg.err == nil {
+			m.previewSessionID = msg.sessionID
+			m.previewLive = msg.capture.Live
+			m.previewBytes = msg.capture.Bytes
+		}
+		return m, nil
 	case animationTick:
 		if !m.settings.Animation {
 			return m, nil

@@ -153,6 +153,101 @@ func TestCapturePaneRealTmuxUsesExplicitRange(t *testing.T) {
 	}
 }
 
+func TestPreviewPaneAndCapturePreviewRealTmux(t *testing.T) {
+	socket := fmt.Sprintf("deck-preview-%d-%d", os.Getpid(), time.Now().UnixNano())
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
+
+	// No session yet: PreviewPane and CapturePreview both report absence, not
+	// an error — a stopped/archived/not-yet-started row must not surface a
+	// spurious tmux failure every tick (SPEC requirement 21).
+	if _, ok, err := client.PreviewPane(context.Background(), "preview_test"); err != nil || ok {
+		t.Fatalf("PreviewPane before create = (ok=%v, err=%v), want (false, nil)", ok, err)
+	}
+	if capture, err := client.CapturePreview(context.Background(), "preview_test"); err != nil || capture.Live {
+		t.Fatalf("CapturePreview before create = %#v, err=%v, want inert", capture, err)
+	}
+
+	created, err := client.Create(context.Background(), Launch{
+		Slug: "preview_test", CWD: t.TempDir(),
+		Command: []string{"sh", "-c", `printf '\033[31mred-marker\033[0m\n'; sleep 30`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var capture PreviewCapture
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		capture, err = client.CapturePreview(context.Background(), "preview_test")
+		if err == nil && capture.Live && bytes.Contains(capture.Bytes, []byte("red-marker")) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("capture live pane: %v", err)
+	}
+	if !capture.Live {
+		t.Fatalf("capture.Live = false for a running pane")
+	}
+	if !bytes.Contains(capture.Bytes, []byte("\x1b[")) || !bytes.Contains(capture.Bytes, []byte("red-marker")) {
+		t.Fatalf("preview capture = %q, want SGR-preserving red-marker", capture.Bytes)
+	}
+
+	pane, ok, err := client.PreviewPane(context.Background(), "preview_test")
+	if err != nil || !ok || pane.ID != created.Panes[0].ID {
+		t.Fatalf("PreviewPane = (%#v, ok=%v, err=%v), want the created pane", pane, ok, err)
+	}
+}
+
+// TestCapturePreviewNeverAttachesOrResizes is the black-box half of SPEC
+// requirement 22: ticking the preview capture engine repeatedly must never
+// leave a tmux client attached and must never change the pane's window
+// geometry. The client-facing (deck-process) half of this assertion lands
+// with task 022; this proves the tmux primitive itself carries no such
+// side effect.
+func TestCapturePreviewNeverAttachesOrResizes(t *testing.T) {
+	socket := fmt.Sprintf("deck-preview-noattach-%d-%d", os.Getpid(), time.Now().UnixNano())
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
+
+	if _, err := client.Create(context.Background(), Launch{
+		Slug: "noattach_test", CWD: t.TempDir(),
+		Command: []string{"sh", "-c", `i=1; while [ "$i" -le 5 ]; do echo "line-$i"; i=$((i+1)); sleep 0.1; done; sleep 30`},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := client.command(context.Background(), "display-message", "-p", "#{window_width}x#{window_height}").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read window geometry before preview: %v: %s", err, before)
+	}
+
+	for i := 0; i < 10; i++ {
+		if _, err := client.CapturePreview(context.Background(), "noattach_test"); err != nil {
+			t.Fatalf("capture %d: %v", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	clients, err := client.command(context.Background(), "list-clients").CombinedOutput()
+	if err != nil {
+		t.Fatalf("list-clients: %v: %s", err, clients)
+	}
+	if strings.TrimSpace(string(clients)) != "" {
+		t.Fatalf("tmux list-clients = %q after ticking preview, want empty (no attach)", clients)
+	}
+
+	after, err := client.command(context.Background(), "display-message", "-p", "#{window_width}x#{window_height}").CombinedOutput()
+	if err != nil {
+		t.Fatalf("read window geometry after preview: %v: %s", err, after)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("window geometry changed from %q to %q after ten preview captures, want unchanged (no resize)", before, after)
+	}
+}
+
 func TestCapturePaneRejectsUnsafeOrImplicitRange(t *testing.T) {
 	client := Client{Socket: "deck-validation"}
 	for _, test := range []struct {
