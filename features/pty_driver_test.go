@@ -41,21 +41,30 @@ const (
 	terminalRows    uint16 = 30
 )
 
-// StartScreenDriver starts binary with a fixed terminal geometry. It answers
-// Bubble Tea's OSC 11 and CPR probes as soon as they are observed; a PTY alone
-// is only a byte transport and otherwise leaves Bubble Tea waiting for frame 1.
+// StartScreenDriver starts binary with the harness's default terminal
+// geometry (100x30). It answers Bubble Tea's OSC 11 and CPR probes as soon as
+// they are observed; a PTY alone is only a byte transport and otherwise
+// leaves Bubble Tea waiting for frame 1. See StartScreenDriverWithSize for a
+// scenario that needs a different starting geometry or a mid-scenario resize
+// (requirement 1).
 func StartScreenDriver(ctx context.Context, binary string, env []string) (*ScreenDriver, error) {
+	return StartScreenDriverWithSize(ctx, binary, env, terminalColumns, terminalRows)
+}
+
+// StartScreenDriverWithSize is StartScreenDriver with an explicit initial PTY
+// and emulator geometry.
+func StartScreenDriverWithSize(ctx context.Context, binary string, env []string, cols, rows uint16) (*ScreenDriver, error) {
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(), env...)
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color", "COLUMNS=100", "LINES=30")
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: terminalRows, Cols: terminalColumns})
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color", fmt.Sprintf("COLUMNS=%d", cols), fmt.Sprintf("LINES=%d", rows))
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
 	if err != nil {
 		return nil, fmt.Errorf("start %s in pty: %w", binary, err)
 	}
 	d := &ScreenDriver{
 		terminal: terminal,
 		cmd:      cmd,
-		screen:   vt.NewEmulator(int(terminalColumns), int(terminalRows)),
+		screen:   vt.NewEmulator(int(cols), int(rows)),
 		updated:  make(chan struct{}, 1),
 		done:     make(chan struct{}),
 		readDone: make(chan struct{}),
@@ -70,6 +79,36 @@ func StartScreenDriver(ctx context.Context, binary string, env []string) (*Scree
 		close(d.done)
 	}()
 	return d, nil
+}
+
+// Resize changes the PTY's real kernel geometry via TIOCSWINSZ (creack/pty's
+// Setsize), which is what makes the kernel deliver SIGWINCH to deck's
+// foreground process group on its own -- ScreenDriver never raises the
+// signal itself, matching how a real terminal emulator resize behaves. It
+// then resizes the emulator's own grid so a subsequent Frame/GridSize call
+// reads the screen at the new geometry rather than one still shaped for the
+// old size (requirement 1).
+func (d *ScreenDriver) Resize(cols, rows uint16) error {
+	if err := pty.Setsize(d.terminal, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
+		return fmt.Errorf("resize pty to %dx%d: %w", cols, rows, err)
+	}
+	d.mu.Lock()
+	d.screen.Resize(int(cols), int(rows))
+	d.mu.Unlock()
+	select {
+	case d.updated <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// GridSize returns the emulator's current column and row count, letting a
+// step prove a resize actually changed the grid a frame is read from rather
+// than merely that the resize step ran without error.
+func (d *ScreenDriver) GridSize() (cols, rows int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.screen.Width(), d.screen.Height()
 }
 
 // drainScreenInput discards synthetic terminal-query responses the emulator
