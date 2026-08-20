@@ -610,6 +610,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pinNote = ""
 			return m, nil
+		case " ":
+			// SPEC requirements 31, 32: move to the next session needing
+			// attention, wrapping, via the one shared NeedsAttention answer
+			// (internal/tui/attention.go). Nothing needing attention (ok
+			// false) leaves selection — and every session's status —
+			// untouched: this must never behave like §7's attach, which
+			// clears "waiting" on the attached session.
+			if !m.help && len(m.sessions) > 0 {
+				if next, ok := m.nextAttentionSelection(m.selected); ok {
+					m.selected = next
+				}
+			}
 		case "|":
 			if !m.help {
 				m.layoutMode = nextLayoutMode(m.layoutMode)
@@ -848,10 +860,9 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 // collapsedStripLines is the 3-column collapsed strip's own content (SPEC
 // requirement 15): the `»` glyph, then the attention count's digits each
 // on their own line so a multi-digit count still reads inside the strip's
-// single content column. attentionCount is a small local stand-in for the
-// "one shared attention source" task 025 introduces; once that lands, this
-// should call it instead of counting waiting/error rows itself, so the
-// collapsed strip's count always agrees with the sort and `space`.
+// single content column. attentionCount goes through the shared
+// NeedsAttention answer (internal/tui/attention.go, task 025), so this
+// count always agrees with the sort and `space`.
 func (m Model) collapsedStripLines() []string {
 	lines := []string{m.glyph("»", ">")}
 	for _, r := range strconv.Itoa(m.attentionCount()) {
@@ -860,18 +871,41 @@ func (m Model) collapsedStripLines() []string {
 	return lines
 }
 
-// attentionCount counts sessions in a status that needs attention (waiting
-// or error), matching internal/store's own isAttentionStatus. See the
-// collapsedStripLines doc comment: task 025 unifies this into one shared
-// source also used by the sort and `space`.
+// attentionCount counts sessions that need attention (SPEC requirements 31,
+// 32), via the single shared NeedsAttention answer also used by the
+// attention sort and `space` (Model.nextAttentionSelection) — the three can
+// never disagree about what counts.
 func (m Model) attentionCount() int {
 	n := 0
 	for _, s := range m.sessions {
-		if s.Status == "waiting" || s.Status == "error" {
+		if NeedsAttention(s) {
 			n++
 		}
 	}
 	return n
+}
+
+// nextAttentionSelection is `space`'s own step (SPEC requirements 31, 32):
+// the index of the next *visible* session needing attention, searching
+// forward from just after from and wrapping around the whole list back
+// through from itself, so a lone session needing attention (including the
+// one already selected) is still found rather than treated as "nothing
+// needs attention". ok is false only when no visible session needs
+// attention at all, in which case the caller must leave selection (and
+// everything else) untouched — this function never mutates m.sessions or
+// any session's status, only answers where to move.
+func (m Model) nextAttentionSelection(from int) (int, bool) {
+	n := len(m.sessions)
+	if n == 0 {
+		return from, false
+	}
+	for step := 1; step <= n; step++ {
+		i := (from + step) % n
+		if m.isSessionVisible(i) && NeedsAttention(m.sessions[i]) {
+			return i, true
+		}
+	}
+	return from, false
 }
 
 // renderStackedFrame draws the below-80-column fallback (SPEC §11.2): the

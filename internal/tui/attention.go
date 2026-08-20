@@ -86,3 +86,15 @@ func lessByAttention(a, b store.Session) bool {
 	}
 	return a.ID < b.ID
 }
+
+// NeedsAttention is the one shared "needs me" answer requirements 31 and 32
+// call for: true for a session in a status the sort itself treats as more
+// urgent than "running" (currently waiting or error, matching
+// internal/store's own isAttentionStatus). The sort
+// (sortSessionsByAttention/lessByAttention above), the collapsed strip's
+// count (Model.attentionCount) and `space` (Model.nextAttentionSelection,
+// internal/tui/tui.go) all call this instead of re-deriving the status set,
+// so the three can never silently disagree about what counts.
+func NeedsAttention(session store.Session) bool {
+	return attentionRank(session.Status) < attentionRankRunning
+}
