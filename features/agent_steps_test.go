@@ -244,7 +244,52 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 	if err := client.WaitForFrame(ctx, false, profile+" (left/right cycles"); err != nil {
 		return nil, nil, fmt.Errorf("cycle Permission profile field to %q: %w", profile, err)
 	}
+	if kind == "claude" && strings.Contains(os.Getenv("DECK_GODOG_TAGS"), "@real-agents") {
+		if err := trustRealClaudeScenarioWorkingDirectory(h.workingDir); err != nil {
+			return nil, nil, err
+		}
+	}
 	return h, client, nil
+}
+
+// trustRealClaudeScenarioWorkingDirectory records the freshly generated scenario
+// cwd as trusted in Claude's own user state before the TUI submits the create
+// form. Otherwise a real interactive Claude correctly stops at its trust prompt
+// and cannot emit SessionStart. The opt-in suite runs with an isolated HOME, so
+// this never alters an operator's real configuration.
+func trustRealClaudeScenarioWorkingDirectory(cwd string) error {
+	path := filepath.Join(os.Getenv("HOME"), ".claude.json")
+	state := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &state); err != nil {
+			return fmt.Errorf("decode isolated real Claude state: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read isolated real Claude state: %w", err)
+	}
+	// The opt-in harness starts Claude in a fresh isolated HOME. Mark the
+	// non-authentication onboarding as complete so the real CLI can initialize
+	// its hooks immediately instead of waiting at the first-run theme screen.
+	state["hasCompletedOnboarding"] = true
+	projects, ok := state["projects"].(map[string]any)
+	if !ok {
+		projects = map[string]any{}
+		state["projects"] = projects
+	}
+	project, ok := projects[cwd].(map[string]any)
+	if !ok {
+		project = map[string]any{}
+		projects[cwd] = project
+	}
+	project["hasTrustDialogAccepted"] = true
+	data, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("encode isolated real Claude state: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("trust real Claude scenario cwd: %w", err)
+	}
+	return nil
 }
 
 // cycleCreateFieldToValue tabs onto the field the caller is currently

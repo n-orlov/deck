@@ -18,24 +18,29 @@ This report records Phase 2 decisions, disagreements, upstream assumptions, and 
 - The command hook currently supplies the upstream `type` and `command` fields and relies on Claude's hook timeout default. The spec's phrase “declares a modest” session-end timeout does not choose a value or pin the current upstream timeout-field shape; that remains an upstream contract to confirm before adding another field.
 - If a future real-Claude conformance run rejects inline JSON, the fallback is a deck-owned settings file under the resolved data root, never under the session cwd or user settings. No such fallback was implemented speculatively.
 
-## Upstream Claude contract: confirmed and unconfirmed
+## Upstream Claude contract: authenticated finding and blocker
 
-The default suite deliberately proves deck's declared contract with `fake-claude`; it cannot prove what an installed upstream release emits. The opt-in command is:
+The default suite deliberately proves deck's declared contract with `fake-claude`; upstream conformance remains in the opt-in suite:
 
 ```sh
 DECK_GODOG_TAGS=@real-agents go test -run TestFeatures -v ./features/...
 ```
 
-This environment had no installed/authenticated Claude, so the new real-hook scenario could not be executed here. It is strict by design: no aliases, type coercion, or silent normalization. A changed shape reports the observed keys/types as an unsupported upstream contract.
+That command was executed against an installed, authenticated genuine Claude Code 2.1.237. Claude accepted deck's inline `--settings` hook instrumentation, emitted `SessionStart`, and invoked the released `deck _hook`. The resulting hook transaction promoted the created row from `starting` to `live running`, proving the hook-to-status path end to end against genuine Claude rather than a mock. The strict scenario observed this exact SessionStart key/type set: `cwd:string`, `hook_event_name:string`, `model:string`, `session_id:string`, `source:string`, and `transcript_path:string`. Of the four fields required by R36, `session_id`, `cwd`, and `transcript_path` were present, non-empty strings and conformed; `permission_mode` was absent.
 
-### Event names and event-specific fields not confirmed here
+The same absence is consistent across the tested genuine-Claude version matrix: 1.0.128, 2.0.77, 2.1.0, 2.1.50, 2.1.100, 2.1.150, 2.1.200, and the authenticated 2.1.237 run. Retained evidence is:
 
-- All six subscribed names remain upstream assumptions: `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop`, `StopFailure`, and `SessionEnd`. The fake agent emits exactly these names; deck does not rename its subscription set to match an anecdotal CLI observation.
-- The `SessionStart.source` field and its vocabulary are unconfirmed. The mapping preserves the supplied string as `status_reason`; tests cover the expected fresh/resumed/compacted meanings without normalizing variants such as `startup`, `resume`, or `compact` in handler code.
+- `/run/ralphd/artifacts/task007-real-agents-authenticated-final-20260820T072724Z.log` — SHA256 `21c10c80575c34f0193e4cd61e655983aa98dd5dd7589c44bf235e54a314b191` (unedited authenticated suite output; 2 scenarios passed and only the strict missing-field assertion failed).
+- `/run/ralphd/artifacts/task007-version-payload-matrix-20260820T0652Z.log` — SHA256 `897976a0fc4adf1978e8228fac7cfda4880de1f900df8e6441457eb702e529de` (unedited SessionStart payloads and required-field checks for versions 1.0.128 through 2.1.200).
+
+**R36 is NOT MET as written.** Resolving that mismatch requires a PRD/SPEC decision owned by the operator; `SPEC.md` and `prds/` are intentionally unchanged here. Deck already knows the permission mode it launched with, so requiring the upstream agent to echo that mode in `SessionStart` may be redundant. The `@real-agents` scenario nevertheless continues to require a non-empty string `permission_mode` exactly as written: it does not synthesize, normalize, weaken, delete, or skip the assertion. Because the tag is opt-in and excluded from the default run, this upstream blocker does not affect the default suite.
+
+### Event names and event-specific fields still unconfirmed
+
+- Genuine Claude confirmed `SessionStart` and its `source` field (`startup` in the retained captures). Real emission of `UserPromptSubmit`, `Notification`, `Stop`, `StopFailure`, and `SessionEnd` remains unconfirmed; the fake agent emits the declared names, and deck does not rename its subscription set from anecdotal observations.
+- The wider `SessionStart.source` vocabulary is unconfirmed. The mapping preserves the supplied string as `status_reason`; tests cover the expected fresh/resumed/compacted meanings without normalizing variants such as `startup`, `resume`, or `compact` in handler code.
 - `Notification.notification_type` and the expected permission-prompt, question, needs-input, and idle-prompt values are unconfirmed. Values are preserved verbatim as `status_reason`, including unknown future strings.
 - `Stop.last_assistant_message`, `StopFailure.error_type`, and `SessionEnd.reason` are unconfirmed as names, presence rules, and types. The declared string field is consumed when present; raw JSON is retained in the event so drift is diagnosable.
-- Whether every event includes the common `session_id`, `cwd`, `transcript_path`, and `permission_mode` fields with non-empty string types is unconfirmed in this environment. The opt-in scenario currently checks those four fields on an actual `SessionStart`, checks the exact conversation id and cwd, and fails explicitly if the installed CLI omits, renames, or changes their types.
-- The opt-in scenario also checks that the installed CLI accepts inline `--settings`, fires the command hook, and reaches the exact released `deck _hook`. Until it is run in an installed/authenticated environment, those facts remain conformance assumptions rather than claims from this run.
 - Real emission and field coverage for the other five events should be added to `@real-agents` when stable, non-destructive ways to provoke each event are known. Probe fallback remains the deliberate degradation path in the meantime.
 
 ## Hook mapping and persistence decisions

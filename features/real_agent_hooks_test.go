@@ -108,7 +108,7 @@ func realClaudeHookConforms(ctx context.Context, name, event string) error {
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		var raw string
-		err := db.QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND kind = 'session_start' ORDER BY id DESC LIMIT 1`, sessionID).Scan(&raw)
+		err := db.QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND kind = 'session_start' ORDER BY rowid DESC LIMIT 1`, sessionID).Scan(&raw)
 		if err == nil {
 			var payload map[string]any
 			if decodeErr := json.Unmarshal([]byte(raw), &payload); decodeErr != nil {

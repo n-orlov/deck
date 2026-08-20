@@ -16,6 +16,8 @@ Feature: Real Claude agent session smoke test
     When deck client "A" creates claude session "real claude one" with permission profile "safe"
     Then the state database session "real claude one" has a non-empty conversation id
     And the audit log's most recent launch argv for session "real claude one" contains "--session-id"
+    When deck client "A" kills its selected session
+    Then the state database contains session "real claude one" with status "stopped"
     When deck client "A" presses r on session "real claude one"
     Then the audit log's most recent launch argv for session "real claude one" contains "--resume"
     And the audit log's most recent launch argv for session "real claude one" contains session "real claude one"'s conversation id

@@ -128,17 +128,25 @@ func (s *fakeAgentDriftScenario) permissionModesMatch() error {
 }
 
 func uuidFlagPattern(flag string) *regexp.Regexp {
-	return regexp.MustCompile(regexp.QuoteMeta(flag) + `(?:\s|=|<|\[)[^\n]*(?i:uuid)`)
+	valueDescription := `(?i:uuid)`
+	if flag == "--resume" {
+		// Current Claude documents this as a conversation "session ID" while
+		// --session-id documents that the identifier itself is a UUID.
+		valueDescription = `(?i:uuid|session ID)`
+	}
+	return regexp.MustCompile(regexp.QuoteMeta(flag) + `(?:\s|=|<|\[)[^\n]*` + valueDescription)
 }
 
-var permissionModesPattern = regexp.MustCompile(`(?im)^\s*--permission-mode\b[^\n]*\b(?:one of|choices?)\s*:?\s*([^\n]+)$`)
+var permissionModeDeclarationPattern = regexp.MustCompile(`(?im)^\s*--permission-mode\b[^\n]*(?:\n {8,}[^\n]*)*`)
+var permissionModeChoicesPattern = regexp.MustCompile(`(?is)\b(?:one of|choices?)\s*:?\s*\(?(.+?)\)?\s*\.?$`)
 var permissionModeNamePattern = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_-]*`)
 
 // documentedPermissionModes reads only the --permission-mode declaration,
 // rather than searching all help prose. Thus an added or removed documented
 // mode is a drift failure instead of being silently ignored.
 func documentedPermissionModes(help string) ([]string, error) {
-	match := permissionModesPattern.FindStringSubmatch(help)
+	declaration := permissionModeDeclarationPattern.FindString(help)
+	match := permissionModeChoicesPattern.FindStringSubmatch(declaration)
 	if len(match) != 2 {
 		return nil, errors.New("--permission-mode declaration does not enumerate its modes")
 	}
