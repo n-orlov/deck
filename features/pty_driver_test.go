@@ -34,6 +34,9 @@ type ScreenDriver struct {
 	exitErr     error // guarded by mu; done is closed after it is assigned
 	oscAnswered bool  // guarded by mu
 	cprAnswered bool  // guarded by mu
+	// snapshots holds named frame captures for steps that assert a mouse
+	// gesture changed nothing (requirement 2). Guarded by mu.
+	snapshots map[string]string
 }
 
 const (
