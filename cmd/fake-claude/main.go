@@ -28,6 +28,14 @@ const (
 	exitCodeEnvironment         = "FAKE_CLAUDE_EXIT_CODE"
 	commandsEnvironment         = "FAKE_CLAUDE_COMMANDS"
 	fixtureDirectoryEnvironment = "FAKE_AGENT_FIXTURE_DIR"
+	// silentFixtureEnvironment names a fixture (relative to
+	// FAKE_AGENT_FIXTURE_DIR) to render verbatim and then go silent forever:
+	// no banner, no argv record, no further bytes of any kind. This is the
+	// deterministic fake pane the preview needs (SPEC Phase 2b-1 requirement
+	// 5) -- byte-stable across repeated capture-pane ticks. It is orthogonal
+	// to commandsEnvironment's interactive "fixture"/"hook" command loop,
+	// which keeps talking.
+	silentFixtureEnvironment = "FAKE_CLAUDE_FIXTURE"
 	// sizesLogName is where this fixture appends its initial terminal size
 	// and every SIGWINCH-observed size, one "COLSxROWS" line per observation
 	// (SPEC Phase 2b-1 requirement 4). This is what lets a scenario assert
@@ -77,6 +85,10 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 	// a SIGWINCH racing the earliest possible moment is never missed.
 	stopSizeRecorder := startSizeRecorder(getenv)
 	defer stopSizeRecorder()
+
+	if name := getenv(silentFixtureEnvironment); name != "" {
+		return 0, renderThenFallSilent(stdin, stdout, getenv(fixtureDirectoryEnvironment), name)
+	}
 
 	options, err := parse(args)
 	if err != nil {
@@ -403,6 +415,20 @@ func renderFixture(output io.Writer, directory, name string) error {
 	return nil
 }
 
+// renderThenFallSilent renders the named fixture exactly once and then blocks
+// forever, producing no further output of any kind (requirement 5). It reads
+// stdin to end-of-file rather than selecting on a channel, so the blocking
+// call is a real syscall wait tied to the pane's own lifetime -- when the
+// pane is killed and the pty closes, the read returns and this process exits
+// cleanly, exactly like a real agent idling for input that never arrives.
+func renderThenFallSilent(input io.Reader, output io.Writer, directory, name string) error {
+	if err := renderFixture(output, directory, name); err != nil {
+		return err
+	}
+	_, err := io.Copy(io.Discard, input)
+	return err
+}
+
 func validUUID(name, value string) error {
 	if _, err := uuid.Parse(value); err != nil {
 		return fmt.Errorf("invalid UUID for %s: %q", name, value)
@@ -503,6 +529,9 @@ Options:
   --help, -h                      Show this help.
 
 Set FAKE_CLAUDE_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
+Set FAKE_CLAUDE_FIXTURE=<name> to render that fixture from FAKE_AGENT_FIXTURE_DIR verbatim and
+then produce no further output (this process idles forever, exactly like a real agent waiting
+for input that never arrives). Mutually exclusive with FAKE_CLAUDE_COMMANDS's interactive loop.
 Set FAKE_CLAUDE_COMMANDS=1 to read newline-delimited commands from the pane. A hook
 command has the form {"command":"hook","event":"SessionStart","payload":{...}}.
 It invokes that event's command from --settings with the payload on stdin and with

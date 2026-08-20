@@ -15,18 +15,21 @@ import (
 
 // fakeAgentSpec names a fake-agent fixture's package, the env var that keeps
 // it reading pane input (so a scenario has time to resize it before it
-// exits), and the file requirement 4's recorder appends "COLSxROWS" lines
-// to under DECK_HOME. Both fixtures implement an identical recording
-// contract; this table is what lets one set of steps exercise both.
+// exits), the file requirement 4's recorder appends "COLSxROWS" lines to
+// under DECK_HOME, and the env var that switches it into requirement 5's
+// render-then-fall-silent mode. All fixtures implement identical recording
+// and silent-fixture contracts; this table is what lets one set of steps
+// exercise both.
 type fakeAgentSpec struct {
-	packagePath string
-	commandsEnv string
-	sizesLog    string
+	packagePath      string
+	commandsEnv      string
+	sizesLog         string
+	silentFixtureEnv string
 }
 
 var fakeAgentSpecs = map[string]fakeAgentSpec{
-	"claude": {packagePath: "./cmd/fake-claude", commandsEnv: "FAKE_CLAUDE_COMMANDS=1", sizesLog: "fake-claude-sizes.log"},
-	"pi":     {packagePath: "./cmd/fake-pi", commandsEnv: "FAKE_PI_COMMANDS=1", sizesLog: "fake-pi-sizes.log"},
+	"claude": {packagePath: "./cmd/fake-claude", commandsEnv: "FAKE_CLAUDE_COMMANDS=1", sizesLog: "fake-claude-sizes.log", silentFixtureEnv: "FAKE_CLAUDE_FIXTURE"},
+	"pi":     {packagePath: "./cmd/fake-pi", commandsEnv: "FAKE_PI_COMMANDS=1", sizesLog: "fake-pi-sizes.log", silentFixtureEnv: "FAKE_PI_FIXTURE"},
 }
 
 func registerFakeAgentSizeSteps(sc *godog.ScenarioContext) {
@@ -34,6 +37,100 @@ func registerFakeAgentSizeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake "([^"]+)" agent terminal is resized to (\d+)x(\d+)$`, theFakeAgentTerminalIsResizedTo)
 	sc.Step(`^the fake "([^"]+)" agent recorded sizes are "([^"]*)"$`, theFakeAgentRecordedSizesAre)
 	sc.Step(`^the fake "([^"]+)" agent is stopped$`, theFakeAgentIsStopped)
+	sc.Step(`^a fake "([^"]+)" agent renders the "([^"]+)" preview fixture and falls silent at (\d+)x(\d+)$`, aFakeAgentRendersThePreviewFixtureAndFallsSilentAt)
+	sc.Step(`^the fake "([^"]+)" agent's rendered pane is byte-identical across two consecutive captures$`, theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures)
+}
+
+// previewFixtureDirectory returns the checked-in directory of requirement
+// 5's deterministic preview fixtures (internal/agent/testdata/preview),
+// read directly rather than copied -- renderFixture only ever reads them,
+// it never writes, so there is nothing for a scenario to isolate.
+func previewFixtureDirectory() (string, error) {
+	root, err := repositoryRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "internal", "agent", "testdata", "preview"), nil
+}
+
+// aFakeAgentRendersThePreviewFixtureAndFallsSilentAt starts the named fixture
+// binary with its requirement-5 silent-fixture env var set to fixture, so it
+// renders that file from internal/agent/testdata/preview exactly once and
+// then produces no further output for the rest of the scenario.
+func aFakeAgentRendersThePreviewFixtureAndFallsSilentAt(ctx context.Context, kind, fixture string, cols, rows uint16) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	spec, ok := fakeAgentSpecs[kind]
+	if !ok {
+		return fmt.Errorf("unknown fake agent kind %q", kind)
+	}
+	binary, err := buildFakeAgentBinary(ctx, h, kind, spec.packagePath)
+	if err != nil {
+		return err
+	}
+	fixtureDir, err := previewFixtureDirectory()
+	if err != nil {
+		return err
+	}
+	driver, err := h.StartFakeAgentWithSize(ctx, binary, cols, rows,
+		"FAKE_AGENT_FIXTURE_DIR="+fixtureDir,
+		spec.silentFixtureEnv+"="+fixture,
+	)
+	if err != nil {
+		return err
+	}
+	if h.fakeAgents == nil {
+		h.fakeAgents = make(map[string]*ScreenDriver)
+	}
+	h.fakeAgents[kind] = driver
+	return nil
+}
+
+// theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures reads
+// the fixture's own pty-backed screen twice, with a short pause in between
+// to give a misbehaving fixture time to emit something, and asserts the two
+// captures are byte-identical -- requirement 5's byte-stable preview pane,
+// proven from the fixture's own output rather than assumed.
+func theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures(ctx context.Context, kind string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	driver, err := fakeAgentDriver(h, kind)
+	if err != nil {
+		return err
+	}
+	// The fixture's single render is asynchronous with this step, so the
+	// first capture must wait for something to have arrived at all --
+	// otherwise an empty "before it rendered" frame gets compared against a
+	// populated "after it rendered" one and the assertion fails for a race,
+	// not for the thing it means to test.
+	first, err := waitForNonEmptyFrame(driver)
+	if err != nil {
+		return fmt.Errorf("fake %q agent never rendered a frame: %w", kind, err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	second := driver.Frame(true)
+	if first != second {
+		return fmt.Errorf("fake %q agent pane changed between captures:\n--- first ---\n%s\n--- second ---\n%s", kind, first, second)
+	}
+	return nil
+}
+
+func waitForNonEmptyFrame(driver *ScreenDriver) (string, error) {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		frame := driver.Frame(true)
+		if strings.TrimSpace(frame) != "" {
+			return frame, nil
+		}
+		if time.Now().After(deadline) {
+			return frame, errors.New("timed out waiting for a non-empty frame")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // aFakeAgentIsStartedRecordingSizesAt builds the named fixture (once per
