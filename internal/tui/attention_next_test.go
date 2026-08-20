@@ -134,7 +134,14 @@ func TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus(t *testing.T) {
 	if len(model.sessions) != 4 {
 		t.Fatalf("loaded %d sessions, want 4", len(model.sessions))
 	}
-	model.selected = 0 // running-one: not itself in need of attention
+	// Task 038 wires the attention sort into every load, so m.sessions is
+	// no longer store order; find running-one wherever the sort placed it
+	// (it does not itself need attention) rather than assuming index 0.
+	for i, s := range model.sessions {
+		if s.ID == "running-one" {
+			model.selected = i
+		}
+	}
 
 	updated, _ = model.Update(key(" "))
 	model = updated.(Model)

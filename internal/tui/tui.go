@@ -371,8 +371,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.startupNote = "Cannot read sessions: " + msg.err.Error()
 		} else {
-			m.sessions = msg.sessions
-			if m.selected >= len(m.sessions) {
+			// SPEC requirements 28/29/30 (task 023's sort, task 024's
+			// grouping): every load renders in attention order, not
+			// store order, so the sidebar's group order itself follows
+			// each group's most urgent member (see SPEC §11's
+			// illustration: "service-a" leads with two waiting rows,
+			// "infra" follows with only an error) exactly as
+			// groupSessions' own "first appearance in m.sessions"
+			// bucketing already promises once m.sessions is in this
+			// order.
+			var selectedID string
+			if m.selected >= 0 && m.selected < len(m.sessions) {
+				selectedID = m.sessions[m.selected].ID
+			}
+			m.sessions = sortSessionsByAttention(msg.sessions)
+			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+				m.selected = idx
+			} else if m.selected >= len(m.sessions) {
 				m.selected = max(0, len(m.sessions)-1)
 			}
 		}
