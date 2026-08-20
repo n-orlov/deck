@@ -2,28 +2,29 @@
 
 ## Verification capture
 
-The following commands were run from the repository root at `36f1c3e`. Their
-complete, unedited command output is retained at repository-relative paths:
+The following commands were run from the repository root at fixed commit
+`1837472642d8ae67fc1ccd52e63edc8769a2395d`. Their complete, unedited command
+output is retained at repository-relative paths:
 
 | Command | Raw capture | Result |
 |---|---|---|
 | `ci/run.sh go build ./...` | [`phase2-build.log`](phase2-build.log) | exit 0 |
 | `ci/run.sh go vet ./...` | [`phase2-vet.log`](phase2-vet.log) | exit 0 |
-| `time ci/run.sh go test -v -count=1 ./...` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; `real 1m5.282s` |
+| `ci/run.sh go test -v -count=1 ./...` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; **54 seconds wall time** |
 
-The full run reports **21 features**, **45 scenarios (45 passed)**, and **501
-steps (501 passed)** under the default `~@real-agents && ~@nightly` tag
-expression. The feature count is the 21 ANSI-coloured `Feature:` headings in
+The full run reports **21 features**, **47 scenarios (47 passed)**, and **525
+steps (525 passed)** under the unchanged default `~@real-agents && ~@nightly`
+tag expression. The feature count is the 21 ANSI-coloured `Feature:` headings in
 the retained Godog output (one heading per executed `.feature` file). Godog's
 deliberately undefined and deliberately failing private harness self-tests
 also appear in the raw log; their enclosing Go test passes because rejecting
 those outcomes is what it tests. They are not members of the real
-21-feature/45-scenario/501-step suite.
+21-feature/47-scenario/525-step suite.
 
 **Top-level Go-test counting convention.** Count lines matching
 `^=== RUN   Test[A-Za-z0-9_]*$` in the verbose capture. This counts each
 package-level `func Test...` invocation and excludes slash-suffixed `t.Run`
-subtests. On that convention this run contains **178 top-level Go tests**.
+subtests. On that convention this run contains **183 top-level Go tests**.
 All tested packages report `ok`; `internal/notify`, `internal/search`, and
 `internal/unit` report `[no test files]`.
 
@@ -34,6 +35,15 @@ go version go1.25.13 linux/amd64
 tmux 3.5a
 github.com/cucumber/godog v0.16.0
 ```
+
+## Closure of the four Phase 2 review findings
+
+| Review finding | Released-binary or retained evidence |
+|---|---|
+| Attaching to an error row did not acknowledge it | `status_attach.feature: attach acknowledges a live error without replacing its verdict` proves the error reason/source/epoch survive while acknowledgement and the unseen marker clear. |
+| A non-leasable resume could misleadingly claim a held lease | `launch_lease.feature: a stale stopped row reports its new non-leasable verdict instead of a lease conflict` proves `r` refreshes the actual error/reason and never shows `starting elsewhere`; the adjacent live in-TTL scenario pins the unchanged lease wording. |
+| `DECK_CLOCK_STEP` had no production trigger | `determinism.feature: deterministic frames, shared clock stepping, and generated identifiers` sends `SIGUSR1` to an already-running released client, proves two clients and a later `_hook` share the stepped instant, and reaches probe staleness without a 45-second sleep. |
+| Real-Claude conformance had not been executed | The authenticated Claude Code 2.1.237 capture [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) proves inline hooks are accepted and SessionStart reaches released `deck _hook`. Three required fields conform, but upstream omits `permission_mode`, so **R36 remains not met as written**; the version matrix is retained in [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log). |
 
 ## Requirement evidence (R1–R45)
 
@@ -59,33 +69,33 @@ paths are repository-relative.
 | 14 | `internal/agent: TestProbeGoldenPaneCorpus`, `TestProbeDeclinesUnknownTextAndShellIsIneligible`, and `TestProbeRuleTableHasOneRulePerGolden`. |
 | 15 | `status_probe.feature: Real fake-agent panes render the complete probe golden corpus` sends the same ten fixture files used by `TestProbeGoldenPaneCorpus` through real panes byte-for-byte. |
 | 16 | `status_probe.feature: Stale sampling is visible, precedence-aware, and agent-only`; focused service tests cover starting/running/waiting eligibility, the boundary, shell exclusion, and TUI-only probing. |
-| 17 | The stale-sampling scenario advances `clock.now` across `stale_after` rather than sleeping; `internal/config: TestDeckHomeClocksShareOnDemandAdvance`. |
+| 17 | The stale-sampling scenario signals a running released client with `SIGUSR1` to advance across `stale_after` rather than sleeping or calculating an absolute instant; `internal/config: TestDeckHomeClocksShareOnDemandAdvance`. |
 | 18 | The stale-sampling scenario records a losing `probe.waiting` event against a fresh hook and a winning probe correction against a stale hook. |
 | 19 | The stale-sampling scenario visibly checks `live` on hook, `sampled` on Claude/Pi probe rows, and no sampled badge on shell. |
 | 20 | `internal/tui: TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts`; the black-box stale-sampling scenario proves list badges. |
 | 21 | `status_user_kill.feature: a running hook cannot undo an explicit user kill` and the pane-fired terminal-precedence scenario in `status_claude_hooks.feature`. |
 | 22 | The same user-kill scenario proves kill → resume clears the flag → hook reaches running. |
 | 23 | `internal/tui: TestYAcknowledgesOnlySelectedRowDurably` reconstructs the model/store and proves only the selected marker remains cleared after restart; hook/error transition behavior is covered by store transition tests. |
-| 24 | `status_attach.feature: attach clears waiting and acknowledges it in one transition`. |
+| 24 | `status_attach.feature` proves both `attach clears waiting and acknowledges it in one transition` and `attach acknowledges a live error without replacing its verdict`; the latter keeps error source/reason/epoch while durably clearing the unseen marker. |
 | 25 | The attach scenario checks epoch `0→1`; the T3 Claude-hook scenario checks waiting → idle and error → stopped epoch changes in the same durable transitions. |
 | 26 | `internal/service: TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer` and `TestReconcilerCapturesAndCollectsCrashFirstWriterOnly`; all three observations include live preservation. |
 | 27 | `crash.feature: a shell exit zero is a clean stop without a crash artifact`. |
 | 28 | `crash.feature: SIGKILL captures and sanitizes the agent pane without relaunching`; `internal/service: TestCrashTailStripsControlsAndKeepsLast200Lines`. |
 | 29 | `crash.feature: racing clients collect one corpse idempotently` checks first artifact stability, disappearance, and launch count 1; tmux kill idempotence is integration-tested. |
 | 30 | `shell_liveness.feature` separately proves a live shell reaches running and a live unsignalled agent remains starting. |
-| 31 | `internal/store: TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease`, `internal/service: TestResumeNonLeasableReturnsActualStatusAndReason`, and the unchanged live-owner assertions in `launch_lease.feature`. |
+| 31 | `launch_lease.feature: a stale stopped row reports its new non-leasable verdict instead of a lease conflict` provides released-binary proof alongside `internal/store: TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease` and `internal/service: TestResumeNonLeasableReturnsActualStatusAndReason`; the live in-TTL scenario retains the `starting elsewhere` contract. |
 | 32 | `status_claude_hooks.feature: Every declared Claude hook maps...` contains T3's running → permission-prompt waiting → Stop idle/message → waiting sequence and direct epoch assertions, with no notification-delivery stub. |
 | 33 | `lease_race.feature: three clients racing resume on one row produce exactly one launch` completes T2 with a pane-fired SessionStart and three running rows; `shell_liveness.feature` retains the separate no-fabricated-agent-running check. |
 | 34 | The clean-shell and SIGKILL scenarios in `crash.feature` check status, tail/no-tail, and launch count 1. |
 | 35 | `concurrency.feature: one hook-driven status change propagates to every client`. |
-| 36 | Opt-in `real_agent_smoke.feature: real claude accepts injected hooks and supplies the upstream payload contract`, runnable exactly as documented below. No Claude binary was installed here, so this conformance scenario is intentionally excluded from the default capture and is not claimed as executed. `features/real_agent_hooks_test.go` does execute the strict field/type rejection logic in the default run. |
-| 37 | This report and the three repository-relative raw captures above. |
-| 38 | A real `ci/stability.sh 10` run from clean fixed commit `fef88a58b65f4fec5da76d982d8177ef4b08a562` passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
+| 36 | The documented opt-in command was executed with authenticated genuine Claude Code 2.1.237. [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) proves inline instrumentation, SessionStart delivery to released `_hook`, and non-empty string `session_id`, `cwd`, and `transcript_path`; upstream omitted required `permission_mode`, so the strict scenario failed and **R36 is not met as written**. [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log) shows the same omission across 1.0.128–2.1.200. |
+| 37 | This report and its linked repository-relative build, vet, full-suite, stability, authenticated-Claude, and version-matrix captures. |
+| 38 | A real `ci/stability.sh 10` run from clean fixed commit `3a2a0d39d281c43b8062660d2e20cc68848a2c20` passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
 | 39 | The run uses the unchanged default tag expression. No Phase 1 scenario was removed; shell assertions were re-aimed to live-shell promotion while `shell_liveness.feature` retains the unsignalled-agent negative assertion. Final protected-file/no-exclusion proof is paired with the fixed-commit stability checkpoint. |
 | 40 | The operator walkthrough below. |
 | 41 | `cmd/fake-claude: TestPaneCommandsFireEveryInjectedHookWithControllablePayload` and `TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly`; the Claude-hook feature fires commands from the pane. |
 | 42 | `cmd/fake-claude`/`cmd/fake-pi: TestPaneFixtureCommandRendersNamedFileByteForByte` and the complete-corpus black-box scenario. |
-| 43 | `internal/config: TestDeckHomeClocksShareOnDemandAdvance`, `TestFrozenClockUsesResolvedDataRootWithoutDeckHome`, plus `status_probe.feature`'s running-client advance. The help overlay documents writing `clock.now`. |
+| 43 | `SIGUSR1` is the documented on-demand trigger for a running deck client. `internal/config: TestDeckHomeClocksShareOnDemandAdvance` proves lock-serialized exact increments, `cmd/deck: TestRunningClientSIGUSR1AdvancesSharedClock` proves the production signal path, and `determinism.feature` proves two live clients plus a later hook share the result. |
 | 44 | `fake_agent.feature: SIGKILL targets the agent process and retains its failed pane`; the crash scenarios consume that process-level step. |
 | 45 | `crash.feature: a different hook detects a crash while no TUI is running`; `cmd/deck: TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd` proves timeout, no SessionEnd liveness, and no probing. |
 
@@ -205,9 +215,12 @@ opt-in scenario is run in that environment.
 
 ## Gotchas and consequences
 
-- Frozen time is shared through the resolved data root's `clock.now`; writing
-  it, not a TUI key or process-local counter, advances all clients and hook
-  subprocesses consistently. Store status writers require explicit time.
+- Frozen time is shared through the resolved data root's `clock.now`. Send
+  `SIGUSR1` to any running deck client (`kill -USR1 <deck-client-pid>`) to take
+  the shared file lock and advance it by exactly `DECK_CLOCK_STEP`; callers do
+  not calculate or write an absolute instant. All clients and later hook
+  subprocesses read the result consistently. Store status writers require
+  explicit time.
 - Hook latency is the monotonic store transaction span. Process-lifetime audit
   duration and frozen wall time would respectively measure the wrong work and
   make the assertion unfalsifiable.
@@ -222,19 +235,15 @@ opt-in scenario is run in that environment.
 - SessionEnd's no-liveness/no-probe/no-enqueue behavior is a temporary Phase 2
   boundary. Phase 5 must add enqueue while preserving the critical-path
   exclusions.
-- The default suite cannot establish real Claude conformance: `@real-agents`
-  is intentionally opt-in and no Claude executable was available in this
-  environment. Declared events/fields and the exact permission-dialog label
-  remain strict upstream assumptions, documented in
-  [`phase2-findings.md`](phase2-findings.md), not silently normalized facts.
-- The first real fixed-commit stability attempt passed only 3/10 and exposed
-  package-load-sensitive deadlines, an observer lacking SQLite busy handling,
-  a modal-close/quit race, and hook-write latency. The fixes serialize packages
-  only in the repetition runner, retain one-tick assertions with bounded render
-  grace, align observer busy handling with the store, wait for the list before
-  quitting, and use SQLite WAL `synchronous=NORMAL`. A subsequent clean fixed-
-  commit run passed 10/10; the report does not infer stability from one green
-  full-suite run.
+- The default suite intentionally excludes `@real-agents`, but the documented
+  opt-in command was separately executed with authenticated genuine Claude
+  Code 2.1.237. Inline hook delivery succeeded; `permission_mode` was absent,
+  so R36 remains an explicit upstream/requirements blocker documented in
+  [`phase2-findings.md`](phase2-findings.md), not a silently normalized pass.
+- The final clean fixed-commit stability run at `3a2a0d39d281c43b8062660d2e20cc68848a2c20`
+  passed 10/10. Complete per-package output, every run label, and final exit 0
+  are retained in [`phase2-stability.log`](phase2-stability.log); the report
+  does not infer stability from one green full-suite run.
 - Shell liveness means `running`; agent pane liveness does not. Re-aimed Phase
   1 shell assertions preserve the original protection with a separate live,
   unsignalled-agent negative scenario.

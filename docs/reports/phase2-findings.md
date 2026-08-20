@@ -2,11 +2,35 @@
 
 This report records Phase 2 decisions, disagreements, upstream assumptions, and deferrals for later operator review against `SPEC.md`. `SPEC.md` and `prds/` were not changed to make the implementation fit.
 
+## Final verification and review-gap disposition
+
+The clean fixed-commit default capture at `1837472642d8ae67fc1ccd52e63edc8769a2395d`
+is [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log): **21 features,
+47 scenarios, and 525 steps passed**, with **183 top-level Go tests** under the
+report's stated counting convention. Its wall time was **54 seconds**. Build
+and vet output are retained in [`phase2-build.log`](phase2-build.log) and
+[`phase2-vet.log`](phase2-vet.log). A later clean fixed-commit
+`ci/stability.sh 10` run passed **10/10** with final exit 0; its complete output
+is [`phase2-stability.log`](phase2-stability.log).
+
+The four review gaps have these dispositions:
+
+- Error attachment is proved through the released binary by
+  `status_attach.feature: attach acknowledges a live error without replacing
+  its verdict`; the error remains intact while acknowledgement clears durably.
+- Non-leasable resume messaging is proved by `launch_lease.feature: a stale
+  stopped row reports its new non-leasable verdict instead of a lease
+  conflict`; the actual reason is shown and `starting elsewhere` is absent.
+- The frozen-clock trigger and its released-binary proof are detailed below.
+- Authenticated real-Claude hook delivery was executed and succeeded, while
+  strict R36 payload conformance remains blocked by upstream's absent
+  `permission_mode`, also detailed below.
+
 ## Frozen wall-clock control
 
-- `SPEC.md` §13.1 says `DECK_CLOCK_STEP` advances a frozen clock “on demand”, but it does not define a cross-process, collision-free trigger. The original per-process counter advanced only after shell creation and could not make two running clients and a short-lived `_hook` process agree. An initially implemented `>` binding also conflicted with §11's sidebar-width keymap and was removed.
-- The implemented control is `clock.now` under deck's resolved data root: `$DECK_HOME/clock.now` when `DECK_HOME` is set, otherwise the equivalent file under the resolved XDG data directory. With `DECK_CLOCK` set, a valid RFC3339/RFC3339Nano instant in this file overrides the initial frozen value. Writing an absolute instant is atomic from the reader's perspective, works while clients are running, and gives every process sharing that data root the same `now`.
-- `DECK_CLOCK_STEP` remains the configured/suggested increment for automation; it does not claim a TUI key. The help overlay documents `DECK_CLOCK`, `DECK_CLOCK_STEP`, and the write-based `clock.now` surface. This is new supported product surface that should be folded into §13.1.
+- `SPEC.md` §13.1 says `DECK_CLOCK_STEP` advances a frozen clock “on demand”, but it does not name the cross-process trigger. Deck now uses `SIGUSR1` sent to any running client: `kill -USR1 <deck-client-pid>`. There is no TUI key binding, avoiding the earlier conflict with §11's sidebar-width keymap.
+- The signal handler calls `Clock.AdvanceShared`. It takes an exclusive lock beside `clock.now` under deck's resolved data root, rereads the current shared instant while locked, adds **exactly** `DECK_CLOCK_STEP`, and atomically publishes the result. Concurrent triggers from different clients therefore serialize without lost increments, and every running client or later `_hook` sharing `DECK_HOME` reads the same result.
+- The trigger is enabled only when both `DECK_CLOCK` and `DECK_CLOCK_STEP` configure a step-capable frozen clock. Callers never calculate or write an absolute timestamp. The help overlay documents the signal command and exact per-invocation advance; the released-binary `determinism.feature` scenario proves two already-running clients plus a later hook observe it and reaches probe staleness without a 45-second sleep. This supported surface should be folded into §13.1.
 - Wall time controls status timestamps, staleness, and rendered ages only. Hook transaction durations and reconciliation timeouts use Go's monotonic clock and continue advancing while wall time is frozen.
 - Phase 2 removed the store's implicit real-time timestamp fallback from status/event APIs it exercises: callers must supply an explicit timestamp. This is an API decision needed to prevent a real-time write from silently poisoning frozen-clock staleness comparisons.
 
@@ -28,10 +52,10 @@ DECK_GODOG_TAGS=@real-agents go test -run TestFeatures -v ./features/...
 
 That command was executed against an installed, authenticated genuine Claude Code 2.1.237. Claude accepted deck's inline `--settings` hook instrumentation, emitted `SessionStart`, and invoked the released `deck _hook`. The resulting hook transaction promoted the created row from `starting` to `live running`, proving the hook-to-status path end to end against genuine Claude rather than a mock. The strict scenario observed this exact SessionStart key/type set: `cwd:string`, `hook_event_name:string`, `model:string`, `session_id:string`, `source:string`, and `transcript_path:string`. Of the four fields required by R36, `session_id`, `cwd`, and `transcript_path` were present, non-empty strings and conformed; `permission_mode` was absent.
 
-The same absence is consistent across the tested genuine-Claude version matrix: 1.0.128, 2.0.77, 2.1.0, 2.1.50, 2.1.100, 2.1.150, 2.1.200, and the authenticated 2.1.237 run. Retained evidence is:
+The same absence is consistent across the tested genuine-Claude version matrix: 1.0.128, 2.0.77, 2.1.0, 2.1.50, 2.1.100, 2.1.150, 2.1.200, and the authenticated 2.1.237 run. Retained repository-relative evidence is:
 
-- `/run/ralphd/artifacts/task007-real-agents-authenticated-final-20260820T072724Z.log` — SHA256 `21c10c80575c34f0193e4cd61e655983aa98dd5dd7589c44bf235e54a314b191` (unedited authenticated suite output; 2 scenarios passed and only the strict missing-field assertion failed).
-- `/run/ralphd/artifacts/task007-version-payload-matrix-20260820T0652Z.log` — SHA256 `897976a0fc4adf1978e8228fac7cfda4880de1f900df8e6441457eb702e529de` (unedited SessionStart payloads and required-field checks for versions 1.0.128 through 2.1.200).
+- [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) — SHA256 `21c10c80575c34f0193e4cd61e655983aa98dd5dd7589c44bf235e54a314b191` (unedited authenticated suite output; 2 scenarios passed and only the strict missing-field assertion failed).
+- [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log) — SHA256 `897976a0fc4adf1978e8228fac7cfda4880de1f900df8e6441457eb702e529de` (unedited SessionStart payloads and required-field checks for versions 1.0.128 through 2.1.200).
 
 **R36 is NOT MET as written.** Resolving that mismatch requires a PRD/SPEC decision owned by the operator; `SPEC.md` and `prds/` are intentionally unchanged here. Deck already knows the permission mode it launched with, so requiring the upstream agent to echo that mode in `SessionStart` may be redundant. The `@real-agents` scenario nevertheless continues to require a non-empty string `permission_mode` exactly as written: it does not synthesize, normalize, weaken, delete, or skip the assertion. Because the tag is opt-in and excluded from the default run, this upstream blocker does not affect the default suite.
 
@@ -92,8 +116,8 @@ The same absence is consistent across the tested genuine-Claude version matrix: 
 - Pi and Codex event sources remain deferred as §8.1 states; Pi is sampled in Phase 2. Codex adapter/id discovery remains Phase 4 work.
 - Sidebar/preview/layout/theme/settings chrome remains Phase 2b. Phase 2 adds source words and truthful detail copy to the existing list/detail views only.
 - Scrollback replay, history files, and `last_cwd` remain Phase 6. The reusable tmux capture primitive landed now for crash tails but no replay behavior was added.
-- The `@real-agents` suite is excluded from the default network-free run. Its inability to run without an installed/authenticated CLI is reported, never converted into a skipped/default-green claim.
+- The `@real-agents` suite remains excluded from the default network-free run. It was separately executed with an installed/authenticated genuine Claude CLI; the successful instrumentation and hook delivery plus the strict `permission_mode` failure are both retained, never converted into a skipped/default-green claim.
 
 ## Protected source status
 
-This findings task changes only `docs/reports/phase2-findings.md`. It does not modify `SPEC.md`, `prds/`, `ci/Dockerfile`, or `ci/SPIKE.md`.
+The report update changes only files under `docs/reports/`. It does not modify `SPEC.md`, `prds/`, `ci/Dockerfile`, or `ci/SPIKE.md`.

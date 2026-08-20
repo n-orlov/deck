@@ -1,0 +1,100 @@
+2.1.237 (Claude Code)
+=== RUN   TestFeatures
+[1;37mFeature:[0m Fake Claude flag-contract drift alarm
+  The fake Claude fixture must keep the installed Claude CLI's observable flag
+  contract. This scenario deliberately runs only when a real Claude CLI is
+  installed, so upstream CLI changes are detected without making normal CI
+  depend on that CLI.
+=== RUN   TestFeatures/fake_Claude_flags_conform_to_installed_Claude_help
+
+  [1;37mScenario:[0m fake Claude flags conform to installed Claude help                       [1;30m# fake_agent_drift.feature:8[0m
+    [32mGiven[0m [32mthe installed Claude CLI is available[0m                                      [1;30m# fake_agent_drift_test.go:24 -> *fakeAgentDriftScenario[0m
+    [32mWhen[0m [32mI read the installed Claude CLI help[0m                                        [1;30m# fake_agent_drift_test.go:25 -> *fakeAgentDriftScenario[0m
+    [32mAnd[0m [32mI read the repository-built fake Claude help[0m                                 [1;30m# fake_agent_drift_test.go:26 -> *fakeAgentDriftScenario[0m
+    [32mThen[0m [32mboth help texts document the UUID-valued "--session-id" flag[0m                [1;30m# fake_agent_drift_test.go:27 -> github.com/n-orlov/deck/features.registerFakeAgentDriftSteps.func1[0m
+    [32mAnd[0m [32mboth help texts document the UUID-valued "--resume" flag[0m                     [1;30m# fake_agent_drift_test.go:30 -> github.com/n-orlov/deck/features.registerFakeAgentDriftSteps.func2[0m
+    [32mAnd[0m [32mboth help texts document the "--permission-mode" flag[0m                        [1;30m# fake_agent_drift_test.go:33 -> github.com/n-orlov/deck/features.registerFakeAgentDriftSteps.func3[0m
+    [32mAnd[0m [32mthe fake Claude permission modes equal the installed Claude permission modes[0m [1;30m# fake_agent_drift_test.go:36 -> *fakeAgentDriftScenario[0m
+
+[1;37mFeature:[0m Real Claude agent session smoke test
+  This scenario proves, against an actually installed Claude CLI (not the
+  fake-claude fixture used everywhere else), that deck assigns a UUID
+  conversation id at create time and passes that exact id back on resume.
+  It deliberately runs only when a real `claude` binary is on PATH, so the
+  default suite (which has none) is unaffected. Run it from the repository root
+  with `DECK_GODOG_TAGS=@real-agents go test -run TestFeatures -v ./features/...`
+  (also documented in docs/reports/phase1.md). Upstream fields are asserted
+  without aliases or coercion: an incompatible Claude upgrade is a visible
+  conformance failure, not something the harness silently normalizes.
+=== RUN   TestFeatures/create_a_real_claude_session_and_resume_it_with_the_same_conversation_id
+
+  [1;37mScenario:[0m create a real claude session and resume it with the same conversation id                                               [1;30m# real_agent_smoke.feature:13[0m
+    [32mGiven[0m [32mthe installed Claude CLI is available[0m                                                                                    [1;30m# fake_agent_drift_test.go:24 -> *fakeAgentDriftScenario[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "real claude one" with permission profile "safe"[0m                                   [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mthe state database session "real claude one" has a non-empty conversation id[0m                                              [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "real claude one" contains "--session-id"[0m                              [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                                [1;30m# assertions_test.go:59 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "real claude one" with status "stopped"[0m                                               [1;30m# assertions_test.go:40 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "real claude one"[0m                                                                    [1;30m# agent_steps_test.go:42 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mthe audit log's most recent launch argv for session "real claude one" contains "--resume"[0m                                 [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "real claude one" contains session "real claude one"'s conversation id[0m [1;30m# agent_steps_test.go:49 -> github.com/n-orlov/deck/features.launchArgvForSessionContainsOwnConversationID[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                             [1;30m# assertions_test.go:64 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/real_claude_accepts_injected_hooks_and_supplies_the_upstream_payload_contract
+
+  [1;37mScenario:[0m real claude accepts injected hooks and supplies the upstream payload contract                      [1;30m# real_agent_smoke.feature:26[0m
+    [32mGiven[0m [32mthe installed Claude CLI is available[0m                                                                [1;30m# fake_agent_drift_test.go:24 -> *fakeAgentDriftScenario[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "real claude hooks" with permission profile "safe"[0m             [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32msession "real claude hooks"'s launch instrumentation routes "SessionStart" to the released deck _hook[0m [1;30m# real_agent_hooks_test.go:23 -> github.com/n-orlov/deck/features.realClaudeInstrumentationRoutesHook[0m
+    [31mAnd[0m [31msession "real claude hooks" receives a conforming real Claude "SessionStart" hook[0m                      [1;30m# real_agent_hooks_test.go:24 -> github.com/n-orlov/deck/features.realClaudeHookConforms[0m
+    [1;31mafter scenario hook failed: real Claude hook contract unsupported: required field "permission_mode" must be a non-empty string (got <missing>); payload keys/types: cwd:string, hook_event_name:string, model:string, session_id:string, source:string, transcript_path:string
+surviving deck client: hung deck client killed after 1s
+frame:
+deck - sessions  socket: deck_test_102_6
+
+> real claude hooks    claude     [safe]   live     running  created <relative-time>
+    /tmp/deck-scenario-2883606061/agent-session-cwd
+
+up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail -
+raw: "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[H\rdeck - sessions  socket: deck_test_102_6\x1b[K\r\n\x1b[K\r\nNo sessions yet. Press n to create a session.\x1b[K\r\n\x1b[K\r\nup/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - \r\n\x1b[K\x1b[6;H\x1b[HCreate shell session\x1b[K\r\n\n> Name: \x1b[K\r\n    the display name; also the source of the session's tmux slug\x1b[K\r\n  Working directory: \x1b[K\r\n    the session's cwd; must exist and be a directory\x1b[K\r\n  Agent: shell (left/right cycles: claude, pi, shell)\x1b[K\r\n    which coding agent adapter launches this session\x1b[K\r\n  Permission profile: safe (left/right cycles: safe)\x1b[K\r\n    how much the agent may do without asking; an unsupported profile degrades to safe; yolo is not o\r\n  Launch args (JSON array): \x1b[K\r\n    extra arguments appended verbatim after the adapter's own argv\x1b[K\r\n  Env (key=value, comma-separated): \x1b[K\r\n    session-level environment variables, highest priority in PATH resolution\x1b[K\r\n  Pre-launch command: \x1b[K\r\n    a command run in the pane before the agent starts, e.g. to load secrets\x1b[K\r\n  Login shell: off (space toggles)\x1b[K\r\n    runs the pane through $SHELL -lc instead of execing the agent argv directly; enabling it makes c\r\n\x1b[K\r\nTab/Shift+Tab moves fields · Left/Right or Space changes a selection · Enter submits · Esc cancels\x1b[K\r\n\x1b[K\x1b[21;H\x1b[H\n\n> Name: real claude hooks\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n  Name: real claude hooks\x1b[K\r\n\n> Working directory: /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n\n\n  Working directory: /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\n> Agent: shell (left/right cycles: claude, pi, shell)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[HCreate session\x1b[K\r\n\n\n\n\n\n> Agent: claude (left/right cycles: claude, pi, shell)\x1b[K\r\n\n  Permission profile: safe (left/right cycles: safe, plan, edits)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n\n\n\n\n  Agent: claude (left/right cycles: claude, pi, shell)\x1b[K\r\n\n> Permission profile: safe (left/right cycles: safe, plan, edits)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[Hdeck - sessions  socket: deck_test_102_6\x1b[K\r\n\n> real claude hooks    claude     [safe]            starting - awaiting signal  created just now\x1b[K\r\n    /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\x1b[K\r\nup/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - \r\n\x1b[K\x1b[J\x1b[7;H\x1b[H\n\n> real claude hooks    claude     [safe]   live     running  created just now\x1b[K\r\n\n\n\n\x1b[7;H", step error: real Claude hook contract unsupported: required field "permission_mode" must be a non-empty string (got <missing>); payload keys/types: cwd:string, hook_event_name:string, model:string, session_id:string, source:string, transcript_path:string[0m
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                         [1;30m# assertions_test.go:64 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    suite.go:640: after scenario hook failed: real Claude hook contract unsupported: required field "permission_mode" must be a non-empty string (got <missing>); payload keys/types: cwd:string, hook_event_name:string, model:string, session_id:string, source:string, transcript_path:string
+        surviving deck client: hung deck client killed after 1s
+        frame:
+        deck - sessions  socket: deck_test_102_6
+        
+        > real claude hooks    claude     [safe]   live     running  created <relative-time>
+            /tmp/deck-scenario-2883606061/agent-session-cwd
+        
+        up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail -
+        raw: "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[H\rdeck - sessions  socket: deck_test_102_6\x1b[K\r\n\x1b[K\r\nNo sessions yet. Press n to create a session.\x1b[K\r\n\x1b[K\r\nup/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - \r\n\x1b[K\x1b[6;H\x1b[HCreate shell session\x1b[K\r\n\n> Name: \x1b[K\r\n    the display name; also the source of the session's tmux slug\x1b[K\r\n  Working directory: \x1b[K\r\n    the session's cwd; must exist and be a directory\x1b[K\r\n  Agent: shell (left/right cycles: claude, pi, shell)\x1b[K\r\n    which coding agent adapter launches this session\x1b[K\r\n  Permission profile: safe (left/right cycles: safe)\x1b[K\r\n    how much the agent may do without asking; an unsupported profile degrades to safe; yolo is not o\r\n  Launch args (JSON array): \x1b[K\r\n    extra arguments appended verbatim after the adapter's own argv\x1b[K\r\n  Env (key=value, comma-separated): \x1b[K\r\n    session-level environment variables, highest priority in PATH resolution\x1b[K\r\n  Pre-launch command: \x1b[K\r\n    a command run in the pane before the agent starts, e.g. to load secrets\x1b[K\r\n  Login shell: off (space toggles)\x1b[K\r\n    runs the pane through $SHELL -lc instead of execing the agent argv directly; enabling it makes c\r\n\x1b[K\r\nTab/Shift+Tab moves fields · Left/Right or Space changes a selection · Enter submits · Esc cancels\x1b[K\r\n\x1b[K\x1b[21;H\x1b[H\n\n> Name: real claude hooks\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n  Name: real claude hooks\x1b[K\r\n\n> Working directory: /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n\n\n  Working directory: /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\n> Agent: shell (left/right cycles: claude, pi, shell)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[HCreate session\x1b[K\r\n\n\n\n\n\n> Agent: claude (left/right cycles: claude, pi, shell)\x1b[K\r\n\n  Permission profile: safe (left/right cycles: safe, plan, edits)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n\n\n\n\n  Agent: claude (left/right cycles: claude, pi, shell)\x1b[K\r\n\n> Permission profile: safe (left/right cycles: safe, plan, edits)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[Hdeck - sessions  socket: deck_test_102_6\x1b[K\r\n\n> real claude hooks    claude     [safe]            starting - awaiting signal  created just now\x1b[K\r\n    /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\x1b[K\r\nup/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - \r\n\x1b[K\x1b[J\x1b[7;H\x1b[H\n\n> real claude hooks    claude     [safe]   live     running  created just now\x1b[K\r\n\n\n\n\x1b[7;H", step error: real Claude hook contract unsupported: required field "permission_mode" must be a non-empty string (got <missing>); payload keys/types: cwd:string, hook_event_name:string, model:string, session_id:string, source:string, transcript_path:string
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: real claude accepts injected hooks and supplies the upstream payload contract[0m [1;30m# real_agent_smoke.feature:26[0m
+    [31mAnd session "real claude hooks" receives a conforming real Claude "SessionStart" hook[0m [1;30m# real_agent_smoke.feature:31[0m
+      [31mError: [0m[1;31mafter scenario hook failed: real Claude hook contract unsupported: required field "permission_mode" must be a non-empty string (got <missing>); payload keys/types: cwd:string, hook_event_name:string, model:string, session_id:string, source:string, transcript_path:string
+surviving deck client: hung deck client killed after 1s
+frame:
+deck - sessions  socket: deck_test_102_6
+
+> real claude hooks    claude     [safe]   live     running  created <relative-time>
+    /tmp/deck-scenario-2883606061/agent-session-cwd
+
+up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail -
+raw: "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[H\rdeck - sessions  socket: deck_test_102_6\x1b[K\r\n\x1b[K\r\nNo sessions yet. Press n to create a session.\x1b[K\r\n\x1b[K\r\nup/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - \r\n\x1b[K\x1b[6;H\x1b[HCreate shell session\x1b[K\r\n\n> Name: \x1b[K\r\n    the display name; also the source of the session's tmux slug\x1b[K\r\n  Working directory: \x1b[K\r\n    the session's cwd; must exist and be a directory\x1b[K\r\n  Agent: shell (left/right cycles: claude, pi, shell)\x1b[K\r\n    which coding agent adapter launches this session\x1b[K\r\n  Permission profile: safe (left/right cycles: safe)\x1b[K\r\n    how much the agent may do without asking; an unsupported profile degrades to safe; yolo is not o\r\n  Launch args (JSON array): \x1b[K\r\n    extra arguments appended verbatim after the adapter's own argv\x1b[K\r\n  Env (key=value, comma-separated): \x1b[K\r\n    session-level environment variables, highest priority in PATH resolution\x1b[K\r\n  Pre-launch command: \x1b[K\r\n    a command run in the pane before the agent starts, e.g. to load secrets\x1b[K\r\n  Login shell: off (space toggles)\x1b[K\r\n    runs the pane through $SHELL -lc instead of execing the agent argv directly; enabling it makes c\r\n\x1b[K\r\nTab/Shift+Tab moves fields · Left/Right or Space changes a selection · Enter submits · Esc cancels\x1b[K\r\n\x1b[K\x1b[21;H\x1b[H\n\n> Name: real claude hooks\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n  Name: real claude hooks\x1b[K\r\n\n> Working directory: /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n\n\n  Working directory: /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\n> Agent: shell (left/right cycles: claude, pi, shell)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[HCreate session\x1b[K\r\n\n\n\n\n\n> Agent: claude (left/right cycles: claude, pi, shell)\x1b[K\r\n\n  Permission profile: safe (left/right cycles: safe, plan, edits)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[H\n\n\n\n\n\n  Agent: claude (left/right cycles: claude, pi, shell)\x1b[K\r\n\n> Permission profile: safe (left/right cycles: safe, plan, edits)\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\x1b[21;H\x1b[Hdeck - sessions  socket: deck_test_102_6\x1b[K\r\n\n> real claude hooks    claude     [safe]            starting - awaiting signal  created just now\x1b[K\r\n    /tmp/deck-scenario-2883606061/agent-session-cwd\x1b[K\r\n\x1b[K\r\nup/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - \r\n\x1b[K\x1b[J\x1b[7;H\x1b[H\n\n> real claude hooks    claude     [safe]   live     running  created just now\x1b[K\r\n\n\n\n\x1b[7;H", step error: real Claude hook contract unsupported: required field "permission_mode" must be a non-empty string (got <missing>); payload keys/types: cwd:string, hook_event_name:string, model:string, session_id:string, source:string, transcript_path:string[0m
+
+
+3 scenarios ([32m2 passed[0m, [31m1 failed[0m)
+24 steps ([32m22 passed[0m, [31m1 failed[0m, [36m1 skipped[0m)
+3.595408442s
+=== NAME  TestFeatures
+    godog_test.go:38: godog feature suite failed
+--- FAIL: TestFeatures (3.60s)
+    --- PASS: TestFeatures/fake_Claude_flags_conform_to_installed_Claude_help (0.82s)
+    --- PASS: TestFeatures/create_a_real_claude_session_and_resume_it_with_the_same_conversation_id (0.72s)
+    --- FAIL: TestFeatures/real_claude_accepts_injected_hooks_and_supplies_the_upstream_payload_contract (2.05s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	3.606s
+FAIL

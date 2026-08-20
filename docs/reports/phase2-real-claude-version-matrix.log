@@ -1,0 +1,91 @@
+===== deck-real-claude:1.0.128 =====
+1.0.128 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"023e87ab-6819-4c1d-a6e1-e99094699769","transcript_path":"/tmp/tmpd_5vq3ul/home/.claude/projects/-tmp-tmpd-5vq3ul-work/023e87ab-6819-4c1d-a6e1-e99094699769.jsonl","cwd":"/tmp/tmpd_5vq3ul/work","hook_event_name":"SessionStart","source":"startup"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
+===== deck-real-claude:2.0.77 =====
+2.0.77 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"69591056-af63-4e61-b6db-b55f281cf15a","transcript_path":"/tmp/tmpvah0n84q/home/.claude/projects/-tmp-tmpvah0n84q-work/69591056-af63-4e61-b6db-b55f281cf15a.jsonl","cwd":"/tmp/tmpvah0n84q/work","hook_event_name":"SessionStart","source":"startup"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
+===== deck-real-claude:2.1.0 =====
+2.1.0 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"15853120-f016-46de-97de-7a220d23a7c6","transcript_path":"/tmp/tmp3nejvqty/home/.claude/projects/-tmp-tmp3nejvqty-work/15853120-f016-46de-97de-7a220d23a7c6.jsonl","cwd":"/tmp/tmp3nejvqty/work","hook_event_name":"SessionStart","source":"startup"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
+===== deck-real-claude:2.1.50 =====
+2.1.50 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"ba7f4431-c428-4dab-be32-f9ba3d39c604","transcript_path":"/tmp/tmpbr0au5sa/home/.claude/projects/-tmp-tmpbr0au5sa-work/ba7f4431-c428-4dab-be32-f9ba3d39c604.jsonl","cwd":"/tmp/tmpbr0au5sa/work","hook_event_name":"SessionStart","source":"startup","model":"claude-sonnet-4-6"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
+===== deck-real-claude:2.1.100 =====
+2.1.100 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"fe82c010-79ae-45f3-bfed-83b41090f6b4","transcript_path":"/tmp/tmpxa75v44l/home/.claude/projects/-tmp-tmpxa75v44l-work/fe82c010-79ae-45f3-bfed-83b41090f6b4.jsonl","cwd":"/tmp/tmpxa75v44l/work","hook_event_name":"SessionStart","source":"startup","model":"claude-sonnet-4-6"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
+===== deck-real-claude:2.1.150 =====
+2.1.150 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"c15cb83e-7d2f-4a97-b4b0-00f699b872d5","transcript_path":"/tmp/tmpszw_ql11/home/.claude/projects/-tmp-tmpszw-ql11-work/c15cb83e-7d2f-4a97-b4b0-00f699b872d5.jsonl","cwd":"/tmp/tmpszw_ql11/work","hook_event_name":"SessionStart","source":"startup","model":"claude-opus-4-7[1m]"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
+===== deck-real-claude:2.1.200 =====
+2.1.200 (Claude Code)
+Claude version:
+Starting genuine CLI interactively under a PTY.
+SessionStart hook produced payload: True
+Unedited SessionStart payload:
+{"session_id":"941a351c-9134-47ee-ba77-6652c049687a","transcript_path":"/tmp/tmp1077ptgg/home/.claude/projects/-tmp-tmp1077ptgg-work/941a351c-9134-47ee-ba77-6652c049687a.jsonl","cwd":"/tmp/tmp1077ptgg/work","hook_event_name":"SessionStart","source":"startup","model":"claude-opus-4-8[1m]"}
+Required field checks:
+session_id: present=True, type=str, nonempty=True
+cwd: present=True, type=str, nonempty=True
+transcript_path: present=True, type=str, nonempty=True
+permission_mode: present=False, type=NoneType, nonempty=False
+PROBE_EXIT=1
