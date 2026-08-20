@@ -306,8 +306,15 @@ in the scenarios meant to catch it.
 45. `docs/reports/phase2b1.md` records, per requirement number, the command or scenario that
     verifies it and its **real output** — not a claim that it passes. Include the emulator
     decision from requirement 6 with its evidence, and the tie-break key from requirement 29.
-46. No root-owned files left in the workspace; no leftover tmux sockets or sibling containers;
-    `git status` clean at the end.
+46. No root-owned files left in the workspace; no leftover tmux sockets; `git status` clean at
+    the end. **Container hygiene needs no action from you and you must not attempt it**: every
+    sibling `ci/run.sh` starts is `--rm`, so there is nothing to clean up. Check it read-only
+    and scoped to the image, never by label:
+    `docker ps -a --filter ancestor=deck-ci:local --format '{{.ID}} {{.Status}}'`.
+    **A sweep filtered on `label=ralphd.run=…` deletes your own container** — the job container
+    carries that label — which SIGKILLs this job mid-iteration, loses the verdict, and has now
+    done so twice on this project. Verifying this requirement means running the read-only
+    command above and reading its output. Nothing else.
 
 ## Review guidance
 
