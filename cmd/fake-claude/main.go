@@ -14,10 +14,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
+	"github.com/creack/pty"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +28,12 @@ const (
 	exitCodeEnvironment         = "FAKE_CLAUDE_EXIT_CODE"
 	commandsEnvironment         = "FAKE_CLAUDE_COMMANDS"
 	fixtureDirectoryEnvironment = "FAKE_AGENT_FIXTURE_DIR"
+	// sizesLogName is where this fixture appends its initial terminal size
+	// and every SIGWINCH-observed size, one "COLSxROWS" line per observation
+	// (SPEC Phase 2b-1 requirement 4). This is what lets a scenario assert
+	// the agent's own experience of a resize rather than infer it from tmux
+	// bookkeeping.
+	sizesLogName = "fake-claude-sizes.log"
 )
 
 var permissionModes = map[string]bool{
@@ -62,6 +71,12 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 		fmt.Fprint(stdout, helpText)
 		return 0, nil
 	}
+
+	// Recording starts before anything else is parsed so this fixture's
+	// initial size is captured even if the invocation goes on to fail, and so
+	// a SIGWINCH racing the earliest possible moment is never missed.
+	stopSizeRecorder := startSizeRecorder(getenv)
+	defer stopSizeRecorder()
 
 	options, err := parse(args)
 	if err != nil {
@@ -393,6 +408,76 @@ func validUUID(name, value string) error {
 		return fmt.Errorf("invalid UUID for %s: %q", name, value)
 	}
 	return nil
+}
+
+// startSizeRecorder appends this process's initial terminal size, and then
+// every subsequent SIGWINCH-observed size, to $DECK_HOME/log/fake-claude-sizes.log,
+// one "COLSxROWS" line per observation (requirement 4). Sizes are always
+// read from the kernel via the pane's own pty, never inferred from
+// COLUMNS/LINES or any other environment hint.
+//
+// Like transcript persistence above, this is best-effort scaffolding around
+// the fixture's real observable contract: an unresolved DECK_HOME, or a
+// stdout that is not a terminal (for example, a unit test), degrades to "no
+// recording" rather than a fixture crash. The returned stop function releases
+// the signal handler and its goroutine; it does not need to run before the
+// process exits, only before a test process reuses this fixture's code in a
+// loop.
+func startSizeRecorder(getenv func(string) string) func() {
+	path := sizesLogPath(getenv)
+	if path == "" {
+		return func() {}
+	}
+	recordSize(path)
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGWINCH)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-signals:
+				recordSize(path)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() {
+		signal.Stop(signals)
+		close(done)
+	}
+}
+
+// sizesLogPath resolves the size-log path under DECK_HOME, or "" when
+// DECK_HOME is not set (a bare invocation with no deck-managed environment).
+func sizesLogPath(getenv func(string) string) string {
+	home := getenv("DECK_HOME")
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, "log", sizesLogName)
+}
+
+// recordSize reads the current size of this process's own controlling
+// terminal (its pty slave, inherited as stdout) and appends it to path. Any
+// failure (no controlling terminal, an unwritable path) is silently
+// swallowed: recording is scaffolding, never the fixture's observable
+// contract.
+func recordSize(path string) {
+	rows, cols, err := pty.Getsize(os.Stdout)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	fmt.Fprintf(file, "%dx%d\n", cols, rows)
 }
 
 func configuredExitCode(value string) (int, error) {
