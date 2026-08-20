@@ -1,5 +1,5 @@
 command: ci/run.sh go vet ./...
-commit: ef9881df77b99877a7b03f14146190b9dd668a98
+commit: 77f92c7e445815d395894adb4cc72eeb03f53c24
 branch: main
 clean_worktree_before: true
 --- command output begins ---
