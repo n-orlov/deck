@@ -87,6 +87,25 @@ func lessByAttention(a, b store.Session) bool {
 	return a.ID < b.ID
 }
 
+// indexOfSessionID returns the index of the session with the given ID in
+// sessions, or -1 when id is empty (no prior selection to preserve) or no
+// longer present (the session was removed since the last load). Model's
+// sessionsLoaded handler (internal/tui/tui.go) uses this to keep the same
+// session selected across a resort triggered by task 038's attention-order
+// wiring, rather than a plain index carrying over into whatever session
+// happens to now sit at that position.
+func indexOfSessionID(sessions []store.Session, id string) int {
+	if id == "" {
+		return -1
+	}
+	for i, s := range sessions {
+		if s.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
 // NeedsAttention is the one shared "needs me" answer requirements 31 and 32
 // call for: true for a session in a status the sort itself treats as more
 // urgent than "running" (currently waiting or error, matching
