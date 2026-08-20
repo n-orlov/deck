@@ -341,11 +341,17 @@ func (m Model) loadSessions() tea.Msg {
 
 // capturePreview issues exactly one read-only capture-pane for the
 // currently selected row (SPEC requirement 21, task 017), or nil when there
-// is no engine wired or no row to capture. The command captures the slug
-// selected at the moment the tick fired, not whatever is selected when the
-// reply arrives, so a selection change mid-flight cannot mislabel a frame.
+// is no engine wired, no row to capture, or the preview panel is not shown
+// this frame (requirement 27: no capture tick runs while the preview is
+// below its floor and the sidebar has taken its space — task 021). The
+// command captures the slug selected at the moment the tick fired, not
+// whatever is selected when the reply arrives, so a selection change
+// mid-flight cannot mislabel a frame.
 func (m Model) capturePreview() tea.Cmd {
 	if m.previewCapture == nil || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+		return nil
+	}
+	if !m.computeLayout().PreviewShown {
 		return nil
 	}
 	session := m.sessions[m.selected]

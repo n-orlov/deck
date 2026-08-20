@@ -178,3 +178,63 @@ func TestComputeLayoutSidebarWidthDefault(t *testing.T) {
 		}
 	}
 }
+
+// TestComputeLayoutSideBySideAndCollapsedAlwaysShowPreview covers task 021
+// (SPEC requirement 25): side-by-side's own ClampSidebarWidth already keeps
+// the preview at or above its 40-column floor whenever side-by-side is the
+// effective mode at all, and collapsed's preview has no floor to violate,
+// so PreviewShown is unconditionally true in both — there is nothing for
+// the suppression to ever trigger on in these two modes.
+func TestComputeLayoutSideBySideAndCollapsedAlwaysShowPreview(t *testing.T) {
+	if got := ComputeLayout(64, 24, LayoutSideBySide, 35); !got.PreviewShown || got.Preview.Width != PreviewWidthFloor {
+		t.Fatalf("side-by-side at the tightest width that still fits: PreviewShown=%v Preview.Width=%d, want true and exactly the floor %d",
+			got.PreviewShown, got.Preview.Width, PreviewWidthFloor)
+	}
+	if got := ComputeLayout(200, 24, LayoutSideBySide, 35); !got.PreviewShown {
+		t.Fatalf("side-by-side at a generous width: PreviewShown = false, want true")
+	}
+	if got := ComputeLayout(3, 24, LayoutCollapsed, 35); !got.PreviewShown {
+		t.Fatalf("collapsed strip: PreviewShown = false, want true (no floor to violate)")
+	}
+}
+
+// TestComputeLayoutStackedSuppressesPreviewBelowItsFloor covers task 021
+// (SPEC requirements 25, 27): when the stacked preview's own height would
+// fall below StackedPreviewFloor (8), the list takes the freed rows instead
+// — Preview.Height becomes 0 rather than a panel too short to carry any
+// meaning — and PreviewShown reports false so the capture tick (task 017)
+// knows to stop.
+func TestComputeLayoutStackedSuppressesPreviewBelowItsFloor(t *testing.T) {
+	// rows=12: stackedListHeight(12)=5, so the unsuppressed preview height
+	// would be 7 — one row short of the 8-row floor.
+	got := ComputeLayout(80, 12, LayoutStacked, 35)
+	if got.PreviewShown {
+		t.Fatalf("PreviewShown = true at rows=12, want false (preview would be 7 rows, below the 8-row floor)")
+	}
+	if got.Preview.Height != 0 {
+		t.Errorf("Preview.Height = %d, want 0 (suppressed)", got.Preview.Height)
+	}
+	if got.Sidebar.Height != 12 {
+		t.Errorf("Sidebar.Height = %d, want 12 (the list takes the freed rows)", got.Sidebar.Height)
+	}
+
+	// rows=24: stackedListHeight(24)=8, preview height=16 — comfortably
+	// above the floor, so the preview stays shown.
+	shown := ComputeLayout(80, 24, LayoutStacked, 35)
+	if !shown.PreviewShown {
+		t.Fatalf("PreviewShown = false at rows=24, want true (preview height=%d, floor=%d)", shown.Preview.Height, StackedPreviewFloor)
+	}
+	if shown.Preview.Height < StackedPreviewFloor {
+		t.Errorf("Preview.Height = %d, want at least the floor %d when shown", shown.Preview.Height, StackedPreviewFloor)
+	}
+
+	// Exactly at the floor: shown, not suppressed. stackedListHeight(rows)
+	// = max(rows/3,5) at this size (never hits the 12 cap this low), so
+	// previewHeight = rows - max(rows/3,5). At rows=13, rows/3=4 ->
+	// listHeight=5, previewHeight=8 exactly.
+	boundary := ComputeLayout(80, 13, LayoutStacked, 35)
+	if !boundary.PreviewShown || boundary.Preview.Height != StackedPreviewFloor {
+		t.Fatalf("rows=13 (preview height exactly at the floor): PreviewShown=%v Preview.Height=%d, want true and %d",
+			boundary.PreviewShown, boundary.Preview.Height, StackedPreviewFloor)
+	}
+}
