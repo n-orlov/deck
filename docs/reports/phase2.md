@@ -3,14 +3,14 @@
 ## Verification capture
 
 The following commands were run from the repository root at fixed commit
-`1837472642d8ae67fc1ccd52e63edc8769a2395d`. Their complete, unedited command
+`db12950a18eccaf86ba112e704ce79301b202d74`. Their complete, unedited command
 output is retained at repository-relative paths:
 
 | Command | Raw capture | Result |
 |---|---|---|
 | `ci/run.sh go build ./...` | [`phase2-build.log`](phase2-build.log) | exit 0 |
 | `ci/run.sh go vet ./...` | [`phase2-vet.log`](phase2-vet.log) | exit 0 |
-| `ci/run.sh go test -v -count=1 ./...` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; **54 seconds wall time** |
+| `ci/run.sh go test -v -count=1 ./...` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; **55.889 seconds wall time** |
 
 The full run reports **21 features**, **47 scenarios (47 passed)**, and **525
 steps (525 passed)** under the unchanged default `~@real-agents && ~@nightly`
@@ -43,7 +43,7 @@ github.com/cucumber/godog v0.16.0
 | Attaching to an error row did not acknowledge it | `status_attach.feature: attach acknowledges a live error without replacing its verdict` proves the error reason/source/epoch survive while acknowledgement and the unseen marker clear. |
 | A non-leasable resume could misleadingly claim a held lease | `launch_lease.feature: a stale stopped row reports its new non-leasable verdict instead of a lease conflict` proves `r` refreshes the actual error/reason and never shows `starting elsewhere`; the adjacent live in-TTL scenario pins the unchanged lease wording. |
 | `DECK_CLOCK_STEP` had no production trigger | `determinism.feature: deterministic frames, shared clock stepping, and generated identifiers` sends `SIGUSR1` to an already-running released client, proves two clients and a later `_hook` share the stepped instant, and reaches probe staleness without a 45-second sleep. |
-| Real-Claude conformance had not been executed | The authenticated Claude Code 2.1.237 capture [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) proves inline hooks are accepted and SessionStart reaches released `deck _hook`. Three required fields conform, but upstream omits `permission_mode`, so **R36 remains not met as written**; the version matrix is retained in [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log). |
+| Real-Claude conformance had not been executed | The passing authenticated Claude Code 2.1.237 capture [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) proves inline hooks are accepted, `SessionStart` reaches the released `deck _hook`, and a genuine `UserPromptSubmit` payload supplies all four required non-empty string fields. **R36 is met** without synthesizing `permission_mode`; the earlier `SessionStart` omission remains documented in the [`version matrix`](phase2-real-claude-version-matrix.log) and [`findings`](phase2-findings.md). |
 
 ## Requirement evidence (R1–R45)
 
@@ -88,9 +88,9 @@ paths are repository-relative.
 | 33 | `lease_race.feature: three clients racing resume on one row produce exactly one launch` completes T2 with a pane-fired SessionStart and three running rows; `shell_liveness.feature` retains the separate no-fabricated-agent-running check. |
 | 34 | The clean-shell and SIGKILL scenarios in `crash.feature` check status, tail/no-tail, and launch count 1. |
 | 35 | `concurrency.feature: one hook-driven status change propagates to every client`. |
-| 36 | The documented opt-in command was executed with authenticated genuine Claude Code 2.1.237. [`phase2-real-claude-authenticated.log`](phase2-real-claude-authenticated.log) proves inline instrumentation, SessionStart delivery to released `_hook`, and non-empty string `session_id`, `cwd`, and `transcript_path`; upstream omitted required `permission_mode`, so the strict scenario failed and **R36 is not met as written**. [`phase2-real-claude-version-matrix.log`](phase2-real-claude-version-matrix.log) shows the same omission across 1.0.128–2.1.200. |
+| 36 | **Met.** The documented opt-in command exited 0 with authenticated genuine Claude Code 2.1.237. The unedited [`authenticated capture`](phase2-real-claude-authenticated.log) proves `SessionStart` injection and released-`_hook` delivery, then captures a genuine `UserPromptSubmit` payload with non-empty string `session_id`, `cwd`, `transcript_path`, and `permission_mode` (`default`); all 3 scenarios and 27 steps pass without aliases or synthesized fields. The [`version matrix`](phase2-real-claude-version-matrix.log) separately preserves the observed `SessionStart` omission in versions 1.0.128–2.1.200. |
 | 37 | This report and its linked repository-relative build, vet, full-suite, stability, authenticated-Claude, and version-matrix captures. |
-| 38 | A real `ci/stability.sh 10` run from clean fixed commit `3a2a0d39d281c43b8062660d2e20cc68848a2c20` passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
+| 38 | A real `ci/stability.sh 10` run from clean fixed final production/test source commit `7089568ee9d03bf690a66596b11506162ff2ff0a` passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
 | 39 | The run uses the unchanged default tag expression. No Phase 1 scenario was removed; shell assertions were re-aimed to live-shell promotion while `shell_liveness.feature` retains the unsignalled-agent negative assertion. Final protected-file/no-exclusion proof is paired with the fixed-commit stability checkpoint. |
 | 40 | The operator walkthrough below. |
 | 41 | `cmd/fake-claude: TestPaneCommandsFireEveryInjectedHookWithControllablePayload` and `TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly`; the Claude-hook feature fires commands from the pane. |
@@ -210,8 +210,9 @@ Rough edges: Pi has no hook path in this phase and therefore remains honestly
 `sampled`; probe changes require a running TUI and a verdict old enough for
 `stale_after`; source age is wall-clock age, while hook transaction duration
 is monotonic; SessionEnd intentionally performs no enqueue until Phase 5; and
-real-Claude event availability remains an upstream assumption until the
-opt-in scenario is run in that environment.
+the remaining unprovoked real-Claude event shapes remain upstream assumptions;
+the opt-in scenario has confirmed `SessionStart` and `UserPromptSubmit` against
+Claude Code 2.1.237.
 
 ## Gotchas and consequences
 
@@ -236,11 +237,12 @@ opt-in scenario is run in that environment.
   boundary. Phase 5 must add enqueue while preserving the critical-path
   exclusions.
 - The default suite intentionally excludes `@real-agents`, but the documented
-  opt-in command was separately executed with authenticated genuine Claude
-  Code 2.1.237. Inline hook delivery succeeded; `permission_mode` was absent,
-  so R36 remains an explicit upstream/requirements blocker documented in
-  [`phase2-findings.md`](phase2-findings.md), not a silently normalized pass.
-- The final clean fixed-commit stability run at `3a2a0d39d281c43b8062660d2e20cc68848a2c20`
+  opt-in command separately passed with authenticated genuine Claude Code
+  2.1.237. `SessionStart` proves injection/delivery, and a genuine
+  `UserPromptSubmit` supplies all four required fields, including
+  `permission_mode`; the earlier SessionStart omission remains an upstream
+  finding in [`phase2-findings.md`](phase2-findings.md), not a normalized payload.
+- The final clean fixed-commit stability run at `7089568ee9d03bf690a66596b11506162ff2ff0a`
   passed 10/10. Complete per-package output, every run label, and final exit 0
   are retained in [`phase2-stability.log`](phase2-stability.log); the report
   does not infer stability from one green full-suite run.
