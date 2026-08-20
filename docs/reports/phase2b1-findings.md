@@ -95,3 +95,77 @@ production or feature-file changes were made — only the temporary,
 fully-reverted injections described above, confirmed reverted via `git diff
 --stat` showing no changes to `internal/tui/tui.go` before the final test
 run).
+
+## Task 018: cropping the pane bottom-left, real geometry stated, right-cut lines marked
+
+### The marker
+
+A line cut at the right edge has its **last visible column replaced** (never
+appended past `contentWidth`) with `Model.cropMarker()`: `»` in the default
+glyph set, `>` under `DECK_ASCII` (`internal/tui/panel.go`). It is
+deliberately a distinct helper from `ellipsis()` (`…`/`...`) even though both
+resolve through the same `m.glyph` pattern: `ellipsis()` truncates *deck's
+own* copy (labels, session names) and always leaves room to render itself in
+full; the crop marker truncates *foreign pane output* deck did not write and
+is a single substituted column, never an inserted run of characters, so the
+panel's own border always lands in the same screen column regardless of the
+crop offset (verified for the wide-cell case in task 019).
+
+### The geometry line's position
+
+SPEC requirement 23's `45×22 of 120×40` line (rendered as `45x22 of 120x40`
+— ASCII `x`, matching every other glyph in this panel's own copy, not the
+agent's) is the **first line of the preview panel's content**, and is
+rendered **only when the real pane is larger than the panel in width or
+height** (`realWidth > contentWidth || realHeight > contentHeight`,
+`Model.cropPreviewBottomLeft`, `internal/tui/panel.go`). A pane that fits
+entirely carries no geometry line, since the user is then looking at the
+whole pane and there is no window onto a larger one to name. Reserving the
+top content row for it shrinks the visible "newest rows" window by exactly
+one row when it is shown; the alternative (a status line below the content)
+was rejected because it would be the *first* thing scrolled off when the
+content itself is tall, defeating the point of stating the real geometry
+whenever a crop is in effect.
+
+### Anchoring
+
+"Bottom-left, newest rows" (SPEC requirement 23) is implemented as: take the
+last `avail` rows of the capture (`avail = contentHeight`, minus one when the
+geometry line is shown) when the capture has more rows than `avail`
+(vertical crop), and pad with blank rows *after* the real content when it
+has fewer (so a pane shorter than the panel is top-anchored with blank space
+below it, never stretched to fill the gap — SPEC's own "never stretched"
+requirement, verified directly against task 008's `fitting.txt` fixture).
+Every row is cropped to `contentWidth` columns from column one (horizontal
+crop is always left-anchored; SPEC states no horizontal anchoring choice).
+
+### Real geometry, not inferred from content
+
+The real pane geometry comes from tmux's own `pane_width`/`pane_height`
+(`internal/tmux.Pane.Width`/`Height`, sourced via `list-panes -F
+"...|#{pane_width}|#{pane_height}"` and threaded through
+`PreviewCapture.Width`/`Height`), not from counting non-blank bytes in the
+capture. tmux trims trailing blank lines/columns from a `capture-pane`
+reply, so a capture with fewer non-blank rows than the pane's real height
+still belongs to a pane whose declared geometry may be larger — the
+geometry line's "of WxH" half is a fact about the pane, never a guess from
+what happened to be printed.
+
+### Suite status
+
+New unit tests: `internal/tui/preview_crop_test.go`
+(`TestCropPreviewBottomLeftFitsWithoutGeometryLine`,
+`TestCropPreviewBottomLeftCropsOversizedPane`,
+`TestCropPreviewBottomLeftClampsToShortHistory`,
+`TestCropPreviewBottomLeftZeroSize`), exercising task 008's checked-in
+`fitting.txt` and `oversized.txt` fixtures directly (the latter at exactly
+SPEC's own `45x22 of 120x40` example panel size). `ci/run.sh go test -p=1
+-count=1 ./...` was green on every run but one: a single run hit
+`features/status_probe.feature`'s "Stale sampling is visible..." scenario
+failing on `session "raced claude" has 0 "probe.waiting" events`, an
+assertion this task's changes never touch (it is about hook-vs-probe
+timestamp precedence, unrelated to the preview panel). Four immediate
+full-suite reruns afterwards (`go test ./features/... -count=3`, then two
+more full `./...` passes) were all green, consistent with pre-existing
+timing sensitivity in that scenario's frozen-clock race rather than a
+regression from this task.

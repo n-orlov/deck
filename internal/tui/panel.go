@@ -1,6 +1,9 @@
 package tui
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // §11.3 panel chrome: rounded borders, one column of padding, a single seam
 // between the sidebar and the preview, and the DECK_ASCII fallback. This
@@ -155,6 +158,95 @@ func (m Model) previewContentLine(width int, text string) string {
 	bc := m.box()
 	inner := width - 4
 	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(bc.vertical)
+}
+
+// cropMarker marks a preview row that was cut at the right edge (SPEC
+// requirement 23) -- distinct from ellipsis()'s "…"/"...", which truncates
+// deck's own copy, because this marks foreign pane output deck did not
+// write and is choosing not to reflow. Recorded in
+// docs/reports/phase2b1-findings.md per task 018's successCriteria.
+func (m Model) cropMarker() string {
+	return m.glyph("»", ">")
+}
+
+// splitPreviewLines turns a raw capture-pane -e byte capture into one
+// string per screen row. tmux's own line endings are bare "\n" (capture-pane
+// emulates the terminal itself, so an agent's \r\n or bare \r never survives
+// into the capture as a literal byte); the \r\n normalisation here only
+// guards fixtures/tests that feed in editor-saved CRLF text files directly,
+// as task 018's unit tests do with internal/agent/testdata/preview.
+func splitPreviewLines(raw []byte) []string {
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	text = strings.TrimSuffix(text, "\n")
+	if text == "" {
+		return nil
+	}
+	return strings.Split(text, "\n")
+}
+
+// cropPreviewBottomLeft crops a captured pane's screen to the preview
+// panel's content dimensions (SPEC requirement 23): anchored bottom-left,
+// so when the real pane is taller than the panel the *newest* rows are kept
+// (the bottom-most avail rows of the capture, which is always the pane's
+// current full screen -- capture-pane never returns fewer than
+// realHeight rows), and every row is cropped to contentWidth columns from
+// column one, never reflowed. A pane smaller than the panel in either
+// dimension is never stretched to fill it: missing rows are left as blank
+// lines below the real content (top-anchored within the panel) rather than
+// scaling the real rows to cover the gap.
+//
+// Whenever the real geometry exceeds the panel in either dimension, the
+// first returned line states it in "WxH of realWxrealH" form (SPEC's
+// "45×22 of 120×40", rendered with an ASCII "x" since deck's own copy in
+// this panel already uses one) so the user knows they are looking at a
+// window onto a larger pane; a pane that fits entirely carries no such
+// line, since there is then no window to name. Lines cut at the right edge
+// have their last visible column replaced by cropMarker() -- replaced, not
+// appended past contentWidth, so the panel's right border always lands in
+// the same column regardless of crop offset (task 019 makes this
+// substitution cell-aware so it can never land inside a wide glyph).
+func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, realWidth, realHeight int) []string {
+	if contentWidth <= 0 || contentHeight <= 0 {
+		return nil
+	}
+	rows := splitPreviewLines(raw)
+	cropped := realWidth > contentWidth || realHeight > contentHeight
+	avail := contentHeight
+	if cropped {
+		avail--
+	}
+	if avail < 0 {
+		avail = 0
+	}
+	start := 0
+	if len(rows) > avail {
+		start = len(rows) - avail
+	}
+	visible := rows[start:]
+	marker := []rune(m.cropMarker())
+	lines := make([]string, 0, contentHeight)
+	if cropped {
+		geom := fmt.Sprintf("%dx%d of %dx%d", contentWidth, contentHeight, realWidth, realHeight)
+		lines = append(lines, m.padTrunc(geom, contentWidth))
+	}
+	for _, row := range visible {
+		r := []rune(row)
+		if len(r) > contentWidth {
+			r = r[:contentWidth]
+			if len(marker) > 0 {
+				r[len(r)-1] = marker[0]
+			}
+		}
+		if len(r) < contentWidth {
+			r = append(r, []rune(strings.Repeat(" ", contentWidth-len(r)))...)
+		}
+		lines = append(lines, string(r))
+	}
+	blank := strings.Repeat(" ", contentWidth)
+	for len(lines) < contentHeight {
+		lines = append(lines, blank)
+	}
+	return lines
 }
 
 // borderLabel renders a border title (" title ", plain/uncoloured so it

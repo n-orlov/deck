@@ -64,6 +64,13 @@ type Pane struct {
 	Dead        bool
 	DeadStatus  *int
 	Command     string
+	// Width and Height are the pane's real terminal geometry (tmux's
+	// pane_width/pane_height), independent of how much of it capture-pane
+	// actually returns for a given row (trailing blank lines/columns are
+	// trimmed by tmux). The §11.7 crop (task 018) needs this to state the
+	// real geometry ("45×22 of 120×40") rather than inferring it from
+	// however much non-blank content happened to be captured.
+	Width, Height int
 }
 
 // CaptureOptions describes an explicit tmux pane range. Line positions use
@@ -280,10 +287,14 @@ func (c Client) CapturePane(ctx context.Context, paneID string, options CaptureO
 // reaped between List and capture-pane — and Bytes is then nil; nothing
 // past that point should treat an inert PreviewCapture as an error. Bytes,
 // when Live, is the exact escape-preserving contents of the pane's visible
-// screen only, never scrollback history.
+// screen only, never scrollback history. Width and Height are the pane's
+// real geometry at capture time (task 018, SPEC requirement 23's "45×22 of
+// 120×40" line) — independent of however many of Bytes' lines happen to be
+// non-blank, since tmux trims trailing blank lines/columns from a capture.
 type PreviewCapture struct {
-	Live  bool
-	Bytes []byte
+	Live          bool
+	Bytes         []byte
+	Width, Height int
 }
 
 // PreviewPane resolves the live tmux pane for a deck-owned session by its
@@ -340,7 +351,7 @@ func (c Client) CapturePreview(ctx context.Context, slug string) (PreviewCapture
 		}
 		return PreviewCapture{}, err
 	}
-	return PreviewCapture{Live: true, Bytes: data}, nil
+	return PreviewCapture{Live: true, Bytes: data, Width: pane.Width, Height: pane.Height}, nil
 }
 
 // Kill removes a deck-owned tmux session without touching a similarly named
@@ -432,7 +443,7 @@ func IsTargetAbsent(err error) bool {
 }
 
 func (c Client) session(ctx context.Context, name string) (Session, error) {
-	output, err := c.run(ctx, "list-panes", "-t", name, "-F", "#{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}")
+	output, err := c.run(ctx, "list-panes", "-t", name, "-F", "#{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}")
 	if err != nil {
 		return Session{}, fmt.Errorf("list panes for session %q: %w", name, err)
 	}
@@ -442,14 +453,22 @@ func (c Client) session(ctx context.Context, name string) (Session, error) {
 			continue
 		}
 		fields := strings.Split(line, "|")
-		if len(fields) != 7 {
+		if len(fields) != 9 {
 			return Session{}, fmt.Errorf("parse pane facts for session %q: %q", name, line)
 		}
 		pid, err := strconv.Atoi(fields[2])
 		if err != nil {
 			return Session{}, fmt.Errorf("parse pane PID for session %q: %w", name, err)
 		}
-		pane := Pane{ID: fields[0], CurrentPath: fields[1], PID: pid, Dead: fields[3] == "1", Command: fields[6]}
+		width, err := strconv.Atoi(fields[7])
+		if err != nil {
+			return Session{}, fmt.Errorf("parse pane width for session %q: %w", name, err)
+		}
+		height, err := strconv.Atoi(fields[8])
+		if err != nil {
+			return Session{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
+		}
+		pane := Pane{ID: fields[0], CurrentPath: fields[1], PID: pid, Dead: fields[3] == "1", Command: fields[6], Width: width, Height: height}
 		if fields[4] != "" {
 			status, err := strconv.Atoi(fields[4])
 			if err != nil {
