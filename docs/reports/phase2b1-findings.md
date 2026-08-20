@@ -169,3 +169,75 @@ full-suite reruns afterwards (`go test ./features/... -count=3`, then two
 more full `./...` passes) were all green, consistent with pre-existing
 timing sensitivity in that scenario's frozen-clock race rather than a
 regression from this task.
+
+## Task 019: cell-aware crop and elision (SPEC requirement 24)
+
+### Width model
+
+Added `cellWidth`/`stringWidth` (thin wrappers over
+`github.com/mattn/go-runewidth`, already an indirect dependency via
+bubbletea/lipgloss and now promoted to a direct `require` in go.mod) and
+two builders, `truncateToWidth`/`padToWidth` (`internal/tui/panel.go`):
+`truncateToWidth` walks runes accumulating *display* width and stops
+**before** a rune that would only partially fit in the remaining budget —
+that rune is dropped whole, never emitted half — and `padToWidth` fills the
+remainder with single-column spaces. Every caller that used to reason in
+rune count (`padTrunc`, `cropPreviewBottomLeft`'s marker substitution) now
+reasons in cells, so a result's `stringWidth(...)` is always exactly the
+requested width, which is what keeps the panel border landing in the same
+column regardless of what glyphs preceded it.
+
+### `padTrunc` (session-name elision)
+
+Unchanged contract (pad-or-truncate to exactly `width` columns, ellipsis
+when there is room), but "columns" is now `stringWidth`, not `len([]rune)`.
+When truncating, the ellipsis's own width is reserved first (`ellW =
+stringWidth(m.ellipsis())`, 1 for `…`/3 for `...`), the remaining budget is
+filled via `truncateToWidth`/`padToWidth`, and the ellipsis is appended —
+so a session name containing East-Asian-Wide characters elides on whole
+glyphs and the sidebar's right-hand seam still lands in the same column as
+an all-ASCII name would.
+
+### `cropPreviewBottomLeft` (preview crop)
+
+Extracted the per-row logic into `cropRow(row string, contentWidth int)
+string`: a row that already fits (`stringWidth(row) <= contentWidth`) is
+only padded; an overflowing row reserves the marker's own width
+(`markerW`, 1 for `»`/`>`), truncates the content into the remaining budget
+with `truncateToWidth` (never mid-glyph), pads that to the budget, then
+appends the marker as a fresh, whole column — the marker itself can now
+never land as the right half of what used to be a wide glyph, and a wide
+glyph that would have straddled the old truncation point is dropped in
+full rather than showing its left column alone.
+
+### Evidence
+
+`internal/tui/crop_wide_test.go` (new): `TestCropRowNeverSplitsWideGlyph`
+runs task 008's `wide.txt` fixture's mixed 界/┌ (width-2/width-1
+alternating) line through `cropRow` at every `contentWidth` from 1 to 22
+and asserts the output's display width equals `contentWidth` exactly at
+every offset (the "border stays in the same column for every crop offset"
+assertion the task calls for) plus that the rune-width sum matches (no
+fractional glyph). `TestCropPreviewBottomLeftWideFixtureKeepsBorderColumn`
+repeats the same check through the full `cropPreviewBottomLeft` entry
+point across all three of `wide.txt`'s distinct lines at several panel
+widths. `TestPadTruncElidesWideSessionNameWithoutSplitting` covers the
+session-name half with a 10-glyph all-wide name at every width from 1 to
+22. All of task 018's pre-existing crop tests still pass unchanged (their
+fixtures are ASCII, where rune count and display width coincide, so the
+switch to cell-based accounting is invisible to them).
+
+`ci/run.sh go build ./...`, `go vet ./...` and `go test -p=1 -count=1
+./...` all green. One `TestFeatures` run hit a pre-existing, unrelated
+flake in `crash.feature`'s "a different hook detects a crash while no TUI
+is running" scenario (a private tmux session lingering past its expected
+teardown, a hook-timing race unrelated to preview cropping); an immediate
+rerun of `./features/...` alone and a second full `./...` run afterwards
+were both green.
+
+### go.mod change
+
+`github.com/mattn/go-runewidth` moved from an `// indirect` entry to the
+main `require` block (still v0.0.23, no version bump) since `internal/tui`
+now imports it directly; `go mod tidy` made no other change to go.mod or
+go.sum.

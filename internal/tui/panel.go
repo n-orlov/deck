@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // §11.3 panel chrome: rounded borders, one column of padding, a single seam
@@ -52,23 +54,78 @@ func (m Model) ellipsis() string {
 	return m.glyph("…", "...")
 }
 
-// padTrunc pads s with trailing spaces to exactly width runes, or truncates
-// it (appending the ellipsis when there is room for one) so every content
-// line inside a panel is exactly width columns — the border after it always
-// lands in the same column.
+// cellWidth is the terminal display width of one rune (0 for combining/
+// control runes, 1 for ordinary and ambiguous-width runes such as box-
+// drawing glyphs, 2 for East-Asian-Wide runes) — the same notion of width
+// a real terminal uses to lay out cells, so every panel/sidebar column
+// budget in this file is spent in display cells rather than rune count
+// (task 019, SPEC requirement 24: "no wide cell is ever split").
+func cellWidth(r rune) int {
+	return runewidth.RuneWidth(r)
+}
+
+// stringWidth is s's total terminal display width in cells.
+func stringWidth(s string) int {
+	return runewidth.StringWidth(s)
+}
+
+// truncateToWidth returns the longest prefix of s (by whole runes only)
+// whose display width is at most budget. A rune that would only partially
+// fit — the case a double-width glyph creates when the budget has exactly
+// one column left — is dropped in its entirety rather than truncated in
+// half, so the returned prefix's width is always <= budget and never lands
+// mid-glyph (SPEC requirement 24).
+func truncateToWidth(s string, budget int) string {
+	if budget <= 0 {
+		return ""
+	}
+	var out []rune
+	width := 0
+	for _, r := range s {
+		w := cellWidth(r)
+		if width+w > budget {
+			break
+		}
+		out = append(out, r)
+		width += w
+	}
+	return string(out)
+}
+
+// padToWidth appends single-column space runes to s until its display
+// width is exactly width. Callers only ever pass a s whose width is
+// already <= width (typically truncateToWidth's own result), so this never
+// needs to remove anything — padding a wide-rune-safe prefix can never
+// overshoot.
+func padToWidth(s string, width int) string {
+	w := stringWidth(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}
+
+// padTrunc pads s with trailing spaces to exactly width display columns, or
+// truncates it (appending the ellipsis when there is room for one) so every
+// content line inside a panel is exactly width columns wide — the border
+// after it always lands in the same column, and a double-width glyph that
+// would straddle the truncation point is dropped whole rather than split
+// (SPEC requirement 24; task 019 — this used to count runes, not cells).
 func (m Model) padTrunc(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	r := []rune(s)
-	if len(r) <= width {
-		return s + strings.Repeat(" ", width-len(r))
+	sw := stringWidth(s)
+	if sw <= width {
+		return s + strings.Repeat(" ", width-sw)
 	}
-	ell := []rune(m.ellipsis())
-	if width <= len(ell) {
-		return string(r[:width])
+	ellW := stringWidth(m.ellipsis())
+	if width <= ellW {
+		return padToWidth(truncateToWidth(s, width), width)
 	}
-	return string(r[:width-len(ell)]) + m.ellipsis()
+	budget := width - ellW
+	t := padToWidth(truncateToWidth(s, budget), budget)
+	return t + m.ellipsis()
 }
 
 // wrapText greedily word-wraps s into lines of at most width runes. A single
@@ -223,30 +280,44 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 		start = len(rows) - avail
 	}
 	visible := rows[start:]
-	marker := []rune(m.cropMarker())
 	lines := make([]string, 0, contentHeight)
 	if cropped {
 		geom := fmt.Sprintf("%dx%d of %dx%d", contentWidth, contentHeight, realWidth, realHeight)
 		lines = append(lines, m.padTrunc(geom, contentWidth))
 	}
 	for _, row := range visible {
-		r := []rune(row)
-		if len(r) > contentWidth {
-			r = r[:contentWidth]
-			if len(marker) > 0 {
-				r[len(r)-1] = marker[0]
-			}
-		}
-		if len(r) < contentWidth {
-			r = append(r, []rune(strings.Repeat(" ", contentWidth-len(r)))...)
-		}
-		lines = append(lines, string(r))
+		lines = append(lines, m.cropRow(row, contentWidth))
 	}
 	blank := strings.Repeat(" ", contentWidth)
 	for len(lines) < contentHeight {
 		lines = append(lines, blank)
 	}
 	return lines
+}
+
+// cropRow crops a single captured screen row to exactly contentWidth
+// display columns, left-anchored (column one), never splitting a
+// double-width glyph at either the truncation point or the marker column
+// (SPEC requirement 24). A row whose real display width already fits is
+// only padded; a row that overflows has its content truncated to
+// contentWidth-1 columns (never mid-glyph, via truncateToWidth) and its
+// final column set to cropMarker() -- always a fresh, whole column, never
+// a substitution into a rune that might be the left half of a wide glyph.
+func (m Model) cropRow(row string, contentWidth int) string {
+	if contentWidth <= 0 {
+		return ""
+	}
+	if stringWidth(row) <= contentWidth {
+		return padToWidth(row, contentWidth)
+	}
+	marker := m.cropMarker()
+	markerW := stringWidth(marker)
+	budget := contentWidth - markerW
+	if budget <= 0 {
+		return padToWidth(truncateToWidth(marker, contentWidth), contentWidth)
+	}
+	content := padToWidth(truncateToWidth(row, budget), budget)
+	return content + marker
 }
 
 // borderLabel renders a border title (" title ", plain/uncoloured so it
