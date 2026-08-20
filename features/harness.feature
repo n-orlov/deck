@@ -50,3 +50,16 @@ Feature: Godog harness wiring
     And deck client "no-mouse" is started
     Then deck client "no-mouse" raw output did not enable SGR mouse reporting
     And deck client "no-mouse" exits cleanly
+
+  @requirement-4-fake-agent-sizes
+  Scenario Outline: a fake agent records its initial size and every SIGWINCH-observed size
+    Given a fake "<agent>" agent is started recording sizes at 40x12
+    Then the fake "<agent>" agent recorded sizes are "40x12"
+    When the fake "<agent>" agent terminal is resized to 60x20
+    Then the fake "<agent>" agent recorded sizes are "40x12,60x20"
+    And the fake "<agent>" agent is stopped
+
+    Examples:
+      | agent  |
+      | claude |
+      | pi     |

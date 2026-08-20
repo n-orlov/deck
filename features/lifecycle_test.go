@@ -39,6 +39,12 @@ type ScenarioHarness struct {
 	// per-conversation transcript (cmd/fake-claude's transcriptPath) is written
 	// under a scenario-scoped directory rather than the real developer's home.
 	agentHOMEDir string
+	// fakeAgents holds fake-agent fixture drivers keyed by agent kind
+	// ("claude"/"pi"), started directly (not through the deck binary) to prove
+	// requirement 4's size-recording contract from the fixture's own
+	// perspective. Tracked in clients too, so Close tears them down the same
+	// way as every deck client.
+	fakeAgents map[string]*ScreenDriver
 	// clientEnv holds scenario-scoped runtime controls that must be present in
 	// every subsequently started released client (for example a frozen probe
 	// clock). Steps set it before starting any client.
@@ -163,6 +169,20 @@ func (h *ScenarioHarness) Client(name string) (*ScreenDriver, error) {
 		return nil, fmt.Errorf("deck client %q has not been started", name)
 	}
 	return client, nil
+}
+
+// StartFakeAgentWithSize starts a bare fake-agent fixture binary directly
+// (not deck itself) under this scenario's DECK_HOME, tracked for the same
+// teardown as every deck client. Requirement 4's size-recording contract is
+// the fixture's own experience, not deck's, so this deliberately bypasses
+// h.Binary and every deck-specific launch plumbing.
+func (h *ScenarioHarness) StartFakeAgentWithSize(ctx context.Context, binary string, cols, rows uint16, extraEnv ...string) (*ScreenDriver, error) {
+	driver, err := StartScreenDriverWithSize(ctx, binary, h.Environment(extraEnv...), cols, rows)
+	if err != nil {
+		return nil, err
+	}
+	h.clients = append(h.clients, driver)
+	return driver, nil
 }
 
 // KillTMuxServer is the black-box reboot primitive: it removes all live panes
