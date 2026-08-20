@@ -1,7 +1,7 @@
 command: ci/run.sh go vet ./...
-commit: db12950a18eccaf86ba112e704ce79301b202d74
+commit: ef9881df77b99877a7b03f14146190b9dd668a98
 branch: main
-clean_worktree_at_fixed_source_before_evidence_logs: true
+clean_worktree_before: true
 --- command output begins ---
 --- command output ends ---
 exit: 0
