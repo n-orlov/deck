@@ -88,3 +88,12 @@ Feature: Godog harness wiring
     When the scenario's sidebar_width is set to 24
     Then the scenario's persisted sidebar_width reads back as 24
     And deck client "solo" exits cleanly
+
+  @requirement-7-sidebar-width
+  Scenario: a non-default sidebar_width actually widens deck's own rendered sidebar
+    Given deck client "solo" is started
+    And deck client "solo" creates a long-named shell session "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxWIDENOWyyyyyyyyyy"
+    Then deck client "solo" screen does not contain "WIDENOW"
+    When deck client "solo" presses ">" until "WIDENOW" is visible
+    Then deck client "solo" screen contains "WIDENOW"
+    And deck client "solo" exits cleanly
