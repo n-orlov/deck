@@ -81,6 +81,25 @@ type LayoutResult struct {
 	Preview Rect
 }
 
+// nextLayoutMode is `|`'s cycle (§11.2/§11.8 requirement 9): auto →
+// side-by-side → stacked → collapsed → auto. It always returns an explicit
+// pin (never "") except when cycling off collapsed back to auto, at which
+// point it returns LayoutAuto itself — the caller stores this verbatim as
+// the new pin, so unlike ComputeLayout's fallback this is never silently
+// overwritten later; the user asked for auto by cycling all the way around.
+func nextLayoutMode(current string) string {
+	switch current {
+	case LayoutSideBySide:
+		return LayoutStacked
+	case LayoutStacked:
+		return LayoutCollapsed
+	case LayoutCollapsed:
+		return LayoutAuto
+	default: // "" or LayoutAuto (or any unknown value)
+		return LayoutSideBySide
+	}
+}
+
 // ClampSidebarWidth clamps a requested sidebar_width to
 // [SidebarWidthFloor, width-PreviewWidthFloor], the same bound `<`/`>`
 // (task 015) must respect. When width is too narrow to hold both floors,
