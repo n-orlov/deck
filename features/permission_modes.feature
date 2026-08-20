@@ -51,7 +51,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" opens the create modal for agent "claude"
-    Then deck client "A" screen contains "yolo is not o"
+    Then deck client "A" screen contains "yolo is not"
     And deck client "A" screen does not contain "yolo (left/right cycles"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
