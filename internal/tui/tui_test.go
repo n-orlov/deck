@@ -45,6 +45,12 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	}
 }
 
+// TestStartingCopyDistinguishesShellFromSignalledAgents proves (task 012)
+// that the row itself never carries "awaiting signal" for any agent — the
+// row's status word is now always the bare "starting" regardless of which
+// session is selected — while the footer surfaces the reason for whichever
+// row is currently selected: nothing for a shell (it has no such reason at
+// all), and "starting · awaiting signal" for an unsignalled coding agent.
 func TestStartingCopyDistinguishesShellFromSignalledAgents(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.sessions = []store.Session{
@@ -52,22 +58,46 @@ func TestStartingCopyDistinguishesShellFromSignalledAgents(t *testing.T) {
 		{Name: "claude row", Agent: "claude", Status: "starting"},
 		{Name: "pi row", Agent: "pi", Status: "starting"},
 	}
+
+	// No row, selected or not, ever carries the reason text itself.
 	view := model.View()
-	var shellLine string
-	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, "shell row") {
-			shellLine = line
-			break
+	for _, name := range []string{"shell row", "claude row", "pi row"} {
+		var line string
+		for _, candidate := range strings.Split(view, "\n") {
+			if strings.Contains(candidate, name) {
+				line = candidate
+				break
+			}
+		}
+		if !strings.Contains(line, "starting") || strings.Contains(line, "awaiting signal") {
+			t.Fatalf("row %q starting copy is not plain: %q\n%s", name, line, view)
 		}
 	}
-	if !strings.Contains(shellLine, "starting") || strings.Contains(shellLine, "awaiting signal") {
-		t.Fatalf("shell starting copy is not plain: %q\n%s", shellLine, view)
+
+	// Selecting the shell row: the footer shows no reason at all.
+	model.selected = 0
+	view = model.View()
+	if strings.Contains(view, "awaiting signal") {
+		t.Fatalf("shell selected but footer shows 'awaiting signal':\n%s", view)
 	}
-	if strings.Count(view, "starting · awaiting signal") != 2 {
-		t.Fatalf("awaiting-signal copy should appear only on the two agent rows:\n%s", view)
+
+	// Selecting either signalled agent's row: the footer, and only the
+	// footer, carries the reason — exactly once.
+	for _, index := range []int{1, 2} {
+		model.selected = index
+		view = model.View()
+		if strings.Count(view, "starting · awaiting signal") != 1 {
+			t.Fatalf("selecting row %d did not put exactly one 'starting · awaiting signal' on the footer:\n%s", index, view)
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if strings.Contains(line, model.sessions[index].Name) && strings.Contains(line, "awaiting signal") {
+				t.Fatalf("row %d still carries its own reason text instead of the footer:\n%s", index, view)
+			}
+		}
 	}
 
 	model.sessions = model.sessions[:1]
+	model.selected = 0
 	model.detail = true
 	detail := model.View()
 	if !strings.Contains(detail, "Status:             starting") || strings.Contains(detail, "awaiting signal") {

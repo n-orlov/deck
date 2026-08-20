@@ -529,13 +529,13 @@ func (m Model) View() string {
 		b.WriteString("No sessions yet. Press n to create a session.\n")
 	} else {
 		for index, session := range m.sessions {
+			// Reason text (why a status is what it is) no longer lives on the
+			// row (SPEC §11.3, task 012): the row carries only the bare status
+			// word so every row's status column stays a fixed shape regardless
+			// of which session the reason belongs to. The reason for whichever
+			// row is selected renders on the footer instead (see below) and
+			// remains available in full in the `i` detail dialog.
 			status := session.Status
-			if status == "stopped" {
-				status += m.glyph(" · resumable", " - resumable")
-			}
-			if status == "starting" && session.Agent != "shell" {
-				status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
-			}
 			marker := "  "
 			if index == m.selected {
 				marker = "> "
@@ -555,8 +555,36 @@ func (m Model) View() string {
 	if m.resumeNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.resumeNote)
 	}
-	b.WriteString("\n" + m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit") + "\n")
+	keys := m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit")
+	if reason := m.selectedRowReason(); reason != "" {
+		fmt.Fprintf(&b, "\n%s    %s\n", reason, keys)
+	} else {
+		fmt.Fprintf(&b, "\n%s\n", keys)
+	}
 	return b.String()
+}
+
+// selectedRowReason returns the reason text belonging to whichever row is
+// currently selected (SPEC §11.3, task 012): the row itself only ever shows
+// the bare status word now, so the one piece of "why" a user is actually
+// looking at gets a stable home on the footer's left, clearly separated from
+// the key legend, rather than jittering every row's width as sessions move
+// between statuses. It returns "" when the selected session has no reason to
+// show (e.g. running, waiting, or a starting shell whose only signal is its
+// own liveness).
+func (m Model) selectedRowReason() string {
+	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+		return ""
+	}
+	session := m.sessions[m.selected]
+	switch {
+	case session.Status == "stopped":
+		return session.Status + m.glyph(" · resumable", " - resumable")
+	case session.Status == "starting" && session.Agent != "shell":
+		return "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
+	default:
+		return ""
+	}
 }
 
 // profileBadge renders the bracketed permission-profile badge shown next to
