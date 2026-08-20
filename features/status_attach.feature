@@ -8,6 +8,7 @@ Feature: Attaching records the selected attention episode
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "answer prompt" with permission profile "safe"
+    And the released running hook fires for session "answer prompt"
     And the released waiting hook fires for session "answer prompt"
     Then the state database session "answer prompt" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events
     When deck client "A" attaches to and detaches from its selected agent
@@ -18,6 +19,8 @@ Feature: Attaching records the selected attention episode
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "failed prompt" with permission profile "safe"
+    And fake Claude session "failed prompt" fires "SessionStart" for itself using injected identity:
+      | source | fresh |
     And fake Claude session "failed prompt" fires "StopFailure" for itself using injected identity:
       | error_type | tool_failure |
     Then the state database session "failed prompt" has hook status "error", reason "tool_failure", message "", acknowledged 0, and notify_epoch 0

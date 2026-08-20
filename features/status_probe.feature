@@ -31,6 +31,8 @@ Feature: Sampled probe status truth
     And deck client "A" creates pi session "sampled pi" with permission profile "safe"
     And deck client "A" creates persistent shell session "probe shell"
     And fake agent session "raced claude" renders golden fixture "claude/waiting.txt"
+    And fake Claude session "stale claude" fires "SessionStart" for itself using conversation identity:
+      | source | fresh |
     And fake Claude session "stale claude" fires "Notification" for itself using conversation identity:
       | notification_type | permission_prompt |
     And fake agent session "stale claude" renders golden fixture "claude/running.txt"

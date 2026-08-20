@@ -24,6 +24,7 @@ func registerClaudeHookStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^fake Claude session "([^"]+)" fires "([^"]+)" for session "([^"]+)" using conversation identity:$`, fakeClaudeFiresForSession)
 	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatus)
 	sc.Step(`^session "([^"]+)" has one "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasOneEventPayloadField)
+	sc.Step(`^session "([^"]+)" has an audited "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasAuditedEventPayloadField)
 	sc.Step(`^deck client "([^"]+)" kills session "([^"]+)"$`, clientKillsNamedSession)
 	sc.Step(`^deck client "([^"]+)" closes the session detail$`, clientClosesSessionDetail)
 }
@@ -216,6 +217,44 @@ func sessionHasOneEventPayloadField(ctx context.Context, name, kind, field, want
 	}
 	if got := fmt.Sprint(payload[field]); got != want {
 		return fmt.Errorf("session %q %s payload field %q = %q, want %q", name, kind, field, got, want)
+	}
+	return nil
+}
+
+func sessionHasAuditedEventPayloadField(ctx context.Context, name, kind, field, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	rows, err := db.QueryContext(ctx, `SELECT payload FROM events WHERE session_id = (SELECT id FROM sessions WHERE name = ?) AND kind = ?`, name, kind)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	matches := 0
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return err
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+			return fmt.Errorf("decode preserved %s payload: %w", kind, err)
+		}
+		if fmt.Sprint(payload[field]) == want {
+			matches++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if matches != 1 {
+		return fmt.Errorf("session %q has %d %q events with payload field %q equal to %q, want one", name, matches, kind, field, want)
 	}
 	return nil
 }
