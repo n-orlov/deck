@@ -29,6 +29,32 @@ The four review gaps have these dispositions:
   `UserPromptSubmit` supplies the full required common payload, as detailed
   below.
 
+### T3 repeated-attention coverage correction
+
+The prior T3 released-binary scenario fired `permission_prompt` only once and
+therefore omitted R32's required second permission-prompt attention episode.
+The corrected scenario in
+[`features/status_claude_hooks.feature`](../../features/status_claude_hooks.feature)
+retains the first prompt and its resolution, including the `Stop` message and
+detail checks, then uses `UserPromptSubmit` to move the row from `idle` back to
+`running` before firing `Notification` with
+`notification_type=permission_prompt` again. This `idle → running → waiting`
+sequence reconciles the literal T3 prose with `SPEC.md` §7: the transition table
+is exhaustive, so a notification cannot legally move an `idle` row directly to
+`waiting`.
+
+The released `deck`/fake-agent pane path directly observes the second episode as
+`waiting` with `acknowledged=0`. Attach resolves the first episode with
+`notify_epoch` **0 → 1** and the second with **1 → 2**, while the remainder of
+the scenario continues to exercise every declared Claude hook mapping. The
+corrected run is retained in
+[`phase2-full-verbose-run.log`](phase2-full-verbose-run.log), and its clean
+production/test checkpoint passed ten consecutive runs in
+[`phase2-stability.log`](phase2-stability.log). These are status and epoch
+assertions only: the scenario contains no webhook, dispatch, outbox, or other
+notification-delivery assertion; delivery and epoch-dedupe consumption remain
+Phase 5 work.
+
 ## Frozen wall-clock control
 
 - `SPEC.md` §13.1 says `DECK_CLOCK_STEP` advances a frozen clock “on demand”, but it does not name the cross-process trigger. Deck now uses `SIGUSR1` sent to any running client: `kill -USR1 <deck-client-pid>`. There is no TUI key binding, avoiding the earlier conflict with §11's sidebar-width keymap.
