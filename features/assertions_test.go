@@ -843,6 +843,10 @@ func clientKillsSelectedSession(ctx context.Context, name string) error {
 	if err := client.Send("x"); err != nil {
 		return err
 	}
+	// "resumable" now renders on the footer for whichever row is selected
+	// (task 012), not on the row itself; killing the selected session never
+	// moves the selection, so the just-stopped row stays selected and the
+	// footer carries its reason.
 	return client.WaitForFrame(ctx, false, "resumable")
 }
 

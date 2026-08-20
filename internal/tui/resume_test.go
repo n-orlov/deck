@@ -13,8 +13,10 @@ import (
 
 // TestResumeKeyRendersAwaitingSignalNeverRunning proves `r` on a stopped row
 // calls the wired resume function, and that a successfully resumed row
-// renders exactly "starting · awaiting signal" and never "running" until
-// an agent hook or sampled probe supplies a real readiness verdict.
+// renders exactly "starting · awaiting signal" on the footer (task 012
+// moved the reason off the row itself onto the footer for whichever row is
+// selected) and never "running" until an agent hook or sampled probe
+// supplies a real readiness verdict.
 func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 	resumed := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "starting"}
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
@@ -45,9 +47,21 @@ func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 	updated, _ = model.Update(sessionsLoaded{sessions: []store.Session{resumed}})
 	model = updated.(Model)
 
+	// The row itself carries only the bare status word now (task 012).
+	var rowLine string
 	view := model.View()
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "alpha") {
+			rowLine = line
+			break
+		}
+	}
+	if strings.Contains(rowLine, "awaiting signal") {
+		t.Fatalf("resumed row still carries the reason itself instead of the footer:\n%s", view)
+	}
+	// Row zero is still selected, so the footer carries the reason.
 	if !strings.Contains(view, "starting \u00b7 awaiting signal") {
-		t.Fatalf("resumed row did not render 'starting · awaiting signal':\n%s", view)
+		t.Fatalf("footer did not render 'starting \u00b7 awaiting signal' for the selected resumed row:\n%s", view)
 	}
 	if strings.Contains(view, "running") {
 		t.Fatalf("resumed agent row rendered 'running' without a readiness verdict:\n%s", view)

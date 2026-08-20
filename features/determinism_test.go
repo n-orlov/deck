@@ -172,6 +172,11 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := observer.Send("x"); err != nil {
 		return err
 	}
+	// "resumable" now renders on the footer for whichever row client has
+	// selected (task 012): client's selection never moved off index 0, and
+	// the row observer just killed with "x" (its own selected row, also
+	// index 0) is the oldest of the two sessions, so it still lands at
+	// index 0 in client's list too once the reload lands.
 	if err := client.WaitForFrame(ctx, true, "resumable"); err != nil {
 		return err
 	}
