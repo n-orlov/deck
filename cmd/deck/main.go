@@ -86,7 +86,14 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		return sessions.ReconcileWithProbes(ctx, settings.StaleAfter)
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry)
-	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
+	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
+	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
+	// whole program lifetime; §11.8's hit-testing and gesture handling land in
+	// later phase-2b1 tasks, but the on/off control itself is honoured here.
+	if settings.Mouse {
+		programOptions = append(programOptions, tea.WithMouseCellMotion())
+	}
+	if _, err := tea.NewProgram(model, programOptions...).Run(); err != nil {
 		fmt.Fprintln(stderr, "deck:", err)
 		return 0
 	}

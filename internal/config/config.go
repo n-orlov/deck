@@ -56,6 +56,9 @@ type Settings struct {
 	// layered under the session env per SPEC §6.1/§6.3. Absent file or absent
 	// section both yield a nil map, never an error.
 	Env map[string]string
+	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
+	// set, overrides whatever the file said; both control SGR mouse reporting.
+	Mouse bool
 }
 
 // Load reads only documented DECK_ controls from env.
@@ -104,14 +107,20 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 			return Settings{}, err
 		}
 	}
-	allowYolo, staleAfter, env, err := loadConfigFile(paths.ConfigFile)
+	allowYolo, staleAfter, mouse, env, err := loadConfigFile(paths.ConfigFile)
 	if err != nil {
 		return Settings{}, err
+	}
+	if raw := getenv("DECK_MOUSE"); raw != "" {
+		mouse, err = boolEnv(raw, mouse, "DECK_MOUSE")
+		if err != nil {
+			return Settings{}, err
+		}
 	}
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, StaleAfter: staleAfter,
-		ASCII: ascii, Animation: animation, Color: color, AllowYolo: allowYolo, Env: env,
+		ASCII: ascii, Animation: animation, Color: color, AllowYolo: allowYolo, Env: env, Mouse: mouse,
 	}, nil
 }
 

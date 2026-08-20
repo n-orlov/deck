@@ -46,6 +46,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerEmulatorPlacementSteps(sc)
 	registerResizeSteps(sc)
 	registerMouseSynthesisSteps(sc)
+	registerMouseControlSteps(sc)
 	registerBlackBoxAssertionSteps(sc)
 	registerDeterminismSteps(sc)
 	registerStoreFeatureSteps(sc)

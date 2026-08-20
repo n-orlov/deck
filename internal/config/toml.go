@@ -9,27 +9,27 @@ import (
 	"time"
 )
 
-// loadConfigFile reads config.toml's implemented top-level controls and the
-// [env] table. It intentionally does not
+// loadConfigFile reads config.toml's implemented top-level controls, the
+// [ui] table and the [env] table. It intentionally does not
 // attempt a general TOML parser — deck's config.toml also carries [notify]
-// and [[notify.rule]] tables (SPEC \u00a710) that are out of scope here, so
+// and [[notify.rule]] tables (SPEC §10) that are out of scope here, so
 // unrecognised sections are skipped rather than misparsed. A missing file
-// yields the documented defaults (allow_yolo=false, no env) and no error; a
-// file that exists but cannot be understood yields a stated error, never a
-// silent default.
-func loadConfigFile(path string) (bool, time.Duration, map[string]string, error) {
+// yields the documented defaults (allow_yolo=false, mouse=true, no env) and
+// no error; a file that exists but cannot be understood yields a stated
+// error, never a silent default.
+func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mouse bool, env map[string]string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, DefaultStaleAfter, nil, nil
+			return false, DefaultStaleAfter, true, nil, nil
 		}
-		return false, 0, nil, fmt.Errorf("open %s: %w", path, err)
+		return false, 0, false, nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
-	allowYolo := false
-	staleAfter := DefaultStaleAfter
-	var env map[string]string
+	allowYolo = false
+	staleAfter = DefaultStaleAfter
+	mouse = true
 	section := ""
 
 	scanner := bufio.NewScanner(file)
@@ -45,14 +45,14 @@ func loadConfigFile(path string) (bool, time.Duration, map[string]string, error)
 		if strings.HasPrefix(text, "[") {
 			name, err := parseSectionHeader(text)
 			if err != nil {
-				return false, 0, nil, fmt.Errorf("%s:%d: %w", path, line, err)
+				return false, 0, false, nil, fmt.Errorf("%s:%d: %w", path, line, err)
 			}
 			section = name
 			continue
 		}
 		key, value, err := parseKeyValue(text)
 		if err != nil {
-			return false, 0, nil, fmt.Errorf("%s:%d: %w", path, line, err)
+			return false, 0, false, nil, fmt.Errorf("%s:%d: %w", path, line, err)
 		}
 		switch section {
 		case "":
@@ -60,7 +60,7 @@ func loadConfigFile(path string) (bool, time.Duration, map[string]string, error)
 			case "allow_yolo":
 				parsed, err := strconv.ParseBool(value)
 				if err != nil {
-					return false, 0, nil, fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
+					return false, 0, false, nil, fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
 				}
 				allowYolo = parsed
 			case "stale_after":
@@ -71,26 +71,37 @@ func loadConfigFile(path string) (bool, time.Duration, map[string]string, error)
 						parsed, err = time.ParseDuration(text)
 					}
 					if err != nil {
-						return false, 0, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
+						return false, 0, false, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
 					}
 				} else {
 					seconds, err := strconv.Atoi(value)
 					if err != nil {
-						return false, 0, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
+						return false, 0, false, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
 					}
 					parsed = time.Duration(seconds) * time.Second
 				}
 				if parsed <= 0 {
-					return false, 0, nil, fmt.Errorf("%s:%d: stale_after must be positive, got %q", path, line, value)
+					return false, 0, false, nil, fmt.Errorf("%s:%d: stale_after must be positive, got %q", path, line, value)
 				}
 				staleAfter = parsed
 			}
 			// Other top-level keys are ignored so future phases can add keys
 			// without breaking this deliberately small parser.
+		case "ui":
+			switch key {
+			case "mouse":
+				parsed, err := strconv.ParseBool(value)
+				if err != nil {
+					return false, 0, false, nil, fmt.Errorf("%s:%d: mouse must be true or false, got %q", path, line, value)
+				}
+				mouse = parsed
+			}
+			// Other [ui] keys (e.g. a future sidebar_width default) are
+			// ignored here for the same reason as unrecognised top-level keys.
 		case "env":
 			unquoted, err := unquoteString(value)
 			if err != nil {
-				return false, 0, nil, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
+				return false, 0, false, nil, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
 			}
 			if env == nil {
 				env = make(map[string]string)
@@ -102,9 +113,9 @@ func loadConfigFile(path string) (bool, time.Duration, map[string]string, error)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return false, 0, nil, fmt.Errorf("read %s: %w", path, err)
+		return false, 0, false, nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	return allowYolo, staleAfter, env, nil
+	return allowYolo, staleAfter, mouse, env, nil
 }
 
 func stripComment(line string) string {
