@@ -63,3 +63,18 @@ Feature: Godog harness wiring
       | agent  |
       | claude |
       | pi     |
+
+  @requirement-5-preview-fixtures
+  Scenario Outline: a fake agent renders a preview fixture once and then falls silent
+    Given a fake "<agent>" agent renders the "<fixture>" preview fixture and falls silent at 40x12
+    Then the fake "<agent>" agent's rendered pane is byte-identical across two consecutive captures
+    And the fake "<agent>" agent is stopped
+
+    Examples:
+      | agent  | fixture     |
+      | claude | fitting.txt |
+      | claude | oversized.txt |
+      | claude | wide.txt    |
+      | pi     | fitting.txt |
+      | pi     | oversized.txt |
+      | pi     | wide.txt    |

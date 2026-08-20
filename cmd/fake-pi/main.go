@@ -23,6 +23,11 @@ const (
 	exitCodeEnvironment         = "FAKE_PI_EXIT_CODE"
 	commandsEnvironment         = "FAKE_PI_COMMANDS"
 	fixtureDirectoryEnvironment = "FAKE_AGENT_FIXTURE_DIR"
+	// silentFixtureEnvironment names a fixture (relative to
+	// FAKE_AGENT_FIXTURE_DIR) to render verbatim and then go silent forever
+	// (requirement 5), identical in contract to cmd/fake-claude's own knob of
+	// the same purpose.
+	silentFixtureEnvironment = "FAKE_PI_FIXTURE"
 	// sizesLogName is where this fixture appends its initial terminal size
 	// and every SIGWINCH-observed size, one "COLSxROWS" line per observation
 	// (SPEC Phase 2b-1 requirement 4).
@@ -59,6 +64,10 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 	// a SIGWINCH racing the earliest possible moment is never missed.
 	stopSizeRecorder := startSizeRecorder(getenv)
 	defer stopSizeRecorder()
+
+	if name := getenv(silentFixtureEnvironment); name != "" {
+		return 0, renderThenFallSilent(stdin, stdout, getenv(fixtureDirectoryEnvironment), name)
+	}
 
 	opts, err := parse(args)
 	if err != nil {
@@ -136,6 +145,18 @@ func renderFixture(output io.Writer, directory, name string) error {
 		return fmt.Errorf("render fixture %q: %w", name, err)
 	}
 	return nil
+}
+
+// renderThenFallSilent renders the named fixture exactly once and then blocks
+// forever, producing no further output of any kind (requirement 5), for the
+// identical reason and by the identical mechanism as cmd/fake-claude's own
+// copy of this function.
+func renderThenFallSilent(input io.Reader, output io.Writer, directory, name string) error {
+	if err := renderFixture(output, directory, name); err != nil {
+		return err
+	}
+	_, err := io.Copy(io.Discard, input)
+	return err
 }
 
 func parse(args []string) (options, error) {
@@ -262,6 +283,9 @@ Options:
   --help, -h          Show this help.
 
 Set FAKE_PI_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
+Set FAKE_PI_FIXTURE=<name> to render that fixture from FAKE_AGENT_FIXTURE_DIR verbatim and then
+produce no further output (this process idles forever, exactly like a real agent waiting for
+input that never arrives). Mutually exclusive with FAKE_PI_COMMANDS's interactive loop.
 Set FAKE_PI_COMMANDS=1 to read newline-delimited commands from the pane. A fixture
 command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies that
 file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
