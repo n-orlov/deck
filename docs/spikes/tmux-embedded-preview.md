@@ -31,6 +31,60 @@ after EOF` detach observation in the failure-modes section, and this paragraph. 
 measurements and the recommendation are the job's, independently reproduced twice by its
 review pass.
 
+## Addendum: the third architecture this spike did not test (`pipe-pane`)
+
+*Added by the operator after the run, from a cross-check against a shipping implementation.
+It corrects a real gap in the framing above and leaves the recommendation standing.*
+
+This spike posed the question as a binary — poll `capture-pane`, or **attach a second
+client** — and every measurement above is a measurement of that binary. There is a third
+transport, and `agent-of-empires` (MIT, Rust, Copyright (c) 2026 Nathan Brake; read at
+commit `5e38f7f`) ships it as its default live preview: tap the pane with **`tmux pipe-pane
+-IO`** and feed the raw bytes to an in-process VT grid. Its `src/tmux/vt.rs:1`:
+
+> A `tmux pipe-pane -IO` stream feeds a pane's raw output into an in-process
+> `vt100::Parser` … tmux still owns the pane (process, persistence, kill-tree); only the
+> live render/input transport lives here.
+
+**That transport attaches no client**, so it does not touch window size, and it therefore
+sidesteps the exact failure this spike measured. It is the honest upgrade path if deck ever
+wants sub-frame latency, and the "attached client" numbers above should not be read as
+ruling it out. (The same codebase also tried a long-lived `tmux -C` control-mode connection
+and removed it — `src/tui/home/live_send.rs:25`.)
+
+**The recommendation stands anyway, and this codebase is the strongest evidence for it.**
+AoE resizes the real agent pane down to the preview box regardless of transport, on purpose,
+because a preview box that does not match the pane can only crop — `src/tmux/session.rs:1428`:
+
+> Also used to keep a detached agent's pane sized to the visible preview area: a
+> full-screen agent is sized to whatever terminal it was last attached from, so without
+> this it renders taller than the preview window and the bottom-anchored capture clips the
+> top rows.
+
+So the geometry cost is not a property of *attaching*; it is a property of wanting a
+fitted preview. What it costs them, in their own comments:
+
+| the cost | where |
+|---|---|
+| `resize-window` **silently flips `window-size` to `manual`**, so every later `attach-session` must first call `reset_size_to_latest_client` or the user's real attach stays pinned at preview size | `session.rs:1436`, `:1398` |
+| a naive `resize-window -y rows` yields a `rows − chrome` pane, so the owner loop "re-asserts forever against a target it can never reach" (their #2766) | `session.rs:1420` |
+| a **heartbeat lease in tmux user options** (`@aoe_size_owner`, 4 s TTL, 1.5 s refresh, explicit steal) because "One tmux window has one size, but three writers resize it" | `session.rs:50`, `:1494` |
+| a **second lease** for the pipe: `pipe-pane` is exclusive per pane, and two previewers "used to fight over the pipe on their re-arm throttles, each flipping the other back to the capture fallback every few seconds" | `session.rs:55` |
+| `pipe-pane` is unacknowledged, so "any byte the grid misses (or applies twice) is a permanent divergence" → a two-pass cursor-drift reconciler with a generation counter to avoid reseed flicker | `vt.rs:399` |
+| `pipe-pane` has no backlog, so each channel seeds from `capture-pane -e` first — and the seed carries no DEC modes or cursor, which are captured separately and woven into the byte stream | `vt.rs:1489`, `:554` |
+| `capture-pane` survives as the permanent fallback for every consumer | `vt.rs:1455` |
+
+`src/tmux/` is 19,543 lines, of which `vt.rs` is 3,354. That is the price of a live preview
+done properly, and it is paid to buy latency plus fit — not correctness. deck's answer is to
+decline the fit and keep the guarantee: **crop, never resize**, which is now stated in §11
+as a requirement with `list-clients` empty and an unchanged `#{window_width}x#{window_height}`
+as its assertions.
+
+One thing here is *not* evidence against the design and should not be read as such: this
+codebase's known instability is in restart/resume (per-engine resume flags, conversation
+reset on `/clear`, resume-failure cascades), a different subsystem entirely, and it assigns
+`--session-id` much as deck does.
+
 ## Reproduction and evidence map
 
 The retained run used the repository CI image: Go 1.25.13 and tmux 3.5a. Run every
