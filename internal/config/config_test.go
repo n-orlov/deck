@@ -311,12 +311,71 @@ func TestConfigFileMalformedIsRejected(t *testing.T) {
 
 func TestInvalidControlsAreRejected(t *testing.T) {
 	for key, value := range map[string]string{
-		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps",
+		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
 	} {
 		t.Run(key, func(t *testing.T) {
 			if _, err := LoadFrom(environment(map[string]string{key: value}), fakeHome); err == nil {
 				t.Fatalf("%s=%q was accepted", key, value)
 			}
 		})
+	}
+}
+
+func TestMouseDefaultsToTrueWhenUnset(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.Mouse {
+		t.Fatal("Mouse should default to true when config.toml and DECK_MOUSE are both absent")
+	}
+}
+
+func TestDeckMouseOverridesUIConfigOnAndOff(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nmouse = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_MOUSE": "1"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.Mouse {
+		t.Fatal("DECK_MOUSE=1 should override [ui] mouse = false")
+	}
+
+	dir = writeConfigFile(t, "[ui]\nmouse = true\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_MOUSE": "0"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Mouse {
+		t.Fatal("DECK_MOUSE=0 should override [ui] mouse = true")
+	}
+}
+
+func TestDeckMouseUnsetLeavesUIConfigInPlace(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nmouse = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Mouse {
+		t.Fatal("unset DECK_MOUSE should leave [ui] mouse = false in place")
+	}
+}
+
+func TestConfigFileUIMouseTrue(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nmouse = true\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.Mouse {
+		t.Fatal("Mouse should be true when [ui] mouse = true")
+	}
+}
+
+func TestConfigFileUIMouseMalformedIsRejected(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nmouse = maybe\n")
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome); err == nil {
+		t.Fatal("[ui] mouse = maybe was accepted")
 	}
 }

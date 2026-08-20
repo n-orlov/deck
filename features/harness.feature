@@ -37,3 +37,16 @@ Feature: Godog harness wiring
     And deck client "solo" clicks at column 224 row 3
     Then deck client "solo" frame still matches the captured "before-mouse" frame
     And deck client "solo" exits cleanly
+
+  @requirement-3-deck-mouse
+  Scenario: DECK_MOUSE overrides the default mouse-reporting setting
+    Given deck client "default-mouse" is started
+    Then deck client "default-mouse" raw output enabled SGR mouse reporting
+    And deck client "default-mouse" exits cleanly
+
+  @requirement-3-deck-mouse
+  Scenario: DECK_MOUSE=0 disables mouse reporting
+    Given the deck config disables mouse reporting
+    And deck client "no-mouse" is started
+    Then deck client "no-mouse" raw output did not enable SGR mouse reporting
+    And deck client "no-mouse" exits cleanly
