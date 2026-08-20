@@ -37,24 +37,32 @@ Feature: Claude hook status truth
     Then the state database session "hook truth" has hook status "running", reason "", message "permission granted; work is complete", acknowledged 1, and notify_epoch 1
     And session "hook truth" has one "user_prompt_submitted" event with payload field "prompt" equal to "status please"
 
+    When fake Claude session "hook truth" fires "Notification" for itself using injected identity:
+      | notification_type | permission_prompt |
+    Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And the state database session "hook truth" has hook status "waiting", reason "permission_prompt", message "permission granted; work is complete", acknowledged 0, and notify_epoch 1
+
+    When deck client "A" attaches to and detaches from its selected agent
+    Then the state database session "hook truth" is "running" from "user" with acknowledged=1, notify_epoch=2, and 2 attached events
+
     When fake Claude session "hook truth" fires "StopFailure" for itself using injected identity:
       | error_type | tool_failure |
-    Then the state database session "hook truth" has hook status "error", reason "tool_failure", message "permission granted; work is complete", acknowledged 0, and notify_epoch 1
+    Then the state database session "hook truth" has hook status "error", reason "tool_failure", message "permission granted; work is complete", acknowledged 0, and notify_epoch 2
     And session "hook truth" has one "stop_failure" event with payload field "error_type" equal to "tool_failure"
 
     When fake Claude session "hook truth" fires "UserPromptSubmit" for itself using injected identity:
       | prompt | retry after failure |
-    Then the state database session "hook truth" has hook status "running", reason "", message "permission granted; work is complete", acknowledged 0, and notify_epoch 2
+    Then the state database session "hook truth" has hook status "running", reason "", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has an audited "user_prompt_submitted" event with payload field "prompt" equal to "retry after failure"
 
     When fake Claude session "hook truth" fires "SessionEnd" for itself using conversation identity:
       | reason | logout |
-    Then the state database session "hook truth" has hook status "stopped", reason "logout", message "permission granted; work is complete", acknowledged 0, and notify_epoch 2
+    Then the state database session "hook truth" has hook status "stopped", reason "logout", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has one "session_end" event with payload field "reason" equal to "logout"
 
     When fake Claude session "hook truth" fires "SessionStart" for itself using injected identity:
       | source | late-after-clean-stop |
-    Then the state database session "hook truth" has hook status "stopped", reason "logout", message "permission granted; work is complete", acknowledged 0, and notify_epoch 2
+    Then the state database session "hook truth" has hook status "stopped", reason "logout", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has an audited "session_start" event with payload field "source" equal to "late-after-clean-stop"
     And deck client "A" exits cleanly
 
