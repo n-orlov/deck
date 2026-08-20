@@ -8,18 +8,18 @@ output is retained at repository-relative paths:
 
 | Command | Tested commit | Raw capture | Result |
 |---|---|---|---|
-| `ci/run.sh go build ./...` | `7bcb96e96915f6fef1b0a5958eeb463051e6a7c0` | [`phase2-build.log`](phase2-build.log) | exit 0 |
-| `ci/run.sh go vet ./...` | `ef9881df77b99877a7b03f14146190b9dd668a98` | [`phase2-vet.log`](phase2-vet.log) | exit 0 |
-| `ci/run.sh go test -v -count=1 ./...` | `d562d6fbe53b9f1db296c1f54d8ab1b8bce15baf` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; **55.277 seconds wall time** |
+| `ci/run.sh go build ./...` | `96a655423be9c21723575e2723275c935cfaf9b5` | [`phase2-build.log`](phase2-build.log) | exit 0 |
+| `ci/run.sh go vet ./...` | `77f92c7e445815d395894adb4cc72eeb03f53c24` | [`phase2-vet.log`](phase2-vet.log) | exit 0 |
+| `ci/run.sh go test -v -count=1 ./...` | `eedf532760a81bf6b73b8bc87200ca4edbcdb889` | [`phase2-full-verbose-run.log`](phase2-full-verbose-run.log) | exit 0; **56.311 seconds wall time** |
 
-The full run reports **21 features**, **48 scenarios (48 passed)**, and **546
-steps (546 passed)** under the unchanged default `~@real-agents && ~@nightly`
+The full run reports **21 features**, **48 scenarios (48 passed)**, and **551
+steps (551 passed)** under the unchanged default `~@real-agents && ~@nightly`
 tag expression. The feature count is the 21 ANSI-coloured `Feature:` headings in
 the retained Godog output (one heading per executed `.feature` file). Godog's
 deliberately undefined and deliberately failing private harness self-tests
 also appear in the raw log; their enclosing Go test passes because rejecting
 those outcomes is what it tests. They are not members of the real
-21-feature/48-scenario/546-step suite.
+21-feature/48-scenario/551-step suite.
 
 **Top-level Go-test counting convention.** Count lines matching
 `^=== RUN   Test[A-Za-z0-9_]*$` in the verbose capture. This counts each
@@ -85,13 +85,13 @@ paths are repository-relative.
 | 29 | `crash.feature: racing clients collect one corpse idempotently` checks first artifact stability, disappearance, and launch count 1; tmux kill idempotence is integration-tested. |
 | 30 | `shell_liveness.feature` separately proves a live shell reaches running and a live unsignalled agent remains starting. |
 | 31 | `launch_lease.feature: a stale stopped row reports its new non-leasable verdict instead of a lease conflict` provides released-binary proof alongside `internal/store: TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease` and `internal/service: TestResumeNonLeasableReturnsActualStatusAndReason`; the live in-TTL scenario retains the `starting elsewhere` contract. |
-| 32 | `status_claude_hooks.feature: Every declared Claude hook maps...` contains T3's running → permission-prompt waiting → Stop idle/message → waiting sequence and direct epoch assertions, with no notification-delivery stub. |
+| 32 | `status_claude_hooks.feature: Every declared Claude hook maps...` drives the released deck/fake-Claude pane through two distinct attention episodes. The first `running → permission_prompt waiting` is resolved by attach (`notify_epoch` 0→1), then Stop records `idle` plus its message. A legal UserPromptSubmit returns `idle → running`; a second `permission_prompt` reaches `waiting` with `acknowledged=0` and epoch 1, and the second attach directly observes epoch 2. The scenario asserts status/store/event truth only—no webhook, dispatch, outbox, or notification-delivery stub. |
 | 33 | `lease_race.feature: three clients racing resume on one row produce exactly one launch` completes T2 with a pane-fired SessionStart and three running rows; `shell_liveness.feature` retains the separate no-fabricated-agent-running check. |
 | 34 | The clean-shell and SIGKILL scenarios in `crash.feature` check status, tail/no-tail, and launch count 1. |
 | 35 | `concurrency.feature: one hook-driven status change propagates to every client`. |
 | 36 | **Met.** The documented opt-in command exited 0 with authenticated genuine Claude Code 2.1.237. The unedited [`authenticated capture`](phase2-real-claude-authenticated.log) proves `SessionStart` injection and released-`_hook` delivery, then captures a genuine `UserPromptSubmit` payload with non-empty string `session_id`, `cwd`, `transcript_path`, and `permission_mode` (`default`); all 3 scenarios and 27 steps pass without aliases or synthesized fields. The [`version matrix`](phase2-real-claude-version-matrix.log) separately preserves the observed `SessionStart` omission in versions 1.0.128–2.1.200. |
 | 37 | This report and its linked repository-relative build, vet, full-suite, stability, authenticated-Claude, version-matrix, and [`state-machine findings`](phase2-findings.md#exhaustive-transition-policy-review-resolution) evidence. |
-| 38 | A real `ci/stability.sh 10` run from clean final production/test source checkpoint `20b19dd5e30fc1af0801229c2df36ff30447290b` passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
+| 38 | A real `ci/stability.sh 10` run at clean tested commit `a0d7db3c55b3b14666e312e511a8f0740e4c4d41`, containing final production/test checkpoint `96a655423be9c21723575e2723275c935cfaf9b5` followed only by evidence/report commits, passed **10/10**. Its complete combined package output, per-run exit labels, command, commit, clean-worktree statement, and final exit 0 are retained unedited in [`phase2-stability.log`](phase2-stability.log). The runner uses `-p=1` so each repetition exercises the sub-second tmux/SQLite contracts without unrelated Go-package load, while every package, feature, scenario, and test still executes on every run. |
 | 39 | The run uses the unchanged default tag expression. No Phase 1 scenario was removed; shell assertions were re-aimed to live-shell promotion while `shell_liveness.feature` retains the unsignalled-agent negative assertion. Final protected-file/no-exclusion proof is paired with the fixed-commit stability checkpoint. |
 | 40 | The operator walkthrough below. |
 | 41 | `cmd/fake-claude: TestPaneCommandsFireEveryInjectedHookWithControllablePayload` and `TestPaneHookCommandRequiresInjectedSettingsRatherThanCallingDeckDirectly`; the Claude-hook feature fires commands from the pane. |
@@ -243,10 +243,12 @@ Claude Code 2.1.237.
   `UserPromptSubmit` supplies all four required fields, including
   `permission_mode`; the earlier SessionStart omission remains an upstream
   finding in [`phase2-findings.md`](phase2-findings.md), not a normalized payload.
-- The final clean production/test checkpoint stability run at `20b19dd5e30fc1af0801229c2df36ff30447290b`
-  passed 10/10. Complete per-package output, every run label, and final exit 0
-  are retained in [`phase2-stability.log`](phase2-stability.log); the report
-  does not infer stability from one green full-suite run.
+- The stability run at clean tested commit `a0d7db3c55b3b14666e312e511a8f0740e4c4d41`
+  contains final production/test checkpoint `96a655423be9c21723575e2723275c935cfaf9b5`
+  followed only by evidence/report commits and passed 10/10. Complete per-package
+  output, every run label, and final exit 0 are retained in
+  [`phase2-stability.log`](phase2-stability.log); the report does not infer
+  stability from one green full-suite run.
 - Shell liveness means `running`; agent pane liveness does not. Re-aimed Phase
   1 shell assertions preserve the original protection with a separate live,
   unsignalled-agent negative scenario.
