@@ -28,5 +28,8 @@ Feature: Real Claude agent session smoke test
     And deck client "A" is started
     When deck client "A" creates claude session "real claude hooks" with permission profile "safe"
     Then session "real claude hooks"'s launch instrumentation routes "SessionStart" to the released deck _hook
-    And session "real claude hooks" receives a conforming real Claude "SessionStart" hook
+    And session "real claude hooks" receives a real Claude "SessionStart" hook
+    When session "real claude hooks" submits the prompt "Reply with OK only." to real Claude
+    Then session "real claude hooks"'s launch instrumentation routes "UserPromptSubmit" to the released deck _hook
+    And session "real claude hooks" receives a conforming real Claude "UserPromptSubmit" hook
     When deck client "A" exits cleanly

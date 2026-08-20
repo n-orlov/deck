@@ -21,6 +21,8 @@ import (
 // contract diagnostic.
 func registerRealAgentHookSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^session "([^"]+)"'s launch instrumentation routes "([^"]+)" to the released deck _hook$`, realClaudeInstrumentationRoutesHook)
+	sc.Step(`^session "([^"]+)" receives a real Claude "([^"]+)" hook$`, realClaudeHookDelivered)
+	sc.Step(`^session "([^"]+)" submits the prompt "([^"]+)" to real Claude$`, submitRealClaudePrompt)
 	sc.Step(`^session "([^"]+)" receives a conforming real Claude "([^"]+)" hook$`, realClaudeHookConforms)
 }
 
@@ -83,52 +85,112 @@ func shellQuotedForFeature(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func realClaudeHookConforms(ctx context.Context, name, event string) error {
+func realClaudeHookDelivered(ctx context.Context, name, event string) error {
+	payload, expected, err := waitForRealClaudeHook(ctx, name, event)
+	if err != nil {
+		return err
+	}
+	// SessionStart in current genuine Claude versions omits permission_mode.
+	// Keep independent proof that the injected SessionStart hook reached deck,
+	// while the full common-payload contract is checked on UserPromptSubmit.
+	for _, field := range []string{"session_id", "cwd", "transcript_path"} {
+		value, exists := payload[field]
+		text, stringTyped := value.(string)
+		if !exists || !stringTyped || text == "" {
+			return fmt.Errorf("real Claude hook delivery unsupported: required field %q must be a non-empty string (got %s); payload keys/types: %s", field, describeJSONValue(value, exists), payloadShape(payload))
+		}
+	}
+	for field, want := range expected {
+		value, exists := payload[field]
+		got, stringTyped := value.(string)
+		if !exists || !stringTyped || got != want {
+			return fmt.Errorf("real Claude hook delivery unsupported: field %q = %s, want string %q; payload keys/types: %s", field, describeJSONValue(value, exists), want, payloadShape(payload))
+		}
+	}
+	return nil
+}
+
+func submitRealClaudePrompt(ctx context.Context, name, prompt string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
 	}
-	sessionID, err := sessionIDByName(h, name)
+	slug, err := sessionSlugByName(h, name)
 	if err != nil {
 		return err
+	}
+	pane := "deck_" + slug
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", pane, "-l", prompt); err != nil {
+		return fmt.Errorf("send prompt to real Claude pane %q: %w", pane, err)
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", pane, "Enter"); err != nil {
+		return fmt.Errorf("submit prompt to real Claude pane %q: %w", pane, err)
+	}
+	return nil
+}
+
+func realClaudeHookConforms(ctx context.Context, name, event string) error {
+	payload, expected, err := waitForRealClaudeHook(ctx, name, event)
+	if err != nil {
+		return err
+	}
+	return requireRealClaudeHookFields(payload, expected)
+}
+
+func waitForRealClaudeHook(ctx context.Context, name, event string) (map[string]any, map[string]string, error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	sessionID, err := sessionIDByName(h, name)
+	if err != nil {
+		return nil, nil, err
 	}
 	conversationID, err := sessionConversationID(h, name)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if h.workingDir == "" {
-		return fmt.Errorf("real Claude hook contract test has no scenario working directory")
+		return nil, nil, fmt.Errorf("real Claude hook contract test has no scenario working directory")
+	}
+	expected := map[string]string{
+		"hook_event_name": event,
+		"session_id":      conversationID,
+		"cwd":             h.workingDir,
 	}
 
 	db, err := openObservedDatabase(h)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	defer db.Close()
+	kinds := map[string]string{
+		"SessionStart":     "session_start",
+		"UserPromptSubmit": "user_prompt_submitted",
+	}
+	kind, supported := kinds[event]
+	if !supported {
+		return nil, nil, fmt.Errorf("real Claude hook contract test has no stored kind for %s", event)
+	}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		var raw string
-		err := db.QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND kind = 'session_start' ORDER BY rowid DESC LIMIT 1`, sessionID).Scan(&raw)
+		err := db.QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND kind = ? ORDER BY rowid DESC LIMIT 1`, sessionID, kind).Scan(&raw)
 		if err == nil {
+			// Retain the exact upstream JSON in the opt-in run log as auditable
+			// conformance evidence; do not normalize or reconstruct it.
+			fmt.Printf("genuine upstream %s payload: %s\n", event, raw)
 			var payload map[string]any
 			if decodeErr := json.Unmarshal([]byte(raw), &payload); decodeErr != nil {
-				return fmt.Errorf("real Claude hook contract unsupported: SessionStart payload is not a JSON object: %w", decodeErr)
+				return nil, nil, fmt.Errorf("real Claude hook contract unsupported: %s payload is not a JSON object: %w", event, decodeErr)
 			}
-			expected := map[string]string{
-				"hook_event_name": event,
-				"session_id":      conversationID,
-				"cwd":             h.workingDir,
-			}
-			if contractErr := requireRealClaudeHookFields(payload, expected); contractErr != nil {
-				return contractErr
-			}
-			return nil
+			return payload, expected, nil
 		}
 		if err != sql.ErrNoRows {
-			return fmt.Errorf("observe real Claude SessionStart hook: %w", err)
+			return nil, nil, fmt.Errorf("observe real Claude %s hook: %w", event, err)
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("real Claude hook contract unsupported: no SessionStart reached deck _hook within 20s (installed CLI may require authentication or no longer accept injected hooks)")
+			return nil, nil, fmt.Errorf("real Claude hook contract unsupported: no %s reached deck _hook within 20s (installed CLI may require authentication or no longer accept injected hooks)", event)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
