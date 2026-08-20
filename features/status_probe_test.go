@@ -271,16 +271,42 @@ func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) erro
 	if err != nil {
 		return err
 	}
+	client, err := h.Client("A")
+	if err != nil {
+		return err
+	}
+	// The live preview (tasks 017-021) captures whichever row is currently
+	// selected using the exact same capture-pane-by-pane-ID technique the
+	// probe capture below uses, and the arm/release wrapper below cannot
+	// distinguish the two callers -- it just pauses the next capture-pane
+	// invocation naming this pane. If the victim's own row stayed selected
+	// (its natural position after creation), the preview's own frequent
+	// ticks -- not the reconciler's stale-probe capture this step means to
+	// intercept -- would satisfy the "started" wait below prematurely, and
+	// the reconciler's own probe might never run before the hook resolves
+	// the race, leaving zero losing-probe evidence. Move selection onto the
+	// durable "probe shell" row first so the preview targets a pane the
+	// wrapper never arms, and the arm/release handshake below can only ever
+	// observe the reconciler's own probe-eligible capture of the victim.
+	// selectRowByName only searches downward from wherever the cursor
+	// currently sits, so rewind to the top first (there is no bound "go to
+	// top" key yet) rather than assume a starting position among the
+	// attention-sorted rows.
+	for i := 0; i < 10; i++ {
+		if err := client.Send("\x1b[A"); err != nil { // up arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err := selectRowByName(client, "probe shell"); err != nil {
+		return fmt.Errorf("move selection off probe victim %q before arming: %w", victim, err)
+	}
 	arm := filepath.Join(h.Home, "probe-capture.arm")
 	started := filepath.Join(h.Home, "probe-capture.started")
 	release := filepath.Join(h.Home, "probe-capture.release")
 	_ = os.Remove(started)
 	_ = os.Remove(release)
 	if err := os.WriteFile(arm, []byte(strings.TrimSpace(string(paneIDRaw))), 0o600); err != nil {
-		return err
-	}
-	client, err := h.Client("A")
-	if err != nil {
 		return err
 	}
 	// Reach stale_after through the released client's on-demand increment. This
