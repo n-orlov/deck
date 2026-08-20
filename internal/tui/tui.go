@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -490,6 +491,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pinNote = ""
 			return m, nil
+		case "|":
+			if !m.help {
+				m.layoutMode = nextLayoutMode(m.layoutMode)
+			}
+		case "<":
+			if !m.help {
+				m.sidebarWidth = m.adjustSidebarWidth(-1)
+			}
+		case ">":
+			if !m.help {
+				m.sidebarWidth = m.adjustSidebarWidth(1)
+			}
 		case "enter":
 			if m.attach == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -588,6 +601,21 @@ func (m Model) computeLayout() LayoutResult {
 	return ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 }
 
+// adjustSidebarWidth is `<`/`>`'s one-column step (SPEC requirement 15),
+// clamped through the same ClampSidebarWidth bound ComputeLayout itself
+// uses so the persisted value and the rendered geometry never disagree.
+// m.sidebarWidth's zero-means-default convention (§11.2) is resolved to
+// its concrete default before stepping, so `<` from an unset width steps
+// down from 35 rather than from 0.
+func (m Model) adjustSidebarWidth(delta int) int {
+	width, _ := m.frameSize()
+	current := m.sidebarWidth
+	if current <= 0 {
+		current = store.DefaultSidebarWidth
+	}
+	return ClampSidebarWidth(width, current+delta)
+}
+
 // sidebarRowsPerPage is PgUp/PgDn's page size (SPEC requirement 19): the
 // number of two-line session rows that actually fit in the sidebar's
 // current content height, never fewer than one.
@@ -649,15 +677,54 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 	if contentRows < 0 {
 		contentRows = 0
 	}
-	sidebar := fitLines(m.sidebarBodyLines(max(sw-2, 0)), contentRows)
+	collapsed := layout.Effective == LayoutCollapsed
+	sidebarTop := m.sidebarTitleLine(sw)
+	sidebarBody := m.sidebarBodyLines(max(sw-2, 0))
+	if collapsed {
+		// The 3-column strip has no room for the "deck — sessions" title
+		// and draws its own attention-count content instead of session
+		// rows (task 015, SPEC requirement 15).
+		sidebarTop = m.sidebarTopLine(sw, "")
+		sidebarBody = m.collapsedStripLines()
+	}
+	sidebar := fitLines(sidebarBody, contentRows)
 	preview := fitLines(m.previewBodyLines(max(pw-4, 0)), contentRows)
 	lines := make([]string, 0, height)
-	lines = append(lines, m.sidebarTitleLine(sw)+m.previewTopLine(pw, m.previewTitle(), true))
+	lines = append(lines, sidebarTop+m.previewTopLine(pw, m.previewTitle(), true))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.sidebarContentLine(sw, sidebar[i])+m.previewContentLine(pw, preview[i]))
 	}
 	lines = append(lines, m.sidebarBottomLine(sw)+m.previewBottomLine(pw, true))
 	return lines
+}
+
+// collapsedStripLines is the 3-column collapsed strip's own content (SPEC
+// requirement 15): the `»` glyph, then the attention count's digits each
+// on their own line so a multi-digit count still reads inside the strip's
+// single content column. attentionCount is a small local stand-in for the
+// "one shared attention source" task 025 introduces; once that lands, this
+// should call it instead of counting waiting/error rows itself, so the
+// collapsed strip's count always agrees with the sort and `space`.
+func (m Model) collapsedStripLines() []string {
+	lines := []string{m.glyph("»", ">")}
+	for _, r := range strconv.Itoa(m.attentionCount()) {
+		lines = append(lines, string(r))
+	}
+	return lines
+}
+
+// attentionCount counts sessions in a status that needs attention (waiting
+// or error), matching internal/store's own isAttentionStatus. See the
+// collapsedStripLines doc comment: task 025 unifies this into one shared
+// source also used by the sort and `space`.
+func (m Model) attentionCount() int {
+	n := 0
+	for _, s := range m.sessions {
+		if s.Status == "waiting" || s.Status == "error" {
+			n++
+		}
+	}
+	return n
 }
 
 // renderStackedFrame draws the below-80-column fallback (SPEC §11.2): the

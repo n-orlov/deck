@@ -155,6 +155,114 @@ func TestFrozenClockDoesNotClaimSidebarWidthKey(t *testing.T) {
 	}
 }
 
+// TestPipeCyclesLayoutMode covers task 015's `|` cycle: auto -> side-by-side
+// -> stacked -> collapsed -> auto, pinning an explicit mode each step
+// regardless of the terminal's width, and restoring auto (not tab) once the
+// cycle comes back around from collapsed.
+func TestPipeCyclesLayoutMode(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	if model.layoutMode != "" {
+		t.Fatalf("model started with a non-default layoutMode %q", model.layoutMode)
+	}
+	want := []string{LayoutSideBySide, LayoutStacked, LayoutCollapsed, LayoutAuto}
+	for _, w := range want {
+		updated, _ := model.Update(key("|"))
+		model = updated.(Model)
+		if model.layoutMode != w {
+			t.Fatalf("after | : layoutMode = %q, want %q", model.layoutMode, w)
+		}
+	}
+}
+
+// TestAngleBracketsAdjustAndClampSidebarWidth covers task 015's `<`/`>`
+// keys: they step sidebar_width by one column and clamp at both
+// [SidebarWidthFloor, width-PreviewWidthFloor] ends rather than running past
+// them.
+func TestAngleBracketsAdjustAndClampSidebarWidth(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.width, model.height = 100, 24
+
+	updated, _ := model.Update(key("<"))
+	model = updated.(Model)
+	if model.sidebarWidth != 34 {
+		t.Fatalf("after one < from default 35: sidebarWidth = %d, want 34", model.sidebarWidth)
+	}
+	updated, _ = model.Update(key(">"))
+	model = updated.(Model)
+	if model.sidebarWidth != 35 {
+		t.Fatalf("after > : sidebarWidth = %d, want back to 35", model.sidebarWidth)
+	}
+
+	// Drive it down past the floor: SidebarWidthFloor is 24 at width 100.
+	for i := 0; i < 20; i++ {
+		updated, _ = model.Update(key("<"))
+		model = updated.(Model)
+	}
+	if model.sidebarWidth != SidebarWidthFloor {
+		t.Fatalf("driving < past the floor: sidebarWidth = %d, want floor %d", model.sidebarWidth, SidebarWidthFloor)
+	}
+
+	// Drive it up past the ceiling: width-PreviewWidthFloor = 100-40 = 60.
+	for i := 0; i < 60; i++ {
+		updated, _ = model.Update(key(">"))
+		model = updated.(Model)
+	}
+	if want := 100 - PreviewWidthFloor; model.sidebarWidth != want {
+		t.Fatalf("driving > past the ceiling: sidebarWidth = %d, want %d", model.sidebarWidth, want)
+	}
+}
+
+// TestCollapsedStripRendersMarkerAndAttentionCount covers task 015's
+// collapsed strip: a 3-column panel showing the `»` glyph above the
+// attention count drawn vertically, with the preview taking the rest, and
+// `|` restoring the sidebar afterwards.
+func TestCollapsedStripRendersMarkerAndAttentionCount(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.width, model.height = 80, 24
+	model.layoutMode = LayoutCollapsed
+	model.sessions = []store.Session{
+		{Name: "waiting one", Agent: "claude", Status: "waiting"},
+		{Name: "errored one", Agent: "claude", Status: "error"},
+		{Name: "running one", Agent: "claude", Status: "running"},
+	}
+
+	view := model.View()
+	lines := strings.Split(view, "\n")
+	if len(lines) < 4 {
+		t.Fatalf("collapsed view too short: %q", view)
+	}
+	// Row 0 is the top border; row 1 is the strip's first content row,
+	// which must carry the » marker and nothing from a session name (the
+	// strip never draws session rows).
+	if !strings.Contains(lines[1], "»") {
+		t.Fatalf("collapsed strip missing » marker on its first content row: %q", lines[1])
+	}
+	for _, name := range []string{"waiting one", "errored one", "running one"} {
+		if strings.Contains(view, name) {
+			t.Fatalf("collapsed strip still renders a session name %q:\n%s", name, view)
+		}
+	}
+	// The attention count (2: one waiting, one error) must appear on the
+	// strip's second content row.
+	if !strings.Contains(lines[2], "2") {
+		t.Fatalf("collapsed strip missing attention count '2' on its second content row: %q", lines[2])
+	}
+	// The strip is exactly CollapsedStripWidth columns wide (border+content),
+	// so no session row's content ever leaks into it.
+	if got := len([]rune(lines[1])); got < CollapsedStripWidth {
+		t.Fatalf("collapsed strip line shorter than its own width: %d < %d", got, CollapsedStripWidth)
+	}
+
+	// | restores the sidebar (auto), not tab: the marker and count go away
+	// and the session names come back.
+	updated, _ := model.Update(key("|"))
+	model = updated.(Model)
+	view = model.View()
+	if !strings.Contains(view, "waiting one") {
+		t.Fatalf("| did not restore the sidebar's session rows:\n%s", view)
+	}
+}
+
 func TestHelpTogglesAndEscapeCloses(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	updated, _ := model.Update(key("?"))
