@@ -24,3 +24,16 @@ Feature: Godog harness wiring
     Then deck client "solo" frame width is 60
     And deck client "solo" frame height is 20
     And deck client "solo" exits cleanly
+
+  @requirement-2-mouse-synthesis
+  Scenario: SGR mouse reports are synthesized for click, double-click, wheel and drag
+    Given deck client "solo" is started
+    And deck client "solo" captures its frame as "before-mouse"
+    When deck client "solo" clicks at column 5 row 3
+    And deck client "solo" double-clicks at column 5 row 3
+    And deck client "solo" scrolls the wheel up at column 5 row 3
+    And deck client "solo" scrolls the wheel down at column 5 row 3
+    And deck client "solo" drags from column 5 row 3 to column 50 row 10
+    And deck client "solo" clicks at column 224 row 3
+    Then deck client "solo" frame still matches the captured "before-mouse" frame
+    And deck client "solo" exits cleanly
