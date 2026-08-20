@@ -78,3 +78,13 @@ Feature: Godog harness wiring
       | pi     | fitting.txt |
       | pi     | oversized.txt |
       | pi     | wide.txt    |
+
+  @requirement-7-sidebar-width
+  Scenario: sidebar_width can be set and read back for a scenario
+    Given deck client "solo" is started
+    Then the scenario's persisted sidebar_width is unset
+    When the scenario's sidebar_width is set to 50
+    Then the scenario's persisted sidebar_width reads back as 50
+    When the scenario's sidebar_width is set to 24
+    Then the scenario's persisted sidebar_width reads back as 24
+    And deck client "solo" exits cleanly
