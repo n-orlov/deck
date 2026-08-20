@@ -76,6 +76,18 @@ type LayoutResult struct {
 	// as the clamped column-adjustment value used by `<`/`>` (task 015)
 	// so callers have one place to read it from regardless of mode.
 	SidebarWidth int
+	// PreviewShown is false only when the preview's own panel would fall
+	// below its floor this frame — Preview.Width < PreviewWidthFloor in
+	// side-by-side, or Preview.Height < StackedPreviewFloor when stacked
+	// (§11.2 requirement 25) — in which case the sidebar/list takes the
+	// freed space instead (Preview.Height or Preview.Width is 0) and no
+	// capture tick should run for this frame (requirement 27). Side-by-side
+	// never actually reaches this because ClampSidebarWidth already keeps
+	// Preview.Width at or above the floor whenever side-by-side is chosen
+	// at all; PreviewShown exists mainly to give the stacked mode's callers
+	// (and task 015's collapsed strip, which has no floor to violate) one
+	// place to ask instead of re-deriving the same comparison.
+	PreviewShown bool
 	// Sidebar and Preview are the two panel rectangles for this frame.
 	Sidebar Rect
 	Preview Rect
@@ -192,10 +204,21 @@ func ComputeLayout(width, rows int, pinned string, sidebarWidth int) LayoutResul
 	case LayoutSideBySide:
 		sw := ClampSidebarWidth(width, sidebarWidth)
 		result.SidebarWidth = sw
+		// ClampSidebarWidth already keeps width-sw at or above
+		// PreviewWidthFloor whenever side-by-side is the effective mode at
+		// all (autoMode only ever chooses it at width>=80, and a pinned
+		// side-by-side that cannot hold 24+40 columns is redirected to
+		// autoMode above), so the preview floor can never actually bite
+		// here — PreviewShown is unconditionally true.
+		result.PreviewShown = true
 		result.Sidebar = Rect{X: 0, Y: 0, Width: sw, Height: rows}
 		result.Preview = Rect{X: sw, Y: 0, Width: width - sw, Height: rows}
 	case LayoutCollapsed:
 		result.SidebarWidth = ClampSidebarWidth(width, sidebarWidth)
+		// The collapsed strip has no preview floor to violate (its own doc
+		// comment above): whatever width remains after the 3-column strip
+		// is the preview's, shown or not.
+		result.PreviewShown = true
 		result.Sidebar = Rect{X: 0, Y: 0, Width: CollapsedStripWidth, Height: rows}
 		result.Preview = Rect{X: CollapsedStripWidth, Y: 0, Width: width - CollapsedStripWidth, Height: rows}
 	default: // LayoutStacked
@@ -207,6 +230,16 @@ func ComputeLayout(width, rows int, pinned string, sidebarWidth int) LayoutResul
 		previewHeight := rows - listHeight
 		if previewHeight < 0 {
 			previewHeight = 0
+		}
+		if previewHeight < StackedPreviewFloor {
+			// Requirement 25/27: below the preview's own floor, the list
+			// takes the freed rows instead of rendering a preview panel
+			// too short to carry any meaning, and PreviewShown tells
+			// callers (task 017's capture tick) to stop capturing.
+			listHeight = rows
+			previewHeight = 0
+		} else {
+			result.PreviewShown = true
 		}
 		result.Sidebar = Rect{X: 0, Y: 0, Width: width, Height: listHeight}
 		result.Preview = Rect{X: 0, Y: listHeight, Width: width, Height: previewHeight}

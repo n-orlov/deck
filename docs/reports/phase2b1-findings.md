@@ -299,3 +299,56 @@ state and never contains the old generic copy.
 under a tight height budget; `TestCrashTailPreviewLinesEmptyTail` covers
 the empty-tail case. `ci/run.sh go build ./...`, `go vet ./...` and
 `go test -p=1 -count=1 ./...` all green.
+
+## Task 021: preview suppression below its floor (SPEC requirements 25, 27)
+
+`internal/tui/layout.go`'s `ComputeLayout` gained a `PreviewShown bool`
+field on `LayoutResult`:
+
+- **Side-by-side**: always `true`. `ClampSidebarWidth` already keeps
+  `Preview.Width` at or above the 40-column floor whenever side-by-side is
+  the *effective* mode at all — `autoMode` only chooses it at width ≥ 80,
+  and a pinned side-by-side that cannot hold 24+40=64 columns is already
+  redirected to `autoMode` before the switch that sets `PreviewShown` runs.
+  There is no width at which side-by-side is rendered with its preview
+  below the floor, so this is a documented invariant, not a live branch.
+- **Collapsed**: always `true`. The strip's own preview has no floor
+  (§11.2: "the collapsed strip has no floor to violate at any width ≥ its
+  own 3 columns" — see `layout.go`'s existing comment on the stacked/
+  collapsed case). Requirement 25 names only the 40-column and 8-row
+  floors, both belonging to side-by-side and stacked.
+- **Stacked**: the only mode where suppression is live. When
+  `rows - stackedListHeight(rows) < StackedPreviewFloor (8)`, the list
+  height is widened to the full `rows` (the sidebar/list "takes the
+  space") and `Preview.Height` is forced to 0; `PreviewShown` is `false`.
+  Boundary: `rows=13` → preview height exactly 8 → shown; `rows=12` →
+  preview height 7 → suppressed. `renderStackedFrame` already only draws
+  the preview panel when `ph >= 2` (pre-existing task-014 code), so
+  `Preview.Height == 0` alone makes the panel disappear with no further
+  rendering change needed.
+
+`Model.capturePreview()` (task 017's tick engine) now returns `nil` — no
+`capture-pane` call at all — whenever `m.computeLayout().PreviewShown` is
+`false`, in addition to its pre-existing no-session/no-selection guards.
+The reschedule tick (`previewTick`'s own `tea.Tick` re-arm) is left
+running unconditionally so the engine resumes captures the moment the
+frame grows back past the floor; only the capture-pane call itself is
+gated. Proved in `internal/tui/preview_capture_test.go`'s
+`TestCapturePreviewStopsWhenPreviewNotShown` via the same spy-closure seam
+task 017's own tests use (a `previewCapture` func that records whether it
+was ever invoked) — no structured log or separate command-capture seam was
+needed since the capture function itself is already an injectable seam.
+
+No scroll state, capture history, or PgUp path for the preview existed
+before this task (`grep -rn "previewScroll\|preview.*[Hh]istory\|PgUp.*review\|previewOffset"`
+finds nothing in `internal/tui` or `features`); PgUp/PgDn have driven only
+the sidebar list since task 014 (§11.3 requirement 19). This part of the
+success criteria was already an existing invariant, verified rather than
+newly enforced.
+
+Evidence: `internal/tui/layout_test.go`'s
+`TestComputeLayoutSideBySideAndCollapsedAlwaysShowPreview` and
+`TestComputeLayoutStackedSuppressesPreviewBelowItsFloor`;
+`internal/tui/preview_capture_test.go`'s
+`TestCapturePreviewStopsWhenPreviewNotShown`. `ci/run.sh go build ./...`,
+`go vet ./...` and `go test -p=1 -count=1 ./...` all green.

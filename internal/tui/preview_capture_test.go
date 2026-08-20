@@ -126,3 +126,46 @@ func TestCapturePreviewNoSessionsReturnsNilCommand(t *testing.T) {
 		t.Fatal("capturePreview invoked the engine with no sessions present")
 	}
 }
+
+// TestCapturePreviewStopsWhenPreviewNotShown covers task 021 (SPEC
+// requirement 27): once the frame is small enough that stacked mode's own
+// floor suppresses the preview panel (ComputeLayout's PreviewShown=false),
+// capturePreview issues no capture-pane call at all — proved here by a spy
+// previewCapture that records whether it was ever invoked, the same seam
+// task 017's own tests use.
+func TestCapturePreviewStopsWhenPreviewNotShown(t *testing.T) {
+	called := false
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{{ID: "s1", Slug: "one", Status: "running"}}
+	model.layoutMode = LayoutStacked
+	model.width, model.height = 80, 12 // stacked at rows=12: preview height=7, below the 8-row floor.
+	model.previewCapture = func(context.Context, string) (tmux.PreviewCapture, error) {
+		called = true
+		return tmux.PreviewCapture{Live: true, Bytes: []byte("frame")}, nil
+	}
+
+	if got := model.computeLayout(); got.PreviewShown {
+		t.Fatalf("test setup: PreviewShown = true at rows=12 (after footer/banner reservation), want false")
+	}
+	if cmd := model.capturePreview(); cmd != nil {
+		cmd()
+	}
+	if called {
+		t.Fatal("capturePreview invoked the engine while the preview panel is not shown")
+	}
+
+	// The same model at a comfortable height captures normally, proving the
+	// suppression is specific to the small frame and not a general break.
+	model.height = 24
+	if got := model.computeLayout(); !got.PreviewShown {
+		t.Fatalf("test setup: PreviewShown = false at rows=24, want true")
+	}
+	if cmd := model.capturePreview(); cmd == nil {
+		t.Fatal("capturePreview returned nil at a height where the preview is shown")
+	} else {
+		cmd()
+	}
+	if !called {
+		t.Fatal("capturePreview did not invoke the engine once the preview is shown again")
+	}
+}
