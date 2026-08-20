@@ -241,3 +241,61 @@ were both green.
 main `require` block (still v0.0.23, no version bump) since `internal/tui`
 now imports it directly; `go mod tidy` made no other change to go.mod or
 go.sum.
+
+## Task 020: rows with no live pane (SPEC requirement 26)
+
+`internal/tui/tui.go`'s `previewBodyLines` used to render one generic "No
+live preview captured for this row yet." message for every non-live
+selection, regardless of *why* there was nothing live. Task 020 splits that
+into a `previewPlaceholderLines` dispatch on `session.Status`, each branch
+naming the state rather than leaving the viewer to guess:
+
+### Placeholder copy (recorded verbatim, per successCriteria)
+
+- `error`: header `"Last output before exit — not live:"` (ASCII fallback
+  `"Last output before exit - not live:"` via the existing `m.glyph`
+  convention), followed by the session's stored §7 `crash_tail` wrapped to
+  the panel width. A tail longer than the available body rows is anchored
+  to its **newest** (last) lines — mirroring requirement 23's own
+  bottom-left crop anchoring — via the new `crashTailPreviewLines` helper.
+  An error row with an empty crash tail still gets the header plus
+  `"No crash output was captured."`, so it is never mistaken for a live
+  but blank pane.
+- `stopped`: `"Session is stopped. No live preview to show."`
+- `archived`: `"Session is archived. No live preview to show."` (the
+  `archived_at` flag/status distinction from SPEC §4 is not yet wired to
+  any session in this phase — see below — so this branch is dispatched on
+  a literal `Status == "archived"` string, exercised directly by a unit
+  test constructing such a session, ready for whichever later phase
+  actually sets it.)
+- `starting` (no pane yet): `"Session is starting; no pane yet."` Reached
+  only when the most recent capture attempt for that exact session id
+  found no live pane (or none has been attempted yet), so a `starting`
+  shell agent that already has a pane still gets the ordinary live crop,
+  never this placeholder.
+- Any other status reaching the placeholder branch (e.g. `running`/
+  `waiting`/`idle` on the very first tick right after selection, before a
+  capture has landed) keeps the pre-020 CWD-plus-notice copy; this was out
+  of task 020's four named cases.
+
+### `archived` reachability
+
+Session structs have no `ArchivedAt`/status-flag field surfaced yet (the
+schema column exists — `archived_at INTEGER NOT NULL DEFAULT 0` — but
+nothing in `internal/store` reads or writes it; archive/reap/purge is
+explicitly out of scope for phase 2b-1 per the PRD). Task 020's placeholder
+is therefore unit-tested by constructing a `store.Session{Status:
+"archived"}` directly rather than through any reachable UI path — the
+dispatch is ready the day a later phase starts setting that status/flag,
+but nothing in this phase can currently produce it live.
+
+### Evidence
+
+`internal/tui/preview_placeholder_test.go` (new):
+`TestPreviewBodyLinesNoLivePaneStates` covers all four named states
+end-to-end through `previewBodyLines`, asserting each body mentions its
+state and never contains the old generic copy.
+`TestCrashTailPreviewLinesAnchorsToNewestLines` proves the bottom-anchoring
+under a tight height budget; `TestCrashTailPreviewLinesEmptyTail` covers
+the empty-tail case. `ci/run.sh go build ./...`, `go vet ./...` and
+`go test -p=1 -count=1 ./...` all green.

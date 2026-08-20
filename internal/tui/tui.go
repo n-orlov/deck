@@ -985,12 +985,15 @@ func (m Model) previewTitle() string {
 
 // previewBodyLines is the preview panel's content: the real cropped pane
 // capture (task 018, SPEC requirement 23) when the selected session has a
-// live capture on file, otherwise a placeholder that stays legible and
-// never claims a live pane exists where deck has not looked at one (or has
-// looked and found none -- naming which of those states applies for every
-// row is task 020's job, SPEC requirement 26). It always returns exactly
-// contentHeight lines, each exactly contentWidth runes, so callers no
-// longer need their own fitLines pass for the preview panel.
+// live capture on file, otherwise a placeholder naming exactly which
+// no-live-pane state applies (task 020, SPEC requirement 26) -- an `error`
+// row's stored crash tail, or a one-line placeholder for `stopped`,
+// `archived` and a `starting` row with no pane yet. Stale bytes are never
+// presented as live: the placeholder branch is only reached when the most
+// recent capture for this exact session id found no live pane (or none has
+// been attempted yet). It always returns exactly contentHeight lines, each
+// exactly contentWidth runes, so callers no longer need their own fitLines
+// pass for the preview panel.
 func (m Model) previewBodyLines(contentWidth, contentHeight int) []string {
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		return fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
@@ -999,11 +1002,60 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) []string {
 	if m.previewLive && m.previewSessionID == session.ID {
 		return m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
 	}
-	var lines []string
-	lines = append(lines, wrapText(session.CWD, contentWidth)...)
-	lines = append(lines, "")
-	lines = append(lines, wrapText("No live preview captured for this row yet.", contentWidth)...)
-	return fitLines(lines, contentHeight)
+	return fitLines(m.previewPlaceholderLines(session, contentWidth, contentHeight), contentHeight)
+}
+
+// previewPlaceholderLines names, rather than papers over, why the preview
+// has nothing live to show for the selected session (task 020, SPEC
+// requirement 26). `error` gets the durable crash tail headed by copy
+// stating it is the last output before the exit and is not live; the other
+// three named states get a single line naming the state and nothing else
+// that could be mistaken for live pane content. Any other status reaching
+// here (e.g. a row not yet captured on the very first tick after
+// selection) keeps the original CWD-plus-notice copy.
+func (m Model) previewPlaceholderLines(session store.Session, contentWidth, contentHeight int) []string {
+	switch session.Status {
+	case "error":
+		return m.crashTailPreviewLines(session.CrashTail, contentWidth, contentHeight)
+	case "stopped":
+		return wrapText("Session is stopped. No live preview to show.", contentWidth)
+	case "archived":
+		return wrapText("Session is archived. No live preview to show.", contentWidth)
+	case "starting":
+		return wrapText("Session is starting; no pane yet.", contentWidth)
+	default:
+		var lines []string
+		lines = append(lines, wrapText(session.CWD, contentWidth)...)
+		lines = append(lines, "")
+		lines = append(lines, wrapText("No live preview captured for this row yet.", contentWidth)...)
+		return lines
+	}
+}
+
+// crashTailPreviewLines renders an `error` row's durable §7 crash tail into
+// the preview panel (task 020, SPEC requirement 26), headed by copy that
+// states plainly it is the last output before the process exited and is
+// not live -- never letting a stale capture be mistaken for a live pane.
+// The tail is anchored bottom, mirroring requirement 23's own bottom-left
+// crop anchoring: when the stored tail has more lines than the panel has
+// room for, the newest (last) lines win.
+func (m Model) crashTailPreviewLines(tail string, contentWidth, contentHeight int) []string {
+	header := wrapText(m.glyph("Last output before exit \u2014 not live:", "Last output before exit - not live:"), contentWidth)
+	if tail == "" {
+		return append(header, wrapText("No crash output was captured.", contentWidth)...)
+	}
+	var body []string
+	for _, raw := range strings.Split(strings.Trim(tail, "\n"), "\n") {
+		body = append(body, wrapText(raw, contentWidth)...)
+	}
+	budget := contentHeight - len(header)
+	if budget < 0 {
+		budget = 0
+	}
+	if len(body) > budget {
+		body = body[len(body)-budget:]
+	}
+	return append(header, body...)
 }
 
 // selectedRowReason returns the reason text belonging to whichever row is
