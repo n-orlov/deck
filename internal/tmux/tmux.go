@@ -273,6 +273,76 @@ func (c Client) CapturePane(ctx context.Context, paneID string, options CaptureO
 	return output, nil
 }
 
+// PreviewCapture is one point-in-time, read-only snapshot of a session's
+// live pane for the §11.6/§11.7 preview panel (SPEC requirements 21, 22).
+// Live is false whenever the session currently has no live pane — stopped,
+// archived, a starting row with no pane yet, or a pane tmux has already
+// reaped between List and capture-pane — and Bytes is then nil; nothing
+// past that point should treat an inert PreviewCapture as an error. Bytes,
+// when Live, is the exact escape-preserving contents of the pane's visible
+// screen only, never scrollback history.
+type PreviewCapture struct {
+	Live  bool
+	Bytes []byte
+}
+
+// PreviewPane resolves the live tmux pane for a deck-owned session by its
+// slug, for read-only preview capture only — callers must never attach to,
+// resize, or write input to the pane this returns. ok is false when no live
+// pane exists; a dead pane (tmux has observed its process exit but
+// reconciliation has not yet collected it) is reported the same as absent,
+// since a corpse is never a legitimate preview target.
+func (c Client) PreviewPane(ctx context.Context, slug string) (pane Pane, ok bool, err error) {
+	name, err := sessionName(slug)
+	if err != nil {
+		return Pane{}, false, err
+	}
+	sessions, err := c.List(ctx)
+	if err != nil {
+		return Pane{}, false, err
+	}
+	for _, session := range sessions {
+		if session.Name != name || len(session.Panes) == 0 {
+			continue
+		}
+		candidate := session.Panes[0]
+		if candidate.Dead {
+			return Pane{}, false, nil
+		}
+		return candidate, true, nil
+	}
+	return Pane{}, false, nil
+}
+
+// CapturePreview is the whole read-only preview capture engine (SPEC
+// requirements 21, 22): it resolves the session's live pane and, if one
+// exists, captures exactly its visible screen (StartLine "0", the top of
+// the visible pane, through EndLine "-", the bottom of the visible pane —
+// deliberately excluding scrollback history) with escape sequences
+// preserved, so the preview can reproduce colour and cursor state exactly.
+// It performs a single capture-pane invocation per call and nothing else:
+// no client ever attaches, no control-mode server ever spawns, pipe-pane is
+// never used, and the pane is never resized. A session with no live pane,
+// or one tmux has already reaped between the two commands, is reported as
+// Live: false rather than an error.
+func (c Client) CapturePreview(ctx context.Context, slug string) (PreviewCapture, error) {
+	pane, ok, err := c.PreviewPane(ctx, slug)
+	if err != nil {
+		return PreviewCapture{}, err
+	}
+	if !ok {
+		return PreviewCapture{}, nil
+	}
+	data, err := c.CapturePane(ctx, pane.ID, CaptureOptions{StartLine: "0", EndLine: "-", IncludeEscapeSequences: true})
+	if err != nil {
+		if IsTargetAbsent(err) {
+			return PreviewCapture{}, nil
+		}
+		return PreviewCapture{}, err
+	}
+	return PreviewCapture{Live: true, Bytes: data}, nil
+}
+
 // Kill removes a deck-owned tmux session without touching a similarly named
 // user session on the default tmux socket. A concurrently removed session (or
 // private server) is already in the desired state and therefore succeeds.
