@@ -17,9 +17,19 @@ latest real terminal to govern the window. The embedded path also used **12.4889
 geometry regression, ordinary-attach behavior change, dependency/lifecycle complexity, and
 continuous resource cost.
 
-This was a throwaway implementation. No product code or planning/specification file was
-changed. All paths below are relative to the repository root, and all retained raw evidence
-is intentionally under the ignored `.spike-preview/` tree.
+This was a throwaway implementation. **The spike changed no product code and no
+planning/specification file.** Its commits are `3a7b337` and `4a1fa18`; both touch only
+`.gitignore` and this report. `SPEC.md` and `docs/PLAN.md` were modified in `a7f9790`,
+which is the **operator's** commit, made in the workspace while the spike was running and
+unrelated to it — do not read that commit as spike output. All paths below are relative to
+the repository root, and all retained raw evidence is intentionally under the ignored
+`.spike-preview/` tree.
+
+Two operator amendments were applied to this report after the job ended, because the job's
+own commit budget was exhausted before it could land them: the corrected `exited status 0
+after EOF` detach observation in the failure-modes section, and this paragraph. The
+measurements and the recommendation are the job's, independently reproduced twice by its
+review pass.
 
 ## Reproduction and evidence map
 
@@ -258,9 +268,14 @@ concurrent case) are under `.spike-preview/evidence/failures/raw/`.
 
 1. **Session killed with default `detach-on-destroy on`:** `kill-session` forced the
    attached preview transport out with the typed exact result
-   `preview transport detach: tmux control client detached`. The Bubble Tea host then
-   rendered valid chrome. The shared window was 120×40 before destruction; generator
-   `SIGWINCH` count was zero.
+   `preview transport detach: tmux control client exited status 0 after EOF`. The Bubble
+   Tea host then rendered valid chrome. The shared window was 120×40 before destruction;
+   generator `SIGWINCH` count was zero. **The exact wording matters to a product
+   implementation:** tmux does not hand the preview a distinguishable "you were detached"
+   notification here. The control client's stream simply reaches EOF and the process exits
+   **0**, indistinguishable at the transport layer from an orderly shutdown. A real preview
+   must therefore treat clean stream termination as "target may be gone, re-resolve" rather
+   than as success, because success and destruction look identical.
 2. **Pane exits non-zero with `remain-on-exit failed`:** exit status 7 left
    `pane_dead=1 pane_dead_status=7 pane_current_command=sleep`; the typed result was
    `preview transport exit: pane_dead=1 pane_dead_status=7`. The client remained attached
@@ -275,12 +290,13 @@ concurrent case) are under `.spike-preview/evidence/failures/raw/`.
 4. **Outer terminal resized during preview:** resizing the preview PTY from 45×22 to 70×30
    changed the latest-policy shared window from 45×22 to 70×30 and produced two observed
    `SIGWINCH` records. After explicit detach produced
-   `preview transport detach: tmux control client detached`, the host rendered valid
-   45×22 chrome. Resize propagation therefore amplifies, rather than fixes, the geometry
-   problem.
+   `preview transport detach: tmux control client exited status 0 after EOF`, the host
+   rendered valid 45×22 chrome. Resize propagation therefore amplifies, rather than fixes,
+   the geometry problem.
 5. **Two deck-like clients preview the same session:** both read-only control transports
    coexisted. Geometry went 120×40 → 45×22 → 45×22 and the generator recorded one
-   `SIGWINCH`; after each received the exact typed detach result, **both** Bubble Tea hosts
+   `SIGWINCH`; after each received the same exact typed detach result as case 1
+   (`exited status 0 after EOF`), **both** Bubble Tea hosts
    rendered valid 45×22 frames. Read-only prevents input, not geometry participation, and
    a second preview does not create an independent pane grid.
 
