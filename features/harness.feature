@@ -78,6 +78,35 @@ Feature: Godog harness wiring
     Then the emulator frame does not fit within 20 columns and 2 rows
     And the emulator frame fits within 20 columns and 4 rows
 
+  @requirement-37-message-budget
+  Scenario Outline: an attachError or resumeNote message never pushes the frame past the terminal's own budget
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "budgeted" is started with terminal size <cols>x<rows>
+    And deck client "budgeted" creates claude session "budget target" with permission profile "safe"
+    Then deck client "budgeted" screen contains "resumable"
+    When the state database session "budget target"'s conversation id is cleared
+    And deck client "budgeted" presses r on session "budget target"
+    Then deck client "budgeted" screen contains "Cannot resume: resume session"
+    And deck client "budgeted" frame fits within <cols> columns and <rows> rows
+    And deck client "budgeted" exits cleanly
+
+    Examples:
+      | cols | rows |
+      | 100  | 30   |
+      | 80   | 24   |
+
+  @requirement-37-message-budget
+  Scenario: a resumeNote message ('starting elsewhere') never pushes the frame past the terminal's own budget
+    Given deck client "budgeted-note" is started with terminal size 100x30
+    And deck client "budgeted-note" creates shell session "budget note target"
+    And deck client "budgeted-note" kills its selected session
+    Then the state database contains session "budget note target" with status "stopped"
+    When the state database session "budget note target" has a launch lease held by a live process
+    And deck client "budgeted-note" presses r on session "budget note target"
+    Then deck client "budgeted-note" screen contains "starting elsewhere"
+    And deck client "budgeted-note" frame fits within 100 columns and 30 rows
+    And deck client "budgeted-note" exits cleanly
+
   @requirement-2-mouse-synthesis
   Scenario: SGR mouse reports are synthesized for click, double-click, wheel and drag
     Given deck client "solo" is started
