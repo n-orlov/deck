@@ -152,3 +152,42 @@ Feature: Godog harness wiring
     When deck client "solo" presses ">" until "WIDENOW" is visible
     Then deck client "solo" screen contains "WIDENOW"
     And deck client "solo" exits cleanly
+
+  @requirement-5-config-file
+  Scenario: a config.toml written before start-up is asserted by its parsed content after the run
+    Given the scenario's config.toml is written with:
+      """
+      allow_yolo = true
+      stale_after = 90
+
+      [ui]
+      mouse = false
+
+      [env]
+      DECK_TEST_TOKEN = "abc123"
+      """
+    And deck client "configured" is started
+    And deck client "configured" exits cleanly
+    Then the scenario's config.toml parses with allow_yolo true
+    And the scenario's config.toml parses with stale_after "1m30s"
+    And the scenario's config.toml parses with mouse false
+    And the scenario's config.toml parses with env "DECK_TEST_TOKEN" set to "abc123"
+
+  @requirement-5-config-file
+  Scenario: the config-file-content assertion fails on a mismatch
+    Given the scenario's config.toml is written with:
+      """
+      allow_yolo = true
+      stale_after = 90
+
+      [ui]
+      mouse = false
+
+      [env]
+      DECK_TEST_TOKEN = "abc123"
+      """
+    Then the scenario's config.toml does not parse with allow_yolo false
+    And the scenario's config.toml does not parse with stale_after "45s"
+    And the scenario's config.toml does not parse with mouse true
+    And the scenario's config.toml does not parse with env "DECK_TEST_TOKEN" set to "wrong-value"
+    And the scenario's config.toml does not parse with env "MISSING_KEY" set to "anything"
