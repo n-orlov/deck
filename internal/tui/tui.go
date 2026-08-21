@@ -686,6 +686,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.attachSelected()
 		}
 	case tea.MouseMsg:
+		// [ui] mouse / DECK_MOUSE (requirement 3, 37): bubbletea's own input
+		// reader decodes an SGR/X10 mouse report from raw input bytes
+		// unconditionally, regardless of whether tea.WithMouseCellMotion
+		// was passed at startup (that option only controls whether the
+		// *enable* escape sequence is written to the terminal in the first
+		// place) -- a real, compliant terminal simply never emits a mouse
+		// report deck did not ask for, but this second, product-side gate
+		// makes the opt-out authoritative even if one arrives anyway (a
+		// terminal that ignores the missing enable sequence, or a replayed
+		// byte stream), rather than relying solely on a well-behaved
+		// terminal's cooperation.
+		if !m.settings.Mouse {
+			return m, nil
+		}
 		// SPEC §11.4/§11.8: the mouse can neither cancel nor confirm a dialog,
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
