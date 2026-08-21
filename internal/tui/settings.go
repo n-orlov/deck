@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -142,19 +143,28 @@ const (
 	settingsFocusFields     = 1
 )
 
-// updateSettings handles key input while the takeover is open. Task 016
-// still owns ctrl+s (save) and turning esc-with-no-changes into a discard
-// prompt; this task (014) owns tab/left/right focus switching, up/down
-// list movement (wrapping, like every other cycled selection in this
-// package -- see cycleOption/updateCreate's tab handling) and `/`'s fuzzy
-// search over every field's label AND description.
+// updateSettings handles key input while the takeover is open. `/` search
+// (task 014) and the discard-confirm prompt (task 016) both take over the
+// whole keymap while active, so they are checked first, in the order the
+// user can be in at most one of them at a time (the discard prompt only
+// ever appears from the main takeover view, never from inside search).
 func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.settingsDiscardConfirm {
+		return m.updateSettingsDiscardConfirm(msg)
+	}
 	if m.settingsSearchActive {
 		return m.updateSettingsSearch(msg)
 	}
 	switch msg.String() {
 	case "esc":
-		m.settingsOpen = false
+		if m.settingsDirty() {
+			m.settingsDiscardConfirm = true
+			m.settingsNote = ""
+		} else {
+			m.settingsOpen = false
+		}
+	case "ctrl+s":
+		m.settingsSave()
 	case "tab", "left", "right":
 		if m.settingsFocus == settingsFocusCategories {
 			m.settingsFocus = settingsFocusFields
@@ -175,6 +185,72 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsSearchActive = true
 		m.settingsSearchQuery = ""
 		m.settingsSearchIndex = 0
+	}
+	return m, nil
+}
+
+// settingsDirty reports whether the takeover's staged edits (settingsEdits)
+// differ from settingsSavedEdits -- the last state actually written to
+// config.toml (or, if nothing has been saved yet this session, the state
+// the takeover opened with). esc uses this to decide between closing
+// outright and requirement 14/20's discard-confirm prompt; comparing
+// against settingsSavedEdits rather than settingsEditsFromSettings(m.
+// settings) directly means a successful ctrl+s (which does not refresh
+// m.settings -- that only happens on restart, per the restart-to-apply
+// scope label) does not leave esc wrongly re-prompting to discard a
+// change that is already safely on disk.
+func (m Model) settingsDirty() bool {
+	return !reflect.DeepEqual(m.settingsEdits, m.settingsSavedEdits)
+}
+
+// settingsSave is ctrl+s's effect (SPEC requirement 20): it writes every
+// staged edit through config.WriteConfigFile -- task 012's atomic writer,
+// so a failure here can never leave config.toml partially written or
+// unparseable -- and, only on success, advances settingsSavedEdits to match
+// what was just written (settingsCloneFileConfig, so a later mutation of
+// settingsEdits.Env cannot alias back into the saved snapshot). A failure
+// is surfaced in settingsNote rather than swallowed; settingsEdits is left
+// exactly as the user had it either way, so a failed save loses nothing
+// and can be retried.
+func (m *Model) settingsSave() {
+	path := m.settings.Paths.ConfigFile
+	if path == "" {
+		m.settingsNote = "save failed: no config file path is configured"
+		return
+	}
+	if err := config.WriteConfigFile(path, m.settingsEdits); err != nil {
+		m.settingsNote = "save failed: " + err.Error()
+		return
+	}
+	m.settingsSavedEdits = settingsCloneFileConfig(m.settingsEdits)
+	m.settingsNote = "saved " + path
+}
+
+// settingsCloneFileConfig deep-copies cfg's Env map (settingsCloneEnv
+// already preserves nil-vs-empty exactly), so settingsSavedEdits never
+// aliases the same map settingsEdits keeps mutating; every other member is
+// a value type and copies by assignment.
+func settingsCloneFileConfig(cfg config.FileConfig) config.FileConfig {
+	cfg.Env = settingsCloneEnv(cfg.Env)
+	return cfg
+}
+
+// updateSettingsDiscardConfirm handles key input while requirement 14's
+// discard-confirm prompt is showing (settingsDiscardConfirm, set by esc in
+// updateSettings when settingsDirty()). y/enter confirms the discard: the
+// takeover closes and settingsEdits is simply dropped along with it --
+// config.toml was never touched, so "what survives" is exactly what
+// settingsSavedEdits/settingsNote already told the user it would be. Any
+// other key (n, esc, or anything else) dismisses the prompt without losing
+// the edit, returning the user to the field they were on.
+func (m Model) updateSettingsDiscardConfirm(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "enter":
+		m.settingsDiscardConfirm = false
+		m.settingsOpen = false
+		m.settingsNote = ""
+	default:
+		m.settingsDiscardConfirm = false
 	}
 	return m, nil
 }
@@ -756,17 +832,26 @@ func (m Model) settingsView() string {
 }
 
 // settingsFooterLine names every key the takeover currently binds:
-// task 013's esc, task 014's tab/left/right/up-down/`/`, and task 015's
+// task 013's esc, task 014's tab/left/right/up-down/`/`, task 015's
 // enter/space (toggle) and +/- (adjust a bounded integer or cycle an
-// enum) -- never a key bound here but left unnamed, the same "advertises
-// a key it doesn't grant"/"binds a key it doesn't name" defect the §11.4
-// dialog contract (task 029) forbids for the five dialogs. Task 016
-// extends this line again once ctrl+s save lands.
+// enum), and task 016's ctrl+s (save) -- never a key bound here but left
+// unnamed, the same "advertises a key it doesn't grant"/"binds a key it
+// doesn't name" defect the §11.4 dialog contract (task 029) forbids for
+// the five dialogs. While the discard-confirm prompt or `/` search is
+// active, the line instead names only the keys valid in that sub-mode.
 func (m Model) settingsFooterLine() string {
-	if m.settingsSearchActive {
-		return "type to search - up/down select - enter jump - esc cancel"
+	width, _ := m.frameSize()
+	if m.settingsDiscardConfirm {
+		return truncateToWidth("discard unsaved changes and keep config.toml as last saved? y/enter discards - any other key cancels", width)
 	}
-	return "tab/left/right switch - up/down move - enter/+/- edit - / search - esc close"
+	if m.settingsSearchActive {
+		return truncateToWidth("type to search - up/down select - enter jump - esc cancel", width)
+	}
+	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
+	if m.settingsNote != "" {
+		footer = m.settingsNote + " - " + footer
+	}
+	return truncateToWidth(footer, width)
 }
 
 // settingsSearchViewLines renders the takeover while `/`'s search box is
