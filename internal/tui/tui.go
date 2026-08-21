@@ -94,9 +94,19 @@ type Model struct {
 	settingsSearchActive bool
 	settingsSearchQuery  string
 	settingsSearchIndex  int
-	width                int
-	height               int
-	agents               *agent.Registry
+	// settingsEdits is task 015's staged working copy of every schema field's
+	// value: a config.FileConfig seeded from m.settings when the takeover
+	// opens (settingsEditsFromSettings) and mutated in place as toggle/
+	// integer/enum fields are edited. Task 016 hands this to
+	// config.WriteConfigFile on save; nothing here writes config.toml or
+	// changes a live pane on its own -- editing only ever changes this
+	// staged copy, never m.settings itself, so a field labelled
+	// restart-to-apply genuinely cannot affect an already-running pane
+	// through this path alone.
+	settingsEdits config.FileConfig
+	width         int
+	height        int
+	agents        *agent.Registry
 	// layoutMode and sidebarWidth are the §11.2 layout pin and the
 	// persisted sidebar width, both persisted to state.db's ui_state table
 	// by persistLayoutMode/persistSidebarWidth (task 016). "" and 0 both
@@ -623,6 +633,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsSearchActive = false
 				m.settingsSearchQuery = ""
 				m.settingsSearchIndex = 0
+				m.settingsEdits = settingsEditsFromSettings(m.settings)
 			}
 		case "n":
 			if !m.help {

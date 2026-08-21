@@ -1,10 +1,16 @@
 package tui
 
 import (
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // This file is task 013's `,` settings full-screen takeover skeleton (SPEC
@@ -39,6 +45,8 @@ func settingsCategoryName(section string) string {
 		return "UI"
 	case "env":
 		return "Environment"
+	case "notify":
+		return "Notify"
 	default:
 		return strings.ToUpper(section[:1]) + section[1:]
 	}
@@ -66,7 +74,41 @@ func settingsCategories() []settingsCategory {
 		}
 		categories[i].Fields = append(categories[i].Fields, field)
 	}
+	// [notify] is deliberately absent from config.Schema (schema.go's own
+	// comment: it is "the stated structural exception", edited via its own
+	// dialog per §11.5 rather than flattened into fields). That dialog does
+	// not exist this phase (task 029 adds no new dialog), so settings still
+	// owes it "a single navigable entry" (§11.5) -- synthesized here, in the
+	// TUI layer only, never added to config.Schema itself: task 018's parity
+	// test walks config.Schema, and this entry has no backing schema field
+	// to be found missing from.
+	categories = append(categories, settingsCategory{
+		Name:    settingsCategoryName("notify"),
+		Section: "notify",
+		Fields:  []config.Field{settingsNotifyEntry()},
+	})
 	return categories
+}
+
+// settingsNotifyEntry is the synthetic §11.5 "single navigable entry" for
+// [notify]: a config.Field the settings takeover renders and lets the user
+// select, but which config.Schema never declares and config.FileConfig has
+// no member for. Its Kind is KindLink (the exact kind §11.5 reserves for
+// "opens the owning dialog"), but activating it opens nothing this phase
+// (task 029 adds no notification-rules dialog) -- settingsFieldValueDisplay
+// and settingsActivateField both say so explicitly rather than pretending
+// the link works.
+func settingsNotifyEntry() config.Field {
+	return config.Field{
+		Section: "notify",
+		Kind:    config.KindLink,
+		Description: "Channels and delivery rules (SPEC §10) are structured tables " +
+			"meant to be edited in their own notification-rules dialog (§11.4), not " +
+			"flattened into fields here. That dialog is not implemented this phase: " +
+			"this entry is honestly unavailable and opens nothing. Edit [notify] and " +
+			"[[notify.rule]] by hand in config.toml until it lands.",
+		Scope: config.ScopeGlobal,
+	}
 }
 
 // settingsFieldLabel renders a schema Field's human label for the
@@ -75,6 +117,9 @@ func settingsCategories() []settingsCategory {
 // field (Key == "", Section == "env") has no key to derive a label from —
 // it is named for what it is instead.
 func settingsFieldLabel(f config.Field) string {
+	if f.Key == "" && f.Section == "notify" {
+		return "Notification Rules"
+	}
 	if f.Key == "" {
 		return "Environment Variables"
 	}
@@ -120,6 +165,12 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsMove(-1)
 	case "down", "j":
 		m.settingsMove(1)
+	case "enter", " ":
+		m.settingsActivateField()
+	case "+", "=":
+		m.settingsAdjustField(1)
+	case "-", "_":
+		m.settingsAdjustField(-1)
 	case "/":
 		m.settingsSearchActive = true
 		m.settingsSearchQuery = ""
@@ -154,6 +205,376 @@ func (m *Model) settingsMove(delta int) {
 		n := len(fields)
 		m.settingsFieldIndex = (m.settingsFieldIndex + delta + n) % n
 	}
+}
+
+// settingsSelectedField returns the field the field-list focus currently
+// sits on, or ok=false when categories has focus (nothing to edit there) or
+// either index is out of range (an empty category, or a stale index left
+// over from a category swap this call raced with the schema -- neither
+// happens in practice since settingsMove always resets settingsFieldIndex
+// to 0 on a category change, but settingsActivateField/settingsAdjustField
+// stay defensive rather than index a slice on trust).
+func (m *Model) settingsSelectedField() (config.Field, bool) {
+	if m.settingsFocus != settingsFocusFields {
+		return config.Field{}, false
+	}
+	categories := settingsCategories()
+	if m.settingsCategoryIndex < 0 || m.settingsCategoryIndex >= len(categories) {
+		return config.Field{}, false
+	}
+	fields := categories[m.settingsCategoryIndex].Fields
+	if m.settingsFieldIndex < 0 || m.settingsFieldIndex >= len(fields) {
+		return config.Field{}, false
+	}
+	return fields[m.settingsFieldIndex], true
+}
+
+// settingsActivateField is enter/space's effect on the focused field: it
+// flips a KindToggle field's staged value and otherwise does nothing --
+// notably including the [notify] KindLink entry, which §11.5 would have
+// open the notification-rules dialog if one existed. Task 029 adds no such
+// dialog this phase, so activating the entry is a documented no-op rather
+// than a key that silently fails to do what it claims: settingsFieldValue-
+// Display already renders that entry's value as "unavailable this phase".
+func (m *Model) settingsActivateField() {
+	f, ok := m.settingsSelectedField()
+	if !ok {
+		return
+	}
+	if f.Kind == config.KindToggle {
+		settingsSetToggle(&m.settingsEdits, f, !settingsToggleValue(f, m.settingsEdits))
+	}
+}
+
+// settingsAdjustField is +/-'s effect on the focused field: step a
+// KindInteger field's staged value by delta (settingsSetInteger clamps to
+// the field's declared Bounds, so this can never stage a value the file
+// writer or the schema-driven parser would reject), or cycle a KindEnum
+// field's staged value through settingsFieldOptions. Every other kind has
+// no notion of a "next" value and is left untouched.
+func (m *Model) settingsAdjustField(delta int) {
+	f, ok := m.settingsSelectedField()
+	if !ok {
+		return
+	}
+	switch f.Kind {
+	case config.KindInteger:
+		settingsSetInteger(&m.settingsEdits, f, settingsIntegerValue(f, m.settingsEdits)+delta)
+	case config.KindEnum:
+		options := m.settingsFieldOptions(f)
+		if len(options) == 0 {
+			return
+		}
+		cur := settingsEnumValue(f, m.settingsEdits)
+		idx := 0
+		for i, o := range options {
+			if o == cur {
+				idx = i
+			}
+		}
+		idx = ((idx+delta)%len(options) + len(options)) % len(options)
+		settingsSetEnum(&m.settingsEdits, f, options[idx])
+	}
+}
+
+// settingsEditsFromSettings seeds the takeover's staged working copy
+// (Model.settingsEdits) from the already-resolved config.Settings the rest
+// of the program uses, the one time it needs to: when `,` opens the
+// takeover. Every member here mirrors a real config.FileConfig member a
+// real Settings field was itself loaded from (see config.Settings' own
+// doc comments) -- Theme is the one exception, since Settings keeps only
+// the already-*resolved* theme.Theme plus a fallback reason, not the raw
+// configured name; m.settings.Theme.Name (the resolved theme actually in
+// effect) is the closest honest approximation available without re-reading
+// config.toml's raw ui.theme value here.
+func settingsEditsFromSettings(s config.Settings) config.FileConfig {
+	themeName := ""
+	if s.Theme != nil {
+		themeName = s.Theme.Name
+	}
+	return config.FileConfig{
+		AllowYolo:          s.AllowYolo,
+		StaleAfter:         s.StaleAfter,
+		CaptureMinInterval: s.CaptureMinInterval,
+		ASCII:              s.ASCII,
+		Mouse:              s.Mouse,
+		RecentCwdLimit:     s.RecentCwdLimit,
+		Theme:              themeName,
+		Env:                settingsCloneEnv(s.Env),
+	}
+}
+
+func settingsCloneEnv(env map[string]string) map[string]string {
+	if env == nil {
+		return nil
+	}
+	out := make(map[string]string, len(env))
+	for k, v := range env {
+		out[k] = v
+	}
+	return out
+}
+
+// settingsToggleValue/settingsSetToggle, settingsIntegerValue/
+// settingsSetInteger and settingsEnumValue/settingsSetEnum are the get/set
+// pair for every KindToggle/KindInteger/KindEnum field config.Schema
+// actually declares today. Each mirrors toml.go's setField and
+// toml_write.go's serializeFieldValue: one generic dispatch per Kind, with
+// a FullKey switch beneath it that carries no logic of its own (Go structs
+// have no by-name-string field access without reflection) -- adding a
+// future schema field of an already-supported kind means one case here,
+// not a new code path.
+func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
+	switch f.FullKey() {
+	case "allow_yolo":
+		return cfg.AllowYolo
+	case "ui.ascii":
+		return cfg.ASCII
+	case "ui.mouse":
+		return cfg.Mouse
+	default:
+		b, _ := f.Default.(bool)
+		return b
+	}
+}
+
+func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
+	switch f.FullKey() {
+	case "allow_yolo":
+		cfg.AllowYolo = v
+	case "ui.ascii":
+		cfg.ASCII = v
+	case "ui.mouse":
+		cfg.Mouse = v
+	}
+}
+
+func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
+	switch f.FullKey() {
+	case "stale_after":
+		return int(cfg.StaleAfter.Seconds())
+	case "capture_min_interval":
+		return int(cfg.CaptureMinInterval.Seconds())
+	case "ui.recent_cwd_limit":
+		return cfg.RecentCwdLimit
+	default:
+		v, _ := f.Default.(int)
+		return v
+	}
+}
+
+// settingsSetInteger clamps v to field's declared IntBounds before writing
+// it into cfg, so +/- (or a future direct-entry editor) can never stage an
+// out-of-bounds value the atomic writer or the schema-driven reader would
+// then have to reject on the next load.
+func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
+	if v < f.IntBounds.Min {
+		v = f.IntBounds.Min
+	}
+	if f.IntBounds.Max != nil && v > *f.IntBounds.Max {
+		v = *f.IntBounds.Max
+	}
+	switch f.FullKey() {
+	case "stale_after":
+		cfg.StaleAfter = time.Duration(v) * time.Second
+	case "capture_min_interval":
+		cfg.CaptureMinInterval = time.Duration(v) * time.Second
+	case "ui.recent_cwd_limit":
+		cfg.RecentCwdLimit = v
+	}
+}
+
+func settingsEnumValue(f config.Field, cfg config.FileConfig) string {
+	switch f.FullKey() {
+	case "ui.theme":
+		return cfg.Theme
+	default:
+		s, _ := f.Default.(string)
+		return s
+	}
+}
+
+func settingsSetEnum(cfg *config.FileConfig, f config.Field, v string) {
+	switch f.FullKey() {
+	case "ui.theme":
+		cfg.Theme = v
+	}
+}
+
+// settingsFieldOptions resolves a KindEnum field's cycle-through choices.
+// ui.theme is §11.6's DynamicEnum case (schema.go: "the schema cannot list
+// a fixed choice set because a dropped-in user theme file changes it
+// without a code change"), so its options are resolved here, at render/
+// edit time, from the same theme.Builtins()/theme.DiscoverUserThemes the
+// rest of the program uses to resolve a configured name -- never a second,
+// hand-maintained theme name list.
+func (m Model) settingsFieldOptions(f config.Field) []string {
+	switch f.FullKey() {
+	case "ui.theme":
+		return settingsThemeOptions(m.settings.Paths)
+	default:
+		return f.EnumValues
+	}
+}
+
+func settingsThemeOptions(paths config.Paths) []string {
+	var names []string
+	for _, t := range theme.Builtins() {
+		names = append(names, t.Name)
+	}
+	sort.Strings(names)
+	userThemes, _ := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
+	var userNames []string
+	for name := range userThemes {
+		userNames = append(userNames, name)
+	}
+	sort.Strings(userNames)
+	return append(names, userNames...)
+}
+
+// settingsFieldValueDisplay renders field f's current staged value (from
+// cfg) exactly as §11.5 requires per kind: On/Off for a toggle, the number
+// plus its declared unit and bounds for a bounded integer, the raw string
+// for a plain string, a path collapsed back to `~` form for KindPath (the
+// display-side counterpart of expandCreateCWD's ~-expansion, task 011.7),
+// the selected choice for an enum, an entry count for list-of-strings, and
+// the honest "unavailable this phase" for [notify]'s KindLink entry rather
+// than a value it does not have. Every kind config.FieldKind names is
+// handled explicitly, including the three (string, path, link other than
+// notify) config.Schema happens not to use today, so a future schema
+// addition of one of those kinds renders correctly on day one.
+func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
+	switch f.Kind {
+	case config.KindToggle:
+		if settingsToggleValue(f, cfg) {
+			return "On"
+		}
+		return "Off"
+	case config.KindInteger:
+		v := settingsIntegerValue(f, cfg)
+		text := strconv.Itoa(v)
+		if f.Unit != "" {
+			text += " " + f.Unit
+		}
+		if bounds := settingsIntegerBoundsText(f); bounds != "" {
+			text += " (" + bounds + ")"
+		}
+		return text
+	case config.KindEnum:
+		v := settingsEnumValue(f, cfg)
+		if v == "" {
+			return "(default)"
+		}
+		return v
+	case config.KindString:
+		return settingsStringValue(f, cfg)
+	case config.KindPath:
+		return settingsCollapseTilde(settingsStringValue(f, cfg))
+	case config.KindListOfStrings:
+		return settingsListValueDisplay(f, cfg)
+	case config.KindLink:
+		if f.Section == "notify" {
+			return "unavailable this phase"
+		}
+		return "opens its own dialog"
+	default:
+		return fmt.Sprintf("%v", f.Default)
+	}
+}
+
+// settingsIntegerBoundsText renders a KindInteger field's declared Bounds
+// as the parenthetical settingsFieldValueDisplay appends, e.g. "1-50" or
+// "min 1" when there is no documented upper bound (Bounds.Max == nil).
+func settingsIntegerBoundsText(f config.Field) string {
+	if f.Kind != config.KindInteger {
+		return ""
+	}
+	if f.IntBounds.Max != nil {
+		return fmt.Sprintf("%d-%d", f.IntBounds.Min, *f.IntBounds.Max)
+	}
+	return fmt.Sprintf("min %d", f.IntBounds.Min)
+}
+
+// settingsStringValue is KindString's get, generic across any future
+// schema field of that kind: config.Schema declares none today, so this
+// only ever falls through to the field's declared Default, but the
+// dispatch shape matches settingsToggleValue/settingsIntegerValue/
+// settingsEnumValue exactly so adding a real KindString field later is one
+// case here, not a new function.
+func settingsStringValue(f config.Field, cfg config.FileConfig) string {
+	_ = cfg // no schema field of KindString exists yet to read out of cfg
+	switch f.FullKey() {
+	default:
+		s, _ := f.Default.(string)
+		return s
+	}
+}
+
+// settingsCollapseTilde is the display-side inverse of tui.go's
+// expandCreateCWD: a path under the current user's home directory renders
+// with that prefix collapsed to `~`, matching how a user who typed `~/...`
+// into a path field would expect to see it read back, rather than the
+// fully-expanded absolute form expandCreateCWD stores. A path outside the
+// home directory, or one os.UserHomeDir cannot resolve, is returned
+// unchanged.
+func settingsCollapseTilde(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if strings.HasPrefix(path, home+string(os.PathSeparator)) {
+		return "~" + path[len(home):]
+	}
+	return path
+}
+
+// settingsListValueDisplay is KindListOfStrings' get. [env] (Key == "") is
+// the one real schema field of this kind: its "list" is really a
+// KEY=VALUE map, so rendering every entry inline would crowd the field
+// list (and leak env values into a screenshot); an entry count is shown
+// instead, matching §11.5's own framing of [env] as "opens" the concept of
+// many entries rather than one flat value (the actual per-entry editor
+// this implies is out of scope for task 015, which owns per-kind display,
+// not a nested table editor -- see settingsFieldDetailLines' description
+// text for the honest statement of what changing it does).
+func settingsListValueDisplay(f config.Field, cfg config.FileConfig) string {
+	if f.FullKey() == "[env]" {
+		n := len(cfg.Env)
+		switch n {
+		case 0:
+			return "0 entries"
+		case 1:
+			return "1 entry"
+		default:
+			return fmt.Sprintf("%d entries", n)
+		}
+	}
+	if list, ok := f.Default.([]string); ok {
+		if len(list) == 0 {
+			return "(empty)"
+		}
+		return strings.Join(list, ", ")
+	}
+	return "(empty)"
+}
+
+// settingsFieldDetailLines renders the currently selected field's kind,
+// scope and description underneath its own row in the field list --
+// §11.5's "each field states what it does and what changes when it
+// changes" plus the scope label requirement, both read verbatim off the
+// schema Field rather than a second, hand-written copy of either. width is
+// the field panel's usable content width; wrapText keeps a long
+// description from being truncated away instead of wrapped across lines.
+func settingsFieldDetailLines(f config.Field, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	lines := []string{fmt.Sprintf("Kind: %s \u00b7 Scope: %s", f.Kind, f.Scope)}
+	lines = append(lines, wrapText(f.Description, width)...)
+	return lines
 }
 
 // settingsSearchResult pairs a schema field matched by a `/` query with the
@@ -308,13 +729,18 @@ func (m Model) settingsView() string {
 	var rightLines []string
 	if m.settingsCategoryIndex >= 0 && m.settingsCategoryIndex < len(categories) {
 		fields := categories[m.settingsCategoryIndex].Fields
-		rightLines = make([]string, len(fields))
+		innerWidth := rightWidth - 4
 		for i, f := range fields {
 			marker := "  "
 			if i == m.settingsFieldIndex {
 				marker = "> "
 			}
-			rightLines[i] = marker + settingsFieldLabel(f)
+			rightLines = append(rightLines, marker+settingsFieldLabel(f)+": "+settingsFieldValueDisplay(f, m.settingsEdits))
+			if i == m.settingsFieldIndex {
+				for _, detail := range settingsFieldDetailLines(f, innerWidth-2) {
+					rightLines = append(rightLines, "    "+detail)
+				}
+			}
 		}
 	}
 	rightLines = fitLines(rightLines, contentRows)
@@ -329,16 +755,18 @@ func (m Model) settingsView() string {
 	return strings.Join(lines, "\n")
 }
 
-// settingsFooterLine states only the one key task 013 actually binds
-// (esc). Naming a key the takeover does not yet act on here would be the
-// same "advertises a key it doesn't grant" defect the §11.4 dialog
-// contract (task 029) forbids for the five dialogs; tasks 014/016 extend
-// this line as navigation, search and save land.
+// settingsFooterLine names every key the takeover currently binds:
+// task 013's esc, task 014's tab/left/right/up-down/`/`, and task 015's
+// enter/space (toggle) and +/- (adjust a bounded integer or cycle an
+// enum) -- never a key bound here but left unnamed, the same "advertises
+// a key it doesn't grant"/"binds a key it doesn't name" defect the §11.4
+// dialog contract (task 029) forbids for the five dialogs. Task 016
+// extends this line again once ctrl+s save lands.
 func (m Model) settingsFooterLine() string {
 	if m.settingsSearchActive {
 		return "type to search - up/down select - enter jump - esc cancel"
 	}
-	return "tab/left/right switch - up/down move - / search - esc close"
+	return "tab/left/right switch - up/down move - enter/+/- edit - / search - esc close"
 }
 
 // settingsSearchViewLines renders the takeover while `/`'s search box is
