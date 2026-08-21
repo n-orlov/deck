@@ -264,18 +264,36 @@ func waitForPrivateSession(ctx context.Context, name string) error {
 	}
 }
 
+// privateSessionDoesNotExist polls has-session to a deadline rather than
+// checking once. tmux's own session teardown (kill-session, remain-on-exit
+// reaping, deck's reconcile loop tearing down an orphan) is asynchronous
+// with whatever action the scenario just took, so a single has-session call
+// races the very teardown it means to observe; a scenario that presses the
+// key which tears the session down and immediately asserts absence can
+// observe tmux's session table before the teardown lands. This mirrors
+// clientScreenStopsContaining's polling shape (features/preview_test.go)
+// rather than widening the fixed 5s command timeout used elsewhere.
 func privateSessionDoesNotExist(ctx context.Context, name string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
 	}
-	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(commandCtx, "tmux", "-L", h.Socket, "has-session", "-t", name).CombinedOutput()
-	if err == nil {
-		return fmt.Errorf("private tmux session %q still exists: %s", name, strings.TrimSpace(string(output)))
+	const wait = 3 * time.Second
+	deadline := time.Now().Add(wait)
+	var lastOutput string
+	for {
+		commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		output, err := exec.CommandContext(commandCtx, "tmux", "-L", h.Socket, "has-session", "-t", name).CombinedOutput()
+		cancel()
+		if err != nil {
+			return nil
+		}
+		lastOutput = strings.TrimSpace(string(output))
+		if time.Now().After(deadline) {
+			return fmt.Errorf("private tmux session %q still existed after waiting %s: %s", name, wait, lastOutput)
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	return nil
 }
 
 func privateSessionExists(ctx context.Context, name string) error {
