@@ -973,6 +973,30 @@ func (m Model) startupBanner(width int) []string {
 	return lines
 }
 
+// themeBanner is requirement 28's fallback notice for the [ui] theme key:
+// theme.Resolve (invoked by config.LoadFrom) computed ThemeReason once, at
+// load time, whenever the configured name could not be resolved -- unknown
+// name, or a user theme file that failed to parse -- and fell back to
+// theme.Default(). The very first painted frame must say so; it must never
+// silently render the default as though the requested theme had applied
+// (this is the theme system's own version of a fabricated status). Since
+// ThemeReason cannot change for the lifetime of one config load, this
+// banner is simply always present once set -- there is no later frame at
+// which showing it would stop being honest -- which trivially satisfies
+// "on first paint" without needing a one-shot flag threaded through Update.
+// It returns no lines at all when ThemeReason is "" (nothing was
+// configured, or the configured name resolved cleanly), so it costs
+// nothing in the common case, matching startupBanner's own convention.
+func (m Model) themeBanner(width int) []string {
+	if m.settings.ThemeReason == "" {
+		return nil
+	}
+	var lines []string
+	lines = append(lines, wrapText(m.settings.ThemeReason, width)...)
+	lines = append(lines, "")
+	return lines
+}
+
 // attachErrorLines is requirement 37's wrapped attachError line set, shared
 // between computeLayout's reservation and mainView's actual render so the
 // two never disagree about how many rows the message costs. It returns no
@@ -1011,7 +1035,7 @@ func (m Model) resumeNoteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -1063,6 +1087,7 @@ func (m Model) mainView() string {
 	width, _ := m.frameSize()
 	layout := m.computeLayout()
 	lines := m.startupBanner(width)
+	lines = append(lines, m.themeBanner(width)...)
 	if layout.Effective == LayoutStacked {
 		lines = append(lines, m.renderStackedFrame(layout)...)
 	} else {
