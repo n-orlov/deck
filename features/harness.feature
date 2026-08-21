@@ -53,6 +53,31 @@ Feature: Godog harness wiring
     And deck client "solo" frame height is 20
     And deck client "solo" exits cleanly
 
+  @requirement-6-frame-budget
+  Scenario Outline: a real deck client's frame fits its own terminal at several sizes
+    Given deck client "budget-<cols>x<rows>" is started with terminal size <cols>x<rows>
+    Then deck client "budget-<cols>x<rows>" frame fits within <cols> columns and <rows> rows
+    And deck client "budget-<cols>x<rows>" exits cleanly
+
+    Examples:
+      | cols | rows |
+      | 100  | 30   |
+      | 80   | 24   |
+      | 60   | 20   |
+
+  @requirement-6-frame-budget
+  Scenario: the frame-budget check is discriminating, not a check that always passes
+    Given deck client "tight" is started with terminal size 100x30
+    Then deck client "tight" frame does not fit within 5 columns and 1 row
+    And deck client "tight" exits cleanly
+
+  @requirement-6-frame-budget
+  Scenario: a bare emulator's overflow by height or by width fails the frame-budget check
+    Given a fresh terminal emulator sized 20x10
+    When the emulator receives "[4;1Hfour"
+    Then the emulator frame does not fit within 20 columns and 2 rows
+    And the emulator frame fits within 20 columns and 4 rows
+
   @requirement-2-mouse-synthesis
   Scenario: SGR mouse reports are synthesized for click, double-click, wheel and drag
     Given deck client "solo" is started
