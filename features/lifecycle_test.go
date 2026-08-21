@@ -66,6 +66,14 @@ type ScenarioHarness struct {
 	windowGeometrySnapshots map[string]string
 	sizeLogSnapshots        map[string]string
 
+	// statusRowSnapshots backs features/attention_sort.feature's `space`
+	// non-vacuity check (requirements 31/32, task 026): a step captures
+	// every session row's status-related columns under a label, and a
+	// later step asserts the current values are byte-identical to it,
+	// proving repeated `space` presses never write to the sessions table
+	// (only m.selected moves).
+	statusRowSnapshots map[string]string
+
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
 	tmuxProbe  func() bool

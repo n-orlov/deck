@@ -87,7 +87,17 @@ func sendClientKeys(ctx context.Context, name, keys string) error {
 	if err != nil {
 		return err
 	}
-	return client.Send(keys)
+	if err := client.Send(keys); err != nil {
+		return err
+	}
+	// A pty write burst of the same raw key deck's input loop processes back
+	// to back can coalesce/drop all but the first byte (the pacing gotcha
+	// this package already documents), most visibly when a scenario cycles
+	// `|` repeatedly through every layout mode; a short pause after every
+	// send lets this step's keystroke land before the next one is written,
+	// matching the pacing every other repeated-keystroke step already needs.
+	time.Sleep(25 * time.Millisecond)
+	return nil
 }
 
 func clientScreenContains(ctx context.Context, name, want string) error {
