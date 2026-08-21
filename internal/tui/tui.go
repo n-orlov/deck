@@ -71,6 +71,21 @@ type Model struct {
 	// auto/35 respectively.
 	layoutMode   string
 	sidebarWidth int
+	// preCollapseLayoutMode and layoutCycleActive track requirement 33's
+	// "click the collapsed strip -> restores the previous non-collapsed
+	// mode": preCollapseLayoutMode is the pin the user actually had in
+	// force before they started the *current* `|` excursion (not merely
+	// the mode one hop back -- side-by-side -> stacked -> collapsed still
+	// remembers side-by-side, the mode the excursion began from, not the
+	// stacked stop it passed through on the way). layoutCycleActive is
+	// true for as long as that excursion is still under way (it clears
+	// once `|` wraps back to auto, or the strip is clicked, so the next
+	// press anchors fresh from wherever the pin then stands). Both are
+	// only read/written by cycleLayoutMode and restoreFromCollapsedStrip
+	// -- unset (""/false) means "nothing recorded yet, restore to auto",
+	// the same default every other unset pin uses.
+	preCollapseLayoutMode string
+	layoutCycleActive     bool
 	// previewCapture is the read-only preview capture engine (SPEC
 	// requirements 21, 22): given the selected row's slug, it returns
 	// exactly one tmux.PreviewCapture per call, never attaching a client,
@@ -742,11 +757,48 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
 }
 
-// cycleLayoutMode is the shared `|` path (SPEC §11.2/§11.8): both the key
-// and a click on the collapsed strip advance the same pin through the same
-// nextLayoutMode cycle and persist it the same way.
+// cycleLayoutMode is `|`'s own path (SPEC §11.2/§11.8 requirement 9): auto
+// -> side-by-side -> stacked -> collapsed -> auto. The collapsed strip's
+// click does *not* call this any more (see restoreFromCollapsedStrip) --
+// requirement 33 names its own, different behaviour. The first press of a
+// fresh excursion (layoutCycleActive false) anchors preCollapseLayoutMode
+// to the mode it is leaving and marks the excursion active; every
+// subsequent press in the same excursion leaves that anchor untouched, so
+// a run of presses that passes through an intermediate mode on its way to
+// collapsed still remembers the mode the run started from, not the stop it
+// passed through. Wrapping back to auto ends the excursion so the next
+// press anchors fresh.
 func (m Model) cycleLayoutMode() (tea.Model, tea.Cmd) {
-	m.layoutMode = nextLayoutMode(m.layoutMode)
+	next := nextLayoutMode(m.layoutMode)
+	if !m.layoutCycleActive {
+		m.preCollapseLayoutMode = m.layoutMode
+		m.layoutCycleActive = true
+	}
+	if next == LayoutAuto {
+		m.layoutCycleActive = false
+	}
+	m.layoutMode = next
+	return m, m.persistLayoutMode()
+}
+
+// restoreFromCollapsedStrip is the collapsed strip's own click path (SPEC
+// §11.8 requirement 33: "click the collapsed strip -> restores the
+// previous non-collapsed mode"), deliberately not cycleLayoutMode's `|`
+// cycle: from collapsed, `|` always advances to auto, but the strip must
+// return to whatever was pinned before the current `|` excursion began.
+// No such mode was ever recorded (e.g. collapsed was reached by directly
+// setting the pin rather than via `|`) falls back to auto, the same
+// default every other unset pin uses. The restore itself ends the
+// excursion, same as wrapping to auto would, so the next `|` press anchors
+// fresh from the restored mode.
+func (m Model) restoreFromCollapsedStrip() (tea.Model, tea.Cmd) {
+	mode := m.preCollapseLayoutMode
+	if mode == "" {
+		mode = LayoutAuto
+	}
+	m.layoutMode = mode
+	m.preCollapseLayoutMode = ""
+	m.layoutCycleActive = false
 	return m, m.persistLayoutMode()
 }
 
