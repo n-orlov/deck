@@ -75,9 +75,11 @@ Feature: Godog harness wiring
       | claude | fitting.txt |
       | claude | oversized.txt |
       | claude | wide.txt    |
+      | claude | coloured.txt |
       | pi     | fitting.txt |
       | pi     | oversized.txt |
       | pi     | wide.txt    |
+      | pi     | coloured.txt |
 
   @requirement-7-sidebar-width
   Scenario: sidebar_width can be set and read back for a scenario

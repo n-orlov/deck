@@ -1,0 +1,5 @@
+PREVIEW FIXTURE: coloured
+[31mrow 1 of 4 RED..............[0m
+[32mrow 2 of 4 GREEN............[0m
+[36m界界界界界[0m COLOURED WIDE
+row 4 of 4 plain.................
