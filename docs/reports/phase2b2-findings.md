@@ -573,3 +573,80 @@ variants above at the very first painted frame, proves the banner is
 absent when `ThemeReason == ""` (the theme resolved cleanly), and proves
 the reserved-row budget holds at {80x24, 70x24, 60x20, 100x30, 120x24}.
 `ci/run.sh go test ./internal/tui/...` passes.
+
+## Task 025 — `t` theme picker: live preview, esc revert, empty-list behaviour (requirement 27)
+
+**Shape chosen: no new full-screen view.** Every other overlay in
+`internal/tui` (`m.creating`, `m.settingsOpen`, `m.profileSwitching`,
+`m.pinning`, `m.help`) replaces the *entire* frame with its own
+`View()` branch. Requirement 27 explicitly asks for a preview "live on
+the real list" while moving through the picker's options, which a
+full-screen replacement cannot show at the same time as the sidebar.
+So the picker (`internal/tui/theme_picker.go`) does not get its own
+`View()` branch at all: `mainView` keeps rendering throughout, and
+`Model.activeTheme()` — the one function every coloured render already
+goes through — answers with whatever `m.themePickerValue` currently
+resolves to while `m.themePicking` is true, falling through to
+`m.settings.Theme` otherwise. The picker's own list/keys render as a
+small banner (`themePickerLines`), reserved in `computeLayout` and
+appended in `mainView` exactly the way `themeBanner`/`attachErrorLines`
+already are, rather than a bordered `framedDialog` that would hide the
+list. This is why the revert is structural rather than a separately
+maintained undo: `esc` only clears `m.themePicking`/`m.themePickerValue`
+and never touches `m.settings`, so the very next render already
+produces exactly the frame it would have without the picker ever having
+opened — proven byte-for-byte in
+`TestThemePickerEscRevertsByteForByte`.
+
+**Keys named on screen, and only those are load-bearing:**
+left/right/up/down/space cycle the highlighted theme, `Enter` selects,
+`Esc` reverts. The picker is deliberately *not* one of the five dialogs
+task 029 retrofits onto the shared §11.4 contract (029's success
+criteria names `createView`/`detailView`/`profileSwitchView`/`pinView`/
+`helpView` only) — its own `updateThemePicker` mirrors the identical
+single-value-cycle shape `updateProfileSwitch`/`updatePinDialog` already
+use, so it still *reads* like the rest of the package even though it is
+wired independently.
+
+**Enter persists, not just previews.** §11.6 says `[ui] theme` is
+"editable in settings and from the `t` picker" — read as: selecting a
+theme in the picker is a real edit, not a session-only preview that
+reverts on restart. `themePickerConfirm` writes the choice through the
+exact same `config.WriteConfigFile` atomic-writer path
+`settingsSave` (task 016) uses, seeded from
+`settingsEditsFromSettings(m.settings)` with only `Theme` overridden, so
+`t` and `,` can never disagree about how `[ui] theme` lands in
+`config.toml`, and a failed write (e.g. an unwritable config directory)
+surfaces in `themePickerNote` rather than silently losing the edit —
+though since the picker closes on both success and failure paths that
+close it, the note is currently cosmetic only in the one call where it's
+set (a config write failure); a future task wanting the note to survive
+long enough to be read should keep the picker open on that path instead.
+
+**Empty/degenerate list, defined:** `theme.Builtins()` is embedded and
+panics at package `init()` if it were ever empty (task 008's own
+registry guarantee), so the literal "no themes at all" branch
+(`themePickerLines`' "no themes available" text) is defensive,
+unreachable code in this build — there is no way to construct a real
+`Model` in which it fires. The *practically reachable* degenerate case
+is a highlighted name that no longer resolves to any theme at all (a
+discovered user theme file deleted, or its name changed, out from under
+an already-open picker): `themePickerCandidateTheme` returns `nil` for
+that name, `activeTheme` falls back to exactly what it would have
+rendered had the picker never opened (no stale colour, no panic), and
+`enter` on it simply closes the picker without touching
+`m.settings.Theme` or `config.toml` at all — proven by
+`TestThemePickerDegenerateCandidateLeavesActiveThemeUnchanged`.
+
+**Verification:** `internal/tui/theme_picker_test.go` — `t` opens the
+picker listing both a built-in and a discovered user theme
+(`settingsThemeOptions`, the same resolver task 015's settings takeover
+already uses, never a second hand-written theme list); cycling changes
+`activeTheme()` without touching `m.settings.Theme` (the live-preview
+proof); `esc` reverts `View()` byte-for-byte; `enter` applies the choice
+to `m.settings.Theme` AND writes it into `config.toml`; the picker's own
+banner names exactly `Enter`/`Esc` as load-bearing; a mouse click while
+the picker is open changes nothing (§11.4/§11.8); and the degenerate
+unresolvable-candidate case above. `ci/run.sh go test ./internal/tui/...`
+and `ci/run.sh go test ./...` (including the full `features` suite) both
+pass.
