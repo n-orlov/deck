@@ -88,15 +88,161 @@ func settingsFieldLabel(f config.Field) string {
 	return strings.Join(words, " ")
 }
 
-// updateSettings handles key input while the takeover is open. Task 013
-// only wires the takeover's own on/off switch (esc closes, mirroring every
-// other overlay's esc-closes default before task 016 adds the discard
-// prompt for unsaved changes); every other key is a no-op until task 014
-// adds navigation and search.
+// settingsFocus values name which of the takeover's two lists currently
+// receives up/down navigation. SPEC §11.5: "tab/left/right switch between
+// the category list and the field list, up/down move within the focused
+// list."
+const (
+	settingsFocusCategories = 0
+	settingsFocusFields     = 1
+)
+
+// updateSettings handles key input while the takeover is open. Task 016
+// still owns ctrl+s (save) and turning esc-with-no-changes into a discard
+// prompt; this task (014) owns tab/left/right focus switching, up/down
+// list movement (wrapping, like every other cycled selection in this
+// package -- see cycleOption/updateCreate's tab handling) and `/`'s fuzzy
+// search over every field's label AND description.
 func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if m.settingsSearchActive {
+		return m.updateSettingsSearch(msg)
+	}
 	switch msg.String() {
 	case "esc":
 		m.settingsOpen = false
+	case "tab", "left", "right":
+		if m.settingsFocus == settingsFocusCategories {
+			m.settingsFocus = settingsFocusFields
+		} else {
+			m.settingsFocus = settingsFocusCategories
+		}
+	case "up", "k":
+		m.settingsMove(-1)
+	case "down", "j":
+		m.settingsMove(1)
+	case "/":
+		m.settingsSearchActive = true
+		m.settingsSearchQuery = ""
+		m.settingsSearchIndex = 0
+	}
+	return m, nil
+}
+
+// settingsMove moves the currently focused list's selection by delta,
+// wrapping like every other cycled selection in this package. Moving the
+// category list resets the field index to 0, since a category swap always
+// starts the field list over at its own top (mirroring settingsView's own
+// "open on category 0's first field" default).
+func (m *Model) settingsMove(delta int) {
+	categories := settingsCategories()
+	if len(categories) == 0 {
+		return
+	}
+	switch m.settingsFocus {
+	case settingsFocusCategories:
+		n := len(categories)
+		m.settingsCategoryIndex = (m.settingsCategoryIndex + delta + n) % n
+		m.settingsFieldIndex = 0
+	case settingsFocusFields:
+		if m.settingsCategoryIndex < 0 || m.settingsCategoryIndex >= len(categories) {
+			return
+		}
+		fields := categories[m.settingsCategoryIndex].Fields
+		if len(fields) == 0 {
+			return
+		}
+		n := len(fields)
+		m.settingsFieldIndex = (m.settingsFieldIndex + delta + n) % n
+	}
+}
+
+// settingsSearchResult pairs a schema field matched by a `/` query with the
+// category/field indices selecting it (enter, task 014) or rendering it
+// (task 015) lands on.
+type settingsSearchResult struct {
+	CategoryIndex int
+	FieldIndex    int
+	Field         config.Field
+}
+
+// settingsFuzzyMatch is the small "fuzzy" §11.5's field search needs: every
+// whitespace-separated token of query must appear as a case-insensitive
+// substring of target, in any order. A query of "" matches everything (the
+// search box starts empty and shows every field until the user types).
+func settingsFuzzyMatch(query, target string) bool {
+	target = strings.ToLower(target)
+	for _, tok := range strings.Fields(strings.ToLower(query)) {
+		if !strings.Contains(target, tok) {
+			return false
+		}
+	}
+	return true
+}
+
+// settingsSearchMatches searches every schema field's label AND
+// description (§11.5: "/ ... searches every field by label and
+// description") and returns matches in schema order, each carrying the
+// category/field indices that select it.
+func settingsSearchMatches(query string) []settingsSearchResult {
+	var results []settingsSearchResult
+	for ci, cat := range settingsCategories() {
+		for fi, f := range cat.Fields {
+			label := settingsFieldLabel(f)
+			if settingsFuzzyMatch(query, label) || settingsFuzzyMatch(query, f.Description) {
+				results = append(results, settingsSearchResult{CategoryIndex: ci, FieldIndex: fi, Field: f})
+			}
+		}
+	}
+	return results
+}
+
+// updateSettingsSearch handles key input while the `/` search box is
+// active: typed runes extend the query, backspace shortens it, up/down
+// move among the current matches, enter jumps the two lists to the
+// highlighted match and leaves search mode with focus on the field list,
+// and esc leaves search mode (clearing the query) without moving the
+// selection -- mirroring the closing-without-saving shape task 016 will
+// give the takeover as a whole, but scoped to just the search box.
+func (m Model) updateSettingsSearch(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.settingsSearchActive = false
+		m.settingsSearchQuery = ""
+		m.settingsSearchIndex = 0
+		return m, nil
+	case "enter":
+		results := settingsSearchMatches(m.settingsSearchQuery)
+		if m.settingsSearchIndex >= 0 && m.settingsSearchIndex < len(results) {
+			match := results[m.settingsSearchIndex]
+			m.settingsCategoryIndex = match.CategoryIndex
+			m.settingsFieldIndex = match.FieldIndex
+			m.settingsFocus = settingsFocusFields
+		}
+		m.settingsSearchActive = false
+		m.settingsSearchQuery = ""
+		m.settingsSearchIndex = 0
+		return m, nil
+	case "backspace", "ctrl+h":
+		if q := m.settingsSearchQuery; q != "" {
+			r := []rune(q)
+			m.settingsSearchQuery = string(r[:len(r)-1])
+		}
+		m.settingsSearchIndex = 0
+		return m, nil
+	case "up", "ctrl+p":
+		if n := len(settingsSearchMatches(m.settingsSearchQuery)); n > 0 {
+			m.settingsSearchIndex = (m.settingsSearchIndex - 1 + n) % n
+		}
+		return m, nil
+	case "down", "ctrl+n":
+		if n := len(settingsSearchMatches(m.settingsSearchQuery)); n > 0 {
+			m.settingsSearchIndex = (m.settingsSearchIndex + 1) % n
+		}
+		return m, nil
+	}
+	if runes := msg.Runes; len(runes) > 0 {
+		m.settingsSearchQuery += string(runes)
+		m.settingsSearchIndex = 0
 	}
 	return m, nil
 }
@@ -144,6 +290,11 @@ func (m Model) settingsView() string {
 	}
 
 	categories := settingsCategories()
+
+	if m.settingsSearchActive {
+		return m.settingsSearchViewLines(categories, leftWidth, rightWidth, contentRows, height)
+	}
+
 	leftLines := make([]string, len(categories))
 	for i, cat := range categories {
 		marker := "  "
@@ -184,5 +335,45 @@ func (m Model) settingsView() string {
 // contract (task 029) forbids for the five dialogs; tasks 014/016 extend
 // this line as navigation, search and save land.
 func (m Model) settingsFooterLine() string {
-	return "esc close"
+	if m.settingsSearchActive {
+		return "type to search - up/down select - enter jump - esc cancel"
+	}
+	return "tab/left/right switch - up/down move - / search - esc close"
+}
+
+// settingsSearchViewLines renders the takeover while `/`'s search box is
+// active: the left panel keeps showing the category list unchanged (search
+// spans every category, so no single category is "selected" while
+// searching), and the right panel's title carries the typed query and its
+// content becomes the flat, cross-category list settingsSearchMatches
+// returns, each row prefixed with its own category name so a match from a
+// category other than the one open before `/` was pressed is not mistaken
+// for one of the still-shown left panel's category.
+func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
+	leftLines := make([]string, len(categories))
+	for i, cat := range categories {
+		leftLines[i] = "  " + cat.Name
+	}
+	leftLines = fitLines(leftLines, contentRows)
+
+	results := settingsSearchMatches(m.settingsSearchQuery)
+	rightLines := make([]string, len(results))
+	for i, r := range results {
+		marker := "  "
+		if i == m.settingsSearchIndex {
+			marker = "> "
+		}
+		rightLines[i] = marker + categories[r.CategoryIndex].Name + ": " + settingsFieldLabel(r.Field)
+	}
+	rightLines = fitLines(rightLines, contentRows)
+
+	title := "Search: " + m.settingsSearchQuery
+	lines := make([]string, 0, height)
+	lines = append(lines, m.sidebarTopLine(leftWidth, "Categories")+m.previewTopLine(rightWidth, title, true))
+	for i := 0; i < contentRows; i++ {
+		lines = append(lines, m.sidebarContentLine(leftWidth, leftLines[i])+m.previewContentLine(rightWidth, rightLines[i]))
+	}
+	lines = append(lines, m.sidebarBottomLine(leftWidth)+m.previewBottomLine(rightWidth, true))
+	lines = append(lines, m.settingsFooterLine())
+	return strings.Join(lines, "\n")
 }

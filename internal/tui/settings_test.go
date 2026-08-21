@@ -155,3 +155,202 @@ func TestSettingsViewFitsFrameBudget(t *testing.T) {
 		}
 	}
 }
+
+// TestSettingsNavTabAndLeftRightSwitchFocus proves §11.5's "tab/left/right
+// switch between the category list and the field list": starting focused
+// on categories, each of tab/left/right moves focus to fields and, pressed
+// again, back to categories.
+func TestSettingsNavTabAndLeftRightSwitchFocus(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.settingsOpen = true
+	if model.settingsFocus != settingsFocusCategories {
+		t.Fatalf("settings opened with focus %d, want settingsFocusCategories", model.settingsFocus)
+	}
+
+	for _, k := range []string{"tab", "left", "right"} {
+		m := model
+		updated, _ := m.Update(key(k))
+		m = updated.(Model)
+		if m.settingsFocus != settingsFocusFields {
+			t.Errorf("%s from categories focus = %d, want settingsFocusFields", k, m.settingsFocus)
+		}
+		updated, _ = m.Update(key(k))
+		m = updated.(Model)
+		if m.settingsFocus != settingsFocusCategories {
+			t.Errorf("%s twice returned focus %d, want settingsFocusCategories", k, m.settingsFocus)
+		}
+	}
+}
+
+// TestSettingsNavUpDownMovesFocusedListAndWraps proves §11.5's "up/down
+// move within the focused list": while categories has focus, up/down walk
+// the category list and wrap at both ends (matching every other cycled
+// selection in this package); switching focus to fields and moving there
+// proves the two lists are independently addressable, not one shared
+// index.
+func TestSettingsNavUpDownMovesFocusedListAndWraps(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.settingsOpen = true
+	categories := settingsCategories()
+	if len(categories) < 2 {
+		t.Fatal("need at least two categories to prove wrap-around")
+	}
+
+	// Up from category 0 wraps to the last category.
+	updated, _ := model.Update(key("up"))
+	m := updated.(Model)
+	if m.settingsCategoryIndex != len(categories)-1 {
+		t.Fatalf("up from category 0 = %d, want %d (wrap to last)", m.settingsCategoryIndex, len(categories)-1)
+	}
+	// Down from the last category wraps back to 0.
+	updated, _ = m.Update(key("down"))
+	m = updated.(Model)
+	if m.settingsCategoryIndex != 0 {
+		t.Fatalf("down from last category = %d, want 0 (wrap to first)", m.settingsCategoryIndex)
+	}
+
+	// Switch focus to fields and move within the first category's own
+	// field list; General has at least two fields (allow_yolo,
+	// stale_after, capture_min_interval), so down from field 0 must land
+	// on field 1 without disturbing settingsCategoryIndex.
+	fields := categories[0].Fields
+	if len(fields) < 2 {
+		t.Fatal("first category needs at least two fields to prove within-list movement")
+	}
+	updated, _ = m.Update(key("tab"))
+	m = updated.(Model)
+	updated, _ = m.Update(key("down"))
+	m = updated.(Model)
+	if m.settingsCategoryIndex != 0 {
+		t.Fatalf("moving the field list changed settingsCategoryIndex to %d", m.settingsCategoryIndex)
+	}
+	if m.settingsFieldIndex != 1 {
+		t.Fatalf("down within fields = %d, want 1", m.settingsFieldIndex)
+	}
+}
+
+// TestSettingsSearchMatchesByDescriptionAlone proves §11.5's "/ ...
+// searches every field by label AND description": stale_after's label
+// ("Stale After") does not contain "verdict", but its description does
+// ("a hook-derived status verdict may reach"), so a search for "verdict"
+// must still surface it — a search that only ever consulted the label
+// would miss this even though the code would still compile and other
+// tests would still pass.
+func TestSettingsSearchMatchesByDescriptionAlone(t *testing.T) {
+	var staleAfter config.Field
+	found := false
+	for _, f := range config.Schema {
+		if f.FullKey() == "stale_after" {
+			staleAfter = f
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("schema has no stale_after field")
+	}
+	if strings.Contains(strings.ToLower(settingsFieldLabel(staleAfter)), "verdict") {
+		t.Fatal(`test's premise broke: stale_after's label now contains "verdict"`)
+	}
+
+	results := settingsSearchMatches("verdict")
+	if len(results) == 0 {
+		t.Fatal(`settingsSearchMatches("verdict") found nothing; description search is not working`)
+	}
+	gotStaleAfter := false
+	for _, r := range results {
+		if r.Field.FullKey() == "stale_after" {
+			gotStaleAfter = true
+		} else {
+			t.Errorf(`settingsSearchMatches("verdict") unexpectedly also matched %s`, r.Field.FullKey())
+		}
+	}
+	if !gotStaleAfter {
+		t.Fatal(`settingsSearchMatches("verdict") did not include stale_after`)
+	}
+}
+
+// TestSettingsSearchKeyEntersSearchModeAndEnterJumps drives the search box
+// end to end through Model.Update: `/` enters search mode, typed runes
+// build the query, enter on the (single) match jumps
+// settingsCategoryIndex/settingsFieldIndex to it and switches focus to the
+// field list, leaving search mode.
+func TestSettingsSearchKeyEntersSearchModeAndEnterJumps(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.settingsOpen = true
+
+	updated, _ := model.Update(key("/"))
+	m := updated.(Model)
+	if !m.settingsSearchActive {
+		t.Fatal("/ did not enter search mode")
+	}
+
+	updated, _ = m.Update(key("verdict"))
+	m = updated.(Model)
+	if m.settingsSearchQuery != "verdict" {
+		t.Fatalf("settingsSearchQuery = %q, want %q", m.settingsSearchQuery, "verdict")
+	}
+
+	results := settingsSearchMatches(m.settingsSearchQuery)
+	if len(results) != 1 || results[0].Field.FullKey() != "stale_after" {
+		t.Fatalf("unexpected search results for %q: %+v", m.settingsSearchQuery, results)
+	}
+
+	updated, _ = m.Update(key("enter"))
+	m = updated.(Model)
+	if m.settingsSearchActive {
+		t.Fatal("enter did not leave search mode")
+	}
+	if m.settingsFocus != settingsFocusFields {
+		t.Fatalf("enter left focus at %d, want settingsFocusFields", m.settingsFocus)
+	}
+	categories := settingsCategories()
+	gotField := categories[m.settingsCategoryIndex].Fields[m.settingsFieldIndex]
+	if gotField.FullKey() != "stale_after" {
+		t.Fatalf("enter jumped to %s, want stale_after", gotField.FullKey())
+	}
+}
+
+// TestSettingsSearchEscCancelsWithoutMovingSelection proves esc while
+// searching only leaves search mode (clearing the query) and never moves
+// settingsCategoryIndex/settingsFieldIndex — unlike enter, it must not
+// jump anywhere, and it must not close the whole takeover either.
+func TestSettingsSearchEscCancelsWithoutMovingSelection(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.settingsOpen = true
+	updated, _ := model.Update(key("/"))
+	m := updated.(Model)
+	updated, _ = m.Update(key("v"))
+	m = updated.(Model)
+
+	updated, _ = m.Update(key("esc"))
+	m = updated.(Model)
+	if m.settingsSearchActive {
+		t.Fatal("esc did not leave search mode")
+	}
+	if m.settingsSearchQuery != "" {
+		t.Fatalf("esc left settingsSearchQuery = %q, want empty", m.settingsSearchQuery)
+	}
+	if m.settingsCategoryIndex != 0 || m.settingsFieldIndex != 0 {
+		t.Fatalf("esc from search moved selection to category=%d field=%d", m.settingsCategoryIndex, m.settingsFieldIndex)
+	}
+	if !m.settingsOpen {
+		t.Fatal("esc from search closed the whole takeover, not just search mode")
+	}
+}
+
+// TestSettingsSearchBackspaceShortensQuery proves backspace removes one
+// rune from the typed query rather than clearing it outright or being a
+// no-op.
+func TestSettingsSearchBackspaceShortensQuery(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.settingsOpen = true
+	updated, _ := model.Update(key("/"))
+	m := updated.(Model)
+	updated, _ = m.Update(key("thm"))
+	m = updated.(Model)
+	updated, _ = m.Update(key("backspace"))
+	m = updated.(Model)
+	if m.settingsSearchQuery != "th" {
+		t.Fatalf("settingsSearchQuery after backspace = %q, want %q", m.settingsSearchQuery, "th")
+	}
+}

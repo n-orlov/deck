@@ -78,9 +78,25 @@ type Model struct {
 	// holds, never hand-picks what to render.
 	settingsCategoryIndex int
 	settingsFieldIndex    int
-	width                 int
-	height                int
-	agents                *agent.Registry
+	// settingsFocus is task 014's tab/left/right target: settingsFocus
+	// Categories while the category list drives up/down, settingsFocus
+	// Fields once tab/left/right has moved it to the field list — see
+	// SPEC §11.5: "tab/left/right switch between the category list and the
+	// field list, up/down move within the focused list."
+	settingsFocus int
+	// settingsSearchActive/settingsSearchQuery/settingsSearchIndex are
+	// task 014's `/` fuzzy search: settingsSearchActive is true while the
+	// query is being typed and results browsed, settingsSearchQuery holds
+	// the typed text, settingsSearchIndex selects among the matches
+	// settingsSearchMatches(settingsSearchQuery) returns (in schema order,
+	// searched across every category, per §11.5's "search every field by
+	// label and description").
+	settingsSearchActive bool
+	settingsSearchQuery  string
+	settingsSearchIndex  int
+	width                int
+	height               int
+	agents               *agent.Registry
 	// layoutMode and sidebarWidth are the §11.2 layout pin and the
 	// persisted sidebar width, both persisted to state.db's ui_state table
 	// by persistLayoutMode/persistSidebarWidth (task 016). "" and 0 both
@@ -603,6 +619,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsOpen = true
 				m.settingsCategoryIndex = 0
 				m.settingsFieldIndex = 0
+				m.settingsFocus = settingsFocusCategories
+				m.settingsSearchActive = false
+				m.settingsSearchQuery = ""
+				m.settingsSearchIndex = 0
 			}
 		case "n":
 			if !m.help {
