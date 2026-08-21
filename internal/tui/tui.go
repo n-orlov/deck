@@ -104,9 +104,31 @@ type Model struct {
 	// restart-to-apply genuinely cannot affect an already-running pane
 	// through this path alone.
 	settingsEdits config.FileConfig
-	width         int
-	height        int
-	agents        *agent.Registry
+	// settingsSavedEdits is task 016's "what is actually on disk right
+	// now" snapshot: seeded from the same settingsEditsFromSettings call
+	// that seeds settingsEdits when `,` opens, and replaced with a copy of
+	// settingsEdits only after a successful config.WriteConfigFile. esc
+	// compares settingsEdits against THIS, not against m.settings itself
+	// (m.settings is only ever refreshed by a restart -- see field kind's
+	// own "restart-to-apply" scope, req 19 -- so it would still disagree
+	// with settingsEdits right after a save that changed nothing else,
+	// wrongly re-prompting to discard a change that is already safely on
+	// disk).
+	settingsSavedEdits config.FileConfig
+	// settingsDiscardConfirm is true while esc's "you have unsaved
+	// changes" prompt (SPEC requirement 14/20) is showing: y/enter
+	// discards (closes the takeover, leaving config.toml exactly as
+	// settingsSavedEdits already has it -- never written to), n/esc
+	// dismisses the prompt and returns to editing.
+	settingsDiscardConfirm bool
+	// settingsNote surfaces ctrl+s's outcome (task 012's atomic writer can
+	// fail -- e.g. an unwritable config directory -- and that failure must
+	// be visible, not swallowed) and the discard prompt's own text.
+	// Mirrors profileSwitchNote/pinNote's existing shape in this package.
+	settingsNote string
+	width        int
+	height       int
+	agents       *agent.Registry
 	// layoutMode and sidebarWidth are the §11.2 layout pin and the
 	// persisted sidebar width, both persisted to state.db's ui_state table
 	// by persistLayoutMode/persistSidebarWidth (task 016). "" and 0 both
@@ -634,6 +656,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsSearchQuery = ""
 				m.settingsSearchIndex = 0
 				m.settingsEdits = settingsEditsFromSettings(m.settings)
+				m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
+				m.settingsDiscardConfirm = false
+				m.settingsNote = ""
 			}
 		case "n":
 			if !m.help {
