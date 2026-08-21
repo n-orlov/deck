@@ -190,23 +190,76 @@ func TestClickGroupHeaderTogglesOnlyThatGroup(t *testing.T) {
 	}
 }
 
-// TestClickCollapsedStripCyclesLayoutModeLikePipeKey proves "click the
-// collapsed strip restores the previous non-collapsed mode" duplicates `|`
-// exactly (task 028's table: it names the key it duplicates).
-func TestClickCollapsedStripCyclesLayoutModeLikePipeKey(t *testing.T) {
+// TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing proves the
+// review's finding is fixed: SPEC §11.8 requirement 33 says clicking the
+// collapsed strip "restores the previous non-collapsed mode", not `|`'s
+// own collapsed->auto landing spot. The bug: the click used to call
+// cycleLayoutMode() directly, so it landed on auto every time regardless of
+// what was pinned before collapsing.
+func TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing(t *testing.T) {
+	cases := []struct {
+		name string
+		pre  string
+		want string
+	}{
+		{"side-by-side", LayoutSideBySide, LayoutSideBySide},
+		{"stacked", LayoutStacked, LayoutStacked},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mouseTestModel([]store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}})
+			m.width, m.height = 100, 30
+			// pins tc.pre, then cycles to collapsed: cycleLayoutMode is the
+			// only path that ever sets layoutMode to collapsed, and it is
+			// the one that must record what it is leaving.
+			m.layoutMode = tc.pre
+			updated, _ := m.cycleLayoutMode()
+			for updated.(Model).layoutMode != LayoutCollapsed {
+				updated, _ = updated.(Model).cycleLayoutMode()
+			}
+			m = updated.(Model)
+
+			layout := m.computeLayout()
+			if layout.Effective != LayoutCollapsed {
+				t.Fatalf("test setup: Effective = %q, want collapsed", layout.Effective)
+			}
+
+			clicked, _ := m.Update(press(1, 2))
+			got := clicked.(Model)
+			if got.layoutMode != tc.want {
+				t.Fatalf("layoutMode after collapsed-strip click = %q, want %q (pinned %q before collapsing)", got.layoutMode, tc.want, tc.pre)
+			}
+		})
+	}
+}
+
+// TestClickCollapsedStripDiffersFromPipeKeyFromCollapsed proves the strip's
+// click and `|` genuinely diverge from collapsed: `|` always advances to
+// auto (nextLayoutMode's own documented wraparound), while the strip
+// returns to whatever was pinned immediately before collapsing.
+func TestClickCollapsedStripDiffersFromPipeKeyFromCollapsed(t *testing.T) {
 	m := mouseTestModel([]store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}})
 	m.width, m.height = 100, 30
-	m.layoutMode = LayoutCollapsed
-
-	layout := m.computeLayout()
-	if layout.Effective != LayoutCollapsed {
-		t.Fatalf("test setup: Effective = %q, want collapsed", layout.Effective)
+	m.layoutMode = LayoutStacked
+	updated, _ := m.cycleLayoutMode() // stacked -> collapsed, records "stacked"
+	m = updated.(Model)
+	if m.layoutMode != LayoutCollapsed {
+		t.Fatalf("test setup: layoutMode = %q, want collapsed", m.layoutMode)
 	}
 
-	updated, _ := m.Update(press(1, 2))
-	got := updated.(Model)
-	if got.layoutMode != nextLayoutMode(LayoutCollapsed) {
-		t.Fatalf("layoutMode after collapsed-strip click = %q, want %q", got.layoutMode, nextLayoutMode(LayoutCollapsed))
+	clicked, _ := m.Update(press(1, 2))
+	gotClick := clicked.(Model).layoutMode
+	if gotClick != LayoutStacked {
+		t.Fatalf("layoutMode after collapsed-strip click = %q, want %q", gotClick, LayoutStacked)
+	}
+
+	piped, _ := m.cycleLayoutMode()
+	gotPipe := piped.(Model).layoutMode
+	if gotPipe != LayoutAuto {
+		t.Fatalf("layoutMode after `|` from collapsed = %q, want %q", gotPipe, LayoutAuto)
+	}
+	if gotClick == gotPipe {
+		t.Fatalf("collapsed-strip click and `|` landed on the same mode %q; they must diverge from collapsed", gotClick)
 	}
 }
 

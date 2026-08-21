@@ -219,8 +219,10 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		switch hit.target {
 		case hitTargetCollapsedStrip:
 			// "click the collapsed strip restores the previous
-			// non-collapsed mode" (duplicates `|`).
-			return m.cycleLayoutMode()
+			// non-collapsed mode" (SPEC §11.8 requirement 33) -- not the
+			// same landing spot as `|`, which always advances to auto
+			// from collapsed.
+			return m.restoreFromCollapsedStrip()
 		case hitTargetHeader:
 			// "click a workspace group header toggles collapse"
 			// (duplicates the grouping key, `g`).
