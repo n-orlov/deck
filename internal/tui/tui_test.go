@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -326,6 +327,39 @@ func TestBelowMinimumNoticeIsOnTheFooterOnly(t *testing.T) {
 	}
 	if full := model.View(); strings.Contains(full, "below deck's supported minimum") {
 		t.Fatalf("80x24 view wrongly shows the below-minimum notice:\n%s", full)
+	}
+}
+
+// TestBelowMinimumFrameStaysWithinBudget proves task 010: at a selection of
+// below-minimum sizes, Model.View() never renders more than `height` lines
+// (the below-minimum notice must never wrap the frame off the top of the
+// screen) and every rendered line's visible width is <= `width` (the
+// notice itself is truncated rather than wrapping, since at these widths
+// its own 87 columns would otherwise overflow every one of them).
+func TestBelowMinimumFrameStaysWithinBudget(t *testing.T) {
+	sizes := [][2]int{{70, 20}, {70, 24}, {60, 12}, {79, 40}}
+	for _, size := range sizes {
+		width, height := size[0], size[1]
+		t.Run(fmt.Sprintf("%dx%d", width, height), func(t *testing.T) {
+			model := New(nil, config.Settings{}, "")
+			model.sessions = []store.Session{{Name: "only-session", Agent: "shell", Status: "running"}}
+			model.width, model.height = width, height
+
+			if !model.computeLayout().BelowMinimum {
+				t.Fatalf("test setup: %dx%d must report BelowMinimum", width, height)
+			}
+
+			view := model.View()
+			lines := strings.Split(view, "\n")
+			if len(lines) > height {
+				t.Fatalf("view has %d lines, exceeding height %d:\n%s", len(lines), height, view)
+			}
+			for i, line := range lines {
+				if w := stringWidth(line); w > width {
+					t.Fatalf("line %d has visible width %d, exceeding width %d: %q", i, w, width, line)
+				}
+			}
+		})
 	}
 }
 
