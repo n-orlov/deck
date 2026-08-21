@@ -62,6 +62,34 @@ func quantizeColors(colors map[Token]string) (map[Token]string, error) {
 	return out, nil
 }
 
+// HexRGB parses a "#rrggbb" hex colour string into its three byte
+// components (0-255 each). Exported so a renderer (internal/tui) can turn
+// an authored/quantised colour into an SGR truecolour escape without this
+// package growing a rendering dependency of its own.
+func HexRGB(hex string) (r, g, b int, err error) {
+	return hexRGB(hex)
+}
+
+// ANSI16Code returns the SGR foreground colour code (30-37 for the eight
+// low-intensity slots, 90-97 for the eight high-intensity ones) for hex,
+// provided hex is EXACTLY one of ReferencePalette's 16 entries (i.e. an
+// already-quantised colour, as QuantizedColor always returns) -- the ANSI
+// 16-colour floor rendering path is authorised to say more only about
+// exactly those 16 colours, per SS11.6. ok is false for anything else,
+// including an unquantised authored hex that happens not to collide with
+// the palette.
+func ANSI16Code(hex string) (code int, ok bool) {
+	for i, ref := range ReferencePalette {
+		if ref == hex {
+			if i < 8 {
+				return 30 + i, true
+			}
+			return 90 + (i - 8), true
+		}
+	}
+	return 0, false
+}
+
 // hexRGB parses a "#rrggbb" string into its three byte components.
 func hexRGB(hex string) (r, g, b int, err error) {
 	if len(hex) != 7 || hex[0] != '#' {
