@@ -378,3 +378,28 @@ Feature: Godog harness wiring
     And the scenario's config-selected theme is painted onto a fresh swatch emulator sized 23x1 named "user-only"
     Then the "user-only" swatch emulator has foreground "#ff00ff" for token "text"
     And the "user-only" swatch emulator does not have foreground "#cbd5e1" for token "text"
+
+  @requirement-3-no-color @requirement-31-no-color-glyph
+  Scenario: NO_COLOR renders a monochrome frame with a session's status carried by its glyphs alone
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "mono" is started
+    When deck client "mono" creates claude session "mono session" with permission profile "safe"
+    And fake Claude session "mono session" fires "SessionStart" for itself using injected identity:
+      | source | fresh |
+    And fake Claude session "mono session" fires "Notification" for itself using injected identity:
+      | notification_type | permission_prompt |
+    Then within one configured reconcile interval deck client "mono" row "mono session" contains "waiting"
+    And deck client "mono" frame has no colour anywhere
+    And deck client "mono" exits cleanly
+
+  @requirement-2-color-depth-truecolor
+  Scenario: DECK_COLOR_DEPTH=truecolor forces the truecolour render path from a real pty
+    Given deck client "truecolor" is started with colour enabled and colour depth "truecolor"
+    Then deck client "truecolor" text "deck" has foreground token "title"
+    And deck client "truecolor" exits cleanly
+
+  @requirement-29-color-depth-16
+  Scenario: DECK_COLOR_DEPTH=16 renders the quantised reference-palette colour from a real pty
+    Given deck client "quantised" is started with colour enabled and colour depth "16"
+    Then deck client "quantised" text "deck" has the quantised ANSI colour for token "title"
+    And deck client "quantised" exits cleanly
