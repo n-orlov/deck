@@ -2003,6 +2003,15 @@ Keys
     reuse it, or launch a one-shot fresh conversation (reverts to normal
     auto-resume afterward, it does not stay pinned or cleared)
   i toggle detail view for the selected session
+  space move to the next session needing attention (waiting or error),
+    wrapping around; does nothing when nothing needs attention and never
+    changes any session's status
+  g toggle the selected row's workspace group collapsed/expanded
+  | cycle the layout mode: auto → side-by-side → stacked → collapsed →
+    auto; a chosen mode is pinned regardless of terminal width until you
+    cycle again or the terminal cannot hold its floors, when deck falls
+    back to auto without forgetting the pin
+  < / > shrink/grow the sidebar by one column
   ? open/close help; Esc closes help
   q or Ctrl+C quit deck
 
@@ -2050,6 +2059,24 @@ Sessions use a private tmux server. Inspect it with:
 (or replace deck with DECK_TMUX_SOCKET). Plain tmux attach does not find deck
 sessions. Attach clears TMUX because nested tmux is unsupported. Attached
 clients share one pane geometry; the most recently active client controls it.
+
+Mouse (every binding duplicates a key above; nothing here is mouse-only)
+  click a sidebar row       select it (like ↑/↓); the preview follows on
+                            its next tick
+  double-click a row        attach (like ↵)
+  click a group header      toggle that group's collapse (like g)
+  wheel over the sidebar    scroll the list without changing selection
+                            (like ↑/↓/PgUp/PgDn)
+  drag the seam             adjust sidebar_width live (like </>)
+  click the collapsed strip restore the previous layout mode (like |)
+  click or wheel over the preview does nothing; a click outside a dialog
+  does nothing (Esc cancels)
+  DECK_MOUSE=0 (or [ui] mouse = false) disables all mouse reporting and
+  every mouse binding above; every keyboard path keeps working, only the
+  shortcuts are lost
+  Mouse reporting takes over the terminal's own click-drag text selection;
+  hold your terminal's override modifier (usually shift) to select and
+  copy text while deck is running
 
 ? closes help; Esc closes help; q quits deck.
 `
