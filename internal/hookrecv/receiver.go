@@ -45,6 +45,27 @@ var Mappings = map[string]Mapping{
 	"SessionEnd":       {Status: "stopped", Kind: "session_end", AllowedFrom: []string{"starting", "running", "waiting", "idle", "error", "stopped"}, ReasonField: "reason"},
 }
 
+// sessionEndInSessionReasons are the SessionEnd `reason` values that are
+// documented, in requirement 43's evidence, as an in-session restart rather
+// than the process going away: Claude's own `/resume` and `/clear` end one
+// conversation and start another in the SAME pane, so the tmux session, the
+// pane and the process all survive. Every other reason (including any this
+// deck build has not seen yet) keeps the pre-existing terminal behaviour --
+// see the reason taxonomy recorded in docs/reports/phase2b2-findings.md for
+// the rationale and the residual risk of an unenumerated non-terminal reason.
+var sessionEndInSessionReasons = map[string]bool{
+	"resume": true,
+	"clear":  true,
+}
+
+// noCurrentStatusMatches is a deliberately unreachable AllowedFrom sentinel:
+// no session's status column ever holds this value, so a StatusUpdateInput
+// carrying it always fails its precondition and never mutates the row --
+// while store.UpdateSessionStatus still records the event unconditionally.
+// This is how an in-session SessionEnd is "recorded but not applied"
+// without adding a second, event-only write path to the store.
+var noCurrentStatusMatches = []string{"__no_current_status_matches__"}
+
 // Result describes the durable write attempted by Receive.
 type Result struct {
 	SessionID string
@@ -87,6 +108,12 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string
 	}
 
 	reason := payloadField(p, mapping.ReasonField)
+	allowedFrom := mapping.AllowedFrom
+	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
+		// Requirement 43: this is not the process going away. Keep the event
+		// (kind session_end, this reason) but never let it stop the row.
+		allowedFrom = noCurrentStatusMatches
+	}
 	result := Result{Status: mapping.Status, Kind: mapping.Kind, Reason: reason}
 	session, found, err := resolve(ctx, db, p.ConversationID, injectedSessionID)
 	if err != nil {
@@ -115,7 +142,7 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string
 		EventKind:              mapping.Kind,
 		Payload:                string(raw),
 		LastMessage:            payloadField(p, mapping.MessageField),
-		AllowedCurrentStatuses: mapping.AllowedFrom,
+		AllowedCurrentStatuses: allowedFrom,
 	}); err != nil {
 		return result, fmt.Errorf("apply %s hook: %w", p.EventName, err)
 	}
