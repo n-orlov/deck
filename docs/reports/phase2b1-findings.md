@@ -402,3 +402,65 @@ proves the fully-wired, visible order.
 
 Evidence: `internal/tui/attention_test.go`, `ci/run.sh go build ./...`,
 `go vet ./...` and `go test -p=1 -count=1 ./...` all green.
+
+## Task 031: the golden minimum frame (requirement 42)
+
+`features/testdata/golden/side_by_side_80x24.golden` is the checked-in,
+byte-exact record of SPEC §11.2's golden minimum-size frame: side-by-side
+layout at 80×24, sidebar 35 total columns / preview 45 total columns,
+`DECK_MOUSE=0` (no SGR bytes to fold into the comparison), with one live
+`claude` session whose pane content is task 008's deterministic `fitting`
+preview fixture, rendered by a real fake-claude process through deck's own
+real preview-capture engine — the preview region is asserted, not carved
+out of the comparison.
+
+`features/golden_frame_test.go`'s `TestGoldenMinimumFrame` renders this
+frame twice, from two independent freshly created scenario homes, and
+compares each render byte-for-byte against the checked-in file — "running
+the assertion twice from clean state passes both times" is exercised on
+every invocation, not merely claimed once. It was additionally run as two
+fully separate `go test` process invocations (distinct pids) during
+development to rule out any hidden dependency on within-process test
+ordering; both produced identical bytes to the checked-in golden.
+
+Regeneration command (reviewed, deliberate changes only — the golden is
+generated, never hand-edited):
+
+```
+UPDATE_GOLDEN=1 ci/run.sh go test -run TestGoldenMinimumFrame ./features/...
+```
+
+Two nondeterminism sources needed pinning beyond the harness's usual
+`DECK_ASCII`/`NO_COLOR`/`DECK_ANIM=0` defaults, both discovered by actually
+running the regeneration twice and diffing:
+
+- **The tmux socket name is rendered on screen.** `internal/tui`'s sidebar
+  always renders a `socket: <DECK_TMUX_SOCKET>` line at the top when the
+  setting is non-empty (`sidebarEntries`, `internal/tui/tui.go`), and the
+  scenario harness's default socket name (`deck_test_<pid>_<sequence>`)
+  is neither pid- nor sequence-stable across regenerations. The test pins
+  `ScenarioHarness.Socket` to a fixed literal before starting any client.
+- **The session's working directory is echoed into the workspace group
+  header**, `groupHeaderText`'s `marker + workspace + "  " + cwd` — and the
+  scenario's cwd lives under a randomized `os.MkdirTemp` directory. This
+  turned out *not* to need pinning: the header is truncated to the
+  sidebar's fixed inner content width (`padTrunc`), and the truncation
+  point falls inside the constant `/tmp/deck` prefix common to every
+  `MkdirTemp("", "deck-scenario-")` path, before the random suffix — so
+  the visible text is `/tmp/deck...` in every run regardless of the actual
+  suffix. Confirmed empirically (identical bytes across separate `go test`
+  process invocations) rather than assumed.
+
+One more fact worth recording because it looks like a bug at first glance:
+the golden frame's preview shows `row 4 of 5`/`row 5 of 5`, not the
+fixture's own title line or `row 1`. This is requirement 23's bottom-left
+crop anchoring working as designed (task 018): the fake-claude pane's real
+geometry is tmux's own server default, 80×24 (deck never resizes a pane it
+only captures), which is taller than the panel's ~21-row content height at
+80×24 side-by-side, so the crop keeps the *newest* visible rows of the real
+pane, not the oldest. The test waits on the crop's own `of 80x24` geometry
+line and the fixture's last line rather than its title, and records why.
+
+Evidence: `ci/run.sh go test -run TestGoldenMinimumFrame -v ./features/...`
+(twice, separate processes, byte-identical); full
+`ci/run.sh go test -p=1 -count=1 ./...` green.
