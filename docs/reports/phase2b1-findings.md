@@ -793,3 +793,157 @@ path — it strengthens nothing being asserted and weakens no assertion; any
 new step that writes repeated keys should route through `sendClientKeys`
 (or replicate its pacing) rather than writing raw bytes directly.
 
+
+## Attempt 02: the three blocking review findings, and the three recorded notes
+
+An independent review of the shipped phase (`c0378bb`) found three blocking
+defects and recorded three notes for the record; this section documents each
+decision, naming its requirement number, made while closing them out
+(tasks 001–013 above in git history, this entry backfilled by task 014).
+
+### Requirement 22/24 — escape bytes were spent as display columns, shearing the panel border
+
+**Defect:** `cropRow`/`padTrunc` (`internal/tui/panel.go`) measured a
+captured pane row with `runewidth.StringWidth` on the raw bytes tmux's
+`capture-pane -e` returns, so every byte of an SGR/OSC escape sequence (e.g.
+`ESC [ 3 1 m`, 4 bytes) was counted as 4 display columns instead of 0. That
+spent columns out of the panel's own budget that belonged to visible text,
+shearing the right border on any row containing colour — reproduced
+black-box through the released binary at 100×30 with a pane that printed
+`\033[31mREDLINE\033[0m tail`: the row's right border landed 8 columns short
+of the frame edge.
+
+**Fix:** a new `ansiEscapeLen(s, i)` (`internal/tui/panel.go`) recognises
+CSI (`ESC '[' ... final byte`) and OSC (`ESC ']' ... BEL or ESC '\'`)
+sequences — the two forms deck's pane bytes actually use — and returns their
+byte length; any other escape advances by ESC plus one rune so an unknown
+sequence still terminates rather than looping. `stringWidth`,
+`truncateToWidth` and `padToWidth` all walk a string byte-by-byte, calling
+`ansiEscapeLen` at every `ESC` (`0x1b`) and copying those bytes through at
+zero display-column cost, so a coloured string's SGR codes survive
+truncation/padding unmodified while never spending panel columns. `cropRow`
+and `padTrunc` now measure through these cell-and-escape-aware helpers
+instead of raw `runewidth.StringWidth`, so the panel border lands in the
+same column regardless of how much colour a row carries. Covered by
+`TestStringWidthIgnoresANSIEscapes` (`stringWidth("\x1b[31mRED\x1b[0m")
+== 3`), `TestTruncateToWidthKeepsEscapeBytesItPassesOver`,
+`TestCropPreviewBottomLeftPreservesColourEscapes`, and
+`TestColouredPreviewKeepsFullFrameBordersColumnAligned` (full-frame, colour
+enabled, not `NO_COLOR`) plus the coloured fixture wired into
+`features/harness.feature`'s requirement-5 coverage and
+`features/preview.feature`'s requirement-22/24 scenario (reverting the fix
+makes that scenario fail, verified and stated in its own commit message).
+
+### Requirement 14 — the below-minimum notice was a banner above the panels, not on the footer, and was not budgeted
+
+**Defect:** `Model.footerLine()` never mentioned the below-minimum copy;
+`renderStackedFrame` printed *"Terminal is below deck's supported minimum of
+80x24; showing stacked as far as it fits."* as a two-line banner above the
+panels instead, adding to the frame's total line count rather than replacing
+anything already budgeted — so the frame became `banner(2) + panels(height-1)
++ footer(1)`, scrolling the sidebar's own top border off screen at every
+below-minimum size tried (70×20, 70×24, 79×40, 60×12 all showed the notice
+absent from the rendered screen entirely).
+
+**Fix:** the exact copy above now lives in `Model.footerLine()`
+(`internal/tui/tui.go`), shared with the mouse hit-tester via the
+`belowMinimumNotice` constant, and is emitted **only** as the footer line
+(replacing the ordinary key-hints/reason line) whenever
+`m.computeLayout().BelowMinimum` is true — it never appears above the
+panels any more. Because the notice's own text (87 columns) can exceed a
+narrow terminal's width, `footerLine` truncates it with `truncateToWidth`
+before returning it, so the frame's total line count is always exactly
+`height` and never grows past it (verified at 70×20, 70×24, 60×12 and
+79×40: `Model.View()` renders at most `height` lines, every line's visible
+width `<= width`). `features/layout_modes.feature`'s `@requirement-14`
+scenario drives the released binary through the pty harness at a
+below-minimum geometry and asserts the notice is on the rendered footer with
+the sidebar's own top row still visible, and that it is absent at 80×24 and
+wider (`grep -rn "below deck's supported minimum" features/` now matches).
+
+### Requirement 17 — the sidebar had no padding column before the seam
+
+**Defect:** `sidebarContentLine` rendered `border + " " + padTrunc(text,
+width-2)` — one padding column on the left of the sidebar's content and
+none on the right, so sidebar text butted directly against the preview
+panel's left border (the seam), visible in the committed golden frame's own
+group-header and elided rows. The preview panel, by contrast, was already
+padded on both sides. `TestSideBySideFrameHasOneSeamAndOneColumnPadding`
+only checked the `"│ "` prefix, so it could not catch a missing column on
+the far side.
+
+**Fix:** `sidebarContentLine` (`internal/tui/panel.go`) now renders `border
++ " " + padTrunc(text, width-3) + " "` — border, one padding column, content
+narrowed to `width-3`, one trailing padding column immediately before the
+seam — so sidebar content never touches either border, matching the
+preview's own both-sides padding. The 3-column collapsed strip
+(`collapsedStripContentLine`) deliberately keeps its old `width-2`, single
+leading-pad shape: it has no spare column to give up without losing room for
+the attention-count glyph, and requirement 17's "content never touches a
+border" reading does not extend to a strip that is not the full sidebar.
+The strengthened `TestSideBySideFrameHasOneSeamAndOneColumnPadding` now
+asserts, for every sidebar content row including an elided name and a group
+header, that the column immediately left of the seam is a space; the 80×24
+golden frame was regenerated (`UPDATE_GOLDEN=1 ci/run.sh go test -run
+TestGoldenMinimumFrame ./features/...`) rather than hand-edited, and every
+assertion whose column moved by the narrower content width was re-aimed
+(never shortened to a prefix) as recorded in task 008's commit.
+
+### Note: the collapsed-strip click's interpretation of requirement 33 ("restores the previous non-collapsed mode")
+
+The review recorded, as a non-blocking note, that clicking the collapsed
+strip called `cycleLayoutMode()` — which from `collapsed` always yields
+`auto` — rather than "the previous non-collapsed mode" as §11.8 words it,
+and that the interpretation actually chosen was not written down anywhere.
+The fix (`internal/tui/tui.go`'s `restoreFromCollapsedStrip`) gives the
+strip's click its own path, separate from `|`'s cycle: it restores
+`preCollapseLayoutMode`, the pin that was in force *before the current `|`
+excursion started* — not simply the immediate predecessor mode. This
+distinction matters because reaching `collapsed` from a pin of
+`side-by-side` takes two `|` presses (`side-by-side → stacked →
+collapsed`); anchoring on the immediate predecessor would restore `stacked`
+(a mode the user never actually chose), while anchoring on the excursion's
+start (tracked by the `layoutCycleActive` flag, set on the first press of a
+fresh run and cleared on wrapping to `auto` or on a strip click) correctly
+restores `side-by-side`. If no mode was ever recorded for the excursion
+(e.g. `collapsed` was reached by directly setting the pin rather than via
+`|`), the strip falls back to `auto`, the same default every other unset
+pin uses. `|`'s own cycle order (`auto → side-by-side → stacked → collapsed
+→ auto`) is unchanged. Proven by
+`TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing` (both a
+side-by-side and a stacked pin, reached via real `|` presses through the
+two-press path) and `TestClickCollapsedStripDiffersFromPipeKeyFromCollapsed`
+(the strip's click and `|`'s own next press from `collapsed` land on
+different modes, proving the strip is not merely calling `cycleLayoutMode`).
+
+### Note: `features/permission_modes.feature`'s "yolo is not on" assertion was shortened to a prefix
+
+The review recorded that `features/permission_modes.feature:54` asserted the
+shortened prefix `"yolo is not"` rather than the dialog's full explanatory
+copy, because an earlier commit's border/padding change moved the text's
+hard-wrap point by two columns and the fact asserted still held, but a
+prefix-shortening protects less than a re-aim. The scenario now widens the
+harness terminal (220×30) so the dialog's full copy fits on one line without
+wrapping, and asserts the complete sentence rather than any prefix — the
+same non-prefix, multi-line-walk pattern `internal/tui/badge_detail_test.go`
+already used for its own wrapped dialog text.
+
+### Note: requirement 19's focus-colour cue is unobservable this phase — explicitly not verified behaviour
+
+§11.3's requirement 19 ("the focused surface's border uses the focus
+colour, so an open dialog takes focus and the sidebar's border reverts") is
+**not observably implemented** in this phase and should not be read as
+verified by anything above. `borderColor` (`internal/tui/panel.go`) applies
+one focus-coloured style to every border the main view draws, because Phase
+2b-1 has no theme/token system yet (that lands in Phase 2b-2's §11.6) and
+the sidebar is the only focusable region the main view ever renders — a
+dialog replaces the whole screen rather than sharing it with the sidebar, so
+there is never a moment in this phase where an unfocused sidebar border
+needs a visibly *different* colour from a focused one, only a moment where
+it is not drawn at all (the dialog occupies the screen instead). This is
+recorded here explicitly, separate from the three blocking findings and the
+two notes above, so no reader of this document or of
+`docs/reports/phase2b1.md` mistakes the absence of a bug report for
+requirement 19 as evidence that its focus-colour behaviour was verified —
+it is deferred, undecided, and unobservable until Phase 2b-2's theme tokens
+exist to give the border a second colour to revert to.
