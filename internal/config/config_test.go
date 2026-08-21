@@ -442,3 +442,101 @@ func TestConfigFileUIMouseMalformedIsRejected(t *testing.T) {
 		t.Fatal("[ui] mouse = maybe was accepted")
 	}
 }
+
+// The following tests exercise task 011's schema-driven parser (toml.go)
+// against the keys task 010's schema declares but the pre-existing
+// hand-written switch never wired into Settings: capture_min_interval,
+// [ui] ascii and [ui] recent_cwd_limit. They prove the same generic
+// dispatch-by-Kind code path that allow_yolo/stale_after/[ui] mouse go
+// through (exercised above) also parses, defaults and bounds-checks these.
+
+func TestConfigFileCaptureMinIntervalDefaultsFromSchema(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, ok := FieldByFullKey("capture_min_interval")
+	if !ok {
+		t.Fatal("capture_min_interval missing from schema")
+	}
+	if settings.CaptureMinInterval != time.Duration(want.Default.(int))*time.Second {
+		t.Fatalf("CaptureMinInterval = %s, want schema default %v", settings.CaptureMinInterval, want.Default)
+	}
+}
+
+func TestConfigFileCaptureMinIntervalSecondsAndDuration(t *testing.T) {
+	for name, value := range map[string]string{"seconds": "12", "duration": `"30s"`} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeConfigFile(t, "capture_min_interval = "+value+"\n")
+			settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 12 * time.Second
+			if name == "duration" {
+				want = 30 * time.Second
+			}
+			if settings.CaptureMinInterval != want {
+				t.Fatalf("CaptureMinInterval = %s, want %s", settings.CaptureMinInterval, want)
+			}
+		})
+	}
+}
+
+func TestConfigFileCaptureMinIntervalBelowBoundsIsRejected(t *testing.T) {
+	dir := writeConfigFile(t, "capture_min_interval = 0\n")
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome); err == nil {
+		t.Fatal("capture_min_interval = 0 was accepted despite Schema's Min of 1")
+	}
+}
+
+func TestConfigFileUIAsciiTrue(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nascii = true\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.ASCII {
+		t.Fatal("ASCII should be true when [ui] ascii = true")
+	}
+}
+
+func TestDeckAsciiOverridesUIConfig(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nascii = true\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_ASCII": "0"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ASCII {
+		t.Fatal("DECK_ASCII=0 should override [ui] ascii = true")
+	}
+}
+
+func TestConfigFileUIRecentCwdLimit(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nrecent_cwd_limit = 3\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.RecentCwdLimit != 3 {
+		t.Fatalf("RecentCwdLimit = %d, want 3", settings.RecentCwdLimit)
+	}
+}
+
+func TestConfigFileUIRecentCwdLimitAboveBoundsIsRejected(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nrecent_cwd_limit = 51\n")
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome); err == nil {
+		t.Fatal("[ui] recent_cwd_limit = 51 was accepted despite Schema's Max of 50")
+	}
+}
+
+func TestConfigFileUnknownKeyIsIgnored(t *testing.T) {
+	dir := writeConfigFile(t, "allow_yolo = true\nsome_future_key = \"whatever\"\n\n[ui]\nsome_future_ui_key = 7\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatalf("unknown keys should be ignored, not rejected: %v", err)
+	}
+	if !settings.AllowYolo {
+		t.Fatal("allow_yolo = true should still take effect alongside ignored unknown keys")
+	}
+}
