@@ -941,7 +941,13 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 	lines := make([]string, 0, height)
 	lines = append(lines, sidebarTop+m.previewTopLine(pw, m.previewTitle(), true))
 	for i := 0; i < contentRows; i++ {
-		lines = append(lines, m.sidebarContentLine(sw, sidebar[i])+m.previewContentLine(pw, preview[i]))
+		var sidebarLine string
+		if collapsed {
+			sidebarLine = m.collapsedStripContentLine(sw, sidebar[i])
+		} else {
+			sidebarLine = m.sidebarContentLine(sw, sidebar[i])
+		}
+		lines = append(lines, sidebarLine+m.previewContentLine(pw, preview[i]))
 	}
 	lines = append(lines, m.sidebarBottomLine(sw)+m.previewBottomLine(pw, true))
 	return lines

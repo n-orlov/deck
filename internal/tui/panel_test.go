@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/store"
 )
 
 // TestSideBySideFrameHasOneSeamAndOneColumnPadding proves SPEC requirements
@@ -54,6 +55,60 @@ func TestSideBySideFrameHasOneSeamAndOneColumnPadding(t *testing.T) {
 	}
 	if strings.Count(contentRow, "││") > 0 {
 		t.Fatalf("content row has an adjacent double bar:\n%q", contentRow)
+	}
+}
+
+// TestSidebarContentHasOneColumnPaddingBeforeSeam proves requirement 17's
+// other half: not just the space right after the sidebar's own left
+// border, but also the column immediately left of the seam (the sidebar's
+// own trailing pad) is a space, for every sidebar content row -- an
+// ordinary session row, a truncated (elided) row whose text is longer than
+// the column budget, and a group header row -- never just the first row a
+// smaller test happened to sample.
+func TestSidebarContentHasOneColumnPaddingBeforeSeam(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.width, model.height = 100, 30
+	model.sessions = []store.Session{
+		{Name: "a session name so long it will not fit and must be elided with an ellipsis for sure", Workspace: "ws", Agent: "claude", Status: "running"},
+	}
+	view := model.View()
+	lines := strings.Split(view, "\n")
+
+	if len(lines) < 3 {
+		t.Fatalf("view too short to have content rows: %q", view)
+	}
+	sawElided := false
+	sawHeader := false
+	for i := 1; i < len(lines)-1; i++ {
+		row := []rune(lines[i])
+		if len(row) == 0 || row[0] != '\u2502' {
+			continue
+		}
+		seamIdx := -1
+		for j := 1; j < len(row); j++ {
+			if row[j] == '\u2502' {
+				seamIdx = j
+				break
+			}
+		}
+		if seamIdx < 2 {
+			continue
+		}
+		if row[seamIdx-1] != ' ' {
+			t.Fatalf("row %d: column left of the seam is %q, want a space padding column:\n%q", i, row[seamIdx-1], lines[i])
+		}
+		if strings.Contains(lines[i], "\u2026") || strings.Contains(lines[i], "...") {
+			sawElided = true
+		}
+		if strings.Contains(lines[i], "ws") {
+			sawHeader = true
+		}
+	}
+	if !sawElided {
+		t.Fatalf("no elided (ellipsis-truncated) sidebar row was exercised by this test:\n%s", view)
+	}
+	if !sawHeader {
+		t.Fatalf("no group header sidebar row was exercised by this test:\n%s", view)
 	}
 }
 
