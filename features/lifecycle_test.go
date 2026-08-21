@@ -84,6 +84,14 @@ type ScenarioHarness struct {
 	// (only m.selected moves).
 	statusRowSnapshots map[string]string
 
+	// preResumeConversationIDs backs features/status_recovery.feature's
+	// in-session resume scenario (requirement 43/44): a step captures a
+	// session's conversation_id immediately before firing fake-claude's
+	// "resume" pane command, so a later step can assert the durable row
+	// moved to a genuinely different, non-empty id rather than merely
+	// re-reading whatever value happens to be there now.
+	preResumeConversationIDs map[string]string
+
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
 	tmuxProbe  func() bool
