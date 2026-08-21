@@ -519,6 +519,22 @@ func settingsThemeOptions(paths config.Paths) []string {
 // handled explicitly, including the three (string, path, link other than
 // notify) config.Schema happens not to use today, so a future schema
 // addition of one of those kinds renders correctly on day one.
+// settingsFieldEnvOverride reports whether config.Settings.EnvOverrides
+// (§6.5: "Environment always outranks the file") named f as overridden in
+// THIS environment, and by which DECK_* variable, so both the field row
+// (settingsFieldLabel's caller) and its detail lines (settingsField
+// DetailLines) can say so without a second, hand-maintained copy of which
+// keys env can override -- the map config.LoadFrom already built while
+// resolving env-over-file precedence is the only source of truth read
+// here.
+func settingsFieldEnvOverride(f config.Field, s config.Settings) (string, bool) {
+	if len(s.EnvOverrides) == 0 {
+		return "", false
+	}
+	envVar, ok := s.EnvOverrides[f.FullKey()]
+	return envVar, ok
+}
+
 func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 	switch f.Kind {
 	case config.KindToggle:
@@ -644,11 +660,14 @@ func settingsListValueDisplay(f config.Field, cfg config.FileConfig) string {
 // schema Field rather than a second, hand-written copy of either. width is
 // the field panel's usable content width; wrapText keeps a long
 // description from being truncated away instead of wrapped across lines.
-func settingsFieldDetailLines(f config.Field, width int) []string {
+func settingsFieldDetailLines(f config.Field, width int, envVar string) []string {
 	if width < 1 {
 		width = 1
 	}
 	lines := []string{fmt.Sprintf("Kind: %s \u00b7 Scope: %s", f.Kind, f.Scope)}
+	if envVar != "" {
+		lines = append(lines, wrapText(fmt.Sprintf("Overridden by environment: %s is set, so the running value comes from %s, not this file. Editing and saving here writes config.toml, but the running value keeps coming from %s until it is unset.", envVar, envVar, envVar), width)...)
+	}
 	lines = append(lines, wrapText(f.Description, width)...)
 	return lines
 }
@@ -811,9 +830,14 @@ func (m Model) settingsView() string {
 			if i == m.settingsFieldIndex {
 				marker = "> "
 			}
-			rightLines = append(rightLines, marker+settingsFieldLabel(f)+": "+settingsFieldValueDisplay(f, m.settingsEdits))
+			row := marker + settingsFieldLabel(f) + ": " + settingsFieldValueDisplay(f, m.settingsEdits)
+			if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
+				row += " (overridden by environment: " + envVar + ")"
+			}
+			rightLines = append(rightLines, row)
 			if i == m.settingsFieldIndex {
-				for _, detail := range settingsFieldDetailLines(f, innerWidth-2) {
+				envVar, _ := settingsFieldEnvOverride(f, m.settings)
+				for _, detail := range settingsFieldDetailLines(f, innerWidth-2, envVar) {
 					rightLines = append(rightLines, "    "+detail)
 				}
 			}

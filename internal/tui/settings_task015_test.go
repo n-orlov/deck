@@ -93,7 +93,7 @@ func TestSettingsScopeLabelComesFromSchemaVerbatim(t *testing.T) {
 	if staleAfter.Scope != config.ScopeGlobal {
 		t.Fatalf("stale_after scope = %q, want global", staleAfter.Scope)
 	}
-	lines := settingsFieldDetailLines(staleAfter, 60)
+	lines := settingsFieldDetailLines(staleAfter, 60, "")
 	if !strings.Contains(lines[0], "Scope: global") {
 		t.Errorf("stale_after detail line = %q, want it to state Scope: global", lines[0])
 	}
@@ -105,7 +105,7 @@ func TestSettingsScopeLabelComesFromSchemaVerbatim(t *testing.T) {
 	if env.Scope != config.ScopeRestartToApply {
 		t.Fatalf("[env] scope = %q, want restart-to-apply", env.Scope)
 	}
-	envLines := settingsFieldDetailLines(env, 60)
+	envLines := settingsFieldDetailLines(env, 60, "")
 	if !strings.Contains(envLines[0], "Scope: restart-to-apply") {
 		t.Errorf("[env] detail line = %q, want it to state Scope: restart-to-apply", envLines[0])
 	}
