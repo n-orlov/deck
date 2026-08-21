@@ -134,6 +134,47 @@ func configSelectedThemeName(h *ScenarioHarness) (string, error) {
 	return "", nil
 }
 
+// resolveScenarioTheme resolves the scenario's currently config-selected
+// theme name (via configSelectedThemeName) against the scenario's own
+// themes directory (via theme.DiscoverUserThemes), exactly as theme.Resolve
+// documents: user theme wins on a name collision, an unknown/unparseable
+// name falls back to the default. This is the single resolution path both
+// the swatch painter above and task 013's token-named per-cell steps (see
+// cell_attributes_test.go) go through, so a scenario names ONE theme via
+// its config.toml and every step that reads "token X's colour" agrees on
+// what that colour currently is.
+func resolveScenarioTheme(ctx context.Context) (*theme.Theme, error) {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return nil, err
+	}
+	themeName, err := configSelectedThemeName(h)
+	if err != nil {
+		return nil, err
+	}
+	dir := theme.ThemesDir(filepath.Join(h.Home, "config.toml"))
+	userThemes, userErrs := theme.DiscoverUserThemes(dir)
+	resolved, _ := theme.Resolve(userThemes, userErrs, themeName)
+	return resolved, nil
+}
+
+// resolveScenarioTokenHex resolves tokenName's colour under the scenario's
+// currently pinned theme (resolveScenarioTheme), returning an error --
+// never a fabricated default -- for an unknown token name, exactly as
+// requirement 1's hex-literal steps already refuse to fabricate a default
+// for a cell with no colour set.
+func resolveScenarioTokenHex(ctx context.Context, tokenName string) (string, error) {
+	resolved, err := resolveScenarioTheme(ctx)
+	if err != nil {
+		return "", err
+	}
+	hex, err := resolved.Color(theme.Token(tokenName))
+	if err != nil {
+		return "", fmt.Errorf("resolve theme token %q against pinned theme %q: %w", tokenName, resolved.Name, err)
+	}
+	return hex, nil
+}
+
 // swatchScenarioKey stores every named swatch emulator a scenario has
 // painted, so several can coexist (e.g. one per pinned theme) and be
 // compared against each other within one scenario -- see harness.feature's
@@ -156,17 +197,10 @@ func swatchEmulators(ctx context.Context) map[string]vt.Terminal {
 // requirement 4 asks for: a built-in reached by name alone, and a user
 // theme file reached by DiscoverUserThemes scanning the themes directory.
 func paintConfigSelectedThemeSwatch(ctx context.Context, width, height int, name string) (context.Context, error) {
-	h, err := scenarioHarness(ctx)
+	resolved, err := resolveScenarioTheme(ctx)
 	if err != nil {
 		return ctx, err
 	}
-	themeName, err := configSelectedThemeName(h)
-	if err != nil {
-		return ctx, err
-	}
-	dir := theme.ThemesDir(filepath.Join(h.Home, "config.toml"))
-	userThemes, userErrs := theme.DiscoverUserThemes(dir)
-	resolved, _ := theme.Resolve(userThemes, userErrs, themeName)
 
 	terminal := vt.NewEmulator(width, height)
 	var b strings.Builder

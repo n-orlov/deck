@@ -35,6 +35,46 @@ Feature: Godog harness wiring
     And deck client "coloured" cell at row 0 column 2 is bold
     And deck client "coloured" exits cleanly
 
+  @requirement-1-cell-attributes
+  Scenario: a real deck client's coloured chrome is readable by naming a theme token, resolved through the scenario's pinned theme
+    Given the scenario writes user theme file "matches-chrome.toml" into its themes directory with:
+      """
+      name = "matches-chrome"
+      appearance = "dark"
+
+      [colors]
+      background        = "#000000"
+      surface           = "#000000"
+      border            = "#000000"
+      border_focus      = "#000000"
+      selection         = "#000000"
+      selection_idle    = "#000000"
+      title             = "#000000"
+      text              = "#111111"
+      dimmed            = "#000000"
+      hint              = "#000000"
+      key               = "#000000"
+      accent            = "#008080"
+      group             = "#000000"
+      search_match      = "#000000"
+      badge             = "#000000"
+      badge_warn        = "#000000"
+      waiting           = "#000000"
+      running           = "#000000"
+      idle              = "#000000"
+      starting          = "#000000"
+      stopped           = "#000000"
+      error             = "#000000"
+      archived          = "#000000"
+      """
+    And the scenario's config.toml selects theme "matches-chrome"
+    And deck client "themed" is started with colour enabled
+    Then deck client "themed" text "deck" has foreground token "accent"
+    And deck client "themed" cell at row 0 column 2 has foreground token "accent"
+    And deck client "themed" text "deck" does not have foreground token "text"
+    And deck client "themed" text "No sessions yet" does not have foreground token "accent"
+    And deck client "themed" exits cleanly
+
   @requirement-6-eaw-placement
   Scenario: the screen emulator places an East-Asian-Wide cell without splitting it
     Given a fresh terminal emulator sized 12x4
