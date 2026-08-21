@@ -79,12 +79,16 @@ func (m Model) openThemePicker() Model {
 }
 
 // updateThemePicker handles key input while the picker is open. Only the
-// three keys named on screen (themePickerLines) are load-bearing, per the
+// keys named on screen (themePickerLines) are load-bearing, per the
 // §11.4 contract's "a dialog may declare additional load-bearing keys of
-// its own, but only if it states them inline" -- left/right/space change
-// the highlighted selection (mirroring updateProfileSwitch/updatePin
+// its own, but only if it states them inline" -- left/right/up/down/space
+// change the highlighted selection (mirroring updateProfileSwitch/updatePin
 // Dialog's identical single-value-cycle shape elsewhere in this package),
-// enter confirms, esc reverts.
+// enter confirms, esc reverts. j/k are deliberately NOT bound here even
+// though several other overlays in this codebase treat them as vi-style
+// aliases: themePickerLines' banner only names Left/Right, Up/Down, Enter
+// and Esc, and binding an unnamed key would violate the same rule this
+// comment is quoting.
 func (m Model) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	names := m.themePickerNames()
 	switch msg.String() {
@@ -93,12 +97,12 @@ func (m Model) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.themePickerValue = ""
 		m.themePickerNote = ""
 		return m, nil
-	case "left", "up", "k":
+	case "left", "up":
 		if len(names) > 0 {
 			m.themePickerValue = cycleOption(names, m.themePickerValue, -1)
 		}
 		return m, nil
-	case "right", "down", "j", " ":
+	case "right", "down", " ":
 		if len(names) > 0 {
 			m.themePickerValue = cycleOption(names, m.themePickerValue, 1)
 		}
