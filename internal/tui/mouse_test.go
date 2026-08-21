@@ -11,7 +11,7 @@ import (
 )
 
 func mouseTestModel(sessions []store.Session) Model {
-	m := New(nil, config.Settings{}, "")
+	m := New(nil, config.Settings{Mouse: true}, "")
 	m.sessions = sessions
 	m.attach = func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil }
 	return m
