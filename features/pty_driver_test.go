@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
@@ -112,6 +113,21 @@ func (d *ScreenDriver) GridSize() (cols, rows int) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.screen.Width(), d.screen.Height()
+}
+
+// CellAt returns the single grid cell at (x, y) directly from the emulator,
+// bypassing Frame's NormalizeFrame trim. A border character that a colour-
+// width miscount pushed left of the row's real last column would have its
+// old position back-filled with blank cells by the emulator; NormalizeFrame
+// then trims those trailing blanks, shortening the row and making it look
+// like a shorter, non-panel line rather than a shorn border -- exactly the
+// blind spot a byte-width bug like the review's escape-sequence miscount
+// would hide behind. Reading the fixed column directly has no such blind
+// spot.
+func (d *ScreenDriver) CellAt(x, y int) *uv.Cell {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.screen.CellAt(x, y)
 }
 
 // drainScreenInput discards synthetic terminal-query responses the emulator

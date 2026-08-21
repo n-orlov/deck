@@ -40,6 +40,16 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" every full-width row is bordered on both edges
     And deck client "solo" exits cleanly
 
+  @requirement-22-24-preview-colour-border-integrity
+  Scenario: a coloured pane's SGR escapes never shear the preview's border
+    Given deck client "solo" is started
+    And deck client "solo" creates shell session "colourpane"
+    When the private tmux pane for session "colourpane" prints red-coloured text "REDLINE"
+    Then deck client "solo" screen contains "REDLINE"
+    And deck client "solo" every full-width row is bordered on both edges
+    And deck client "solo" the row containing "REDLINE" is bordered on both edges at the full grid width
+    And deck client "solo" exits cleanly
+
   @requirement-25-preview-gesture-no-ops
   Scenario: clicking or scrolling over the preview panel does nothing
     Given deck client "solo" is started

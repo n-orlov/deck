@@ -24,8 +24,10 @@ func registerPreviewSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" selects the next session$`, clientSelectsNextSession)
 	sc.Step(`^deck client "([^"]+)" screen matches the pattern "([^"]+)"$`, clientScreenMatchesPattern)
 	sc.Step(`^deck client "([^"]+)" every full-width row is bordered on both edges$`, clientEveryFullWidthRowIsBorderedOnBothEdges)
+	sc.Step(`^deck client "([^"]+)" the row containing "([^"]+)" is bordered on both edges at the full grid width$`, clientRowContainingIsBorderedAtFullGridWidth)
 	sc.Step(`^deck client "([^"]+)" fills the selected session's pane with wide characters$`, clientFillsSelectedPaneWithWideCharacters)
 	sc.Step(`^the private tmux pane for session "([^"]+)" prints "([^"]+)"$`, privateTMuxPaneForSessionPrints)
+	sc.Step(`^the private tmux pane for session "([^"]+)" prints red-coloured text "([^"]+)"$`, privateTMuxPaneForSessionPrintsRedColouredText)
 	sc.Step(`^the private tmux window for session "([^"]+)" is captured as "([^"]+)"$`, privateTMuxWindowForSessionIsCapturedAs)
 	sc.Step(`^the private tmux window for session "([^"]+)" still matches "([^"]+)"$`, privateTMuxWindowForSessionStillMatches)
 	sc.Step(`^the private tmux server reports no attached clients$`, privateTMuxServerReportsNoAttachedClients)
@@ -130,6 +132,52 @@ func clientEveryFullWidthRowIsBorderedOnBothEdges(ctx context.Context, name stri
 	return nil
 }
 
+// clientRowContainingIsBorderedAtFullGridWidth is the direct-column check
+// clientEveryFullWidthRowIsBorderedOnBothEdges cannot make: that helper
+// skips any line whose length (after NormalizeFrame's trailing-space trim)
+// is not exactly the grid width, which is precisely what a border-shear bug
+// produces -- the border glyph lands short of the last column, and
+// everything after it is blank cells the trim then removes, so the row
+// looks like a shorter, unrelated line rather than a broken border. This
+// finds the row by content (the marker text a scenario just printed into
+// the live pane) and reads the emulator's grid directly at column 0 and
+// column cols-1, which the trim never touches, so a shear is caught even
+// though it would otherwise disappear as a skipped row.
+func clientRowContainingIsBorderedAtFullGridWidth(ctx context.Context, name, marker string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	cols, _ := client.GridSize()
+	frame := client.Frame(false)
+	lines := strings.Split(frame, "\n")
+	row := -1
+	for i, line := range lines {
+		if strings.Contains(line, marker) {
+			row = i
+		}
+	}
+	if row == -1 {
+		return fmt.Errorf("client %q: no rendered row contains %q\nfull frame:\n%s", name, marker, frame)
+	}
+	borderRunes := map[rune]bool{'+': true, '|': true}
+	first := client.CellAt(0, row)
+	last := client.CellAt(cols-1, row)
+	if first == nil || last == nil {
+		return fmt.Errorf("client %q: row %d containing %q missing a grid cell at column 0 or %d\nfull frame:\n%s", name, row, marker, cols-1, frame)
+	}
+	firstR := []rune(first.Content)
+	lastR := []rune(last.Content)
+	if len(firstR) == 0 || len(lastR) == 0 || !borderRunes[firstR[0]] || !borderRunes[lastR[0]] {
+		return fmt.Errorf("client %q: row %d containing %q is not bordered at columns 0 and %d (got %q, %q)\nfull frame:\n%s", name, row, marker, cols-1, first.Content, last.Content, frame)
+	}
+	return nil
+}
+
 // clientFillsSelectedPaneWithWideCharacters prints a line of East-Asian-Wide
 // glyphs into the scenario's one live pane, wide enough to force a
 // horizontal crop against the preview panel at any layout this phase
@@ -171,6 +219,50 @@ func privateTMuxPaneForSessionPrints(ctx context.Context, name, text string) err
 		return err
 	}
 	return printIntoPrivatePane(ctx, h, slug, text, text)
+}
+
+// privateTMuxPaneForSessionPrintsRedColouredText is the end-to-end (real
+// pty, real tmux) reproduction of the review finding behind tasks 001-003:
+// a shell pane emitting SGR colour (review's own repro was literally
+// `printf '\033[31mREDLINE\033[0m tail\n'`) used to be counted column-for-
+// escape-byte by cropRow/padTrunc, shearing the preview panel's right
+// border by the escape sequences' byte length. Unlike
+// privateTMuxPaneForSessionPrints (which types text as printf's *argument*,
+// so any backslash sequence in it stays literal), this sends the whole
+// `printf '...'` invocation itself as the command line, so printf's own
+// format-string escape handling turns \033 into a real ESC byte before the
+// pane's tty -- and therefore before capture-pane -e -- ever sees it.
+func privateTMuxPaneForSessionPrintsRedColouredText(ctx context.Context, name, marker string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	command := fmt.Sprintf(`printf '\033[31m%s\033[0m tail\n'`, marker)
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "-l", command); err != nil {
+		return fmt.Errorf("print red-coloured text into private pane %q: %w", target, err)
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
+		return fmt.Errorf("submit red-coloured text into private pane %q: %w", target, err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		// -e is what proves the pane itself actually carries the escape
+		// (not just the marker text): the same flag deck's own preview
+		// capture uses (requirement 21/22).
+		output, err := tmuxOutput(ctx, h, "capture-pane", "-p", "-e", "-S", "-", "-t", target)
+		if err == nil && strings.Contains(string(output), "\x1b[31m") && strings.Contains(string(output), marker) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("private pane %q never showed red-coloured marker %q (err=%v):\n%s", target, marker, err, output)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func printIntoPrivatePane(ctx context.Context, h *ScenarioHarness, slug, text, waitFor string) error {
