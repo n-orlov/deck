@@ -26,6 +26,14 @@ type ScreenDriver struct {
 	terminal *os.File
 	cmd      *exec.Cmd
 	screen   vt.Terminal
+	// budget is a shadow capture of the exact same byte stream as screen,
+	// but sized frameBudgetMargin columns and rows beyond the real terminal
+	// so a client's own overflow (requirement 6/37: more rows or wider
+	// lines than its terminal advertises) lands intact on cells past the
+	// real budget rather than being autoscrolled off the top or
+	// autowrapped onto the next row the way the real, correctly sized
+	// screen emulator would -- see FrameFitsBudget.
+	budget vt.Terminal
 
 	mu          sync.Mutex
 	raw         bytes.Buffer
@@ -39,6 +47,12 @@ type ScreenDriver struct {
 	// gesture changed nothing (requirement 2). Guarded by mu.
 	snapshots map[string]string
 }
+
+// frameBudgetMargin is how far beyond the real terminal's own column/row
+// count ScreenDriver's shadow budget emulator is sized, so that content a
+// buggy render pushes past the real budget still lands on a real, readable
+// cell instead of triggering the shadow's own autoscroll/autowrap.
+const frameBudgetMargin = 200
 
 const (
 	terminalColumns uint16 = 100
@@ -69,12 +83,14 @@ func StartScreenDriverWithSize(ctx context.Context, binary string, env []string,
 		terminal: terminal,
 		cmd:      cmd,
 		screen:   vt.NewEmulator(int(cols), int(rows)),
+		budget:   vt.NewEmulator(int(cols)+frameBudgetMargin, int(rows)+frameBudgetMargin),
 		updated:  make(chan struct{}, 1),
 		done:     make(chan struct{}),
 		readDone: make(chan struct{}),
 	}
 	go d.read()
 	go d.drainScreenInput()
+	go d.drainBudgetInput()
 	go func() {
 		err := cmd.Wait()
 		d.mu.Lock()
@@ -98,6 +114,7 @@ func (d *ScreenDriver) Resize(cols, rows uint16) error {
 	}
 	d.mu.Lock()
 	d.screen.Resize(int(cols), int(rows))
+	d.budget.Resize(int(cols)+frameBudgetMargin, int(rows)+frameBudgetMargin)
 	d.mu.Unlock()
 	select {
 	case d.updated <- struct{}{}:
@@ -173,6 +190,35 @@ func (d *ScreenDriver) drainScreenInput() {
 	}
 }
 
+// drainBudgetInput is drainScreenInput's counterpart for the shadow budget
+// emulator, which answers the same synthetic terminal queries on its own
+// input pipe and would block d.budget.Write forever without a reader.
+func (d *ScreenDriver) drainBudgetInput() {
+	buf := make([]byte, 256)
+	for {
+		if _, err := d.budget.Read(buf); err != nil {
+			return
+		}
+	}
+}
+
+// FrameFitsBudget reads the shadow budget emulator -- fed the identical byte
+// stream as the real, correctly sized screen emulator, but never resized to
+// match it -- and reports an error naming the offending line/extent when the
+// client rendered more than rows content lines or a line wider than cols.
+// Reading the oversized shadow rather than the real screen matters: the real
+// emulator is exactly the size the client's own terminal advertises, so an
+// overflowing frame autoscrolls or autowraps within it, and the excess is
+// gone by the time anything reads the grid -- exactly the blind spot that
+// let requirement 37 through undetected. The shadow has nowhere near its own
+// edge to scroll or wrap into, so the overflow survives intact.
+func (d *ScreenDriver) FrameFitsBudget(cols, rows int) error {
+	d.mu.Lock()
+	budget := d.budget
+	d.mu.Unlock()
+	return frameFitsBudget(budget, cols, rows)
+}
+
 func (d *ScreenDriver) read() {
 	defer close(d.readDone)
 	buf := make([]byte, 4096)
@@ -183,6 +229,7 @@ func (d *ScreenDriver) read() {
 			d.mu.Lock()
 			_, _ = d.raw.Write(chunk)
 			_, _ = d.screen.Write(chunk)
+			_, _ = d.budget.Write(chunk)
 			// Answer each probe once. Looking through the complete accumulated
 			// stream would re-answer forever, and the PTY echo would eventually
 			// feed CPR replies back as user input.
