@@ -1897,15 +1897,6 @@ func (m Model) glyph(unicode, ascii string) string {
 	return unicode
 }
 
-// color is the only product styling in Phase 0. Keeping it here makes
-// NO_COLOR and DECK_COLOR runtime controls rather than merely parsed settings.
-func (m Model) color(text string) string {
-	if !m.settings.Color {
-		return text
-	}
-	return "\x1b[1;36m" + text + "\x1b[0m"
-}
-
 // relativeTime is intentionally based on the configured wall clock. A frozen
 // DECK_CLOCK therefore keeps this rendered value stable while Clock.Elapsed
 // remains monotonic for measurements and audit durations.
