@@ -70,17 +70,14 @@ func findHeader(t *testing.T, m Model, workspace string) (x, y int) {
 }
 
 // contentRowY maps a 0-based content-row index (into sidebarVisibleEntries)
-// to an absolute terminal row, accounting for the same offsets hitTest
+// to an absolute terminal row, accounting for the same offset hitTest
 // itself adds on top of the border row: the startup banner (none in these
-// tests) and, in stacked mode, the below-minimum notice line.
+// tests). The below-minimum notice (SPEC requirement 14) lives on the
+// footer now, not above the stacked panels, so it never shifts this.
 func contentRowY(m Model, layout LayoutResult, contentRow int) int {
 	width, _ := m.frameSize()
 	banner := len(m.startupBanner(width))
-	offset := 0
-	if layout.Effective == LayoutStacked && layout.BelowMinimum {
-		offset = len(wrapText("Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits.", layout.Sidebar.Width))
-	}
-	return banner + offset + contentRow + 1
+	return banner + contentRow + 1
 }
 
 // TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide proves task 028's
@@ -336,8 +333,7 @@ func TestHitTestStackedModeResolvesRowsAndPreview(t *testing.T) {
 		t.Fatalf("hitTest(%d,%d) in stacked mode = %+v, want sidebar/row sessionIndex=1", x, y, hit)
 	}
 
-	notice := len(wrapText("Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits.", layout.Sidebar.Width))
-	previewY := notice + layout.Sidebar.Height + 1
+	previewY := layout.Sidebar.Height + 1
 	if hit := m.hitTest(3, previewY); hit.panel != hitPanelPreview {
 		t.Fatalf("hitTest below the list box = %+v, want hitPanelPreview", hit)
 	}
