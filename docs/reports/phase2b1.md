@@ -135,7 +135,46 @@ ok  	github.com/n-orlov/deck/features	11.283s
 - **R11** (`<`/`>` clamp `sidebar_width` to `[24, width−40]`): `TestClampSidebarWidth`; black-box: `.../<_and_>_clamp_sidebar_width_at_both_ends`.
 - **R12** (`layout_mode`/`sidebar_width` in `state.db`, never `config.toml`): `TestPipeAndAngleBracketsPersistToUIStateNotConfigToml`; black-box: `.../layout_mode_and_sidebar_width_persist_across_a_restart,_with_config.toml_unchanged` (see also the store-level migration tests under requirement-12-adjacent evidence below).
 - **R13** (resize re-chooses under `auto`; a pinned mode that cannot hold its floors falls back to `auto` without overwriting the pin, and returns): `TestComputeLayoutPinnedFallsBackWithoutOverwritingPin`, `TestComputeLayoutStackedNeverFallsBack`; black-box: `.../a_mid-scenario_resize_re-chooses_auto's_mode` and `.../a_pinned_side-by-side_mode_falls_back_below_its_floors_and_returns_when_the_terminal_does`.
-- **R14** (below 80×24, `auto` renders `stacked` as far as it fits, footer states the terminal is below minimum): `TestComputeLayoutBelowMinimum` (`layout.go`'s `BelowMinimum` field).
+- **R14** (below 80×24, `auto` renders `stacked` as far as it fits, **the footer states the terminal is below minimum**): `TestComputeLayoutBelowMinimum` only proves the pure `LayoutResult.BelowMinimum` struct field, which is necessary but not sufficient — it says nothing about the footer copy or the frame's height budget. The actual footer behaviour and its budget are proved by `TestBelowMinimumNoticeIsOnTheFooterOnly` and `TestBelowMinimumFrameStaysWithinBudget` (`internal/tui/tui_test.go`), and end-to-end by `features/layout_modes.feature`'s `@requirement-14` scenario, all captured for real below:
+
+```
+$ ci/run.sh go test -v -run 'TestBelowMinimumNoticeIsOnTheFooterOnly|TestBelowMinimumFrameStaysWithinBudget' ./internal/tui/...
+=== RUN   TestBelowMinimumNoticeIsOnTheFooterOnly
+--- PASS: TestBelowMinimumNoticeIsOnTheFooterOnly (0.00s)
+=== RUN   TestBelowMinimumFrameStaysWithinBudget
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x20
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x24
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/60x12
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40
+--- PASS: TestBelowMinimumFrameStaysWithinBudget (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x20 (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x24 (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/60x12 (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40 (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.006s
+
+$ ci/run.sh env DECK_GODOG_TAGS="@requirement-14" go test -v -run TestFeatures ./features/...
+=== RUN   TestFeatures/the_below-minimum_notice_lands_on_the_footer_line_and_only_there
+  Scenario: the below-minimum notice lands on the footer line and only there   # layout_modes.feature:70
+    Given deck client "solo" is started with terminal size 100x30
+    Then deck client "solo" screen does not contain "below deck's supported minimum"
+    When deck client "solo" terminal is resized to 70x24
+    Then deck client "solo" screen contains "below deck's supported minimum"
+    And deck client "solo" screen contains "deck - sessions"
+    When deck client "solo" terminal is resized to 80x24
+    Then deck client "solo" layout is "side-by-side"
+    And deck client "solo" screen does not contain "below deck's supported minimum"
+    And deck client "solo" exits cleanly
+1 scenarios (1 passed)
+9 steps (9 passed)
+--- PASS: TestFeatures (0.66s)
+    --- PASS: TestFeatures/the_below-minimum_notice_lands_on_the_footer_line_and_only_there (0.65s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.668s
+```
+
+The scenario proves the notice is on-screen while the frame's top row (`"deck - sessions"`, the sidebar title) stays visible — the frame does not scroll off — and that the notice is absent both before shrinking below 80×24 and after growing back to it. `TestBelowMinimumNoticeIsOnTheFooterOnly` asserts the notice text is on the *last* rendered line and nowhere above it; `TestBelowMinimumFrameStaysWithinBudget` asserts, at 70x20/70x24/60x12/79x40, that `Model.View()` never renders more than `height` lines and every line's visible width is `<= width`.
 - **R15** (`collapsed` 3-column strip, `»` above the attention count, `|` restores the sidebar): see requirements 28-32 section (`@requirement-15-collapsed-strip` is exercised together with the attention count there) and `TestComputeLayoutCollapsedNeverAutomatic` above for the geometry.
 
 The `ui_state` table itself (backing requirement 12's persistence) — schema
@@ -167,7 +206,17 @@ ok  	github.com/n-orlov/deck/internal/tui	0.010s
 ```
 
 - **R16** (rounded borders everywhere, one style, `DECK_ASCII` fallback honoured): `TestSideBySideFrameHasOneSeamAndOneColumnPadding`, `TestSideBySideFrameASCIIFallbackHasNoUnicodeBorders`.
-- **R17** (exactly one column of padding inside sidebar/preview): `TestSideBySideFrameHasOneSeamAndOneColumnPadding`.
+- **R17** (exactly one column of padding inside sidebar/preview, **so content never touches a border**): `TestSideBySideFrameHasOneSeamAndOneColumnPadding` only ever checked the `"\u2502 "` prefix after the sidebar's own left border — it could not (and did not) catch the sidebar's content butting straight against the seam with no padding column before it. The column immediately left of the seam is now proved a space, for an ordinary row, an elided (ellipsis-truncated) row and a group-header row alike, by `TestSidebarContentHasOneColumnPaddingBeforeSeam` (`internal/tui/panel_test.go`):
+
+```
+$ ci/run.sh go test -v -run TestSidebarContentHasOneColumnPaddingBeforeSeam ./internal/tui/...
+=== RUN   TestSidebarContentHasOneColumnPaddingBeforeSeam
+--- PASS: TestSidebarContentHasOneColumnPaddingBeforeSeam (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.006s
+```
+
+The regenerated golden frame (requirement 42, below) shows the same space on every sidebar row, including the group header and the elided long-name row.
 - **R18** (single seam — no `││`, sidebar draws top/left/bottom only, preview's left border is the divider): same test, asserting `strings.Contains(view, "││")` is false and exactly one `┬` seam T-junction on the top border.
 - **R19** (sidebar is the only focusable region; `tab` unbound in the main view; focused border uses the focus colour): `internal/tui/panel.go`'s `borderColor` documents and implements this (no second focusable surface exists in the main view to test against); `tab` is confirmed absent from `TestEmptyAndHelpViewsAreDiscoverable`'s "advertises unavailable action" list check below, and `"tab", "down"` at `internal/tui/tui.go:1769` is scoped to the create-modal's own field navigation, not the main view.
 - **R20** (footer: contextual, key/description pattern, carries the selected row's reason, never lists an unbound key): `TestStartingCopyDistinguishesShellFromSignalledAgents` (footer shows the reason for the selected row only, exactly once) and `TestEmptyAndHelpViewsAreDiscoverable`'s footer-adjacent help-overlay pin (requirement 44, below).
@@ -206,9 +255,46 @@ ok  	github.com/n-orlov/deck/features	5.165s
 ```
 
 - **R21** (no client attached, no resize, no `SIGWINCH`, across selection/mode/sidebar-width/outer-resize changes — asserted from tmux's and the agent's own observations): `.../capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,...`.
-- **R22** (capture-pane -e, selected row only, one capture per tick at `DECK_PREVIEW_MS`): `TestPreviewTickCapturesOnlyTheSelectedRow`.
+- **R22** (capture-pane -e, **escapes preserved**, selected row only, one capture per tick at `DECK_PREVIEW_MS`): `TestPreviewTickCapturesOnlyTheSelectedRow` covers the "selected row only, one capture per tick" half. The "escapes preserved" half had a real defect (a captured row's SGR escape bytes were counted as display columns, shearing the panel border for any coloured pane — the review finding this task closes) — see the R24 evidence below for the fix and its proof, since escape handling and cell-aware cropping are the same code path (`internal/tui/panel.go`'s `stringWidth`/`truncateToWidth`/`cropPreviewBottomLeft`).
 - **R23** (crop anchored bottom-left, real geometry stated as `WxH of WxH`, right-cut lines marked, small pane not stretched): `.../a_live_pane_larger_than_the_panel_is_cropped_with_its_real_geometry_stated`. Marker and geometry-line placement are recorded in `docs/reports/phase2b1-findings.md`'s "Task 018" section.
-- **R24** (cell-aware crop/elision — no wide cell ever split, border stays in the same column): `.../wide_glyphs_in_a_cropped_pane_never_shear_the_preview's_border`.
+- **R24** (cell-aware crop/elision — no wide cell ever split, **no SGR escape byte counted as a display column**, border stays in the same column): `.../wide_glyphs_in_a_cropped_pane_never_shear_the_preview's_border` covers the wide-glyph half, which was already correct. The escape-byte half was not: `internal/tui/panel.go`'s `stringWidth`/`truncateToWidth`/`padToWidth` measured CSI/OSC/SGR sequences as their raw byte-length in columns, so any coloured pane sheared the panel's right border by exactly the width of its escape codes. Fixed and proved at three levels — unit (escape-aware measurement), crop (a captured coloured row keeps its exact content width and its colour bytes) and full-frame (both panel borders stay column-aligned with a coloured preview) — plus the black-box scenario that fails on the pre-fix code and passes after it:
+
+```
+$ ci/run.sh go test -v -run 'TestStringWidthIgnoresANSIEscapes|TestTruncateToWidthKeepsEscapeBytesItPassesOver|\
+TestTruncateToWidthStillNeverSplitsWideGlyph|TestCropPreviewBottomLeftPreservesColourEscapes|\
+TestColouredPreviewKeepsFullFrameBordersColumnAligned' ./internal/tui/...
+=== RUN   TestStringWidthIgnoresANSIEscapes
+--- PASS: TestStringWidthIgnoresANSIEscapes (0.00s)
+=== RUN   TestTruncateToWidthKeepsEscapeBytesItPassesOver
+--- PASS: TestTruncateToWidthKeepsEscapeBytesItPassesOver (0.00s)
+=== RUN   TestTruncateToWidthStillNeverSplitsWideGlyph
+--- PASS: TestTruncateToWidthStillNeverSplitsWideGlyph (0.00s)
+=== RUN   TestCropPreviewBottomLeftPreservesColourEscapes
+--- PASS: TestCropPreviewBottomLeftPreservesColourEscapes (0.00s)
+=== RUN   TestColouredPreviewKeepsFullFrameBordersColumnAligned
+--- PASS: TestColouredPreviewKeepsFullFrameBordersColumnAligned (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.010s
+
+$ ci/run.sh env DECK_GODOG_TAGS="@requirement-22-24-preview-colour-border-integrity" go test -v -run TestFeatures ./features/...
+=== RUN   TestFeatures/a_coloured_pane's_SGR_escapes_never_shear_the_preview's_border
+  Scenario: a coloured pane's SGR escapes never shear the preview's border   # preview.feature:44
+    Given deck client "solo" is started
+    And deck client "solo" creates shell session "colourpane"
+    When the private tmux pane for session "colourpane" prints red-coloured text "REDLINE"
+    Then deck client "solo" screen contains "REDLINE"
+    And deck client "solo" every full-width row is bordered on both edges
+    And deck client "solo" the row containing "REDLINE" is bordered on both edges at the full grid width
+    And deck client "solo" exits cleanly
+1 scenarios (1 passed)
+7 steps (7 passed)
+--- PASS: TestFeatures (0.78s)
+    --- PASS: TestFeatures/a_coloured_pane's_SGR_escapes_never_shear_the_preview's_border (0.77s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.792s
+```
+
+This scenario is the one the review finding named as the coverage gap ("no assertion anywhere exercises the escapes that R22 requires deck to capture"); reverting the `stringWidth`/`truncateToWidth`/`cropPreviewBottomLeft` fix (task 001/002 commits) makes both the Go tests and this scenario fail, as recorded in those tasks' own commit messages.
 - **R25** (no preview scroll, no capture history, no `PgUp`, wheel over the preview is a no-op): `.../clicking_or_scrolling_over_the_preview_panel_does_nothing`.
 - **R26** (`error` row shows the crash tail headed "not live"; `stopped`/`archived`/pane-less `starting` show a one-line placeholder): `.../an_error_row's_preview_shows_the_durable_crash_tail,...` and `.../a_stopped_session's_preview_names_its_own_state_instead_of_showing_stale_bytes`. Placeholder copy is recorded in `docs/reports/phase2b1-findings.md`'s "Task 020" section.
 - **R27** (preview suppressed below its 40-column/8-row floor; sidebar takes the space; no capture tick while hidden): `.../the_preview_is_suppressed_below_its_floor_and_the_sidebar_takes_the_space`.
