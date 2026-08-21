@@ -130,6 +130,35 @@ func (d *ScreenDriver) CellAt(x, y int) *uv.Cell {
 	return d.screen.CellAt(x, y)
 }
 
+// FindText scans the emulator grid, cell by cell, for the first run whose
+// concatenated Content equals text, and returns its row and starting
+// column. Unlike a plain substring search over Frame's rendered string, this
+// reads the same real grid cells CellAt does, so the returned position is
+// exactly where a per-cell attribute assertion should look.
+func (d *ScreenDriver) FindText(text string) (row, col int, err error) {
+	runes := []rune(text)
+	if len(runes) == 0 {
+		return 0, 0, fmt.Errorf("cannot search for empty text")
+	}
+	cols, rows := d.GridSize()
+	for y := 0; y < rows; y++ {
+		for x := 0; x+len(runes) <= cols; x++ {
+			match := true
+			for i, r := range runes {
+				cell := d.CellAt(x+i, y)
+				if cell == nil || cell.Content != string(r) {
+					match = false
+					break
+				}
+			}
+			if match {
+				return y, x, nil
+			}
+		}
+	}
+	return 0, 0, fmt.Errorf("text %q not found in frame:\n%s", text, d.Frame(false))
+}
+
 // drainScreenInput discards synthetic terminal-query responses the emulator
 // queues on its own input pipe (for example, answering its own OSC 11
 // background-colour query). Nothing needs to consume them, but leaving the
