@@ -85,6 +85,15 @@ type Settings struct {
 	// it to the user on first paint) -- "" when nothing was configured or
 	// the configured name resolved cleanly.
 	ThemeReason string
+	// EnvOverrides records, for this Load/LoadFrom call, which schema keys
+	// (by Field.FullKey(), e.g. "ui.ascii") had their config.toml value
+	// overridden by a set environment variable (§6.5: "Environment always
+	// outranks the file"), and which variable did it. Only keys with an
+	// actual override present in THIS environment are listed -- an unset
+	// DECK_ASCII/DECK_MOUSE leaves the file's value in place and is not an
+	// override, matching boolEnv's own "" means "defer to fallback" rule
+	// above. Nil when nothing in this environment overrode anything.
+	EnvOverrides map[string]string
 }
 
 // Load reads only documented DECK_ controls from env.
@@ -122,9 +131,14 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if err != nil {
 		return Settings{}, err
 	}
-	ascii, err := boolEnv(getenv("DECK_ASCII"), fileCfg.ASCII, "DECK_ASCII")
+	envOverrides := map[string]string{}
+	asciiRaw := getenv("DECK_ASCII")
+	ascii, err := boolEnv(asciiRaw, fileCfg.ASCII, "DECK_ASCII")
 	if err != nil {
 		return Settings{}, err
+	}
+	if asciiRaw != "" {
+		envOverrides["ui.ascii"] = "DECK_ASCII"
 	}
 	animation, err := boolEnv(getenv("DECK_ANIM"), true, "DECK_ANIM")
 	if err != nil {
@@ -142,20 +156,26 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		return Settings{}, err
 	}
 	mouse := fileCfg.Mouse
-	if raw := getenv("DECK_MOUSE"); raw != "" {
-		mouse, err = boolEnv(raw, mouse, "DECK_MOUSE")
+	mouseRaw := getenv("DECK_MOUSE")
+	if mouseRaw != "" {
+		mouse, err = boolEnv(mouseRaw, mouse, "DECK_MOUSE")
 		if err != nil {
 			return Settings{}, err
 		}
+		envOverrides["ui.mouse"] = "DECK_MOUSE"
 	}
 	userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
 	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, fileCfg.Theme)
+	if len(envOverrides) == 0 {
+		envOverrides = nil
+	}
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
 		RecentCwdLimit: fileCfg.RecentCwdLimit,
 		Theme:          resolvedTheme, ThemeReason: themeReason,
+		EnvOverrides: envOverrides,
 	}, nil
 }
 
