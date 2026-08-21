@@ -852,9 +852,12 @@ func (m Model) settingsSelectionToken(list int) theme.Token {
 // focused, or `border` otherwise. The settings takeover's two lists are
 // deck's only second focusable surface -- §11.3's main view has exactly
 // one focusable region, which is why `tab` is unbound there (requirement
-// 42) -- so this is the first real use of these two tokens as theme
-// colour; the rest of the package still draws every border through
-// panel.go's borderColor placeholder pending task 021's repo-wide sweep.
+// 42). Task 021 generalised the same border_focus/border split to every
+// other panel this package draws (panel.go's borderColor, now token-
+// parametrised rather than the old placeholder m.color()); this remains
+// its own function only because the settings takeover's focus state
+// (m.settingsFocus, not "is this the sidebar or the preview") is what
+// picks the token here.
 func (m Model) settingsBorderColor(focused bool, text string) string {
 	tok := theme.Border
 	if focused {

@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // §11.3 panel chrome: rounded borders, one column of padding, a single seam
@@ -34,17 +35,20 @@ func (m Model) box() boxGlyphs {
 	return boxGlyphs{"╭", "╮", "╰", "╯", "─", "│", "┬", "┴"}
 }
 
-// borderColor is the focus indicator for a panel's border (SPEC requirement
-// 19: "the focused surface's border uses the focus colour"). Phase 2b-1 has
-// no theme system yet (that lands in Phase 2b-2's §11.6), and the sidebar is
-// the only focusable region the main view ever draws — a dialog replaces the
-// whole screen rather than sharing it with the sidebar, so there is never a
-// moment where an unfocused sidebar border needs a *different* colour, only
-// a moment where it is not drawn at all. Reusing the existing NO_COLOR/
-// DECK_COLOR-aware styling keeps that one visible cue real rather than
-// inventing a second colour knob ahead of the theme system that will own it.
-func (m Model) borderColor(s string) string {
-	return m.color(s)
+// borderColor renders a border glyph run in tok's colour (SPEC requirement
+// 19/42: "the focused surface's border uses the focus colour"). Task 021
+// generalises settings.go's settingsBorderColor pattern to every panel this
+// file draws: the sidebar (the main view's one focusable region — a dialog
+// replaces the whole screen rather than sharing it with the sidebar, so
+// there is never a moment where an unfocused sidebar border needs a
+// *different* colour) always passes theme.BorderFocus, the preview (never
+// focusable in the main view) always passes theme.Border, and fullBoxTop/
+// fullBoxBottom/fullBoxContentLine take an explicit focused bool because
+// they draw both roles depending on caller (the stacked layout's sidebar
+// box vs. its preview box; every framedDialog, which is always the one
+// interactive surface once open).
+func (m Model) borderColor(tok theme.Token, s string) string {
+	return m.colorToken(tok, s)
 }
 
 // ellipsis is the marker used when content is truncated to fit a panel's
@@ -239,14 +243,14 @@ func (m Model) sidebarTopLine(width int, title string) string {
 	bc := m.box()
 	inner := width - 1
 	label, remain := m.borderLabel(title, inner)
-	return m.borderColor(bc.topLeft) + label + m.borderColor(strings.Repeat(bc.horizontal, remain))
+	return m.borderColor(theme.BorderFocus, bc.topLeft) + label + m.borderColor(theme.BorderFocus, strings.Repeat(bc.horizontal, remain))
 }
 
 // sidebarBottomLine draws the sidebar's bottom border (left corner + bottom
 // only, same reasoning as sidebarTopLine).
 func (m Model) sidebarBottomLine(width int) string {
 	bc := m.box()
-	return m.borderColor(bc.bottomLeft) + m.borderColor(strings.Repeat(bc.horizontal, width-1))
+	return m.borderColor(theme.BorderFocus, bc.bottomLeft) + m.borderColor(theme.BorderFocus, strings.Repeat(bc.horizontal, width-1))
 }
 
 // sidebarContentLine draws one content row inside the sidebar: left border,
@@ -259,7 +263,7 @@ func (m Model) sidebarBottomLine(width int) string {
 // has no spare column to give up.
 func (m Model) sidebarContentLine(width int, text string) string {
 	bc := m.box()
-	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, width-3) + " "
+	return m.borderColor(theme.BorderFocus, bc.vertical) + " " + m.padTrunc(text, width-3) + " "
 }
 
 // collapsedStripContentLine draws one content row of the 3-column
@@ -270,7 +274,7 @@ func (m Model) sidebarContentLine(width int, text string) string {
 // up a column would leave no room for the » glyph or the attention digits.
 func (m Model) collapsedStripContentLine(width int, text string) string {
 	bc := m.box()
-	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, width-2)
+	return m.borderColor(theme.BorderFocus, bc.vertical) + " " + m.padTrunc(text, width-2)
 }
 
 // previewTopLine draws the preview's top border on all sides. When seam is
@@ -285,7 +289,7 @@ func (m Model) previewTopLine(width int, title string, seam bool) string {
 	}
 	inner := width - 2
 	label, remain := m.borderLabel(title, inner)
-	return m.borderColor(left) + label + m.borderColor(strings.Repeat(bc.horizontal, remain)) + m.borderColor(bc.topRight)
+	return m.borderColor(theme.Border, left) + label + m.borderColor(theme.Border, strings.Repeat(bc.horizontal, remain)) + m.borderColor(theme.Border, bc.topRight)
 }
 
 // previewBottomLine mirrors previewTopLine for the bottom edge.
@@ -296,7 +300,7 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 		left = bc.seamBottom
 	}
 	inner := width - 2
-	return m.borderColor(left) + m.borderColor(strings.Repeat(bc.horizontal, inner)) + m.borderColor(bc.bottomRight)
+	return m.borderColor(theme.Border, left) + m.borderColor(theme.Border, strings.Repeat(bc.horizontal, inner)) + m.borderColor(theme.Border, bc.bottomRight)
 }
 
 // previewContentLine draws one content row inside the preview: left border
@@ -305,7 +309,7 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 func (m Model) previewContentLine(width int, text string) string {
 	bc := m.box()
 	inner := width - 4
-	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(bc.vertical)
+	return m.borderColor(theme.Border, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(theme.Border, bc.vertical)
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
@@ -411,10 +415,14 @@ func (m Model) cropRow(row string, contentWidth int) string {
 	return content + marker
 }
 
-// borderLabel renders a border title (" title ", plain/uncoloured so it
-// never disturbs an already-coloured border run) clamped to inner columns,
-// and returns how many columns of plain border glyph remain to fill after
-// it.
+// borderLabel renders a border title (" title ", clamped to inner columns)
+// coloured entirely in theme.Title (SPEC requirement 35: "title (panel
+// titles)") -- the width/clamp arithmetic below runs on the plain rune
+// slice first, and only the final, already-clamped string is wrapped in
+// colour, so the self-resetting escape colorToken adds never counts
+// against inner and never disturbs the already-coloured border run
+// (colorToken's own trailing reset) it is embedded inside. Returns how
+// many columns of plain border glyph remain to fill after it.
 func (m Model) borderLabel(title string, inner int) (label string, remain int) {
 	if title == "" {
 		return "", max(inner, 0)
@@ -425,48 +433,47 @@ func (m Model) borderLabel(title string, inner int) (label string, remain int) {
 		if inner <= 0 {
 			return "", 0
 		}
-		return string(r[:inner]), 0
+		return m.colorToken(theme.Title, string(r[:inner])), 0
 	}
-	return full, inner - len(r)
+	return m.colorToken(theme.Title, full), inner - len(r)
 }
 
-// sidebarTitle is the sidebar's top-border title. "deck" keeps the exact
-// existing colour styling (m.color("deck")) so an already-passing assertion
-// on that specific coloured substring keeps meaning what it always meant;
-// only the border glyphs around it are newly coloured as the focus cue
-// (SPEC requirement 19).
-func (m Model) sidebarTitleLine(width int) string {
-	bc := m.box()
-	inner := width - 1
-	visible := " deck" + m.glyph(" — ", " - ") + "sessions "
-	label := " " + m.color("deck") + m.glyph(" — ", " - ") + "sessions "
-	remain := inner - len([]rune(visible))
-	if remain < 0 {
-		remain = 0
-	}
-	return m.borderColor(bc.topLeft) + label + m.borderColor(strings.Repeat(bc.horizontal, remain))
-}
-
-// fullBoxTop/fullBoxBottom draw an independent, fully-bordered panel's top
-// and bottom edges — used for the stacked layout mode (§11.2), where the
-// list and preview panels stack vertically rather than sharing a vertical
-// seam, so each keeps all four of its own borders.
-func (m Model) fullBoxTop(width int, title string) string {
+// fullBoxTop/fullBoxBottom/fullBoxContentLine draw an independent, fully-
+// bordered panel's top/bottom/content edges — used for the stacked layout
+// mode (§11.2), where the list and preview panels stack vertically rather
+// than sharing a vertical seam, so each keeps all four of its own borders,
+// and for framedDialog, which wraps every dialog/overlay in the same box.
+// focused selects theme.BorderFocus (the stacked layout's sidebar box; any
+// framedDialog, always the one interactive surface once open) vs.
+// theme.Border (the stacked layout's preview box, never focusable).
+func (m Model) fullBoxTop(width int, title string, focused bool) string {
 	bc := m.box()
 	inner := width - 2
 	label, remain := m.borderLabel(title, inner)
-	return m.borderColor(bc.topLeft) + label + m.borderColor(strings.Repeat(bc.horizontal, remain)) + m.borderColor(bc.topRight)
+	tok := theme.Border
+	if focused {
+		tok = theme.BorderFocus
+	}
+	return m.borderColor(tok, bc.topLeft) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain)) + m.borderColor(tok, bc.topRight)
 }
 
-func (m Model) fullBoxBottom(width int) string {
+func (m Model) fullBoxBottom(width int, focused bool) string {
 	bc := m.box()
-	return m.borderColor(bc.bottomLeft) + m.borderColor(strings.Repeat(bc.horizontal, width-2)) + m.borderColor(bc.bottomRight)
+	tok := theme.Border
+	if focused {
+		tok = theme.BorderFocus
+	}
+	return m.borderColor(tok, bc.bottomLeft) + m.borderColor(tok, strings.Repeat(bc.horizontal, width-2)) + m.borderColor(tok, bc.bottomRight)
 }
 
-func (m Model) fullBoxContentLine(width int, text string) string {
+func (m Model) fullBoxContentLine(width int, text string, focused bool) string {
 	bc := m.box()
 	inner := width - 4
-	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(bc.vertical)
+	tok := theme.Border
+	if focused {
+		tok = theme.BorderFocus
+	}
+	return m.borderColor(tok, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(tok, bc.vertical)
 }
 
 // framedDialog wraps a dialog/overlay's existing free-form text in the same
@@ -487,11 +494,11 @@ func (m Model) framedDialog(body string) string {
 	}
 	boxWidth := width + 4
 	out := make([]string, 0, len(lines)+2)
-	out = append(out, m.fullBoxTop(boxWidth, ""))
+	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range lines {
-		out = append(out, m.fullBoxContentLine(boxWidth, line))
+		out = append(out, m.fullBoxContentLine(boxWidth, line, true))
 	}
-	out = append(out, m.fullBoxBottom(boxWidth))
+	out = append(out, m.fullBoxBottom(boxWidth, true))
 	return strings.Join(out, "\n")
 }
 
