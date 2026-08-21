@@ -78,6 +78,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerCrashStatusSteps(sc)
 	registerAttentionSortSteps(sc)
 	registerStatusRecoverySteps(sc)
+	registerSettingsSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
