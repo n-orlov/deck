@@ -103,13 +103,23 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 						return fmt.Errorf("probe session %q: unknown agent %q", session.ID, session.Agent)
 					}
 					status, reason := adapter.Probe(string(captured))
+					now := s.Clock.Now().UnixMilli()
 					if status != "" {
-						now := s.Clock.Now().UnixMilli()
 						if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 							SessionID: session.ID, Status: status, Reason: reason, Source: "probe", At: now,
 							StaleAfter: staleAfter.Milliseconds(), EventKind: "probe." + status,
 						}); err != nil {
 							return fmt.Errorf("record probe for session %q: %w", session.ID, err)
+						}
+					} else {
+						// A total miss (no probeRule matched at all) is diagnostic
+						// evidence, not a verdict: it must never touch status,
+						// status_source or status_at (SPEC §7 is untouched), but is
+						// still worth recording so the `i` detail dialog can tell
+						// "sampled, no rule matched" apart from "never sampled"
+						// (task 009).
+						if err := s.Store.RecordProbeMiss(ctx, session.ID, now); err != nil {
+							return fmt.Errorf("record probe miss for session %q: %w", session.ID, err)
 						}
 					}
 				}

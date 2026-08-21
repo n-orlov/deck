@@ -188,6 +188,55 @@ func consecutiveLinesContain(view string, wants []string) bool {
 	return false
 }
 
+// TestDetailDistinguishesTotalProbeMissFromNoSignalYet proves a row whose
+// stale sample matched no probe rule at all is distinguishable in the `i`
+// detail dialog from one with no signal yet (SPEC requirement 38, task 009):
+// the dialog states the pane was sampled and matched no rule, with the
+// sample's age, and only while that miss is newer than the row's current
+// verdict — no status value, status_source, or §7 transition changes.
+func TestDetailDistinguishesTotalProbeMissFromNoSignalYet(t *testing.T) {
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "2m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusAt := clock.Now().UnixMilli()
+	model := New(nil, config.Settings{Clock: clock}, "")
+	model.sessions = []store.Session{{
+		Name: "unclassifiable", Agent: "pi", Status: "running", StatusSource: "hook", StatusAt: statusAt,
+	}}
+	model.detail = true
+
+	// No signal yet: the row has never been probe-sampled at all
+	// (LastProbeAt is zero), so nothing extra renders.
+	noSignal := model.View()
+	if strings.Contains(noSignal, "no rule matched") {
+		t.Fatalf("detail claimed a probe miss for a never-sampled row:\n%s", noSignal)
+	}
+
+	// Sampled, no rule matched: a miss strictly newer than the row's current
+	// verdict is the freshest evidence deck has and must be surfaced with its
+	// own age, without touching status/status_source/status_at.
+	clock.Advance()
+	missAt := clock.Now().UnixMilli()
+	model.sessions[0].LastProbeAt = missAt
+	sampled := model.View()
+	if !strings.Contains(sampled, "Probe:              sampled, no rule matched (just now)") {
+		t.Fatalf("detail missing probe-miss copy with sample age:\n%s", sampled)
+	}
+	if !strings.Contains(sampled, "Status:             running") || !strings.Contains(sampled, "Verdict source:     hook") {
+		t.Fatalf("probe miss copy changed status or status_source:\n%s", sampled)
+	}
+
+	// Superseded: once a fresher verdict lands (StatusAt advances past the
+	// stale miss), the miss copy stops rendering — a probe.miss is never
+	// shown once fresher evidence exists.
+	model.sessions[0].StatusAt = missAt + 1
+	superseded := model.View()
+	if strings.Contains(superseded, "no rule matched") {
+		t.Fatalf("detail showed a stale probe miss superseded by a fresher verdict:\n%s", superseded)
+	}
+}
+
 // TestDetailKeyTogglesAndEscCloses proves i opens and closes the detail
 // pane, and Esc also closes it without disturbing the list.
 func TestDetailKeyTogglesAndEscCloses(t *testing.T) {

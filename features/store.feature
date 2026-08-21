@@ -6,13 +6,13 @@ Feature: Durable SQLite store
     Then the scenario home has mode "700"
     And the state database has mode "600"
     And the state database journal mode is "wal"
-    And the state database has schema version 2
+    And the state database has schema version 3
     When deck client "store" exits cleanly
 
   Scenario: migrate an older supported database
     Given the scenario has an older supported database fixture
     When deck client "migration" is started
-    Then the state database has schema version 2
+    Then the state database has schema version 3
     And the state database journal mode is "wal"
     And the state database has mode "600"
     When deck client "migration" exits cleanly
@@ -20,7 +20,7 @@ Feature: Durable SQLite store
   Scenario: migrate a v1 database in place without recreating a session row
     Given the scenario has a v1 database fixture with an existing session "kept-alive"
     When deck client "v1-upgrade" is started
-    Then the state database has schema version 2
+    Then the state database has schema version 3
     And the state database contains session "kept-alive"
     And the state database session "kept-alive" still has id "v1-fixture-kept-alive"
     When deck client "v1-upgrade" exits cleanly
