@@ -307,6 +307,13 @@ type fixtureCommand struct {
 	Event   string         `json:"event"`
 	Payload map[string]any `json:"payload"`
 	Name    string         `json:"name"`
+	// OldConversationID and NewConversationID are used only by the "resume"
+	// command (see runCommands): the in-session resume end/start pair that
+	// SPEC Phase 2b-2 requirement 43's SessionEnd taxonomy exercises. If
+	// NewConversationID is empty, a fresh UUID is generated so a scenario
+	// does not have to invent one itself.
+	OldConversationID string `json:"old_session_id"`
+	NewConversationID string `json:"new_session_id"`
 }
 
 type claudeSettings struct {
@@ -361,31 +368,16 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixture
 				return err
 			}
 		case "hook":
-			if !supportedHookEvents[request.Event] {
-				return fmt.Errorf("unsupported hook event %q", request.Event)
-			}
-			command := commands[request.Event]
-			if command == "" {
-				return fmt.Errorf("hook event %q was not injected in --settings", request.Event)
-			}
 			if request.Payload == nil {
 				request.Payload = make(map[string]any)
 			}
-			if _, exists := request.Payload["hook_event_name"]; !exists {
-				request.Payload["hook_event_name"] = request.Event
+			if err := fireHook(stdout, stderr, commands, request.Event, request.Payload); err != nil {
+				return err
 			}
-			payload, err := json.Marshal(request.Payload)
-			if err != nil {
-				return fmt.Errorf("encode %s payload: %w", request.Event, err)
+		case "resume":
+			if err := fireResumePair(stdout, stderr, commands, request); err != nil {
+				return err
 			}
-			process := exec.Command("sh", "-c", command)
-			process.Stdin = bytes.NewReader(append(payload, '\n'))
-			process.Stdout = stdout
-			process.Stderr = stderr
-			if err := process.Run(); err != nil {
-				return fmt.Errorf("fire %s hook: %w", request.Event, err)
-			}
-			fmt.Fprintf(stdout, "fake-claude hook fired: %s\n", request.Event)
 		default:
 			return fmt.Errorf("unknown command %q", request.Command)
 		}
@@ -393,6 +385,68 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixture
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read command: %w", err)
 	}
+	return nil
+}
+
+// fireResumePair implements the pane-side command that exercises requirement
+// 43's in-session resume taxonomy: it fires SessionEnd reason=resume for the
+// conversation named by OldConversationID, immediately followed by
+// SessionStart reason=resume for a NEW conversation id (NewConversationID, or
+// a freshly generated UUID if that is left empty), in the same pane -- the
+// tmux session, the pane and this process all survive, exactly as a resumed
+// Claude Code session does. It announces the id it picked on stdout so a
+// scenario driving a scripted "resume" command without naming its own new id
+// can still fire a later Stop/Notification for the right conversation.
+func fireResumePair(stdout, stderr io.Writer, commands map[string]string, request fixtureCommand) error {
+	if request.OldConversationID == "" {
+		return errors.New(`"resume" command requires "old_session_id"`)
+	}
+	newID := request.NewConversationID
+	if newID == "" {
+		newID = uuid.NewString()
+	}
+	if err := fireHook(stdout, stderr, commands, "SessionEnd", map[string]any{"session_id": request.OldConversationID, "reason": "resume"}); err != nil {
+		return err
+	}
+	if err := fireHook(stdout, stderr, commands, "SessionStart", map[string]any{"session_id": newID, "reason": "resume"}); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "fake-claude resume: %s -> %s\n", request.OldConversationID, newID)
+	return nil
+}
+
+// fireHook fires event's injected --settings command with payload on its
+// stdin, exactly as runCommands's "hook" pane command always has: the
+// subprocess inherits this fixture's own (deck-injected) environment and is
+// invoked directly, never via "deck _hook". It is shared by the plain "hook"
+// command and by fireResumePair's SessionEnd/SessionStart pair so both paths
+// have identical, single-sourced hook-firing behaviour.
+func fireHook(stdout, stderr io.Writer, commands map[string]string, event string, payload map[string]any) error {
+	if !supportedHookEvents[event] {
+		return fmt.Errorf("unsupported hook event %q", event)
+	}
+	command := commands[event]
+	if command == "" {
+		return fmt.Errorf("hook event %q was not injected in --settings", event)
+	}
+	if payload == nil {
+		payload = make(map[string]any)
+	}
+	if _, exists := payload["hook_event_name"]; !exists {
+		payload["hook_event_name"] = event
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode %s payload: %w", event, err)
+	}
+	process := exec.Command("sh", "-c", command)
+	process.Stdin = bytes.NewReader(append(encoded, '\n'))
+	process.Stdout = stdout
+	process.Stderr = stderr
+	if err := process.Run(); err != nil {
+		return fmt.Errorf("fire %s hook: %w", event, err)
+	}
+	fmt.Fprintf(stdout, "fake-claude hook fired: %s\n", event)
 	return nil
 }
 
@@ -538,6 +592,14 @@ It invokes that event's command from --settings with the payload on stdin and wi
 this process's injected environment; it never calls deck _hook directly. A fixture
 command has the form {"command":"fixture","name":"claude/running.txt"} and copies
 that file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
+A resume command has the form {"command":"resume","old_session_id":"<uuid>",
+"new_session_id":"<uuid, optional>"} and fires SessionEnd reason=resume for
+old_session_id immediately followed by SessionStart reason=resume for
+new_session_id (a fresh UUID is generated and announced on stdout as
+"fake-claude resume: <old> -> <new>" if new_session_id is omitted), both via
+the same injected --settings commands the "hook" command uses, in the same
+pane: the tmux session, the pane and this process all survive, exactly like a
+real in-session Claude Code resume.
 
 When $HOME is set and writable, trailing prompt text given with --session-id or
 --resume is appended to a per-conversation transcript at the real Claude Code

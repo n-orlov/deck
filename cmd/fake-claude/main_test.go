@@ -208,6 +208,133 @@ func TestPaneFixtureCommandRejectsNamesOutsideCorpus(t *testing.T) {
 	}
 }
 
+func TestPaneResumeCommandFiresSessionEndThenSessionStartWithNewConversation(t *testing.T) {
+	directory := t.TempDir()
+	record := filepath.Join(directory, "hook-record.jsonl")
+	hook := filepath.Join(directory, "injected-hook")
+	script := fmt.Sprintf("#!/bin/sh\ncat >> %q\n", record)
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatalf("write hook recorder: %v", err)
+	}
+
+	hooks := map[string]any{
+		"SessionEnd":   []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook}}}},
+		"SessionStart": []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook}}}},
+	}
+	settings, err := json.Marshal(map[string]any{"hooks": hooks})
+	if err != nil {
+		t.Fatalf("encode settings: %v", err)
+	}
+
+	command := map[string]any{"command": "resume", "old_session_id": firstUUID}
+	encoded, err := json.Marshal(command)
+	if err != nil {
+		t.Fatalf("encode command: %v", err)
+	}
+
+	getenv := func(key string) string {
+		if key == commandsEnvironment {
+			return "1"
+		}
+		return ""
+	}
+	var stdout, stderr bytes.Buffer
+	code, err := runWithIO([]string{"--settings", string(settings)}, bytes.NewReader(append(encoded, '\n')), &stdout, &stderr, getenv, testGetwd(t))
+	if err != nil || code != 0 {
+		t.Fatalf("runWithIO = (%d, %v), stderr %q", code, err, stderr.String())
+	}
+
+	recorded, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("read hook record: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(recorded)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("recorded %d hook calls, want 2: %q", len(lines), recorded)
+	}
+
+	var end, start map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &end); err != nil {
+		t.Fatalf("decode SessionEnd payload: %v", err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &start); err != nil {
+		t.Fatalf("decode SessionStart payload: %v", err)
+	}
+
+	if end["hook_event_name"] != "SessionEnd" || end["reason"] != "resume" || end["session_id"] != firstUUID {
+		t.Fatalf("SessionEnd payload = %#v", end)
+	}
+	if start["hook_event_name"] != "SessionStart" || start["reason"] != "resume" {
+		t.Fatalf("SessionStart payload = %#v", start)
+	}
+	newID, ok := start["session_id"].(string)
+	if !ok || newID == "" || newID == firstUUID {
+		t.Fatalf("SessionStart session_id = %#v, want a fresh non-empty id", start["session_id"])
+	}
+
+	wantAnnouncement := fmt.Sprintf("fake-claude resume: %s -> %s", firstUUID, newID)
+	if !strings.Contains(stdout.String(), wantAnnouncement) {
+		t.Fatalf("stdout %q does not contain %q", stdout.String(), wantAnnouncement)
+	}
+}
+
+func TestPaneResumeCommandAcceptsAnExplicitNewConversationID(t *testing.T) {
+	directory := t.TempDir()
+	record := filepath.Join(directory, "hook-record.jsonl")
+	hook := filepath.Join(directory, "injected-hook")
+	script := fmt.Sprintf("#!/bin/sh\ncat >> %q\n", record)
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatalf("write hook recorder: %v", err)
+	}
+
+	hooks := map[string]any{
+		"SessionEnd":   []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook}}}},
+		"SessionStart": []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook}}}},
+	}
+	settings, err := json.Marshal(map[string]any{"hooks": hooks})
+	if err != nil {
+		t.Fatalf("encode settings: %v", err)
+	}
+
+	command := map[string]any{"command": "resume", "old_session_id": firstUUID, "new_session_id": secondUUID}
+	encoded, err := json.Marshal(command)
+	if err != nil {
+		t.Fatalf("encode command: %v", err)
+	}
+
+	getenv := func(key string) string {
+		if key == commandsEnvironment {
+			return "1"
+		}
+		return ""
+	}
+	var stdout, stderr bytes.Buffer
+	if code, err := runWithIO([]string{"--settings", string(settings)}, bytes.NewReader(append(encoded, '\n')), &stdout, &stderr, getenv, testGetwd(t)); err != nil || code != 0 {
+		t.Fatalf("runWithIO = (%d, %v), stderr %q", code, err, stderr.String())
+	}
+
+	wantAnnouncement := fmt.Sprintf("fake-claude resume: %s -> %s", firstUUID, secondUUID)
+	if !strings.Contains(stdout.String(), wantAnnouncement) {
+		t.Fatalf("stdout %q does not contain %q", stdout.String(), wantAnnouncement)
+	}
+
+	recorded, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("read hook record: %v", err)
+	}
+	if !strings.Contains(string(recorded), `"session_id":"`+secondUUID+`"`) {
+		t.Fatalf("hook record %q does not carry the explicit new conversation id", recorded)
+	}
+}
+
+func TestPaneResumeCommandRequiresOldConversationID(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := runCommands(strings.NewReader(`{"command":"resume","new_session_id":"`+secondUUID+`"}`+"\n"), &stdout, &stderr, "", "")
+	if err == nil || !strings.Contains(err.Error(), "old_session_id") {
+		t.Fatalf("runCommands error = %v, want missing old_session_id", err)
+	}
+}
+
 func TestResumeReplaysOnlyItsOwnConversationsLastMessage(t *testing.T) {
 	home := t.TempDir()
 	getenv := testGetenv(home)
