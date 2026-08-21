@@ -28,6 +28,21 @@ func registerCellAttributeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" has background "(#[0-9a-fA-F]{6})"$`, textHasBackground)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" is (bold|dim|reverse)$`, textHasAttribute)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" is not (bold|dim|reverse)$`, textDoesNotHaveAttribute)
+
+	// Task 013's token-named forms: the same assertions above, but the
+	// expected colour is resolved through internal/theme against whatever
+	// theme the scenario pinned (resolveScenarioTokenHex), rather than
+	// spelled as a hex literal in the feature file. A scenario written this
+	// way keeps working if a built-in theme's palette is retuned later --
+	// only scenarios asserting a SPECIFIC palette's value (the 16-colour
+	// floor, NO_COLOR) still need the hex-literal forms above.
+	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has foreground token "([^"]+)"$`, cellHasForegroundToken)
+	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) does not have foreground token "([^"]+)"$`, cellDoesNotHaveForegroundToken)
+	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has background token "([^"]+)"$`, cellHasBackgroundToken)
+	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) does not have background token "([^"]+)"$`, cellDoesNotHaveBackgroundToken)
+	sc.Step(`^deck client "([^"]+)" text "([^"]+)" has foreground token "([^"]+)"$`, textHasForegroundToken)
+	sc.Step(`^deck client "([^"]+)" text "([^"]+)" does not have foreground token "([^"]+)"$`, textDoesNotHaveForegroundToken)
+	sc.Step(`^deck client "([^"]+)" text "([^"]+)" has background token "([^"]+)"$`, textHasBackgroundToken)
 }
 
 // startNamedClientWithColour starts a client with the harness's default
@@ -311,3 +326,110 @@ func textDoesNotHaveAttribute(ctx context.Context, name, text, attr string) erro
 	}
 	return nil
 }
+
+// cellDoesNotHaveBackground is background's counterpart to
+// cellDoesNotHaveForeground: a cell with no background set at all trivially
+// satisfies "does not have background <colour>" rather than erroring, the
+// same rule cellDoesNotHaveForeground applies.
+func cellDoesNotHaveBackground(ctx context.Context, name string, row, col int, unwanted string) error {
+	client, err := assertionClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	got, err := cellBackgroundHex(client.CellAt(col, row))
+	if err != nil {
+		return nil
+	}
+	if got == unwanted {
+		return fmt.Errorf("client %q cell at row %d column %d has background %s, want anything else", name, row, col, got)
+	}
+	return nil
+}
+
+// textHasBackground's counterpart to textDoesNotHaveForeground.
+func textDoesNotHaveBackground(ctx context.Context, name, text, unwanted string) error {
+	client, err := assertionClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	cells, err := textCells(client, text)
+	if err != nil {
+		return fmt.Errorf("client %q: %w", name, err)
+	}
+	for i, cell := range cells {
+		got, err := cellBackgroundHex(cell)
+		if err != nil {
+			continue
+		}
+		if got == unwanted {
+			return fmt.Errorf("client %q text %q cell %d has background %s, want anything else", name, text, i, got)
+		}
+	}
+	return nil
+}
+
+// cellHasForegroundToken and its siblings below are task 013's token-named
+// forms of the hex-literal steps above: resolveScenarioTokenHex (see
+// theme_pin_test.go) resolves tokenName's colour through internal/theme
+// against whatever theme the scenario pinned via its config.toml, THEN
+// delegates to the exact same hex-literal assertion function every existing
+// requirement-1 scenario already exercises -- so a feature file can name a
+// token ("waiting") instead of a hex literal ("#fbbf24") and keep passing
+// if that token's authored colour changes, while still going through the
+// identical "never fabricate a default" cell-reading path.
+func cellHasForegroundToken(ctx context.Context, name string, row, col int, tokenName string) error {
+	want, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q cell at row %d column %d: %w", name, row, col, err)
+	}
+	return cellHasForeground(ctx, name, row, col, want)
+}
+
+func cellDoesNotHaveForegroundToken(ctx context.Context, name string, row, col int, tokenName string) error {
+	unwanted, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q cell at row %d column %d: %w", name, row, col, err)
+	}
+	return cellDoesNotHaveForeground(ctx, name, row, col, unwanted)
+}
+
+func cellHasBackgroundToken(ctx context.Context, name string, row, col int, tokenName string) error {
+	want, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q cell at row %d column %d: %w", name, row, col, err)
+	}
+	return cellHasBackground(ctx, name, row, col, want)
+}
+
+func cellDoesNotHaveBackgroundToken(ctx context.Context, name string, row, col int, tokenName string) error {
+	unwanted, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q cell at row %d column %d: %w", name, row, col, err)
+	}
+	return cellDoesNotHaveBackground(ctx, name, row, col, unwanted)
+}
+
+func textHasForegroundToken(ctx context.Context, name, text, tokenName string) error {
+	want, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q text %q: %w", name, text, err)
+	}
+	return textHasForeground(ctx, name, text, want)
+}
+
+func textDoesNotHaveForegroundToken(ctx context.Context, name, text, tokenName string) error {
+	unwanted, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q text %q: %w", name, text, err)
+	}
+	return textDoesNotHaveForeground(ctx, name, text, unwanted)
+}
+
+func textHasBackgroundToken(ctx context.Context, name, text, tokenName string) error {
+	want, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q text %q: %w", name, text, err)
+	}
+	return textHasBackground(ctx, name, text, want)
+}
+
