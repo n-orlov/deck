@@ -1718,8 +1718,8 @@ func (m Model) profileSwitchView() string {
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Change permission profile for %s\n\n", session.Name)
-	fmt.Fprintf(&b, "Current:   %s\n", session.PermissionProfile)
-	fmt.Fprintf(&b, "New:       %s (left/right cycles: %s)\n", m.profileSwitchValue, strings.Join(options, ", "))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Current:   ", session.PermissionProfile))
+	fmt.Fprintf(&b, "%s\n", m.detailField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.profileSwitchValue, strings.Join(options, ", "))))
 	b.WriteString("\nThis applies on the session's next launch/restart; it does not change a\nrunning pane's mode.\n")
 	if m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
 		b.WriteString("\nyolo requires confirmation: press y, then Enter to switch\n")
@@ -1782,8 +1782,8 @@ func (m Model) pinView() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Change resume mode for %s\n\n", session.Name)
-	fmt.Fprintf(&b, "Current:   %s\n", state)
-	fmt.Fprintf(&b, "New:       %s (left/right cycles: %s)\n", m.pinValue, strings.Join(resumeModeOptions, ", "))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Current:   ", state))
+	fmt.Fprintf(&b, "%s\n", m.detailField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.pinValue, strings.Join(resumeModeOptions, ", "))))
 	b.WriteString("\npinned always resumes this session's own current conversation id, sticky\nacross a deck restart. fresh-once starts a brand-new conversation exactly\nonce, then reverts to auto. Neither changes a running pane.\n")
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.pinNote != "" {
@@ -1800,8 +1800,8 @@ func (m Model) detailView() string {
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
-	fmt.Fprintf(&b, "Agent:              %s\n", session.Agent)
-	fmt.Fprintf(&b, "Working directory:  %s\n", session.CWD)
+	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
 	status := session.Status
 	if status == "stopped" {
 		status += m.glyph(" · resumable", " - resumable")
@@ -1809,21 +1809,21 @@ func (m Model) detailView() string {
 	if status == "starting" && session.Agent != "shell" {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
-	fmt.Fprintf(&b, "Status:             %s\n", status)
+	fmt.Fprintf(&b, "%s\n", m.detailField("Status:             ", status))
 	if session.StatusReason != "" {
-		fmt.Fprintf(&b, "Status reason:      %s\n", session.StatusReason)
+		fmt.Fprintf(&b, "%s\n", m.detailField("Status reason:      ", session.StatusReason))
 	}
 	source := session.StatusSource
 	if source == "" {
 		source = "unknown"
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
-		fmt.Fprintf(&b, "Verdict source:     %s (%s)\n", source, quality)
+		fmt.Fprintf(&b, "%s\n", m.detailField("Verdict source:     ", fmt.Sprintf("%s (%s)", source, quality)))
 	} else {
-		fmt.Fprintf(&b, "Verdict source:     %s\n", source)
+		fmt.Fprintf(&b, "%s\n", m.detailField("Verdict source:     ", source))
 	}
 	if session.StatusAt > 0 {
-		fmt.Fprintf(&b, "Verdict age:        %s\n", m.relativeAge(session.StatusAt))
+		fmt.Fprintf(&b, "%s\n", m.detailField("Verdict age:        ", m.relativeAge(session.StatusAt)))
 	}
 	// A total probe miss (no probeRule matched the sampled pane at all) never
 	// changes Status/StatusSource/StatusAt (SPEC §7 is untouched), so it is
@@ -1831,18 +1831,18 @@ func (m Model) detailView() string {
 	// than the row's current verdict is the freshest evidence deck has, and is
 	// superseded (stops rendering) the instant any later verdict lands.
 	if session.LastProbeAt > session.StatusAt {
-		fmt.Fprintf(&b, "Probe:              sampled, no rule matched (%s)\n", m.relativeAge(session.LastProbeAt))
+		fmt.Fprintf(&b, "%s\n", m.detailField("Probe:              ", fmt.Sprintf("sampled, no rule matched (%s)", m.relativeAge(session.LastProbeAt))))
 	}
 	if _, applicable := m.agentCapabilities(session.Agent); applicable {
-		fmt.Fprintf(&b, "Permission profile: %s\n", session.PermissionProfile)
+		fmt.Fprintf(&b, "%s\n", m.detailField("Permission profile: ", session.PermissionProfile))
 		if session.PermissionProfileReason != "" {
-			fmt.Fprintf(&b, "  degraded: %s\n", session.PermissionProfileReason)
+			fmt.Fprintf(&b, "%s\n", m.detailField("  degraded: ", session.PermissionProfileReason))
 		}
 	} else {
-		b.WriteString("Permission profile: n/a (shell has no permission profile)\n")
+		fmt.Fprintf(&b, "%s\n", m.detailField("Permission profile: ", "n/a (shell has no permission profile)"))
 	}
 	if session.ConversationID != "" {
-		fmt.Fprintf(&b, "Conversation id:    %s\n", session.ConversationID)
+		fmt.Fprintf(&b, "%s\n", m.detailField("Conversation id:    ", session.ConversationID))
 	}
 	if session.LastMessage != "" {
 		fmt.Fprintf(&b, "\nLast message:\n%s\n", session.LastMessage)
@@ -1874,6 +1874,18 @@ func (m Model) renderCrashTail(tail string) string {
 	visible = append(visible, m.colorToken(theme.Dimmed, fmt.Sprintf(m.glyph("… %d lines omitted …", "... %d lines omitted ..."), omitted)))
 	visible = append(visible, lines[len(lines)-maxLines/2:]...)
 	return strings.Join(visible, "\n")
+}
+
+// detailField renders one `label: value` line shared by detailView,
+// pinView and profileSwitchView (task 022, SPEC requirement 34): the label
+// (including its trailing alignment spaces, exactly as it always rendered)
+// in the `hint` token, the value in `text` — mirroring settings.go's own
+// settingsRowSegment label/value split rather than inventing a second
+// convention. Each half self-resets via colorToken, so plain concatenation
+// is safe here: neither dialog composes these lines under a shared
+// selection background the way the sidebar/settings rows do.
+func (m Model) detailField(label, value string) string {
+	return m.colorToken(theme.Hint, label) + m.colorToken(theme.Text, value)
 }
 
 // glyph selects the documented ASCII fallback for terminals where optional
