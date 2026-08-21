@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -64,32 +65,108 @@ func cellWidth(r rune) int {
 	return runewidth.RuneWidth(r)
 }
 
-// stringWidth is s's total terminal display width in cells.
-func stringWidth(s string) int {
-	return runewidth.StringWidth(s)
+// ansiEscapeLen returns the number of bytes, starting at s[i] (which must
+// be the ESC byte 0x1b), occupied by a terminal control sequence, so
+// stringWidth/truncateToWidth can skip it as zero display columns while
+// still copying every one of its bytes through untouched — a captured
+// `tmux capture-pane -e` row's SGR colour codes (review finding: "escape
+// bytes counted as columns") must never spend panel columns the way a
+// printable rune does, or the border after them shears by exactly the
+// escape's byte length. Recognises the two forms deck's coloured/status
+// pane bytes actually use: CSI (ESC '[' parameter bytes... one final byte)
+// and OSC (ESC ']' ... terminated by BEL or ESC '\'). Any other escape is
+// treated as ESC plus the one rune after it, so a sequence this scanner
+// does not specifically know still advances by a whole rune rather than
+// looping forever on it.
+func ansiEscapeLen(s string, i int) int {
+	if i >= len(s) || s[i] != 0x1b {
+		return 0
+	}
+	if i+1 >= len(s) {
+		return 1
+	}
+	switch s[i+1] {
+	case '[':
+		j := i + 2
+		for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
+			j++
+		}
+		if j < len(s) {
+			j++ // final byte, e.g. 'm' for SGR
+		}
+		return j - i
+	case ']':
+		j := i + 2
+		for j < len(s) {
+			if s[j] == 0x07 {
+				j++
+				break
+			}
+			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
+				j += 2
+				break
+			}
+			j++
+		}
+		return j - i
+	default:
+		_, size := utf8.DecodeRuneInString(s[i+1:])
+		return 1 + size
+	}
 }
 
-// truncateToWidth returns the longest prefix of s (by whole runes only)
-// whose display width is at most budget. A rune that would only partially
-// fit — the case a double-width glyph creates when the budget has exactly
-// one column left — is dropped in its entirety rather than truncated in
-// half, so the returned prefix's width is always <= budget and never lands
-// mid-glyph (SPEC requirement 24).
+// stringWidth is s's total terminal display width in cells, treating any
+// CSI/OSC escape sequence (ansiEscapeLen) as zero columns rather than
+// spending a column per byte the way runewidth.StringWidth would on the
+// raw ESC/'['/parameter/final-byte runes.
+func stringWidth(s string) int {
+	w := 0
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			i += ansiEscapeLen(s, i)
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		w += cellWidth(r)
+		i += size
+	}
+	return w
+}
+
+// truncateToWidth returns the longest prefix of s whose *visible* display
+// width is at most budget, counting only printable runes against budget
+// and passing every escape sequence it encounters through byte-for-byte at
+// zero cost — so a coloured string's SGR codes survive truncation (and
+// still colour whatever visible text remains) instead of being cut off
+// mid-sequence or spending columns that belong to the text they decorate.
+// A rune that would only partially fit — the case a double-width glyph
+// creates when the budget has exactly one column left — is dropped in its
+// entirety rather than truncated in half, so the returned prefix's visible
+// width is always <= budget and never lands mid-glyph (SPEC requirement
+// 24).
 func truncateToWidth(s string, budget int) string {
 	if budget <= 0 {
 		return ""
 	}
-	var out []rune
+	var out strings.Builder
 	width := 0
-	for _, r := range s {
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			n := ansiEscapeLen(s, i)
+			out.WriteString(s[i : i+n])
+			i += n
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
 		w := cellWidth(r)
 		if width+w > budget {
 			break
 		}
-		out = append(out, r)
+		out.WriteString(s[i : i+size])
 		width += w
+		i += size
 	}
-	return string(out)
+	return out.String()
 }
 
 // padToWidth appends single-column space runes to s until its display
