@@ -81,3 +81,66 @@ overshoot) at either end.
 **Verification:** `ci/run.sh go test ./internal/tui/...` and
 `ci/run.sh go test ./...` both pass (full suite, all packages ok,
 `features` 113s at time of this run).
+
+---
+
+## Task 001 — SessionEnd reason taxonomy (requirement 43)
+
+**Problem, from the magpie evidence (composite-prd.md's causal chain):**
+`internal/hookrecv/receiver.go`'s `Mappings["SessionEnd"]` mapped every
+`SessionEnd` to `stopped` regardless of `reason`, so Claude's own in-session
+`/resume` (which ends one conversation and starts another in the SAME tmux
+pane — the pane and process never die) stopped a row that was, in fact,
+still alive and working.
+
+**Taxonomy implemented** (`sessionEndInSessionReasons` in
+`internal/hookrecv/receiver.go`):
+
+| `reason` | treated as | rationale |
+|---|---|---|
+| `resume` | in-session restart, **not terminal** | directly evidenced in the magpie chain: `session_end reason=resume` immediately followed by `session_start reason=resume` on a new conversation id, same pane, `attached`/`stop`/`notification` for that new conversation minutes later. |
+| `clear` | in-session restart, **not terminal** | named alongside `resume` in requirement 43 as the other documented in-session case: `/clear` also ends one conversation and starts another in the same pane. |
+| everything else (`logout`, `prompt_input_exit`, `other`, and any reason this build has not seen) | **terminal**, maps to `stopped` | preserves the pre-existing, already-tested behaviour for the reasons we have positive evidence are real ends, and keeps the existing `TestReceiveMappingTable` case (`reason=logout` → `stopped`) passing unweakened. |
+
+**Residual risk, stated plainly:** requirement 43's prose ("and any other
+reason that is not the process going away") is broader than the two reasons
+enumerated above. If a future upstream reason turns out to also be an
+in-session restart, this taxonomy will still (incorrectly) stop the row on
+that hook alone — but only until the *next* liveness signal: tmux still owns
+the real "is the pane alive" fact-check (§7's own `pane exit 0` /
+`x` kill / `session-end hook` row), so an incorrectly-stopped row from an
+unenumerated reason does not become permanently wrong once requirement 45's
+precedence fix (task 003) lets a later, higher-precedence hook/probe verdict
+correct it. Widening the enumerated set is a one-line, low-risk follow-up
+once a new reason is observed.
+
+**Mechanism:** rather than adding a second, event-only write path to
+`internal/store`, an in-session `SessionEnd` is passed the sentinel
+`AllowedCurrentStatuses` value `noCurrentStatusMatches`
+(`["__no_current_status_matches__"]`), which no session's `status` column
+can ever equal. `store.UpdateSessionStatus` already records the event
+unconditionally and only gates the row mutation on `AllowedCurrentStatuses`
+— a losing verdict is "still an event" by design (see its doc comment) — so
+this reuses that existing guarantee instead of inventing a new one.
+
+**Tests:** `internal/hookrecv/receiver_test.go`'s
+`TestReceiveSessionEndReasonTaxonomy` covers all three success-criteria
+cases directly: `reason=resume` on a `running` row records the `session_end`
+event and leaves the row `running`; `reason=clear` on a `waiting` row
+likewise leaves it `waiting`; `reason=logout` on a `running` row still moves
+it to `stopped`. The pre-existing `TestReceiveMappingTable` and
+`TestReceiveEnforcesEveryHookTransitionAndStillAuditsRejectedEvents` cases
+(which exercise `SessionEnd` with `reason=logout`/`reason=resume`
+respectively, but against the full from-any-status `AllowedFrom` list
+rather than the reason-conditional path) are unmodified and still pass.
+
+**Not done (deferred to later tasks in this plan):** the `AllowedFrom`
+blanket-list itself ("§7's precedence, not a hand-maintained list",
+requirement 45) and "a hook always outranks a stale tmux verdict"
+(requirement 45, also covering the magpie row's `error`-from-`tmux` case) are
+task 003; "`conversation_id` follows the live conversation" (requirement 44)
+is task 002; the already-running / launch-failure-recoverable pair
+(requirements 46, 47) is task 004.
+
+**Verification:** `ci/run.sh go test ./internal/hookrecv/...` and
+`ci/run.sh go test ./internal/...` both pass.

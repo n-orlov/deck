@@ -118,6 +118,57 @@ func TestReceiveEnforcesEveryHookTransitionAndStillAuditsRejectedEvents(t *testi
 	}
 }
 
+// TestReceiveSessionEndReasonTaxonomy proves requirement 43: an in-session
+// SessionEnd (Claude's own /resume or /clear, same pane, same tmux session,
+// new conversation) is recorded as an event but does not stop a live row,
+// while a real end reason still does.
+func TestReceiveSessionEndReasonTaxonomy(t *testing.T) {
+	tests := []struct {
+		name       string
+		reason     string
+		current    string
+		wantStatus string // status left on the row after the hook
+	}{
+		{name: "resume is not an end", reason: "resume", current: "running", wantStatus: "running"},
+		{name: "clear is not an end", reason: "clear", current: "waiting", wantStatus: "waiting"},
+		{name: "logout is a real end", reason: "logout", current: "running", wantStatus: "stopped"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newHookStore(t)
+			id := "row-" + tc.name
+			createHookSession(t, db, id, "claude", id)
+			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_source = 'hook', status_at = 5 WHERE id = ?`, tc.current, id); err != nil {
+				t.Fatal(err)
+			}
+			raw := []byte(fmt.Sprintf(`{"hook_event_name":"SessionEnd","session_id":%q,"reason":%q}`, id, tc.reason))
+
+			if _, err := Receive(context.Background(), db, raw, "", 200); err != nil {
+				t.Fatal(err)
+			}
+
+			row, err := db.GetSession(context.Background(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if row.Status != tc.wantStatus {
+				t.Fatalf("status = %q, want %q", row.Status, tc.wantStatus)
+			}
+
+			// The event is recorded either way -- this is the audit trail that
+			// distinguishes "deck decided this wasn't an end" from "deck never
+			// heard about it".
+			var kind, reason string
+			if err := db.DB().QueryRow(`SELECT kind, reason FROM events WHERE session_id = ? ORDER BY at DESC LIMIT 1`, id).Scan(&kind, &reason); err != nil {
+				t.Fatal(err)
+			}
+			if kind != "session_end" || reason != tc.reason {
+				t.Fatalf("event = kind:%q reason:%q", kind, reason)
+			}
+		})
+	}
+}
+
 func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 	tests := []struct {
 		name       string
