@@ -1,3 +1,19 @@
-pi coding agent
-> implement the probe table
-⠹ Working · ctrl-c to stop
+fd not found. Offline mode enabled, skipping download.
+
+ pi v0.84.1
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help and loaded resources.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+
+ run: echo hello-from-tool
+
+
+ ⠧ Working...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/pw1
+0.0%/1.0M (auto)                           (amazon-bedrock) us.anthropic.claude-opus-4-6-v1 • medium

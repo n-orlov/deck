@@ -290,3 +290,83 @@ elsewhere").
 
 **Verification:** `ci/run.sh go test ./internal/service/... ./internal/tui/...`
 and `ci/run.sh go test ./...` both pass.
+
+## Task 007 — pi probe fixtures refitted against real captures (requirement 38)
+
+**Problem.** `internal/agent/testdata/probes/pi/*.txt` were hand-written
+panes containing text a real `pi` never prints (`pi coding agent`,
+`Working · ctrl-c to stop`, `Allow tool execution?`, `Starting pi…`).
+`probe.go`'s pi rules matched only that invented corpus, so a real pi
+session's pane never matched any rule and the row stayed `starting`
+forever — spec-conformant (§7 forbids inferring `running` without
+evidence) but useless to an operator waiting on it.
+
+**Captures.** Driven against a real `pi 0.84.1` binary (this job's
+container; the PRD's own reference is `0.84.2` — the version delta is
+recorded, not hidden) with Python's `pty` module at a fixed 100×30, through
+this container's already-configured model gateway (a real conversation,
+not a mock). Raw bytes were rendered with `pyte` into the same plain-text
+grid shape `tmux capture-pane -p` produces (which is what
+`internal/service/reconcile.go`'s probe path actually captures — no color,
+no cursor escapes). Full method and the exact captures/derivations for
+every state are in `internal/agent/testdata/probes/pi-PROVENANCE.md`,
+committed alongside the fixtures per the requirement's "record provenance
+in the fixture or beside it."
+
+**Kept, with a real marker:** `running` (`Working...`, present behind every
+observed spinner frame) and `error` (`Error:`, traced to pi's own bundled
+`assistant-message.js` top-level error banner).
+
+**Narrowed, not left broad:** pi's `Error:` rule additionally requires the
+marker to prefix the pane's *last* content line (`lastContentLine` in
+`probe.go`, which skips the composer's separator/footer chrome). Verified
+necessary and sufficient with a real capture: asking pi to run `echo
+"Error: fake tool error"` inside an otherwise healthy, successful session
+puts that exact substring on screen with nothing to naively tell it apart
+from a real agent error — except that pi's own error banner is always the
+absolute last thing on screen (the turn stops there), while a tool's
+echoed text is always followed by more transcript (a `Took Ns` line, a
+closing fence, or further prose) before the pane settles. A regression
+proof of this exact false-positive-then-rejected case was run manually
+during this task (not committed as a repo test, to avoid growing the
+corpus with a synthetic, non-captured pane — the golden-corpus parity test
+already forbids that) and is recorded in this commit's message.
+
+**Left out, not invented (requirement 38's "say so and leave the rule out"):**
+- `idle` — captured (pi's one-time startup welcome banner), but that
+  banner scrolls out of `capture-pane`'s sampled window after ordinary
+  multi-turn use and no other recurring "I'm quiet" marker exists in pi's
+  plain-text output. Using it as a general `idle` rule would silently stop
+  matching partway through a session while looking like a real rule — the
+  same shape of defect being fixed. A `pi` row that goes quiet now simply
+  keeps its last known status rather than receive a fabricated verdict.
+- `starting` — the only pre-idle text observed
+  (`fd not found. … skipping download.`) is this capture container's
+  missing-`fd`-helper bootstrap message, not pi's own semantics, and would
+  not appear with `fd` present. No rule needed anyway: a row already
+  starts at `starting` by default.
+- `waiting` (permission prompt) — not captured at all. pi's README states
+  plainly "No permission popups. Run in a container" — permission
+  confirmation is an extension-provided `ctx.ui.confirm` affordance, not
+  built into pi; every tool call this job's pi ran (including `rm
+  /etc/hostname`) executed with zero prompt. Reaching a real prompt would
+  require installing and configuring a specific confirmation extension,
+  out of scope for a static fixture capture.
+
+**Total-probe-miss copy proposal (also requirement 38, task 009's job to
+implement):** with `idle`/`starting`/`waiting` intentionally absent for
+pi, a `pi` row that finishes a turn and goes quiet is now a *permanent,
+legitimate* no-rule-matched case, not just a transient one — the `i`
+detail dialog's "sampled repeatedly, matched no rule" copy (task 009) is
+what makes this honest for an operator instead of a silently stuck
+`running` label. Proposed copy, to be finalized in task 009's own entry:
+"pane sampled, no status rule matched (last checked <age> ago)".
+
+**Fixture-consumer updates required by the removal:**
+`internal/agent/probe_test.go`'s `probeGoldens` (pi now lists only
+`running.txt`/`error.txt`) and `features/status_probe.feature`'s first
+scenario (same trim, pi only — claude's five-fixture corpus is untouched).
+
+**Verification:** `ci/run.sh go build ./...`, `go vet ./...`,
+`go test ./internal/agent/...` and `go test ./...` (full suite, including
+`features`) all pass.

@@ -16,12 +16,12 @@ Feature: Sampled probe status truth
       | claude/waiting.txt  |
       | claude/idle.txt     |
       | claude/error.txt    |
+    # pi's "starting", "waiting" and "idle" have no golden fixture: SPEC
+    # requirement 38's refit found no capturable, durable marker for them
+    # against a real pi (see internal/agent/testdata/probes/pi-PROVENANCE.md).
     And fake agent session "corpus pi" renders these exact golden fixtures:
-      | pi/starting.txt |
-      | pi/running.txt  |
-      | pi/waiting.txt  |
-      | pi/idle.txt     |
-      | pi/error.txt    |
+      | pi/running.txt |
+      | pi/error.txt   |
     When deck client "A" exits cleanly
 
   Scenario: Stale sampling is visible, precedence-aware, and agent-only
