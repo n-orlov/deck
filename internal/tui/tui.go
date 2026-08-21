@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -1788,12 +1789,16 @@ func (m Model) validateCreateFields() string {
 	if strings.TrimSpace(m.createCWD) == "" {
 		return "working directory is required"
 	}
-	info, err := os.Stat(m.createCWD)
+	resolvedCWD, err := expandCreateCWD(m.createCWD)
 	if err != nil {
-		return fmt.Sprintf("working directory %q does not exist", m.createCWD)
+		return err.Error()
+	}
+	info, err := os.Stat(resolvedCWD)
+	if err != nil {
+		return fmt.Sprintf("working directory %q does not exist", resolvedCWD)
 	}
 	if !info.IsDir() {
-		return fmt.Sprintf("working directory %q is not a directory", m.createCWD)
+		return fmt.Sprintf("working directory %q is not a directory", resolvedCWD)
 	}
 	if strings.TrimSpace(m.createLaunchArgs) != "" {
 		var args []string
@@ -1828,6 +1833,31 @@ func (m Model) validateCreateFields() string {
 		}
 	}
 	return ""
+}
+
+// expandCreateCWD expands a leading `~` or `~/...` in raw to the current
+// user's home directory and returns the resolved absolute path, per SPEC
+// §11.7's tilde-expansion rule (the minimum slice of it Phase 2b-2 owns:
+// no recent_cwds, prefill, history cycling, ghost completion or tab —
+// those stay in Phase 3). A bare `~otheruser` form is rejected with a
+// stated reason rather than half-expanded, since resolving another user's
+// home directory is out of scope. Inputs with no leading `~` are returned
+// unchanged, preserving every existing relative/absolute-path behaviour.
+func expandCreateCWD(raw string) (string, error) {
+	if !strings.HasPrefix(raw, "~") {
+		return raw, nil
+	}
+	if raw != "~" && !strings.HasPrefix(raw, "~/") {
+		return "", fmt.Errorf("cannot expand %q: only your own home directory (~ or ~/...) is supported, not another user's", raw)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot expand %q: %w", raw, err)
+	}
+	if raw == "~" {
+		return filepath.Abs(home)
+	}
+	return filepath.Abs(filepath.Join(home, strings.TrimPrefix(raw, "~/")))
 }
 
 // parseCreateLaunchArgs parses the create modal's launch_args field into the
@@ -1905,6 +1935,13 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.createError = msg
 			return m, nil
 		}
+		// validateCreateFields already proved this succeeds; the resolved,
+		// absolute path (never the typed tilde) is what gets stored.
+		resolvedCWD, err := expandCreateCWD(m.createCWD)
+		if err != nil {
+			m.createError = err.Error()
+			return m, nil
+		}
 		if m.createAgent != "shell" {
 			if m.createAgentSession == nil {
 				m.createError = "creating " + m.createAgent + " sessions is not available yet"
@@ -1921,7 +1958,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			input := service.AgentCreateInput{
-				Name: m.createName, CWD: m.createCWD, Agent: m.createAgent,
+				Name: m.createName, CWD: resolvedCWD, Agent: m.createAgent,
 				PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
 				PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell,
 			}
@@ -1934,7 +1971,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.createError = "shell creation is unavailable"
 			return m, nil
 		}
-		name, cwd := m.createName, m.createCWD
+		name, cwd := m.createName, resolvedCWD
 		return m, func() tea.Msg {
 			session, err := m.create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd})
 			return shellCreated{session: session, err: err}
