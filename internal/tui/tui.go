@@ -62,9 +62,25 @@ type Model struct {
 	pinning             bool
 	pinValue            string
 	pinNote             string
-	width               int
-	height              int
-	agents              *agent.Registry
+	// settingsOpen is task 013's `,` full-screen takeover (SPEC §11.5): a
+	// category list and the selected category's field list, both walking
+	// config.Schema rather than a hand-written field set. It is not a
+	// §11.4 dialog (no framedDialog, no shared dialog-contract retrofit --
+	// see task 029) and replaces the whole frame the same way m.creating
+	// etc already do, so it is checked in the same tea.KeyMsg/View()
+	// early-return chain as those, never layered atop mainView.
+	settingsOpen bool
+	// settingsCategoryIndex/settingsFieldIndex select the left list's
+	// category and, within it, the right list's field. Both default to 0
+	// ("General", its first field) on open; task 014 adds the tab/left/
+	// right/up/down navigation that moves them and the `/` search that
+	// can jump either. This task only renders whichever index the state
+	// holds, never hand-picks what to render.
+	settingsCategoryIndex int
+	settingsFieldIndex    int
+	width                 int
+	height                int
+	agents                *agent.Registry
 	// layoutMode and sidebarWidth are the §11.2 layout pin and the
 	// persisted sidebar width, both persisted to state.db's ui_state table
 	// by persistLayoutMode/persistSidebarWidth (task 016). "" and 0 both
@@ -567,6 +583,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pinning {
 			return m.updatePinDialog(msg)
 		}
+		if m.settingsOpen {
+			return m.updateSettings(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -578,6 +597,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "i":
 			if !m.help && len(m.sessions) > 0 {
 				m.detail = !m.detail
+			}
+		case ",":
+			if !m.help {
+				m.settingsOpen = true
+				m.settingsCategoryIndex = 0
+				m.settingsFieldIndex = 0
 			}
 		case "n":
 			if !m.help {
@@ -848,6 +873,9 @@ func (m Model) View() string {
 	}
 	if m.pinning && len(m.sessions) > 0 {
 		return m.pinView()
+	}
+	if m.settingsOpen {
+		return m.settingsView()
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
