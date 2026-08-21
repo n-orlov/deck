@@ -130,6 +130,16 @@ func runCommands(input io.Reader, output io.Writer, fixtureDirectory string) err
 
 // renderFixture copies the named corpus file without adding a marker or newline.
 // This lets probe golden tests and pane-driven scenarios consume identical bytes.
+//
+// fake-pi carries no fixture data of its own (requirement 38's derivation,
+// task 008): named fixtures such as "pi/running.txt" and "pi/error.txt" are
+// the exact same files internal/agent/probe_test.go's probeGoldens table
+// pins and internal/agent/testdata/probes/pi-PROVENANCE.md documents as
+// captures of a real pi binary. Pointing FAKE_AGENT_FIXTURE_DIR at
+// internal/agent/testdata/probes (as features/status_probe_test.go and
+// cmd/fake-pi/main_test.go's TestRenderedFixturesProbeToTheRealPiVerdict both
+// do) is therefore sufficient for a fake-pi pane to probe to the same
+// verdict a real pi pane would — there is no second corpus to keep in sync.
 func renderFixture(output io.Writer, directory, name string) error {
 	if directory == "" {
 		return errors.New("FAKE_AGENT_FIXTURE_DIR is not set")
