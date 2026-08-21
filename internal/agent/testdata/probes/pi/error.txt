@@ -1,3 +1,21 @@
-pi coding agent
-Error: model request failed (503)
-> 
+Warning: Model "totally-bogus-model-xyz" not found for provider "amazon-bedrock". Using custom model
+ id.
+fd not found. Offline mode enabled, skipping download.
+
+ pi v0.84.1
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help and loaded resources.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+
+ say hi
+
+
+ Error: Unknown: UnknownError
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/pw1
+0.0%/1.0M (auto)                                   (amazon-bedrock) totally-bogus-model-xyz • medium

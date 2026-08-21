@@ -19,10 +19,9 @@ var probeGoldens = []struct {
 	{"claude", "waiting.txt", "waiting", "permission prompt"},
 	{"claude", "idle.txt", "idle", "idle prompt"},
 	{"claude", "error.txt", "error", "api error"},
-	{"pi", "starting.txt", "starting", "startup"},
+	// pi's "starting", "idle" and "waiting" have no rule and no fixture —
+	// see testdata/probes/pi-PROVENANCE.md (SPEC requirement 38).
 	{"pi", "running.txt", "running", "working indicator"},
-	{"pi", "waiting.txt", "waiting", "permission prompt"},
-	{"pi", "idle.txt", "idle", "idle prompt"},
 	{"pi", "error.txt", "error", "agent error"},
 }
 
