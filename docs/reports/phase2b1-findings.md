@@ -584,3 +584,119 @@ Evidence: sweep commands above run directly against the checked-out tree;
 `ci/run.sh go test -p=1 -count=1 ./...` all green (features ~93s), matching
 the pre-existing baseline with no changes.
 
+## Task 034: remaining required findings, collected in one place
+
+This section pulls together the items task 034's own successCriteria calls
+out that were not yet gathered in one place above (each was already decided
+by an earlier task's commit; this only records the decision and, where the
+PRD's "Findings, not spec edits" section names it as a likely candidate,
+cites the exact phrasing).
+
+### The `ui_state` migration decision (requirement 12, task 010)
+
+`internal/store`'s schema version was bumped from 1 to 2 (commit `cbfa75b`).
+The new table is `ui_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)` — a
+plain key/value table rather than dedicated `layout_mode`/`sidebar_width`
+columns bolted onto an existing table, so a later phase's own UI-state keys
+(SPEC §11 anticipates more than these two) need no further migration. The
+migration path is additive-only (`CREATE TABLE ui_state` on the 1→2 step,
+nothing touches `sessions`), proved by
+`TestOpenMigratesV1FixtureToUIStateWithoutRecreatingSessionRow`: a v1
+fixture's session row survives migration at its original `id`, satisfying
+SPEC §4's invariant that a session row is never recreated to gain a field.
+`GetLayoutMode`/`GetSidebarWidth` degrade a missing row to the documented
+defaults (`auto`, `35`) rather than erroring, so a client that has never
+written `ui_state` yet (e.g. one only ever run before task 016 shipped) opens
+cleanly. `SetLayoutMode`/`SetSidebarWidth` upsert (`INSERT ... ON CONFLICT
+... DO UPDATE`) against the table's own primary key, so repeated `|`/`<`/`>`
+presses never accumulate duplicate rows.
+
+### How a group header renders before the theme system exists (requirement 30, tasks 024/039)
+
+SPEC §11.6's theme/token system is explicitly Phase 2b-2 (out of scope this
+phase — see "Non-goals for this phase" below). `groupHeaderText`
+(`internal/tui/group.go`, commit `5be9487`) therefore renders through the
+same mechanism every other piece of this phase's chrome uses to stay
+ASCII-safe without any new palette entry: `Model.glyph(wide, ascii)`, picking
+`▾`/`▸` (expanded/collapsed marker) or their `v`/`>` fallbacks under
+`DECK_ASCII`, exactly the pattern `cropMarker`/`ellipsis` (task 018/019) and
+the sidebar's own bullets already use. No new theme token, color, or style
+was introduced — the header is plain text (`marker + " " + workspace + "  "
++ cwd`, truncated to the sidebar's content width like any other row) drawn
+in whatever the sidebar's existing default style already is, so Phase 2b-2's
+token set has nothing of this phase's to retrofit or collide with.
+
+### Every new `DECK_*` control introduced this phase
+
+Only one: **`DECK_MOUSE`** (requirement 3, commit `e6627fc`) — a boolean
+overriding `[ui] mouse` (default `true`), parsed with the same
+`boolEnv`/invalid-value-errors convention as every pre-existing `DECK_*`
+knob (`DECK_ASCII`, `DECK_ANIM`, `DECK_COLOR`). Documented in the help
+overlay by task 032 (commit `f27b798`) and in `SPEC.md` §13.1/§6.5 (already
+present, task 006's commit predates this findings entry). No other new
+`DECK_*` variable was added this phase — `DECK_PREVIEW_MS` (task 017) reused
+an existing knob whose default (250) explicitly did not change, and
+`DECK_HOME`/`DECK_TMUX_SOCKET`/`DECK_CLOCK`/`DECK_CLOCK_STEP`/
+`DECK_RECONCILE_MS`/`DECK_ID_SEED` all predate this phase
+(`grep -n "getenv(\"DECK_" internal/config/config.go` confirms the full
+list).
+
+### Every deferral, with its target phase
+
+- **`archived` session status/flag (task 020's placeholder branch).**
+  Nothing in this phase (or any phase before it) sets `sessions.archived_at`
+  or an `archived` status on a live session — archive/reap/purge is Phase 3
+  per `prds/phase2b1-visible-shell.md`'s "Non-goals for this phase" list.
+  The placeholder dispatch exists and is unit-tested against a
+  directly-constructed `store.Session{Status: "archived"}` so it is ready
+  the day Phase 3 starts producing that status live, but it is unreachable
+  through any UI path today.
+- **The full §11.4 dialog contract retrofit, the §11.5 settings takeover,
+  and the §11.6 theme system** (including the palette picker and quantised
+  token set) — all explicitly **Phase 2b-2**, per the PRD's own "Non-goals
+  for this phase" section. This phase's own new chrome (panel borders,
+  group headers, the golden frame) deliberately introduces no new theme
+  token so Phase 2b-2 has a clean slate.
+- **The create modal's completion, §11.7 path entry, the env editor,
+  kill/undo toasts, `dd` tombstones, reap, purge, archive, bulk marks,
+  rename, and the event log** — **Phase 3**.
+- **The Codex adapter** — **Phase 4**.
+- **Notification channels, rules and the outbox** — **Phase 5**.
+- **Scrollback replay, history files and `last_cwd`** — **Phase 6**.
+- **Send-without-attach (§11.1), cross-session search and the health
+  view** — **Phase 7**.
+- **systemd units** — no phase named yet in the PRD; listed only as a
+  non-goal.
+- **The attention sort's wiring into `Model`'s actual render order**
+  (task 023's own scope note, above) — deferred at the time of task 023 to
+  tasks 024/025/026 within *this same phase*, not to a later phase; recorded
+  here only because task 023's section above already states it and task
+  034 asked for "every deferral" — this one was fully paid off before this
+  report was written (tasks 024, 038, 039, 026 all completed).
+
+### `git diff --stat` proof that `SPEC.md`, `prds/`, `ci/Dockerfile` and `ci/SPIKE.md` are unmodified
+
+`SPEC.md` is read-only to this job per the PRD ("Findings, not spec edits").
+The last commit to touch any of these four paths before this phase's task
+001 began was `e5d2b58` (an operator-steering PRD edit, itself already
+landed before task 001's baseline was recorded); every commit from task 001
+(`baseline`, uncommitted per its own successCriteria) through this task
+leaves them untouched:
+
+```
+$ git diff --stat e5d2b58..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+$ echo $?
+0
+```
+
+(empty diff, exit 0 — confirmed by re-running the command above against the
+current `HEAD` before writing this section).
+
+### Suite status
+
+This task only edited this findings document; no test, feature file or
+production file changed. `git status --short` shows only this file.
+`ci/run.sh go build ./...`, `go vet ./...` and
+`ci/run.sh go test -p=1 -count=1 ./...` all green (verified after this
+edit, matching the pre-existing baseline).
+
