@@ -243,6 +243,65 @@ func TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity(t *testing
 	}
 }
 
+// TestReceiveSessionStartFollowsLiveConversation covers requirement 44: an
+// in-session resume (task 001) leaves a row "running" under its OLD
+// conversation id; the immediately-following SessionStart for the NEW
+// conversation must be resolved via the injected row identity (the new id
+// matches no row's stored conversation_id) and must move the row's
+// conversation_id to the new value, durably -- proven by reopening the state
+// database from its on-disk path rather than trusting the in-memory handle
+// the write went through.
+func TestReceiveSessionStartFollowsLiveConversation(t *testing.T) {
+	home := t.TempDir()
+	dbPath := filepath.Join(home, "state.db")
+	db, err := store.OpenPath(home, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createHookSession(t, db, "resumed-row", "claude", "old-conversation")
+	if _, err := db.DB().Exec(`UPDATE sessions SET status = 'running', status_source = 'hook', status_at = 5 WHERE id = ?`, "resumed-row"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	raw := []byte(`{"hook_event_name":"SessionStart","session_id":"new-conversation","source":"resume"}`)
+	result, err := Receive(ctx, db, raw, "resumed-row", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SessionID != "resumed-row" {
+		t.Fatalf("resolved session = %q, want resumed-row", result.SessionID)
+	}
+	_ = db.Close()
+
+	// Reopen against the same on-disk path: an in-memory-only write would not
+	// survive this round trip.
+	reopened, err := store.OpenPath(home, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	row, err := reopened.GetSession(ctx, "resumed-row")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ConversationID != "new-conversation" {
+		t.Fatalf("conversation_id = %q, want new-conversation", row.ConversationID)
+	}
+	// The status transition itself (SessionStart's AllowedFrom is "starting"
+	// only) is correctly a no-op from "running" -- the row was never stopped.
+	if row.Status != "running" {
+		t.Fatalf("status = %q, want running (unaffected)", row.Status)
+	}
+	var kind, reason, payload string
+	if err := reopened.DB().QueryRow(`SELECT kind, reason, payload FROM events WHERE session_id = ? AND kind = 'set_conversation_id' ORDER BY at DESC LIMIT 1`, "resumed-row").Scan(&kind, &reason, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "hook" || payload != "new-conversation" {
+		t.Fatalf("conversation change event = kind:%q reason:%q payload:%q", kind, reason, payload)
+	}
+}
+
 func TestReceivePreservesUnresolvedPayloadAsOrphan(t *testing.T) {
 	db := newHookStore(t)
 	raw := []byte("{\n  \"hook_event_name\": \"Notification\", \"notification_type\": \"question\", \"session_id\": \"gone\"\n}")

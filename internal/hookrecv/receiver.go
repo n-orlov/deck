@@ -20,6 +20,10 @@ type Store interface {
 	ListSessions(context.Context) ([]store.Session, error)
 	UpdateSessionStatus(context.Context, store.StatusUpdateInput) error
 	RecordOrphanEvent(context.Context, store.EventInput) error
+	// SetConversationID follows requirement 44: a SessionStart whose payload
+	// names a different conversation than the row currently holds moves the
+	// row's stored identity, recording the change as its own durable event.
+	SetConversationID(ctx context.Context, sessionID, conversationID, source string, at int64) error
 }
 
 // Mapping combines SPEC §8.1's hook-to-status mapping with §7's exhaustive
@@ -133,6 +137,14 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string
 	}
 
 	result.SessionID = session.ID
+	if p.EventName == "SessionStart" && p.ConversationID != "" && p.ConversationID != session.ConversationID {
+		// Requirement 44: the row deck already owns follows the live
+		// conversation, independent of whether the status transition below
+		// is itself allowed from the row's current state.
+		if err := db.SetConversationID(ctx, session.ID, p.ConversationID, "hook", at); err != nil {
+			return result, fmt.Errorf("update conversation id: %w", err)
+		}
+	}
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID:              session.ID,
 		Status:                 mapping.Status,
