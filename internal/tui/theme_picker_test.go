@@ -219,6 +219,28 @@ func TestThemePickerNoteNamesLoadBearingKeysOnly(t *testing.T) {
 	}
 }
 
+// TestThemePickerUndisclosedKeysNotBound proves the picker binds no key
+// its own banner does not name: "j"/"k" are vi-style aliases several
+// other overlays in this codebase might suggest, but themePickerLines'
+// banner names only Left/Right, Up/Down, Enter and Esc, so "j"/"k" must
+// be no-ops here (SPEC §11.4: "a dialog... does not invent a key the
+// contract does not give it and the dialog does not name on screen").
+func TestThemePickerUndisclosedKeysNotBound(t *testing.T) {
+	m, _ := themePickerTestModel(t)
+	m = m.openThemePicker()
+	before := m.themePickerValue
+	if before == "" {
+		t.Fatalf("picker opened with no highlighted theme, cannot prove j/k are no-ops")
+	}
+	for _, key := range []string{"j", "k"} {
+		updated, _ := m.updateThemePicker(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		m = updated.(Model)
+		if !m.themePicking || m.themePickerValue != before {
+			t.Fatalf("key %q changed picker state: themePicking=%v value=%q, want unchanged %q (this key is not named on screen)", key, m.themePicking, m.themePickerValue, before)
+		}
+	}
+}
+
 // TestThemePickerDegenerateCandidateLeavesActiveThemeUnchanged proves
 // requirement 27's "behaviour with a degenerate list is defined": a
 // highlighted name that no longer resolves to any theme (e.g. a user
