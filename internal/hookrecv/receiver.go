@@ -26,27 +26,40 @@ type Store interface {
 	SetConversationID(ctx context.Context, sessionID, conversationID, source string, at int64) error
 }
 
-// Mapping combines SPEC §8.1's hook-to-status mapping with §7's exhaustive
-// legal source states. ReasonField and MessageField keep payload interpretation
-// reviewable as table data rather than scattering event-specific conditionals
-// through Receive.
+// Mapping combines SPEC §8.1's hook-to-status mapping with the event's own
+// payload fields. It deliberately carries no AllowedFrom list: §7's
+// `user-terminal > hook > probe > tmux` precedence is what decides whether a
+// hook's write lands, not an enumeration of the current status VALUE. A
+// per-event predecessor-status allow-list conflated "this is the only legal
+// prior FSM state" with "this is the only prior state I trust" -- and the
+// second question is answered by precedence (source), not by status value.
+// Enforcing it therefore defeated precedence exactly where it mattered: a
+// hook (higher precedence) arriving after a stale tmux- or probe-sourced
+// verdict (lower precedence) that happened to land the row on a status
+// outside the list -- notably a tmux-sourced launch failure at `error` --
+// was rejected instead of applied. What actually needs to hold is enforced
+// once, generically, in internal/store.Store.UpdateSessionStatus: a
+// killed_by_user row is not resurrected (user-terminal outranks hook), a
+// `stopped` row is not resurrected (no return edge from `stopped` except the
+// explicit `r` resume, which does not go through this table), and a hook
+// cannot revive a process-crash verdict into `running`. See the before/after
+// table in docs/reports/phase2b2-findings.md.
 type Mapping struct {
 	Status       string
 	Kind         string
-	AllowedFrom  []string
 	ReasonField  string
 	MessageField string
 }
 
-// Mappings is the single hook mapping and transition-policy table. Its keys are
-// Claude's upstream event names, not names invented by deck.
+// Mappings is the single hook mapping table. Its keys are Claude's upstream
+// event names, not names invented by deck.
 var Mappings = map[string]Mapping{
-	"SessionStart":     {Status: "running", Kind: "session_start", AllowedFrom: []string{"starting"}, ReasonField: "source"},
-	"UserPromptSubmit": {Status: "running", Kind: "user_prompt_submitted", AllowedFrom: []string{"idle", "error"}},
-	"Notification":     {Status: "waiting", Kind: "notification", AllowedFrom: []string{"running"}, ReasonField: "notification_type"},
-	"Stop":             {Status: "idle", Kind: "stop", AllowedFrom: []string{"running"}, MessageField: "last_assistant_message"},
-	"StopFailure":      {Status: "error", Kind: "stop_failure", AllowedFrom: []string{"running"}, ReasonField: "error_type"},
-	"SessionEnd":       {Status: "stopped", Kind: "session_end", AllowedFrom: []string{"starting", "running", "waiting", "idle", "error", "stopped"}, ReasonField: "reason"},
+	"SessionStart":     {Status: "running", Kind: "session_start", ReasonField: "source"},
+	"UserPromptSubmit": {Status: "running", Kind: "user_prompt_submitted"},
+	"Notification":     {Status: "waiting", Kind: "notification", ReasonField: "notification_type"},
+	"Stop":             {Status: "idle", Kind: "stop", MessageField: "last_assistant_message"},
+	"StopFailure":      {Status: "error", Kind: "stop_failure", ReasonField: "error_type"},
+	"SessionEnd":       {Status: "stopped", Kind: "session_end", ReasonField: "reason"},
 }
 
 // sessionEndInSessionReasons are the SessionEnd `reason` values that are
@@ -112,7 +125,7 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string
 	}
 
 	reason := payloadField(p, mapping.ReasonField)
-	allowedFrom := mapping.AllowedFrom
+	var allowedFrom []string
 	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
 		// Requirement 43: this is not the process going away. Keep the event
 		// (kind session_end, this reason) but never let it stop the row.

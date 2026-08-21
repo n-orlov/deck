@@ -70,51 +70,120 @@ func TestReceiveMappingTable(t *testing.T) {
 	}
 }
 
-func TestReceiveEnforcesEveryHookTransitionAndStillAuditsRejectedEvents(t *testing.T) {
+// TestReceiveHookAppliesOverAnyStaleSourceExceptStopped proves requirement 45:
+// there is no per-event AllowedFrom list left to defeat §7's
+// `user-terminal > hook > probe > tmux` precedence. A hook (the second-highest
+// precedence source) lands regardless of the current status VALUE and
+// regardless of which lower-or-equal-precedence source (tmux, probe, or a
+// plain prior "user" write) produced it -- precedence is decided by source,
+// not by an enumerated predecessor status. The one status value a hook can
+// never move a row away from is "stopped": §7's transition table gives it no
+// return edge except the explicit `r` resume, which does not go through
+// Receive.
+func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
+	events := []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd"}
 	statuses := []string{"starting", "running", "waiting", "idle", "error", "stopped"}
-	expected := map[string][]string{
-		"SessionStart":     {"starting"},
-		"UserPromptSubmit": {"idle", "error"},
-		"Notification":     {"running"},
-		"Stop":             {"running"},
-		"StopFailure":      {"running"},
-		"SessionEnd":       {"starting", "running", "waiting", "idle", "error", "stopped"},
-	}
-	for event, allowed := range expected {
-		mapping, ok := Mappings[event]
-		if !ok || fmt.Sprint(mapping.AllowedFrom) != fmt.Sprint(allowed) {
-			t.Fatalf("%s AllowedFrom = %v; want %v", event, mapping.AllowedFrom, allowed)
-		}
+	sources := []string{"user", "tmux", "probe", "hook"}
+	for _, event := range events {
+		mapping := Mappings[event]
 		for _, current := range statuses {
-			t.Run(event+"/from_"+current, func(t *testing.T) {
-				db := newHookStore(t)
-				id := event + "-" + current
-				createHookSession(t, db, id, "claude", id)
-				if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = 'user', status_at = 7, notify_epoch = 3, acknowledged = 1, last_message = 'before message' WHERE id = ?`, current, id); err != nil {
-					t.Fatal(err)
-				}
-				raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"question","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
-				if _, err := Receive(context.Background(), db, raw, "", 20); err != nil {
-					t.Fatal(err)
-				}
-				got, err := db.GetSession(context.Background(), id)
-				if err != nil {
-					t.Fatal(err)
-				}
-				allowedTransition := stringIn(allowed, current)
-				if allowedTransition {
-					if got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20 {
-						t.Fatalf("allowed transition persisted %#v", got)
+			for _, currentSource := range sources {
+				t.Run(event+"/from_"+current+"/via_"+currentSource, func(t *testing.T) {
+					db := newHookStore(t)
+					id := event + "-" + current + "-" + currentSource
+					createHookSession(t, db, id, "claude", id)
+					if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = ?, status_at = 7, notify_epoch = 3, acknowledged = 1, last_message = 'before message' WHERE id = ?`, current, currentSource, id); err != nil {
+						t.Fatal(err)
 					}
-				} else if got.Status != current || got.StatusReason != "before" || got.StatusSource != "user" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
-					t.Fatalf("rejected transition changed metadata: %#v", got)
-				}
-				var events int
-				if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = ? AND payload = ?`, id, mapping.Kind, string(raw)).Scan(&events); err != nil || events != 1 {
-					t.Fatalf("event audit count = %d, %v; want 1", events, err)
-				}
-			})
+					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"question","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
+					if _, err := Receive(context.Background(), db, raw, "", 20); err != nil {
+						t.Fatal(err)
+					}
+					got, err := db.GetSession(context.Background(), id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if current == "stopped" {
+						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+							t.Fatalf("hook resurrected a stopped row: %#v", got)
+						}
+					} else if got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20 {
+						t.Fatalf("hook did not apply over stale %s verdict: %#v", currentSource, got)
+					}
+					var events int
+					if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = ? AND payload = ?`, id, mapping.Kind, string(raw)).Scan(&events); err != nil || events != 1 {
+						t.Fatalf("event audit count = %d, %v; want 1", events, err)
+					}
+				})
+			}
 		}
+	}
+}
+
+// TestReceiveHookOverridesStaleTmuxLaunchFailure is the concrete scenario
+// requirement 45 names: a row parked at `error` by a tmux-sourced launch
+// failure (task 004) is not stuck there once the agent's own hooks start
+// arriving -- the hook outranks the stale tmux verdict, regardless of `error`
+// not being that event's predecessor in some enumerated list.
+func TestReceiveHookOverridesStaleTmuxLaunchFailure(t *testing.T) {
+	tests := []struct {
+		name       string
+		event      string
+		extra      string
+		wantStatus string
+	}{
+		{name: "error to idle via Stop", event: "Stop", extra: `,"last_assistant_message":"done"`, wantStatus: "idle"},
+		{name: "error to waiting via Notification", event: "Notification", extra: `,"notification_type":"permission_prompt"`, wantStatus: "waiting"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newHookStore(t)
+			id := "launch-failed-" + tc.event
+			createHookSession(t, db, id, "claude", id)
+			if _, err := db.DB().Exec(`UPDATE sessions SET status = 'error', status_reason = 'duplicate session: deck_x', status_source = 'tmux', status_at = 5 WHERE id = ?`, id); err != nil {
+				t.Fatal(err)
+			}
+			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q%s}`, tc.event, id, tc.extra))
+			if _, err := Receive(context.Background(), db, raw, "", 50); err != nil {
+				t.Fatal(err)
+			}
+			got, err := db.GetSession(context.Background(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status != tc.wantStatus || got.StatusSource != "hook" || got.StatusAt != 50 {
+				t.Fatalf("status = %#v, want %s from hook at 50", got, tc.wantStatus)
+			}
+		})
+	}
+}
+
+// TestReceiveDoesNotResurrectAUserKilledRow proves the other half of
+// requirement 45: killed_by_user (§7's `user-terminal`) outranks every hook,
+// including one that arrives milliseconds later.
+func TestReceiveDoesNotResurrectAUserKilledRow(t *testing.T) {
+	db := newHookStore(t)
+	id := "user-killed"
+	createHookSession(t, db, id, "claude", id)
+	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: id, Status: "stopped", Source: "user", At: 10, KilledByUser: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(fmt.Sprintf(`{"hook_event_name":"SessionStart","session_id":%q,"source":"resume"}`, id))
+	if _, err := Receive(context.Background(), db, raw, "", 20); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetSession(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "stopped" || got.StatusSource != "user" || got.StatusAt != 10 {
+		t.Fatalf("a late hook resurrected a user-killed row: %#v", got)
+	}
+	var events int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'session_start'`, id).Scan(&events); err != nil || events != 1 {
+		t.Fatalf("hook event audit count = %d, %v; want 1", events, err)
 	}
 }
 
@@ -206,15 +275,6 @@ func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 			}
 		})
 	}
-}
-
-func stringIn(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity(t *testing.T) {
