@@ -7,6 +7,34 @@ Feature: Godog harness wiring
   Scenario: a private tmux server can be removed
     Given the private tmux server is killed
 
+  @requirement-1-cell-attributes
+  Scenario: the emulator reads foreground, background, bold, dim and reverse from raw SGR bytes
+    Given a fresh terminal emulator sized 20x1
+    When the emulator receives "[1;31mA[0m[42mB[0m[2mC[0m[7mD[0mE"
+    Then the emulator cell at column 0 has foreground "#800000"
+    And the emulator cell at column 0 is bold
+    And the emulator cell at column 1 has background "#008000"
+    And the emulator cell at column 2 is dim
+    And the emulator cell at column 3 is reverse
+
+  @requirement-1-cell-attributes
+  Scenario: a colour assertion fails when pointed at a cell of a different colour
+    Given a fresh terminal emulator sized 20x1
+    When the emulator receives "[31mA[0mB"
+    Then the emulator cell at column 0 does not have foreground "#000000"
+    And the emulator cell at column 1 does not have foreground "#800000"
+
+  @requirement-1-cell-attributes
+  Scenario: a real deck client's own coloured chrome is readable per cell, by name and by matched text
+    Given deck client "coloured" is started with colour enabled
+    Then deck client "coloured" text "deck" has foreground "#008080"
+    And deck client "coloured" text "deck" is bold
+    And deck client "coloured" text "No sessions yet" does not have foreground "#008080"
+    And deck client "coloured" text "No sessions yet" is not bold
+    And deck client "coloured" cell at row 0 column 2 has foreground "#008080"
+    And deck client "coloured" cell at row 0 column 2 is bold
+    And deck client "coloured" exits cleanly
+
   @requirement-6-eaw-placement
   Scenario: the screen emulator places an East-Asian-Wide cell without splitting it
     Given a fresh terminal emulator sized 12x4

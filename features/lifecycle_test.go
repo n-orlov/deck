@@ -117,11 +117,33 @@ func (h *ScenarioHarness) Environment(extra ...string) []string {
 	env := []string{
 		"DECK_HOME=" + h.Home,
 		"DECK_TMUX_SOCKET=" + h.Socket,
-		"DECK_ASCII=1", "DECK_ANIM=0", "NO_COLOR=1",
+		"DECK_ASCII=1", "DECK_ANIM=0",
 		"DECK_RECONCILE_MS=" + fmt.Sprintf("%d", scenarioReconcileInterval.Milliseconds()), "DECK_PREVIEW_MS=50",
 	}
-	env = append(env, h.clientEnv...)
-	return append(env, extra...)
+	// NO_COLOR=1 is the default so every scenario that does not care about
+	// colour keeps seeing plain text, but a requirement-1 scenario that does
+	// care needs to unset it entirely rather than merely re-set it to "1".
+	// An explicit "NO_COLOR=" sentinel (empty value) in clientEnv/extra means
+	// exactly that -- config's getenv wrapper cannot distinguish "set to
+	// empty" from "unset" anyway, so the sentinel is dropped rather than
+	// passed through to exec, and the default is skipped.
+	all := append(append([]string{}, h.clientEnv...), extra...)
+	noColorOverridden := false
+	filtered := make([]string, 0, len(all))
+	for _, e := range all {
+		if e == "NO_COLOR=" {
+			noColorOverridden = true
+			continue
+		}
+		if strings.HasPrefix(e, "NO_COLOR=") {
+			noColorOverridden = true
+		}
+		filtered = append(filtered, e)
+	}
+	if !noColorOverridden {
+		env = append(env, "NO_COLOR=1")
+	}
+	return append(env, filtered...)
 }
 
 // StartClient starts another independent PTY client while retaining ownership

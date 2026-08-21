@@ -52,6 +52,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerLayoutModeSteps(sc)
 	registerPreviewSteps(sc)
 	registerBlackBoxAssertionSteps(sc)
+	registerCellAttributeSteps(sc)
 	registerDeterminismSteps(sc)
 	registerStoreFeatureSteps(sc)
 	sc.Step(`^the Godog harness is available$`, func() error { return nil })
