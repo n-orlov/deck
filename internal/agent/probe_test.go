@@ -19,10 +19,16 @@ var probeGoldens = []struct {
 	{"claude", "waiting.txt", "waiting", "permission prompt"},
 	{"claude", "idle.txt", "idle", "idle prompt"},
 	{"claude", "error.txt", "error", "api error"},
-	// pi's "starting", "idle" and "waiting" have no rule and no fixture —
-	// see testdata/probes/pi-PROVENANCE.md (SPEC requirement 38).
+	// pi's "starting" and "waiting" have no rule and no fixture — see
+	// testdata/probes/pi-PROVENANCE.md (SPEC requirement 38).
 	{"pi", "running.txt", "running", "working indicator"},
 	{"pi", "error.txt", "error", "agent error"},
+	{"pi", "idle.txt", "idle", "status footer, no working/error indicator"},
+	// A real capture taken mid-way through a 25s tool call: proves the idle
+	// rule's ordering (task 037 / operator steer) is sufficient on its own —
+	// "Working..." is still on screen throughout a long tool call, so this
+	// still resolves to running, not idle.
+	{"pi", "sleep-midrun.txt", "running", "working indicator"},
 }
 
 func TestProbeGoldenPaneCorpus(t *testing.T) {
@@ -77,6 +83,59 @@ func TestProbeDeclinesUnknownTextAndShellIsIneligible(t *testing.T) {
 	status, reason := NewShell().Probe("API Error: text printed by a shell script")
 	if status != "" || reason != "" {
 		t.Fatalf("shell Probe = (%q, %q), want explicit ineligibility", status, reason)
+	}
+}
+
+// TestPiIdleRuleStaysLastAmongPiRules proves — not merely asserts by
+// inspection — that the pi idle rule (keyed on the durable status-footer
+// markers) is ordered after both the pi error and pi running rules, so it
+// can only fire on the *absence* of those verdicts, never ahead of them
+// (§7: idle must not be inferred from pane liveness alone). Confirmed by
+// hand that swapping the idle rule to the front of the pi block makes this
+// test fail (task 037 / operator steer 003-pi-idle-rule.md).
+func TestPiIdleRuleStaysLastAmongPiRules(t *testing.T) {
+	var errorIdx, runningIdx, idleIdx = -1, -1, -1
+	for i, rule := range probeRules {
+		if rule.kind != "pi" {
+			continue
+		}
+		switch rule.status {
+		case "error":
+			errorIdx = i
+		case "running":
+			runningIdx = i
+		case "idle":
+			idleIdx = i
+		}
+	}
+	if errorIdx == -1 || runningIdx == -1 || idleIdx == -1 {
+		t.Fatalf("expected pi error, running and idle rules all present: error=%d running=%d idle=%d", errorIdx, runningIdx, idleIdx)
+	}
+	if idleIdx < errorIdx {
+		t.Fatalf("pi idle rule (index %d) must be ordered after the pi error rule (index %d)", idleIdx, errorIdx)
+	}
+	if idleIdx < runningIdx {
+		t.Fatalf("pi idle rule (index %d) must be ordered after the pi running rule (index %d)", idleIdx, runningIdx)
+	}
+}
+
+// TestPiIdleRuleDoesNotChangeExistingVerdicts pins that adding the idle rule
+// left the previously-established pi/running and pi/error verdicts exactly
+// as they were (task 037's requirement not to disturb 007's refit).
+func TestPiIdleRuleDoesNotChangeExistingVerdicts(t *testing.T) {
+	pi := NewPi()
+	for _, golden := range []struct{ file, status, reason string }{
+		{"running.txt", "running", "working indicator"},
+		{"error.txt", "error", "agent error"},
+	} {
+		pane, err := os.ReadFile(filepath.Join("testdata", "probes", "pi", golden.file))
+		if err != nil {
+			t.Fatalf("read %s: %v", golden.file, err)
+		}
+		status, reason := pi.Probe(string(pane))
+		if status != golden.status || reason != golden.reason {
+			t.Fatalf("Probe(%s) = (%q, %q), want (%q, %q) unchanged by the idle rule", golden.file, status, reason, golden.status, golden.reason)
+		}
 	}
 }
 

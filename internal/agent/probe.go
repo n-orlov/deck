@@ -32,11 +32,11 @@ var probeRules = []probeRule{
 	// Pi has no verified hook source, so these sampled verdicts are its status
 	// source. Refit against recorded captures of a real pi 0.84.1 binary — see
 	// testdata/probes/pi-PROVENANCE.md for the capture method and for why
-	// pi's "waiting", "idle" and "starting" states have no rule here: a real
-	// pi could not be driven into a capturable, durable-marker form of any of
-	// them (permission prompts are extension-provided and never appeared;
-	// pi's only quiescent-state text is a one-time startup banner that
-	// scrolls out of the pane's captured scrollback after ordinary use).
+	// pi's "waiting" and "starting" states still have no rule here: a real pi
+	// could not be driven into a capturable, durable-marker form of either
+	// (permission prompts are extension-provided and never appeared; the only
+	// pre-idle text observed is a container-specific helper-binary bootstrap
+	// message, not pi's own semantics).
 	//
 	// "Error:" alone is real pi UI text (pi's own top-level agent-error
 	// banner — traced to pi's bundled assistant-message component), but a
@@ -47,6 +47,30 @@ var probeRules = []probeRule{
 	// (a "Took Ns" line, a closing fence, or further assistant prose).
 	{kind: "pi", contains: []string{"Error:"}, tailPrefix: "Error:", status: "error", reason: "agent error"},
 	{kind: "pi", contains: []string{"Working..."}, status: "running", reason: "working indicator"},
+
+	// pi draws a persistent two-line status footer at the very bottom of
+	// EVERY pane regardless of status (see lastContentLine's doc comment) —
+	// a cwd line followed by a usage-stats line containing the literal
+	// "(auto)" and the bullet "•" (U+2022; distinct from the startup
+	// banner's middle dot "·", U+00B7, so the two never collide). That
+	// footer is durable across turns (confirmed by a real capture taken
+	// after four conversational turns, long enough for the one-time startup
+	// banner to scroll out of the pane entirely — see idle.txt) — unlike the
+	// banner, which is why the banner was rejected as a marker and this is
+	// not. cwd, model name, thinking level and the percentage vary; "(auto)"
+	// and "•" do not, so only those are pinned.
+	//
+	// This rule MUST stay last among pi's rules: it infers idle from
+	// *positive* evidence (the footer is present, meaning pi is alive and
+	// rendering) plus the *absence* of the other two verdicts, never from
+	// pane liveness alone (§7 forbids inferring running/idle from liveness).
+	// A real capture mid-way through a 25s tool call (testdata/probes/pi/
+	// sleep-midrun.txt) confirms "Working..." is still on screen throughout
+	// a long tool call, so ordering alone (Error: and Working... rules run
+	// first) is sufficient to keep this rule from firing while pi is busy —
+	// see TestPiIdleRuleStaysLastAmongPiRules, which fails if this rule is
+	// ever moved above them.
+	{kind: "pi", contains: []string{"(auto)", "•"}, status: "idle", reason: "status footer, no working/error indicator"},
 }
 
 func probe(kind, pane string) (status, reason string) {
