@@ -202,6 +202,123 @@ func TestResumeNonLeasableReturnsActualStatusAndReason(t *testing.T) {
 	}
 }
 
+// TestResumeAdoptsAlreadyRunningTMuxSessionInsteadOfDuplicateError covers
+// requirement 46: a durable row can end up marked "stopped" (e.g. an
+// external client's stale reconciliation write, or a race) while its tmux
+// pane is still genuinely alive. Resume must recognise that BEFORE taking
+// the launch lease and report an honest no-op, never attempt `new-session`
+// over the live pane (which tmux would refuse as "duplicate session:
+// deck_<name>"), and never write an error status for a session that is
+// demonstrably running.
+func TestResumeAdoptsAlreadyRunningTMuxSessionInsteadOfDuplicateError(t *testing.T) {
+	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
+	service, db, logger, _ := newAgentTestService(t, nil, "resume-already-running")
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: adopt", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	// Deliberately do NOT kill the tmux pane: only the durable row is forced
+	// to "stopped", mirroring a row that a stale/racing write marked stopped
+	// while the pane itself never went away.
+	stopSession(t, db, created.ID)
+
+	session, outcome, err := service.Resume(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if outcome != ResumeAlreadyRunning {
+		t.Fatalf("outcome = %v, want ResumeAlreadyRunning", outcome)
+	}
+	if session.Status != "stopped" {
+		t.Fatalf("returned session status = %q, want the untouched stopped row", session.Status)
+	}
+
+	row, getErr := db.GetSession(context.Background(), created.ID)
+	if getErr != nil {
+		t.Fatalf("get session: %v", getErr)
+	}
+	if row.Status != "stopped" {
+		t.Fatalf("persisted row status = %q, want stopped (unchanged, never error)", row.Status)
+	}
+
+	live, err := service.TMux.List(context.Background())
+	if err != nil {
+		t.Fatalf("list tmux: %v", err)
+	}
+	if len(live) != 1 {
+		t.Fatalf("live tmux sessions = %#v, want exactly the one already-running pane (no duplicate attempt)", live)
+	}
+
+	// Only the original create-time launch was ever recorded: adopting an
+	// already-running session must not itself attempt (and fail) a launch.
+	assertOneLaunchRecorded(t, logger.Path())
+}
+
+// TestResumeSurfacesAGenuineNonDuplicateTMuxFailure proves requirement 46's
+// already-running check does not swallow a real tmux failure: with no
+// existing tmux session for the row (Exists reports false), a genuinely
+// invalid launch environment must still fail Resume and land the row at
+// `error`, exactly as before this task.
+func TestResumeSurfacesAGenuineNonDuplicateTMuxFailure(t *testing.T) {
+	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
+	service, db, logger, _ := newAgentTestService(t, nil, "resume-genuine-tmux-failure")
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: bad env", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
+		t.Fatalf("kill original pane: %v", err)
+	}
+	stopSession(t, db, created.ID)
+
+	// A session-layer env key containing "=" is rejected by tmux.Client.Create
+	// itself (internal/tmux's environmentArgs), a genuine, non-duplicate tmux
+	// failure unrelated to requirement 46's already-running check.
+	if _, execErr := db.DB().ExecContext(context.Background(), `UPDATE sessions SET env = ? WHERE id = ?`, `{"BAD=KEY":"x"}`, created.ID); execErr != nil {
+		t.Fatalf("force invalid env: %v", execErr)
+	}
+
+	_, outcome, err := service.Resume(context.Background(), created.ID)
+	if err == nil {
+		t.Fatalf("resume: want error for a genuinely invalid launch environment, got none")
+	}
+	if outcome != ResumeStarted {
+		t.Fatalf("outcome = %v, want ResumeStarted (used for launchFailed paths)", outcome)
+	}
+	if strings.Contains(err.Error(), "duplicate session") {
+		t.Fatalf("resume error = %q, must not be tmux's duplicate-session refusal", err.Error())
+	}
+	if !strings.Contains(err.Error(), "invalid environment variable") {
+		t.Fatalf("resume error = %q, want it to name the genuine invalid-environment cause", err.Error())
+	}
+
+	row, getErr := db.GetSession(context.Background(), created.ID)
+	if getErr != nil {
+		t.Fatalf("get session: %v", getErr)
+	}
+	if row.Status != "error" {
+		t.Fatalf("row status = %q, want error", row.Status)
+	}
+
+	live, err := service.TMux.List(context.Background())
+	if err != nil {
+		t.Fatalf("list tmux: %v", err)
+	}
+	if len(live) != 0 {
+		t.Fatalf("live tmux sessions = %#v, want none created by the genuinely failed resume", live)
+	}
+
+	assertOneLaunchRecorded(t, logger.Path())
+}
+
 func TestResumeFailsOnUnknownConversationID(t *testing.T) {
 	cwd := t.TempDir()
 	service, db, logger, _ := newAgentTestService(t, nil, "resume-unknown-id")

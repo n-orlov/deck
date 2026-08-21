@@ -230,3 +230,63 @@ rather than by `SessionStart`'s removed `AllowedFrom: ["starting"]`.
 **Verification:** `ci/run.sh go test ./internal/...` passes (all packages,
 including `internal/hookrecv` and `internal/store`); `ci/run.sh go test
 ./...` passes.
+
+## Task 004 — requirements 46 and 47: adopt an already-running session, and confirm a launch failure is clearable
+
+**Requirement 46 (already-running is not an error).** Added
+`tmux.Client.Exists(ctx, slug)` (`has-session -t deck_<slug>`, treating any
+`IsTargetAbsent` result as "does not exist" and any other tmux error as a
+genuine failure to surface, never swallowed). `service.Resume` now calls it
+immediately after fetching the durable row and **before** `AcquireLaunchLease`
+is ever taken (per the requirement's own wording: "needs its own check before
+the lease is even taken" — §9.3's lease is about *concurrent* launchers
+racing for a new pane, not this *already-launched* case). A new outcome,
+`ResumeAlreadyRunning`, is returned with the row untouched (no lease, no
+`tmux new-session`, no status write); `internal/tui` renders it as
+**"already running"** in the footer note (the copy is deliberately distinct
+from `ResumeStartingElsewhere`'s "starting elsewhere": the latter means
+*someone else is launching it right now*, the former means *it is already
+launched and deck already owns the pane* — conflating the two would mislabel
+which race actually happened for an operator debugging it later).
+
+**Why `CreateAgent`/`CreateShell` ("start") needed no equivalent check.**
+`store.CreateSession` enforces `UNIQUE(name)` and `UNIQUE(slug)` for the
+lifetime of the row (there is no session-delete path — only `Kill`, which
+requires its own `TMux.Kill` to succeed before ever touching the row's
+status). A brand-new `CreateAgent`/`CreateShell` call therefore always
+mints a fresh slug that cannot already have a live tmux session under
+deck's own bookkeeping: the only way `deck_<slug>` could already exist at
+create time is a tmux session created *outside* deck entirely (a user
+manually running `tmux -L <deck-socket> new-session -s deck_<slug>`), which
+is a foreign-object collision the SPEC does not ask this task to adopt.
+Requirement 46's own examples (`r` on a live session) and its actionable
+test surface (`internal/service/...`, `internal/tui/...`) are both about
+resume; the check therefore lives once, in `Resume`, where the row's status
+actually can legitimately say "stopped" while the pane is still alive.
+
+**Requirement 47 (a launch failure must be clearable).** This turned out to
+already be satisfied by task 003's store-level precedence guards: a hook
+arriving after a `tmux`-sourced `error` from a failed launch is no longer
+rejected by a per-event `AllowedFrom` list (see the Task 003 entry above),
+so "whatever status a failed launch writes" (`error`, via `launchFailed`) is
+already replaceable by the next higher-precedence `Stop`/`Notification`/
+`SessionStart` hook. No new §7 status was invented for "deck could not
+launch this" — `error` (source `tmux`) remains the only representation, and
+it is now recoverable rather than sticky. This task added no further store
+change for requirement 47; it is recorded here as confirmed, not
+re-implemented, so a later reader does not go looking for a second fix.
+
+**Tests.** `internal/service/resume_test.go`:
+`TestResumeAdoptsAlreadyRunningTMuxSessionInsteadOfDuplicateError` (a
+`stopped` row whose pane is still alive resumes as a no-op: one launch
+recorded total, one live tmux session, row status stays `stopped`) and
+`TestResumeSurfacesAGenuineNonDuplicateTMuxFailure` (Exists reports false,
+but `tmux.Client.Create` genuinely fails on an invalid env key — the error
+must name the real cause and never mention "duplicate session", and the row
+still lands at `error`). `internal/tui/resume_test.go`:
+`TestResumeAlreadyRunningIsNotAnError` (footer renders "already running",
+`attachError` stays empty, and the text is distinct from "starting
+elsewhere").
+
+**Verification:** `ci/run.sh go test ./internal/service/... ./internal/tui/...`
+and `ci/run.sh go test ./...` both pass.

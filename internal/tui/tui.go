@@ -287,9 +287,10 @@ func NewWithShellCreatorAttacherKillerAndReconciler(db *store.Store, settings co
 
 // NewWithShellCreatorAttacherKillerReconcilerAndResumer adds the `r` resume
 // action (SPEC §8/§9.3). A resumed row is left `starting`; the TUI never
-// renders `running` for it, and a caller that lost the launch-lease race
-// (service.ResumeStartingElsewhere) is shown "starting elsewhere", not an
-// error.
+// renders `running` for it, a caller that lost the launch-lease race
+// (service.ResumeStartingElsewhere) is shown "starting elsewhere", and a
+// caller whose tmux session already exists (service.ResumeAlreadyRunning,
+// requirement 46) is shown "already running" — neither is an error.
 func NewWithShellCreatorAttacherKillerReconcilerAndResumer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error)) Model {
 	return NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, nil)
 }
@@ -470,6 +471,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.attachError = ""
 		if msg.outcome == service.ResumeStartingElsewhere {
 			m.resumeNote = "starting elsewhere"
+			return m, nil
+		}
+		if msg.outcome == service.ResumeAlreadyRunning {
+			// Requirement 46: deck already owns this pane. Adopting it as an
+			// honest no-op means refreshing the row from whatever the service
+			// returned (untouched) rather than pretending a launch happened.
+			m.resumeNote = "already running"
+			for i := range m.sessions {
+				if m.sessions[i].ID == msg.session.ID {
+					m.sessions[i] = msg.session
+					break
+				}
+			}
 			return m, nil
 		}
 		m.resumeNote = ""
