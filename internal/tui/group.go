@@ -105,11 +105,50 @@ func (m Model) isSessionVisible(i int) bool {
 	return !m.isGroupCollapsed(sessionWorkspace(m.sessions[i]))
 }
 
+// visualOrder returns every m.sessions index in the exact order the
+// sidebar paints them: groupSessions()'s workspace buckets, flattened,
+// ignoring collapse state entirely. This is the one place index order is
+// reconciled with paint order (operator-reported defect, 002-steering.md,
+// found on 786dfde): groupSessions() appends a later session into an
+// EARLIER group when its workspace was already seen, so painted order and
+// m.sessions order only coincide when every workspace's sessions happen to
+// be adjacent. Every navigation primitive below resolves through this
+// list (or visibleSessionIndices, its collapse-filtered view) rather than
+// stepping m.sessions by +1/-1 directly, so one press always moves exactly
+// one visual row. This does not reorder m.sessions itself (that stays the
+// attention sort's job, SPEC.md:876) and does not touch groupSessions'
+// own bucketing (SPEC requirement 30).
+func (m Model) visualOrder() []int {
+	var order []int
+	for _, group := range m.groupSessions() {
+		for _, is := range group.Sessions {
+			order = append(order, is.Index)
+		}
+	}
+	return order
+}
+
+// visibleSessionIndices is visualOrder filtered to the sessions actually
+// shown right now (i.e. not hidden by a collapsed workspace group).
+// Paging (sidebarRowsPerPage) and any future "how many rows can I move"
+// primitive should walk this list, since a collapsed group's hidden rows
+// must not count as a step.
+func (m Model) visibleSessionIndices() []int {
+	var out []int
+	for _, idx := range m.visualOrder() {
+		if m.isSessionVisible(idx) {
+			out = append(out, idx)
+		}
+	}
+	return out
+}
+
 // nearestVisibleSelection returns the closest visible session index to
-// from, searching forward first (so expanding/collapsing near the top of
-// the list keeps selection moving in the direction of travel) and then
-// backward, or 0 when no session is visible (an empty list is handled by
-// every caller already, since m.selected is meaningless there).
+// from IN VISUAL ORDER, searching forward first (so expanding/collapsing
+// near the top of the list keeps selection moving in the direction of
+// travel) and then backward, or 0 when no session is visible (an empty
+// list is handled by every caller already, since m.selected is
+// meaningless there).
 func (m Model) nearestVisibleSelection(from int) int {
 	if len(m.sessions) == 0 {
 		return 0
@@ -120,14 +159,22 @@ func (m Model) nearestVisibleSelection(from int) int {
 	if from > len(m.sessions)-1 {
 		from = len(m.sessions) - 1
 	}
-	for i := from; i < len(m.sessions); i++ {
-		if m.isSessionVisible(i) {
-			return i
+	order := m.visualOrder()
+	pos := 0
+	for i, idx := range order {
+		if idx == from {
+			pos = i
+			break
 		}
 	}
-	for i := from - 1; i >= 0; i-- {
-		if m.isSessionVisible(i) {
-			return i
+	for i := pos; i < len(order); i++ {
+		if m.isSessionVisible(order[i]) {
+			return order[i]
+		}
+	}
+	for i := pos - 1; i >= 0; i-- {
+		if m.isSessionVisible(order[i]) {
+			return order[i]
 		}
 	}
 	return 0
@@ -136,23 +183,88 @@ func (m Model) nearestVisibleSelection(from int) int {
 // nextVisibleSelection and prevVisibleSelection are ↑/↓'s SPEC requirement
 // 30 "remains navigable" behaviour: stepping past a collapsed group's
 // hidden rows in one keypress rather than requiring one press per hidden
-// row (which would silently do nothing on each of those presses).
+// row (which would silently do nothing on each of those presses). Both
+// step through visualOrder (painted order), never m.sessions index order
+// directly, so one press always moves exactly one visual row.
 func (m Model) nextVisibleSelection(from int) (int, bool) {
-	for i := from + 1; i < len(m.sessions); i++ {
-		if m.isSessionVisible(i) {
-			return i, true
+	order := m.visualOrder()
+	pos := -1
+	for i, idx := range order {
+		if idx == from {
+			pos = i
+			break
+		}
+	}
+	if pos == -1 {
+		return from, false
+	}
+	for i := pos + 1; i < len(order); i++ {
+		if m.isSessionVisible(order[i]) {
+			return order[i], true
 		}
 	}
 	return from, false
 }
 
 func (m Model) prevVisibleSelection(from int) (int, bool) {
-	for i := from - 1; i >= 0; i-- {
-		if m.isSessionVisible(i) {
-			return i, true
+	order := m.visualOrder()
+	pos := -1
+	for i, idx := range order {
+		if idx == from {
+			pos = i
+			break
+		}
+	}
+	if pos == -1 {
+		return from, false
+	}
+	for i := pos - 1; i >= 0; i-- {
+		if m.isSessionVisible(order[i]) {
+			return order[i], true
 		}
 	}
 	return from, false
+}
+
+// pageSelection is PgUp/PgDn's own step (SPEC requirement 19): moves delta
+// VISUAL rows (positive = down, negative = up) from m.selected's current
+// visual position among the presently visible rows, clamping at either
+// end rather than wrapping. Like nextVisibleSelection/prevVisibleSelection,
+// this walks visibleSessionIndices (painted order) rather than doing
+// index arithmetic against m.sessions, which is the same defect ↑/↓ had
+// (002-steering.md). Returns 0 when nothing is visible.
+func (m Model) pageSelection(delta int) int {
+	visible := m.visibleSessionIndices()
+	if len(visible) == 0 {
+		return 0
+	}
+	pos := -1
+	for i, idx := range visible {
+		if idx == m.selected {
+			pos = i
+			break
+		}
+	}
+	if pos == -1 {
+		near := m.nearestVisibleSelection(m.selected)
+		for i, idx := range visible {
+			if idx == near {
+				pos = i
+				break
+			}
+		}
+		if pos == -1 {
+			pos = 0
+		}
+	}
+	pos += delta
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(visible)-1 {
+		pos = len(visible) - 1
+	}
+	return visible[pos]
 }
 
 // groupHeaderText renders one group's header line (SPEC requirement 30):

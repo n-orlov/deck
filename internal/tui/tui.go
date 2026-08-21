@@ -584,18 +584,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgup":
 			// ·11.3 requirement 19: PgUp/PgDn always drive the list, since the
 			// sidebar is the only focusable region and there is no tab panel
-			// cycle to move the page keys onto instead.
-			m.selected -= m.sidebarRowsPerPage()
-			if m.selected < 0 {
-				m.selected = 0
-			}
-			m.selected = m.nearestVisibleSelection(m.selected)
+			// cycle to move the page keys onto instead. pageSelection walks
+			// VISUAL rows (002-steering.md), not raw m.sessions index
+			// arithmetic, so a page of hidden/non-adjacent rows can't skew it.
+			m.selected = m.pageSelection(-m.sidebarRowsPerPage())
 		case "pgdown":
-			m.selected += m.sidebarRowsPerPage()
-			if last := len(m.sessions) - 1; m.selected > last {
-				m.selected = max(last, 0)
-			}
-			m.selected = m.nearestVisibleSelection(m.selected)
+			m.selected = m.pageSelection(m.sidebarRowsPerPage())
 		case "Y":
 			if m.acknowledge == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -1086,22 +1080,35 @@ func (m Model) attentionCount() int {
 
 // nextAttentionSelection is `space`'s own step (SPEC requirements 31, 32):
 // the index of the next *visible* session needing attention, searching
-// forward from just after from and wrapping around the whole list back
-// through from itself, so a lone session needing attention (including the
-// one already selected) is still found rather than treated as "nothing
-// needs attention". ok is false only when no visible session needs
-// attention at all, in which case the caller must leave selection (and
-// everything else) untouched — this function never mutates m.sessions or
-// any session's status, only answers where to move.
+// forward from just after from's VISUAL position and wrapping around the
+// whole painted list back through from itself, so a lone session needing
+// attention (including the one already selected) is still found rather
+// than treated as "nothing needs attention". Wrapping is done over
+// visualOrder (painted order), not m.sessions index order, for the same
+// reason ↑/↓ and PgUp/PgDn do (002-steering.md): otherwise `space` could
+// jump backwards or skip a visible row whenever a workspace's sessions
+// are non-adjacent in m.sessions. ok is false only when no visible
+// session needs attention at all, in which case the caller must leave
+// selection (and everything else) untouched — this function never
+// mutates m.sessions or any session's status, only answers where to move.
 func (m Model) nextAttentionSelection(from int) (int, bool) {
-	n := len(m.sessions)
+	order := m.visualOrder()
+	n := len(order)
 	if n == 0 {
 		return from, false
 	}
+	pos := -1
+	for i, idx := range order {
+		if idx == from {
+			pos = i
+			break
+		}
+	}
 	for step := 1; step <= n; step++ {
-		i := (from + step) % n
-		if m.isSessionVisible(i) && NeedsAttention(m.sessions[i]) {
-			return i, true
+		i := (pos + step) % n
+		idx := order[i]
+		if m.isSessionVisible(idx) && NeedsAttention(m.sessions[idx]) {
+			return idx, true
 		}
 	}
 	return from, false
