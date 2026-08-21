@@ -64,8 +64,8 @@ func TestStatusTokenIsExhaustiveOverSevenStatuses(t *testing.T) {
 
 // TestColorTokenRespectsNoColor asserts colorToken's NO_COLOR gate: with
 // Color=false, text is returned byte-for-byte unmodified -- no SGR escape
-// sneaks in through the theme path any more than it does through the
-// existing m.color().
+// sneaks in through the theme path any more than it did through the old,
+// now-removed placeholder m.color().
 func TestColorTokenRespectsNoColor(t *testing.T) {
 	m := Model{settings: config.Settings{Color: false}}
 	got := m.colorToken(theme.Running, "running")

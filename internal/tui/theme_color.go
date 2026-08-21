@@ -39,8 +39,8 @@ func statusToken(status string) (theme.Token, bool) {
 }
 
 // colorToken renders text in tok's colour from the active theme, honouring
-// NO_COLOR/DECK_COLOR (m.settings.Color, exactly like m.color()) and
-// DECK_COLOR_DEPTH: "16" reads the theme's already-quantised colour and
+// NO_COLOR/DECK_COLOR (m.settings.Color, the same gate the removed
+// placeholder m.color() used) and DECK_COLOR_DEPTH: "16" reads the theme's already-quantised colour and
 // emits the matching ANSI 16-colour SGR code (§11.6's 16-colour floor),
 // anything else (including the unset auto-detect case) reads the theme's
 // authored hex and emits a truecolour SGR escape. A token the active theme

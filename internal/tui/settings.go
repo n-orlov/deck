@@ -854,7 +854,8 @@ func (m Model) settingsSelectionToken(list int) theme.Token {
 // one focusable region, which is why `tab` is unbound there (requirement
 // 42). Task 021 generalised the same border_focus/border split to every
 // other panel this package draws (panel.go's borderColor, now token-
-// parametrised rather than the old placeholder m.color()); this remains
+// parametrised rather than the old removed placeholder m.color()); this
+// remains
 // its own function only because the settings takeover's focus state
 // (m.settingsFocus, not "is this the sidebar or the preview") is what
 // picks the token here.
