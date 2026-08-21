@@ -912,10 +912,15 @@ func (m Model) mainView() string {
 // deck's supported 80x24 minimum (SPEC requirement 14), the footer states
 // that instead — renderStackedFrame no longer draws that notice above the
 // panels, where it could scroll the sidebar's own top border off screen;
-// the footer is the one line SPEC §11.3 guarantees stays on screen.
+// the footer is the one line SPEC §11.3 guarantees stays on screen. At a
+// width narrower than the notice's own 87 columns, truncateToWidth elides
+// its tail rather than letting it wrap and push the frame's line count
+// past the terminal's actual height (task 010) — a below-minimum terminal
+// is, by definition, exactly the case where that budget is tight.
 func (m Model) footerLine() string {
 	if m.computeLayout().BelowMinimum {
-		return belowMinimumNotice
+		width, _ := m.frameSize()
+		return truncateToWidth(belowMinimumNotice, width)
 	}
 	keys := m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit")
 	if reason := m.selectedRowReason(); reason != "" {
