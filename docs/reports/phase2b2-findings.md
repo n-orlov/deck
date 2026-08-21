@@ -532,3 +532,44 @@ token's hex while `claude` and `conv-123` render in `text`'s. `ci/run.sh
 go test ./internal/tui/...` and the full `go test ./...` (including
 `features`, `-count=1`) pass. No new theme token added
 (`git diff --stat internal/theme` empty for this task).
+
+## Task 024 — failed-theme-load copy, first-paint notice (requirement 28)
+
+**Where the copy already lived:** `internal/theme.Resolve` (task 019-era
+code, `internal/theme/loader.go`) already computed a human-readable
+reason string whenever the configured `[ui] theme` name could not be
+honoured, and returned it alongside the default theme it fell back to.
+Nothing downstream ever rendered that reason: `config.LoadFrom` stored it
+on `Settings.ThemeReason` and it sat unread — the default theme applied
+silently, which requirement 28 calls a fabricated status (the user is
+never told their `[ui] theme` choice was ignored).
+
+**The two copy variants, verbatim, in `internal/theme/loader.go`'s
+`Resolve`:**
+
+- Unknown name (no built-in and no discovered user theme matches):
+  `theme %q not found; using default theme %q` — e.g. `theme "nope" not
+  found; using default theme "dark"`.
+- Named user theme file exists but fails to parse: `theme %q: %s failed
+  to parse (%v); using default theme %q` — e.g. `theme "broken":
+  /home/x/.config/deck/themes/broken.toml failed to parse (invalid TOML
+  syntax); using default theme "dark"`.
+
+**Where it's rendered:** `Model.themeBanner(width)`
+(`internal/tui/tui.go`), following the exact convention already
+established for `startupBanner`/`attachErrorLines`/`resumeNoteLines`:
+wrapped to `width`, budgeted inside `computeLayout`'s reserved-rows
+arithmetic, rendered immediately after the tmux startup banner in
+`mainView`, and folded into `hitTest`'s row offset (`internal/tui/mouse.go`)
+so mouse hit-testing below it stays correct. Because `ThemeReason` cannot
+change for the lifetime of one config load, the banner needs no one-shot
+"have we shown this yet" flag — it is simply present at every frame
+including literally the first `View()` call, which trivially satisfies
+"on first paint" (proven directly: `theme_fallback_test.go`'s pinning
+test calls `View()` once with no prior `Update()`).
+
+**Verification:** `internal/tui/theme_fallback_test.go` pins both copy
+variants above at the very first painted frame, proves the banner is
+absent when `ThemeReason == ""` (the theme resolved cleanly), and proves
+the reserved-row budget holds at {80x24, 70x24, 60x20, 100x30, 120x24}.
+`ci/run.sh go test ./internal/tui/...` passes.
