@@ -48,6 +48,12 @@ type Settings struct {
 	ASCII      bool
 	Animation  bool
 	Color      bool
+	// ColorDepth mirrors DECK_COLOR_DEPTH: "" (unset, auto-detect from the
+	// terminal), "truecolor" or "16". It is resolved independently of
+	// Color/NO_COLOR/DECK_COLOR — those decide whether colour renders at all,
+	// this decides which palette a colour render uses once that question is
+	// settled, so NO_COLOR taking effect never clears or rewrites this field.
+	ColorDepth string
 	// AllowYolo mirrors config.toml's top-level allow_yolo key. It defaults to
 	// false when the file, or the key within it, is absent: the yolo
 	// permission profile stays gated unless an operator opts in explicitly.
@@ -107,6 +113,10 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 			return Settings{}, err
 		}
 	}
+	colorDepth, err := colorDepthEnv(getenv("DECK_COLOR_DEPTH"))
+	if err != nil {
+		return Settings{}, err
+	}
 	allowYolo, staleAfter, mouse, env, err := loadConfigFile(paths.ConfigFile)
 	if err != nil {
 		return Settings{}, err
@@ -120,7 +130,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, StaleAfter: staleAfter,
-		ASCII: ascii, Animation: animation, Color: color, AllowYolo: allowYolo, Env: env, Mouse: mouse,
+		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: allowYolo, Env: env, Mouse: mouse,
 	}, nil
 }
 
@@ -168,6 +178,19 @@ func boolEnv(raw string, fallback bool, name string) (bool, error) {
 		return false, fmt.Errorf("%s must be true or false: %w", name, err)
 	}
 	return value, nil
+}
+
+// colorDepthEnv validates DECK_COLOR_DEPTH. An unset variable resolves to ""
+// (auto-detect from the terminal); any set value other than the two
+// documented ones is a stated error naming the variable, never a silent
+// default.
+func colorDepthEnv(raw string) (string, error) {
+	switch raw {
+	case "", "truecolor", "16":
+		return raw, nil
+	default:
+		return "", fmt.Errorf("DECK_COLOR_DEPTH must be truecolor or 16, got %q", raw)
+	}
 }
 
 // Clock freezes wall time when DECK_CLOCK is set. Elapsed intentionally uses
