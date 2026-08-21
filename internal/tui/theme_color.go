@@ -12,6 +12,20 @@ import (
 // config.Settings{...} literals without a Theme field, and must still get a
 // real, complete theme rather than a nil-map panic).
 func (m Model) activeTheme() *theme.Theme {
+	// Task 025's `t` picker (SPEC requirement 27) previews live on the
+	// REAL session list by making activeTheme -- the one function every
+	// coloured render already calls through -- answer with whatever the
+	// picker currently highlights, without ever touching m.settings.Theme
+	// itself. That is what makes esc's revert byte-for-byte for free: esc
+	// only ever clears m.themePicking/m.themePickerValue, never writes
+	// m.settings, so the very next render already falls through to
+	// exactly the theme it would have returned had `t` never been
+	// pressed.
+	if m.themePicking {
+		if t := m.themePickerCandidateTheme(); t != nil {
+			return t
+		}
+	}
 	if m.settings.Theme != nil {
 		return m.settings.Theme
 	}

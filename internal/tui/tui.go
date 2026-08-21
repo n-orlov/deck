@@ -127,9 +127,29 @@ type Model struct {
 	// be visible, not swallowed) and the discard prompt's own text.
 	// Mirrors profileSwitchNote/pinNote's existing shape in this package.
 	settingsNote string
-	width        int
-	height       int
-	agents       *agent.Registry
+	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
+	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
+	// -- the point of the picker is that the REAL session list stays on
+	// screen and is coloured with whatever theme is currently highlighted
+	// (activeTheme() consults themePickerValue while this is true), so
+	// mainView keeps rendering and simply grows a themePickerLines() banner
+	// (mirroring themeBanner/attachErrorLines' own "extra reserved rows"
+	// shape) rather than gaining a second, separate full-screen view.
+	themePicking bool
+	// themePickerValue is the theme NAME currently highlighted in the
+	// picker (never the *theme.Theme itself, so "not found" -- an empty
+	// list, or a name that raced a user-theme file being deleted mid-pick
+	// -- is representable and handled rather than a nil pointer). esc never
+	// writes this anywhere durable; only themePickerConfirm (enter) does,
+	// and only after resolving it back to a concrete theme.
+	themePickerValue string
+	// themePickerNote surfaces enter's outcome (a failed config.toml write,
+	// or an empty list making enter a no-op), mirroring profileSwitchNote/
+	// pinNote/settingsNote's identical shape elsewhere in this package.
+	themePickerNote string
+	width           int
+	height          int
+	agents          *agent.Registry
 	// layoutMode and sidebarWidth are the §11.2 layout pin and the
 	// persisted sidebar width, both persisted to state.db's ui_state table
 	// by persistLayoutMode/persistSidebarWidth (task 016). "" and 0 both
@@ -635,6 +655,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settingsOpen {
 			return m.updateSettings(msg)
 		}
+		if m.themePicking {
+			return m.updateThemePicker(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -660,6 +683,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
 				m.settingsDiscardConfirm = false
 				m.settingsNote = ""
+			}
+		case "t":
+			if !m.help {
+				m = m.openThemePicker()
 			}
 		case "n":
 			if !m.help {
@@ -810,7 +837,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -1035,7 +1062,7 @@ func (m Model) resumeNoteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -1088,6 +1115,7 @@ func (m Model) mainView() string {
 	layout := m.computeLayout()
 	lines := m.startupBanner(width)
 	lines = append(lines, m.themeBanner(width)...)
+	lines = append(lines, m.themePickerLines(width)...)
 	if layout.Effective == LayoutStacked {
 		lines = append(lines, m.renderStackedFrame(layout)...)
 	} else {
