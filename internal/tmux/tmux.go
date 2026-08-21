@@ -354,6 +354,31 @@ func (c Client) CapturePreview(ctx context.Context, slug string) (PreviewCapture
 	return PreviewCapture{Live: true, Bytes: data, Width: pane.Width, Height: pane.Height}, nil
 }
 
+// Exists reports whether a tmux session named deck_<slug> is already
+// running on this client's private server, so a caller can adopt an
+// already-launched pane (SPEC requirement 46) instead of attempting
+// `new-session` over it and misreporting tmux's own "duplicate session"
+// refusal as a launch failure. An absent private server (never bootstrapped,
+// or killed) is a normal "does not exist" answer, not an error; any other
+// tmux failure (a socket permission problem, a corrupt server, etc.) is
+// returned so a genuine, non-duplicate tmux failure still surfaces.
+func (c Client) Exists(ctx context.Context, slug string) (bool, error) {
+	if c.Socket == "" {
+		return false, errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
+	if err != nil {
+		return false, err
+	}
+	if _, err := c.run(ctx, "has-session", "-t", name); err != nil {
+		if IsTargetAbsent(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check session %q: %w", name, err)
+	}
+	return true, nil
+}
+
 // Kill removes a deck-owned tmux session without touching a similarly named
 // user session on the default tmux socket. A concurrently removed session (or
 // private server) is already in the desired state and therefore succeeds.

@@ -99,6 +99,39 @@ func TestResumeStartingElsewhereIsNotAnError(t *testing.T) {
 	}
 }
 
+// TestResumeAlreadyRunningIsNotAnError proves requirement 46: a row whose
+// tmux session already exists renders "already running", never an error and
+// never "starting elsewhere" (that note is reserved for the concurrent-
+// launcher race, a different case).
+func TestResumeAlreadyRunningIsNotAnError(t *testing.T) {
+	stopped := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}
+	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
+		nil, config.Settings{}, "", nil, nil, nil, nil,
+		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+			return stopped, service.ResumeAlreadyRunning, nil
+		},
+	)
+	model.sessions = []store.Session{stopped}
+	model.selected = 0
+
+	updated, cmd := model.Update(key("r"))
+	model = updated.(Model)
+	msg := cmd()
+	updated, _ = model.Update(msg)
+	model = updated.(Model)
+
+	view := model.View()
+	if !strings.Contains(view, "already running") {
+		t.Fatalf("already-running resume did not render 'already running':\n%s", view)
+	}
+	if model.attachError != "" {
+		t.Fatalf("already-running resume was rendered as an error: %q", model.attachError)
+	}
+	if strings.Contains(view, "starting elsewhere") || strings.Contains(view, "duplicate session") {
+		t.Fatalf("already-running resume rendered as a different case:\n%s", view)
+	}
+}
+
 func TestResumeNonLeasableRendersActualStatusAndReason(t *testing.T) {
 	actual := store.Session{
 		ID: "s1", Name: "alpha", Agent: "claude", Status: "waiting",

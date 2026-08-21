@@ -28,16 +28,26 @@ const (
 	// ResumeNotLeasable means the durable row is no longer stopped. The
 	// returned session contains its current status and reason for display.
 	ResumeNotLeasable
+	// ResumeAlreadyRunning means a tmux session for this row already exists
+	// on deck's private server (requirement 46): deck already owns that
+	// pane, so this call adopted it as an honest no-op instead of attempting
+	// `new-session` over it (which tmux would refuse as "duplicate session:
+	// deck_<name>", a deck bug that must never reach the user disguised as
+	// an agent failure). No launch lease was taken, no tmux command was run,
+	// and the durable row is untouched — the returned session is whatever
+	// GetSession found.
+	ResumeAlreadyRunning
 )
 
 // Resume relaunches an existing session's conversation (SPEC §8/§9.3): it
-// acquires the launch lease, recreates deck_<slug> at the session's cwd,
-// runs pre_launch, and launches the adapter's resume argv with the
-// session's persisted env and permission profile. It never re-sends a
-// prompt or previous message — the resume argv only ever carries the
-// conversation id, profile and the session's own launch_args. A caller that
-// loses the lease race gets ResumeStartingElsewhere and no tmux session is
-// created for it.
+// checks that no tmux session for this row already exists (requirement 46,
+// see ResumeAlreadyRunning), acquires the launch lease, recreates
+// deck_<slug> at the session's cwd, runs pre_launch, and launches the
+// adapter's resume argv with the session's persisted env and permission
+// profile. It never re-sends a prompt or previous message — the resume argv
+// only ever carries the conversation id, profile and the session's own
+// launch_args. A caller that loses the lease race gets
+// ResumeStartingElsewhere and no tmux session is created for it.
 func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, ResumeOutcome, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.Agents == nil {
 		return store.Session{}, ResumeStartingElsewhere, errors.New("resume requires store, audit logger, clock, and adapter registry")
@@ -49,6 +59,19 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if err != nil {
 		return store.Session{}, ResumeStartingElsewhere, fmt.Errorf("get session %q: %w", sessionID, err)
 	}
+
+	// Requirement 46: check for an already-running tmux session BEFORE the
+	// launch lease is even taken (§9.3's lease is about *concurrent*
+	// launchers racing to start a new pane; this is the *already-launched*
+	// case, which is not a race at all). Reported as an honest no-op, never
+	// as `duplicate session: deck_<name>` reaching the user disguised as an
+	// agent failure, and never written to the row as an error status.
+	if exists, existsErr := s.TMux.Exists(ctx, session.Slug); existsErr != nil {
+		return session, ResumeStartingElsewhere, fmt.Errorf("check for an already-running tmux session for %q: %w", session.Name, existsErr)
+	} else if exists {
+		return session, ResumeAlreadyRunning, nil
+	}
+
 	adapter, ok := s.Agents.Lookup(session.Agent)
 	if !ok {
 		return session, ResumeStartingElsewhere, fmt.Errorf("unknown agent kind %q", session.Agent)
