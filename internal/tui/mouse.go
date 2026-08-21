@@ -102,18 +102,13 @@ func (m Model) hitTestSideBySide(layout LayoutResult, x, y int) hitResult {
 }
 
 // hitTestStacked covers the below-80-column fallback (renderStackedFrame):
-// the below-minimum notice (if any), then the list box, then the preview
-// box, stacked top to bottom with no seam between them.
+// the list box, then the preview box, stacked top to bottom with no seam
+// between them. The below-minimum notice (SPEC requirement 14) lives on
+// the footer now, not above these panels, so it never shifts this offset
+// math.
 func (m Model) hitTestStacked(layout LayoutResult, x, y int) hitResult {
 	lw, lh := layout.Sidebar.Width, layout.Sidebar.Height
 	pw, ph := layout.Preview.Width, layout.Preview.Height
-	if layout.BelowMinimum {
-		notice := wrapText("Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits.", lw)
-		if y < len(notice) {
-			return hitResult{}
-		}
-		y -= len(notice)
-	}
 	if lh >= 2 {
 		if y >= 0 && y < lh {
 			if x < 0 || x >= lw {

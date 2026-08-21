@@ -840,7 +840,18 @@ func (m Model) startupBanner(width int) []string {
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
 	reserved := 1 + len(m.startupBanner(width))
-	return ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
+	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
+	// ComputeLayout's own BelowMinimum reads its rows argument as the full
+	// terminal height (its doc comment says so, and its direct unit tests
+	// call it that way), but the reserved rows above already subtract the
+	// footer/banner before rows ever reaches it here, so an exact 80x24
+	// terminal would otherwise report BelowMinimum=true (23 content rows
+	// < MinRows) even though 24 is deck's own supported minimum, not below
+	// it. Recompute the flag against the real, unreserved terminal size so
+	// SPEC requirement 14's footer notice (footerLine) only ever fires for
+	// a genuinely below-minimum terminal.
+	result.BelowMinimum = width < AutoSideBySideWidth || height < MinRows
+	return result
 }
 
 // adjustSidebarWidth is `<`/`>`'s one-column step (SPEC requirement 15),
@@ -897,14 +908,26 @@ func (m Model) mainView() string {
 
 // footerLine is SPEC requirement 20's single footer line: the key legend,
 // preceded by the selected row's status reason (task 012) when it has one.
-// It never lists a key that is not bound.
+// It never lists a key that is not bound. When the terminal is below
+// deck's supported 80x24 minimum (SPEC requirement 14), the footer states
+// that instead — renderStackedFrame no longer draws that notice above the
+// panels, where it could scroll the sidebar's own top border off screen;
+// the footer is the one line SPEC §11.3 guarantees stays on screen.
 func (m Model) footerLine() string {
+	if m.computeLayout().BelowMinimum {
+		return belowMinimumNotice
+	}
 	keys := m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit")
 	if reason := m.selectedRowReason(); reason != "" {
 		return reason + "    " + keys
 	}
 	return keys
 }
+
+// belowMinimumNotice is SPEC requirement 14's exact below-minimum copy,
+// shared between the footer (footerLine) and the mouse hit-tester so the
+// two never disagree about whether it is on screen.
+const belowMinimumNotice = "Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits."
 
 // renderSideBySideFrame draws two panels sharing one seam (SPEC requirement
 // 18): the sidebar draws its top/left/bottom borders only, and the
@@ -1011,9 +1034,6 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 	lw, lh := layout.Sidebar.Width, layout.Sidebar.Height
 	pw, ph := layout.Preview.Width, layout.Preview.Height
 	var lines []string
-	if layout.BelowMinimum {
-		lines = append(lines, wrapText("Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits.", lw)...)
-	}
 	if lh >= 2 {
 		listRows := lh - 2
 		visible := m.sidebarVisibleEntries(max(lw-4, 0), listRows)

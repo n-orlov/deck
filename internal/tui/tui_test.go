@@ -289,6 +289,46 @@ func TestHelpTogglesAndEscapeCloses(t *testing.T) {
 	}
 }
 
+// TestBelowMinimumNoticeIsOnTheFooterOnly proves SPEC requirement 14: at a
+// below-80x24 terminal size the notice appears on the footer (the last
+// rendered line) and nowhere above it — renderStackedFrame must not also
+// draw it above the panels, and an at-or-above-minimum terminal must never
+// show it at all.
+func TestBelowMinimumNoticeIsOnTheFooterOnly(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{{Name: "only-session", Agent: "shell", Status: "running"}}
+	model.width, model.height = 70, 20
+
+	if !model.computeLayout().BelowMinimum {
+		t.Fatalf("test setup: 70x20 must report BelowMinimum")
+	}
+
+	view := model.View()
+	lines := strings.Split(view, "\n")
+	if len(lines) == 0 {
+		t.Fatalf("empty view")
+	}
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "below deck's supported minimum of 80x24") {
+		t.Fatalf("footer (last line) missing the below-minimum notice: %q\n%s", last, view)
+	}
+	for i, line := range lines[:len(lines)-1] {
+		if strings.Contains(line, "below deck's supported minimum") {
+			t.Fatalf("below-minimum notice appeared above the footer, on line %d:\n%s", i, view)
+		}
+	}
+
+	// At the supported minimum (and above), the notice must not appear at
+	// all — an exact 80x24 terminal is not "below minimum".
+	model.width, model.height = 80, 24
+	if model.computeLayout().BelowMinimum {
+		t.Fatalf("80x24 must not report BelowMinimum")
+	}
+	if full := model.View(); strings.Contains(full, "below deck's supported minimum") {
+		t.Fatalf("80x24 view wrongly shows the below-minimum notice:\n%s", full)
+	}
+}
+
 // key avoids coupling these small behaviour tests to a terminal driver.
 func key(value string) tea.KeyMsg {
 	if value == "esc" {
