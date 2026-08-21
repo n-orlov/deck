@@ -89,6 +89,11 @@ func Parse(data []byte, source string) (*Theme, error) {
 	if err := t.Validate(); err != nil {
 		return nil, err
 	}
+	quantized, err := quantizeColors(t.Colors)
+	if err != nil {
+		return nil, fmt.Errorf("%s: quantizing to reference palette: %w", source, err)
+	}
+	t.Quantized = quantized
 	return t, nil
 }
 
