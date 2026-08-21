@@ -482,3 +482,53 @@ over-generalised, and the real, measured false-positive check (the
 tests including the two new ones and the expanded golden corpus, now 9
 fixtures with an idle and a sleep-midrun entry for pi). `SPEC.md` is
 untouched (`git diff --stat SPEC.md` empty).
+
+## Task 022 — hint-for-labels in dialogs, a §11.6 clarification request (requirement 34)
+
+SPEC §11.6's palette comment ties `hint` explicitly to one thing: "footer
+descriptions". It says nothing about a dialog's own `label: value` lines
+(detail, pin, permission-profile). No `label` token exists in the §11.6
+token set, and none is added here — the schema stays exactly the fixed
+list `internal/theme/token.go` already enumerates (adding one would be a
+theme-schema change every existing built-in and user theme file would
+have to grow a key for, well past this task's scope).
+
+**Decision taken:** reuse `hint` for a dialog's field labels and `text`
+for their values, mirroring the convention task 019 already established
+for the settings takeover's own field rows (`settings.go`'s
+`settingsRowSegment` calls: `{Text: settingsFieldLabel(f), Tok:
+theme.Hint}` next to `{Text: ..., Tok: theme.Text}`). This keeps exactly
+one label/value convention across the whole product — settings and every
+other dialog agree — rather than inventing a second one for
+non-settings dialogs.
+
+**Where it's applied:** a new `Model.detailField(label, value string)
+string` helper (`internal/tui/tui.go`, colours `label` in `hint` and
+`value` in `text`, each self-resetting via `colorToken` so plain
+concatenation is safe with no shared background to preserve) now backs
+every `label: value` line in `detailView` (Agent, Working directory,
+Status, Status reason, Verdict source, Verdict age, Probe, Permission
+profile, its `degraded:` sub-line, Conversation id) and the `Current:`/
+`New:` lines in both `pinView` and `profileSwitchView`. `Last message:`/
+`Crash tail:` are left uncoloured: their value is a multi-line block on
+the *following* line(s), not `label: value` on one line, so they are not
+this task's `label: value` pairs.
+
+**Footer:** the footer's only structured pairs are its key-legend entries
+(`key` glyph + `hint` word, already wired in task 021) and the selected
+row's bare status reason (`stopped · resumable` etc, no label at all) —
+there is no additional `label: value` line in the footer for this task to
+touch.
+
+**Clarification request for the operator/spec:** should §11.6 gain an
+explicit `label` token (or explicitly bless reusing `hint`) for non-
+settings dialogs' field labels, so a future theme author does not have to
+infer the convention from `settings.go`'s code?
+
+**Verification:** `internal/tui.TestDetailFieldLabelsAreHintValuesAreText`
+(new) reads the `i` detail dialog off a real `vt.Emulator` grid and pins,
+per cell, that `Agent:` and `Conversation id:` render in the `hint`
+token's hex while `claude` and `conv-123` render in `text`'s. `ci/run.sh
+go test ./internal/tui/...` and the full `go test ./...` (including
+`features`, `-count=1`) pass. No new theme token added
+(`git diff --stat internal/theme` empty for this task).
