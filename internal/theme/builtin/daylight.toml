@@ -1,0 +1,27 @@
+name = "daylight"
+appearance = "light"           # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#f8fafc"  # panel interiors
+surface           = "#eef2f7"  # elevated rows, footer, dialog interiors
+border            = "#cbd5e1"
+border_focus      = "#0d9488"  # the focused panel (§11.3)
+selection         = "#c7d7f0"  # selected row, focused panel
+selection_idle    = "#dde3ea"  # selected row, unfocused panel
+title             = "#92400e"
+text              = "#1e293b"
+dimmed            = "#64748b"  # starting rows, elided detail
+hint              = "#475569"  # footer descriptions
+key               = "#92400e"  # footer/help keycaps
+accent            = "#92400e"
+group             = "#1e293b"  # workspace headers
+search_match      = "#92400e"
+badge             = "#475569"  # live/sampled, env↻
+badge_warn        = "#92400e"  # non-safe permission profiles, yolo
+waiting           = "#92400e"  # the seven §7 statuses, one token each
+running           = "#15803d"
+idle              = "#64748b"
+starting          = "#92400e"
+stopped           = "#64748b"
+error             = "#b91c1c"
+archived          = "#94a3b8"

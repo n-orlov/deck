@@ -1,0 +1,27 @@
+name = "empire"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#0f172a"  # panel interiors
+surface           = "#172033"  # elevated rows, footer, dialog interiors
+border            = "#334155"
+border_focus      = "#0d9488"  # the focused panel (§11.3)
+selection         = "#26324b"  # selected row, focused panel
+selection_idle    = "#37415c"  # selected row, unfocused panel
+title             = "#fbbf24"
+text              = "#cbd5e1"
+dimmed            = "#64748b"  # starting rows, elided detail
+hint              = "#94a3b8"  # footer descriptions
+key               = "#d97706"  # footer/help keycaps
+accent            = "#d97706"
+group             = "#cbd5e1"  # workspace headers
+search_match      = "#fbbf24"
+badge             = "#94a3b8"  # live/sampled, env↻
+badge_warn        = "#fbbf24"  # non-safe permission profiles, yolo
+waiting           = "#fbbf24"  # the seven §7 statuses, one token each
+running           = "#22c55e"
+idle              = "#64748b"
+starting          = "#a16207"
+stopped           = "#64748b"
+error             = "#ef4444"
+archived          = "#475569"
