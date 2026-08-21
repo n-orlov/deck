@@ -416,36 +416,33 @@ ok  	github.com/n-orlov/deck/features	2.084s
 $ ci/stability.sh 10
 ```
 
-Real captured output, `docs/reports/phase2b1-stability.log`:
+Re-run after this pass's fixes (tasks 001-013: escape-aware measurement,
+sidebar padding, below-minimum footer). Real captured output, condensed
+from `docs/reports/phase2b1-stability.log` (each `RUN N` also logs the
+full `go test -p=1 -count=1 ./...` per-package pass line, omitted here
+for brevity but present verbatim in the log file):
 
 ```
-=== RUN 1 ===
-=== RUN 1: PASS (exit 0) ===
-=== RUN 2 ===
-=== RUN 2: PASS (exit 0) ===
-=== RUN 3 ===
-=== RUN 3: PASS (exit 0) ===
-=== RUN 4 ===
-=== RUN 4: PASS (exit 0) ===
-=== RUN 5 ===
-=== RUN 5: PASS (exit 0) ===
-=== RUN 6 ===
-=== RUN 6: PASS (exit 0) ===
-=== RUN 7 ===
-=== RUN 7: PASS (exit 0) ===
-=== RUN 8 ===
-=== RUN 8: PASS (exit 0) ===
-=== RUN 9 ===
-=== RUN 9: PASS (exit 0) ===
-=== RUN 10 ===
-=== RUN 10: PASS (exit 0) ===
+=== RUN 1 === ... === RUN 1: PASS (exit 0) ===
+=== RUN 2 === ... === RUN 2: PASS (exit 0) ===
+=== RUN 3 === ... === RUN 3: PASS (exit 0) ===
+=== RUN 4 === ... === RUN 4: PASS (exit 0) ===
+=== RUN 5 === ... === RUN 5: PASS (exit 0) ===
+=== RUN 6 === ... === RUN 6: PASS (exit 0) ===
+=== RUN 7 === ... === RUN 7: PASS (exit 0) ===
+=== RUN 8 === ... === RUN 8: PASS (exit 0) ===
+=== RUN 9 === ... === RUN 9: PASS (exit 0) ===
+=== RUN 10 === ... === RUN 10: PASS (exit 0) ===
+full per-run logs and combined summary log kept in: /tmp/deck-stability.mojkjo
 10/10 passed
-STABILITY_EXIT_STATUS=0
 ```
 
 No scenario was skipped or tagged out to reach 10/10; `ci/stability.sh`
 runs the full default suite (`defaultTags = "~@real-agents && ~@nightly"`,
-unchanged this phase) each time.
+unchanged this phase) each time. Each of the ten runs' `features` package
+line shows the full godog suite (95-99s), and `cmd/deck`, `internal/tui`,
+etc. all pass every time — see the log file for every package's per-run
+timing.
 
 ## Requirement 44: the help overlay documents every key this phase binds/unbinds
 
