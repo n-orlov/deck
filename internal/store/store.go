@@ -17,7 +17,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
@@ -204,6 +204,16 @@ type Session struct {
 	ConversationID          string
 	ResumePin               string
 	ResumeState             string
+	// LastProbeAt is the wall-clock millisecond timestamp of the most recent
+	// stale-eligible pane sample that matched no probe.go rule at all (a
+	// total miss), recorded by RecordProbeMiss. It deliberately never
+	// changes Status/StatusSource/StatusAt (SPEC §7 is untouched by a
+	// miss) and exists only so the `i` detail dialog can tell "sampled,
+	// no rule matched" apart from "never sampled" (task 009). It is zero
+	// until the first miss, and is superseded (LastProbeAt <= StatusAt)
+	// the moment any later verdict — probe or otherwise — updates the row,
+	// so a stale miss can never be shown once fresher evidence exists.
+	LastProbeAt int64
 }
 
 // StatusUpdateInput describes one durable state transition. EventKind is kept
@@ -400,7 +410,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace); err != nil {
+		&workspace, &session.LastProbeAt); err != nil {
 		return Session{}, err
 	}
 	if workspace.Valid && workspace.String != "" {
@@ -449,7 +459,7 @@ const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace`
+		workspace, last_probe_at`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.
@@ -712,6 +722,19 @@ func truncateUTF8(value string, limit int) string {
 	return value
 }
 
+// RecordProbeMiss notes that a stale-eligible pane was sampled but matched
+// no probe.go rule at all, without changing the row's status, status_source,
+// or status_at — SPEC §7 precedence and every existing transition are
+// untouched by a miss. It exists solely so the `i` detail dialog can
+// distinguish "sampled, no rule matched" from "never sampled" (task 009).
+func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "last_probe_at", "probe.miss", "probe", "", at,
+		`UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at)
+}
+
 // SetConversationID records the conversation identity assigned to (or
 // pinned for) a session, alongside an event so observers can see when and by
 // what source the identity was set.
@@ -937,6 +960,13 @@ func (s *Store) migrate(version int) error {
 				return fmt.Errorf("create schema v2: %w", err)
 			}
 		}
+		fallthrough
+	case 2:
+		for _, statement := range schemaV3 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v3: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -979,6 +1009,15 @@ var schemaV1 = []string{
 // from v1 to v2 recreates no session row.
 var schemaV2 = []string{
 	`CREATE TABLE IF NOT EXISTS ui_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+}
+
+// schemaV3 adds sessions.last_probe_at (task 009): the wall-clock millisecond
+// timestamp of the most recent stale-eligible pane sample that matched no
+// probe.go rule, recorded by RecordProbeMiss. It is a pure diagnostic column
+// for the `i` detail dialog and is never read by §7 precedence or by any
+// status/status_source transition.
+var schemaV3 = []string{
+	`ALTER TABLE sessions ADD COLUMN last_probe_at INTEGER NOT NULL DEFAULT 0`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

@@ -1634,6 +1634,14 @@ func (m Model) detailView() string {
 	if session.StatusAt > 0 {
 		fmt.Fprintf(&b, "Verdict age:        %s\n", m.relativeAge(session.StatusAt))
 	}
+	// A total probe miss (no probeRule matched the sampled pane at all) never
+	// changes Status/StatusSource/StatusAt (SPEC §7 is untouched), so it is
+	// only surfaced here, distinct from "never sampled": a miss strictly newer
+	// than the row's current verdict is the freshest evidence deck has, and is
+	// superseded (stops rendering) the instant any later verdict lands.
+	if session.LastProbeAt > session.StatusAt {
+		fmt.Fprintf(&b, "Probe:              sampled, no rule matched (%s)\n", m.relativeAge(session.LastProbeAt))
+	}
 	if _, applicable := m.agentCapabilities(session.Agent); applicable {
 		fmt.Fprintf(&b, "Permission profile: %s\n", session.PermissionProfile)
 		if session.PermissionProfileReason != "" {

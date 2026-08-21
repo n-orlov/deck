@@ -52,7 +52,7 @@ func newerDatabaseFixture(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := writeDatabaseFixture(h, 3); err != nil {
+	if err := writeDatabaseFixture(h, 4); err != nil {
 		return err
 	}
 	h.databaseFixture, err = os.ReadFile(filepath.Join(h.Home, "state.db"))

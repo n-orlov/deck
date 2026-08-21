@@ -92,7 +92,7 @@ func TestOpenRefusesNewerFixtureWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 3)`); err != nil {
+	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 4)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.Close(); err != nil {

@@ -370,3 +370,49 @@ scenario (same trim, pi only — claude's five-fixture corpus is untouched).
 **Verification:** `ci/run.sh go build ./...`, `go vet ./...`,
 `go test ./internal/agent/...` and `go test ./...` (full suite, including
 `features`) all pass.
+
+## Task 009 — total probe miss surfaced in the `i` detail dialog (requirement 38)
+
+Implemented copy (differs slightly from task 007's placeholder wording,
+finalized here): the detail dialog (`internal/tui/tui.go`'s `detailView`)
+renders
+
+    Probe:              sampled, no rule matched (<age>)
+
+using the same `m.relativeAge` helper and column alignment already used for
+`Verdict age:`, so a stale, unclassifiable pane sample reads consistently
+with the row's other diagnostic lines.
+
+**Mechanism (deliberately outside \u00a77):** `internal/store.Session` gained a
+new `LastProbeAt int64` column (schema v3, `ALTER TABLE sessions ADD COLUMN
+last_probe_at INTEGER NOT NULL DEFAULT 0`) written only by the new
+`Store.RecordProbeMiss`, called from `internal/service/reconcile.go`'s probe
+branch exactly when `adapter.Probe` returns `("", "")` (no `probeRule`
+matched at all). `RecordProbeMiss` never touches `status`/`status_source`/
+`status_at` and records a `probe.miss` event, so \u00a77 precedence and every
+existing status transition are completely unaffected \u2014 it is pure
+diagnostic evidence for the dialog, nothing else reads it.
+
+**Freshness rule:** the dialog only renders the line when
+`session.LastProbeAt > session.StatusAt`. This makes "sampled, no rule
+matched" mean "the single freshest thing deck knows about this pane is a
+miss" \u2014 the instant any later verdict (hook, tmux, or a later matching
+probe) advances `StatusAt` past the stale miss, the line stops rendering on
+its own, with no explicit clear/reset needed. A row that has never been
+probe-sampled at all (`LastProbeAt == 0`) renders nothing extra, which is
+"no signal yet" staying indistinguishable from itself \u2014 only a genuine
+miss changes the dialog.
+
+**Verification:** `internal/service.TestProbeMissRecordsSampleAgeWithoutTouchingStatus`
+drives a real tmux pane through `ReconcileWithProbes` with unclassifiable
+pane text and asserts status/source/at are byte-identical while
+`LastProbeAt` and a `probe.miss` event land; `internal/tui.TestDetailDistinguishesTotalProbeMissFromNoSignalYet`
+pins the exact rendered copy, its absence for a never-sampled row, and its
+disappearance once a fresher verdict supersedes it. `ci/run.sh go test
+./internal/tui/... ./internal/service/... ./internal/store/... ./internal/agent/...`
+and the full `go test ./...` (including `features`, re-run at `-count=1`)
+all pass. The schema bump to v3 required updating two pinned constants
+(`features/store.feature`'s three `schema version 2` assertions and
+`features/store_feature_test.go`'s `newerDatabaseFixture`, from 3 to 4) to
+stay meaningfully "current"/"newer" \u2014 the assertions themselves are
+unchanged in kind, only the numbers.

@@ -332,6 +332,46 @@ func TestProbeReconcileNeverProbesShell(t *testing.T) {
 	}
 }
 
+// TestProbeMissRecordsSampleAgeWithoutTouchingStatus proves a total probe
+// miss (no probeRule matches the sampled pane at all) is recorded as pure
+// diagnostic evidence — the row's status/status_source/status_at (SPEC §7)
+// are completely untouched — while last_probe_at still advances so the `i`
+// detail dialog can later tell "sampled, no rule matched" apart from "never
+// sampled" (task 009).
+func TestProbeMissRecordsSampleAgeWithoutTouchingStatus(t *testing.T) {
+	cwd := t.TempDir()
+	svc, db, _, _ := newAgentTestService(t, nil, "probe-miss")
+	now := svc.Clock.Now().UnixMilli()
+	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000029", Name: "unclassifiable claude", CWD: cwd,
+		Agent: "claude", CapturedPath: "/bin", Status: "running", StatusSource: "hook", StatusAt: now - 60_000, CreatedAt: now - 60_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Text that matches none of Claude's probe rules at all.
+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "echo 'nothing recognisable here'; sleep 30"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ReconcileWithProbes(context.Background(), 45*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusSource != "hook" || got.StatusAt != now-60_000 {
+		t.Fatalf("probe miss changed status/source/at = %#v", got)
+	}
+	if got.LastProbeAt != now {
+		t.Fatalf("last_probe_at = %d, want %d", got.LastProbeAt, now)
+	}
+	var missEvents int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'probe.miss'`, session.ID).Scan(&missEvents); err != nil || missEvents != 1 {
+		t.Fatalf("probe miss events = %d, %v; want 1", missEvents, err)
+	}
+}
+
 func TestReconcilerCapturesAndCollectsCrashFirstWriterOnly(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
