@@ -17,13 +17,13 @@ import (
 // yields the documented defaults (allow_yolo=false, mouse=true, no env) and
 // no error; a file that exists but cannot be understood yields a stated
 // error, never a silent default.
-func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mouse bool, env map[string]string, err error) {
+func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mouse bool, env map[string]string, themeName string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, DefaultStaleAfter, true, nil, nil
+			return false, DefaultStaleAfter, true, nil, "", nil
 		}
-		return false, 0, false, nil, fmt.Errorf("open %s: %w", path, err)
+		return false, 0, false, nil, "", fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -45,14 +45,14 @@ func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mous
 		if strings.HasPrefix(text, "[") {
 			name, err := parseSectionHeader(text)
 			if err != nil {
-				return false, 0, false, nil, fmt.Errorf("%s:%d: %w", path, line, err)
+				return false, 0, false, nil, "", fmt.Errorf("%s:%d: %w", path, line, err)
 			}
 			section = name
 			continue
 		}
 		key, value, err := parseKeyValue(text)
 		if err != nil {
-			return false, 0, false, nil, fmt.Errorf("%s:%d: %w", path, line, err)
+			return false, 0, false, nil, "", fmt.Errorf("%s:%d: %w", path, line, err)
 		}
 		switch section {
 		case "":
@@ -60,7 +60,7 @@ func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mous
 			case "allow_yolo":
 				parsed, err := strconv.ParseBool(value)
 				if err != nil {
-					return false, 0, false, nil, fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
+					return false, 0, false, nil, "", fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
 				}
 				allowYolo = parsed
 			case "stale_after":
@@ -71,17 +71,17 @@ func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mous
 						parsed, err = time.ParseDuration(text)
 					}
 					if err != nil {
-						return false, 0, false, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
+						return false, 0, false, nil, "", fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
 					}
 				} else {
 					seconds, err := strconv.Atoi(value)
 					if err != nil {
-						return false, 0, false, nil, fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
+						return false, 0, false, nil, "", fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
 					}
 					parsed = time.Duration(seconds) * time.Second
 				}
 				if parsed <= 0 {
-					return false, 0, false, nil, fmt.Errorf("%s:%d: stale_after must be positive, got %q", path, line, value)
+					return false, 0, false, nil, "", fmt.Errorf("%s:%d: stale_after must be positive, got %q", path, line, value)
 				}
 				staleAfter = parsed
 			}
@@ -92,16 +92,22 @@ func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mous
 			case "mouse":
 				parsed, err := strconv.ParseBool(value)
 				if err != nil {
-					return false, 0, false, nil, fmt.Errorf("%s:%d: mouse must be true or false, got %q", path, line, value)
+					return false, 0, false, nil, "", fmt.Errorf("%s:%d: mouse must be true or false, got %q", path, line, value)
 				}
 				mouse = parsed
+			case "theme":
+				unquoted, err := unquoteString(value)
+				if err != nil {
+					return false, 0, false, nil, "", fmt.Errorf("%s:%d: [ui] theme must be a quoted string: %w", path, line, err)
+				}
+				themeName = unquoted
 			}
 			// Other [ui] keys (e.g. a future sidebar_width default) are
 			// ignored here for the same reason as unrecognised top-level keys.
 		case "env":
 			unquoted, err := unquoteString(value)
 			if err != nil {
-				return false, 0, false, nil, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
+				return false, 0, false, nil, "", fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
 			}
 			if env == nil {
 				env = make(map[string]string)
@@ -113,9 +119,9 @@ func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mous
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return false, 0, false, nil, fmt.Errorf("read %s: %w", path, err)
+		return false, 0, false, nil, "", fmt.Errorf("read %s: %w", path, err)
 	}
-	return allowYolo, staleAfter, mouse, env, nil
+	return allowYolo, staleAfter, mouse, env, themeName, nil
 }
 
 func stripComment(line string) string {

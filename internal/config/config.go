@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 const (
@@ -65,6 +67,16 @@ type Settings struct {
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
+	// Theme is the resolved theme (§11.6) this settings load selected:
+	// config.toml's [ui] theme name resolved against the embedded built-ins
+	// and any user theme discovered under theme.ThemesDir(ConfigFile), via
+	// theme.Resolve. Never nil -- an empty/unknown/unparseable name resolves
+	// to theme.Default() (see ThemeReason for why, when it fell back).
+	Theme *theme.Theme
+	// ThemeReason is theme.Resolve's fallback explanation (task 019 shows
+	// it to the user on first paint) -- "" when nothing was configured or
+	// the configured name resolved cleanly.
+	ThemeReason string
 }
 
 // Load reads only documented DECK_ controls from env.
@@ -117,7 +129,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if err != nil {
 		return Settings{}, err
 	}
-	allowYolo, staleAfter, mouse, env, err := loadConfigFile(paths.ConfigFile)
+	allowYolo, staleAfter, mouse, env, themeName, err := loadConfigFile(paths.ConfigFile)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -127,10 +139,13 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 			return Settings{}, err
 		}
 	}
+	userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
+	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, themeName)
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, StaleAfter: staleAfter,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: allowYolo, Env: env, Mouse: mouse,
+		Theme: resolvedTheme, ThemeReason: themeReason,
 	}, nil
 }
 

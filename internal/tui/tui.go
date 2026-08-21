@@ -1294,12 +1294,20 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 	}
 	var parts []string
 	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
-		parts = append(parts, m.glyph("●", "!"))
+		unseen := m.glyph("●", "!")
+		if tok, ok := statusToken(session.Status); ok {
+			unseen = m.colorToken(tok, unseen)
+		}
+		parts = append(parts, unseen)
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
 		parts = append(parts, quality)
 	}
-	parts = append(parts, session.Status)
+	statusText := session.Status
+	if tok, ok := statusToken(session.Status); ok {
+		statusText = m.colorToken(tok, statusText)
+	}
+	parts = append(parts, statusText)
 	line1 := marker + session.Name + " " + strings.Join(parts, " ")
 	line2 := "  created " + m.relativeTime(session.CreatedAt)
 	if badge := m.profileBadge(session); badge != "" {
