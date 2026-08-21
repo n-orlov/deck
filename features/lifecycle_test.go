@@ -66,6 +66,16 @@ type ScenarioHarness struct {
 	windowGeometrySnapshots map[string]string
 	sizeLogSnapshots        map[string]string
 
+	// layoutSeamSnapshots and configTOMLSnapshots back features/layout_modes.feature
+	// (task 030, requirement 38): the first captures the shared seam's own
+	// rendered column so `<`/`>` clamping can be proven idempotent past
+	// each end without hardcoding an expected column number, and the
+	// second captures config.toml's own bytes (or their absence) so a
+	// restart across layout_mode/sidebar_width keypresses can prove the
+	// file never changed.
+	layoutSeamSnapshots map[string]int
+	configTOMLSnapshots map[string]string
+
 	// statusRowSnapshots backs features/attention_sort.feature's `space`
 	// non-vacuity check (requirements 31/32, task 026): a step captures
 	// every session row's status-related columns under a label, and a
