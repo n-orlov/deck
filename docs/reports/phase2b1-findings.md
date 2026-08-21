@@ -464,3 +464,123 @@ line and the fixture's last line rather than its title, and records why.
 Evidence: `ci/run.sh go test -run TestGoldenMinimumFrame -v ./features/...`
 (twice, separate processes, byte-identical); full
 `ci/run.sh go test -p=1 -count=1 ./...` green.
+
+## Task 033: sweep for remaining full-width-row assumptions
+
+### Why this sweep is different from task 013's
+
+Task 013 swept for *negative* screen-text assertions whose policed copy
+physically moved surface (row → footer). Task 033 sweeps for a different
+failure mode entirely: an assertion written back when a "row" meant *the
+entire terminal width*, one session per line, with no preview panel sharing
+any of that horizontal space. Since task 014, a rendered row is two
+independent halves on the same screen line — the sidebar's ~33 content
+columns (at the 35-column default `sidebar_width`) and the preview's own
+content to its right — so an assertion of that vintage can go wrong two
+opposite ways: (a) it expected text past column ~33 that the sidebar no
+longer has room for (a truncation regression), or (b) it treats "this text
+is on the same line as that text" as proof the two are related, when the
+line now also carries unrelated preview-panel content on its right half (a
+false-positive risk introduced by concatenating two panels' content onto
+one Go string per visual row).
+
+### The sweep
+
+```
+grep -rn "screen contains\|screen does not contain" features/*.feature | wc -l   # 105 sites
+grep -roh 'session "[^"]*"' features/*.feature | sed 's/session "//;s/"$//' \
+  | awk '{ print length, $0 }' | sort -rn | uniq                                # longest real names ~23 cols
+grep -rn 'contains "[^"]\{45,\}"' features/*.feature                            # long literal strings
+grep -rn "row.*contains" features/*.feature                                     # row-scoped (not screen-scoped) checks
+grep -rn "100\|width:\|Width:\|Cols:" internal/tui/*_test.go cmd/deck/*_test.go   # fixed-geometry test setups
+```
+
+Findings, by category:
+
+1. **Long session names (>20 columns).** `features/harness.feature:95-98` and
+   `features/mouse.feature:80-83` are the only names near or past the
+   default sidebar's ~33-column content width (a 57-column literal
+   containing the marker `WIDENOW`). Both already assert the marker is *not*
+   visible at the default width and *is* visible only after widening
+   `sidebar_width` with `>` (task 009's own step) — these are exactly the
+   pattern task 009/014 introduced, not a leftover gap. Every other named
+   session across `features/*.feature` (longest: `deck_externally-stopped`
+   at 23 columns, `changed verdict target` at 22) fits inside
+   `sidebarRowLines`' documented 33-column budget (`internal/tui/tui.go`,
+   the comment on `sidebarRowLines`) with room to spare for its marker,
+   status word and badges, so none of them silently rely on truncation
+   landing in their favour.
+
+2. **Row-scoped checks that now share a screen line with the preview panel
+   (the false-positive risk in (b) above).** `clientRowContainsWithinReconcile`
+   (`features/status_probe_test.go:238`) and
+   `clientRowDoesNotContainAfterReconcileInterval`
+   (`features/assertions_test.go:143`) both operate on
+   `strings.Split(client.Frame(false), "\n")` — a raw screen line, which in
+   side-by-side layout is `sidebar-content + preview-content` concatenated.
+   Every call site names a *unique session name* as the row anchor
+   (`"raced claude"`, `"hook shared"`, `"race target"`, `"failed prompt"`,
+   `"stale claude"`, `"sampled pi"`, ...) alongside a short status/quality
+   word (`"running"`, `"starting"`, `"live"`, `"sampled"`, `"!"`). For a
+   false positive, the preview panel's content on that exact visual line
+   would need to contain the literal session name — the preview never
+   renders any session's name (`previewTitle` returns `""` specifically to
+   avoid exactly this kind of collision, see its own doc comment) and cropped
+   pane bytes come from a fake agent's fixed fixture/prompt text, not from
+   any string containing a test's session name. Verified this holds for the
+   two closest cases by inspection: `status_probe.feature`'s selected row
+   during the race is deliberately moved to a "probe shell" row (see
+   `raceFreshHookAgainstProbe`'s own comment on why), so the preview panel
+   on "raced claude"'s own line is that *other* row's line's continuation —
+   still never containing the string `"raced claude"`. No site in this
+   category needed re-aiming; the anchor half of every check is a name that
+   cannot appear in the preview's own vocabulary.
+
+3. **Fixed test geometries (`Cols:`/`width, height =`).** Every
+   `internal/tui/*_test.go`, `cmd/deck/*_test.go` and `features/*.feature`
+   site setting an explicit terminal size uses width ≥ 80 (side-by-side) or
+   explicitly exercises the <80 stacked/collapsed path on purpose
+   (`layout_test.go`'s 79/80/81-column cases, `layout_modes.feature`'s
+   below-80×24 scenario) — none silently assumes the old single-panel
+   full-width row shape at a width that would now render side-by-side.
+   `cmd/deck/main_test.go`'s three PTY sizes are all `Cols: 100` (task 032's
+   help-overlay pin uses `Rows: 130` for the taller dialog, `Rows: 24` for
+   the other two) — all comfortably side-by-side, matching what each test
+   actually asserts about.
+
+4. **Hand-computed column/row coordinates.** `features/mouse_bindings_test.go`
+   (task 029) explicitly avoids this failure mode by design — its own doc
+   comment states a hand-computed column/row "would silently drift the
+   moment grouping, elision or a mode change shifts where a row actually
+   lands", so `locateText` finds the target text in the client's own current
+   frame first and clicks through whatever cell it actually occupies.
+   `internal/tui/panel_test.go`'s seam test (`TestSideBySideFrameHasOneSeamAndOneColumnPadding`)
+   locates the seam by searching for `│`, never a fixed column offset. No
+   site anywhere in `features/` or `internal/tui/` hand-computes a screen
+   coordinate against an assumed full-terminal-width row layout.
+
+5. **The `i` detail dialog's fixed-format lines** (e.g.
+   `launch_lease.feature:34`'s `"Status reason:      pane failed after the
+   stale frame"`, `permission_modes.feature:46`) are unrelated to the
+   sidebar/preview split: the detail dialog is a centered modal overlay
+   (task 012's own reason-text destination alongside the footer) whose width
+   is independent of `sidebar_width`, and its content predates and is
+   untouched by this phase's panel chrome.
+
+### Conclusion
+
+No assertion was found that still assumes the pre-chrome full-terminal-width
+row shape in a way that is currently wrong, vacuous, or newly at risk of a
+false positive from the sidebar/preview concatenation. Tasks 009, 013, 014,
+028 and 029 already re-aimed or designed around every site this sweep
+turned up; this task's own contribution is recording that sweep and its
+reasoning (category 2 above, the false-positive risk from concatenated
+sidebar+preview screen lines, was not previously written up anywhere) rather
+than any further code change. No test, feature file or production file was
+modified by this task.
+
+Evidence: sweep commands above run directly against the checked-out tree;
+`ci/run.sh go build ./...`, `go vet ./...` and
+`ci/run.sh go test -p=1 -count=1 ./...` all green (features ~93s), matching
+the pre-existing baseline with no changes.
+
