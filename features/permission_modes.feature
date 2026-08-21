@@ -49,9 +49,16 @@ Feature: Permission profile mapping, degradation and the yolo gate
 
   Scenario: yolo is unavailable without allow_yolo enabled
     Given a fake "claude" binary is on PATH for future deck clients
-    And deck client "A" is started
+    # Wide enough (framedDialog's box for this dialog is 201 columns; see
+    # panel.go's framedDialog, which grows the box to fit its widest existing
+    # line rather than wrapping) that the whole explanation renders on one
+    # on-screen row with nothing clipped past the terminal's right edge, so
+    # the full sentence can be asserted verbatim instead of the "yolo is
+    # not" prefix a 100-column terminal would have truncated it to (the
+    # prefix-shortening this scenario used to settle for).
+    And deck client "A" is started with terminal size 220x30
     When deck client "A" opens the create modal for agent "claude"
-    Then deck client "A" screen contains "yolo is not"
+    Then deck client "A" screen contains "yolo is not offered because allow_yolo is not enabled in config.toml"
     And deck client "A" screen does not contain "yolo (left/right cycles"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
