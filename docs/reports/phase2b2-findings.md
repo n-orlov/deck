@@ -416,3 +416,69 @@ all pass. The schema bump to v3 required updating two pinned constants
 `features/store_feature_test.go`'s `newerDatabaseFixture`, from 3 to 4) to
 stay meaningfully "current"/"newer" \u2014 the assertions themselves are
 unchanged in kind, only the numbers.
+
+## Task 037 — the pi idle rule, settled against a real capture (operator-reported scope, steer `steering/003-pi-idle-rule.md`, 21 Aug 2026)
+
+Recorded here per the steer's own instruction (a steer cannot reach the
+review pass, so this finding is how review sees it was asked for) — the
+same provenance discipline used for task 056 in the prior phase.
+
+**The defect the steer found:** task 007's `pi-PROVENANCE.md` claimed pi
+prints "no other recurring idle indicator at all" once the one-time startup
+banner scrolls out. That was contradicted by task 007's own two committed
+fixtures: both `running.txt` and `error.txt` already ended with pi's
+persistent two-line status footer (a cwd line, then a stats line ending
+`(auto)` … `(amazon-bedrock) <model> • <level>`), which `lastContentLine`'s
+doc comment already called out as chrome pi draws "at the very bottom of
+every pane regardless of status". Requirement 38's headline — "a `pi`
+session never leaves `starting`" — still held for the single most common
+state (quietly waiting at the composer) despite task 009's separate,
+valuable probe-miss surfacing not fixing that underlying gap.
+
+**What was captured, this iteration, real `pi 0.84.1` in this container,
+identical method/geometry to task 007 (Python `pty` + `pyte.Screen` at
+100×30, cwd `/tmp/pw1`):**
+- `testdata/probes/pi/idle.txt` — a real capture after **four** back-to-back
+  conversational turns, deliberately long enough that the one-time startup
+  banner is entirely absent from the file (confirmed by inspection): the
+  exact scroll-out condition the original document invoked to reject the
+  banner, now applied to the footer instead, and the footer survives it.
+- `testdata/probes/pi/sleep-midrun.txt` — a real capture taken 11.0s into a
+  25s `run: sleep 25` tool call (`Elapsed 11.0s` visible on screen), checked
+  at roughly 4s/9s/14s/19s/26s throughout the call: `Working...` was on
+  screen at every one of those samples. This was the one real
+  false-positive risk the steer named as a potential blocker — it did not
+  materialize, so the rule is safe to ship rather than a finding-only
+  outcome.
+
+**The rule added to `probe.go`** (last among pi's rules, after the `Error:`
+tail rule and `Working...`): `contains: ["(auto)", "•"]` → `idle`. Only the
+truly invariant substrings are pinned — cwd, model name, thinking level and
+the percentage all differ across `running.txt`/`error.txt`/`idle.txt`, but
+`(auto)` and the bullet `•` (U+2022) do not. The bullet is distinct from the
+startup banner's own middle dot `·` (U+00B7), confirmed by direct code-point
+inspection, so the idle marker and the banner's separator glyphs never
+collide. Placement last, plus §7's own liveness prohibition, means the rule
+fires only on *positive* evidence (the footer, i.e. pi is alive and
+rendering) *and* the *absence* of the error/running verdicts — never on pane
+liveness alone.
+
+**Ordering is proven, not inspected:** `TestPiIdleRuleStaysLastAmongPiRules`
+asserts the idle rule's index is after both the error and running rules'
+indices. Verified by hand this iteration: temporarily moving the idle rule
+ahead of the `Error:` rule made both `TestPiIdleRuleStaysLastAmongPiRules`
+and `TestPiIdleRuleDoesNotChangeExistingVerdicts` fail (the latter because
+`running.txt` was reclassified as `idle`), then reverted. `running.txt` and
+`error.txt` verdicts are unchanged (dedicated regression test plus the
+existing golden corpus test).
+
+**`pi-PROVENANCE.md` corrected:** the false "no recurring idle indicator"
+sentence is removed; a new `## idle` section states what the captures
+actually show (the durable footer), why the original reasoning
+over-generalised, and the real, measured false-positive check (the
+`sleep-midrun.txt` result) rather than an assumed one.
+
+**Verification:** `ci/run.sh go test ./internal/agent/...` passes (10
+tests including the two new ones and the expanded golden corpus, now 9
+fixtures with an idle and a sleep-midrun entry for pi). `SPEC.md` is
+untouched (`git diff --stat SPEC.md` empty).

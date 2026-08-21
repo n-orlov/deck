@@ -55,22 +55,54 @@ the pane settles. `probe.go`'s pi error rule therefore requires `Error:` to
 be the prefix of that tail line (see `lastContentLine` in `probe.go`), not
 merely present anywhere in the captured scrollback.
 
-## States left out (captured but without a durable marker, or not captured at all)
+## `idle` (added 21 Aug 2026, task 037 / operator steer `003-pi-idle-rule.md`)
 
-- **`idle`** — captured (the pane sitting still with nothing happening:
-  pi's startup welcome banner, `pi v0.84.1` / `escape interrupt · …` /
-  `Press ctrl+o …`), but that banner is a **one-time** transcript line: it
-  scrolls out of `capture-pane`'s `-200`-line window (the range
-  `internal/service/reconcile.go` actually samples) after enough
-  conversation, and across several multi-turn captures pi printed **no**
-  other recurring idle indicator at all — no per-turn box, no "Ready"
-  glyph, nothing distinguishing "just finished, waiting for you" from any
-  other quiet moment. Using the startup banner as a general `idle` marker
-  would silently stop matching partway through an ordinary session while
-  looking like a real rule — the same shape of defect this refit exists to
-  remove. Left out; a `pi` row that goes quiet keeps its last known
-  probed/hook status rather than a fabricated `idle` verdict, which is
-  §7-safe (never claims more than the evidence supports).
+The original version of this document claimed pi printed "no other recurring
+idle indicator at all" once the one-time startup banner scrolled out. **That
+was wrong, and it was contradicted by this document's own two committed
+fixtures at the time**: both `running.txt` and `error.txt` already ended with
+pi's persistent two-line status footer — a cwd line (`/tmp/pw1`) followed by
+a usage-stats line ending `(auto)` … `(amazon-bedrock) <model> • <level>` —
+which `lastContentLine`'s own doc comment already described as chrome "pi
+and claude both draw at the very bottom of every pane regardless of status".
+The reasoning that correctly rejected the startup banner (a one-time line
+that ages out of the sampled scrollback) does not apply to a footer that pi
+redraws every frame; the original document over-generalised from "the banner
+is not durable" to "nothing is durable".
+
+Corrected: `idle.txt` is a real capture, same method and geometry as
+`running.txt`/`error.txt`, taken after **four** conversational turns —
+enough for the one-time startup banner to have scrolled completely out of
+the pane (it is absent from the file). The footer is present, and its
+invariant part — the literal substring `(auto)` and the bullet `•`
+(U+2022 — distinct from the startup banner's own middle dot `·`, U+00B7, so
+the two markers never collide) — is unchanged from `running.txt`/`error.txt`
+even though cwd, model name, thinking level and the percentage all differ
+between the three captures. `probe.go` now has a `pi`/`idle` rule keyed only
+on `(auto)` and `•`, placed **last** among pi's rules (after the `Error:`
+tail rule and `Working...`), so it only fires on the *absence* of those two
+verdicts — positive evidence (the footer, meaning pi is alive and rendering)
+plus negative evidence (no working/error marker matched), never pane
+liveness alone (§7 forbids inferring `running`/`idle` from liveness). Rule
+ordering is proven, not just inspected: `TestPiIdleRuleStaysLastAmongPiRules`
+in `probe_test.go` fails if the idle rule is moved ahead of the error or
+running rules (verified by hand: swapping the order made the test fail with
+`running.txt` reclassified as `idle`, then reverted).
+
+**The one real false-positive risk was tested and did not materialize.**
+`testdata/probes/pi/sleep-midrun.txt` is a real capture taken mid-way through
+a real `run: sleep 25` tool call (captured at the 11s mark of a 25s sleep, at
+the same geometry). `Working...` was still on screen throughout the entire
+call, at every sample point checked (roughly 4s, 9s, 14s, 19s, 26s in). So a
+long-running tool call never reaches the idle rule at all — the `Working...`
+rule (which runs first) keeps matching for the whole duration. Had this not
+held, the idle rule would have been a genuine blocker per the steer's
+instruction, and would have been left out with the false-positive reported
+instead of shipped; it is shipped because the risk was checked against a real
+pi, not assumed.
+
+## States still left out (captured but without a durable marker, or not captured at all)
+
 - **`starting`** — the only pre-idle text observed in this environment
   (`fd not found. Offline mode enabled, skipping download.` / `fd not
   found. Downloading...`) is a helper-binary bootstrap message tied to this

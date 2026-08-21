@@ -1,0 +1,28 @@
+ what is 2+2? one word answer
+
+
+ Four.
+
+
+ what is 3+3? one word answer
+
+
+ Six.
+
+
+ what is 4+4? one word answer
+
+
+ Eight.
+
+
+ what is 5+5? one word answer
+
+
+ Ten.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/pw1
+↑7.6k ↓21 $0.039 0.2%/1.0M (auto)          (amazon-bedrock) us.anthropic.claude-opus-4-6-v1 • medium

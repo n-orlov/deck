@@ -1,0 +1,23 @@
+ pi v0.84.1
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help and loaded resources.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+
+ run: sleep 25
+
+
+
+ $ sleep 25 (timeout 30s)
+
+ Elapsed 11.0s
+
+
+ ⠴ Working...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/pw1
+↑1.9k ↓71 $0.011 0.2%/1.0M (auto)          (amazon-bedrock) us.anthropic.claude-opus-4-6-v1 • medium
