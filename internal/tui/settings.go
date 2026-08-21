@@ -786,14 +786,138 @@ func settingsCategoryWidth(width int) int {
 	return w
 }
 
+// settingsRowSegment pairs one run of text with the theme token it renders
+// in, so settingsRenderRow can compose a "label: value" row (SPEC
+// requirement 34: labels in `hint`, values in `text`) as several
+// differently-coloured runs on one line.
+type settingsRowSegment struct {
+	Text string
+	Tok  theme.Token
+}
+
+// settingsRenderRow composes segs into one coloured line, opening bg
+// (SPEC requirement 42's selection/selection_idle focus cue) once at the
+// very start when selected is true, then each segment's own foreground
+// token, and closing with exactly ONE trailing full reset at the end --
+// never one reset per segment. An SGR \x1b[0m reset clears every
+// attribute, background included, so stacking colorToken's own
+// self-resetting calls here would silently cancel the outer row
+// background the moment the first inner foreground segment ended;
+// opening progressively and resetting once keeps the background live
+// under every segment's text.
+func (m Model) settingsRenderRow(segs []settingsRowSegment, bg theme.Token, selected bool) string {
+	if !m.settings.Color {
+		var b strings.Builder
+		for _, s := range segs {
+			b.WriteString(s.Text)
+		}
+		return b.String()
+	}
+	var b strings.Builder
+	opened := false
+	if selected {
+		if seq, ok := m.backgroundSGR(bg); ok {
+			b.WriteString(seq)
+			opened = true
+		}
+	}
+	for _, s := range segs {
+		if seq, ok := m.foregroundSGR(s.Tok); ok {
+			b.WriteString(seq)
+			opened = true
+		}
+		b.WriteString(s.Text)
+	}
+	if opened {
+		b.WriteString("\x1b[0m")
+	}
+	return b.String()
+}
+
+// settingsSelectionToken resolves which of SPEC requirement 42's two
+// focus-cue tokens a list's currently-selected row renders in: `selection`
+// when that list is the one tab/left/right currently gives up/down to,
+// `selection_idle` otherwise -- both lists always show their own
+// highlighted row, distinguished by which token, never by one list's
+// highlight disappearing outright.
+func (m Model) settingsSelectionToken(list int) theme.Token {
+	if m.settingsFocus == list {
+		return theme.Selection
+	}
+	return theme.SelectionIdle
+}
+
+// settingsBorderColor renders a border glyph run in `border_focus` (SPEC
+// requirement 42) when the panel it belongs to is the one currently
+// focused, or `border` otherwise. The settings takeover's two lists are
+// deck's only second focusable surface -- §11.3's main view has exactly
+// one focusable region, which is why `tab` is unbound there (requirement
+// 42) -- so this is the first real use of these two tokens as theme
+// colour; the rest of the package still draws every border through
+// panel.go's borderColor placeholder pending task 021's repo-wide sweep.
+func (m Model) settingsBorderColor(focused bool, text string) string {
+	tok := theme.Border
+	if focused {
+		tok = theme.BorderFocus
+	}
+	return m.colorToken(tok, text)
+}
+
+// settingsLeftTopLine/settingsLeftBottomLine/settingsLeftContentLine draw
+// the category panel's (left, sidebar-shaped) border with the focus cue
+// above; geometry matches panel.go's sidebarTopLine/sidebarBottomLine/
+// sidebarContentLine exactly -- only the colour source differs.
+func (m Model) settingsLeftTopLine(width int, title string, focused bool) string {
+	bc := m.box()
+	inner := width - 1
+	label, remain := m.borderLabel(title, inner)
+	return m.settingsBorderColor(focused, bc.topLeft) + label + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain))
+}
+
+func (m Model) settingsLeftBottomLine(width int, focused bool) string {
+	bc := m.box()
+	return m.settingsBorderColor(focused, bc.bottomLeft) + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, width-1))
+}
+
+func (m Model) settingsLeftContentLine(width int, text string, focused bool) string {
+	bc := m.box()
+	return m.settingsBorderColor(focused, bc.vertical) + " " + m.padTrunc(text, width-3) + " "
+}
+
+// settingsRightTopLine/settingsRightBottomLine/settingsRightContentLine
+// mirror panel.go's previewTopLine/previewBottomLine/previewContentLine
+// with seam=true (the settings takeover is always side-by-side, never
+// stacked) but the focus-cue colour source above instead of borderColor.
+func (m Model) settingsRightTopLine(width int, title string, focused bool) string {
+	bc := m.box()
+	inner := width - 2
+	label, remain := m.borderLabel(title, inner)
+	return m.settingsBorderColor(focused, bc.seamTop) + label + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain)) + m.settingsBorderColor(focused, bc.topRight)
+}
+
+func (m Model) settingsRightBottomLine(width int, focused bool) string {
+	bc := m.box()
+	inner := width - 2
+	return m.settingsBorderColor(focused, bc.seamBottom) + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, inner)) + m.settingsBorderColor(focused, bc.bottomRight)
+}
+
+func (m Model) settingsRightContentLine(width int, text string, focused bool) string {
+	bc := m.box()
+	inner := width - 4
+	return m.settingsBorderColor(focused, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.settingsBorderColor(focused, bc.vertical)
+}
+
 // settingsView renders the full-screen takeover: a category list panel and
-// a field list panel sharing one seam, reusing the exact border-drawing
-// helpers the main side-by-side frame already uses (panel.go's
-// sidebarTopLine/sidebarContentLine/sidebarBottomLine for the left panel,
-// previewTopLine/previewContentLine/previewBottomLine with seam=true for
-// the right) rather than a second box-drawing implementation — SPEC
-// requirement 16's "bordered like every other panel, dialog and overlay"
-// with one geometry, not two.
+// a field list panel sharing one seam. Geometry (corner/seam glyphs,
+// column widths) matches panel.go's sidebarTopLine/sidebarContentLine/
+// sidebarBottomLine and previewTopLine/previewContentLine/previewBottomLine
+// exactly — SPEC requirement 16's "bordered like every other panel, dialog
+// and overlay" with one geometry, not two — but colour comes from the
+// settingsLeft*/settingsRight*/settingsRenderRow helpers above so the two
+// lists' focus cue (border_focus/border, selection/selection_idle, SPEC
+// requirement 42) and the field rows' label/value distinction (`hint`/
+// `text`, requirement 34) render from theme tokens rather than the
+// colourless placeholder tasks 013-018 left in place.
 func (m Model) settingsView() string {
 	width, height := m.frameSize()
 	leftWidth := settingsCategoryWidth(width)
@@ -806,36 +930,47 @@ func (m Model) settingsView() string {
 	}
 
 	categories := settingsCategories()
+	leftFocused := m.settingsFocus == settingsFocusCategories
+	rightFocused := m.settingsFocus == settingsFocusFields
 
 	if m.settingsSearchActive {
 		return m.settingsSearchViewLines(categories, leftWidth, rightWidth, contentRows, height)
 	}
 
+	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
 	leftLines := make([]string, len(categories))
 	for i, cat := range categories {
 		marker := "  "
-		if i == m.settingsCategoryIndex {
+		selected := i == m.settingsCategoryIndex
+		if selected {
 			marker = "> "
 		}
-		leftLines[i] = marker + cat.Name
+		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}, categorySelTok, selected)
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
+	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
 	var rightLines []string
 	if m.settingsCategoryIndex >= 0 && m.settingsCategoryIndex < len(categories) {
 		fields := categories[m.settingsCategoryIndex].Fields
 		innerWidth := rightWidth - 4
 		for i, f := range fields {
 			marker := "  "
-			if i == m.settingsFieldIndex {
+			selected := i == m.settingsFieldIndex
+			if selected {
 				marker = "> "
 			}
-			row := marker + settingsFieldLabel(f) + ": " + settingsFieldValueDisplay(f, m.settingsEdits)
-			if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
-				row += " (overridden by environment: " + envVar + ")"
+			segs := []settingsRowSegment{
+				{Text: marker, Tok: theme.Text},
+				{Text: settingsFieldLabel(f), Tok: theme.Hint},
+				{Text: ": ", Tok: theme.Text},
+				{Text: settingsFieldValueDisplay(f, m.settingsEdits), Tok: theme.Text},
 			}
-			rightLines = append(rightLines, row)
-			if i == m.settingsFieldIndex {
+			if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
+				segs = append(segs, settingsRowSegment{Text: " (overridden by environment: " + envVar + ")", Tok: theme.Text})
+			}
+			rightLines = append(rightLines, m.settingsRenderRow(segs, fieldSelTok, selected))
+			if selected {
 				envVar, _ := settingsFieldEnvOverride(f, m.settings)
 				for _, detail := range settingsFieldDetailLines(f, innerWidth-2, envVar) {
 					rightLines = append(rightLines, "    "+detail)
@@ -846,11 +981,11 @@ func (m Model) settingsView() string {
 	rightLines = fitLines(rightLines, contentRows)
 
 	lines := make([]string, 0, height)
-	lines = append(lines, m.sidebarTopLine(leftWidth, "Categories")+m.previewTopLine(rightWidth, "Fields", true))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, "Fields", rightFocused))
 	for i := 0; i < contentRows; i++ {
-		lines = append(lines, m.sidebarContentLine(leftWidth, leftLines[i])+m.previewContentLine(rightWidth, rightLines[i]))
+		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}
-	lines = append(lines, m.sidebarBottomLine(leftWidth)+m.previewBottomLine(rightWidth, true))
+	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
 	lines = append(lines, m.settingsFooterLine())
 	return strings.Join(lines, "\n")
 }
@@ -887,9 +1022,15 @@ func (m Model) settingsFooterLine() string {
 // category other than the one open before `/` was pressed is not mistaken
 // for one of the still-shown left panel's category.
 func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
+	// Search spans every category, so the left (category) list is never
+	// the one up/down moves within -- it stays unfocused (`border`) for
+	// the whole duration of search, and the right (results) panel, which
+	// up/down does move within, carries the focus cue (`border_focus`).
+	const leftFocused, rightFocused = false, true
+
 	leftLines := make([]string, len(categories))
 	for i, cat := range categories {
-		leftLines[i] = "  " + cat.Name
+		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false)
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
@@ -897,20 +1038,25 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 	rightLines := make([]string, len(results))
 	for i, r := range results {
 		marker := "  "
-		if i == m.settingsSearchIndex {
+		selected := i == m.settingsSearchIndex
+		if selected {
 			marker = "> "
 		}
-		rightLines[i] = marker + categories[r.CategoryIndex].Name + ": " + settingsFieldLabel(r.Field)
+		segs := []settingsRowSegment{
+			{Text: marker + categories[r.CategoryIndex].Name + ": ", Tok: theme.Text},
+			{Text: settingsFieldLabel(r.Field), Tok: theme.Hint},
+		}
+		rightLines[i] = m.settingsRenderRow(segs, theme.Selection, selected)
 	}
 	rightLines = fitLines(rightLines, contentRows)
 
 	title := "Search: " + m.settingsSearchQuery
 	lines := make([]string, 0, height)
-	lines = append(lines, m.sidebarTopLine(leftWidth, "Categories")+m.previewTopLine(rightWidth, title, true))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
 	for i := 0; i < contentRows; i++ {
-		lines = append(lines, m.sidebarContentLine(leftWidth, leftLines[i])+m.previewContentLine(rightWidth, rightLines[i]))
+		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}
-	lines = append(lines, m.sidebarBottomLine(leftWidth)+m.previewBottomLine(rightWidth, true))
+	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
 	lines = append(lines, m.settingsFooterLine())
 	return strings.Join(lines, "\n")
 }
