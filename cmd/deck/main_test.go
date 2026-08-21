@@ -374,12 +374,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=deck-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
-	// helpView() (internal/tui) is ~65 lines; a 24-row PTY would clip the
-	// top sections out of the alt-screen redraw before this test can read
-	// them back, so use a tall enough window that the whole overlay is
-	// written to the PTY in one frame and every new key/control can be
-	// asserted through the real terminal, not just via View() directly.
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 90, Cols: 100})
+	// helpView() (internal/tui) is ~100 lines (task 032 added space/|/</>
+	// and the mouse section); a 24-row PTY would clip the top sections out
+	// of the alt-screen redraw before this test can read them back, so use
+	// a tall enough window that the whole overlay is written to the PTY in
+	// one frame and every new key/control can be asserted through the real
+	// terminal, not just via View() directly.
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 130, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,12 +420,19 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"kill -USR1 <deck-client-pid>", "each invocation advances", "shared clock by exactly DECK_CLOCK_STEP",
 		"resolved data root", "the trigger updates it and every process reads it", "DECK_ID_SEED",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
+		"space move to the next session needing attention", "changes any session's status",
+		"g toggle the selected row's workspace group",
+		"cycle the layout mode", "shrink/grow the sidebar",
+		"click a sidebar row", "double-click a row", "click a group header",
+		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
+		"click or wheel over the preview does nothing",
+		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}

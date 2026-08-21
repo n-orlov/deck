@@ -51,5 +51,6 @@ Feature: Multi-client session refresh
     And the audit log contains event "tmux.session_gone" for a session
     And the private tmux session "deck_externally-stopped" does not exist
     When deck client "A" sends "?"
+    And deck client "A" terminal is resized to 100x130
     Then deck client "A" screen contains "Runtime controls"
     When deck client "A" exits cleanly
