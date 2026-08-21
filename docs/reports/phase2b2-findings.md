@@ -144,3 +144,89 @@ is task 002; the already-running / launch-failure-recoverable pair
 
 **Verification:** `ci/run.sh go test ./internal/hookrecv/...` and
 `ci/run.sh go test ./internal/...` both pass.
+
+## Task 003 — requirement 45: transition policy re-derived from §7's precedence
+
+**What was wrong.** `internal/hookrecv.Mappings`' per-event `AllowedFrom` lists
+encoded "the only legal predecessor status VALUE" as a static enumeration,
+e.g. `Notification: AllowedFrom: ["running"]`, `Stop: AllowedFrom:
+["running"]`, `SessionEnd: AllowedFrom: [<all six statuses>]` (the explicit
+blanket the criteria forbid). That conflated two different questions: "is
+this current status trustworthy" (answered by §7's `user-terminal > hook >
+probe > tmux` source precedence) with "is this current status value one I
+recognise" (an FSM-shape question). Because the check ran on the *value*
+regardless of *source*, a hook (precedence 2) arriving after a stale
+lower-precedence verdict (`probe` or `tmux`, precedence 3-4) that happened to
+have parked the row on a status outside the list was silently rejected —
+exactly backwards from precedence. The concrete case this phase's own
+magpie-row evidence names: a tmux-sourced launch failure (task 004) sets
+`error`; the agent actually starts fine and the next `Stop`/`Notification`
+hook arrives; the old `AllowedFrom: ["running"]` list rejected it because the
+row's current value was `error`, not `running`, even though the hook clearly
+outranks the stale `tmux` verdict.
+
+**Before → after, per event:**
+
+| event | before `AllowedFrom` | after | §7 rule justifying the removal |
+|---|---|---|---|
+| `SessionStart` | `["starting"]` | *(none — see general rule below)* | Precedence is source-based, not value-based; a `SessionStart` hook outranks any prior `tmux`/`probe` verdict regardless of its value, and ties/loses only to `killed_by_user` and `stopped`, both handled generically (below). |
+| `UserPromptSubmit` | `["idle", "error"]` | *(none)* | Same: `idle → running` and `error → running` are the two return edges the old list *did* capture, but restricting to only those two also wrongly rejected e.g. a `waiting`-sourced-from-`probe` row's `UserPromptSubmit`, which should apply — the hook is still higher precedence than the stale `probe` read. |
+| `Notification` | `["running"]` | *(none)* | The magpie case above: `error`-from-`tmux` must accept a `Notification` moving it to `waiting`. |
+| `Stop` | `["running"]` | *(none)* | The magpie case above: `error`-from-`tmux` must accept a `Stop` moving it to `idle`. |
+| `StopFailure` | `["running"]` | *(none)* | Same reasoning; a stale lower-precedence verdict must not block the turn/API-failure signal from landing. |
+| `SessionEnd` | `["starting","running","waiting","idle","error","stopped"]` (the forbidden blanket) | *(none)* | `*any* → stopped` is already legal per §7's table for every status; the blanket was accidentally correct in *shape* but is exactly the pattern the criteria forbid keeping, and it hid the fact that no event-specific list was doing any real work here at all. |
+
+**What actually still has to hold, and where it now lives (once, generically,
+in `internal/store.Store.UpdateSessionStatus`, not per-event in
+`hookrecv.Mappings`):**
+- `killed_by_user` (§7 `user-terminal`) outranks every hook: unchanged,
+  pre-existing `apply := killedByUser == 0 || ...` guard.
+- A hook cannot resurrect a process-crash verdict into `running`: unchanged,
+  pre-existing `input.Source == "hook" && input.Status == "running" &&
+  paneExitStatus.Valid` guard.
+- **New:** a hook cannot move a row away from `stopped`. §7's transition
+  table gives `stopped` no return edge except the explicit `r` resume
+  (`AcquireLaunchLease`, which writes `starting` directly via SQL and does
+  not go through `UpdateSessionStatus`/`Receive` at all) — a `stopped` row
+  means tmux verified the pane is truly gone, so there is no live pane left
+  for a hook to have truthfully come from; a hook arriving for one anyway is
+  stale/out-of-order. This is the hook-layer analogue of `killed_by_user`: a
+  terminal state a later hook cannot undo. Implemented as one four-line guard
+  next to the existing two (`store.go`, `UpdateSessionStatus`), gated on
+  `input.Source == "hook" && currentStatus == "stopped"`.
+- `probe` never overwrites a fresher `hook` verdict, and `tmux` only ever
+  supplies liveness: unchanged, both pre-existing guards untouched by this
+  task (they gate `probe`/`tmux`-*sourced* writes, not hook-sourced ones, so
+  they were never part of the problem).
+- Orphan resolution (`ErrUnresolved`) is untouched — an orphan is still an
+  orphan regardless of this change, since resolution happens before any
+  status-mapping decision.
+
+**Mapping struct changed:** `AllowedFrom []string` is removed from
+`hookrecv.Mapping` entirely — there is no field left to hand-maintain a
+per-event list in. The one place `Receive` still needs a **hook-specific**
+override remains: an in-session `SessionEnd` (task 001, requirement 43)
+still passes the store the `noCurrentStatusMatches` sentinel so the event is
+recorded without moving the row — that mechanism is orthogonal to the
+removed `AllowedFrom` lists (it is computed locally in `Receive`, not read
+off `Mapping`) and is unchanged by this task.
+
+**Tests.** `internal/hookrecv/receiver_test.go`'s
+`TestReceiveEnforcesEveryHookTransitionAndStillAuditsRejectedEvents` — which
+directly asserted the exact `AllowedFrom` slice values being removed here —
+is **replaced**, not deleted-without-trace, by
+`TestReceiveHookAppliesOverAnyStaleSourceExceptStopped`, which sweeps the
+same six events × six statuses, additionally sweeping `status_source` over
+`user`/`tmux`/`probe`/`hook` to prove the current *source* no longer matters
+except at `stopped`. Two new focused tests cover the criteria's named
+scenarios directly: `TestReceiveHookOverridesStaleTmuxLaunchFailure`
+(`error`-from-`tmux` → `idle` via `Stop`, and → `waiting` via `Notification`)
+and `TestReceiveDoesNotResurrectAUserKilledRow` (a `killed_by_user` row
+ignores a late `SessionStart`). `TestReceiveDoesNotReviveCleanStopOrProcessCrash`
+(pre-existing, unmodified) continues to pin the `stopped`- and
+process-crash-immunity behaviour, now enforced by the store's general guards
+rather than by `SessionStart`'s removed `AllowedFrom: ["starting"]`.
+
+**Verification:** `ci/run.sh go test ./internal/...` passes (all packages,
+including `internal/hookrecv` and `internal/store`); `ci/run.sh go test
+./...` passes.

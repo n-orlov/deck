@@ -520,6 +520,16 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	if apply && len(input.AllowedCurrentStatuses) > 0 && !containsString(input.AllowedCurrentStatuses, currentStatus) {
 		apply = false
 	}
+	// §7's transition table gives "stopped" no return edge except the explicit
+	// `r` resume (starting), which flips the row outside this function
+	// (AcquireLaunchLease). A stopped row means tmux verified the session is
+	// gone -- there is no live pane left for a hook to have truthfully come
+	// from, so a hook arriving for one anyway is stale/out-of-order and must
+	// not resurrect it. This is the hook-layer analogue of killed_by_user: a
+	// terminal state a later hook cannot undo.
+	if apply && input.Source == "hook" && currentStatus == "stopped" {
+		apply = false
+	}
 	// An error carrying a pane exit status is a terminal process-crash verdict,
 	// not the recoverable turn/API failure represented by error -> running.
 	if apply && input.Source == "hook" && input.Status == "running" && paneExitStatus.Valid {
