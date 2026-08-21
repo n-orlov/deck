@@ -66,6 +66,18 @@ Feature: §11.2 layout modes, their keys, and their persistence
     Then deck client "solo" sidebar seam column still matches the captured "ceiling"
     And deck client "solo" exits cleanly
 
+  @requirement-14
+  Scenario: the below-minimum notice lands on the footer line and only there
+    Given deck client "solo" is started with terminal size 100x30
+    Then deck client "solo" screen does not contain "below deck's supported minimum"
+    When deck client "solo" terminal is resized to 70x24
+    Then deck client "solo" screen contains "below deck's supported minimum"
+    And deck client "solo" screen contains "deck - sessions"
+    When deck client "solo" terminal is resized to 80x24
+    Then deck client "solo" layout is "side-by-side"
+    And deck client "solo" screen does not contain "below deck's supported minimum"
+    And deck client "solo" exits cleanly
+
   @requirement-38-layout-modes
   Scenario: layout_mode and sidebar_width persist across a restart, with config.toml unchanged
     Given the deck config allows yolo
