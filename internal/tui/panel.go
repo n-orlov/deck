@@ -250,11 +250,25 @@ func (m Model) sidebarBottomLine(width int) string {
 }
 
 // sidebarContentLine draws one content row inside the sidebar: left border,
-// one column of padding (SPEC requirement 17), then text padded/truncated to
-// fill the rest — there is no right border to pad against, since that
-// column belongs to the preview's left border, the single seam (requirement
-// 18).
+// one column of padding (SPEC requirement 17), text padded/truncated to fill
+// the rest, then a trailing column of padding so sidebar content never
+// touches the seam — that column, one past the trailing padding, belongs to
+// the preview's left border, the single seam (requirement 18). Only the
+// real sidebar (width >= SidebarWidthFloor) reserves this trailing column;
+// collapsedStripContentLine below covers the 3-wide collapsed strip, which
+// has no spare column to give up.
 func (m Model) sidebarContentLine(width int, text string) string {
+	bc := m.box()
+	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, width-3) + " "
+}
+
+// collapsedStripContentLine draws one content row of the 3-column
+// collapsed strip (SPEC requirement 15): left border, one column of
+// padding, then a single content column with nothing after it — the
+// requirement-17 trailing pad in sidebarContentLine does not apply here
+// because the strip's whole width is already spent on the marker; giving
+// up a column would leave no room for the » glyph or the attention digits.
+func (m Model) collapsedStripContentLine(width int, text string) string {
 	bc := m.box()
 	return m.borderColor(bc.vertical) + " " + m.padTrunc(text, width-2)
 }
