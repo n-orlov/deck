@@ -879,19 +879,45 @@ func (m Model) startupBanner(width int) []string {
 	return lines
 }
 
+// attachErrorLines is requirement 37's wrapped attachError line set, shared
+// between computeLayout's reservation and mainView's actual render so the
+// two never disagree about how many rows the message costs. It returns no
+// lines at all when there is no error, so it costs nothing in the common
+// case — computeLayout must not unconditionally shrink the panels by this
+// message's worst case when none is present.
+func (m Model) attachErrorLines(width int) []string {
+	if m.attachError == "" {
+		return nil
+	}
+	return wrapText(m.attachError, width)
+}
+
+// resumeNoteLines is requirement 37's wrapped resumeNote line set, the
+// resumeNote counterpart to attachErrorLines above.
+func (m Model) resumeNoteLines(width int) []string {
+	if m.resumeNote == "" {
+		return nil
+	}
+	return wrapText(m.resumeNote, width)
+}
+
 // computeLayout is the one place mainView and the page-size math below call
 // ComputeLayout, reserving exactly one row for the footer (SPEC §11.3: "the
 // footer is one line, outside both panels") plus the startup banner's own
-// rows, if any, before handing the rest to the §11.2 geometry function,
-// which knows neither about. Skipping this reservation would let the
-// banner's lines push the whole frame past the terminal's actual row count,
-// which does not shrink the frame to fit — it scrolls, carrying the banner
-// (and the sidebar's own top border) off the top of the visible screen
-// (features/tmux_contract.feature's "old tmux is actionable" scenario would
-// never see either again).
+// rows, if any, plus attachError's and resumeNote's own wrapped row counts,
+// if either is set (requirement 37), before handing the rest to the §11.2
+// geometry function, which knows about none of them. Skipping any of these
+// reservations would let that message's lines push the whole frame past the
+// terminal's actual row count, which does not shrink the frame to fit — it
+// scrolls, carrying the banner (and the sidebar's own top border) off the
+// top of the visible screen (features/tmux_contract.feature's "old tmux is
+// actionable" scenario would never see either again). attachError and
+// resumeNote are mutually exclusive in practice (tui.go's Update clears one
+// whenever it sets the other) but both are budgeted here regardless, so a
+// future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -948,12 +974,8 @@ func (m Model) mainView() string {
 	} else {
 		lines = append(lines, m.renderSideBySideFrame(layout)...)
 	}
-	if m.attachError != "" {
-		lines = append(lines, wrapText(m.attachError, width)...)
-	}
-	if m.resumeNote != "" {
-		lines = append(lines, wrapText(m.resumeNote, width)...)
-	}
+	lines = append(lines, m.attachErrorLines(width)...)
+	lines = append(lines, m.resumeNoteLines(width)...)
 	lines = append(lines, m.footerLine())
 	return strings.Join(lines, "\n")
 }
