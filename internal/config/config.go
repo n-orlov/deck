@@ -60,6 +60,14 @@ type Settings struct {
 	// false when the file, or the key within it, is absent: the yolo
 	// permission profile stays gated unless an operator opts in explicitly.
 	AllowYolo bool
+	// CaptureMinInterval mirrors config.toml's top-level capture_min_interval
+	// key (SPEC §9.4): the minimum spacing between opportunistic scrollback
+	// captures triggered by hook traffic. Defaults per internal/config.Schema.
+	CaptureMinInterval time.Duration
+	// RecentCwdLimit mirrors config.toml's [ui] recent_cwd_limit key (SPEC
+	// §11.7): how many recently used working directories are kept/offered
+	// when creating a session. Defaults per internal/config.Schema.
+	RecentCwdLimit int
 	// Env mirrors config.toml's [env] table: additional environment variables
 	// layered under the session env per SPEC §6.1/§6.3. Absent file or absent
 	// section both yield a nil map, never an error.
@@ -110,7 +118,11 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if strings.ContainsAny(socket, "/\x00") {
 		return Settings{}, fmt.Errorf("DECK_TMUX_SOCKET must be a tmux socket name, not a path")
 	}
-	ascii, err := boolEnv(getenv("DECK_ASCII"), false, "DECK_ASCII")
+	fileCfg, err := loadConfigFile(paths.ConfigFile)
+	if err != nil {
+		return Settings{}, err
+	}
+	ascii, err := boolEnv(getenv("DECK_ASCII"), fileCfg.ASCII, "DECK_ASCII")
 	if err != nil {
 		return Settings{}, err
 	}
@@ -129,10 +141,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if err != nil {
 		return Settings{}, err
 	}
-	allowYolo, staleAfter, mouse, env, themeName, err := loadConfigFile(paths.ConfigFile)
-	if err != nil {
-		return Settings{}, err
-	}
+	mouse := fileCfg.Mouse
 	if raw := getenv("DECK_MOUSE"); raw != "" {
 		mouse, err = boolEnv(raw, mouse, "DECK_MOUSE")
 		if err != nil {
@@ -140,12 +149,13 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		}
 	}
 	userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
-	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, themeName)
+	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, fileCfg.Theme)
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
-		Reconcile: reconcile, Preview: preview, StaleAfter: staleAfter,
-		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: allowYolo, Env: env, Mouse: mouse,
-		Theme: resolvedTheme, ThemeReason: themeReason,
+		Reconcile: reconcile, Preview: preview, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval,
+		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
+		RecentCwdLimit: fileCfg.RecentCwdLimit,
+		Theme:          resolvedTheme, ThemeReason: themeReason,
 	}, nil
 }
 

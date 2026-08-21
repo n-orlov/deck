@@ -9,119 +9,220 @@ import (
 	"time"
 )
 
+// FileConfig is what loadConfigFile returns: one field per Schema entry,
+// with every key that was absent from the file already filled in from its
+// schema Default. loadConfigFile itself never invents a key or a parsing
+// rule -- for each key found in the file's top-level or [ui] table, it
+// looks the key up in Schema and dispatches on the found Field's Kind, so
+// task 011's parser has exactly one generic rule per FieldKind rather than
+// a hand-written case per key. [env] is handled separately: Schema
+// declares it as a single whole-table field (KindListOfStrings, arbitrary
+// member names), so its members go straight into Env.
+type FileConfig struct {
+	AllowYolo          bool
+	StaleAfter         time.Duration
+	CaptureMinInterval time.Duration
+	ASCII              bool
+	Mouse              bool
+	RecentCwdLimit     int
+	Theme              string
+	Env                map[string]string
+}
+
 // loadConfigFile reads config.toml's implemented top-level controls, the
-// [ui] table and the [env] table. It intentionally does not
-// attempt a general TOML parser — deck's config.toml also carries [notify]
-// and [[notify.rule]] tables (SPEC §10) that are out of scope here, so
+// [ui] table and the [env] table. It intentionally does not attempt a
+// general TOML parser -- deck's config.toml also carries [notify] and
+// [[notify.rule]] tables (SPEC §10) that are out of scope here, so
 // unrecognised sections are skipped rather than misparsed. A missing file
-// yields the documented defaults (allow_yolo=false, mouse=true, no env) and
-// no error; a file that exists but cannot be understood yields a stated
-// error, never a silent default.
-func loadConfigFile(path string) (allowYolo bool, staleAfter time.Duration, mouse bool, env map[string]string, themeName string, err error) {
+// yields the Schema's documented defaults and no error; a file that exists
+// but cannot be understood yields a stated error naming the file and line,
+// never a silent default. A key present in a known section (top level,
+// [ui]) but absent from Schema is ignored, the same way a future addition
+// to Schema needs no matching edit here to be picked up.
+func loadConfigFile(path string) (FileConfig, error) {
+	cfg := defaultFileConfig()
+
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, DefaultStaleAfter, true, nil, "", nil
+			return cfg, nil
 		}
-		return false, 0, false, nil, "", fmt.Errorf("open %s: %w", path, err)
+		return FileConfig{}, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
-	allowYolo = false
-	staleAfter = DefaultStaleAfter
-	mouse = true
 	section := ""
-
 	scanner := bufio.NewScanner(file)
 	line := 0
 	for scanner.Scan() {
 		line++
 		raw := scanner.Text()
-		text := stripComment(raw)
-		text = strings.TrimSpace(text)
+		text := strings.TrimSpace(stripComment(raw))
 		if text == "" {
 			continue
 		}
 		if strings.HasPrefix(text, "[") {
 			name, err := parseSectionHeader(text)
 			if err != nil {
-				return false, 0, false, nil, "", fmt.Errorf("%s:%d: %w", path, line, err)
+				return FileConfig{}, fmt.Errorf("%s:%d: %w", path, line, err)
 			}
 			section = name
 			continue
 		}
 		key, value, err := parseKeyValue(text)
 		if err != nil {
-			return false, 0, false, nil, "", fmt.Errorf("%s:%d: %w", path, line, err)
+			return FileConfig{}, fmt.Errorf("%s:%d: %w", path, line, err)
 		}
 		switch section {
-		case "":
-			switch key {
-			case "allow_yolo":
-				parsed, err := strconv.ParseBool(value)
-				if err != nil {
-					return false, 0, false, nil, "", fmt.Errorf("%s:%d: allow_yolo must be true or false, got %q", path, line, value)
-				}
-				allowYolo = parsed
-			case "stale_after":
-				var parsed time.Duration
-				if strings.HasPrefix(value, "\"") {
-					text, err := unquoteString(value)
-					if err == nil {
-						parsed, err = time.ParseDuration(text)
-					}
-					if err != nil {
-						return false, 0, false, nil, "", fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
-					}
-				} else {
-					seconds, err := strconv.Atoi(value)
-					if err != nil {
-						return false, 0, false, nil, "", fmt.Errorf("%s:%d: stale_after must be seconds or a duration, got %q", path, line, value)
-					}
-					parsed = time.Duration(seconds) * time.Second
-				}
-				if parsed <= 0 {
-					return false, 0, false, nil, "", fmt.Errorf("%s:%d: stale_after must be positive, got %q", path, line, value)
-				}
-				staleAfter = parsed
+		case "", "ui":
+			fullKey := key
+			if section != "" {
+				fullKey = section + "." + key
 			}
-			// Other top-level keys are ignored so future phases can add keys
-			// without breaking this deliberately small parser.
-		case "ui":
-			switch key {
-			case "mouse":
-				parsed, err := strconv.ParseBool(value)
-				if err != nil {
-					return false, 0, false, nil, "", fmt.Errorf("%s:%d: mouse must be true or false, got %q", path, line, value)
-				}
-				mouse = parsed
-			case "theme":
-				unquoted, err := unquoteString(value)
-				if err != nil {
-					return false, 0, false, nil, "", fmt.Errorf("%s:%d: [ui] theme must be a quoted string: %w", path, line, err)
-				}
-				themeName = unquoted
+			field, ok := FieldByFullKey(fullKey)
+			if !ok {
+				// A key with no matching schema entry is ignored so future
+				// phases can add keys without breaking this parser, and so
+				// a typo does not silently masquerade as a known key.
+				continue
 			}
-			// Other [ui] keys (e.g. a future sidebar_width default) are
-			// ignored here for the same reason as unrecognised top-level keys.
+			if err := setField(&cfg, field, value, path, line); err != nil {
+				return FileConfig{}, err
+			}
 		case "env":
 			unquoted, err := unquoteString(value)
 			if err != nil {
-				return false, 0, false, nil, "", fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
+				return FileConfig{}, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
 			}
-			if env == nil {
-				env = make(map[string]string)
+			if cfg.Env == nil {
+				cfg.Env = make(map[string]string)
 			}
-			env[key] = unquoted
+			cfg.Env[key] = unquoted
 		default:
 			// A recognised-but-out-of-scope section (e.g. [notify]): its
 			// body is intentionally not interpreted.
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return false, 0, false, nil, "", fmt.Errorf("read %s: %w", path, err)
+		return FileConfig{}, fmt.Errorf("read %s: %w", path, err)
 	}
-	return allowYolo, staleAfter, mouse, env, themeName, nil
+	return cfg, nil
+}
+
+// defaultFileConfig seeds every field from Schema's declared Default,
+// rather than repeating each default as a separate literal, so the
+// defaults a missing (or partially populated) config.toml yields can never
+// drift from what Schema documents.
+func defaultFileConfig() FileConfig {
+	var cfg FileConfig
+	for _, field := range Schema {
+		switch field.FullKey() {
+		case "allow_yolo":
+			cfg.AllowYolo, _ = field.Default.(bool)
+		case "stale_after":
+			seconds, _ := field.Default.(int)
+			cfg.StaleAfter = time.Duration(seconds) * time.Second
+		case "capture_min_interval":
+			seconds, _ := field.Default.(int)
+			cfg.CaptureMinInterval = time.Duration(seconds) * time.Second
+		case "ui.ascii":
+			cfg.ASCII, _ = field.Default.(bool)
+		case "ui.mouse":
+			cfg.Mouse, _ = field.Default.(bool)
+		case "ui.recent_cwd_limit":
+			cfg.RecentCwdLimit, _ = field.Default.(int)
+		case "ui.theme":
+			cfg.Theme, _ = field.Default.(string)
+		}
+	}
+	return cfg
+}
+
+// setField parses raw against field's declared Kind and, once valid,
+// writes it into cfg's matching member. The Kind switch is the one generic
+// parsing rule per kind that replaces the former per-key switch; the
+// FullKey switch beneath it exists only because Go structs cannot be
+// addressed by a string field name without reflection, so it carries no
+// parsing logic of its own -- everything that can fail already failed
+// above it.
+func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
+	switch field.Kind {
+	case KindToggle:
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return fmt.Errorf("%s:%d: %s must be true or false, got %q", path, line, field.FullKey(), raw)
+		}
+		switch field.FullKey() {
+		case "allow_yolo":
+			cfg.AllowYolo = value
+		case "ui.ascii":
+			cfg.ASCII = value
+		case "ui.mouse":
+			cfg.Mouse = value
+		}
+	case KindInteger:
+		value, err := parseIntegerValue(field, raw)
+		if err != nil {
+			return fmt.Errorf("%s:%d: %w", path, line, err)
+		}
+		switch field.FullKey() {
+		case "stale_after":
+			cfg.StaleAfter = time.Duration(value) * time.Second
+		case "capture_min_interval":
+			cfg.CaptureMinInterval = time.Duration(value) * time.Second
+		case "ui.recent_cwd_limit":
+			cfg.RecentCwdLimit = value
+		}
+	case KindEnum, KindString, KindPath:
+		unquoted, err := unquoteString(raw)
+		if err != nil {
+			return fmt.Errorf("%s:%d: %s must be a quoted string: %w", path, line, field.FullKey(), err)
+		}
+		switch field.FullKey() {
+		case "ui.theme":
+			cfg.Theme = unquoted
+		}
+	default:
+		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)
+	}
+	return nil
+}
+
+// parseIntegerValue parses raw against field's IntBounds. A field whose
+// Unit is "seconds" additionally accepts a quoted Go duration string
+// (e.g. "1m30s") alongside a bare integer, preserving stale_after's
+// pre-schema behaviour and extending it to any other seconds-denominated
+// integer field (currently capture_min_interval) rather than special-casing
+// one key.
+func parseIntegerValue(field Field, raw string) (int, error) {
+	var value int
+	if field.Unit == "seconds" && strings.HasPrefix(raw, "\"") {
+		text, err := unquoteString(raw)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
+		}
+		duration, err := time.ParseDuration(text)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
+		}
+		value = int(duration.Seconds())
+	} else {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			if field.Unit == "seconds" {
+				return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
+			}
+			return 0, fmt.Errorf("%s must be an integer, got %q", field.FullKey(), raw)
+		}
+		value = parsed
+	}
+	if value < field.IntBounds.Min {
+		return 0, fmt.Errorf("%s must be at least %d, got %d", field.FullKey(), field.IntBounds.Min, value)
+	}
+	if field.IntBounds.Max != nil && value > *field.IntBounds.Max {
+		return 0, fmt.Errorf("%s must be at most %d, got %d", field.FullKey(), *field.IntBounds.Max, value)
+	}
+	return value, nil
 }
 
 func stripComment(line string) string {
