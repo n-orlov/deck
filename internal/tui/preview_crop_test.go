@@ -136,6 +136,42 @@ func TestCropPreviewBottomLeftClampsToShortHistory(t *testing.T) {
 	}
 }
 
+// TestCropPreviewBottomLeftPreservesColourEscapes covers the review finding
+// that a captured pane row containing SGR colour escapes ("\x1b[31mRED
+// \x1b[0m ROW", the shape `tmux capture-pane -e` actually returns) used to
+// shear the panel's right border: before task 001's stringWidth/
+// truncateToWidth fix, cropRow (via cropPreviewBottomLeft) spent one column
+// per escape *byte* instead of zero, so a coloured row's rendered width ran
+// over budget by exactly the escape bytes' length and every row after it in
+// the frame lost column alignment with the border. This test would fail on
+// that pre-fix code (stringWidth/truncateToWidth backed by plain
+// runewidth.StringWidth/rune iteration) and passes now that both are
+// escape-aware: the rendered line's visible display width is exactly
+// contentWidth, and the escape bytes themselves survive byte-for-byte so
+// the colour still reaches the terminal.
+func TestCropPreviewBottomLeftPreservesColourEscapes(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	raw := []byte("\x1b[31mRED\x1b[0m ROW")
+	const contentWidth, contentHeight = 20, 1
+	lines := m.cropPreviewBottomLeft(raw, contentWidth, contentHeight, contentWidth, contentHeight)
+	if len(lines) != 1 {
+		t.Fatalf("len(lines) = %d, want 1", len(lines))
+	}
+	line := lines[0]
+	if got := stringWidth(line); got != contentWidth {
+		t.Fatalf("stringWidth(%q) = %d, want %d (border must land in the same column regardless of the escape bytes it passed over)", line, got, contentWidth)
+	}
+	if !strings.Contains(line, "\x1b[31m") {
+		t.Fatalf("line %q lost the red SGR escape; colour bytes must survive verbatim", line)
+	}
+	if !strings.Contains(line, "\x1b[0m") {
+		t.Fatalf("line %q lost the reset SGR escape; colour bytes must survive verbatim", line)
+	}
+	if !strings.HasPrefix(line, "\x1b[31mRED\x1b[0m ROW") {
+		t.Fatalf("line %q does not start with the original coloured text; padding must be appended after it, not interleaved", line)
+	}
+}
+
 // TestCropPreviewBottomLeftZeroSize covers the degenerate case the preview
 // panel's own floor check (task 021) will route around at runtime, but
 // which this function must still handle without panicking.
