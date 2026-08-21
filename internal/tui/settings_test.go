@@ -88,7 +88,14 @@ func TestSettingsViewRendersSchemaDerivedCategoriesAndFields(t *testing.T) {
 // TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce is the schema/settings
 // parity precursor to task 018's structural test: every field
 // config.Schema declares appears in exactly one category's Fields, and no
-// category invents a field the schema does not declare.
+// category invents a field the schema does not declare -- except the one
+// stated exception SPEC §11.5 itself names: "[notify]... settings shows
+// [it] as a single navigable entry", which config.Schema deliberately
+// does NOT declare (schema.go's own comment) since it is a structured
+// table, not a flat key. Task 015 adds exactly that one synthetic entry
+// (settingsNotifyEntry, FullKey "[notify]"); this test now names it
+// explicitly as the sole permitted non-schema surplus rather than either
+// silently tolerating any surplus or breaking on the one §11.5 requires.
 func TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce(t *testing.T) {
 	categories := settingsCategories()
 	seen := map[string]int{}
@@ -97,8 +104,13 @@ func TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce(t *testing.T) {
 			seen[f.FullKey()]++
 		}
 	}
+	const notifyKey = "[notify]"
+	if seen[notifyKey] != 1 {
+		t.Fatalf("settingsCategories() surfaced %s %d times, want exactly 1 (the §11.5 single navigable entry)", notifyKey, seen[notifyKey])
+	}
+	delete(seen, notifyKey)
 	if len(seen) != len(config.Schema) {
-		t.Fatalf("settingsCategories() surfaced %d distinct fields, want %d (one per schema field)", len(seen), len(config.Schema))
+		t.Fatalf("settingsCategories() surfaced %d distinct non-notify fields, want %d (one per schema field)", len(seen), len(config.Schema))
 	}
 	for _, f := range config.Schema {
 		if seen[f.FullKey()] != 1 {
