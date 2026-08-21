@@ -232,7 +232,7 @@ ok  	github.com/n-orlov/deck/features	5.856s
 ```
 
 - **R28** (`waiting` oldest-first → `error` → `running` → `starting` → `idle` → `stopped`): `internal/tui/attention_test.go`'s `TestSortSessionsByAttentionOrdersGroupsExactly` (unit level) and `.../sessions_render_in_the_full_waiting/error/running/starting/idle/stopped_order,_ties_broken_oldest-first` (black box).
-- **R29** (total, deterministic tie-break): the tie-break key is stated and justified in the dedicated section at the top of this report; the same scenario above exercises the "ties broken oldest-first" half, and `TestSortSessionsByAttentionOrdersGroupsExactly` covers the documented tie-break case (two sessions sharing a status and timestamp) at the unit level.
+- **R29** (total, deterministic tie-break): **the tie-break key is ascending `StatusAt` (the timestamp of the session's current status), and any remaining `StatusAt` tie is broken by ascending session ID** (unique and stable for the session's lifetime), per `internal/tui/attention.go`'s doc comment — both keys are total orders over their domain, so the combined key is total and a frozen clock still yields exactly one frame. The same scenario above exercises the "ties broken oldest-first" half (oldest-first for `waiting` is simply "ascending `StatusAt`"), and `TestSortSessionsByAttentionOrdersGroupsExactly` covers the documented tie-break case (two sessions sharing a status and timestamp, disambiguated by session ID) at the unit level.
 - **R30** (grouping by `workspace`, default basename-of-`cwd`, collapsible, never by repo): `.../the_sidebar_groups_sessions_by_workspace,...` and `.../collapsing_and_expanding_the_sidebar's_only_workspace_group_round-trips_via_two_\`g\`_presses`.
 - **R31** (`space` moves to the next session needing attention, wraps, no observable effect when nothing needs attention, never changes status): `.../\`space\`_walks_only_what_needs_attention,_wraps,_and_changes_no_session's_status` — the scenario captures the state database's status rows before and after repeated `space` presses and asserts they still match.
 - **R32** (one shared "needs me" computation behind the sort, the collapsed count, and `space`): `.../the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention`; `internal/tui/attention.go` defines a single `needsAttention`-style predicate consumed by all three call sites (sort, collapsed-strip count, `space` target).
@@ -389,10 +389,10 @@ run above under requirements 16-20.
 
 This file. Every requirement 1-46 above names the command or scenario that
 verifies it and shows that command's own real captured output — not a
-claim. The requirement-6 emulator decision and its evidence, and
-requirement 29's tie-break key, are both included (dedicated sections
-above/below). The golden-frame regeneration command is included under
-requirement 42.
+claim. The requirement-6 emulator decision and its evidence has its own
+dedicated section above, and requirement 29's tie-break key is stated and
+justified in the "Requirements 28-32" section above. The golden-frame
+regeneration command is included under requirement 42.
 
 ## Requirement 46: workspace hygiene
 
