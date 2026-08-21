@@ -17,6 +17,7 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
@@ -1089,7 +1090,7 @@ func (m Model) footerLine() string {
 		width, _ := m.frameSize()
 		return truncateToWidth(belowMinimumNotice, width)
 	}
-	keys := m.glyph("↑/↓ · ↵ attach · Y acknowledge · n new · x kill · r resume · P profile · p pin · i detail · ? help · q quit", "up/down - Enter attach - Y acknowledge - n new - x kill - r resume - P profile - p pin - i detail - ? help - q quit")
+	keys := m.footerKeyLegend()
 	if reason := m.selectedRowReason(); reason != "" {
 		return reason + "    " + keys
 	}
@@ -1100,6 +1101,56 @@ func (m Model) footerLine() string {
 // shared between the footer (footerLine) and the mouse hit-tester so the
 // two never disagree about whether it is on screen.
 const belowMinimumNotice = "Terminal is below deck's supported minimum of 80x24; showing stacked as far as it fits."
+
+// footerKeyHint pairs one footer key legend entry's key glyph (in both its
+// Unicode and DECK_ASCII forms, mirroring m.glyph's own two-string calls
+// elsewhere) with the hint word after it. The very first entry (↑/↓) has
+// no hint -- it names the up/down keys without a verb, exactly as the
+// legend always has -- so hint is left "" there rather than inventing one.
+type footerKeyHint struct {
+	unicodeKey, asciiKey, hint string
+}
+
+// footerLegend is SPEC requirement 20's key legend, SPEC requirement 35's
+// `key`/`hint` tokens applied structurally (task 021) rather than as one
+// undifferentiated string: every entry's key glyph and hint word are
+// tracked separately so footerKeyLegend can colour them apart, while the
+// concatenated visible text (key legend and Unicode fallback) is byte-for-
+// byte what it always was, and pending tests that grep for a plain
+// substring like "up/down" or "Enter attach" never see the joins move.
+var footerLegend = []footerKeyHint{
+	{"↑/↓", "up/down", ""},
+	{"↵", "Enter", "attach"},
+	{"Y", "Y", "acknowledge"},
+	{"n", "n", "new"},
+	{"x", "x", "kill"},
+	{"r", "r", "resume"},
+	{"P", "P", "profile"},
+	{"p", "p", "pin"},
+	{"i", "i", "detail"},
+	{"?", "?", "help"},
+	{"q", "q", "quit"},
+}
+
+// footerKeyLegend renders footerLegend into the footer's key legend line,
+// each entry's key glyph in the `key` token and its hint word in the
+// `hint` token (SPEC requirement 35), joined by the same " · "/" - "
+// separator the legend has always used -- never coloured itself, so it
+// reads as neutral punctuation between differently-coloured runs rather
+// than borrowing either token.
+func (m Model) footerKeyLegend() string {
+	sep := m.glyph(" · ", " - ")
+	parts := make([]string, len(footerLegend))
+	for i, e := range footerLegend {
+		key := m.glyph(e.unicodeKey, e.asciiKey)
+		seg := m.colorToken(theme.Key, key)
+		if e.hint != "" {
+			seg += " " + m.colorToken(theme.Hint, e.hint)
+		}
+		parts[i] = seg
+	}
+	return strings.Join(parts, sep)
+}
 
 // renderSideBySideFrame draws two panels sharing one seam (SPEC requirement
 // 18): the sidebar draws its top/left/bottom borders only, and the
@@ -1115,7 +1166,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 		contentRows = 0
 	}
 	collapsed := layout.Effective == LayoutCollapsed
-	sidebarTop := m.sidebarTitleLine(sw)
+	sidebarTop := m.sidebarTopLine(sw, m.sidebarTitleText())
 	var sidebar []string
 	if collapsed {
 		// The 3-column strip has no room for the "deck — sessions" title
@@ -1226,20 +1277,20 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		for i, e := range visible {
 			body[i] = e.text
 		}
-		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText()))
+		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText(), true))
 		for i := 0; i < listRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(lw, body[i]))
+			lines = append(lines, m.fullBoxContentLine(lw, body[i], true))
 		}
-		lines = append(lines, m.fullBoxBottom(lw))
+		lines = append(lines, m.fullBoxBottom(lw, true))
 	}
 	if ph >= 2 {
 		previewRows := ph - 2
 		body := m.previewBodyLines(max(pw-4, 0), previewRows)
-		lines = append(lines, m.fullBoxTop(pw, m.previewTitle()))
+		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), false))
 		for i := 0; i < previewRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(pw, body[i]))
+			lines = append(lines, m.fullBoxContentLine(pw, body[i], false))
 		}
-		lines = append(lines, m.fullBoxBottom(pw))
+		lines = append(lines, m.fullBoxBottom(pw, false))
 	}
 	return lines
 }
@@ -1387,30 +1438,65 @@ func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarE
 // word an assertion depends on.
 func (m Model) sidebarRowLines(index int, session store.Session) []string {
 	marker := "  "
-	if index == m.selected {
+	selected := index == m.selected
+	if selected {
 		marker = "> "
 	}
-	var parts []string
+	// SPEC requirement 35's `dimmed` covers a starting row (task 021): it
+	// carries no signal yet beyond its own liveness, so everything but the
+	// status word itself -- coloured in its own starting token below, which
+	// must keep reading as "starting" rather than fade to grey -- is dimmed
+	// so the eye is not drawn to it the way a row with real news is.
+	nameTok := theme.Text
+	if session.Status == "starting" {
+		nameTok = theme.Dimmed
+	}
+	// Every run of text on this row is composed as a settingsRowSegment
+	// (the same generic label/value/selection-background helper task 019
+	// built for the settings takeover, reused here rather than duplicated)
+	// so a selected row's `selection` BACKGROUND (SPEC requirement 42) can
+	// be opened once and stay live under every foreground-coloured segment
+	// -- composing self-resetting m.colorToken calls into one string here,
+	// the way this row used to, would have the FIRST inner segment's own
+	// trailing \x1b[0m clear that background again immediately (the
+	// gotcha theme_color.go's foregroundSGR/backgroundSGR doc already
+	// warns about).
+	segs := []settingsRowSegment{{Text: marker + session.Name + " ", Tok: nameTok}}
+	var parts []settingsRowSegment
 	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
 		unseen := m.glyph("●", "!")
-		if tok, ok := statusToken(session.Status); ok {
-			unseen = m.colorToken(tok, unseen)
+		tok := theme.Text
+		if t, ok := statusToken(session.Status); ok {
+			tok = t
 		}
-		parts = append(parts, unseen)
+		parts = append(parts, settingsRowSegment{Text: unseen, Tok: tok})
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
-		parts = append(parts, quality)
+		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Badge})
 	}
-	statusText := session.Status
-	if tok, ok := statusToken(session.Status); ok {
-		statusText = m.colorToken(tok, statusText)
+	statusTok := theme.Text
+	if t, ok := statusToken(session.Status); ok {
+		statusTok = t
 	}
-	parts = append(parts, statusText)
-	line1 := marker + session.Name + " " + strings.Join(parts, " ")
-	line2 := "  created " + m.relativeTime(session.CreatedAt)
-	if badge := m.profileBadge(session); badge != "" {
-		line2 = "  " + badge + " created " + m.relativeTime(session.CreatedAt)
+	parts = append(parts, settingsRowSegment{Text: session.Status, Tok: statusTok})
+	for i, p := range parts {
+		if i > 0 {
+			segs = append(segs, settingsRowSegment{Text: " ", Tok: theme.Text})
+		}
+		segs = append(segs, p)
 	}
+	line1 := m.settingsRenderRow(segs, theme.Selection, selected)
+
+	line2Tok := theme.Text
+	if session.Status == "starting" {
+		line2Tok = theme.Dimmed
+	}
+	line2Segs := []settingsRowSegment{{Text: "  ", Tok: theme.Text}}
+	if text, tok, ok := m.profileBadgeSegment(session); ok {
+		line2Segs = append(line2Segs, settingsRowSegment{Text: text, Tok: tok}, settingsRowSegment{Text: " ", Tok: theme.Text})
+	}
+	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
+	line2 := m.settingsRenderRow(line2Segs, theme.Selection, selected)
 	return []string{line1, line2}
 }
 
@@ -1531,11 +1617,32 @@ func (m Model) selectedRowReason() string {
 // permission profile at all (SPEC §5/§8): agentCapabilities reports
 // them as not applicable, so they render no badge rather than a meaningless
 // cosmetic "safe".
-func (m Model) profileBadge(session store.Session) string {
+func (m Model) profileBadgeSegment(session store.Session) (text string, tok theme.Token, ok bool) {
 	if _, applicable := m.agentCapabilities(session.Agent); !applicable {
+		return "", "", false
+	}
+	// SPEC's builtin themes comment badge_warn as "non-safe permission
+	// profiles, yolo" (task 021): `safe` is merely informational (`badge`),
+	// every other profile -- plan, edits, yolo -- is the thing worth a
+	// warning colour.
+	tok = theme.Badge
+	if session.PermissionProfile != "safe" {
+		tok = theme.BadgeWarn
+	}
+	return "[" + session.PermissionProfile + "]", tok, true
+}
+
+// profileBadge self-colours profileBadgeSegment's text for a caller that
+// just wants a ready-to-print badge; sidebarRowLines instead composes the
+// segment directly so a selected row's `selection` background stays live
+// underneath it (see settingsRenderRow's own doc on why a self-resetting
+// colorToken call must never be nested inside one).
+func (m Model) profileBadge(session store.Session) string {
+	text, tok, ok := m.profileBadgeSegment(session)
+	if !ok {
 		return ""
 	}
-	return "[" + session.PermissionProfile + "]"
+	return m.colorToken(tok, text)
 }
 
 // statusSourceQuality describes only the quality of an agent verdict. Hook
@@ -1764,7 +1871,7 @@ func (m Model) renderCrashTail(tail string) string {
 	}
 	omitted := len(lines) - maxLines
 	visible := append([]string(nil), lines[:maxLines/2]...)
-	visible = append(visible, fmt.Sprintf(m.glyph("… %d lines omitted …", "... %d lines omitted ..."), omitted))
+	visible = append(visible, m.colorToken(theme.Dimmed, fmt.Sprintf(m.glyph("… %d lines omitted …", "... %d lines omitted ..."), omitted)))
 	visible = append(visible, lines[len(lines)-maxLines/2:]...)
 	return strings.Join(visible, "\n")
 }

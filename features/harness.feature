@@ -27,12 +27,9 @@ Feature: Godog harness wiring
   @requirement-1-cell-attributes
   Scenario: a real deck client's own coloured chrome is readable per cell, by name and by matched text
     Given deck client "coloured" is started with colour enabled
-    Then deck client "coloured" text "deck" has foreground "#008080"
-    And deck client "coloured" text "deck" is bold
-    And deck client "coloured" text "No sessions yet" does not have foreground "#008080"
-    And deck client "coloured" text "No sessions yet" is not bold
-    And deck client "coloured" cell at row 0 column 2 has foreground "#008080"
-    And deck client "coloured" cell at row 0 column 2 is bold
+    Then deck client "coloured" text "deck" has foreground "#fbbf24"
+    And deck client "coloured" text "No sessions yet" does not have foreground "#fbbf24"
+    And deck client "coloured" cell at row 0 column 2 has foreground "#fbbf24"
     And deck client "coloured" exits cleanly
 
   @requirement-1-cell-attributes
@@ -49,7 +46,7 @@ Feature: Godog harness wiring
       border_focus      = "#000000"
       selection         = "#000000"
       selection_idle    = "#000000"
-      title             = "#000000"
+      title             = "#008080"
       text              = "#111111"
       dimmed            = "#000000"
       hint              = "#000000"
@@ -69,10 +66,10 @@ Feature: Godog harness wiring
       """
     And the scenario's config.toml selects theme "matches-chrome"
     And deck client "themed" is started with colour enabled
-    Then deck client "themed" text "deck" has foreground token "accent"
-    And deck client "themed" cell at row 0 column 2 has foreground token "accent"
+    Then deck client "themed" text "deck" has foreground token "title"
+    And deck client "themed" cell at row 0 column 2 has foreground token "title"
     And deck client "themed" text "deck" does not have foreground token "text"
-    And deck client "themed" text "No sessions yet" does not have foreground token "accent"
+    And deck client "themed" text "No sessions yet" does not have foreground token "title"
     And deck client "themed" exits cleanly
 
   @requirement-6-eaw-placement

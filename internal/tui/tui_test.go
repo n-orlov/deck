@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
@@ -133,8 +134,20 @@ func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 		t.Errorf("color-disabled view retained styling escapes: %q", view)
 	}
 	colored := New(nil, config.Settings{Color: true}, "").View()
-	if !strings.Contains(colored, "\x1b[1;36mdeck\x1b[0m") {
-		t.Errorf("color-enabled view omitted deck styling: %q", colored)
+	titleHex, err := theme.Default().Color(theme.Title)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, err := theme.HexRGB(titleHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantTitleEscape := fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
+	if !strings.Contains(colored, wantTitleEscape+" deck ") {
+		t.Errorf("color-enabled view omitted title-token styling on the sidebar title (want %q immediately before \" deck \"): %q", wantTitleEscape, colored)
+	}
+	if !strings.Contains(colored, "deck") {
+		t.Errorf("color-enabled view lost the sidebar title text: %q", colored)
 	}
 	// A real delay must not make the frozen relative value advance.
 	time.Sleep(10 * time.Millisecond)

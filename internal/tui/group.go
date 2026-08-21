@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/n-orlov/deck/internal/store"
+import (
+	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
+)
 
 // §11/§11.3 workspace grouping (SPEC requirement 30): the sidebar groups
 // rows by sessions.workspace, defaulting to the basename of cwd, and never
@@ -289,5 +292,5 @@ func (m Model) groupHeaderText(group sidebarGroup) string {
 	if cwd != "" {
 		text += "  " + cwd
 	}
-	return text
+	return m.colorToken(theme.Group, text)
 }
