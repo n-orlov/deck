@@ -664,8 +664,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.help = !m.help
 		case "esc":
-			m.help = false
-			m.detail = false
+			// detailView and helpView have no fields to submit or cycle, so
+			// the only §11.4 contract key either binds is esc — shared here
+			// through the same applyDialogContract implementation createView,
+			// profileSwitchView and pinView defer to, rather than a sixth
+			// hand-written cancel.
+			_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
+				m.help = false
+				m.detail = false
+			}})
 		case "i":
 			if !m.help && len(m.sessions) > 0 {
 				m.detail = !m.detail
@@ -1719,46 +1726,44 @@ func statusSourceQuality(source string) string {
 func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session := m.sessions[m.selected]
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
-	switch msg.String() {
-	case "esc":
-		m.profileSwitching = false
-		m.profileSwitchNote = ""
-		return m, nil
-	case "left":
+	cycle := func(delta int) {
 		if m.profileSwitchValue != "yolo" {
 			m.profileSwitchYoloOK = false
 		}
-		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, -1)
-		return m, nil
-	case "right", " ":
-		if m.profileSwitchValue != "yolo" {
-			m.profileSwitchYoloOK = false
-		}
-		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, 1)
-		return m, nil
-	case "y":
-		// The yolo double-gate's explicit confirm keystroke, mirroring the
-		// create modal's "y" (SPEC §5: switching to yolo requires the same
-		// explicit confirm as creating with yolo).
-		if m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
-			m.profileSwitchYoloOK = true
+		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, delta)
+	}
+	if cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{Cycle: cycle},
+		Cancel: func() {
+			m.profileSwitching = false
 			m.profileSwitchNote = ""
-			return m, nil
-		}
-	case "enter":
-		if m.profileSwitch == nil {
-			m.profileSwitchNote = "changing the permission profile is unavailable"
-			return m, nil
-		}
-		if m.profileSwitchValue == "yolo" && !m.profileSwitchYoloOK {
-			m.profileSwitchNote = "yolo requires confirmation: press y, then Enter to switch"
-			return m, nil
-		}
-		sessionID, profile := session.ID, m.profileSwitchValue
-		return m, func() tea.Msg {
-			updated, err := m.profileSwitch(context.Background(), sessionID, profile)
-			return profileSwitched{session: updated, err: err}
-		}
+		},
+		Submit: func() tea.Cmd {
+			if m.profileSwitch == nil {
+				m.profileSwitchNote = "changing the permission profile is unavailable"
+				return nil
+			}
+			if m.profileSwitchValue == "yolo" && !m.profileSwitchYoloOK {
+				m.profileSwitchNote = "yolo requires confirmation: press y, then Enter to switch"
+				return nil
+			}
+			sessionID, profile := session.ID, m.profileSwitchValue
+			return func() tea.Msg {
+				updated, err := m.profileSwitch(context.Background(), sessionID, profile)
+				return profileSwitched{session: updated, err: err}
+			}
+		},
+	}); handled {
+		return m, cmd
+	}
+	// The yolo double-gate's explicit confirm keystroke, mirroring the
+	// create modal's "y" (SPEC §5: switching to yolo requires the same
+	// explicit confirm as creating with yolo). It is an additional
+	// load-bearing key the §11.4 contract does not itself define, stated
+	// inline in profileSwitchView.
+	if msg.String() == "y" && m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
+		m.profileSwitchYoloOK = true
+		m.profileSwitchNote = ""
 	}
 	return m, nil
 }
@@ -1798,27 +1803,28 @@ var resumeModeOptions = []string{"auto", "pinned", "fresh-once"}
 // effect only on the session's next resume.
 func (m Model) updatePinDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session := m.sessions[m.selected]
-	switch msg.String() {
-	case "esc":
-		m.pinning = false
-		m.pinNote = ""
-		return m, nil
-	case "left":
-		m.pinValue = cycleOption(resumeModeOptions, m.pinValue, -1)
-		return m, nil
-	case "right", " ":
-		m.pinValue = cycleOption(resumeModeOptions, m.pinValue, 1)
-		return m, nil
-	case "enter":
-		if m.resumeMode == nil {
-			m.pinNote = "changing the resume mode is unavailable"
-			return m, nil
-		}
-		sessionID, mode := session.ID, m.pinValue
-		return m, func() tea.Msg {
-			updated, err := m.resumeMode(context.Background(), sessionID, mode)
-			return resumeModeChanged{session: updated, err: err}
-		}
+	cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{Cycle: func(delta int) {
+			m.pinValue = cycleOption(resumeModeOptions, m.pinValue, delta)
+		}},
+		Cancel: func() {
+			m.pinning = false
+			m.pinNote = ""
+		},
+		Submit: func() tea.Cmd {
+			if m.resumeMode == nil {
+				m.pinNote = "changing the resume mode is unavailable"
+				return nil
+			}
+			sessionID, mode := session.ID, m.pinValue
+			return func() tea.Msg {
+				updated, err := m.resumeMode(context.Background(), sessionID, mode)
+				return resumeModeChanged{session: updated, err: err}
+			}
+		},
+	})
+	if handled {
+		return m, cmd
 	}
 	return m, nil
 }
@@ -2181,84 +2187,28 @@ func parseCreateEnv(raw string) (map[string]string, error) {
 }
 
 func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{
+			Count:          createFieldCount,
+			Index:          &m.createField,
+			Cycle:          m.cycleCreateField,
+			SpaceTypesText: func() bool { return createFieldIsText(m.createField) },
+		},
+		Cancel: func() { m.creating, m.createError = false, "" },
+		Submit: m.submitCreate,
+	}); handled {
+		return m, cmd
+	}
 	switch msg.String() {
-	case "esc":
-		m.creating, m.createError = false, ""
-		return m, nil
-	case "tab", "down":
-		m.createField = (m.createField + 1) % createFieldCount
-		return m, nil
-	case "shift+tab", "up":
-		m.createField = (m.createField - 1 + createFieldCount) % createFieldCount
-		return m, nil
-	case "left":
-		m.cycleCreateField(-1)
-		return m, nil
-	case "right":
-		m.cycleCreateField(1)
-		return m, nil
-	case " ":
-		// Space toggles/cycles only the selection fields (agent, permission
-		// profile, login shell); on text fields it is an ordinary typed
-		// character (e.g. a name containing a space) and must fall through
-		// to the append logic below, not be swallowed as a keybinding.
-		if !createFieldIsText(m.createField) {
-			m.cycleCreateField(1)
-			return m, nil
-		}
 	case "y":
 		// The yolo double-gate's explicit confirm keystroke; everywhere
 		// else "y" is just a typed character and must fall through to the
-		// append logic below (e.g. typing a name starting with "y").
+		// append logic below (e.g. typing a name starting with "y"). This is
+		// an additional load-bearing key the §11.4 contract does not itself
+		// define, stated inline in createView (SPEC §5).
 		if m.createField == 3 && m.createProfile == "yolo" && m.settings.AllowYolo && !m.createYoloConfirmed {
 			m.createYoloConfirmed = true
 			return m, nil
-		}
-	case "enter":
-		if msg := m.validateCreateFields(); msg != "" {
-			m.createError = msg
-			return m, nil
-		}
-		// validateCreateFields already proved this succeeds; the resolved,
-		// absolute path (never the typed tilde) is what gets stored.
-		resolvedCWD, err := expandCreateCWD(m.createCWD)
-		if err != nil {
-			m.createError = err.Error()
-			return m, nil
-		}
-		if m.createAgent != "shell" {
-			if m.createAgentSession == nil {
-				m.createError = "creating " + m.createAgent + " sessions is not available yet"
-				return m, nil
-			}
-			launchArgs, err := parseCreateLaunchArgs(m.createLaunchArgs)
-			if err != nil {
-				m.createError = err.Error()
-				return m, nil
-			}
-			env, err := parseCreateEnv(m.createEnv)
-			if err != nil {
-				m.createError = err.Error()
-				return m, nil
-			}
-			input := service.AgentCreateInput{
-				Name: m.createName, CWD: resolvedCWD, Agent: m.createAgent,
-				PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
-				PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell,
-			}
-			return m, func() tea.Msg {
-				session, err := m.createAgentSession(context.Background(), input)
-				return shellCreated{session: session, err: err}
-			}
-		}
-		if m.create == nil {
-			m.createError = "shell creation is unavailable"
-			return m, nil
-		}
-		name, cwd := m.createName, resolvedCWD
-		return m, func() tea.Msg {
-			session, err := m.create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd})
-			return shellCreated{session: session, err: err}
 		}
 	case "backspace", "ctrl+h":
 		m.backspaceCreateField()
@@ -2279,6 +2229,61 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// submitCreate implements the create modal's enter (SPEC §11.4 submit): it
+// validates, resolves the cwd, dispatches the right create call for the
+// chosen agent, and reports every rejection in-dialog via m.createError,
+// exactly as the dialog's own hand-written "enter" case used to before the
+// shared §11.4 contract (dialogContract.Submit) took over dispatching the
+// key itself.
+func (m *Model) submitCreate() tea.Cmd {
+	if msg := m.validateCreateFields(); msg != "" {
+		m.createError = msg
+		return nil
+	}
+	// validateCreateFields already proved this succeeds; the resolved,
+	// absolute path (never the typed tilde) is what gets stored.
+	resolvedCWD, err := expandCreateCWD(m.createCWD)
+	if err != nil {
+		m.createError = err.Error()
+		return nil
+	}
+	if m.createAgent != "shell" {
+		if m.createAgentSession == nil {
+			m.createError = "creating " + m.createAgent + " sessions is not available yet"
+			return nil
+		}
+		launchArgs, err := parseCreateLaunchArgs(m.createLaunchArgs)
+		if err != nil {
+			m.createError = err.Error()
+			return nil
+		}
+		env, err := parseCreateEnv(m.createEnv)
+		if err != nil {
+			m.createError = err.Error()
+			return nil
+		}
+		input := service.AgentCreateInput{
+			Name: m.createName, CWD: resolvedCWD, Agent: m.createAgent,
+			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
+			PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell,
+		}
+		createAgentSession := m.createAgentSession
+		return func() tea.Msg {
+			session, err := createAgentSession(context.Background(), input)
+			return shellCreated{session: session, err: err}
+		}
+	}
+	if m.create == nil {
+		m.createError = "shell creation is unavailable"
+		return nil
+	}
+	name, cwd, create := m.createName, resolvedCWD, m.create
+	return func() tea.Msg {
+		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd})
+		return shellCreated{session: session, err: err}
+	}
 }
 
 // cycleCreateField advances a selection-type field's value by delta; it is a
