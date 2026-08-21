@@ -66,6 +66,69 @@ func TestControlsAndClock(t *testing.T) {
 	}
 }
 
+func TestColorDepthForcedIndependentlyOfColor(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{
+		"DECK_HOME": t.TempDir(), "DECK_COLOR_DEPTH": "16",
+	}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ColorDepth != "16" || !settings.Color {
+		t.Fatalf("depth forced = %+v", settings)
+	}
+
+	settings, err = LoadFrom(environment(map[string]string{
+		"DECK_HOME": t.TempDir(), "DECK_COLOR_DEPTH": "truecolor",
+	}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ColorDepth != "truecolor" {
+		t.Fatalf("depth forced = %+v", settings)
+	}
+}
+
+func TestNoColorWinsToMonochromeIndependentlyOfColorDepth(t *testing.T) {
+	// NO_COLOR decides whether colour renders at all; DECK_COLOR_DEPTH decides
+	// which palette a colour render would use. The two are independent: NO_COLOR
+	// must never clear or override the depth setting, and the depth setting
+	// must never re-enable colour.
+	settings, err := LoadFrom(environment(map[string]string{
+		"DECK_HOME": t.TempDir(), "NO_COLOR": "1", "DECK_COLOR_DEPTH": "truecolor",
+	}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Color {
+		t.Fatalf("NO_COLOR did not win to monochrome: %+v", settings)
+	}
+	if settings.ColorDepth != "truecolor" {
+		t.Fatalf("NO_COLOR must not clear DECK_COLOR_DEPTH: %+v", settings)
+	}
+}
+
+func TestColorDepthUnsetDefaultsToAutoDetect(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ColorDepth != "" {
+		t.Fatalf("unset DECK_COLOR_DEPTH = %q, want empty (auto-detect)", settings.ColorDepth)
+	}
+}
+
+func TestColorDepthInvalidValueIsAnErrorNamingTheVariable(t *testing.T) {
+	_, err := LoadFrom(environment(map[string]string{
+		"DECK_HOME": t.TempDir(), "DECK_COLOR_DEPTH": "256",
+	}), fakeHome)
+	if err == nil {
+		t.Fatal("expected an error for an invalid DECK_COLOR_DEPTH value")
+	}
+	if !strings.Contains(err.Error(), "DECK_COLOR_DEPTH") {
+		t.Fatalf("error %q does not name DECK_COLOR_DEPTH", err.Error())
+	}
+}
+
 func TestFrozenClockUsesResolvedDataRootWithoutDeckHome(t *testing.T) {
 	data := t.TempDir()
 	env := environment(map[string]string{
