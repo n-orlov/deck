@@ -92,7 +92,27 @@ type Model struct {
 	// since tmux trims trailing blank lines/columns from a capture.
 	previewPaneWidth  int
 	previewPaneHeight int
+	// sidebarScroll is the wheel-scroll offset into the sidebar's own
+	// content lines (SPEC §11.8, task 028): it moves which lines the
+	// panel shows without ever touching m.selected, and is clamped at
+	// render/scroll time (never negative, never past the point where the
+	// last line would leave the panel's bottom empty).
+	sidebarScroll int
+	// draggingSeam is true between a mouse press on the side-by-side
+	// seam column and its matching release (SPEC §11.8): while true, a
+	// motion event live-adjusts sidebarWidth the same way `<`/`>` do.
+	draggingSeam bool
+	// lastClickAt/lastClickIndex track the previous sidebar-row press so
+	// a second press on the same row shortly after is resolved as a
+	// double-click (attach) rather than two independent single clicks
+	// (select). Neither field is persisted or read anywhere else.
+	lastClickAt    time.Time
+	lastClickIndex int
 }
+
+// doubleClickWindow is the maximum gap between two presses on the same
+// sidebar row that still counts as a double-click (SPEC §11.8).
+const doubleClickWindow = 500 * time.Millisecond
 
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
 // caller does not supply one, so every existing constructor keeps working
@@ -650,8 +670,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "|":
 			if !m.help {
-				m.layoutMode = nextLayoutMode(m.layoutMode)
-				return m, m.persistLayoutMode()
+				return m.cycleLayoutMode()
 			}
 		case "<":
 			if !m.help {
@@ -664,33 +683,57 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.persistSidebarWidth()
 			}
 		case "enter":
-			if m.attach == nil || len(m.sessions) == 0 {
-				return m, nil
-			}
-			session := m.sessions[m.selected]
-			if session.Status == "stopped" {
-				m.attachError = "Cannot attach: session is stopped; resume it first"
-				return m, nil
-			}
-			command, err := m.attach(context.Background(), session.Slug)
-			if err != nil {
-				m.attachError = "Cannot attach: " + err.Error()
-				return m, nil
-			}
-			// Consult the durable row on every attachment. The list frame may lag a
-			// hook that just made it waiting or error; the store transaction applies
-			// only that row's current status and leaves raced resolutions untouched.
-			if m.prepareAttach != nil {
-				if err := m.prepareAttach(context.Background(), session.ID); err != nil {
-					m.attachError = "Cannot attach: " + err.Error()
-					return m, nil
-				}
-			}
-			m.attachError = ""
-			return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
+			return m.attachSelected()
 		}
+	case tea.MouseMsg:
+		// SPEC §11.4/§11.8: the mouse can neither cancel nor confirm a dialog,
+		// and no dialog action is reachable by mouse alone, so every overlay
+		// that already makes the bare-letter keymap a no-op ignores the mouse
+		// exactly the same way.
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail {
+			return m, nil
+		}
+		return m.handleMouse(msg)
 	}
 	return m, nil
+}
+
+// attachSelected is the shared attach path behind both `↵` (SPEC §11) and
+// a sidebar double-click (SPEC §11.8): the mouse binding must duplicate the
+// key's exact behaviour, not a variant of it.
+func (m Model) attachSelected() (tea.Model, tea.Cmd) {
+	if m.attach == nil || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+		return m, nil
+	}
+	session := m.sessions[m.selected]
+	if session.Status == "stopped" {
+		m.attachError = "Cannot attach: session is stopped; resume it first"
+		return m, nil
+	}
+	command, err := m.attach(context.Background(), session.Slug)
+	if err != nil {
+		m.attachError = "Cannot attach: " + err.Error()
+		return m, nil
+	}
+	// Consult the durable row on every attachment. The list frame may lag a
+	// hook that just made it waiting or error; the store transaction applies
+	// only that row's current status and leaves raced resolutions untouched.
+	if m.prepareAttach != nil {
+		if err := m.prepareAttach(context.Background(), session.ID); err != nil {
+			m.attachError = "Cannot attach: " + err.Error()
+			return m, nil
+		}
+	}
+	m.attachError = ""
+	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
+}
+
+// cycleLayoutMode is the shared `|` path (SPEC §11.2/§11.8): both the key
+// and a click on the collapsed strip advance the same pin through the same
+// nextLayoutMode cycle and persist it the same way.
+func (m Model) cycleLayoutMode() (tea.Model, tea.Cmd) {
+	m.layoutMode = nextLayoutMode(m.layoutMode)
+	return m, m.persistLayoutMode()
 }
 
 // persistLayoutMode returns a command that writes the just-updated
@@ -864,15 +907,22 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 	}
 	collapsed := layout.Effective == LayoutCollapsed
 	sidebarTop := m.sidebarTitleLine(sw)
-	sidebarBody := m.sidebarBodyLines(max(sw-2, 0))
+	var sidebar []string
 	if collapsed {
 		// The 3-column strip has no room for the "deck — sessions" title
 		// and draws its own attention-count content instead of session
 		// rows (task 015, SPEC requirement 15).
 		sidebarTop = m.sidebarTopLine(sw, "")
-		sidebarBody = m.collapsedStripLines()
+		sidebar = fitLines(m.collapsedStripLines(), contentRows)
+	} else {
+		// sidebarVisibleEntries applies the wheel-scroll offset (task 028)
+		// through the identical entries hitTest resolves clicks against.
+		visible := m.sidebarVisibleEntries(max(sw-2, 0), contentRows)
+		sidebar = make([]string, len(visible))
+		for i, e := range visible {
+			sidebar[i] = e.text
+		}
 	}
-	sidebar := fitLines(sidebarBody, contentRows)
 	preview := m.previewBodyLines(max(pw-4, 0), contentRows)
 	lines := make([]string, 0, height)
 	lines = append(lines, sidebarTop+m.previewTopLine(pw, m.previewTitle(), true))
@@ -946,7 +996,11 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 	}
 	if lh >= 2 {
 		listRows := lh - 2
-		body := fitLines(m.sidebarBodyLines(max(lw-4, 0)), listRows)
+		visible := m.sidebarVisibleEntries(max(lw-4, 0), listRows)
+		body := make([]string, len(visible))
+		for i, e := range visible {
+			body[i] = e.text
+		}
 		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText()))
 		for i := 0; i < listRows; i++ {
 			lines = append(lines, m.fullBoxContentLine(lw, body[i]))
@@ -978,24 +1032,107 @@ func (m Model) sidebarTitleText() string {
 // copy now live inside the sidebar"). The tmux-unavailable startup note is
 // not part of this body — see mainView's full-width banner.
 func (m Model) sidebarBodyLines(contentWidth int) []string {
-	var lines []string
+	entries := m.sidebarEntries(contentWidth)
+	lines := make([]string, len(entries))
+	for i, e := range entries {
+		lines[i] = e.text
+	}
+	return lines
+}
+
+// sidebarLineKind distinguishes what a sidebarEntry line actually is, so
+// hit-testing (SPEC §11.8, task 028) can resolve a clicked line back to a
+// group header or a session row through the exact same content this
+// function feeds the renderer -- "exactly one geometry implementation", per
+// the task's own success criterion.
+type sidebarLineKind int
+
+const (
+	sidebarLineOther sidebarLineKind = iota
+	sidebarLineHeader
+	sidebarLineRow
+)
+
+// sidebarEntry is one rendered line of the sidebar body, tagged with enough
+// to resolve a click: sidebarLineHeader carries Workspace, sidebarLineRow
+// carries SessionIndex (an index into m.sessions), and sidebarLineOther
+// (the socket line, the empty state) carries neither.
+type sidebarEntry struct {
+	text         string
+	kind         sidebarLineKind
+	workspace    string
+	sessionIndex int
+}
+
+// sidebarEntries is sidebarBodyLines' one real implementation: every line
+// the sidebar can render, each tagged with what it is. sidebarBodyLines
+// (the renderer's own text-only view) and hitTest (task 028's click
+// resolution) both build on this rather than keeping two descriptions of
+// the same content in sync by hand.
+func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
+	var entries []sidebarEntry
 	if m.settings.Socket != "" {
-		lines = append(lines, wrapText(fmt.Sprintf("socket: %s", m.settings.Socket), contentWidth)...)
+		for _, line := range wrapText(fmt.Sprintf("socket: %s", m.settings.Socket), contentWidth) {
+			entries = append(entries, sidebarEntry{text: line})
+		}
 	}
 	if len(m.sessions) == 0 {
-		lines = append(lines, wrapText("No sessions yet. Press n to create a session.", contentWidth)...)
-		return lines
+		for _, line := range wrapText("No sessions yet. Press n to create a session.", contentWidth) {
+			entries = append(entries, sidebarEntry{text: line})
+		}
+		return entries
 	}
 	for _, group := range m.groupSessions() {
-		lines = append(lines, m.groupHeaderText(group))
+		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group), kind: sidebarLineHeader, workspace: group.Workspace})
 		if m.isGroupCollapsed(group.Workspace) {
 			continue
 		}
 		for _, is := range group.Sessions {
-			lines = append(lines, m.sidebarRowLines(is.Index, is.Session)...)
+			for _, line := range m.sidebarRowLines(is.Index, is.Session) {
+				entries = append(entries, sidebarEntry{text: line, kind: sidebarLineRow, sessionIndex: is.Index})
+			}
 		}
 	}
-	return lines
+	return entries
+}
+
+// clampSidebarScroll bounds a raw scroll offset into [0, max(0,
+// total-contentHeight)] (SPEC §11.8's wheel scroll, task 028): never
+// negative, and never past the point where the last line would leave the
+// panel's bottom empty while there is still content to show.
+func clampSidebarScroll(raw, total, contentHeight int) int {
+	maxScroll := total - contentHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if raw < 0 {
+		return 0
+	}
+	if raw > maxScroll {
+		return maxScroll
+	}
+	return raw
+}
+
+// sidebarVisibleEntries returns exactly contentHeight sidebarEntry values
+// currently shown in the sidebar's content area, applying the wheel-scroll
+// offset (task 028). Both renderSideBySideFrame/renderStackedFrame's actual
+// drawing and hitTest's click resolution call this same function, so a
+// scrolled frame and a click against it can never disagree about which
+// entry is on which line.
+func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarEntry {
+	entries := m.sidebarEntries(contentWidth)
+	offset := clampSidebarScroll(m.sidebarScroll, len(entries), contentHeight)
+	var visible []sidebarEntry
+	if offset < len(entries) {
+		visible = entries[offset:]
+	}
+	if len(visible) > contentHeight {
+		visible = visible[:contentHeight]
+	}
+	out := make([]sidebarEntry, contentHeight)
+	copy(out, visible)
+	return out
 }
 
 // sidebarRowLines is one session's two-line row: glyph/marker, name, its
