@@ -700,3 +700,96 @@ production file changed. `git status --short` shows only this file.
 `ci/run.sh go test -p=1 -count=1 ./...` all green (verified after this
 edit, matching the pre-existing baseline).
 
+## Task 040: four harness hazards this run actually lost hours to
+
+Task 034's sweep above collected the required per-requirement findings but
+missed the harness's own traps — the ones with no corresponding SPEC
+requirement, discoverable only by hitting them. Operator steering 005 asked
+for these four to be written down before the phase closes, each as symptom
+first, then cause, then workaround.
+
+### 1. The bounded sidebar can hide a row from a polling step, and the step hangs instead of failing
+
+**Symptom:** a step that hangs rather than fails. A scenario built around
+`WaitForFrame` (or any "screen contains this row's text" assertion) runs to
+its full timeout instead of producing a clean failure.
+
+**Cause:** the sidebar (task 014 onward) is a fixed-height panel, not the
+full-screen list the harness was written against in Phase 1/2b-0. A
+scenario that creates more sessions than the sidebar's visible height at
+the terminal size it runs at leaves the newest row scrolled out of view.
+The polling step keeps re-capturing a frame that will never contain the
+text it wants, because the row genuinely isn't drawn — there is nothing
+wrong with deck, only with the scenario's assumption of an unbounded list.
+
+**Workaround:** size each scenario's session count to the sidebar's visible
+height at the terminal geometry the scenario actually runs at, or assert
+through a step that fails loudly on a missing row instead of polling
+silently — `sessionsRenderInOrder` in `features/attention_sort_test.go`
+does this: it fails immediately with the actual vs. expected row order
+rather than waiting out a timeout.
+
+### 2. The live preview races any step that intercepts `capture-pane` by pane ID
+
+**Symptom:** a step that expects to be the only caller of a specific
+`tmux capture-pane -t <pane-id>` invocation gets its interception consumed
+by an unrelated caller, and the expected event/output never arrives — this
+is exactly what task 038's validation failure turned out to be (fixed at
+commit `a091061`).
+
+**Cause:** the preview engine (tasks 017–021) captures whichever row is
+currently selected using the same `capture-pane`-by-pane-ID technique a test
+step uses to intercept or pause a specific capture. `capture-pane` carries
+no caller identity, so a wrapper that pauses "the next capture-pane against
+this pane ID" cannot distinguish the preview's own frequent, ticking calls
+(task 017, one per `DECK_PREVIEW_MS`) from the step's single intended call —
+whichever fires first consumes the interception.
+
+**Workaround:** move selection off the pane under test before arming the
+wrapper, so the live preview is capturing some other row's pane and the
+intercepted pane only ever receives the step's own call. This is currently
+written down only as a comment in `features/status_probe_test.go` (around
+the "keep the hook/probe race step off the live preview's pane" note); this
+entry gives it a second, permanent home.
+
+### 3. A fixture name containing the substring a completion helper polls for makes the helper return early
+
+**Symptom:** a keystroke vanishes with no error — the step that types it
+reports success, but the next step behaves as if it was never typed.
+
+**Cause:** the create-flow completion helper polls the rendered frame for
+the literal string `"starting"` to know when session creation has finished.
+A fixture named `s-starting` matched that same literal — not because
+creation had actually finished, but because the typed `Name` field's own
+text, still on screen mid-entry, contained the string the helper was
+searching for. The helper returned long before creation actually finished,
+and the next step's keystroke was silently swallowed by `updateCreate`
+while `m.creating` was still true. This is the bug that cost task 026 a
+1h26m iteration.
+
+**Workaround (applied):** renamed the fixture to `s-agent` (commit
+`d7be609`). The general rule this leaves for later phases: never name a
+test fixture after a literal string the harness itself polls for — check
+any new fixture name against every `strings.Contains`/`WaitFor`-style
+polled literal in the harness before using it.
+
+### 4. A raw pty burst of the same key can lose all but the first byte
+
+**Symptom:** a sequence of identical keypresses sent back to back appears
+to only take effect once — e.g. the `|` layout-mode cycle (auto →
+side-by-side → stacked → collapsed) written as `|`,`|`,`|` in a row
+collapses to a single effective press and the mode ends up one step short
+of where the scenario expects it.
+
+**Cause:** writing identical bytes to the pty back to back with no pacing
+lets deck's input loop coalesce them into fewer effective reads — this is a
+property of the raw pty write path in the harness, not of any assertion or
+of deck's key handling itself.
+
+**Workaround (applied):** `sendClientKeys` (`features/assertions_test.go`)
+paces every send by 25ms, matching the pacing `selectRowByName` has used
+since Phase 1 for the same reason. This belongs to the harness's write
+path — it strengthens nothing being asserted and weakens no assertion; any
+new step that writes repeated keys should route through `sendClientKeys`
+(or replicate its pacing) rather than writing raw bytes directly.
+
