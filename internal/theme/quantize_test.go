@@ -107,7 +107,7 @@ func TestBuiltinQuantizationPinned(t *testing.T) {
 			Badge:         "#7f7f7f",
 			BadgeWarn:     "#cd0000",
 			Waiting:       "#cd0000",
-			Running:       "#00cd00",
+			Running:       "#000000",
 			Idle:          "#7f7f7f",
 			Starting:      "#cd0000",
 			Stopped:       "#7f7f7f",
