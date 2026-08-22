@@ -10,11 +10,12 @@ Feature: Godog harness wiring
   @requirement-29-fingerprint-harness
   Scenario: a directory's fingerprint is byte-for-byte and stat-for-stat identical to itself
     Given a scratch directory "cwd" is seeded with:
-      | path           | kind | content            |
-      | state.db       | file | not a real database |
-      | .hidden        | file | dotfile content      |
-      | sub            | dir  |                      |
-      | sub/nested.txt | file | nested content       |
+      | path           | kind | content              | mode |
+      | state.db       | file | not a real database  |      |
+      | .hidden        | file | dotfile content       |      |
+      | sub            | dir  |                       |      |
+      | sub/nested.txt | file | nested content        |      |
+      | readonly.txt   | file | read-only content     | 0444 |
     And the directory "cwd" is fingerprinted as "before"
     Then the directory "cwd" still matches fingerprint "before"
 
