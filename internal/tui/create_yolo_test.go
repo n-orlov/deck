@@ -57,6 +57,9 @@ func TestCreateModalNoYoloOfferedWithAllowYoloFalse(t *testing.T) {
 	m := newCreatingModelWithSettings(t, config.Settings{AllowYolo: false})
 	m.createAgent = "claude"
 	m.createField = 3
+	// Task 030: framedDialog no longer grows to fit content, so a
+	// wide-enough viewport keeps this sentence off a word-wrap boundary.
+	m.width = 100
 
 	for i := 0; i < 5; i++ {
 		updated, _ := m.Update(key("right"))

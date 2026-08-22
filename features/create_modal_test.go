@@ -51,7 +51,13 @@ func TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation(t *testing.T) {
 		{"Name:", "display name"},
 		{"Working directory:", "cwd"},
 		{"Agent:", "coding agent adapter"},
-		{"Permission profile:", "degrades to safe"},
+		// Task 030: framedDialog now word-wraps this field's explanation at
+		// the box's fixed inner width rather than growing to fit it, and at
+		// this scenario's 100-column terminal the wrap point lands between
+		// "degrades to" and "safe", so a substring spanning that boundary
+		// would never match a wrapped frame; assert a phrase that stays on
+		// one physical line regardless of exactly where the wrap falls.
+		{"Permission profile:", "unsupported profile degrades"},
 		{"Launch args (JSON array):", "adapter's own argv"},
 		{"Env (key=value, comma-separated):", "PATH resolution"},
 		{"Pre-launch command:", "load secrets"},

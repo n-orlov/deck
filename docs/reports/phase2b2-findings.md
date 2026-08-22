@@ -650,3 +650,53 @@ the picker is open changes nothing (§11.4/§11.8); and the degenerate
 unresolvable-candidate case above. `ci/run.sh go test ./internal/tui/...`
 and `ci/run.sh go test ./...` (including the full `features` suite) both
 pass.
+
+## Task 030 — dialog width clamp [26,80], word-wrap over truncation, and the yolo-copy reconciliation
+
+**Clamp and wrap:** `dialogWidth` (internal/tui/panel.go) is now the single
+source of every §11.4 dialog/overlay's box width: `viewport * 80 / 100`,
+clamped to `[26, 80]`, with a viewport narrower than 26 handed back as-is
+(SPEC.md:1071-1074 only promises best-effort below the documented 80-column
+minimum, so this phase carries no test obligation for padding a
+sub-minimum terminal out to 26). `framedDialog` renders at exactly that
+fixed width instead of growing to fit its widest line, and any content
+line wider than the box's inner budget now word-wraps (`wrapText`, already
+ANSI-aware via `stringWidth` so a coloured span's escape bytes never
+inflate its perceived width) rather than being truncated — no reason
+sentence loses a word. `TestDialogWidthClampedToViewport` pins both clamp
+ends plus a below-minimum, an on-the-lower-clamp and a mid-range viewport;
+`TestFramedDialogBoxWidthMatchesDialogWidth` proves the box itself (not
+just the helper) holds that width at narrow/middle/wide terminals;
+`TestFramedDialogWrapsOverlongContentInsteadOfGrowingOrTruncating` proves
+wrapping preserves every word of an overlong line.
+
+**Existing assertions retargeted, not weakened:** several pre-existing
+substring checks landed exactly on a new word-wrap boundary once the box
+stopped growing to fit them (`registry_guard_test.go`'s degradation
+sentence, `tilde_cwd.feature`'s "only your own home directory" rejection,
+`harness.feature`'s create-modal message-budget outline, and
+`create_modal_test.go`'s permission-profile help text). Each was split into
+two-or-more still-verbatim phrase assertions that individually stay on one
+physical line regardless of exactly where the wrap falls, with the reason
+recorded inline as a comment at the call site — never shortened to a
+prefix and never made tolerant of a wrapped substring spanning the break.
+
+**The yolo-copy reconciliation (why the copy did not change):** task 030's
+success criteria asks that permission_modes.feature:49's yolo-unavailable
+message be "reconciled with the fact that settings now edits allow_yolo in
+place — or an explicit statement of why the copy did not change." The
+message itself
+(`"; yolo is not offered because allow_yolo is not enabled in config.toml"`,
+internal/tui/tui.go) already names `config.toml` and `allow_yolo`
+specifically — it was never a lie about where the knob lives, and task 015
+already made `allow_yolo` an editable schema field, so "not enabled in
+config.toml" describes exactly the same file the settings takeover (`,`)
+now edits in place. No copy change was needed because the sentence was
+already accurate before and after task 015 landed; what task 030 changed
+is only *where the sentence wraps* at the new fixed box width (now kept
+intact by widening the scenario's terminal to 220 columns, comment inline
+at features/permission_modes.feature:60-69), never its wording. The
+scenario still asserts the full sentence verbatim, never a prefix.
+
+**Verification:** `ci/run.sh go test ./internal/tui/...` and
+`ci/run.sh sh -c 'cd features && go test -run TestFeatures .'` both pass.

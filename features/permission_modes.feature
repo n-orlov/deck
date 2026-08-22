@@ -43,19 +43,31 @@ Feature: Permission profile mapping, degradation and the yolo gate
     When deck client "A" creates pi session "drift" with permission profile "safe"
     And the state database session "drift" is marked degraded from requesting permission profile "plan" on agent "pi"
     And deck client "A" opens detail for session "drift"
+    # Task 030: framedDialog's box is a fixed 80% of the viewport (capped at
+    # 80, inner 76) rather than growing to fit content, and this degradation
+    # sentence is 76+ columns once the "  degraded: " label and "pi" are
+    # counted, so it always wraps -- specifically right before "safe", which
+    # would break a single contiguous "falling back to safe" check. Assert
+    # the phrase up to the wrap point and the fallback target separately,
+    # same pattern as internal/tui/registry_guard_test.go's task-030 fix.
     Then deck client "A" screen contains "degraded: pi does not support permission profile"
-    And deck client "A" screen contains "falling back to safe"
+    And deck client "A" screen contains "falling back to"
+    And deck client "A" screen contains "safe"
     When deck client "A" exits cleanly
 
   Scenario: yolo is unavailable without allow_yolo enabled
     Given a fake "claude" binary is on PATH for future deck clients
-    # Wide enough (framedDialog's box for this dialog is 201 columns; see
-    # panel.go's framedDialog, which grows the box to fit its widest existing
-    # line rather than wrapping) that the whole explanation renders on one
-    # on-screen row with nothing clipped past the terminal's right edge, so
-    # the full sentence can be asserted verbatim instead of the "yolo is
-    # not" prefix a 100-column terminal would have truncated it to (the
-    # prefix-shortening this scenario used to settle for).
+    # Task 030: framedDialog's box is now a fixed 80% of the viewport
+    # clamped to [26, 80] columns (never grows to fit content), and content
+    # that overflows the box wraps at a word boundary instead of being
+    # truncated. Any viewport of 100 columns or more hits the 80-column
+    # ceiling (inner budget 76), and at that width the profile-profile help
+    # line's word-wrap break lands right before "yolo", keeping the whole
+    # asserted sentence intact on its own wrapped line rather than split
+    # mid-sentence -- so the full sentence can still be asserted verbatim
+    # rather than the "yolo is not" prefix a narrower terminal would clip
+    # it to. 220 columns is kept (rather than trimmed to 100) only because
+    # nothing forces a change; either satisfies the >=100 threshold.
     And deck client "A" is started with terminal size 220x30
     When deck client "A" opens the create modal for agent "claude"
     Then deck client "A" screen contains "yolo is not offered because allow_yolo is not enabled in config.toml"

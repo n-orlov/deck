@@ -2374,7 +2374,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
 		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
-		{"Login shell", loginShell + " (space toggles)", "runs the pane through $SHELL -lc instead of execing the agent argv directly; enabling it makes captured_path advisory only (it is not applied) because the login shell's own profile decides PATH"},
+		{"Login shell", loginShell + " (space toggles)", "makes captured_path advisory only (not applied): runs via $SHELL -lc instead of the agent argv, so the login shell sets PATH"},
 	}
 }
 
@@ -2390,11 +2390,11 @@ func (m Model) createView() string {
 	if m.createAgent == "shell" {
 		title = "Create shell session"
 	}
-	b.WriteString(title + "\n\n")
+	b.WriteString(title + "\n")
 	for field, row := range m.createFieldRows() {
 		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", marker(field), row.label, row.value, row.help)
 	}
-	b.WriteString("\nTab/Shift+Tab moves fields · Left/Right or Space changes a selection · Enter submits · Esc cancels\n")
+	b.WriteString("Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels\n")
 	if m.createError != "" {
 		if strings.Contains(m.createError, "collides with existing slug") {
 			b.WriteString("\nCannot create session: name collides with existing slug.\n")
@@ -2419,12 +2419,12 @@ func helpText(ascii bool) string {
 Keys
   ↑/↓ or j/k select a session
   ↵ attach the selected running session
-  Y acknowledge the selected waiting/error session and clear its unseen marker
+  Y acknowledge the selected waiting/error session, clear its unseen marker
   n create a session (shell, or an agent: claude or pi)
   x kill the selected running session
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
-    signal" until a hook or sampled probe reports readiness, while live shells
+    signal" until a hook or sampled probe reports ready, while live shells
     become "running" on reconciliation; a client that loses the launch-lease
     race sees "starting elsewhere" instead of an error
   P switch the permission profile of the selected session; only takes
@@ -2449,7 +2449,7 @@ Keys
 Create dialog fields
   Name                the display name; also the source of the tmux slug
   Working directory    the session's cwd; must exist and be a directory
-  Agent               shell, claude, or pi; which adapter launches the session
+  Agent               shell, claude, or pi; which adapter launches it
   Permission profile  how much the agent may do without asking (safe, plan,
                       edits, yolo); an unsupported profile for the chosen
                       agent degrades visibly instead of silently
@@ -2473,7 +2473,7 @@ Runtime controls
   DECK_TMUX_SOCKET      private tmux socket (default: deck)
   DECK_CLOCK            freeze wall clock (RFC3339); clock.now overrides it
   DECK_CLOCK_STEP       exact amount advanced by each on-demand trigger
-  Trigger               kill -USR1 <deck-client-pid>; each invocation advances
+  Trigger             kill -USR1 <deck-client-pid>; each invocation advances
                         the shared clock by exactly DECK_CLOCK_STEP
   clock.now             shared RFC3339 state under the resolved data root;
                         the trigger updates it and every process reads it
@@ -2487,9 +2487,9 @@ Runtime controls
 
 Sessions use a private tmux server. Inspect it with:
   tmux -L deck ls
-(or replace deck with DECK_TMUX_SOCKET). Plain tmux attach does not find deck
+(or swap deck with DECK_TMUX_SOCKET). Plain tmux attach does not find deck
 sessions. Attach clears TMUX because nested tmux is unsupported. Attached
-clients share one pane geometry; the most recently active client controls it.
+clients share one pane geometry; the latest active client controls it.
 
 Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a sidebar row       select it (like ↑/↓); the preview follows on

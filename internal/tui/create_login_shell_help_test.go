@@ -13,6 +13,11 @@ import (
 // since a login shell resolves its own PATH via the shell's own profile.
 func TestCreateModalLoginShellHelpStatesCapturedPathIsAdvisory(t *testing.T) {
 	model := New(nil, config.Settings{Socket: "test-socket"}, "")
+	// Task 030: framedDialog's width is now 80% of the viewport (clamped to
+	// [26, 80]), not grown to fit content, so a wide-enough viewport is
+	// needed to keep this long help sentence's asserted phrases on one
+	// wrapped line rather than split across a word-wrap boundary.
+	model.width = 100
 	view := model.createView()
 	if !strings.Contains(view, "Login shell") {
 		t.Fatalf("createView missing Login shell field:\n%s", view)

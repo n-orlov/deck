@@ -213,6 +213,14 @@ func (m Model) padTrunc(s string, width int) string {
 // word longer than width is placed on its own (overflowing) line rather than
 // split, since padTrunc downstream still truncates it to the panel's column
 // budget; wrapping never fabricates a hyphen deck's own copy did not write.
+// wrapText greedily word-wraps s into lines of at most width DISPLAY
+// COLUMNS (task 030 -- this used to count runes; a coloured line's SGR
+// escape bytes inflated its perceived width, making a coloured dialog line
+// wrap far sooner than an identical uncoloured one). stringWidth already
+// treats every CSI/OSC escape sequence as zero columns, and strings.Fields
+// only ever splits on whitespace bytes, never inside an escape sequence, so
+// a "word" that carries a self-contained colorToken span (SGR...text...
+// reset) stays intact and displays correctly wherever it lands.
 func wrapText(s string, width int) []string {
 	if width <= 0 {
 		return []string{s}
@@ -223,7 +231,7 @@ func wrapText(s string, width int) []string {
 		switch {
 		case cur == "":
 			cur = word
-		case len([]rune(cur))+1+len([]rune(word)) <= width:
+		case stringWidth(cur)+1+stringWidth(word) <= width:
 			cur += " " + word
 		default:
 			lines = append(lines, cur)
@@ -476,23 +484,55 @@ func (m Model) fullBoxContentLine(width int, text string, focused bool) string {
 	return m.borderColor(tok, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(tok, bc.vertical)
 }
 
+// dialogWidth is every §11.4 dialog/overlay's box width (SPEC.md:1070,
+// task 030): 80% of the viewport, clamped to [26, 80] columns. At the
+// documented supported minimum viewport (80 columns, §11), this resolves to
+// 64; it only reaches the 80 ceiling once the viewport is 100 columns or
+// wider. The lower clamp and the take-the-full-viewport fallback below it
+// are best-effort only on a below-minimum terminal (SPEC.md:1071-1074) --
+// not a size this phase carries test obligations for -- so a viewport
+// narrower than the clamp itself is handed back as-is rather than padded
+// out to 26.
+func (m Model) dialogWidth() int {
+	viewport, _ := m.frameSize()
+	w := viewport * 80 / 100
+	switch {
+	case w > 80:
+		w = 80
+	case w < 26:
+		if viewport < 26 {
+			return viewport
+		}
+		w = 26
+	}
+	return w
+}
+
 // framedDialog wraps a dialog/overlay's existing free-form text in the same
 // rounded/ASCII box used by the main view's panels (SPEC requirement 16:
-// "on every panel, dialog and overlay"), sized to the widest existing line
-// so none of a dialog's own line-wrapping changes and no existing substring
-// assertion moves off the line it was written for. It never truncates —
-// several dialog help lines run past a typical terminal's width already and
-// still must not lose the substring a unit test asserts on the raw string,
-// so the box grows to fit rather than eliding.
+// "on every panel, dialog and overlay"), at dialogWidth's fixed viewport-
+// derived width rather than growing to fit the widest existing line (task
+// 030 -- SPEC.md:1070 states the box's width is a function of the
+// viewport, not of the dialog's own content). A content line wider than
+// the box's inner budget wraps at a word boundary (wrapText, ANSI-aware via
+// stringWidth) instead of being truncated away -- several dialog help
+// lines carry a reason a truncated line would lose, so this never elides a
+// substring in favour of keeping one physical line.
 func (m Model) framedDialog(body string) string {
-	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
-	width := 0
-	for _, line := range lines {
-		if w := len([]rune(line)); w > width {
-			width = w
-		}
+	boxWidth := m.dialogWidth()
+	inner := boxWidth - 4
+	if inner < 1 {
+		inner = 1
 	}
-	boxWidth := width + 4
+	rawLines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+	var lines []string
+	for _, line := range rawLines {
+		if stringWidth(line) <= inner {
+			lines = append(lines, line)
+			continue
+		}
+		lines = append(lines, wrapText(line, inner)...)
+	}
 	out := make([]string, 0, len(lines)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range lines {

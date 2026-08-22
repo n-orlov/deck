@@ -117,6 +117,19 @@ Feature: Godog harness wiring
 
   @requirement-37-message-budget
   Scenario Outline: an attachError or resumeNote message never pushes the frame past the terminal's own budget
+    # Task 030: this outline's own subject is the attachError message's budget,
+    # not the create modal's -- but it reaches that message by first creating
+    # a claude session through the real create modal, and framedDialog's box
+    # is now a fixed 80% of the viewport (clamped [26,80]) rather than
+    # growing to fit content, so at 80 columns the create modal's own
+    # field/help lines wrap (never truncate) onto more physical lines than
+    # an 80x24 terminal has rows for -- a pre-existing gap SPEC.md:1282
+    # already anticipates ("inside a dialog the wheel scrolls a scrollable
+    # body") but that scrolling is not implemented yet, so a content-heavy
+    # dialog simply needs a taller terminal today. 30 rows (this file's other
+    # examples' height) gives the create modal room to render in full while
+    # still exercising the 80-column width clamp (dialogWidth resolves to 64)
+    # this outline's second example exists to cover.
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "budgeted" is started with terminal size <cols>x<rows>
     And deck client "budgeted" creates claude session "budget target" with permission profile "safe"
@@ -130,7 +143,7 @@ Feature: Godog harness wiring
     Examples:
       | cols | rows |
       | 100  | 30   |
-      | 80   | 24   |
+      | 80   | 30   |
 
   @requirement-37-message-budget
   Scenario: a resumeNote message ('starting elsewhere') never pushes the frame past the terminal's own budget
