@@ -449,8 +449,56 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   `61639b4`; the "a toggle and a bounded integer are edited..." and "esc
   with an unsaved change..." scenarios; `internal/config`'s atomic-writer
   tests (requirement 12 below).
-- **R21** (env still outranks the file, labelled honestly): the
-  "an environment-overridden field is labelled honestly..." scenario.
+- **R21** (env still outranks the file, labelled honestly; a save must not
+  copy an env-overridden running value over the file's own): the running
+  precedence (env still outranks the file for what the client uses) is
+  unchanged and proven by the "an environment-overridden field is labelled
+  honestly..." scenario. The save-vs-file question the independent review
+  marked unverified — what a no-edit `ctrl+s` does to `config.toml` for a
+  key the environment also overrides — is closed this correction:
+  `settingsEditsFromSettings` (`internal/tui/settings.go`) now seeds the
+  takeover's staged edits from `config.Settings.File` (the raw
+  file-parsed values `internal/config` exposes as of task 001), not from
+  the env-resolved `config.Settings`, so a field the user never touches is
+  re-serialised from the file's own value and a save can never launder an
+  environment value into `config.toml`. An explicit edit of that same
+  field is still written, so the fix is "never silently overwrite an
+  unedited overridden key," not "never write that key at all." Proven at
+  unit level by `internal/tui/settings_task002_test.go`'s
+  `TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched` (the
+  no-edit case) and `TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten`
+  (the edited case), and end to end by `features/settings.feature`'s
+  "saving with ctrl+s and no edit leaves an environment-overridden flat
+  key's own file value untouched (requirement 21)" scenario, which pins
+  `config.toml` to `ascii = false`, sets `DECK_ASCII=1` in the
+  environment, opens the takeover, saves without editing that field, and
+  re-parses the file to assert `ascii = false` survived while the running
+  client still shows `true` labelled as overridden. Real output, run
+  fresh for this correction:
+
+  ```
+  $ ci/run.sh go test -v -run 'TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched|TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten' ./internal/tui/...
+  === RUN   TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched
+  --- PASS: TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched (0.00s)
+  === RUN   TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten
+  --- PASS: TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten (0.00s)
+  PASS
+  ok  	github.com/n-orlov/deck/internal/tui	0.011s
+
+  $ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@settings" go test -run TestFeatures -v -count=1 .'
+  ...
+  13 scenarios (13 passed)
+  225 steps (225 passed)
+  --- PASS: TestFeatures (7.86s)
+      ...
+      --- PASS: TestFeatures/saving_with_ctrl+s_and_no_edit_leaves_an_environment-overridden_flat_key's_own_file_value_untouched_(requirement_21) (0.52s)
+      ...
+  PASS
+  ok  	github.com/n-orlov/deck/features	7.884s
+  ```
+
+  See `docs/reports/phase2b2-findings.md`'s "Task 010" section for the
+  operator-facing clarification-request framing of this decision.
 - **R23** (unknown key ignored, unparseable value is a stated error naming
   file+line, unknown keys survive a settings save): `internal/config`'s
   `toml_write_test.go` round-trip-of-unknown-key test, part of the
