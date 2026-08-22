@@ -60,3 +60,21 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     And deck client "A" screen does not contain "recent 1/5"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
+
+  @requirement-6-blank-name-default
+  Scenario: an empty name defaults to <workspace>-<MMDD-HHMM> from the frozen clock
+    Given deck client "A" is started in a fresh directory labelled "blank-name" with the clock frozen at "2025-08-20T14:43:00Z"
+    When deck client "A" opens the create modal
+    And deck client "A" submits the create modal with a blank name
+    Then the state database has exactly one session in the directory labelled "blank-name", named "create-session-blank-name-0820-1443"
+    When deck client "A" exits cleanly
+
+  @requirement-6-blank-name-collision-suffix
+  Scenario: a second blank-name create in the same directory and minute gets a -2 collision suffix
+    Given deck client "A" is started in a fresh directory labelled "blank-collide" with the clock frozen at "2025-08-20T14:43:00Z"
+    When deck client "A" opens the create modal
+    And deck client "A" submits the create modal with a blank name
+    And deck client "A" opens the create modal
+    And deck client "A" submits the create modal with a blank name
+    Then the state database has sessions named "create-session-blank-collide-0820-1443" and "create-session-blank-collide-0820-1443-2", both with cwd exactly the directory labelled "blank-collide"
+    When deck client "A" exits cleanly
