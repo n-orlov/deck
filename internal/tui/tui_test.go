@@ -14,6 +14,11 @@ import (
 
 func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	model := New(nil, config.Settings{Socket: "test-socket"}, "tmux is required but was not found on PATH")
+	// Task 030: framedDialog no longer grows to fit content, so a
+	// wide-enough viewport keeps every pinned help phrase off a word-wrap
+	// boundary (the box's inner budget maxes out at 76 columns regardless
+	// of how much wider the viewport gets beyond this).
+	model.width = 100
 	empty := model.View()
 	for _, want := range []string{"No sessions yet", "Press n", "tmux unavailable", "Install tmux 3.2"} {
 		if !strings.Contains(empty, want) {

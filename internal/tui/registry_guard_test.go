@@ -111,6 +111,10 @@ func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, registry,
 	)
+	// Task 030: framedDialog no longer grows to fit content, so a
+	// wide-enough viewport keeps the Agent field's full cycle list off a
+	// word-wrap boundary and on one physical line.
+	m.width = 100
 	m.creating = true
 	m.createName = "guard-session"
 	m.createCWD = t.TempDir()
@@ -188,7 +192,16 @@ func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	m.creating = false
 	m.detail = true
 	detailView := m.View()
-	if !strings.Contains(detailView, "degraded") || !strings.Contains(detailView, reason) {
+	// Task 030: framedDialog's box no longer grows to fit content (fixed at
+	// 80% of the viewport, clamped to [26, 80]), so this 94-column
+	// degradation sentence always wraps at a word boundary regardless of
+	// viewport width; assert the phrases that word-wrap keeps intact
+	// (never inside a word) rather than the whole dynamic `reason` string
+	// as one contiguous run.
+	if !strings.Contains(detailView, "degraded") ||
+		!strings.Contains(detailView, "does not support permission profile") ||
+		!strings.Contains(detailView, `"plan"`) ||
+		!strings.Contains(detailView, "falling back to safe") {
 		t.Fatalf("detail view missing the extra kind's degradation reason:\n%s", detailView)
 	}
 }
