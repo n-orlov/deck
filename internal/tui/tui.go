@@ -40,18 +40,34 @@ type Model struct {
 	createPreLaunch     string
 	createLoginShell    bool
 	createYoloConfirmed bool
-	createField         int
-	createError         string
-	create              func(context.Context, service.ShellCreateInput) (store.Session, error)
-	createAgentSession  func(context.Context, service.AgentCreateInput) (store.Session, error)
-	attach              func(context.Context, string) (*exec.Cmd, error)
-	prepareAttach       func(context.Context, string) error
-	kill                func(context.Context, store.Session) error
-	acknowledge         func(context.Context, string) error
-	reconcile           func(context.Context) error
-	resume              func(context.Context, string) (store.Session, service.ResumeOutcome, error)
-	profileSwitch       func(context.Context, string, string) (store.Session, error)
-	selected            int
+	// createCWDPrefilled is true while m.createCWD still holds an untouched
+	// prefill deck itself chose (either the most recent §11.7 recent_cwds
+	// entry, or with no history the directory deck was started in) rather
+	// than anything the user typed. The first keystroke in the cwd field
+	// -- rune or backspace -- clears the prefill wholesale before acting,
+	// rather than editing it in place (task 008).
+	createCWDPrefilled bool
+	// createCWDLastUsed is true only when createCWDPrefilled's value came
+	// from §11.7 recent_cwds history (as opposed to the no-history
+	// directory-deck-started-in fallback), driving createFieldRows' "last
+	// used" label. Cleared together with createCWDPrefilled on first edit.
+	createCWDLastUsed  bool
+	createField        int
+	createError        string
+	create             func(context.Context, service.ShellCreateInput) (store.Session, error)
+	createAgentSession func(context.Context, service.AgentCreateInput) (store.Session, error)
+	attach             func(context.Context, string) (*exec.Cmd, error)
+	prepareAttach      func(context.Context, string) error
+	kill               func(context.Context, store.Session) error
+	acknowledge        func(context.Context, string) error
+	reconcile          func(context.Context) error
+	resume             func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	profileSwitch      func(context.Context, string, string) (store.Session, error)
+	selected           int
+	// startCWD is the directory deck itself was started in (os.Getwd() at
+	// New(), best-effort -- "" on error), used to prefill the create
+	// modal's cwd field when §11.7's recent_cwds history is empty.
+	startCWD            string
 	collapsedGroups     map[string]bool
 	attachError         string
 	resumeNote          string
@@ -338,6 +354,9 @@ type resumeModeChanged struct {
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 	m := Model{store: db, settings: settings, startupNote: tmuxNote}
+	if wd, err := os.Getwd(); err == nil {
+		m.startCWD = wd
+	}
 	if db != nil {
 		m.acknowledge = db.AcknowledgeSession
 		m.prepareAttach = func(ctx context.Context, sessionID string) error {
@@ -724,7 +743,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
-				m.createName, m.createCWD = "", ""
+				m.createName = ""
+				m.createCWD, m.createCWDLastUsed = m.prefillCreateCWD()
+				m.createCWDPrefilled = true
 				m.createAgent, m.createProfile = defaultCreateAgent(m.registry().Kinds()), createProfileOptions[0]
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
 				m.createYoloConfirmed = false
@@ -2151,6 +2172,23 @@ func (m Model) validateCreateFields() string {
 	return ""
 }
 
+// prefillCreateCWD returns the value and "is an untouched prefill" flag the
+// create modal's cwd field opens with (SPEC §11.7): the most recent
+// recent_cwds entry (rendered with the "(last used)" label in
+// createFieldRows) when the store has any history, otherwise the directory
+// deck itself was started in. A store error or no history at all falls back
+// to startCWD rather than leaving the field blank, matching every other
+// best-effort recent_cwds read in this package (promoteRecentCwd's own
+// swallowed error: §11.7 history is never load-bearing).
+func (m Model) prefillCreateCWD() (value string, isRecent bool) {
+	if m.store != nil {
+		if recents, err := m.store.RecentCwds(context.Background()); err == nil && len(recents) > 0 {
+			return recents[0].Path, true
+		}
+	}
+	return m.startCWD, false
+}
+
 // expandCreateCWD expands a leading `~` or `~/...` in raw to the current
 // user's home directory and returns the resolved absolute path, per SPEC
 // §11.7's tilde-expansion rule (the minimum slice of it Phase 2b-2 owns:
@@ -2245,6 +2283,13 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 0:
 			m.createName += string(runes)
 		case 1:
+			// The prefilled recent/startup cwd is replaced wholesale by the
+			// first keystroke rather than appended to (SPEC §11.7): once
+			// the user has typed anything, the field holds only what they
+			// typed and no longer carries the "last used" label.
+			if m.createCWDPrefilled {
+				m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
+			}
 			m.createCWD += string(runes)
 		case 4:
 			m.createLaunchArgs += string(runes)
@@ -2352,6 +2397,14 @@ func (m *Model) backspaceCreateField() {
 			m.createName = m.createName[:len(m.createName)-1]
 		}
 	case 1:
+		if m.createCWDPrefilled {
+			// Backspace is also an edit: clear the untouched prefill
+			// wholesale rather than trimming one rune off the end of it
+			// (SPEC §11.7's "typing replaces it wholesale" applies to any
+			// edit, not only appended runes).
+			m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
+			return
+		}
 		if len(m.createCWD) > 0 {
 			m.createCWD = m.createCWD[:len(m.createCWD)-1]
 		}
@@ -2368,6 +2421,24 @@ func (m *Model) backspaceCreateField() {
 			m.createPreLaunch = m.createPreLaunch[:len(m.createPreLaunch)-1]
 		}
 	}
+}
+
+// createCWDHelp prefixes the cwd field's usual one-line explanation with
+// the "(last used)" label (task 008, SPEC §11.7) while the field still
+// holds its untouched most-recent recent_cwds prefill, rather than
+// appending the label to the value itself: the value line's own width
+// varies with the resolved path length, and framedDialog's word-wrap
+// (task 030) can split a value-suffixed label across two rendered lines
+// at an arbitrary point depending on that length, whereas the label
+// prefixed to the short, constant-length help text never does. The plain
+// directory-deck-started-in fallback (no history) carries no label: only
+// a genuine history entry is "last used".
+func (m Model) createCWDHelp() string {
+	help := "the session's cwd; must exist and be a directory"
+	if m.createCWDLastUsed {
+		return "(last used) " + help
+	}
+	return help
 }
 
 // createFieldRows describes the create modal's field set: label, current
@@ -2394,7 +2465,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	}
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
-		{"Working directory", m.createCWD, "the session's cwd; must exist and be a directory"},
+		{"Working directory", m.createCWD, m.createCWDHelp()},
 		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.registry().Kinds(), ", ") + ")", "which coding agent adapter launches this session"},
 		{"Permission profile", profileValue, profileHelp},
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},

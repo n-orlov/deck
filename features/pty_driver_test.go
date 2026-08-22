@@ -83,7 +83,21 @@ func StartScreenDriver(ctx context.Context, binary string, env []string) (*Scree
 // StartScreenDriverWithSize is StartScreenDriver with an explicit initial PTY
 // and emulator geometry.
 func StartScreenDriverWithSize(ctx context.Context, binary string, env []string, cols, rows uint16) (*ScreenDriver, error) {
+	return startScreenDriver(ctx, binary, env, "", cols, rows)
+}
+
+// StartScreenDriverInDir is StartScreenDriverWithSize with an explicit
+// process working directory, so a scenario can pin exactly which directory
+// deck itself was started in (task 008, SPEC §11.7's no-history cwd
+// prefill) rather than inheriting whatever directory happens to be the test
+// binary's own cwd.
+func StartScreenDriverInDir(ctx context.Context, binary string, env []string, dir string, cols, rows uint16) (*ScreenDriver, error) {
+	return startScreenDriver(ctx, binary, env, dir, cols, rows)
+}
+
+func startScreenDriver(ctx context.Context, binary string, env []string, dir string, cols, rows uint16) (*ScreenDriver, error) {
 	cmd := exec.CommandContext(ctx, binary)
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color", fmt.Sprintf("COLUMNS=%d", cols), fmt.Sprintf("LINES=%d", rows))
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
