@@ -66,6 +66,8 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has login_shell enabled$`, sessionHasLoginShellEnabled)
 	sc.Step(`^the state database session "([^"]+)" has a non-empty captured_path$`, sessionHasNonEmptyCapturedPath)
 	sc.Step(`^the state database session "([^"]+)" has captured_path marked advisory$`, sessionHasCapturedPathMarkedAdvisory)
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and failing pre-launch command "([^"]+)"$`, clientCreatesAgentSessionWithFailingPreLaunch)
+	sc.Step(`^the state database session "([^"]+)" has an event of kind "([^"]+)" with reason containing "([^"]+)"$`, sessionHasEventOfKindWithReasonContaining)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -209,6 +211,42 @@ func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clie
 	}
 	if err := client.WaitForFrame(ctx, false, "on (space toggles)"); err != nil {
 		return fmt.Errorf("toggle Login shell on: %w", err)
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// clientCreatesAgentSessionWithFailingPreLaunch drives the real create modal
+// exactly like clientCreatesAgentSessionWithProfile, then continues past
+// Permission profile through Launch args and Env (internal/tui.createFieldRows
+// field order: 3 Permission profile, 4 Launch args, 5 Env, 6 Pre-launch
+// command) onto the Pre-launch command field, types command verbatim, and
+// submits (task 018, SPEC §6.4). command is expected to exit non-zero so
+// reconciliation observes the pane as dead-with-nonzero-status rather than a
+// clean stop (internal/service.reconcile's crashedPane path), the same
+// mechanism crash.feature already proves for a killed agent — a failing
+// pre_launch is just another way a pane can die before the agent argv ever
+// execs (buildPaneCommand's `&&` short-circuit).
+func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientName, kind, name, profile, command string) error {
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\t\t\t"); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.WaitForFrame(ctx, false, "Pre-launch command"); err != nil {
+		return fmt.Errorf("tab onto Pre-launch command field: %w", err)
+	}
+	if err := client.Send(command); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.WaitForFrame(ctx, false, command); err != nil {
+		return fmt.Errorf("type Pre-launch command field %q: %w", command, err)
 	}
 	if err := client.Send("\r"); err != nil {
 		return err
@@ -1145,6 +1183,50 @@ func sessionStatusReasonContains(ctx context.Context, name, want string) error {
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("session %q status reason = %q, want it to contain %q", name, got, want)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// sessionHasEventOfKindWithReasonContaining asserts the events table (not
+// just the sessions row's own status_reason column) has at least one row
+// for the named session whose kind matches exactly and whose reason
+// contains want, e.g. proving a failing pre_launch's evidence lands in the
+// durable event log an operator can page through, not only the sessions
+// row's current snapshot (task 018). It polls briefly since reconciliation
+// observes and records the dead pane asynchronously.
+func sessionHasEventOfKindWithReasonContaining(ctx context.Context, name, kind, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		rows, err := db.QueryContext(ctx, `SELECT COALESCE(reason, '') FROM events WHERE session_id = (SELECT id FROM sessions WHERE name = ?) AND kind = ?`, name, kind)
+		if err != nil {
+			return fmt.Errorf("query events for session %q kind %q: %w", name, kind, err)
+		}
+		var reasons []string
+		for rows.Next() {
+			var reason string
+			if err := rows.Scan(&reason); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan event reason for session %q kind %q: %w", name, kind, err)
+			}
+			if strings.Contains(reason, want) {
+				rows.Close()
+				return nil
+			}
+			reasons = append(reasons, reason)
+		}
+		rows.Close()
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q has no event of kind %q with reason containing %q; observed reasons: %#v", name, kind, want, reasons)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
