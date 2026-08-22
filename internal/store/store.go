@@ -1169,3 +1169,20 @@ func (s *Store) RecentCwds(ctx context.Context) ([]RecentCwd, error) {
 	}
 	return out, nil
 }
+
+// ClearRecentCwds drops every row from recent_cwds. Requirement 17 (§11.5):
+// the settings takeover offers this as an explicit action because the
+// history it clears "is history and paths can be sensitive", and it must
+// remain non-load-bearing -- dropping the table costs the create modal's
+// §11.7 prefill/cycling/completion (a fresh call to PromoteRecentCwd starts
+// the table over from empty) and never a session: no row in `sessions`,
+// `events`, or anything else this store owns is touched. Unlike
+// PromoteRecentCwd, there is no path validation to do and nothing to keep:
+// it is unconditionally `DELETE FROM recent_cwds`, not a caller-supplied
+// limit's eviction.
+func (s *Store) ClearRecentCwds(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM recent_cwds`); err != nil {
+		return fmt.Errorf("clear recent cwds: %w", err)
+	}
+	return nil
+}
