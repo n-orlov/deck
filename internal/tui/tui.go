@@ -2541,18 +2541,23 @@ func (m *Model) backspaceCreateField() {
 }
 
 // createCWDHelp prefixes the cwd field's usual one-line explanation with
-// either the "(last used)" label (task 008) while the field still holds
-// its untouched most-recent recent_cwds prefill, or "recent N/M" (task 009,
+// one of: "N matches — tab to list" (task 011, requirement 15) while raw's
+// segment has several directory candidates and no ghost is shown at all
+// (checked first, since it only ever applies while actively typing, which
+// already means the field holds neither a prefill nor an in-progress
+// recent_cwds cycle); "(last used)" (task 008) while the field still holds
+// its untouched most-recent recent_cwds prefill; or "recent N/M" (task 009,
 // SPEC §11.7's declared up/down per-field key set) while an up/down cycle
-// through recent_cwds is in progress -- never both, since starting a cycle
-// clears the prefill flags (cycleCreateCWDRecent). Either label is
-// prefixed onto the field's short, constant-length help text rather than
-// appended to the value itself: the value line's own width varies with the
-// resolved path length, and framedDialog's word-wrap (task 030) can split
-// a value-suffixed label across two rendered lines at an arbitrary point
-// depending on that length, whereas a label prefixed to the help text
-// never does. The plain directory-deck-started-in fallback (no history,
-// not cycling) carries no label at all.
+// through recent_cwds is in progress -- never more than one of the three
+// at once, since starting a cycle or typing a fresh segment clears the
+// others' flags. Each label is prefixed onto the field's short,
+// constant-length help text rather than appended to the value itself: the
+// value line's own width varies with the resolved path length, and
+// framedDialog's word-wrap (task 030) can split a value-suffixed label
+// across two rendered lines at an arbitrary point depending on that
+// length, whereas a label prefixed to the help text never does. The plain
+// directory-deck-started-in fallback (no history, not cycling, not
+// ambiguous) carries no label at all.
 // createCWDDisplayValue is the cwd field's rendered value: m.createCWD,
 // plus its ghost completion (task 010) coloured in the theme's dimmed
 // token when one is available AND the field is actually focused --
@@ -2572,6 +2577,17 @@ func (m Model) createCWDDisplayValue() string {
 
 func (m Model) createCWDHelp() string {
 	help := "the session's cwd; must exist and be a directory; \u2191/\u2193 cycles recent history; right/end completes a shown directory match"
+	// Ambiguous-match counting (task 011, requirement 15) only applies
+	// while this field is actually focused and being typed into, exactly
+	// like createCWDDisplayValue's ghost: "the cursor is at end of field"
+	// only means something during an edit of THIS field, so another
+	// field's rendering of this same row never shows a stale count left
+	// over from before the user tabbed away.
+	if m.createField == 1 {
+		if count, ok := createCWDAmbiguousMatchCount(m.createCWD); ok {
+			return fmt.Sprintf("%d matches \u2014 tab to list ", count) + help
+		}
+	}
 	if m.createCWDRecentIndex >= 0 && len(m.createCWDRecents) > 0 {
 		return fmt.Sprintf("recent %d/%d ", m.createCWDRecentIndex+1, len(m.createCWDRecents)) + help
 	}

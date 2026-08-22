@@ -29,6 +29,7 @@ func registerCreateCWDGhostSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" types "([^"]+)" as the session name$`, clientTypesSessionName)
 	sc.Step(`^deck client "([^"]+)" submits the create modal$`, clientSubmitsCreateModal)
 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the scratch directory labelled "([^"]+)" plus "([^"]*)"$`, sessionHasCWDExactlyScratchDirPlus)
+	sc.Step(`^deck client "([^"]+)" cwd field shows no ghost text$`, clientCWDFieldShowsNoGhostText)
 }
 
 // scratchDirectoryLabelledExists creates an empty directory under the
@@ -199,6 +200,44 @@ func clientSubmitsCreateModal(ctx context.Context, clientName string) error {
 		return err
 	}
 	return client.Send("\r")
+}
+
+// clientCWDFieldShowsNoGhostText backs task 011's negative proof (SPEC
+// requirement 15): with several ambiguous directory matches, the field
+// must ghost NOTHING at all -- not the alphabetically-first candidate, not
+// any other arbitrary one. Since createCWDDisplayValue's ghost is the ONLY
+// thing this package ever renders in the dimmed token anywhere on screen
+// while the create modal is open (createView fully replaces the sidebar,
+// which is the only other dimmed user in internal/tui/tui.go), scanning
+// the WHOLE grid for a single dimmed-foreground cell and failing if one is
+// found is a strictly stronger assertion than checking any one candidate
+// substring is absent: it also catches a ghost of some OTHER, unexpected
+// text this scenario's author didn't think to name. This is a cell-grid
+// assertion, not an absence-of-error check -- it reads real Style.Fg
+// values via CellAt, exactly as the per-cell steps in
+// features/cell_attributes_test.go do.
+func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
+	client, err := assertionClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
+	if err != nil {
+		return err
+	}
+	cols, rows := client.GridSize()
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			cell := client.CellAt(x, y)
+			if cell == nil || cell.Style.Fg == nil {
+				continue
+			}
+			if colorHex(cell.Style.Fg) == dimmed {
+				return fmt.Errorf("client %q has a dimmed-token cell %q at row %d column %d, want no ghost text anywhere on screen", name, cell.Content, y, x)
+			}
+		}
+	}
+	return nil
 }
 
 // sessionHasCWDExactlyScratchDirPlus asserts the sessions table's cwd
