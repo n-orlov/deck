@@ -25,6 +25,7 @@ func registerDialogsSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" cycles the open dialog's field right$`, clientCyclesOpenDialogFieldRight)
 	sc.Step(`^deck client "([^"]+)" submits the open dialog$`, clientSubmitsOpenDialog)
 	sc.Step(`^deck client "([^"]+)" opens the create modal and alters every field$`, clientOpensCreateModalAndAltersEveryField)
+	sc.Step(`^deck client "([^"]+)" walks and edits every create modal field by keyboard, asserting each change is visible$`, clientWalksAndEditsEveryCreateFieldAssertingVisibility)
 	sc.Step(`^deck client "([^"]+)" tabs (\d+) times in the open dialog$`, clientTabsInOpenDialog)
 	sc.Step(`^deck client "([^"]+)" dialog box width is (\d+)$`, clientDialogBoxWidthIs)
 	sc.Step(`^deck client "([^"]+)" attempts to create a shell session named "([^"]+)" with working directory "([^"]+)"$`, clientAttemptsCreateModalWithCWD)
@@ -206,6 +207,104 @@ func clientOpensCreateModalAndAltersEveryField(ctx context.Context, clientName s
 			return err
 		}
 		time.Sleep(30 * time.Millisecond)
+	}
+	return nil
+}
+
+// clientWalksAndEditsEveryCreateFieldAssertingVisibility covers task 016
+// (SPEC requirement 7): every one of createFieldRows' eight fields is
+// reachable by tab/shift+tab alone, editable with its own stated per-field
+// key (typing for the free-text fields, right-arrow for the two selection
+// fields, space for the toggle), and each edit is asserted VISIBLE on
+// screen -- not merely performed and left unobserved, unlike the sibling
+// esc-changes-nothing scenario driven by clientOpensCreateModalAndAltersEveryField
+// above, which never looks at the screen mid-walk. It never submits (esc is
+// left to the caller), matching that sibling's own contract.
+func clientWalksAndEditsEveryCreateFieldAssertingVisibility(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("n"); err != nil {
+		return err
+	}
+	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+		return err
+	}
+	assertVisible := func(step, want string) error {
+		time.Sleep(30 * time.Millisecond)
+		frame := client.Frame(false)
+		if !strings.Contains(frame, want) {
+			return fmt.Errorf("after %s, deck client %q screen does not contain %q:\n%s", step, clientName, want, frame)
+		}
+		return nil
+	}
+	// Field 0 (Name): already focused on open; typing appends, per
+	// createFieldIsText.
+	if err := client.Send("dc-walk-name"); err != nil {
+		return err
+	}
+	if err := assertVisible("typing into Name", "dc-walk-name"); err != nil {
+		return err
+	}
+	// Field 1 (Working directory): tab onto it, then type -- the first
+	// keystroke replaces the prefill wholesale (task 008/009).
+	if err := client.Send("\t/dc-walk/cwd"); err != nil {
+		return err
+	}
+	if err := assertVisible("typing into Working directory", "/dc-walk/cwd"); err != nil {
+		return err
+	}
+	// Field 2 (Agent): tab onto it, then right-arrow cycles §5's kinds
+	// (sorted: claude, pi, shell); the default open value is "shell" (the
+	// last, alphabetically), so one right-arrow wraps to "claude".
+	if err := client.Send("\t\x1b[C"); err != nil {
+		return err
+	}
+	if err := assertVisible("cycling Agent right", "Agent: claude"); err != nil {
+		return err
+	}
+	// Field 3 (Permission profile): tab onto it, then right-arrow cycles
+	// claude's declared profiles (safe, plan, edits[, yolo if allowed]);
+	// the default settings this harness starts with have allow_yolo off,
+	// and the field opened on "safe", so one right-arrow lands on "plan".
+	if err := client.Send("\t\x1b[C"); err != nil {
+		return err
+	}
+	if err := assertVisible("cycling Permission profile right", "Permission profile: plan"); err != nil {
+		return err
+	}
+	// Field 4 (Launch args): tab onto it, then type.
+	if err := client.Send("\twalk-launch-args"); err != nil {
+		return err
+	}
+	if err := assertVisible("typing into Launch args", "walk-launch-args"); err != nil {
+		return err
+	}
+	// Field 5 (Env): tab onto it, then type.
+	if err := client.Send("\tWALK_ENV=1"); err != nil {
+		return err
+	}
+	if err := assertVisible("typing into Env", "WALK_ENV=1"); err != nil {
+		return err
+	}
+	// Field 6 (Pre-launch command): tab onto it, then type.
+	if err := client.Send("\twalk-pre-launch"); err != nil {
+		return err
+	}
+	if err := assertVisible("typing into Pre-launch command", "walk-pre-launch"); err != nil {
+		return err
+	}
+	// Field 7 (Login shell): tab onto it, then space toggles off -> on.
+	if err := client.Send("\t "); err != nil {
+		return err
+	}
+	if err := assertVisible("toggling Login shell", "Login shell: on"); err != nil {
+		return err
 	}
 	return nil
 }
