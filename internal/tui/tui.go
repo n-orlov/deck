@@ -2438,6 +2438,10 @@ Keys
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
   g toggle the selected row's workspace group collapsed/expanded
+  , open/close settings (edit config.toml's keys); Esc closes, prompting to
+    discard if there are unsaved changes
+  t open/close the theme picker; previews live on the real session list,
+    Enter selects, Esc reverts byte-for-byte
   | cycle the layout mode: auto → side-by-side → stacked → collapsed →
     auto; a chosen mode is pinned regardless of terminal width until you
     cycle again or the terminal cannot hold its floors, when deck falls
@@ -2468,6 +2472,22 @@ not offered at all (the UI states why); and even when enabled, choosing
 yolo — at create time or when switching profile with P — requires an
 explicit y confirm keystroke before it takes effect.
 
+Settings takeover (opened with ,)
+  Tab or Left/Right      switch focus between the category list and the
+                         field list
+  Up/Down or j/k         move within the focused list
+  Enter or Space         toggle/cycle the focused field's value
+  + / -                  adjust a bounded-integer field
+  /                      fuzzy-search every field by label or description
+  Ctrl+S                 save staged edits to config.toml
+  Esc                    close; with unsaved changes, prompts to discard
+                         (y/Enter discards, any other key keeps editing)
+
+Theme picker (opened with t)
+  Left/Right or Up/Down or Space   change the previewed theme
+  Enter                  select the previewed theme and save it
+  Esc                    revert to the theme active before the picker opened
+
 Runtime controls
   DECK_HOME             isolated data/config/state root
   DECK_TMUX_SOCKET      private tmux socket (default: deck)
@@ -2483,6 +2503,8 @@ Runtime controls
   DECK_ASCII=1          use ASCII instead of optional glyphs
   DECK_ANIM=0           disable animation
   DECK_COLOR            explicitly enable or disable colour
+  DECK_COLOR_DEPTH      force truecolor or 16-colour (quantised) rendering
+                         instead of terminal auto-detection
   NO_COLOR              disable colour
 
 Sessions use a private tmux server. Inspect it with:
