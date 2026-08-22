@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,7 +93,7 @@ func TestOpenRefusesNewerFixtureWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 4)`); err != nil {
+	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 5)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.Close(); err != nil {
@@ -1070,6 +1071,88 @@ func TestListSessionsDefaultsWorkspaceToCWDBasename(t *testing.T) {
 	}
 	if got.Workspace != "svc-a" {
 		t.Fatalf("GetSession workspace = %q, want %q", got.Workspace, "svc-a")
+	}
+}
+
+// TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow covers
+// task 006: schemaV4 (recent_cwds, SPEC §4:276-279) must be reachable by
+// migration from schema versions 1, 2 and 3 alike, and none of those paths
+// may recreate the pre-existing session row to gain the new table.
+func TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow(t *testing.T) {
+	for _, fromVersion := range []int{1, 2, 3} {
+		fromVersion := fromVersion
+		t.Run(fmt.Sprintf("fromV%d", fromVersion), func(t *testing.T) {
+			home := filepath.Join(t.TempDir(), "deck")
+			if err := os.MkdirAll(home, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(home, "state.db")
+			fixture, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, statement := range schemaV1 {
+				if _, err := fixture.Exec(statement); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if fromVersion >= 2 {
+				for _, statement := range schemaV2 {
+					if _, err := fixture.Exec(statement); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if fromVersion >= 3 {
+				for _, statement := range schemaV3 {
+					if _, err := fixture.Exec(statement); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if _, err := fixture.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', ?)`, fromVersion); err != nil {
+				t.Fatal(err)
+			}
+			const fixtureID = "pre-existing-session"
+			if _, err := fixture.Exec(`INSERT INTO sessions (
+				id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at
+			) VALUES (?, 'kept', 'kept', '/tmp/kept', 'shell', '/bin/sh', 'stopped', 'test', 42, 42)`, fixtureID); err != nil {
+				t.Fatal(err)
+			}
+			if err := fixture.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			st, err := OpenPath(home, path)
+			if err != nil {
+				t.Fatalf("OpenPath migrating from v%d: %v", fromVersion, err)
+			}
+			defer st.Close()
+
+			var version int
+			if err := st.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
+				t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
+			}
+			var recentCwdsTables int
+			if err := st.DB().QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'recent_cwds'`).Scan(&recentCwdsTables); err != nil || recentCwdsTables != 1 {
+				t.Fatalf("recent_cwds table after migration from v%d = %d, %v; want 1", fromVersion, recentCwdsTables, err)
+			}
+
+			ctx := context.Background()
+			got, err := st.GetSession(ctx, fixtureID)
+			if err != nil {
+				t.Fatalf("GetSession after migration from v%d: %v", fromVersion, err)
+			}
+			if got.ID != fixtureID || got.Name != "kept" || got.Slug != "kept" || got.CWD != "/tmp/kept" ||
+				got.Agent != "shell" || got.CapturedPath != "/bin/sh" || got.Status != "stopped" ||
+				got.StatusSource != "test" || got.StatusAt != 42 || got.CreatedAt != 42 {
+				t.Fatalf("session row after migration from v%d = %+v, want the byte-identical pre-existing row", fromVersion, got)
+			}
+			var sessionCount int
+			if err := st.DB().QueryRow(`SELECT count(*) FROM sessions`).Scan(&sessionCount); err != nil || sessionCount != 1 {
+				t.Fatalf("session count after migration from v%d = %d, %v; want 1 (no row recreated)", fromVersion, sessionCount, err)
+			}
+		})
 	}
 }
 
