@@ -127,6 +127,29 @@ type Model struct {
 	// be visible, not swallowed) and the discard prompt's own text.
 	// Mirrors profileSwitchNote/pinNote's existing shape in this package.
 	settingsNote string
+	// settingsEnvOpen/settingsEnvIndex/settingsEnvEditing/
+	// settingsEnvEditingKeyPart/settingsEnvEditKey/settingsEnvEditValue/
+	// settingsEnvEditOriginalKey are task 003's [env] entry editor (SPEC
+	// requirement 17: the global [env] table is genuinely editable in the
+	// takeover, not display-only). settingsEnvOpen is true while the
+	// entries list (one row per settingsEdits.Env key, plus a trailing
+	// "add entry" row) has taken over the field panel; settingsEnvIndex
+	// selects a row in that list. settingsEnvEditing is true while a
+	// single entry's key or value is being typed; settingsEnvEditingKeyPart
+	// says which of the two free-text buffers (settingsEnvEditKey/
+	// settingsEnvEditValue) is currently receiving typed runes.
+	// settingsEnvEditOriginalKey holds the key being edited (empty when
+	// adding a new entry), so committing a renamed key removes the old one
+	// rather than leaving both. All of this only ever mutates
+	// settingsEdits.Env, the same staged copy every other field kind edits
+	// -- ctrl+s/esc still govern when (or whether) it reaches config.toml.
+	settingsEnvOpen            bool
+	settingsEnvIndex           int
+	settingsEnvEditing         bool
+	settingsEnvEditingKeyPart  bool
+	settingsEnvEditKey         string
+	settingsEnvEditValue       string
+	settingsEnvEditOriginalKey string
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -690,6 +713,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
 				m.settingsDiscardConfirm = false
 				m.settingsNote = ""
+				m.settingsEnvOpen = false
+				m.settingsEnvEditing = false
+				m.settingsEnvIndex = 0
 			}
 		case "t":
 			if !m.help {

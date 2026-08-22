@@ -152,6 +152,18 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.settingsDiscardConfirm {
 		return m.updateSettingsDiscardConfirm(msg)
 	}
+	// task 003's [env] entry editor (requirement 17) takes over the whole
+	// keymap while active, the same way the discard-confirm prompt and `/`
+	// search already do above/below -- settingsEnvEditing (typing a single
+	// entry's key or value) is checked before settingsEnvOpen (browsing
+	// the entries list) since the former only ever holds while the latter
+	// also does.
+	if m.settingsEnvEditing {
+		return m.updateSettingsEnvEditing(msg)
+	}
+	if m.settingsEnvOpen {
+		return m.updateSettingsEnvList(msg)
+	}
 	if m.settingsSearchActive {
 		return m.updateSettingsSearch(msg)
 	}
@@ -306,19 +318,181 @@ func (m *Model) settingsSelectedField() (config.Field, bool) {
 }
 
 // settingsActivateField is enter/space's effect on the focused field: it
-// flips a KindToggle field's staged value and otherwise does nothing --
-// notably including the [notify] KindLink entry, which §11.5 would have
-// open the notification-rules dialog if one existed. Task 029 adds no such
-// dialog this phase, so activating the entry is a documented no-op rather
-// than a key that silently fails to do what it claims: settingsFieldValue-
-// Display already renders that entry's value as "unavailable this phase".
+// flips a KindToggle field's staged value, opens task 003's [env] entry
+// editor for the KindListOfStrings [env] field (requirement 17 -- the
+// field list itself has no room to edit a KEY=VALUE map inline, so enter
+// hands focus to a dedicated entries list rather than leaving [env]
+// display-only), and otherwise does nothing -- notably including the
+// [notify] KindLink entry, which §11.5 would have open the notification-
+// rules dialog if one existed. Task 029 adds no such dialog this phase, so
+// activating that entry is a documented no-op rather than a key that
+// silently fails to do what it claims: settingsFieldValueDisplay already
+// renders that entry's value as "unavailable this phase".
 func (m *Model) settingsActivateField() {
 	f, ok := m.settingsSelectedField()
 	if !ok {
 		return
 	}
-	if f.Kind == config.KindToggle {
+	switch f.Kind {
+	case config.KindToggle:
 		settingsSetToggle(&m.settingsEdits, f, !settingsToggleValue(f, m.settingsEdits))
+	case config.KindListOfStrings:
+		if f.FullKey() == "[env]" {
+			m.settingsEnvOpen = true
+			m.settingsEnvIndex = 0
+			m.settingsEnvEditing = false
+		}
+	}
+}
+
+// settingsEnvKeys returns cfg.Env's keys in a stable (sorted) order, so
+// the entries list settingsEnvViewLines renders and the index
+// settingsEnvIndex selects agree on which row is which across renders --
+// Go map iteration order is randomised, so nothing else in this package
+// may walk cfg.Env directly for display or selection.
+func settingsEnvKeys(cfg config.FileConfig) []string {
+	keys := make([]string, 0, len(cfg.Env))
+	for k := range cfg.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// updateSettingsEnvList handles key input while the [env] entries list has
+// taken over the field panel (m.settingsEnvOpen, m.settingsEnvEditing
+// false): up/down move the selection across every staged entry plus a
+// trailing "add entry" row, enter opens the selected entry (or a blank one
+// for "add entry") for editing, "-"/"_" removes the selected entry
+// outright (mirroring +/-'s existing "adjust this field" verb rather than
+// binding a new key the footer would have to learn to name), and esc
+// leaves the entries list and returns to the field list -- no key here is
+// new: every one is already bound and named by settingsFooterLine.
+func (m Model) updateSettingsEnvList(msg tea.KeyMsg) (Model, tea.Cmd) {
+	keys := settingsEnvKeys(m.settingsEdits)
+	n := len(keys) + 1
+	switch msg.String() {
+	case "esc":
+		m.settingsEnvOpen = false
+	case "up", "k":
+		m.settingsEnvIndex = (m.settingsEnvIndex - 1 + n) % n
+	case "down", "j":
+		m.settingsEnvIndex = (m.settingsEnvIndex + 1) % n
+	case "enter", " ":
+		switch {
+		case m.settingsEnvIndex == len(keys):
+			m.settingsEnvEditKey = ""
+			m.settingsEnvEditValue = ""
+			m.settingsEnvEditOriginalKey = ""
+			m.settingsEnvEditingKeyPart = true
+			m.settingsEnvEditing = true
+		case m.settingsEnvIndex >= 0 && m.settingsEnvIndex < len(keys):
+			key := keys[m.settingsEnvIndex]
+			m.settingsEnvEditKey = key
+			m.settingsEnvEditValue = m.settingsEdits.Env[key]
+			m.settingsEnvEditOriginalKey = key
+			m.settingsEnvEditingKeyPart = false
+			m.settingsEnvEditing = true
+		}
+	case "-", "_":
+		m.settingsEnvDeleteSelected()
+	}
+	return m, nil
+}
+
+// settingsEnvDeleteSelected removes the entries list's currently selected
+// entry from m.settingsEdits.Env (never m.settingsSavedEdits -- deleting
+// only stages the removal, ctrl+s/esc still govern whether it ever
+// reaches config.toml, exactly like every other field kind's edit) and
+// clamps settingsEnvIndex back onto the shorter list. Selecting the
+// trailing "add entry" row and pressing "-" is a no-op: there is nothing
+// there to remove.
+func (m *Model) settingsEnvDeleteSelected() {
+	keys := settingsEnvKeys(m.settingsEdits)
+	if m.settingsEnvIndex < 0 || m.settingsEnvIndex >= len(keys) {
+		return
+	}
+	delete(m.settingsEdits.Env, keys[m.settingsEnvIndex])
+	n := len(settingsEnvKeys(m.settingsEdits)) + 1
+	if m.settingsEnvIndex >= n {
+		m.settingsEnvIndex = n - 1
+	}
+}
+
+// updateSettingsEnvEditing handles key input while a single [env] entry's
+// key or value is being typed (m.settingsEnvEditing): typed runes extend
+// whichever of settingsEnvEditKey/settingsEnvEditValue tab currently
+// targets (settingsEnvEditingKeyPart), backspace shortens it, tab swaps
+// which one is being typed, enter on the key moves to the value without
+// committing yet and enter on the value commits the whole entry
+// (settingsEnvCommitEdit) and returns to the entries list, and esc
+// discards the buffer and returns to the entries list without touching
+// settingsEdits.Env at all.
+func (m Model) updateSettingsEnvEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.settingsEnvEditing = false
+		return m, nil
+	case "tab":
+		m.settingsEnvEditingKeyPart = !m.settingsEnvEditingKeyPart
+		return m, nil
+	case "enter":
+		if m.settingsEnvEditingKeyPart {
+			m.settingsEnvEditingKeyPart = false
+			return m, nil
+		}
+		m.settingsEnvCommitEdit()
+		m.settingsEnvEditing = false
+		return m, nil
+	case "backspace", "ctrl+h":
+		if m.settingsEnvEditingKeyPart {
+			if r := []rune(m.settingsEnvEditKey); len(r) > 0 {
+				m.settingsEnvEditKey = string(r[:len(r)-1])
+			}
+		} else {
+			if r := []rune(m.settingsEnvEditValue); len(r) > 0 {
+				m.settingsEnvEditValue = string(r[:len(r)-1])
+			}
+		}
+		return m, nil
+	}
+	if runes := msg.Runes; len(runes) > 0 {
+		if m.settingsEnvEditingKeyPart {
+			m.settingsEnvEditKey += string(runes)
+		} else {
+			m.settingsEnvEditValue += string(runes)
+		}
+	}
+	return m, nil
+}
+
+// settingsEnvCommitEdit stages the currently-edited [env] entry into
+// m.settingsEdits.Env: an empty (after trimming) key commits nothing --
+// updateSettingsEnvEditing still leaves editing mode, so an operator who
+// backspaces a key to nothing and hits enter simply abandons the entry
+// rather than staging a blank-named variable. A non-empty key that
+// differs from settingsEnvEditOriginalKey (a rename, or a brand new entry
+// where the original is "") removes the original key first, so renaming
+// never leaves both the old and new key staged at once. settingsEnvIndex
+// is left on the committed entry's row in the entries list's own sorted
+// order.
+func (m *Model) settingsEnvCommitEdit() {
+	key := strings.TrimSpace(m.settingsEnvEditKey)
+	if key == "" {
+		return
+	}
+	if m.settingsEdits.Env == nil {
+		m.settingsEdits.Env = map[string]string{}
+	}
+	if m.settingsEnvEditOriginalKey != "" && m.settingsEnvEditOriginalKey != key {
+		delete(m.settingsEdits.Env, m.settingsEnvEditOriginalKey)
+	}
+	m.settingsEdits.Env[key] = m.settingsEnvEditValue
+	for i, k := range settingsEnvKeys(m.settingsEdits) {
+		if k == key {
+			m.settingsEnvIndex = i
+			break
+		}
 	}
 }
 
@@ -940,6 +1114,9 @@ func (m Model) settingsView() string {
 	if m.settingsSearchActive {
 		return m.settingsSearchViewLines(categories, leftWidth, rightWidth, contentRows, height)
 	}
+	if m.settingsEnvOpen {
+		return m.settingsEnvViewLines(categories, leftWidth, rightWidth, contentRows, height)
+	}
 
 	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
 	leftLines := make([]string, len(categories))
@@ -1010,11 +1187,87 @@ func (m Model) settingsFooterLine() string {
 	if m.settingsSearchActive {
 		return truncateToWidth("type to search - up/down select - enter jump - esc cancel", width)
 	}
+	if m.settingsEnvEditing {
+		return truncateToWidth("type to edit - tab switch key/value - enter on value saves the entry - esc cancels", width)
+	}
+	if m.settingsEnvOpen {
+		return truncateToWidth("up/down move - enter edit/add - - remove - esc back to fields", width)
+	}
 	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
 	if m.settingsNote != "" {
 		footer = m.settingsNote + " - " + footer
 	}
 	return truncateToWidth(footer, width)
+}
+
+// settingsEnvViewLines renders the takeover while task 003's [env] entry
+// editor has taken over the field panel (m.settingsEnvOpen): the left
+// panel keeps showing the category list unchanged and unfocused (editing
+// [env] never moves the category selection), and the right panel becomes
+// the entries list -- one row per m.settingsEdits.Env key in
+// settingsEnvKeys' stable order, each rendered "KEY=VALUE", plus a
+// trailing "+ add entry" row -- or, while m.settingsEnvEditing is also
+// true, the single key/value being typed with the field currently
+// receiving keystrokes named so an operator mid-edit can see which of the
+// two tab currently targets.
+func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
+	const leftFocused, rightFocused = false, true
+
+	leftLines := make([]string, len(categories))
+	for i, cat := range categories {
+		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false)
+	}
+	leftLines = fitLines(leftLines, contentRows)
+
+	var rightLines []string
+	var title string
+	if m.settingsEnvEditing {
+		title = "Edit [env] entry"
+		keyMarker, valueMarker := "  ", "  "
+		if m.settingsEnvEditingKeyPart {
+			keyMarker = "> "
+		} else {
+			valueMarker = "> "
+		}
+		rightLines = []string{
+			m.settingsRenderRow([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}, theme.Selection, m.settingsEnvEditingKeyPart),
+			m.settingsRenderRow([]settingsRowSegment{{Text: valueMarker + "Value: " + m.settingsEnvEditValue, Tok: theme.Text}}, theme.Selection, !m.settingsEnvEditingKeyPart),
+		}
+	} else {
+		title = "[env]"
+		keys := settingsEnvKeys(m.settingsEdits)
+		rightLines = make([]string, 0, len(keys)+1)
+		for i, k := range keys {
+			marker := "  "
+			selected := i == m.settingsEnvIndex
+			if selected {
+				marker = "> "
+			}
+			segs := []settingsRowSegment{
+				{Text: marker, Tok: theme.Text},
+				{Text: k, Tok: theme.Hint},
+				{Text: "=", Tok: theme.Text},
+				{Text: m.settingsEdits.Env[k], Tok: theme.Text},
+			}
+			rightLines = append(rightLines, m.settingsRenderRow(segs, theme.Selection, selected))
+		}
+		addMarker := "  "
+		addSelected := m.settingsEnvIndex == len(keys)
+		if addSelected {
+			addMarker = "> "
+		}
+		rightLines = append(rightLines, m.settingsRenderRow([]settingsRowSegment{{Text: addMarker + "+ add entry", Tok: theme.Hint}}, theme.Selection, addSelected))
+	}
+	rightLines = fitLines(rightLines, contentRows)
+
+	lines := make([]string, 0, height)
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
+	for i := 0; i < contentRows; i++ {
+		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
+	}
+	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
+	lines = append(lines, m.settingsFooterLine())
+	return strings.Join(lines, "\n")
 }
 
 // settingsSearchViewLines renders the takeover while `/`'s search box is
