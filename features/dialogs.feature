@@ -1,5 +1,5 @@
 @dialogs
-Feature: The §11.4 dialog contract, asserted per dialog (requirements 8, 9, 10, 11, 50)
+Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 10, 11, 50)
   createView, detailView, profileSwitchView, pinView and helpView all defer
   to the ONE contract implementation in internal/tui/dialog_contract.go
   (task 029): esc cancels and changes nothing, enter submits, tab/shift+tab
@@ -23,6 +23,13 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 8, 9, 10,
     And the state database has exactly 0 sessions
     And the scenario's config.toml still matches the captured "before-create-esc"
     When deck client "A" exits cleanly
+
+  @requirement-7-every-field-reachable-editable-described
+  Scenario: create dialog -- every field is reachable by keyboard alone, editable, and each edit is visible
+    Given deck client "A" is started
+    When deck client "A" walks and edits every create modal field by keyboard, asserting each change is visible
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
 
   Scenario: create dialog -- enter submits a valid form
     Given deck client "A" is started
