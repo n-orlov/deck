@@ -17,7 +17,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
@@ -967,6 +967,13 @@ func (s *Store) migrate(version int) error {
 				return fmt.Errorf("create schema v3: %w", err)
 			}
 		}
+		fallthrough
+	case 3:
+		for _, statement := range schemaV4 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v4: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -1018,6 +1025,16 @@ var schemaV2 = []string{
 // status/status_source transition.
 var schemaV3 = []string{
 	`ALTER TABLE sessions ADD COLUMN last_probe_at INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV4 adds recent_cwds (task 006, SPEC §4/§11.7: the create modal's
+// directory history). used_seq is monotonic, never a clock value, so
+// ordering stays assertable under a frozen DECK_CLOCK (SPEC §13.1). It is
+// applied on top of schemaV1-3 for a fresh database and standalone for an
+// existing v1/v2/v3 database, and never touches the sessions table -- an
+// upgrade to v4 recreates no session row.
+var schemaV4 = []string{
+	`CREATE TABLE IF NOT EXISTS recent_cwds (path TEXT PRIMARY KEY, used_seq INTEGER NOT NULL)`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

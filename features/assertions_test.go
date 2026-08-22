@@ -37,6 +37,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the private tmux option "([^"]+)" is "([^"]+)"$`, privateOptionIs)
 	sc.Step(`^the state database has schema version ([0-9]+)$`, databaseSchemaVersion)
 	sc.Step(`^the state database journal mode is "([^"]+)"$`, databaseJournalMode)
+	sc.Step(`^the state database has a table "([^"]+)"$`, databaseHasTable)
 	sc.Step(`^the state database contains session "([^"]+)" with status "([^"]+)"$`, databaseSessionStatus)
 	sc.Step(`^the state database contains session "([^"]+)"$`, databaseContainsSession)
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with killed_by_user=([01])$`, databaseSessionTerminalFields)
@@ -439,6 +440,26 @@ func databaseSchemaVersion(ctx context.Context, want int) error {
 	}
 	if got != want {
 		return fmt.Errorf("schema version = %d, want %d", got, want)
+	}
+	return nil
+}
+
+func databaseHasTable(ctx context.Context, table string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil {
+		return fmt.Errorf("observe table %s: %w", table, err)
+	}
+	if count != 1 {
+		return fmt.Errorf("table %s count = %d, want 1", table, count)
 	}
 	return nil
 }
@@ -1039,7 +1060,7 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := privateOptionIs(stepCtx, "exit-empty", "off"); err != nil {
 		t.Fatal(err)
 	}
-	if err := databaseSchemaVersion(stepCtx, 3); err != nil {
+	if err := databaseSchemaVersion(stepCtx, 4); err != nil {
 		t.Fatal(err)
 	}
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {
