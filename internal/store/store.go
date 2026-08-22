@@ -872,6 +872,20 @@ func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, s
 // outlives the change actually reaching a live process. It never touches
 // tmux or the sessions.env column itself -- only the flag.
 func (s *Store) ClearEnvDirty(ctx context.Context, sessionID string, at int64) error {
+	return s.clearEnvDirtyWithReason(ctx, sessionID, "restart", at)
+}
+
+// MarkEnvInjected clears env_dirty exactly like ClearEnvDirty, but records
+// the apply event's reason as "inject" instead of "restart": task 023's
+// inject-instead path (SPEC §6.2/§6.3, shell sessions only) applies a
+// pending edit straight into a live shell's already-running process via
+// `export`, without ever killing or relaunching its pane, so the badge
+// must clear the same way a restart's own apply does.
+func (s *Store) MarkEnvInjected(ctx context.Context, sessionID string, at int64) error {
+	return s.clearEnvDirtyWithReason(ctx, sessionID, "inject", at)
+}
+
+func (s *Store) clearEnvDirtyWithReason(ctx context.Context, sessionID, reason string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
@@ -895,13 +909,47 @@ func (s *Store) ClearEnvDirty(ctx context.Context, sessionID string, at int64) e
 		return fmt.Errorf("session %q not found", sessionID)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, ?, ?, ?, ?)`,
-		sessionID, at, "env_applied", "restart", ""); err != nil {
+		sessionID, at, "env_applied", reason, ""); err != nil {
 		return fmt.Errorf("record clear env_dirty event for session %q: %w", sessionID, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit clear env_dirty for session %q: %w", sessionID, err)
 	}
 	return nil
+}
+
+// DirtyEnvKeys lists the env keys changed via SetSessionEnvValue since the
+// row's env_dirty flag was last cleared (ClearEnvDirty/MarkEnvInjected),
+// in the order each was first changed. Task 023's inject-instead path
+// uses this to export exactly the keys a pending edit actually touched
+// into a live shell -- never the whole persisted env, most of which the
+// pane already has correctly from when it started.
+func (s *Store) DirtyEnvKeys(ctx context.Context, sessionID string) ([]string, error) {
+	if sessionID == "" {
+		return nil, errors.New("session id is required")
+	}
+	var lastApplied sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT MAX(at) FROM events WHERE session_id = ? AND kind = 'env_applied'`, sessionID).Scan(&lastApplied); err != nil {
+		return nil, fmt.Errorf("read last env_applied event for session %q: %w", sessionID, err)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT payload, MIN(at) AS first_at FROM events WHERE session_id = ? AND kind = 'set_env' AND at > ? GROUP BY payload ORDER BY first_at ASC`, sessionID, lastApplied.Int64)
+	if err != nil {
+		return nil, fmt.Errorf("list changed env keys for session %q: %w", sessionID, err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var key string
+		var firstAt int64
+		if err := rows.Scan(&key, &firstAt); err != nil {
+			return nil, fmt.Errorf("scan changed env key for session %q: %w", sessionID, err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list changed env keys for session %q: %w", sessionID, err)
+	}
+	return keys, nil
 }
 
 // SetResumePin pins a session to resume a specific conversation id going

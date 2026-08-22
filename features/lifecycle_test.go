@@ -114,6 +114,13 @@ type ScenarioHarness struct {
 	// real PATH varies by host), and a later step asserts the current
 	// value is still byte-identical to it.
 	livePaneEnvSnapshots map[string]string
+
+	// livePanePidSnapshots backs task 023's "inject-instead never kills or
+	// relaunches the pane" criterion: a step captures a live pane's own
+	// #{pane_pid} under a label before an inject, and a later step asserts
+	// the pid is still identical afterwards -- a restart would produce a
+	// brand-new pid, since tmux exec's a fresh process into the pane.
+	livePanePidSnapshots map[string]string
 }
 
 var scenarioSequence atomic.Uint64

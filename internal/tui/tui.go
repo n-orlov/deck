@@ -103,9 +103,23 @@ type Model struct {
 	// clearing env_dirty on success -- the only path that ever applies a
 	// pending `e`-editor edit to an already-running process. nil means
 	// restarting is unavailable.
-	restart       func(context.Context, string) (store.Session, service.ResumeOutcome, error)
-	profileSwitch func(context.Context, string, string) (store.Session, error)
-	selected      int
+	restart func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	// inject is task 023's "inject instead" alternative to restart, offered
+	// only for a shell session: it exports the keys changed since env_dirty
+	// was last cleared straight into the live, already-running pane's shell
+	// (never killing or relaunching it) and clears env_dirty the same way a
+	// successful restart does. nil means injecting is unavailable.
+	inject func(context.Context, string) (store.Session, []string, error)
+	// restartChoosing is true while the `R` restart/inject-instead choice
+	// (task 023, shell sessions only) is open; restartChoiceValue is the
+	// locally-held candidate ("restart" or "inject"), defaulting to
+	// "restart" so an already-existing R workflow needs only one extra
+	// Enter to keep behaving exactly as before task 023.
+	restartChoosing    bool
+	restartChoiceValue string
+	restartChoiceNote  string
+	profileSwitch      func(context.Context, string, string) (store.Session, error)
+	selected           int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -412,6 +426,17 @@ type sessionRestarted struct {
 	err     error
 }
 
+// envInjected carries the result of task 023's inject-instead alternative
+// to Restart: the keys that were actually exported into the live shell
+// pane (nil/empty when there was nothing dirty to inject, which is not an
+// error), or the error that left the pane, env_dirty and the store exactly
+// as they were before.
+type envInjected struct {
+	session store.Session
+	keys    []string
+	err     error
+}
+
 type profileSwitched struct {
 	session store.Session
 	err     error
@@ -593,6 +618,21 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterAndInjector
+// adds task 023's `R` inject-instead alternative for shell sessions:
+// injector exports the env keys changed since env_dirty was last cleared
+// directly into the selected session's live, already-running shell pane
+// (never killing or relaunching it), then clears env_dirty exactly as a
+// successful restart does. Until injector is wired, choosing "inject" in
+// the `R` choice dialog fails with "injecting the environment is
+// unavailable" rather than silently doing nothing; the dialog itself is
+// only ever offered for a shell session (Restart, above, is unaffected).
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterAndInjector(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error)) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterAndRestarter(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter)
+	m.inject = injector
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -767,6 +807,25 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		// A successful restart also closes task 023's restart/inject-instead
+		// choice dialog, if that is how this restart was chosen -- a no-op
+		// when R restarted directly (non-shell session, no dialog ever
+		// opened).
+		m.restartChoosing = false
+		m.restartChoiceNote = ""
+		return m, m.loadSessions
+	case envInjected:
+		// Task 023's inject-instead: unlike Restart, nothing was killed or
+		// relaunched, so a failure leaves the choice dialog open with a note
+		// (mirroring profileSwitched/resumeModeChanged) rather than the
+		// attachError banner sessionRestarted uses -- the dialog is still the
+		// right place to retry or switch to "restart" instead.
+		if msg.err != nil {
+			m.restartChoiceNote = "Cannot inject: " + msg.err.Error()
+			return m, nil
+		}
+		m.restartChoosing = false
+		m.restartChoiceNote = ""
 		return m, m.loadSessions
 	case profileSwitched:
 		if msg.err != nil {
@@ -849,6 +908,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.envEditing {
 			return m.updateEnvDialog(msg)
+		}
+		if m.restartChoosing {
+			return m.updateRestartChoice(msg)
 		}
 		if m.settingsOpen {
 			return m.updateSettings(msg)
@@ -969,6 +1031,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.attachError = "Cannot restart: session is not running (use r to resume it)"
 				return m, nil
 			}
+			if session.Agent == "shell" {
+				// Task 023: a shell session gets the restart/inject-instead
+				// choice instead of restarting immediately -- restarting a
+				// plain shell loses whatever state (cwd, history, running
+				// commands) that shell had, which inject-instead avoids.
+				m.restartChoosing = true
+				m.restartChoiceValue = "restart"
+				m.restartChoiceNote = ""
+				return m, nil
+			}
 			sessionID := session.ID
 			return m, func() tea.Msg {
 				restarted, outcome, err := m.restart(context.Background(), sessionID)
@@ -1075,7 +1147,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -1198,6 +1270,9 @@ func (m Model) View() string {
 	}
 	if m.envEditing && len(m.sessions) > 0 {
 		return m.envView()
+	}
+	if m.restartChoosing && len(m.sessions) > 0 {
+		return m.restartChoiceView()
 	}
 	if m.settingsOpen {
 		return m.settingsView()
@@ -2097,6 +2172,78 @@ func (m Model) pinView() string {
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.pinNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.pinNote)
+	}
+	return m.framedDialog(b.String())
+}
+
+// restartChoiceOptions lists task 023's `R` choice for a shell session:
+// restart (Restart's existing kill-and-relaunch-with-resume-argv, the
+// pre-task-023 behaviour, kept as the default candidate so a bare R+Enter
+// still restarts exactly as before) or inject (export the keys changed
+// since env_dirty was last cleared directly into the live, already-
+// running shell, never killing or relaunching its pane).
+var restartChoiceOptions = []string{"restart", "inject"}
+
+// updateRestartChoice handles keys while the `R` restart/inject-instead
+// choice (task 023, shell sessions only) is open. It only ever cycles a
+// locally-held candidate and, on confirmation, dispatches to whichever of
+// m.restart/m.inject the candidate names; it never issues anything to the
+// selected session's pane itself -- that happens inside the dispatched
+// service call, exactly as a direct (non-shell) `R` already does.
+func (m Model) updateRestartChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	session := m.sessions[m.selected]
+	cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{Cycle: func(delta int) {
+			m.restartChoiceValue = cycleOption(restartChoiceOptions, m.restartChoiceValue, delta)
+		}},
+		Cancel: func() {
+			m.restartChoosing = false
+			m.restartChoiceNote = ""
+		},
+		Submit: func() tea.Cmd {
+			sessionID := session.ID
+			if m.restartChoiceValue == "inject" {
+				if m.inject == nil {
+					m.restartChoiceNote = "injecting the environment is unavailable"
+					return nil
+				}
+				return func() tea.Msg {
+					updated, keys, err := m.inject(context.Background(), sessionID)
+					return envInjected{session: updated, keys: keys, err: err}
+				}
+			}
+			if m.restart == nil {
+				m.restartChoiceNote = "restarting is unavailable"
+				return nil
+			}
+			return func() tea.Msg {
+				restarted, outcome, err := m.restart(context.Background(), sessionID)
+				return sessionRestarted{session: restarted, outcome: outcome, err: err}
+			}
+		},
+	})
+	if handled {
+		return m, cmd
+	}
+	return m, nil
+}
+
+// restartChoiceView renders task 023's `R` restart/inject-instead choice
+// for a shell session. It states plainly what each option does and does
+// NOT do, so the choice is never mistaken for identical outcomes: restart
+// kills and relaunches the pane (losing the shell's own running state);
+// inject exports the pending change into the SAME already-running shell
+// process without ever killing it.
+func (m Model) restartChoiceView() string {
+	session := m.sessions[m.selected]
+	var b strings.Builder
+	fmt.Fprintf(&b, "Restart or inject for %s\n\n", session.Name)
+	fmt.Fprintf(&b, "%s\n", m.detailField("Choice:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.restartChoiceValue, strings.Join(restartChoiceOptions, ", "))))
+	b.WriteString("\nrestart kills this session's pane and relaunches it with the resume argv\n(same conversation id), losing whatever state the running shell had.\n")
+	b.WriteString("inject exports the pending environment change into the SAME live shell\nprocess via export -- the pane is never killed or relaunched.\n")
+	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+	if m.restartChoiceNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.restartChoiceNote)
 	}
 	return m.framedDialog(b.String())
 }

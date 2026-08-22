@@ -240,6 +240,33 @@ func (c Client) SetEnvironment(ctx context.Context, slug, key, value string) err
 	return nil
 }
 
+// SendKeys types literal text into a deck-owned session's single pane,
+// exactly as a user typing at the keyboard would, followed by Enter to
+// submit it as a command line. `-l` sends the text literally (no key-name
+// translation, so `=`/`$`/quotes in an exported value reach the shell
+// unmodified) and Enter is sent as its own key name in a second call,
+// mirroring how a real keystroke sequence separates typed text from the
+// key that submits it. It is used only by task 023's inject-instead path
+// to run `export KEY=value` in an already-running shell session's pane --
+// never to drive any coding agent's own input, and never anything but
+// this one line.
+func (c Client) SendKeys(ctx context.Context, slug, literal string) error {
+	if c.Socket == "" {
+		return errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
+	if err != nil {
+		return err
+	}
+	if _, err := c.run(ctx, "send-keys", "-t", name, "-l", "--", literal); err != nil {
+		return fmt.Errorf("send keys to session %q: %w", name, err)
+	}
+	if _, err := c.run(ctx, "send-keys", "-t", name, "Enter"); err != nil {
+		return fmt.Errorf("send Enter to session %q: %w", name, err)
+	}
+	return nil
+}
+
 // List returns only deck-owned sessions and their pane facts. A server with no
 // sessions is a normal empty result.
 func (c Client) List(ctx context.Context) ([]Session, error) {

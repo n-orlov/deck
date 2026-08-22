@@ -11,7 +11,13 @@ Feature: The `e` env editor shows the effective value and winning layer per key,
   as `env↻`) and mirrors the key into tmux's own environment table for
   FUTURE panes only -- the live pane's already-running process keeps
   whatever it started with until an explicit restart applies it (task
-  022's own deliverable).
+  022's own deliverable). For a shell session, `R` offers a choice between
+  that restart (kill and relaunch, losing the shell's own running state)
+  and inject-instead (task 023): export the changed keys straight into
+  the SAME already-running shell process via `export`, never killing or
+  relaunching its pane. A non-shell (agent) session's `R` restarts
+  directly with no such choice, since an agent's own input has no safe
+  "inject a shell export line" equivalent.
 
   @requirement-20-env-editor-winning-layer
   Scenario: a key set in two layers names the session layer as the winner, and PATH names captured_path
@@ -78,8 +84,52 @@ Feature: The `e` env editor shows the effective value and winning layer per key,
     And the state database session "restart env target" is marked env_dirty
     And the live pane process environment for session "restart env target" key "PATH" still matches the captured "before-restart-edit"
     When deck client "A" presses R on session "restart env target"
+    Then deck client "A" screen contains "Restart or inject"
+    And deck client "A" screen contains "restart"
+    When deck client "A" submits the open dialog
     Then within one configured reconcile interval deck client "A" screen contains "running"
     And the state database session "restart env target" is not marked env_dirty
     And deck client "A" screen does not contain "env*"
     And the live pane process environment for session "restart env target" key "PATH" is "/restart/applied/path"
     When deck client "A" exits cleanly
+
+  @requirement-023-inject-instead-exports-into-live-shell-without-restarting
+  Scenario: R offers inject-instead for a shell session, exporting the pending edit into the same live pane
+    Given deck client "A" is started
+    When deck client "A" creates shell session "inject target"
+    Then deck client "A" screen contains "inject target"
+    And the live pane pid for session "inject target" is captured as "before-inject"
+    When deck client "A" opens the env editor for session "inject target"
+    And deck client "A" edits the highlighted env key to "/inject/applied/path"
+    And deck client "A" closes the dialog with escape
+    Then the state database session "inject target" is marked env_dirty
+    When deck client "A" presses R on session "inject target"
+    Then deck client "A" screen contains "Restart or inject"
+    When deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "inject"
+    When deck client "A" submits the open dialog
+    Then deck client "A" screen contains "deck - sessions"
+    And the state database session "inject target" is not marked env_dirty
+    And the live pane pid for session "inject target" still matches the captured "before-inject"
+    And the live shell for session "inject target" echoes env key "PATH" as "/inject/applied/path"
+    When deck client "A" exits cleanly
+
+  @requirement-023-inject-instead-restart-path-still-available
+  Scenario: R's restart path is still available and separately provable for a shell session
+    Given deck client "A" is started
+    When deck client "A" creates shell session "restart still works"
+    Then deck client "A" screen contains "restart still works"
+    And the live pane pid for session "restart still works" is captured as "before-restart-choice"
+    When deck client "A" opens the env editor for session "restart still works"
+    And deck client "A" edits the highlighted env key to "/restart/choice/path"
+    And deck client "A" closes the dialog with escape
+    Then the state database session "restart still works" is marked env_dirty
+    When deck client "A" presses R on session "restart still works"
+    Then deck client "A" screen contains "Restart or inject"
+    When deck client "A" submits the open dialog
+    Then within one configured reconcile interval deck client "A" screen contains "running"
+    And the state database session "restart still works" is not marked env_dirty
+    And the live pane process environment for session "restart still works" key "PATH" is "/restart/choice/path"
+    And the live pane pid for session "restart still works" no longer matches the captured "before-restart-choice"
+    When deck client "A" exits cleanly
+
