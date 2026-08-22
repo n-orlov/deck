@@ -72,18 +72,33 @@ type Model struct {
 	createCWDPreCycleValue     string
 	createCWDPreCyclePrefilled bool
 	createCWDPreCycleLastUsed  bool
-	createField                int
-	createError                string
-	create                     func(context.Context, service.ShellCreateInput) (store.Session, error)
-	createAgentSession         func(context.Context, service.AgentCreateInput) (store.Session, error)
-	attach                     func(context.Context, string) (*exec.Cmd, error)
-	prepareAttach              func(context.Context, string) error
-	kill                       func(context.Context, store.Session) error
-	acknowledge                func(context.Context, string) error
-	reconcile                  func(context.Context) error
-	resume                     func(context.Context, string) (store.Session, service.ResumeOutcome, error)
-	profileSwitch              func(context.Context, string, string) (store.Session, error)
-	selected                   int
+	// createCWDCandidates is task 012's bash-completion-contract listing
+	// branch: non-nil only while tab has reached the longest common prefix
+	// among the segment's directory matches and at least two still remain
+	// (it cannot advance the text any further), so the user picks one
+	// explicitly instead of a right-arrow ghost guessing among them (task
+	// 011's reasoning against ghosting an ambiguous match applies here
+	// too). nil whenever the list is closed -- not open, or just closed by
+	// any edit, field change, selection or esc.
+	createCWDCandidates []string
+	// createCWDCandidateIndex is the 0-based highlighted entry within
+	// createCWDCandidates, moved by up/down while the list is open (which
+	// suspends the field's own §11.7 recent_cwds cycling for as long as
+	// the list is open, exactly as it is already suspended while an
+	// ambiguous-match count or a ghost is shown instead).
+	createCWDCandidateIndex int
+	createField             int
+	createError             string
+	create                  func(context.Context, service.ShellCreateInput) (store.Session, error)
+	createAgentSession      func(context.Context, service.AgentCreateInput) (store.Session, error)
+	attach                  func(context.Context, string) (*exec.Cmd, error)
+	prepareAttach           func(context.Context, string) error
+	kill                    func(context.Context, store.Session) error
+	acknowledge             func(context.Context, string) error
+	reconcile               func(context.Context) error
+	resume                  func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	profileSwitch           func(context.Context, string, string) (store.Session, error)
+	selected                int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -768,6 +783,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createCWDPrefilled = true
 				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
 				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
+				m.closeCreateCWDCandidates()
 				m.createAgent, m.createProfile = defaultCreateAgent(m.registry().Kinds()), createProfileOptions[0]
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
 				m.createYoloConfirmed = false
@@ -2325,6 +2341,66 @@ func parseCreateEnv(raw string) (map[string]string, error) {
 }
 
 func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// The candidate list (task 012) only ever exists while field 1 (cwd)
+	// is focused; leaving it any other way -- shift+tab away, cycling the
+	// Agent/profile fields, anything applyDialogContract's own field
+	// navigation does -- must not leave it open and stale for the next
+	// time the user tabs back onto this field.
+	if m.createField != 1 {
+		m.closeCreateCWDCandidates()
+	}
+	if m.createField == 1 {
+		switch msg.String() {
+		case "tab":
+			// §11.7's bash-completion-contract key (task 012): "tab completes
+			// to the longest common prefix when that advances the text, and
+			// otherwise lists the candidates for selection". This replaces
+			// the cwd field's normal "tab moves to the next field" ONLY
+			// while there is something to complete or list; whenever there
+			// is nothing to do at all -- no directory matches the segment,
+			// or the segment already names the one candidate there is in
+			// full -- tabCompleteCreateCWD reports false and tab falls
+			// through to applyDialogContract below exactly as it always
+			// has, so existing callers that tab straight through an
+			// untouched, already-real cwd prefill onto the next field stay
+			// unaffected.
+			if m.tabCompleteCreateCWD() {
+				return m, nil
+			}
+		case "esc":
+			// esc closes an open candidate list without changing the field
+			// or the value, one step short of applyDialogContract's own esc
+			// (cancel the whole modal) -- consumed here first so a user
+			// backing out of the list is not also thrown out of the create
+			// modal in the same keystroke.
+			if len(m.createCWDCandidates) > 0 {
+				m.closeCreateCWDCandidates()
+				return m, nil
+			}
+		case "enter":
+			// enter selects the highlighted candidate into the field rather
+			// than submitting the whole modal, one step short of
+			// applyDialogContract's own enter -- exactly like esc above.
+			if len(m.createCWDCandidates) > 0 {
+				m.acceptCWDCandidate(m.createCWDCandidates[m.createCWDCandidateIndex])
+				return m, nil
+			}
+		case "up":
+			// While the list is open, up/down move the highlighted entry
+			// rather than cycling recent_cwds (the existing "up"/"down" case
+			// below): the two per-field key sets are mutually exclusive,
+			// same as the ghost/ambiguous-count/recent labels already are.
+			if len(m.createCWDCandidates) > 0 {
+				m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
+				return m, nil
+			}
+		case "down":
+			if len(m.createCWDCandidates) > 0 {
+				m.createCWDCandidateIndex = (m.createCWDCandidateIndex + 1) % len(m.createCWDCandidates)
+				return m, nil
+			}
+		}
+	}
 	if cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{
 			Count:          createFieldCount,
@@ -2395,6 +2471,10 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// "down" must not resurrect the pre-cycle value out from under
 			// what was just typed.
 			m.createCWDRecentIndex = -1
+			// Typing also ends an open tab-completion candidate list (task
+			// 012): the segment it was built for no longer exists once the
+			// user keeps typing, so the stale list must not linger.
+			m.closeCreateCWDCandidates()
 			m.createCWD += string(runes)
 		case 4:
 			m.createLaunchArgs += string(runes)
@@ -2516,12 +2596,16 @@ func (m *Model) backspaceCreateField() {
 			// edit, not only appended runes).
 			m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
 			m.createCWDRecentIndex = -1
+			m.closeCreateCWDCandidates()
 			return
 		}
 		// Backspace also ends an up/down cycle in progress (task 009), same
 		// reasoning as the rune-append path above: the field is being edited
 		// now, so it must stop being a live view of createCWDRecents.
 		m.createCWDRecentIndex = -1
+		// Backspace also ends an open tab-completion candidate list (task
+		// 012), same reasoning: the segment it was built for is changing.
+		m.closeCreateCWDCandidates()
 		if len(m.createCWD) > 0 {
 			m.createCWD = m.createCWD[:len(m.createCWD)-1]
 		}
@@ -2646,6 +2730,21 @@ func (m Model) createView() string {
 	b.WriteString(title + "\n")
 	for field, row := range m.createFieldRows() {
 		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", marker(field), row.label, row.value, row.help)
+	}
+	if len(m.createCWDCandidates) > 0 {
+		// task 012's tab-completion listing branch: rendered directly under
+		// the field set (not buried in the one-line help text, unlike
+		// "N matches" -- an actually navigable list needs its own lines) so
+		// a scenario can assert both the candidate set and which one is
+		// highlighted.
+		b.WriteString("  candidates (up/down selects, enter or tab accepts, esc closes):\n")
+		for i, name := range m.createCWDCandidates {
+			marker := "    "
+			if i == m.createCWDCandidateIndex {
+				marker = "  > "
+			}
+			fmt.Fprintf(&b, "%s%s/\n", marker, name)
+		}
 	}
 	b.WriteString("Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels\n")
 	if m.createError != "" {

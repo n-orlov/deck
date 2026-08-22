@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -148,4 +149,109 @@ func (m *Model) acceptCWDGhost() {
 	m.createCWDPrefilled = false
 	m.createCWDLastUsed = false
 	m.createCWDRecentIndex = -1
+	m.closeCreateCWDCandidates()
+}
+
+// createCWDCommonPrefix returns the longest prefix shared by every one of
+// names (bash's own tab-completion contract, task 012): "" when names is
+// empty, and the whole name unchanged when there is exactly one. Every
+// name createCWDMatches ever returns already shares raw's typed segment
+// as a common prefix, so the result is always at least that long -- it
+// can only ever grow what is already on screen, never shrink it.
+func createCWDCommonPrefix(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	prefix := names[0]
+	for _, name := range names[1:] {
+		n := len(prefix)
+		if len(name) < n {
+			n = len(name)
+		}
+		i := 0
+		for i < n && prefix[i] == name[i] {
+			i++
+		}
+		prefix = prefix[:i]
+		if prefix == "" {
+			return ""
+		}
+	}
+	return prefix
+}
+
+// tabCompleteCreateCWD implements task 012's §11.7 requirement 16: "tab
+// completes to the longest common prefix when that advances the text, and
+// otherwise lists the candidates for selection" -- bash's own completion
+// contract, applied to the cwd field's CURRENT raw text (m.createCWD).
+//
+// It reports handled=false, doing nothing at all, in the two cases where
+// there is genuinely nothing to complete or list: the directory portion
+// cannot be scanned or no entry's name starts with the segment (zero
+// candidates), or the segment already spells out in full the one
+// candidate there is (one candidate, nothing left to advance to and
+// nothing to list) -- letting tab fall back to its ordinary "move to the
+// next field" meaning in exactly those two cases, so a caller that tabs
+// through an untouched, already-real cwd value onto the next field is
+// unaffected by this task.
+//
+// Otherwise it reports handled=true: either the common prefix among the
+// candidates is longer than the segment already typed, in which case the
+// missing suffix is appended (plus a trailing "/" when that prefix is
+// itself the one candidate's full, unique name -- the same unique-match
+// case createCWDGhostCompletion's right/end already complete to); or the
+// prefix cannot advance any further and at least two candidates remain,
+// in which case createCWDCandidates is populated (sorted) for the user to
+// pick from with up/down and enter (task 012's other new per-field keys).
+func (m *Model) tabCompleteCreateCWD() bool {
+	names, ok := createCWDMatches(m.createCWD)
+	if !ok || len(names) == 0 {
+		return false
+	}
+	_, segment := splitCWDSegment(m.createCWD)
+	prefix := createCWDCommonPrefix(names)
+	if len(prefix) > len(segment) {
+		m.createCWD += prefix[len(segment):]
+		if len(names) == 1 {
+			m.createCWD += "/"
+		}
+		m.createCWDPrefilled = false
+		m.createCWDLastUsed = false
+		m.createCWDRecentIndex = -1
+		m.closeCreateCWDCandidates()
+		return true
+	}
+	if len(names) < 2 {
+		return false
+	}
+	sorted := append([]string(nil), names...)
+	sort.Strings(sorted)
+	m.createCWDCandidates = sorted
+	m.createCWDCandidateIndex = 0
+	return true
+}
+
+// acceptCWDCandidate puts name -- one entry of m.createCWDCandidates,
+// task 012's tab-completion listing branch -- into the field in place of
+// the segment being completed, plus a trailing "/" (every candidate is a
+// directory, never a file, exactly like every other completion path in
+// this file), and closes the list. It is an edit like any other: it
+// clears the §11.7 prefill/last-used labels and ends any recent_cwds
+// up/down cycle in progress (task 009), same reasoning as
+// acceptCWDGhost's.
+func (m *Model) acceptCWDCandidate(name string) {
+	dir, _ := splitCWDSegment(m.createCWD)
+	m.createCWD = dir + name + "/"
+	m.createCWDPrefilled = false
+	m.createCWDLastUsed = false
+	m.createCWDRecentIndex = -1
+	m.closeCreateCWDCandidates()
+}
+
+// closeCreateCWDCandidates closes task 012's tab-completion candidate
+// list without changing the field, safe to call whenever the list may or
+// may not be open (nil slice, index 0 is simply the closed state).
+func (m *Model) closeCreateCWDCandidates() {
+	m.createCWDCandidates = nil
+	m.createCWDCandidateIndex = 0
 }
