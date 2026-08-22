@@ -15,6 +15,9 @@ alone is not an identification. Recover any past version with `git cat-file -p <
 | 0 | Harness & walking skeleton | `prds/phase0-harness-and-skeleton.md` | `40af336` | `deck-phase0` | 2026-08-17 18:09 | 2026-08-17 21:21 | `failed / unverified` — review rejected approach 3 (last of 3) on R22 report defects | **substantially pass, with two defects carried to Phase 0b**: all 23 requirements implemented, suite green twice uncached (operator-run), but the suite is flaky (~1 run in 3) and the evidence report is deficient |
 | 0b | Harness determinism & evidence | `prds/phase0b-harness-hardening.md` | `9b23161` | `deck-phase0b` | 2026-08-17 21:41 | 2026-08-17 22:33 | `failed / unverified` — review rejected all 3 approaches on stale wording in *derived* report text | **pass**, operator-verified: flake eliminated (10/10 consecutive full-suite runs), hold knob gone, evidence persisted in-repo, count convention correct. Three stale sentences fixed by the operator by hand |
 | 1 | Durable identity & agents | `prds/phase1-durable-identity-and-agents.md` | `a1951f8` (in-run snapshot `322a7e0`, see notes) | `deck-phase1` | 2026-08-18 14:50 | 2026-08-18 16:50 | `succeeded / verified` on approach 6 of 12, iteration 121/250 — review rejected approach 5 on a real unmet R1 | **pass**, operator-verified: 10/10 consecutive full-suite runs; R29 walkthrough executed against a **real** `claude` and the conversation provably survived the reboot stand-in. One blocking regression (create-modal default agent) was found by the operator *after* the review passed it |
+| 2 | Status truth | `prds/phase2-status-truth.md` | `588c7fa` | `deck-phase2` | 2026-08-19 18:05 | 2026-08-20 10:26 | `succeeded / verified` on approach 5 of 12, iteration 261 — reviews rejected approaches 1-4 | **pass**, operator-verified: full suite green, `ci/stability.sh 10` 10/10 |
+| 2b-1 | The visible shell | `prds/phase2b1-visible-shell.md` | `6aea36f` (in-run snapshot; the in-repo file is now `3f7c1eb` — see notes) | `deck-phase2b1` | 2026-08-20 15:58 | 2026-08-21 10:03 | `succeeded / verified` on approach 2 of 8, iteration 127 — review rejected approach 1 | **pass with one disagreement**: suite green, but my independent `ci/stability.sh 10` returned **9/10** where the job reported 10/10. The one failure was `crash.feature`'s SIGKILL scenario teardown, diagnosed and fixed in 2b-2 (task 014) |
+| 2b-2 | Configuration & appearance | `prds/phase2b2-configuration-and-appearance.md` | `db465ad` (in-run snapshot; the in-repo file is now `7331492` — see notes) | `deck-phase2b2` | 2026-08-21 11:40 | 2026-08-22 14:34 | `succeeded / verified` on approach 4 of 8, iteration 223 — reviews rejected approaches 1-3, each on a genuinely unmet requirement | **pass**, operator-verified independently at `d346a4b`: `ci/run.sh go test -count=1 ./...` all packages `ok` (features 162.7 s), `ci/stability.sh 10` **10/10** (exit 0), `git diff 84af034..HEAD -- SPEC.md prds ci/Dockerfile ci/SPIKE.md` empty, tree clean. No disagreement with the job's verdict — unlike 2b-1, where my own 10-run came back 9/10 |
 
 ### Notes per run
 
@@ -291,6 +294,109 @@ three are gaps in what deck *observes*, not in what it does:
    liveness promotes `starting → running`, sound precisely because no higher-precedence source
    exists for a shell that could contradict it, and explicitly *not* generalised to agent rows
    where the fabricated-`running` prohibition still binds.
+
+**Phase 2** — Opus 5 planning/review/reflect, Sonnet 5 worker/verify, `--vigilant --reflect`,
+`--allow-docker --network host`, 37 requirements, 84 commits (`55e04e6..17cc346`).
+215 worker iterations, 37 verify, 5 planning, 5 review.
+
+**Four approaches were rejected before the fifth passed**, and that is the phase's main lesson:
+the reviews were right every time. Status truth is a domain where a plausible-looking
+implementation is the failure mode — a row that says `running` because nothing proved otherwise
+is exactly the fabrication the spec forbids — so "the tests pass" carried very little
+information, and the review pass earned its cost.
+
+**Phase 2b-1** — same model split and flags, 24 requirements, 59 commits
+(`17cc346..84af034`). 81 worker iterations, 49 verify, 2 planning, 2 review, 1 reflect.
+
+*Two run-killing incidents, both worth knowing about:*
+
+- **The job SIGKILLed itself.** At iteration 9, in a verify turn, it ran
+  `docker ps -a --filter "label=ralphd.run=deck-phase2b1" -q | xargs -r docker rm -f`.
+  The job's *own* container carries that label, so the sweep killed the job mid-verify and
+  lost task 004's verdict. Fixed forward in the PRD (`e5d2b58`) by removing requirement 46's
+  container-hygiene ask entirely — every sibling `ci/run.sh` starts is already `--rm`, so there
+  was nothing to clean — and by moving the label hazard and the safe read-only command *inline
+  into the requirement whose verification triggers the hazard*, rather than leaving them in a
+  Constraints section three sections away. A constraint that contradicts a requirement loses to
+  the requirement.
+
+  **Correction to `e5d2b58`'s own commit message** (recorded here because published history is
+  fixed forward, never amended): that message says Phase 1 "died the same way at its own
+  iteration 17, also in verify". `deck-phase1`'s event log does not support either detail —
+  iteration 17 was a **worker** iteration that ended `exitCode: 0`, and the only interrupted
+  iteration in that run is **68** (worker, 2026-08-18 12:24:53Z, `exitCode: -2`,
+  `interrupted: true`). The substance of the commit — that this class of self-kill had happened
+  before and the PRD was the right place to fix it — stands; the iteration number and phase in
+  its narrative do not.
+
+- **The in-run PRD snapshot differs from the in-repo file**, which is why the blob column
+  records `6aea36f` rather than today's `3f7c1eb`. The run was given the version where the
+  container-hygiene item was requirement 45; the repo's later edit renumbered it to 46. Same
+  class of note as Phase 1's: the run dir's `prd.md` is the authoritative record of what a job
+  was actually asked to build.
+
+**Phase 2b-2** — Opus 5 planning/review/reflect, Sonnet 5 worker/verify, `--vigilant --reflect`,
+54 requirements, 92 commits (`84af034..d346a4b`). 113 worker iterations, 104 verify, 4 planning,
+4 review, 1 reflect, ~388 M tokens, 27 h wall clock across two containers.
+
+**Four approaches, and unlike Phase 2 the reasons differ from each other.** Worth reading as a
+set, because three of the four are avoidable and one is a ralphd defect:
+
+1. **Approach 1 was lost to a scheduler bug, not to bad work.** The plan had 56 tasks; the worker
+   signalled `COMPLETE` after 14 were verified, and the engine accepted it, spent a review pass
+   (which correctly reported "roughly a quarter built"), archived the approach and re-planned.
+   ~5 hours and one of eight approaches, gone. ralphd has no guard refusing a `COMPLETE` signal
+   while `tasks.json` still has pending entries; it should.
+2. **Approach 2 (38 tasks) actually built the phase** and its review found four real defects: a
+   §9 lifecycle action (attach) reachable **by mouse** from inside the settings takeover
+   (requirement 24); the `[env]` table not editable with the deviation undisclosed (17); the
+   §11.4 dialog contract asserted for one of five dialogs (11); and 9/10 stability, judged
+   acceptable (54).
+3. **Approach 3 (19 tasks) closed all four**, and its review found two more, both genuine:
+   only `[env]` was labelled restart-to-apply while none of the seven flat keys took effect live
+   either (19), and a `ctrl+s` with nothing edited copied the environment's value over the file's
+   own (21).
+4. **Approach 4 (14 tasks) closed those** — and introduced, then fixed, one more.
+
+**The most instructive defect in the phase**, because a passing test hid it: requirement 19's fix
+(apply on save the fields whose scope claims they take effect live) reopened requirement 21 from
+the other side. `settingsApplyLiveFields` never consulted `Settings.EnvOverrides`, so an *edited*
+`ctrl+s` copied the file value into the running settings even while the overriding `DECK_*`
+variable stayed set — and for `ui.mouse` it also emitted a real `tea.DisableMouse()`, so the
+terminal's own mouse reporting followed a file edit the environment was supposed to outrank.
+Three tests looked like they covered it and none did: the labelling test toggled the staged value
+*toward* the env-resolved value, so the bug was invisible by **fixture coincidence**; the new
+requirement-21 scenario is a no-edit save, which the live-apply guard never reaches; and the
+`Scope`↔behaviour parity test never set a `DECK_*` variable at all. Found by operator inspection
+after the tasks were complete, steered as `008-envoverride-applylive`, and closed by `d346a4b`
+with negative proofs in both directions. The general lesson, now carried into Phase 3's PRD: a
+test whose fixture makes the correct and incorrect behaviours produce the same observation is
+not evidence, and boolean assertions are especially prone to it.
+
+*Two infrastructure incidents, both ralphd's rather than deck's:*
+
+- **The iteration-timeout crash killed the engine twice** (21 Aug 23:23, 22 Aug 00:48 BST) on the
+  same iteration — the second immediately after a resume, so a deterministic crash loop that
+  resuming alone cannot escape. `asyncio.wait_for` cancels the task it waits on, so a second
+  `wait_for(pump_task, timeout=30)` raises `CancelledError`, and being a `BaseException` it
+  escaped `loop.py`'s `except Exception` — the guard whose entire purpose is to make an iteration
+  failure cost one iteration rather than the job. Unblocked by raising `iteration_timeout_s`
+  3600 → 10800 in the run's own `job.yaml`; fixed properly in ralphd by `08ce400`, which uses
+  `asyncio.wait()` on the timeout path so the pump survives and the SIGINT drain still works.
+- **The same crash hit a third time at 13:02 BST on 22 Aug when the wall clock expired
+  mid-`verify`**, which is the more important shape: a *job timeout* also produces a dead engine
+  with `status.json` still reading `running` and **no verdict written**. Resumed with
+  `--iterations +100 --network host --allow-docker`; it continued approach 4 rather than
+  re-planning, and the pending steer file survived the crash and was consumed on the first new
+  iteration.
+
+*Carried out of this phase deliberately, not lost:* deck enables no bracketed-paste handling at
+all, and list/dialog navigation switches on `msg.String()`, so two keystrokes arriving in one
+`read(2)` are both silently dropped while text fields (which read `msg.Runes`) are unaffected.
+The 2b-2 harness flake this diagnosed is fixed; the product exposure is Phase 3's requirement 51.
+Also carried: `internal/config/config_task017_test.go` is named after a task number, and
+`docs/reports/phase2b2-findings.md` has two different sections titled "Task 014" because task
+ids reset per approach — both are naming defects that make an artefact harder to find later.
 
 ## Other milestones
 
