@@ -7,6 +7,17 @@ Feature: Godog harness wiring
   Scenario: a private tmux server can be removed
     Given the private tmux server is killed
 
+  @requirement-29-fingerprint-harness
+  Scenario: a directory's fingerprint is byte-for-byte and stat-for-stat identical to itself
+    Given a scratch directory "cwd" is seeded with:
+      | path           | kind | content            |
+      | state.db       | file | not a real database |
+      | .hidden        | file | dotfile content      |
+      | sub            | dir  |                      |
+      | sub/nested.txt | file | nested content       |
+    And the directory "cwd" is fingerprinted as "before"
+    Then the directory "cwd" still matches fingerprint "before"
+
   @requirement-1-cell-attributes
   Scenario: the emulator reads foreground, background, bold, dim and reverse from raw SGR bytes
     Given a fresh terminal emulator sized 20x1
