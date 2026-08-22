@@ -66,9 +66,26 @@ func settingsEnvOverrideTestModel(t *testing.T) (model Model, configFile string)
 func TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie(t *testing.T) {
 	m, _ := settingsEnvOverrideTestModel(t)
 
+	// Re-aimed for task 003 (requirement 21): the row's own parenthetical
+	// dropped the word "environment" to fit the field panel's row budget
+	// (66 visible cells at 100 columns -- the fuller "overridden by
+	// environment: DECK_ASCII" phrase this test pinned before task 003
+	// no longer fits alongside stating the file AND running values, and
+	// was silently truncated away rather than asserted against; see
+	// settings.go's settingsFieldRunningValueDisplay comment). The row
+	// still says which field is affected, which value is the file's
+	// (Off, the one saving here changes) and which value is running
+	// right now (On, via DECK_ASCII) -- the detail text below states the
+	// fuller sentence this test used to pin, now checked separately.
 	view := m.settingsView()
-	if !strings.Contains(view, "overridden by environment: DECK_ASCII") {
-		t.Fatalf("settings view = %q, want the ascii row to say overridden by environment: DECK_ASCII", view)
+	// Checked without the "Ascii: " label prefix: settingsRenderRow opens a
+	// fresh colour escape per segment (label, ": ", value) even between
+	// segments sharing one theme.Token, so a substring spanning the label/
+	// value boundary would never match the coloured view -- see settings.go's
+	// valueText comment for why file-value and override text are merged into
+	// ONE segment (so THAT boundary is safe to span).
+	if !strings.Contains(view, "Off (file value; overridden by DECK_ASCII, running: On)") {
+		t.Fatalf("settings view = %q, want the ascii row to state both the file value and the running value it disagrees with", view)
 	}
 	if !strings.Contains(view, "Overridden by environment: DECK_ASCII") {
 		t.Fatalf("settings view = %q, want the ascii field's detail text to explain the override", view)
@@ -89,7 +106,15 @@ func TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie(t *testing.T) {
 	}
 
 	afterView := m.settingsView()
-	if !strings.Contains(afterView, "overridden by environment: DECK_ASCII") {
+	// After the save, the file value the row states is now On (the
+	// staged edit that ctrl+s wrote), but running is still On too since
+	// DECK_ASCII was already forcing On before the edit -- both read
+	// "On" here, which is exactly why TestSettingsLabelsAnEnvOverridden
+	// FieldAndDoesNotLie above asserts m.settings.ASCII did not move as
+	// the thing that actually proves the running value is independent of
+	// this save, not the row text (which can legitimately show equal
+	// values when they happen to coincide).
+	if !strings.Contains(afterView, "overridden by DECK_ASCII") {
 		t.Fatalf("settings view after save = %q, want the override label to persist", afterView)
 	}
 	if !strings.Contains(m.settingsNote, "saved") && m.settingsNote == "" {
