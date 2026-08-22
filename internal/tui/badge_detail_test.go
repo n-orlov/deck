@@ -68,6 +68,31 @@ func TestDetailViewOmitsProfileForShell(t *testing.T) {
 	}
 }
 
+// TestDetailViewShowsCapturedPathAdvisoryWhenLoginShellSet proves SPEC
+// §6.3's "enabling login_shell marks captured_path advisory and the health
+// view says so" is surfaced in the `i` detail dialog (task 017), and only
+// when login_shell is actually set -- a plain agent row's detail states no
+// such thing.
+func TestDetailViewShowsCapturedPathAdvisoryWhenLoginShellSet(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{
+		{Name: "login-claude", Agent: "claude", Status: "starting", CapturedPath: "/usr/bin:/bin", LoginShell: true},
+		{Name: "plain-claude", Agent: "claude", Status: "starting", CapturedPath: "/usr/bin:/bin"},
+	}
+	model.selected = 0
+	model.detail = true
+	view := model.View()
+	if !strings.Contains(view, "Captured PATH:") || !strings.Contains(view, "advisory") {
+		t.Fatalf("login_shell detail view missing advisory marking:\n%s", view)
+	}
+
+	model.selected = 1
+	view = model.View()
+	if strings.Contains(view, "Captured PATH:") {
+		t.Fatalf("plain agent detail view showed advisory marking it does not have:\n%s", view)
+	}
+}
+
 // TestListBadgesStatusSourceQuality proves the status badge reports evidence
 // quality rather than agent kind: hooks are live, probes (including Pi) are
 // sampled, and tmux/user verdicts make no agent-quality claim.

@@ -303,6 +303,62 @@ func TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull(t *testing.T) {
 	}
 }
 
+// TestCapturedPathAdvisoryReflectsLoginShellAndPersistsAcrossReopen proves
+// SPEC §6.3's "enabling login_shell marks captured_path advisory" is a
+// persisted, queryable marking (the login_shell column, read back through
+// CapturedPathAdvisory), not merely a comment: a login_shell=1 row still
+// stores its non-empty create-time CapturedPath (it is never cleared), a
+// login_shell=0 row reports CapturedPathAdvisory=false, and the marking
+// survives a store close/reopen exactly like every other persisted column.
+func TestCapturedPathAdvisoryReflectsLoginShellAndPersistsAcrossReopen(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "state.db")
+	ctx := context.Background()
+	st, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000012", Name: "Login Shell Agent", CWD: "/work/login",
+		Agent: "claude", CapturedPath: "/usr/bin:/bin", StatusAt: 1, CreatedAt: 1, LoginShell: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000013", Name: "Plain Agent", CWD: "/work/plain",
+		Agent: "claude", CapturedPath: "/usr/bin:/bin", StatusAt: 1, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+
+	advisory, err := reopened.GetSession(ctx, "00000000-0000-4000-8000-000000000012")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if advisory.CapturedPath == "" {
+		t.Fatal("login_shell=1 row must still store a non-empty captured_path, not clear it")
+	}
+	if !advisory.CapturedPathAdvisory() {
+		t.Fatal("login_shell=1 row: CapturedPathAdvisory() = false; want true")
+	}
+
+	plain, err := reopened.GetSession(ctx, "00000000-0000-4000-8000-000000000013")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.CapturedPathAdvisory() {
+		t.Fatal("login_shell=0 row: CapturedPathAdvisory() = true; want false")
+	}
+}
+
 func TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, "state.db")

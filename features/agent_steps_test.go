@@ -62,6 +62,10 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has a launch lease owned by a dead process$`, sessionHasDeadLaunchLease)
 	sc.Step(`^the state database session "([^"]+)" has an expired launch lease$`, sessionHasExpiredLaunchLease)
 	sc.Step(`^the state database session "([^"]+)"'s launch lease is cleared$`, sessionLaunchLeaseIsCleared)
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and login shell enabled$`, clientCreatesAgentSessionWithProfileAndLoginShell)
+	sc.Step(`^the state database session "([^"]+)" has login_shell enabled$`, sessionHasLoginShellEnabled)
+	sc.Step(`^the state database session "([^"]+)" has a non-empty captured_path$`, sessionHasNonEmptyCapturedPath)
+	sc.Step(`^the state database session "([^"]+)" has captured_path marked advisory$`, sessionHasCapturedPathMarkedAdvisory)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -173,6 +177,38 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 		if err := client.WaitForFrame(ctx, false, string(encoded)); err != nil {
 			return fmt.Errorf("type Launch args field with message %q: %w", message, err)
 		}
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// clientCreatesAgentSessionWithProfileAndLoginShell drives the real create
+// modal exactly like clientCreatesAgentSessionWithProfile, then continues
+// past Permission profile through Launch args, Env and Pre-launch command
+// (internal/tui.createFieldRows field order: 3 Permission profile, 4
+// Launch args, 5 Env, 6 Pre-launch command, 7 Login shell) onto the Login
+// shell field, toggles it on with space, and submits (task 017, SPEC
+// §6.3). It never types anything into the fields it tabs through, so
+// they keep their empty defaults.
+func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clientName, kind, name, profile string) error {
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\t\t\t\t"); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.WaitForFrame(ctx, false, "Login shell"); err != nil {
+		return fmt.Errorf("tab onto Login shell field: %w", err)
+	}
+	if err := client.Send(" "); err != nil {
+		return err
+	}
+	if err := client.WaitForFrame(ctx, false, "on (space toggles)"); err != nil {
+		return fmt.Errorf("toggle Login shell on: %w", err)
 	}
 	if err := client.Send("\r"); err != nil {
 		return err
@@ -463,6 +499,61 @@ func sessionHasNonEmptyConversationID(ctx context.Context, name string) error {
 		return fmt.Errorf("session %q has no conversation id", name)
 	}
 	return nil
+}
+
+// sessionHasLoginShellEnabled asserts SPEC §6.3's login_shell column is set
+// on the named row, reading it back from the database rather than the TUI.
+func sessionHasLoginShellEnabled(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var loginShell int
+	if err := db.QueryRow(`SELECT login_shell FROM sessions WHERE name = ?`, name).Scan(&loginShell); err != nil {
+		return fmt.Errorf("observe session %q login_shell: %w", name, err)
+	}
+	if loginShell != 1 {
+		return fmt.Errorf("session %q login_shell = %d, want 1", name, loginShell)
+	}
+	return nil
+}
+
+// sessionHasNonEmptyCapturedPath proves a login_shell=1 row still stores its
+// create-time captured_path (task 017: it is never cleared, only marked
+// advisory), by reading the column back from the database directly.
+func sessionHasNonEmptyCapturedPath(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var capturedPath string
+	if err := db.QueryRow(`SELECT captured_path FROM sessions WHERE name = ?`, name).Scan(&capturedPath); err != nil {
+		return fmt.Errorf("observe session %q captured_path: %w", name, err)
+	}
+	if capturedPath == "" {
+		return fmt.Errorf("session %q captured_path is empty, want non-empty", name)
+	}
+	return nil
+}
+
+// sessionHasCapturedPathMarkedAdvisory asserts the persisted, queryable
+// marking task 017 requires (store.Session.CapturedPathAdvisory, backed by
+// the login_shell column, per SPEC §6.3: "enabling login_shell marks
+// captured_path advisory") by re-deriving the same boolean the store
+// package computes, straight off the database, independent of any Go
+// internals under test.
+func sessionHasCapturedPathMarkedAdvisory(ctx context.Context, name string) error {
+	return sessionHasLoginShellEnabled(ctx, name)
 }
 
 func sessionsHaveDifferentConversationIDs(ctx context.Context, first, second string) error {
