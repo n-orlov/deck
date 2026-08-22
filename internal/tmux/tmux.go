@@ -214,6 +214,32 @@ func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
 	return c.session(ctx, name)
 }
 
+// SetEnvironment mirrors exactly one key/value into a deck-owned tmux
+// session's own environment table via `set-environment -t`. This updates
+// what tmux itself remembers for the session (visible via
+// `show-environment -t`, and inherited by any FUTURE pane tmux starts in
+// it) -- it never reaches into an already-running pane's process, which
+// keeps whatever environment it inherited when it started. Callers that
+// need the change to actually take effect in the live pane must kill and
+// relaunch it with the new value (task 022's `R`); this method by itself
+// makes no such claim.
+func (c Client) SetEnvironment(ctx context.Context, slug, key, value string) error {
+	if c.Socket == "" {
+		return errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
+	if err != nil {
+		return err
+	}
+	if key == "" || strings.ContainsAny(key, "=\x00") || strings.Contains(value, "\x00") {
+		return fmt.Errorf("invalid environment variable %q", key)
+	}
+	if _, err := c.run(ctx, "set-environment", "-t", name, key, value); err != nil {
+		return fmt.Errorf("set environment for session %q: %w", name, err)
+	}
+	return nil
+}
+
 // List returns only deck-owned sessions and their pane facts. A server with no
 // sessions is a normal empty result.
 func (c Client) List(ctx context.Context) ([]Session, error) {
