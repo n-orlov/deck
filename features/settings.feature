@@ -171,3 +171,47 @@ Feature: The `,` settings takeover (requirement 48)
     When deck client "A" sends ""
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
+
+  Scenario: adding an [env] entry and saving with ctrl+s round-trips through config.toml (requirement 17)
+    Given deck client "A" is started
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends ""
+    Then deck client "A" screen contains "+ add entry"
+    When deck client "A" sends ""
+    And deck client "A" sends "GREETING"
+    And deck client "A" sends "	"
+    And deck client "A" sends "hello"
+    And deck client "A" sends ""
+    Then deck client "A" screen contains "GREETING=hello"
+    When deck client "A" sends ""
+    And deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    And the scenario's config.toml parses with env "GREETING" set to "hello"
+    When deck client "A" exits cleanly
+
+  Scenario: discarding an unsaved [env] edit leaves config.toml exactly as it was (requirement 17)
+    Given deck client "A" is started
+    And the scenario's config.toml is captured as "before-env-discard"
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends ""
+    And deck client "A" sends ""
+    And deck client "A" sends "DISCARD_ME"
+    And deck client "A" sends "	"
+    And deck client "A" sends "temp"
+    And deck client "A" sends ""
+    Then deck client "A" screen contains "DISCARD_ME=temp"
+    When deck client "A" sends ""
+    And deck client "A" sends ""
+    Then deck client "A" screen contains "discard unsaved changes"
+    When deck client "A" sends "y"
+    Then deck client "A" screen contains "deck - sessions"
+    And the scenario's config.toml still matches the captured "before-env-discard"
+    When deck client "A" exits cleanly
