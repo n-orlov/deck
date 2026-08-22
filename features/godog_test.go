@@ -63,6 +63,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerThemeFrameGeometrySteps(sc)
 	registerFingerprintSteps(sc)
 	registerCreateSessionCWDPrefillSteps(sc)
+	registerCreateCWDGhostSteps(sc)
 	sc.Step(`^the Godog harness is available$`, func() error { return nil })
 	sc.Step(`^the private tmux server is killed$`, func(ctx context.Context) error {
 		harness, err := scenarioHarness(ctx)
