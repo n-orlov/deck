@@ -412,6 +412,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// visible through a real PTY, not merely via View() in internal/tui.
 	for _, present := range []string{
 		"Y acknowledge", "clear its unseen marker", "r resume", "P switch the permission profile", "p pin the selected session",
+		"R restart the selected non-stopped session", "same resume argv and conversation id",
 		"resumed agents", "starting - awaiting", "live shells", "become \"running\"", "starting elsewhere", // DECK_ASCII=1 replaces \u00b7 with '-'
 		"Name", "Working directory", "Agent", "Permission profile", "Launch args", "Env",
 		"Pre-launch command", "Login shell",
@@ -440,7 +441,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "restart preserving", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}

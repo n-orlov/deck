@@ -32,6 +32,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"? open/close help", "Esc closes help", "q or Ctrl+C quit",
 		"r resume", "resumed agents", "starting · awaiting", "live shells", "become \"running\"", "starting elsewhere",
 		"P switch the permission profile", "restart to apply", "live pane",
+		"R restart the selected non-stopped session", "same resume argv and conversation id",
 		"p pin", "one-shot fresh conversation", "auto-resume",
 		"Permission profile", "Pre-launch command", "loading secrets",
 		"Login shell", "Launch args", "allow_yolo",
@@ -60,7 +61,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 			t.Errorf("help view missing %q", want)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "restart preserving", "delete", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "delete", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("help advertises unavailable action %q:\n%s", unavailable, help)
 		}

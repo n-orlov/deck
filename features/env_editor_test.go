@@ -23,9 +23,11 @@ func registerEnvEditorSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has no env key "([^"]+)"$`, sessionHasNoEnvKey)
 	sc.Step(`^the state database session "([^"]+)" has env key "([^"]+)" with value "([^"]*)"$`, sessionHasEnvKeyWithValue)
 	sc.Step(`^the state database session "([^"]+)" is marked env_dirty$`, sessionIsMarkedEnvDirty)
+	sc.Step(`^the state database session "([^"]+)" is not marked env_dirty$`, sessionIsNotMarkedEnvDirty)
 	sc.Step(`^the live tmux environment for session "([^"]+)" has key "([^"]+)" with value "([^"]*)"$`, liveTmuxEnvironmentHasKeyWithValue)
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" is captured as "([^"]+)"$`, livePaneProcessEnvironmentKeyIsCapturedAs)
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" still matches the captured "([^"]+)"$`, livePaneProcessEnvironmentKeyStillMatchesCaptured)
+	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" is "([^"]*)"$`, livePaneProcessEnvironmentKeyEquals)
 }
 
 // clientOpensEnvEditorForSession selects the named row and sends `e` (SPEC
@@ -173,6 +175,29 @@ func sessionIsMarkedEnvDirty(ctx context.Context, name string) error {
 	return nil
 }
 
+// sessionIsNotMarkedEnvDirty is sessionIsMarkedEnvDirty's inverse: task
+// 022's `R` restart is the only path that clears env_dirty back to false
+// once a relaunch has actually carried the edit to the new pane.
+func sessionIsNotMarkedEnvDirty(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var dirty int
+	if err := db.QueryRowContext(ctx, `SELECT env_dirty FROM sessions WHERE name = ?`, name).Scan(&dirty); err != nil {
+		return fmt.Errorf("observe session %q env_dirty: %w", name, err)
+	}
+	if dirty != 0 {
+		return fmt.Errorf("session %q env_dirty = %d, want 0 after a restart applies the edit", name, dirty)
+	}
+	return nil
+}
+
 // liveTmuxEnvironmentHasKeyWithValue asks tmux itself, via `show-environment
 // -t`, never deck's own store, proving a committed edit (task 021) really
 // reached tmux's own per-session environment table -- the same table new
@@ -280,6 +305,22 @@ func livePaneProcessEnvironmentKeyStillMatchesCaptured(ctx context.Context, name
 	}
 	if got != want {
 		return fmt.Errorf("live pane process environment for session %q key %q changed since capture %q: before %q, after %q", name, key, label, want, got)
+	}
+	return nil
+}
+
+// livePaneProcessEnvironmentKeyEquals is
+// livePaneProcessEnvironmentKeyStillMatchesCaptured's direct-comparison
+// counterpart, for task 022's own restart proof: after `R` relaunches the
+// pane, the NEW process's own /proc/<pid>/environ must carry the edited
+// value literally, not merely differ from whatever was captured before.
+func livePaneProcessEnvironmentKeyEquals(ctx context.Context, name, key, want string) error {
+	got, err := livePaneProcessEnvironmentKey(ctx, name, key)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("live pane process environment for session %q key %q = %q, want %q", name, key, got, want)
 	}
 	return nil
 }

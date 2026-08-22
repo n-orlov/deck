@@ -97,8 +97,15 @@ type Model struct {
 	acknowledge             func(context.Context, string) error
 	reconcile               func(context.Context) error
 	resume                  func(context.Context, string) (store.Session, service.ResumeOutcome, error)
-	profileSwitch           func(context.Context, string, string) (store.Session, error)
-	selected                int
+	// restart is task 022's `R` (SPEC §6.2/§6.3): kills the selected
+	// session's live pane if one exists and relaunches it with the
+	// adapter's resume argv (same conversation id, never a fresh one),
+	// clearing env_dirty on success -- the only path that ever applies a
+	// pending `e`-editor edit to an already-running process. nil means
+	// restarting is unavailable.
+	restart       func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	profileSwitch func(context.Context, string, string) (store.Session, error)
+	selected      int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -395,6 +402,16 @@ type sessionResumed struct {
 	err     error
 }
 
+// sessionRestarted carries the result of task 022's `R` restart: a
+// service.ResumeOutcome exactly like sessionResumed's, since a restart is
+// implemented as kill-then-resume and shares the same outcome vocabulary
+// (started, starting elsewhere, already running, not leasable).
+type sessionRestarted struct {
+	session store.Session
+	outcome service.ResumeOutcome
+	err     error
+}
+
 type profileSwitched struct {
 	session store.Session
 	err     error
@@ -560,6 +577,22 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterAndRestarter
+// adds the `R` restart action (task 022, SPEC §6.2/§6.3): restarter kills
+// the selected session's live pane if one exists and relaunches it with
+// the adapter's resume argv (the SAME conversation id -- never a fresh
+// one), carrying whatever environment is currently persisted on the row,
+// including a pending `e`-editor edit; on success it also clears
+// env_dirty (the `env↻` badge), since only this explicit, user-driven
+// restart ever applies a pending edit to an already-running process. Until
+// restarter is wired, `R` fails with "restarting is unavailable" rather
+// than silently doing nothing.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterAndRestarter(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error)) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerAndEnvSetter(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter)
+	m.restart = restarter
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -694,6 +727,38 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// The resume command was dispatched from a stale stopped frame.
 			// Render the durable status/reason returned by the service rather
 			// than describing it as a launch in another client.
+			for i := range m.sessions {
+				if m.sessions[i].ID == msg.session.ID {
+					m.sessions[i] = msg.session
+					break
+				}
+			}
+			return m, nil
+		}
+		return m, m.loadSessions
+	case sessionRestarted:
+		if msg.err != nil {
+			m.attachError = "Cannot restart: " + msg.err.Error()
+			return m, nil
+		}
+		m.attachError = ""
+		if msg.outcome == service.ResumeStartingElsewhere {
+			m.attachError = "Cannot restart: a launch for this session is already starting elsewhere"
+			return m, nil
+		}
+		if msg.outcome == service.ResumeAlreadyRunning {
+			// Requirement 46's already-running honest no-op applies here too:
+			// a concurrent client may have already relaunched the pane between
+			// this restart's kill and its own resume attempt.
+			for i := range m.sessions {
+				if m.sessions[i].ID == msg.session.ID {
+					m.sessions[i] = msg.session
+					break
+				}
+			}
+			return m, nil
+		}
+		if msg.outcome == service.ResumeNotLeasable {
 			for i := range m.sessions {
 				if m.sessions[i].ID == msg.session.ID {
 					m.sessions[i] = msg.session
@@ -894,6 +959,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				resumed, outcome, err := m.resume(context.Background(), sessionID)
 				return sessionResumed{session: resumed, outcome: outcome, err: err}
+			}
+		case "R":
+			if m.restart == nil || len(m.sessions) == 0 {
+				return m, nil
+			}
+			session := m.sessions[m.selected]
+			if session.Status == "stopped" {
+				m.attachError = "Cannot restart: session is not running (use r to resume it)"
+				return m, nil
+			}
+			sessionID := session.ID
+			return m, func() tea.Msg {
+				restarted, outcome, err := m.restart(context.Background(), sessionID)
+				return sessionRestarted{session: restarted, outcome: outcome, err: err}
 			}
 		case "P":
 			if m.profileSwitch == nil || len(m.sessions) == 0 {
@@ -1340,6 +1419,13 @@ var footerLegend = []footerKeyHint{
 	{"n", "n", "new"},
 	{"x", "x", "kill"},
 	{"r", "r", "resume"},
+	// The footer's own hint word is "relaunch" rather than "restart"
+	// (the help text's own wording, matched word-for-word there) purely
+	// so this entry's length keeps the whole legend's 100-column wrap
+	// boundary landing on a space that NormalizeFrame's trailing-space
+	// trim removes -- exactly the coincidence every other entry here
+	// already depends on -- rather than on a border-breaking "-".
+	{"R", "R", "relaunch"},
 	{"P", "P", "profile"},
 	{"p", "p", "pin"},
 	{"i", "i", "detail"},
@@ -2908,6 +2994,10 @@ Keys
     signal" until a hook or sampled probe reports ready, while live shells
     become "running" on reconciliation; a client that loses the launch-lease
     race sees "starting elsewhere" instead of an error
+  R restart the selected non-stopped session: kills its live pane if one
+    exists and relaunches it with the same resume argv and conversation id
+    (never a fresh conversation); this is the only action that applies a
+    pending env↻ edit to the new pane and clears env↻ once it is up
   P switch the permission profile of the selected session; only takes
     effect on the next launch or resume ("restart to apply"), never the
     live pane

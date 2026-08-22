@@ -43,6 +43,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the audit log's most recent launch record for session "([^"]+)" names environment key "([^"]+)"$`, mostRecentLaunchRecordHasEnvKey)
 	sc.Step(`^the audit log file never contains "([^"]+)"$`, auditLogFileNeverContains)
 	sc.Step(`^deck client "([^"]+)" presses r on session "([^"]+)"$`, clientPressesResumeOnNamedSession)
+	sc.Step(`^deck client "([^"]+)" presses R on session "([^"]+)"$`, clientPressesRestartOnNamedSession)
 	sc.Step(`^deck client "([^"]+)" is started with a slow reconcile interval$`, startNamedClientWithSlowReconcile)
 	sc.Step(`^the state database session "([^"]+)" has a non-empty conversation id$`, sessionHasNonEmptyConversationID)
 	sc.Step(`^the state database sessions "([^"]+)" and "([^"]+)" have different conversation ids$`, sessionsHaveDifferentConversationIDs)
@@ -520,6 +521,32 @@ func clientPressesResumeOnNamedSession(ctx context.Context, clientName, want str
 	for attempt := 0; attempt < 50; attempt++ {
 		if strings.Contains(client.Frame(false), marker) {
 			return client.Send("r")
+		}
+		if err := client.Send("\x1b[B"); err != nil { // down arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return fmt.Errorf("deck client %q never selected session %q (marker %q not found):\n%s", clientName, want, marker, client.Frame(false))
+}
+
+// clientPressesRestartOnNamedSession is clientPressesResumeOnNamedSession's
+// `R` (task 022) counterpart: selects the named row the same way, then
+// sends "R" instead of "r" -- restart is only meaningful (and only
+// accepted) on a session that is NOT already stopped, unlike resume.
+func clientPressesRestartOnNamedSession(ctx context.Context, clientName, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	marker := "> " + want
+	for attempt := 0; attempt < 50; attempt++ {
+		if strings.Contains(client.Frame(false), marker) {
+			return client.Send("R")
 		}
 		if err := client.Send("\x1b[B"); err != nil { // down arrow
 			return err
