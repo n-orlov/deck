@@ -411,3 +411,73 @@ func TestMouseIgnoredWhileOverlayOpen(t *testing.T) {
 		t.Fatalf("mouse press acted while help was open: selected=%d cmd=%v", got.selected, cmd)
 	}
 }
+
+// TestSettingsTakeoverMouseIgnoredWhileOpen proves requirement 24 (SPEC
+// §11.5/§11.8): while the full-screen settings takeover -- or the
+// unsaved-changes discard confirm painted over it -- is open, the hidden
+// main view underneath must not receive mouse input at all: not a single
+// click's selection change, not a double click's attach, not a wheel
+// scroll. The review of 65e623e reproduced the opposite by driving exactly
+// this input against the pre-fix guard (which omitted m.settingsOpen and
+// m.settingsDiscardConfirm from the `if m.help || ...` check at the top of
+// the tea.MouseMsg case): a double click on the covered sidebar row called
+// the instrumented attach once (attachCalls=1) despite the takeover being
+// on top. Re-running this test against that pre-fix guard reproduces the
+// same failure (see the commit message for the RED output); the fix makes
+// it GREEN.
+func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(*Model)
+	}{
+		{"settingsOpen", func(m *Model) { m.settingsOpen = true }},
+		{"settingsDiscardConfirm", func(m *Model) {
+			m.settingsOpen = true
+			m.settingsDiscardConfirm = true
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attachCalls := 0
+			m := mouseTestModel([]store.Session{
+				{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+				{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+			})
+			m.attach = func(context.Context, string) (*exec.Cmd, error) {
+				attachCalls++
+				return exec.Command("true"), nil
+			}
+			m.width, m.height = 100, 30
+			m.selected = 0
+			x, y := findRow(t, m, 1)
+			tc.set(&m)
+
+			updated, cmd := m.Update(press(x, y))
+			got := updated.(Model)
+			if got.selected != 0 || cmd != nil {
+				t.Fatalf("single press reached the hidden sidebar: selected=%d cmd=%v", got.selected, cmd)
+			}
+			if !got.settingsOpen {
+				t.Fatalf("a mouse press closed settingsOpen")
+			}
+
+			updated, cmd = got.Update(press(x, y))
+			got = updated.(Model)
+			if got.selected != 0 || cmd != nil {
+				t.Fatalf("second press (double click) reached the hidden sidebar: selected=%d cmd=%v", got.selected, cmd)
+			}
+			if !got.settingsOpen {
+				t.Fatalf("the double click closed settingsOpen")
+			}
+
+			updated, cmd = got.Update(wheelDown(x, y))
+			got = updated.(Model)
+			if got.selected != 0 || cmd != nil {
+				t.Fatalf("wheel event reached the hidden sidebar: selected=%d cmd=%v", got.selected, cmd)
+			}
+
+			if attachCalls != 0 {
+				t.Fatalf("attach was called %d time(s) while the takeover covered the sidebar, want 0", attachCalls)
+			}
+		})
+	}
+}
