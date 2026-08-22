@@ -1421,3 +1421,72 @@ carrying that label for the first time (task 008). Until task 006 lands,
 *decision*, not yet an observed behaviour — the same gap the review named,
 now narrowed to exactly the three tasks that close it, each independently
 verifiable.
+
+## Task 010 — requirement 21's save-vs-environment decision, a §6.5
+clarification request
+
+The independent review's second finding was narrower than requirement 21
+as a whole: precedence (env outranks the file for what the *running*
+client uses) was already correct and already tested; what nothing
+asserted was what a *save* does to `config.toml` for a key the
+environment also overrides. Before this correction,
+`settingsEditsFromSettings` seeded the takeover's staged edits from the
+env-resolved `config.Settings`, so a field the user never touched round-
+tripped through the edit buffer at its *running* (environment) value and
+a plain `ctrl+s` — even with zero keystrokes on that field — rewrote
+`config.toml` to match the environment, silently discarding whatever the
+file itself had said. That is a real "copy an env-overridden value over
+the file's own" defect, not a documentation gap: §6.1 of `SPEC.md`
+describes three layers (server env → `[env]` table → per-session
+override) precisely so that the file layer keeps its own identity
+independent of what happens to be in the environment right now; a save
+that launders the environment into the file collapses that layering the
+moment the operator's shell happens to export a `DECK_*` variable while
+they are adjusting an unrelated field in the same takeover session.
+
+**The decision this task records:** the takeover now edits and displays
+two distinct values for an overridden field — the file's own value
+(what an unedited save writes back) and the environment-supplied running
+value (labelled with the exact `DECK_*` variable name, per task 003) —
+and a save touches only the field(s) the user actually staged an edit
+for; every other field, overridden or not, is re-serialised from
+`Settings.File` (task 001), never from the env-resolved `Settings`. This
+is the same "seed from the file, not from the resolved settings" fix
+task 002 implemented and task 001 made possible by exposing the raw
+file-parsed values as a first-class member of `config.Settings`.
+
+**Clarification request for the operator.** This decision assumes that
+"a save should never let an environment variable's value leak into
+config.toml" is the correct reading of requirement 21, and that the
+*only* exception is an edit the user explicitly makes to that same field
+in the same takeover session (which is written, per
+`TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten` — the
+takeover does not simply refuse to ever write an overridden key). An
+alternative reading — that saving an overridden field should adopt the
+environment's value into the file, effectively "promoting" it to a
+permanent setting — was rejected because SPEC §6.1 states the file and
+environment are separate layers with the environment always winning at
+read time, and nothing in SPEC suggests a save operation should be the
+mechanism by which a transient environment variable's value becomes
+permanent when the user did not ask for that specific field to be
+changed. If the operator intended the promoting behaviour, that is a
+change request against this decision, not a defect in what was built.
+
+**Verification that the decision is enforced, not merely stated:**
+
+```
+$ ci/run.sh go test -v -run 'TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched|TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten' ./internal/tui/...
+=== RUN   TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched
+--- PASS: TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched (0.00s)
+=== RUN   TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten
+--- PASS: TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.011s
+```
+
+The feature-level round-trip (task 004's scenario, "saving with ctrl+s
+and no edit leaves an environment-overridden flat key's own file value
+untouched (requirement 21)") passed in the same fresh `@settings` run
+quoted in `docs/reports/phase2b2.md`'s R21 entry above; it is not
+repeated verbatim here to avoid the two documents drifting when one is
+edited and not the other.
