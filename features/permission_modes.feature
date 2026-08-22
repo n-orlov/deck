@@ -46,13 +46,18 @@ Feature: Permission profile mapping, degradation and the yolo gate
     # Task 030: framedDialog's box is a fixed 80% of the viewport (capped at
     # 80, inner 76) rather than growing to fit content, and this degradation
     # sentence is 76+ columns once the "  degraded: " label and "pi" are
-    # counted, so it always wraps -- specifically right before "safe", which
-    # would break a single contiguous "falling back to safe" check. Assert
-    # the phrase up to the wrap point and the fallback target separately,
-    # same pattern as internal/tui/registry_guard_test.go's task-030 fix.
+    # counted, so it always wraps -- specifically right before "safe". A
+    # bare screen-contains-"safe" check (task 012's review finding) is
+    # near-vacuous: "safe" also appears a few rows above as the session's
+    # own "Permission profile: safe" line, so that check alone would still
+    # pass even if the fallback target were silently wrong or the whole
+    # degradation sentence vanished. Assert the sentence up to the wrap
+    # point verbatim, then pin "safe" to it across the forced line break
+    # with a regex spanning the border padding, so the fallback target is
+    # tied to this exact sentence rather than to any other "safe" onscreen.
     Then deck client "A" screen contains "degraded: pi does not support permission profile"
     And deck client "A" screen contains "falling back to"
-    And deck client "A" screen contains "safe"
+    And deck client "A" screen matches the pattern "falling back to\s*\|[^\n]*\n\|\s*safe\b"
     When deck client "A" exits cleanly
 
   Scenario: yolo is unavailable without allow_yolo enabled
