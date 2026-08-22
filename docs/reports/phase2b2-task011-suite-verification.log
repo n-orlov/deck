@@ -1,0 +1,63 @@
+Task 011: verify the whole suite green in a sibling after the correction pass
+HEAD: 929c91f3255c602a52cb1b9f9bda52b5afe6b8ea
+Run date (UTC): 2026-08-22
+
+Files this approach (tasks 001-010, base 61305a5..HEAD) touched, per
+`git diff --name-only 61305a5..HEAD -- '*.go'`:
+  features/config_file_test.go
+  internal/config/config.go
+  internal/config/config_test.go
+  internal/config/schema.go
+  internal/config/schema_test.go
+  internal/tui/settings.go
+  internal/tui/settings_scope_parity_test.go
+  internal/tui/settings_task002_test.go
+  internal/tui/settings_task003_test.go
+  internal/tui/settings_task006_test.go
+  internal/tui/settings_task015_test.go
+  internal/tui/settings_task017_test.go
+
+$ ci/run.sh go build ./...
+(no output, exit 0)
+
+$ ci/run.sh go vet ./...
+(no output, exit 0)
+
+$ ci/run.sh gofmt -l <the 12 files above>
+(no output, exit 0 — every file this approach touched is gofmt-clean)
+
+$ ci/run.sh go test -count=1 ./...
+ok  	github.com/n-orlov/deck/cmd/deck	5.899s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.060s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.007s
+ok  	github.com/n-orlov/deck/features	158.631s
+ok  	github.com/n-orlov/deck/internal/agent	0.011s
+ok  	github.com/n-orlov/deck/internal/audit	0.031s
+ok  	github.com/n-orlov/deck/internal/config	0.086s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.751s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	2.876s
+ok  	github.com/n-orlov/deck/internal/store	1.308s
+ok  	github.com/n-orlov/deck/internal/theme	0.024s
+ok  	github.com/n-orlov/deck/internal/tmux	0.677s
+ok  	github.com/n-orlov/deck/internal/tui	0.367s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+(exit 0, every package ok)
+
+Pre-existing failure named rather than hidden or fixed:
+internal/tui/group_visual_order_test.go fails gofmt on the whole-tree check
+(`ci/run.sh gofmt -l internal/tui/group_visual_order_test.go` reports the
+file). This predates this approach and predates the phase base:
+
+$ git log -1 --format=%H -- internal/tui/group_visual_order_test.go
+f15eb0d1bb064660cc7ed554132351b97facb88a
+
+$ git merge-base --is-ancestor f15eb0d1bb064660cc7ed554132351b97facb88a 61305a5 && echo predates
+predates
+
+This file is not in the list of files this approach touched (see above), so
+it is out of scope for this task's success criteria ("every .go file this
+approach touched"), consistent with the pre-existing-and-known status
+already recorded in earlier approach notes. It is not fixed here, to avoid
+mixing an unrelated hygiene fix into a review-correction pass.
