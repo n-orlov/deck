@@ -1,14 +1,20 @@
 # Phase 2b-2 findings
 
-This file is task 052's deliverable and grows as later tasks in this phase
-land findings. It is started early by task 056 below because that task's
-own success criteria requires recording provenance here; task 052 will add
-the remaining entries (missing `label` token, no-rule-matched copy, the
-[26,80] clamp reconciliation, settings discard prompt placement, empty
-theme-picker-list preview, failed-theme-load copy, SessionEnd reason
-taxonomy, already-running copy, new DECK_* controls, and the explicit
-closure of 2b-1's requirement-19 deferral) without needing to create the
-file from scratch.
+This file is task 034's deliverable (renumbered from an earlier plan's
+task 052; both names refer to the same "complete this document" work) and
+grew as earlier tasks in this phase landed their own findings inline —
+task 056 started it early because that task's own success criteria
+required recording provenance here. Task 034 (this section and the two
+below it) closes out the remaining entries the intro above once listed as
+outstanding: the settings discard-prompt's placement, requirement 19's
+2b-1 deferral, whether any new `DECK_*` control was introduced this phase,
+and the git-push-credentials-absent environment finding. Every other item
+originally listed here (the `label`-token clarification, the no-rule-
+matched copy, the [26,80] clamp reconciliation, the empty theme-picker-
+list preview, the failed-theme-load copy, the SessionEnd reason taxonomy
+and the already-running copy) was in fact recorded inline by the task that
+produced it — see the Task 001, 004, 007, 009, 022, 024, 025 and 030
+sections below — and is not repeated here.
 
 ## Task 056 — sidebar navigation moved by more than one visual row (operator-reported)
 
@@ -760,3 +766,122 @@ the 21 Aug steer); the NO_COLOR-by-default harness behaviour; `SPEC.md`
 `@requirement-3-no-color` scenario in `harness.feature` (still green,
 unweakened — same assertion, now with a real floor underneath it).
 `gofmt -l` on both changed/added files is clean.
+
+## Task 034 — where the settings discard prompt sits, given it is not a §11.4 dialog
+
+The settings takeover (`,`) is deliberately not one of the five dialogs
+task 029 retrofit onto the shared §11.4 contract — 029's own success
+criteria names `createView`, `detailView`, `profileSwitchView`, `pinView`
+and `helpView` only, and the takeover is a full-screen view
+(`m.settingsOpen`), not a `framedDialog` modal (task 013's own success
+criteria says so explicitly: "not a framedDialog modal"). Requirement
+14/20's discard-confirm prompt therefore cannot live inside the shared
+contract either — there is no `framedDialog` instance for it to attach
+to — so it is implemented as a second, small, independent state flag on
+the takeover itself: `m.settingsDiscardConfirm`
+(`internal/tui/settings.go`). `updateSettings` checks it first, before
+even the `/`-search state, since the two are mutually exclusive (the
+prompt only ever appears from the main takeover view, per the code
+comment at `settings.go:147-149`) and its own handler
+(`updateSettingsDiscardConfirm`) is a two-way branch: `y`/`enter`
+confirms (drops the staged edits, closes the takeover, `config.toml` was
+never touched) and any other key cancels back to the field the user was
+on, losing nothing. This mirrors the *shape* of a single-value dialog
+(one decision, y or not-y) without being routed through the shared
+contract's tab/left/right/enter machinery, because there is nothing to
+tab between and no field to submit — it is a yes/no interstitial, not a
+form. The prompt's own text
+(`"discard unsaved changes and keep config.toml as last saved? y/enter
+discards - any other key cancels"`, `settingsFooterHint`) states this
+plainly on screen, satisfying requirement 9's "does not invent a key the
+contract does not give it and the dialog does not name on screen" in
+spirit even though the takeover is outside that contract's literal
+scope.
+
+## Task 034 — closing 2b-1's requirement-19 deferral (requirement 42)
+
+`docs/reports/phase2b1-findings.md:931-949` recorded requirement 19
+("the focused surface's border uses the focus colour, so an open dialog
+takes focus and the sidebar's border reverts") as **explicitly
+unobservable** in Phase 2b-1: `borderColor` applied one focus-coloured
+style to every border the main view drew, because 2b-1 had no theme/
+token system yet and a dialog always replaced the whole screen rather
+than sharing it with the sidebar — there was never a moment where an
+unfocused sidebar border needed to visibly *differ* from a focused one,
+only a moment where it was not drawn at all.
+
+Phase 2b-2 removes exactly the precondition that finding depended on.
+Task 021 introduced `theme.Border`/`theme.BorderFocus` as two distinct
+tokens (`internal/theme/token.go`) and rewired every border-drawing
+helper in `internal/tui/panel.go` to choose between them explicitly:
+`fullBoxTop`/`fullBoxBottom`/`fullBoxSideLeft`/`fullBoxSideRight` always
+paint `theme.BorderFocus` (documented at `panel.go:44-46` as "the
+region that *can* take focus and *is currently* focused, using a
+*different* colour"), the non-focusable preview box always paints
+`theme.Border`, and the stacked layout's sidebar/preview split
+(`panel.go:454-482`) picks per-box between the two based on which one
+`m.focus` currently names. This is the literal mechanism requirement 19
+asks for — a focused surface's border in one colour, an unfocused one in
+another — now actually exercised: the stacked layout puts a focusable
+sidebar box and a non-focusable preview box on screen *simultaneously*,
+so `TestStackedBorderFollowsFocus`-style coverage (task 021's per-cell
+border_focus/border assertions, `internal/tui/panel_test.go` and
+`theme_render_test.go`) can and does observe both colours in the same
+frame, closing the "never a moment" gap 2b-1 named.
+
+What remains true from the original finding, restated rather than
+silently dropped: a *screen-replacing* dialog (createView, detailView,
+the settings takeover, the theme picker) still has no sidebar visible
+behind it to revert, so those views borrow `theme.BorderFocus`
+throughout by the same convention 2b-1 used (there is exactly one
+focusable surface on screen while any of them is open) — that half of
+2b-1's reasoning was never wrong and is unchanged. The half that *was*
+wrong (or rather, premature) — "there is never a moment this phase
+where it matters" — is now closed: the stacked layout is exactly that
+moment, and it renders correctly. Requirement 19 is therefore verified,
+not merely no-longer-blocked: `internal/tui/panel_test.go`'s existing
+column-arithmetic tests are untouched (task 021's own success criteria
+required this, and `git diff` for that file is empty for this phase),
+and the per-cell border assertions above are new coverage added
+specifically for the token distinction, not a repurposing of an old
+test.
+
+## Task 034 — new `DECK_*` controls introduced this phase: none
+
+Every `DECK_*` environment variable referenced anywhere in
+`internal/` or `cmd/` as of this phase's HEAD
+(`DECK_SESSION_ID`, `DECK_HOME`, `DECK_CLOCK`, `DECK_CLOCK_STEP`,
+`DECK_RECONCILE_MS`, `DECK_PREVIEW_MS`, `DECK_TMUX_SOCKET`,
+`DECK_ASCII`, `DECK_ANIM`, `DECK_COLOR`, `DECK_COLOR_DEPTH`,
+`DECK_MOUSE`, `DECK_ID_SEED`, `DECK_TEST_PANIC_KEY`) predates Phase
+2b-2: `DECK_COLOR_DEPTH` in particular is called out in this run's own
+`tasks.json` discovery notes as landed by approach 01 ("DECK_COLOR_DEPTH
+parsing (2, code only)") — this phase's task 026 added the first pty-
+driven coverage that actually *exercises* it end to end, but did not
+introduce the variable or its parsing. `NO_COLOR` is the standard
+convention (bare `os.Getenv("NO_COLOR") == ""` gate,
+`internal/config/config.go:147`), also pre-existing. No task in this
+plan (001-038) adds a new `DECK_*`-prefixed control, environment
+variable, or config key namespaced under `env.DECK_*`; the schema work
+(010-018) is entirely about `config.toml` keys, not new environment
+switches. Recorded here explicitly so a reader does not need to grep the
+tree to confirm the negative.
+
+## Task 034 — environment finding: git push credentials are absent in this run
+
+Every commit across this phase (001-033, 037-038, and this task) has
+been made locally; none has been pushed to `origin` (or any remote).
+`git remote -v` in this workspace lists `origin` pointing at
+`https://github.com/n-orlov/deck.git`, but no credential helper, token,
+or SSH key is configured or mounted into this job's container, and no
+`~/.creds/` file exists for git/GitHub in this run's credential set.
+This mirrors approach 01's own finding, recorded in this run's
+`tasks.json` discovery notes ("15 commits are unpushed because no git
+credentials are mounted in this run") and is restated here as a durable
+finding in the report itself rather than only in run-scheduler metadata,
+per task 034's and task 036's success criteria. `git log` is the durable
+record of everything this phase did; a future iteration with credentials
+mounted can push the existing commit history as-is with no rebase or
+squash needed. Task 036 attempts `git push origin main` again at
+sequence's end and will record the same finding if the environment is
+unchanged, or update this entry if it is not.
