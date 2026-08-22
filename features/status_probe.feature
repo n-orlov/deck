@@ -16,9 +16,15 @@ Feature: Sampled probe status truth
       | claude/waiting.txt  |
       | claude/idle.txt     |
       | claude/error.txt    |
-    # pi's "starting", "waiting" and "idle" have no golden fixture: SPEC
+    # pi's "starting" and "waiting" still have no golden fixture: SPEC
     # requirement 38's refit found no capturable, durable marker for them
     # against a real pi (see internal/agent/testdata/probes/pi-PROVENANCE.md).
+    # pi's "idle" fixture (internal/agent/testdata/probes/pi/idle.txt) was
+    # added later (task 037 / operator steer 003-pi-idle-rule.md); it is not
+    # rendered in this scenario's list, but it is covered by
+    # internal/agent/probe_test.go's golden-corpus table and rule-ordering
+    # tests, which pin its verdict and its precedence against the pi
+    # running/error rules.
     And fake agent session "corpus pi" renders these exact golden fixtures:
       | pi/running.txt |
       | pi/error.txt   |
