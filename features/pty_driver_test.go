@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -46,6 +47,16 @@ type ScreenDriver struct {
 	// snapshots holds named frame captures for steps that assert a mouse
 	// gesture changed nothing (requirement 2). Guarded by mu.
 	snapshots map[string]string
+	// sent is a diagnostic-only (task 014) record of every Send call, so a
+	// hang's error message can show the exact input timeline leading up to
+	// it. Guarded by mu.
+	sent []sentRecord
+}
+
+// sentRecord is one entry in ScreenDriver.sent.
+type sentRecord struct {
+	at    time.Time
+	bytes string
 }
 
 // frameBudgetMargin is how far beyond the real terminal's own column/row
@@ -261,8 +272,32 @@ func (d *ScreenDriver) read() {
 // Send writes raw terminal input, rather than interpreting keys through a test
 // framework. This is the same byte stream an interactive user produces.
 func (d *ScreenDriver) Send(keys string) error {
+	d.mu.Lock()
+	d.sent = append(d.sent, sentRecord{at: time.Now(), bytes: keys})
+	d.mu.Unlock()
 	_, err := d.terminal.Write([]byte(keys))
 	return err
+}
+
+// sentLog renders every Send call this driver made, in order, with the
+// elapsed time since the previous one -- diagnostic-only (task 014), so a
+// hang's error can show exactly what input reached (or, per the write's own
+// return value, definitely reached the kernel's PTY buffer for) the client
+// immediately before it stopped responding.
+func (d *ScreenDriver) sentLog() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var b strings.Builder
+	var prev time.Time
+	for i, r := range d.sent {
+		if i == 0 {
+			fmt.Fprintf(&b, "  [%s] +0 %q\n", r.at.Format("15:04:05.000"), r.bytes)
+		} else {
+			fmt.Fprintf(&b, "  [%s] +%s %q\n", r.at.Format("15:04:05.000"), r.at.Sub(prev), r.bytes)
+		}
+		prev = r.at
+	}
+	return b.String()
 }
 
 // Frame returns cell-grid text, not the terminal's escape stream.
@@ -307,6 +342,13 @@ func (d *ScreenDriver) WaitForFrame(ctx context.Context, clockFrozen bool, want 
 }
 
 // Stop terminates a hung client and returns a useful transcript diagnostic.
+//
+// On timeout it signals SIGQUIT before the final SIGKILL: Go's runtime
+// default handler for SIGQUIT prints every goroutine's stack to the
+// process's own stderr (which is the same PTY d.raw already captures) and
+// then exits, so a genuine hang's diagnostic (task 014: what syscall/state
+// the process was blocked in) survives in the returned error instead of
+// being thrown away by an unconditional SIGKILL.
 func (d *ScreenDriver) Stop(timeout time.Duration) error {
 	select {
 	case <-d.done:
@@ -316,16 +358,23 @@ func (d *ScreenDriver) Stop(timeout time.Duration) error {
 		return d.processError()
 	case <-time.After(timeout):
 		if d.cmd.Process != nil {
-			_ = d.cmd.Process.Kill()
+			_ = d.cmd.Process.Signal(syscall.SIGQUIT)
 		}
 		select {
 		case <-d.done:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
+			if d.cmd.Process != nil {
+				_ = d.cmd.Process.Kill()
+			}
+			select {
+			case <-d.done:
+			case <-time.After(time.Second):
+			}
 		}
 		if d.terminal != nil {
 			_ = d.terminal.Close()
 		}
-		return fmt.Errorf("hung deck client killed after %s\nframe:\n%s\nraw: %q", timeout, d.Frame(false), d.Raw())
+		return fmt.Errorf("hung deck client killed after %s\nsent (input timeline):\n%sframe:\n%s\nraw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): %q", timeout, d.sentLog(), d.Frame(false), d.Raw())
 	}
 }
 
