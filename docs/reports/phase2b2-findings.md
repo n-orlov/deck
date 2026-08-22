@@ -1087,13 +1087,33 @@ entirely on the terminal emulator's own auto-wrap/clip behaviour to
 keep the line from overflowing, and at exactly 80 columns that clipping
 lands mid-word, not at a key boundary.
 
-**Provenance and scope.** The defect predates Phase 2b-1: `footerLine`
-and `footerLegend` (then a flatter, undifferentiated string) already
-existed before task 021 restructured the legend into `footerKeyHint`
-entries, and the 78-column clip is a function of the reason text's own
-length plus the *count* of legend entries — both grew across 2b-1/2b-2
-as keys (`P` profile, `i` detail) were added, but the absence of any
-explicit clamp is original, not something either phase introduced.
+**Provenance and scope.** The defect does not predate Phase 2b-1; it
+was introduced *during* Phase 2b-1's own implementation work, after
+that phase's PRD already existed. `git log --oneline --date=short
+--reverse` places `17cc346` ("prd: cut Phase 2b-1, the visible shell")
+at chronological position 149. `footerLine`/`footerLegend` (then a
+flatter, undifferentiated string, with no width clamp) were first
+written by `c215021` ("tui: render the two-panel side-by-side frame
+with §11.3 chrome (requirements 16, 17, 18, 19)", position 164) and
+`16962d8` ("tui: move status reason from row to footer (requirement
+20, §11.3)", position 162) — both dated 2026-08-20, the same day as
+and after `17cc346`, and both well before `docs/reports/phase2b1.md`
+was first written (`7abdf59`, position 191, dated 2026-08-21) or that
+phase's evidence closed out (`786dfde`, position 207). `phase2b1.md`
+itself states it covers "requirements 1-46", which includes
+requirements 16-20 — exactly what `c215021`/`16962d8` implement. So
+the unclamped footer legend was built *as part of* Phase 2b-1, not
+before it. The restructuring into today's `footerKeyHint` entries (an
+earlier draft of this section wrongly attributed that to "task 021";
+it was in fact `c1725ad`, "tui: wire chrome/list/footer tokens", dated
+2026-08-21, position 246 — after Phase 2b-1's report had already been
+written, i.e. during Phase 2b-2's theme work) never added a clamp
+either. The absence of any explicit width clamp is original to
+Phase 2b-1's `footerLine`/`footerLegend` and has simply never been
+fixed since; the 78-column clip itself is a function of the reason
+text's own length plus the *count* of legend entries, both of which
+grew across 2b-1 and 2b-2 as keys (`P` profile, `i` detail) were
+added.
 
 **Target phase.** This is a display-polish defect, not a functional
 regression (every hidden key still works via its keystroke; the footer
