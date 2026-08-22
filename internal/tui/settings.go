@@ -289,15 +289,29 @@ func (m *Model) settingsSave() tea.Cmd {
 // ScopeRestartToApply (schema.go's per-field comment names each one's
 // consumer, or lack of one) and are deliberately never touched here: their
 // resolved member is not what a save is claimed to affect live.
+//
+// requirement 21 correction (operator steer 008-envoverride-applylive.md,
+// 22 Aug 2026 13:00 BST): a ScopeGlobal field whose key is ALSO named in
+// m.settings.EnvOverrides (today only ui.ascii/DECK_ASCII and
+// ui.mouse/DECK_MOUSE -- config.LoadFrom's only two override paths) must
+// NOT have its resolved member touched here, and for Mouse specifically
+// must NOT get the EnableMouseCellMotion/DisableMouse tea.Cmd either --
+// §6.5 says the environment outranks the file, and that has to mean the
+// ALREADY-RUNNING client too, not just what a fresh process would resolve
+// on its next launch. The file value (m.settings.File, config.toml) is
+// still written regardless; only the resolved/running side and the
+// terminal mouse-reporting command are skipped. See
+// settingsFieldEnvOverride for the one map this reuses instead of adding a
+// second notion of "overridden".
 func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	if m.settingsEdits.AllowYolo != previous.AllowYolo {
 		m.settings.AllowYolo = m.settingsEdits.AllowYolo
 	}
-	if m.settingsEdits.ASCII != previous.ASCII {
+	if _, overridden := m.settings.EnvOverrides["ui.ascii"]; !overridden && m.settingsEdits.ASCII != previous.ASCII {
 		m.settings.ASCII = m.settingsEdits.ASCII
 	}
 	var cmd tea.Cmd
-	if m.settingsEdits.Mouse != previous.Mouse {
+	if _, overridden := m.settings.EnvOverrides["ui.mouse"]; !overridden && m.settingsEdits.Mouse != previous.Mouse {
 		m.settings.Mouse = m.settingsEdits.Mouse
 		enable := m.settingsEdits.Mouse
 		// EnableMouseCellMotion/DisableMouse are themselves tea.Msg

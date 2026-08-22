@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -119,6 +121,107 @@ func TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie(t *testing.T) {
 	}
 	if !strings.Contains(m.settingsNote, "saved") && m.settingsNote == "" {
 		t.Fatalf("settingsNote = %q, want a save confirmation", m.settingsNote)
+	}
+}
+
+// settingsEnvOverrideMovesAwayTestModel is the requirement-21 correction
+// (operator steer 008-envoverride-applylive.md, 22 Aug 2026 13:00 BST)
+// fixture the original TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie
+// above did not have: [ui] ascii's FILE value starts true (not the
+// package default false), and DECK_ASCII is ALSO true, so the running and
+// file values agree going in -- and a KindToggle `enter` therefore stages
+// an edit that moves AWAY from the running value (true -> false) rather
+// than the original fixture's accidental move toward it. That is the one
+// direction that actually exercises settingsApplyLiveFields' env-override
+// exemption: with the exemption removed, m.settings.ASCII would follow
+// the edit down to false even though DECK_ASCII=true is still set.
+func settingsEnvOverrideMovesAwayTestModel(t *testing.T) (model Model, configFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[ui]\nascii = true\n"), 0o644); err != nil {
+		t.Fatalf("seed config.toml: %v", err)
+	}
+	getenv := func(name string) string {
+		switch name {
+		case "DECK_HOME":
+			return dir
+		case "DECK_ASCII":
+			return "true"
+		}
+		return ""
+	}
+	userHome := func() (string, error) { return dir, nil }
+	loaded, err := config.LoadFrom(getenv, userHome)
+	if err != nil {
+		t.Fatalf("config.LoadFrom (seed load): %v", err)
+	}
+	if loaded.EnvOverrides["ui.ascii"] != "DECK_ASCII" {
+		t.Fatalf("seed load EnvOverrides = %+v, want ui.ascii overridden by DECK_ASCII", loaded.EnvOverrides)
+	}
+	if !loaded.ASCII || !loaded.File.ASCII {
+		t.Fatalf("seed load ASCII=%v File.ASCII=%v, want both true (running and file agreeing going in)", loaded.ASCII, loaded.File.ASCII)
+	}
+	m := New(nil, loaded, "")
+	updated, _ := m.Update(key(","))
+	m = updated.(Model)
+	if !m.settingsOpen {
+		t.Fatal(", did not open settings")
+	}
+	m.settingsFocus = settingsFocusFields
+	m.settingsCategoryIndex = 1
+	m.settingsFieldIndex = 1
+	if got := settingsFieldLabel(settingsCategories()[1].Fields[1]); got != "Ascii" {
+		t.Fatalf("category 1 field 1 = %q, want the Ascii field (schema order changed?)", got)
+	}
+	m.width, m.height = 160, 30
+	return m, loaded.Paths.ConfigFile
+}
+
+// TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue is
+// the requirement-21 correction's own test: it uses the moves-away
+// fixture above, so unlike TestSettingsLabelsAnEnvOverriddenFieldAndDoes
+// NotLie it fails (rather than passing by coincidence) if
+// settingsApplyLiveFields' env-override exemption is ever removed. See
+// the commit message for this test's real RED output against the
+// pre-fix tree and its GREEN output restored.
+func TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue(t *testing.T) {
+	m, configFile := settingsEnvOverrideMovesAwayTestModel(t)
+
+	runningASCIIBefore := m.settings.ASCII
+	if !runningASCIIBefore {
+		t.Fatal("seed running ASCII = false, want true (DECK_ASCII=true)")
+	}
+
+	// enter flips the staged KindToggle value from true (the file's own
+	// starting value) to false -- away from the running value, not toward
+	// it as the original fixture's toggle happened to be.
+	updated, _ := m.Update(key("enter"))
+	m = updated.(Model)
+	if m.settingsEdits.ASCII {
+		t.Fatal("enter did not stage ascii=false; the toggle direction this test depends on did not happen")
+	}
+	updated, _ = m.Update(key("ctrl+s"))
+	m = updated.(Model)
+
+	if m.settings.ASCII != runningASCIIBefore {
+		t.Fatalf("m.settings.ASCII changed from %v to %v after a save that moved AWAY from the env-resolved value -- an env-overridden field must not let a file edit move the already-running value, even when the edit moves in the opposite direction from where it started", runningASCIIBefore, m.settings.ASCII)
+	}
+
+	// The file itself must still have been rewritten to false: editing an
+	// env-overridden field is never refused (steer's fence), only its
+	// effect on the running value is.
+	reloaded, err := config.LoadFrom(func(name string) string {
+		if name == "DECK_HOME" {
+			return filepath.Dir(m.settings.Paths.ConfigFile)
+		}
+		return ""
+	}, func() (string, error) { return "", nil })
+	if err != nil {
+		t.Fatalf("re-load config.toml after save (no env set this time): %v", err)
+	}
+	if reloaded.File.ASCII {
+		t.Fatalf("config.toml at %s still has ascii = true after ctrl+s staged ascii=false; the file write itself is broken", configFile)
 	}
 }
 

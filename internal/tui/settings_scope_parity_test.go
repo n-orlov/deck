@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -143,6 +145,21 @@ func settingsStageRealEdit(m *Model, f config.Field) {
 }
 
 // TestSettingsScopeParityMatchesSaveBehaviour is task 007's parity test.
+//
+// requirement 21 correction (operator steer 008-envoverride-applylive.md,
+// 22 Aug 2026 13:00 BST): the ScopeGlobal branch below ("default:" case)
+// asserts a save DOES change the running config.Settings snapshot -- true
+// for every ScopeGlobal field EXCEPT when that same key is also named in
+// this fixture's config.Settings.EnvOverrides, in which case §6.5 ("the
+// environment always outranks the file") demands the opposite: the
+// running value must stay pinned to what the environment resolved, no
+// matter what the file's own edit says. settingsLiveApplyTestModel never
+// sets any DECK_* override, so this loop alone cannot see that case --
+// TestSettingsScopeParityEnvOverrideExemption below drives the identical
+// key path against a fixture that DOES set one, and inverts the very same
+// assertion this loop makes for that field. This is the exemption the
+// reviewer asked to be taught explicitly, not a relaxation of this test:
+// nothing here becomes more permissive for a field with no override.
 func TestSettingsScopeParityMatchesSaveBehaviour(t *testing.T) {
 	for _, f := range config.Schema {
 		f := f
@@ -182,6 +199,128 @@ func TestSettingsScopeParityMatchesSaveBehaviour(t *testing.T) {
 			default:
 				if !changedLive {
 					t.Fatalf("field %s is declared Scope %q (schema.go), not restart-to-apply, but ctrl+s did not change the running config.Settings snapshot -- before and after are equal: %+v", f.FullKey(), f.Scope, before)
+				}
+			}
+		})
+	}
+}
+
+// settingsEnvOverrideParityTestModel builds the same eight-key config.toml
+// shape settingsLiveApplyTestModel does, EXCEPT [ui] ascii and [ui] mouse
+// both start true (rather than false) and envVar is set in the process's
+// environment for this load -- so config.LoadFrom resolves BOTH the
+// running value and the file's own starting value to true, and records
+// the override in config.Settings.EnvOverrides at the same time (§6.5:
+// the environment always outranks the file, even when the two already
+// happen to agree). Starting the file value at true rather than false is
+// deliberate: settingsStageRealEdit's KindToggle case (`enter` flips the
+// staged value from whatever it starts at) then stages a MOVE AWAY FROM
+// the resolved/running value (true -> false), which is the one direction
+// that actually distinguishes "the running value stayed pinned to the
+// environment" from "the running value happened to land on the same spot
+// the edit was heading to anyway" -- the exact fixture blindness the
+// operator steer (008-envoverride-applylive.md, 22 Aug 2026 13:00 BST)
+// named in TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie's original
+// form.
+func settingsEnvOverrideParityTestModel(t *testing.T, envVar string) (model Model, path string) {
+	t.Helper()
+	dir := t.TempDir()
+	path = filepath.Join(dir, "config.toml")
+	contents := "allow_yolo = false\n" +
+		"stale_after = 45\n" +
+		"capture_min_interval = 5\n" +
+		"[ui]\n" +
+		"ascii = true\n" +
+		"mouse = true\n" +
+		"recent_cwd_limit = 5\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("seed config.toml: %v", err)
+	}
+	getenv := func(name string) string {
+		switch name {
+		case "DECK_HOME":
+			return dir
+		case envVar:
+			return "true"
+		}
+		return ""
+	}
+	userHome := func() (string, error) { return dir, nil }
+	loaded, err := config.LoadFrom(getenv, userHome)
+	if err != nil {
+		t.Fatalf("config.LoadFrom (seed load): %v", err)
+	}
+	loaded.Color = true
+	m := New(nil, loaded, "")
+	m.width, m.height = 120, 30
+	return m, path
+}
+
+// TestSettingsScopeParityEnvOverrideExemption is the exemption
+// TestSettingsScopeParityMatchesSaveBehaviour's own comment names:
+// requirement 21 (§6.5, "the environment always outranks the file")
+// means a ScopeGlobal field's save must NOT change the running
+// config.Settings when that field's key is also named in
+// config.Settings.EnvOverrides, even though every other ScopeGlobal field
+// (and this same field with no override set) must. Reverting the
+// settingsApplyLiveFields exemption (internal/tui/settings.go) turns both
+// subtests below red; see the commit message for the real RED/GREEN
+// output.
+func TestSettingsScopeParityEnvOverrideExemption(t *testing.T) {
+	cases := []struct {
+		fullKey    string
+		envVar     string
+		category   int
+		fieldIndex int
+		label      string
+		wantCmdNil bool
+	}{
+		{fullKey: "ui.ascii", envVar: "DECK_ASCII", category: 1, fieldIndex: 1, label: "Ascii", wantCmdNil: true},
+		{fullKey: "ui.mouse", envVar: "DECK_MOUSE", category: 1, fieldIndex: 2, label: "Mouse", wantCmdNil: true},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.fullKey, func(t *testing.T) {
+			f, ok := config.FieldByFullKey(c.fullKey)
+			if !ok {
+				t.Fatalf("config.FieldByFullKey(%q) not found", c.fullKey)
+			}
+			if f.Scope != config.ScopeGlobal {
+				t.Fatalf("field %s is Scope %q, want ScopeGlobal -- this test only proves the exemption inverts a live-applying field's behaviour", c.fullKey, f.Scope)
+			}
+
+			m, _ := settingsEnvOverrideParityTestModel(t, c.envVar)
+			if _, overridden := m.settings.EnvOverrides[c.fullKey]; !overridden {
+				t.Fatalf("seed load EnvOverrides = %+v, want %s overridden by %s", m.settings.EnvOverrides, c.fullKey, c.envVar)
+			}
+
+			m = settingsOpenAndSelect(t, m, c.category, c.fieldIndex, c.label)
+			before := snapshotResolvedSettings(m.settings)
+			settingsStageRealEdit(&m, f)
+			updated, cmd := m.Update(key("ctrl+s"))
+			m = updated.(Model)
+			after := snapshotResolvedSettings(m.settings)
+
+			if m.settingsNote == "" || strings.HasPrefix(m.settingsNote, "save failed") {
+				t.Fatalf("field %s: ctrl+s did not report a successful save (note = %q)", c.fullKey, m.settingsNote)
+			}
+
+			// The inverted assertion: a ScopeGlobal field would normally have
+			// to show changedLive == true here (see the default: branch
+			// above); under this field's own env override it must be false.
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("field %s is env-overridden by %s but ctrl+s changed the running config.Settings snapshot anyway:\nbefore: %+v\nafter:  %+v\nrequirement 21 (\u00a76.5): the environment must still outrank the file for the ALREADY-RUNNING client, not just the next launch", c.fullKey, c.envVar, before, after)
+			}
+			// The file itself must still have been rewritten -- editing an
+			// env-overridden field is never refused, only its effect on the
+			// running value is (steer's fence: "do not make the takeover
+			// refuse to edit an env-overridden field").
+			if reflect.DeepEqual(m.settings.File, config.FileConfig{}) {
+				t.Fatal("m.settings.File is the zero value; the save path itself is broken, not just the live-apply gate")
+			}
+			if c.wantCmdNil && cmd != nil {
+				if msg := cmd(); msg != nil {
+					t.Fatalf("field %s is env-overridden but ctrl+s returned a non-nil tea.Cmd producing %#v; an env-overridden mouse save must not tell the terminal to start/stop emitting SGR reports either", c.fullKey, msg)
 				}
 			}
 		})
