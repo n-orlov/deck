@@ -43,10 +43,17 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"space move to the next session needing attention", "changes any session's status",
 		"g toggle the selected row's workspace group",
 		"| cycle the layout mode", "< / > shrink/grow the sidebar",
+		", open/close settings", "prompting to", "discard if there are unsaved changes",
+		"t open/close the theme picker", "previews live", "reverts byte-for-byte",
+		"Settings takeover (opened with ,)", "switch focus between the category list",
+		"fuzzy-search every field by label or description", "save staged edits to config.toml",
+		"Theme picker (opened with t)", "change the previewed theme",
+		"select the previewed theme and save it", "revert to the theme active before the picker opened",
 		"click a sidebar row", "double-click a row", "click a group header",
 		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
 		"click or wheel over the preview does nothing",
 		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
+		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help view missing %q", want)
