@@ -347,7 +347,49 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   `toml_write_test.go` round-trip-of-unknown-key test, part of the
   `go test ./internal/config/...` run above.
 - **R24** (settings touches configuration only): the "driving every key the
-  takeover binds leaves the session set untouched" scenario.
+  takeover binds leaves the session set untouched" scenario proves the
+  keyboard path, but an independent review (2b-2 approach 02, commit
+  `65e623e`) reproduced a defect that path cannot see: the mouse guard at
+  `internal/tui/tui.go`'s top-of-`tea.MouseMsg` check (`if m.help ||
+  m.creating || m.profileSwitching || m.pinning || m.detail ||
+  m.themePicking`) omitted `m.settingsOpen` and `m.settingsDiscardConfirm`,
+  so a double click on the sidebar row hidden underneath the full-screen
+  takeover reached the main view and attached a session
+  (`attachCalls=1`) even though nothing the takeover's own keyboard-driven
+  test drove could ever exercise a mouse event. The keyboard scenario
+  above never sends a `tea.MouseMsg`, so it passed on the broken guard and
+  the gap went unnoticed until the review's own repro. The gate now also
+  covers `m.settingsOpen`/`m.settingsDiscardConfirm` (task 001), proven at
+  unit level by `internal/tui/mouse_test.go`'s
+  `TestSettingsTakeoverMouseIgnoredWhileOpen` (both the takeover-open and
+  the discard-confirm-over-takeover cases) and end to end by
+  `features/settings.feature`'s "the mouse cannot cancel the takeover,
+  attach the session it covers, or change the selected session while it is
+  open (requirement 24)" scenario (task 002), which drives a click, a
+  double-click and a wheel scroll at the covered sidebar row and asserts
+  the frame, the session set and its attach-event count are all
+  unchanged. Real output, re-run for this correction:
+
+  ```
+  $ ci/run.sh go test ./internal/tui/... -run TestSettingsTakeoverMouseIgnoredWhileOpen -v -count=1
+  === RUN   TestSettingsTakeoverMouseIgnoredWhileOpen
+  === RUN   TestSettingsTakeoverMouseIgnoredWhileOpen/settingsOpen
+  === RUN   TestSettingsTakeoverMouseIgnoredWhileOpen/settingsDiscardConfirm
+  --- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen (0.00s)
+      --- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen/settingsOpen (0.00s)
+      --- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen/settingsDiscardConfirm (0.00s)
+  PASS
+  ok  	github.com/n-orlov/deck/internal/tui	0.004s
+
+  $ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@settings" go test -run TestFeatures -v -count=1 .'
+  === RUN   TestFeatures/the_mouse_cannot_cancel_the_takeover,_attach_the_session_it_covers,_or_change_the_selected_session_while_it_is_open_(requirement_24)
+    Scenario: the mouse cannot cancel the takeover, attach the session it covers, or change the selected session while it is open (requirement 24) # settings.feature:148
+  10 scenarios (10 passed)
+  186 steps (186 passed)
+  --- PASS: TestFeatures (6.84s)
+  PASS
+  ok  	github.com/n-orlov/deck/features	6.868s
+  ```
 
 ## Requirements 25-36: themes (`SPEC.md` §11.6)
 
@@ -593,14 +635,17 @@ re-verified by this approach's own `ci/stability.sh 10` run (requirement
 
 ## Requirement 41: stability re-established after the flake fix
 
-`ci/stability.sh 10` (requirement 54 below) was run by this approach
+`ci/stability.sh 10` (requirement 54 below) was first run by this approach
 **after** requirement 40's fix was already on the tree (HEAD at run time
-`4f7d95b`, itself a descendant of the flake-fix commit). The one flaky run
-observed in that log is diagnosed as an unrelated harness-side wall-clock
-race in a *different* step (a client-exit wait in
-`crash.feature`'s SIGKILL scenario, not `privateSessionDoesNotExist`), so
-requirement 40's specific fix is not implicated in that run's single
-failure. See requirement 54 below for the full log and diagnosis.
+`4f7d95b`, itself a descendant of the flake-fix commit), and produced 9/10
+green with one flaky run diagnosed as an unrelated harness-side wall-clock
+race in a *different* step (a client-exit wait in `crash.feature`'s
+SIGKILL scenario, not `privateSessionDoesNotExist`) — requirement 40's
+specific fix was not implicated in that run's single failure. This
+correction pass's own task 014 fixed that SIGKILL-scenario teardown race
+directly, and a second `ci/stability.sh 10` re-run afterward (task 016)
+came back 10/10 clean, superseding the 9/10 record. See requirement 54
+below for the current full log and diagnosis.
 
 ## Requirement 42: closing 2b-1's requirement-19 border-focus deferral
 
@@ -813,25 +858,51 @@ $ git diff cea9624..HEAD -- internal/tui/panel_test.go
 
 ## Requirement 54: `ci/stability.sh 10` from a clean state
 
-Full real output in `docs/reports/phase2b2-stability.log` (task 035). **Result:
-9/10 green.** Run 3's `features` package failed exactly one scenario out of
-164 —
-`TestFeatures/SIGKILL_captures_and_sanitizes_the_agent_pane_without_relaunching`
-— and inside that scenario, every product-level assertion passed
-(reconcile-to-error, sanitized crash artifact, tmux teardown, audit record,
-detail dialog content); only the teardown step `deck client "A" exits
-cleanly` timed out (5s wait for process exit after sending `q`). Diagnosis
-recorded in the log and in the handoff notes: the same harness-side
-wall-clock-race class already documented for this suite
-(`docs/reports/phase1-findings.md` task 033's "the race is entirely in the
-test harness"; `docs/reports/phase2b1-findings.md`'s crash.feature
-teardown note) — scheduler contention across ten sequential full-suite
-runs in the sibling container, not a §7 status/crash-capture defect. No
-code change was made to chase a single non-reproduced 5s timeout, per the
-requirement's own "an honest 9/10 beats a hidden race" wording. This run
-post-dates requirement 40's flake fix (see requirement 41 above) and the
-one failure observed is in a different step than the one that fix
-targets.
+The run quoted in earlier drafts of this report (9/10, task 035) predates
+this correction pass's fixes — in particular task 014's fix for the
+SIGKILL scenario's coalesced-keystroke teardown hang, which is exactly
+the scenario that run's one failure hit. Task 016 re-ran `ci/stability.sh
+10` from a clean tree at `HEAD=4388dd0` (after tasks 001-015, i.e. after
+the req 24/17/11 fixes and the task 014 harness fix, before this task's
+own doc-only commit). Full real output in
+`docs/reports/phase2b2-stability.log` (task 016; the superseded 9/10 run
+is kept for provenance at
+`/run/ralphd/artifacts/task016-phase2b2-stability-PREVIOUS-9of10.log`).
+**Result: 10/10 green**, verified by re-reading the log's own tail in this
+iteration:
+
+```
+$ tail -30 docs/reports/phase2b2-stability.log
+...
+=== RUN 9: PASS (exit 0) ===
+=== RUN 10 ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.556s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.021s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.002s
+ok  	github.com/n-orlov/deck/features	157.266s
+ok  	github.com/n-orlov/deck/internal/agent	0.003s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.022s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.372s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	2.142s
+ok  	github.com/n-orlov/deck/internal/store	0.607s
+ok  	github.com/n-orlov/deck/internal/theme	0.005s
+ok  	github.com/n-orlov/deck/internal/tmux	0.427s
+ok  	github.com/n-orlov/deck/internal/tui	0.169s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 10: PASS (exit 0) ===
+full per-run logs and combined summary log kept in: /tmp/deck-stability.PzQxD7
+10/10 passed
+```
+
+Every one of the ten runs' `features` package (which is where the prior
+run's lone failure landed) passed with exit 0 recorded before any `tee`
+touched the output, per the script's own anti-mislabelling design. This
+run post-dates requirement 40's flake fix (requirement 41 above) and this
+correction pass's task 014 fix for the SIGKILL teardown race that caused
+the prior run's one failure.
 
 ## Requirement 55: this report
 
