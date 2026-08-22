@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // TestFingerprintDetectsMutations proves task 003's requirement: the
@@ -119,6 +121,111 @@ func TestFingerprintDetectsMutations(t *testing.T) {
 		}
 	})
 
+	t.Run("mode change", func(t *testing.T) {
+		root := t.TempDir()
+		target := filepath.Join(root, "permissioned.txt")
+		if err := os.WriteFile(target, []byte("same bytes, different mode"), 0o644); err != nil {
+			t.Fatalf("seed file: %v", err)
+		}
+		before, err := fingerprintDirectory(root)
+		if err != nil {
+			t.Fatalf("fingerprint before mutation: %v", err)
+		}
+
+		// Change mode only, leaving content and size untouched. Restore the
+		// mtime explicitly afterwards in case the platform bumps it on
+		// chmod, so this subtest isolates a mode change from the mtime-touch
+		// mode above: a naive implementation that never compares Mode must
+		// still fail here.
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatalf("stat before chmod: %v", err)
+		}
+		originalModTime := info.ModTime()
+		if err := os.Chmod(target, 0o444); err != nil {
+			t.Fatalf("chmod file: %v", err)
+		}
+		if err := os.Chtimes(target, originalModTime, originalModTime); err != nil {
+			t.Fatalf("restore mtime after chmod: %v", err)
+		}
+		// Restore write permission so t.TempDir()'s own cleanup can remove
+		// the file afterwards.
+		t.Cleanup(func() { _ = os.Chmod(target, 0o644) })
+
+		after, err := fingerprintDirectory(root)
+		if err != nil {
+			t.Fatalf("fingerprint after mutation: %v", err)
+		}
+		err = compareFingerprints(before, after)
+		if err == nil {
+			t.Fatalf("compareFingerprints did not detect a mode change")
+		}
+		if !strings.Contains(err.Error(), "permissioned.txt") {
+			t.Fatalf("compareFingerprints error %q does not name the mode-changed path", err.Error())
+		}
+	})
+
+	t.Run("symlink target swap", func(t *testing.T) {
+		root := t.TempDir()
+		originalTarget := filepath.Join(root, "original-target.txt")
+		swappedTarget := filepath.Join(root, "swapped-target.txt")
+		// Identical content in both targets, so only the symlink's own
+		// target string differs -- a naive implementation that follows the
+		// symlink and fingerprints the resolved file's bytes would see no
+		// difference at all here.
+		sameContent := []byte("identical content in both targets")
+		if err := os.WriteFile(originalTarget, sameContent, 0o644); err != nil {
+			t.Fatalf("seed original target: %v", err)
+		}
+		if err := os.WriteFile(swappedTarget, sameContent, 0o644); err != nil {
+			t.Fatalf("seed swapped target: %v", err)
+		}
+		linkPath := filepath.Join(root, "link")
+		if err := os.Symlink(originalTarget, linkPath); err != nil {
+			t.Fatalf("seed symlink: %v", err)
+		}
+		before, err := fingerprintDirectory(root)
+		if err != nil {
+			t.Fatalf("fingerprint before mutation: %v", err)
+		}
+
+		// Record the symlink's own lstat mtime before repointing it, so it
+		// can be restored below: recreating a symlink otherwise bumps its
+		// own mtime, which would let the mtime-touch comparison catch this
+		// mutation for the wrong reason and leave the "do not follow
+		// symlinks" decision unpinned.
+		linkInfoBefore, err := os.Lstat(linkPath)
+		if err != nil {
+			t.Fatalf("lstat symlink before repointing: %v", err)
+		}
+		originalLinkModTime := linkInfoBefore.ModTime()
+
+		if err := os.Remove(linkPath); err != nil {
+			t.Fatalf("remove symlink before repointing: %v", err)
+		}
+		if err := os.Symlink(swappedTarget, linkPath); err != nil {
+			t.Fatalf("repoint symlink: %v", err)
+		}
+		// os.Chtimes follows symlinks, so it cannot restore the symlink's
+		// own mtime; use AT_SYMLINK_NOFOLLOW directly.
+		ts := unix.NsecToTimespec(originalLinkModTime.UnixNano())
+		if err := unix.UtimesNanoAt(unix.AT_FDCWD, linkPath, []unix.Timespec{ts, ts}, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+			t.Fatalf("restore symlink's own mtime after repointing: %v", err)
+		}
+
+		after, err := fingerprintDirectory(root)
+		if err != nil {
+			t.Fatalf("fingerprint after mutation: %v", err)
+		}
+		err = compareFingerprints(before, after)
+		if err == nil {
+			t.Fatalf("compareFingerprints did not detect a symlink target swap")
+		}
+		if !strings.Contains(err.Error(), "link") {
+			t.Fatalf("compareFingerprints error %q does not name the repointed link", err.Error())
+		}
+	})
+
 	t.Run("removed file", func(t *testing.T) {
 		root := t.TempDir()
 		removedPath := filepath.Join(root, "victim.txt")
@@ -147,6 +254,45 @@ func TestFingerprintDetectsMutations(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "victim.txt") {
 			t.Fatalf("compareFingerprints error %q does not name the removed path", err.Error())
+		}
+	})
+
+	t.Run("root directory mode change", func(t *testing.T) {
+		// fingerprintDirectory records the fingerprinted root's own mode
+		// under rootFingerprintKey (".") -- a chmod of the directory being
+		// fingerprinted, not merely of something inside it, must still be
+		// caught.
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "unrelated.txt"), []byte("untouched"), 0o644); err != nil {
+			t.Fatalf("seed file: %v", err)
+		}
+		before, err := fingerprintDirectory(root)
+		if err != nil {
+			t.Fatalf("fingerprint before mutation: %v", err)
+		}
+
+		info, err := os.Stat(root)
+		if err != nil {
+			t.Fatalf("stat root before chmod: %v", err)
+		}
+		originalModTime := info.ModTime()
+		if err := os.Chmod(root, 0o700); err != nil {
+			t.Fatalf("chmod root: %v", err)
+		}
+		if err := os.Chtimes(root, originalModTime, originalModTime); err != nil {
+			t.Fatalf("restore root mtime after chmod: %v", err)
+		}
+
+		after, err := fingerprintDirectory(root)
+		if err != nil {
+			t.Fatalf("fingerprint after mutation: %v", err)
+		}
+		err = compareFingerprints(before, after)
+		if err == nil {
+			t.Fatalf("compareFingerprints did not detect the fingerprinted root's own mode change")
+		}
+		if !strings.Contains(err.Error(), rootFingerprintKey) {
+			t.Fatalf("compareFingerprints error %q does not name the root's reserved key %q", err.Error(), rootFingerprintKey)
 		}
 	})
 }

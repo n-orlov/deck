@@ -31,9 +31,16 @@ type directoryEntryFingerprint struct {
 	Content []byte
 }
 
-// directoryFingerprint maps a directory-relative, slash-separated path (the
-// root itself is never a key) to its entry fingerprint.
+// directoryFingerprint maps a directory-relative, slash-separated path to
+// its entry fingerprint. The root itself is recorded under the reserved key
+// "." (never produced by filepath.Rel for any real entry, since entries are
+// always beneath root) so a chmod of the fingerprinted directory itself --
+// not merely something inside it -- is covered too.
 type directoryFingerprint map[string]directoryEntryFingerprint
+
+// rootFingerprintKey is the reserved key directoryFingerprint uses for the
+// fingerprinted root directory's own entry.
+const rootFingerprintKey = "."
 
 // fingerprintDirectory walks root recursively and returns a fingerprint of
 // every entry beneath it. A symlink is fingerprinted by its own lstat info
@@ -45,17 +52,35 @@ func fingerprintDirectory(root string) (directoryFingerprint, error) {
 		if walkErr != nil {
 			return walkErr
 		}
+		var rel string
 		if path == root {
-			return nil
+			rel = rootFingerprintKey
+		} else {
+			var err error
+			rel, err = filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
 		info, err := entry.Info()
 		if err != nil {
 			return fmt.Errorf("stat %q: %w", rel, err)
+		}
+		if rel == rootFingerprintKey {
+			// The root's own mtime is deliberately not fingerprinted:
+			// adding or removing any child legitimately bumps a
+			// directory's mtime on every platform this runs on, which
+			// would make every add/remove mutation (including entirely
+			// legitimate ones the destructive-path scenarios perform
+			// inside deck's own state, never inside a session's cwd)
+			// register as a root difference and mask the specific
+			// child path a caller actually needs named. Its mode is
+			// still fingerprinted, so a chmod of the directory being
+			// fingerprinted -- not merely of something inside it -- is
+			// still caught.
+			fp[rel] = directoryEntryFingerprint{IsDir: true, Mode: info.Mode()}
+			return nil
 		}
 		record := directoryEntryFingerprint{
 			IsDir:           entry.IsDir(),

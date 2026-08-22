@@ -78,6 +78,64 @@ the stated convention exactly.
 exactly, and `findExistingTranscript` globs for `*_<id>.jsonl` rather than
 recomputing the filename, matching pi's own lack of a separate resume flag.
 
+## Requirement 3 under-specified requirement 29's modes/symlink assertions (found by operator steer, 22 Aug 2026 17:45 BST)
+
+Tasks 002/003 implemented `fingerprintDirectory`/`compareFingerprints` exactly to requirement 3's
+letter — the four mutation modes requirement 3 names (content change, mtime touch, added file,
+removed file) all had a proving subtest, and `compareFingerprints` already compared `Mode` and
+fingerprinted a symlink by its own `Readlink` target rather than following it. But requirement 29
+goes further than requirement 3 states, asserting the fingerprint proves "same entry list, same
+contents, **same modes**, same mtimes" across every destructive path, and neither the `Mode`
+comparison branch nor the symlink-not-followed decision had a test that could fail: an operator
+reproduction outside this tree, at commit `3896573`, deleted the `Mode != Mode` branch of
+`compareFingerprints` entirely and `go test -run TestFingerprint ./features/` stayed green, and
+`grep -rn "Symlink\|Readlink" features/*_test.go` found only the instrument's own implementation,
+no test exercising it. This was not a compliance miss by the worker — requirement 3 simply never
+named "mode change" or "symlink target swap" as mutation modes to prove, even though requirement 29
+then relies on both being caught.
+
+**Fix**: `TestFingerprintDetectsMutations` (`features/fingerprint_mutation_test.go`) gained two more
+isolated subtests, matching the existing four's discipline of changing exactly one property and
+restoring every other:
+- `mode change`: chmod a seeded file (0644 → 0444) while restoring its mtime via `os.Chtimes`
+  afterwards, leaving content and size untouched. Verified red with the `Mode != Mode` branch
+  removed (`compareFingerprints did not detect a mode change`), green restored.
+- `symlink target swap`: repoint a symlink at a different file holding byte-identical content,
+  then restore the symlink's own `lstat` mtime via `golang.org/x/sys/unix.UtimesNanoAt(...,
+  AT_SYMLINK_NOFOLLOW)` (recreating a symlink otherwise bumps its own mtime, which would let the
+  existing mtime-touch comparison catch the mutation for the wrong reason and leave the
+  not-following decision unpinned). Verified red when `fingerprintDirectory` is changed to
+  `filepath.EvalSymlinks` + `os.ReadFile` the resolved target instead of `os.Readlink`
+  (`compareFingerprints did not detect a symlink target swap`), green restored.
+
+Also added: `fingerprintDirectory` now records the fingerprinted root directory's own entry under a
+reserved key (`"."`), fingerprinting its `Mode` — previously the walk returned early on
+`path == root`, so a `chmod` of the cwd root itself (not merely something inside it) was invisible.
+The root's own mtime is deliberately **not** fingerprinted: adding or removing any child
+legitimately bumps a directory's mtime on every platform this runs on (verified experimentally —
+recording it caused the existing `added file`/`removed file`/`symlink target swap` subtests to
+report `"." mtime changed` instead of naming the actual differing child, since `compareFingerprints`
+returns the first difference in sorted order and `"."` sorts first), which would mask the specific
+path every destructive-path scenario in tasks 036/037 needs named. A `root directory mode change`
+subtest proves the root's mode is still caught (verified red with the root recording removed).
+
+`features/harness.feature`'s `requirement-29-fingerprint-harness` scenario now seeds a fourth entry
+using `seedScratchDirectory`'s existing `mode` column — `readonly.txt` at mode `0444` (readable, not
+`0000`, so the fingerprint can still read its bytes) — completing requirement 29's four named entry
+kinds (a deck-artifact-shaped name, a dotfile, a directory, and now a file with no write
+permission).
+
+## PRD requirement 3/27 vs 29 cross-reference (contradiction, recorded not fixed)
+
+`prds/phase3-sessions-and-lifecycle.md` requirement 3 states: "This is the instrument requirement
+**27** is measured with." Requirement 27, however, is `A` archives — an unrelated, non-destructive
+flag requirement. The requirement that actually measures the fingerprint instrument is **29** ("The
+working directory is sacred... a scenario asserts with requirement 3's fingerprint..."), which this
+repository's own code comments and task notes (tasks 002/003/036/037) already cite correctly. This
+is a PRD cross-reference slip, not a defect in the tree; per operator instruction it is recorded
+here for the operator to correct in the PRD, and is deliberately left unedited in
+`prds/phase3-sessions-and-lifecycle.md`.
+
 ## SPEC.md
 
 Unmodified by this task — `git diff SPEC.md` is empty (verified below).
