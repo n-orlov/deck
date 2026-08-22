@@ -20,6 +20,7 @@ func registerCreateSessionCWDPrefillSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is started in a fresh directory labelled "([^"]+)"$`, clientStartedInFreshDirectoryLabelled)
 	sc.Step(`^deck client "([^"]+)" opens the create modal$`, clientOpensCreateModal)
 	sc.Step(`^deck client "([^"]+)" screen contains the directory labelled "([^"]+)"$`, clientScreenContainsDirectoryLabelled)
+	sc.Step(`^deck client "([^"]+)" screen does not contain the directory labelled "([^"]+)"$`, clientScreenDoesNotContainDirectoryLabelled)
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" with a fresh working directory labelled "([^"]+)"$`, clientCreatesShellSessionWithFreshCWDLabelled)
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" typing over the prefilled working directory with the directory labelled "([^"]+)"$`, clientCreatesShellSessionTypingOverPrefillWithLabelled)
 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the directory labelled "([^"]+)"$`, sessionHasCWDExactlyLabelled)
@@ -100,6 +101,23 @@ func clientScreenContainsDirectoryLabelled(ctx context.Context, name, label stri
 		return err
 	}
 	return clientScreenContains(ctx, name, dir)
+}
+
+// clientScreenDoesNotContainDirectoryLabelled is
+// clientScreenContainsDirectoryLabelled's negative counterpart (task 013,
+// requirement 17): asserts the real path registered under label is absent
+// from the currently rendered frame, reusing clientScreenDoesNotContain
+// rather than re-implementing its polling.
+func clientScreenDoesNotContainDirectoryLabelled(ctx context.Context, name, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	dir, err := namedDirectory(h, label)
+	if err != nil {
+		return err
+	}
+	return clientScreenDoesNotContain(ctx, name, dir)
 }
 
 // createShellSessionInLabelledCWD drives the real create modal to a

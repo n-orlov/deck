@@ -93,9 +93,13 @@ func TestSettingsViewRendersSchemaDerivedCategoriesAndFields(t *testing.T) {
 // [it] as a single navigable entry", which config.Schema deliberately
 // does NOT declare (schema.go's own comment) since it is a structured
 // table, not a flat key. Task 015 adds exactly that one synthetic entry
-// (settingsNotifyEntry, FullKey "[notify]"); this test now names it
-// explicitly as the sole permitted non-schema surplus rather than either
-// silently tolerating any surplus or breaking on the one §11.5 requires.
+// (settingsNotifyEntry, FullKey "[notify]"); task 013 adds a second,
+// settingsClearRecentCwdsEntry (FullKey "ui.clear_recent_cwds"), for the
+// same reason: requirement 17's "clear recent_cwds" action lives in
+// state.db, not config.toml, so config.Schema has nothing to declare for
+// it either. This test now names both explicitly as the sole permitted
+// non-schema surplus rather than either silently tolerating any surplus
+// or breaking on the two §11.5/requirement 17 require.
 func TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce(t *testing.T) {
 	categories := settingsCategories()
 	seen := map[string]int{}
@@ -105,12 +109,17 @@ func TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce(t *testing.T) {
 		}
 	}
 	const notifyKey = "[notify]"
+	const clearRecentCwdsKey = "ui.clear_recent_cwds"
 	if seen[notifyKey] != 1 {
 		t.Fatalf("settingsCategories() surfaced %s %d times, want exactly 1 (the §11.5 single navigable entry)", notifyKey, seen[notifyKey])
 	}
+	if seen[clearRecentCwdsKey] != 1 {
+		t.Fatalf("settingsCategories() surfaced %s %d times, want exactly 1 (requirement 17's clear-history action)", clearRecentCwdsKey, seen[clearRecentCwdsKey])
+	}
 	delete(seen, notifyKey)
+	delete(seen, clearRecentCwdsKey)
 	if len(seen) != len(config.Schema) {
-		t.Fatalf("settingsCategories() surfaced %d distinct non-notify fields, want %d (one per schema field)", len(seen), len(config.Schema))
+		t.Fatalf("settingsCategories() surfaced %d distinct non-synthetic fields, want %d (one per schema field)", len(seen), len(config.Schema))
 	}
 	for _, f := range config.Schema {
 		if seen[f.FullKey()] != 1 {

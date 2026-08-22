@@ -329,3 +329,33 @@ Feature: The `,` settings takeover (requirement 48)
     Then deck client "A" screen contains "deck - sessions"
     And the scenario's config.toml still matches the captured "before-env-discard"
     When deck client "A" exits cleanly
+
+  @requirement-17-clear-recent-cwds-history
+  Scenario: settings offers clearing the recent-directory history, and clearing it costs only the prefill, never a session
+    Given deck client "A" is started
+    When deck client "A" creates shell session "clear-recent-seed" with a fresh working directory labelled "clear-recent-seed"
+    And deck client "A" opens the create modal
+    Then deck client "A" screen contains the directory labelled "clear-recent-seed"
+    And deck client "A" screen contains "(last used)"
+    When deck client "A" closes the create modal
+    And deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "cleared recent directory history"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" opens the create modal
+    Then deck client "A" screen does not contain "(last used)"
+    And deck client "A" screen does not contain the directory labelled "clear-recent-seed"
+    When deck client "A" closes the create modal
+    And deck client "A" creates shell session "clear-recent-after" with a fresh working directory labelled "clear-recent-after"
+    Then the state database contains session "clear-recent-seed"
+    And the state database contains session "clear-recent-after"
+    And the state database has exactly 2 sessions
+    When deck client "A" exits cleanly

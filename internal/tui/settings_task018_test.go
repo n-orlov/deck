@@ -72,13 +72,17 @@ func TestSettingsSchemaParity_EveryRenderedFieldIsBackedBySchema(t *testing.T) {
 	for _, cat := range settingsCategories() {
 		for _, f := range cat.Fields {
 			full := f.FullKey()
-			// The one documented structural exception (schema.go,
-			// settingsCategories(), settingsNotifyEntry()): [notify] is
-			// a synthetic settings-only entry, never a config.Schema
-			// member, because §11.5 gives it its own dialog rather than
-			// a flattened field -- there is no dialog this phase, so it
-			// is rendered as a link that opens nothing, per task 015.
-			if full == "[notify]" {
+			// Two documented structural exceptions (schema.go,
+			// settingsCategories(), settingsNotifyEntry()/
+			// settingsClearRecentCwdsEntry()): [notify] is a synthetic
+			// settings-only entry, never a config.Schema member, because
+			// §11.5 gives it its own dialog rather than a flattened field
+			// -- there is no dialog this phase, so it is rendered as a
+			// link that opens nothing, per task 015. ui.clear_recent_cwds
+			// (task 013, requirement 17) is likewise synthetic: it clears
+			// state.db's recent_cwds table, which has no config.toml key
+			// for config.Schema to declare.
+			if full == "[notify]" || full == "ui.clear_recent_cwds" {
 				continue
 			}
 			if _, ok := config.FieldByFullKey(full); !ok {

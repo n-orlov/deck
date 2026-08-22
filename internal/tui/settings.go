@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"reflect"
@@ -75,6 +76,19 @@ func settingsCategories() []settingsCategory {
 		}
 		categories[i].Fields = append(categories[i].Fields, field)
 	}
+	// task 013 (requirement 17, §11.5): clearing the §11.7 recent-directory
+	// history is a real store action (DELETE FROM recent_cwds), not a
+	// config.toml key -- config.Schema has nothing to declare for it, the
+	// same reason [notify] below has nothing to declare. It is appended to
+	// the already-built "ui" category (recent_cwd_limit's own category)
+	// rather than getting a category of its own, since it is one action
+	// alongside one existing UI-scoped field, not a structured table like
+	// [notify]. indexBySection["ui"] is always populated by the walk above
+	// (config.Schema always declares at least one ui.* key today), but the
+	// lookup stays defensive rather than indexing categories on trust.
+	if i, ok := indexBySection["ui"]; ok {
+		categories[i].Fields = append(categories[i].Fields, settingsClearRecentCwdsEntry())
+	}
 	// [notify] is deliberately absent from config.Schema (schema.go's own
 	// comment: it is "the stated structural exception", edited via its own
 	// dialog per §11.5 rather than flattened into fields). That dialog does
@@ -89,6 +103,45 @@ func settingsCategories() []settingsCategory {
 		Fields:  []config.Field{settingsNotifyEntry()},
 	})
 	return categories
+}
+
+// settingsClearRecentCwdsEntry is task 013's second (after [notify]'s
+// settingsNotifyEntry) synthetic settings-only config.Field: requirement
+// 17 wants the settings takeover to offer clearing the §11.7 recent-
+// directory history, but that history lives in state.db's recent_cwds
+// table, never config.toml, so there is no flat key config.Schema could
+// declare for it. Its Kind is KindLink -- §11.5's "link (opens the owning
+// dialog)" kind is the closest existing shape for "activating this row
+// does something other than stage an editable value" -- but, unlike
+// [notify]'s link (which opens nothing this phase and says so), enter/
+// space here performs the clear immediately (settingsActivateField),
+// which is why settingsFieldValueDisplay's KindLink branch special-cases
+// its FullKey rather than reusing [notify]'s "opens its own dialog" text:
+// nothing here opens, it just clears. FullKey is "ui.clear_recent_cwds"
+// (Key set, unlike [notify]/[env]'s Key==""), so settingsFieldLabel's
+// generic underscore-splitting path renders its label with no special
+// case needed there.
+func settingsClearRecentCwdsEntry() config.Field {
+	return config.Field{
+		Section: "ui",
+		Key:     "clear_recent_cwds",
+		Kind:    config.KindLink,
+		Description: "Clears the §11.7 recent-directory history (state.db's " +
+			"recent_cwds table) immediately on enter/space -- not staged, and not " +
+			"gated by ctrl+s or esc/discard, since it is a store action rather than " +
+			"a config.toml value. The history is non-load-bearing: clearing it " +
+			"costs only the create modal's cwd prefill, up/down recent-cycling and " +
+			"tab completion candidates (§11.7) the next time it opens. It never " +
+			"touches any session row, its cwd, or anything already created, and it " +
+			"is never written to the launch audit log or any notification payload " +
+			"either way -- the history was never in either of those to begin with.",
+		// Not really "lives in config.toml, refreshed live on save" the way
+		// ScopeGlobal's other members are -- there is no file value at all --
+		// but it shares ScopeGlobal's defining property this schema.go cares
+		// about: activating it takes effect in the already-running client
+		// immediately, never gated on a restart.
+		Scope: config.ScopeGlobal,
+	}
 }
 
 // settingsNotifyEntry is the synthetic §11.5 "single navigable entry" for
@@ -438,7 +491,31 @@ func (m *Model) settingsActivateField() {
 			m.settingsEnvIndex = 0
 			m.settingsEnvEditing = false
 		}
+	case config.KindLink:
+		if f.FullKey() == "ui.clear_recent_cwds" {
+			m.settingsClearRecentCwds()
+		}
 	}
+}
+
+// settingsClearRecentCwds is task 013/requirement 17's actual effect of
+// activating settingsClearRecentCwdsEntry: an immediate
+// store.ClearRecentCwds, not staged into m.settingsEdits and not gated by
+// ctrl+s -- there is no config.toml value involved at all, so there is
+// nothing for esc's discard-confirm (settingsDirty) to catch either way.
+// The outcome is surfaced through settingsNote, the same footer-line
+// mechanism settingsSave already uses for its own success/failure text,
+// rather than a second, parallel notification path.
+func (m *Model) settingsClearRecentCwds() {
+	if m.store == nil {
+		m.settingsNote = "clear recent directories failed: no store is open"
+		return
+	}
+	if err := m.store.ClearRecentCwds(context.Background()); err != nil {
+		m.settingsNote = "clear recent directories failed: " + err.Error()
+		return
+	}
+	m.settingsNote = "cleared recent directory history"
 }
 
 // settingsEnvKeys returns cfg.Env's keys in a stable (sorted) order, so
@@ -860,10 +937,14 @@ func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 	case config.KindListOfStrings:
 		return settingsListValueDisplay(f, cfg)
 	case config.KindLink:
-		if f.Section == "notify" {
+		switch f.FullKey() {
+		case "[notify]":
 			return "unavailable this phase"
+		case "ui.clear_recent_cwds":
+			return "press enter/space to clear now"
+		default:
+			return "opens its own dialog"
 		}
-		return "opens its own dialog"
 	default:
 		return fmt.Sprintf("%v", f.Default)
 	}

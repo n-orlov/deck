@@ -1288,3 +1288,55 @@ func TestPromoteRecentCwdRejectsRelativePath(t *testing.T) {
 		t.Fatalf("recent cwds after rejected promotion = %+v, want none", got)
 	}
 }
+
+// TestClearRecentCwdsRemovesEveryEntryButNothingElse covers task 013
+// (requirement 17, §11.5): clearing the §11.7 directory history is a real,
+// observable store mutation -- RecentCwds returns nothing afterward -- and
+// it costs only that history, never a session: a session row created
+// alongside the seeded recent_cwds entries survives ClearRecentCwds
+// byte-for-byte, and a later PromoteRecentCwd (the create modal's own
+// effect on a later create) still works, starting the table over from
+// empty rather than erroring on some leftover state.
+func TestClearRecentCwdsRemovesEveryEntryButNothingElse(t *testing.T) {
+	st := openRecentCwdTestStore(t)
+	ctx := context.Background()
+	for _, path := range []string{"/a", "/b", "/c"} {
+		if err := st.PromoteRecentCwd(ctx, path, 10); err != nil {
+			t.Fatalf("promote %s: %v", path, err)
+		}
+	}
+	session, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "clear-recent-cwds-session", Name: "clear-recent-cwds-session", CWD: "/a",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := st.ClearRecentCwds(ctx); err != nil {
+		t.Fatalf("clear recent cwds: %v", err)
+	}
+	got, err := st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("recent cwds after clear = %+v, want none", got)
+	}
+	rows, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != session.ID || rows[0].CWD != session.CWD {
+		t.Fatalf("sessions after clearing recent cwds = %+v, want the untouched seeded session", rows)
+	}
+	if err := st.PromoteRecentCwd(ctx, "/z", 10); err != nil {
+		t.Fatalf("promote after clear: %v", err)
+	}
+	got, err = st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != "/z" {
+		t.Fatalf("recent cwds after post-clear promote = %+v, want exactly [/z]", got)
+	}
+}
