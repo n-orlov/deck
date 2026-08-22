@@ -2505,6 +2505,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = err.Error()
 		return nil
 	}
+	name := m.resolveCreateName(resolvedCWD)
 	if m.createAgent != "shell" {
 		if m.createAgentSession == nil {
 			m.createError = "creating " + m.createAgent + " sessions is not available yet"
@@ -2521,7 +2522,7 @@ func (m *Model) submitCreate() tea.Cmd {
 			return nil
 		}
 		input := service.AgentCreateInput{
-			Name: m.createName, CWD: resolvedCWD, Agent: m.createAgent,
+			Name: name, CWD: resolvedCWD, Agent: m.createAgent,
 			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
 			PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell,
 		}
@@ -2535,11 +2536,57 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = "shell creation is unavailable"
 		return nil
 	}
-	name, cwd, create := m.createName, resolvedCWD, m.create
+	cwd, create := resolvedCWD, m.create
 	return func() tea.Msg {
 		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd})
 		return shellCreated{session: session, err: err}
 	}
+}
+
+// resolveCreateName implements SPEC.md:174-176's blank-name default (PRD
+// requirement 6): a name the user actually typed (after trimming) is
+// always used verbatim, exactly as before this task -- the default is only
+// *derived*, never special, so it goes through the identical uniqueness
+// path as any other name (the store's own UNIQUE constraint surfaces a
+// collision on an explicitly typed name as "already exists", per
+// validateCreateFields' doc comment). Only a blank field synthesises
+// `<workspace>-<MMDD-HHMM>` from m.settings.Clock (so a frozen DECK_CLOCK
+// makes it deterministic, per SPEC.md:176) and DefaultWorkspace's
+// basename-of-cwd rule (store.DefaultWorkspace, matching the sidebar's own
+// grouping key), then appends the smallest free `-2`, `-3`, ... suffix by
+// checking the store's current names -- never failing the create outright
+// on a collision, per SPEC.md:175 ("collisions append a suffix rather than
+// failing the create").
+func (m *Model) resolveCreateName(resolvedCWD string) string {
+	if trimmed := strings.TrimSpace(m.createName); trimmed != "" {
+		return trimmed
+	}
+	now := time.Now()
+	if m.settings.Clock != nil {
+		now = m.settings.Clock.Now()
+	}
+	base := store.DefaultWorkspace(resolvedCWD) + "-" + now.Format("0102-1504")
+	taken := make(map[string]bool)
+	if m.store != nil {
+		if sessions, err := m.store.ListSessions(context.Background()); err == nil {
+			for _, session := range sessions {
+				taken[session.Name] = true
+			}
+		}
+	}
+	if !taken[base] {
+		return base
+	}
+	for suffix := 2; suffix < 100000; suffix++ {
+		candidate := fmt.Sprintf("%s-%d", base, suffix)
+		if !taken[candidate] {
+			return candidate
+		}
+	}
+	// Unreachable outside a pathological test setup deliberately creating
+	// 100000 collisions; fall back to the bare base rather than panicking,
+	// leaving the store's own UNIQUE constraint to report the failure.
+	return base
 }
 
 // cycleCreateField advances a selection-type field's value by delta; it is a
