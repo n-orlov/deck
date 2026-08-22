@@ -707,6 +707,33 @@ func settingsFieldEnvOverride(f config.Field, s config.Settings) (string, bool) 
 	return envVar, ok
 }
 
+// settingsFieldRunningValueDisplay renders field f's actual running value,
+// read off the resolved config.Settings s -- the value the already-running
+// client is using right now -- as opposed to settingsFieldValueDisplay's
+// staged/file value from m.settingsEdits. Requirement 21's honesty fix
+// needs both named on screen for an env-overridden field, since they can
+// legitimately disagree (that disagreement is exactly what "overridden by
+// environment" means). config.LoadFrom today only ever overrides ui.ascii
+// and ui.mouse (both KindToggle), so those are the only cases with a real
+// answer; every other key falls back to fallback (the file value already
+// computed), since nothing can override it and the two must be equal.
+func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallback string) string {
+	onOff := func(b bool) string {
+		if b {
+			return "On"
+		}
+		return "Off"
+	}
+	switch f.FullKey() {
+	case "ui.ascii":
+		return onOff(s.ASCII)
+	case "ui.mouse":
+		return onOff(s.Mouse)
+	default:
+		return fallback
+	}
+}
+
 func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 	switch f.Kind {
 	case config.KindToggle:
@@ -832,13 +859,23 @@ func settingsListValueDisplay(f config.Field, cfg config.FileConfig) string {
 // schema Field rather than a second, hand-written copy of either. width is
 // the field panel's usable content width; wrapText keeps a long
 // description from being truncated away instead of wrapped across lines.
-func settingsFieldDetailLines(f config.Field, width int, envVar string) []string {
+//
+// Requirement 21: when envVar is non-empty (this field is env-overridden),
+// the detail text must state BOTH values by name -- fileValue (what
+// config.toml holds, and what an edit-and-save here changes) and
+// runningValue (what the already-running client is actually using right
+// now, per envVar, until envVar is unset) -- and must not phrase saving as
+// changing the running value. Before this, the text named envVar three
+// times but never said what either value actually was, so "the running
+// value comes from DECK_ASCII" read as a claim about DECK_ASCII's value,
+// not this field's two distinct values.
+func settingsFieldDetailLines(f config.Field, width int, envVar, fileValue, runningValue string) []string {
 	if width < 1 {
 		width = 1
 	}
 	lines := []string{fmt.Sprintf("Kind: %s \u00b7 Scope: %s", f.Kind, f.Scope)}
 	if envVar != "" {
-		lines = append(lines, wrapText(fmt.Sprintf("Overridden by environment: %s is set, so the running value comes from %s, not this file. Editing and saving here writes config.toml, but the running value keeps coming from %s until it is unset.", envVar, envVar, envVar), width)...)
+		lines = append(lines, wrapText(fmt.Sprintf("Overridden by environment: %s is set, so the running value is %s, not this file's %s, until %s is unset. Editing and saving here changes only config.toml's value (currently %s); the running client keeps using %s's %s until it is unset.", envVar, runningValue, fileValue, envVar, fileValue, envVar, runningValue), width)...)
 	}
 	lines = append(lines, wrapText(f.Description, width)...)
 	return lines
@@ -1139,19 +1176,35 @@ func (m Model) settingsView() string {
 			if selected {
 				marker = "> "
 			}
+			fileValue := settingsFieldValueDisplay(f, m.settingsEdits)
+			valueText := fileValue
+			if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
+				runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
+				// Kept short ("overridden by ENVVAR, running: VALUE", not the
+				// longer detail-line phrasing) so it never exceeds the field
+				// panel's own row budget (66 visible cells at the harness's
+				// 100-column default) and gets silently truncated away by
+				// padTrunc -- the fuller statement lives in the detail lines
+				// below, which have wrapText's whole multi-line budget. Appended
+				// onto valueText (one segment, one Tok) rather than a second
+				// settingsRowSegment: settingsRenderRow opens a fresh SGR escape
+				// per segment even when consecutive segments share the same
+				// theme.Token, which would otherwise split "Off (file value..."
+				// across an escape boundary invisible to a human but fatal to a
+				// plain substring assertion against the coloured view.
+				valueText += " (file value; overridden by " + envVar + ", running: " + runningValue + ")"
+			}
 			segs := []settingsRowSegment{
 				{Text: marker, Tok: theme.Text},
 				{Text: settingsFieldLabel(f), Tok: theme.Hint},
 				{Text: ": ", Tok: theme.Text},
-				{Text: settingsFieldValueDisplay(f, m.settingsEdits), Tok: theme.Text},
-			}
-			if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
-				segs = append(segs, settingsRowSegment{Text: " (overridden by environment: " + envVar + ")", Tok: theme.Text})
+				{Text: valueText, Tok: theme.Text},
 			}
 			rightLines = append(rightLines, m.settingsRenderRow(segs, fieldSelTok, selected))
 			if selected {
 				envVar, _ := settingsFieldEnvOverride(f, m.settings)
-				for _, detail := range settingsFieldDetailLines(f, innerWidth-2, envVar) {
+				runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
+				for _, detail := range settingsFieldDetailLines(f, innerWidth-2, envVar, fileValue, runningValue) {
 					rightLines = append(rightLines, "    "+detail)
 				}
 			}
