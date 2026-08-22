@@ -78,6 +78,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		Store: db, TMux: client, Audit: logger,
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
 		ConfigEnv: settings.Env, DeckExecutable: executable, DeckHome: settings.Paths.Home,
+		RecentCwdLimit: settings.RecentCwdLimit,
 	}
 	// The TUI owns pane-text sampling. Its reconcile callback performs liveness
 	// first and then probes stale eligible agents; the hidden hook command below

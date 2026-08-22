@@ -49,6 +49,28 @@ type Service struct {
 	// Shell overrides the user's $SHELL. It is primarily useful to embedded
 	// callers; an empty value selects $SHELL, falling back to /bin/sh.
 	Shell string
+
+	// RecentCwdLimit is SPEC §6.5's [ui] recent_cwd_limit (default 5): how
+	// many entries survive in the §11.7 directory history after a session's
+	// cwd is promoted. It is caller-supplied, never assumed, so a zero value
+	// means exactly what store.PromoteRecentCwd documents: keep nothing.
+	RecentCwdLimit int
+}
+
+// promoteRecentCwd moves cwd to the front of the §11.7 directory history on
+// session creation, resolving it to an absolute path first (store.
+// PromoteRecentCwd requires one). Recent-directory history is explicitly
+// not load-bearing (SPEC §4): a failure here must never turn a created
+// session into a failed one, so it is swallowed rather than propagated.
+func (s Service) promoteRecentCwd(ctx context.Context, cwd string) {
+	if s.Store == nil || cwd == "" {
+		return
+	}
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return
+	}
+	_ = s.Store.PromoteRecentCwd(ctx, abs, s.RecentCwdLimit)
 }
 
 // CreateShell creates the durable row before starting its one-pane private
@@ -87,6 +109,7 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable shell session: %w", err)
 	}
+	s.promoteRecentCwd(ctx, session.CWD)
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
 		return session, fmt.Errorf("audit starting shell session %q: %w", session.Name, err)
 	}

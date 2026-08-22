@@ -1091,3 +1091,81 @@ func (s *Store) GetSidebarWidth(ctx context.Context) (int, error) {
 func (s *Store) SetSidebarWidth(ctx context.Context, width int) error {
 	return s.setUIState(ctx, "sidebar_width", strconv.Itoa(width))
 }
+
+// RecentCwd is one row of the §11.7 directory history: a resolved absolute
+// path and the monotonic sequence number it was last promoted with. Most
+// recent is the highest UsedSeq, never the newest wall-clock timestamp
+// (SPEC §4/§13.1: order must stay assertable under a frozen DECK_CLOCK).
+type RecentCwd struct {
+	Path    string
+	UsedSeq int64
+}
+
+// PromoteRecentCwd moves path to the front of the §11.7 directory history,
+// deduplicated by exact string equality on the caller-resolved absolute
+// path, and evicts every entry beyond limit. limit is caller-supplied
+// (SPEC §6.5's [ui] recent_cwd_limit, default 5) so the store carries no
+// opinion of its own; limit <= 0 keeps nothing at all, per the same rule
+// that decides how many rows survive. The next sequence number is always
+// one more than the current maximum, computed inside the same transaction
+// as the insert/update and the eviction, so a promotion is atomic and the
+// order stays deterministic under a frozen DECK_CLOCK -- used_seq is never
+// derived from a clock value.
+func (s *Store) PromoteRecentCwd(ctx context.Context, path string, limit int) error {
+	if path == "" {
+		return errors.New("recent cwd path is required")
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("recent cwd path %q must be an absolute, resolved path", path)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin promote recent cwd: %w", err)
+	}
+	defer tx.Rollback()
+	var maxSeq sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(used_seq) FROM recent_cwds`).Scan(&maxSeq); err != nil {
+		return fmt.Errorf("read recent cwd sequence: %w", err)
+	}
+	nextSeq := maxSeq.Int64 + 1
+	if _, err := tx.ExecContext(ctx, `INSERT INTO recent_cwds (path, used_seq) VALUES (?, ?)
+		ON CONFLICT(path) DO UPDATE SET used_seq = excluded.used_seq`, path, nextSeq); err != nil {
+		return fmt.Errorf("promote recent cwd %q: %w", path, err)
+	}
+	if limit <= 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM recent_cwds`); err != nil {
+			return fmt.Errorf("evict recent cwds to limit 0: %w", err)
+		}
+	} else if _, err := tx.ExecContext(ctx, `DELETE FROM recent_cwds WHERE path NOT IN (
+		SELECT path FROM recent_cwds ORDER BY used_seq DESC LIMIT ?)`, limit); err != nil {
+		return fmt.Errorf("evict recent cwds beyond limit %d: %w", limit, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit promote recent cwd: %w", err)
+	}
+	return nil
+}
+
+// RecentCwds returns the §11.7 directory history, most recent first (highest
+// UsedSeq first). It reflects exactly what PromoteRecentCwd has left in the
+// table; callers that want only the first N should slice the result rather
+// than pass a second, independent limit here.
+func (s *Store) RecentCwds(ctx context.Context) ([]RecentCwd, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT path, used_seq FROM recent_cwds ORDER BY used_seq DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list recent cwds: %w", err)
+	}
+	defer rows.Close()
+	var out []RecentCwd
+	for rows.Next() {
+		var rc RecentCwd
+		if err := rows.Scan(&rc.Path, &rc.UsedSeq); err != nil {
+			return nil, fmt.Errorf("scan recent cwd: %w", err)
+		}
+		out = append(out, rc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent cwds: %w", err)
+	}
+	return out, nil
+}

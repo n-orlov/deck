@@ -117,6 +117,29 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 	}
 }
 
+// TestCreateAgentPromotesCWDToRecentCwds covers task 007's service-level
+// requirement that creating a session (agent path) promotes its cwd into
+// the §11.7 directory history.
+func TestCreateAgentPromotesCWDToRecentCwds(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, _ := newAgentTestService(t, nil, "create-agent-recent-test")
+	service.RecentCwdLimit = 5
+
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: recent", CWD: cwd, Agent: "claude", PermissionProfile: "edits",
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	recent, err := db.RecentCwds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 1 || recent[0].Path != session.CWD {
+		t.Fatalf("recent cwds after create agent = %+v, want exactly [%q]", recent, session.CWD)
+	}
+}
+
 func TestCreateAgentDegradesUnsupportedProfileForPi(t *testing.T) {
 	cwd := t.TempDir()
 	service, db, logger, _ := newAgentTestService(t, nil, "create-agent-pi")
