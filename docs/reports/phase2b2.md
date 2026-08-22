@@ -334,8 +334,117 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   is in `docs/reports/phase2b2-findings.md` (task 005).
 - **R18** (field kinds explicit — toggle, bounded integer, string, path,
   enum, list-of-strings, link): `3b894d6`.
-- **R19** (scope labelled per field, incl. restart-to-apply): the "`[env]`
-  table states its restart-to-apply scope on screen" scenario.
+- **R19** (scope labelled per field, incl. restart-to-apply). An independent
+  review (2b-2, blocking finding) found only `[env]` labelled
+  restart-to-apply while the seven flat keys were labelled `global` even
+  though a ctrl+s never refreshed the running `config.Settings`, so none of
+  them took effect live and the report had no per-field statement. Tasks
+  005-008 (this correction pass) close it: task 005 decided, field by
+  field, whether a save takes effect in the already-running client or only
+  on the next launch, and corrected `internal/config/schema.go`'s `Scope`
+  values to match: `allow_yolo`, `ui.theme`, `ui.ascii` and `ui.mouse` stay
+  (or become, for `ui.mouse`'s on-direction) `global`, because a concrete
+  already-existing consumer re-reads the running settings; `stale_after`,
+  `capture_min_interval` and `ui.recent_cwd_limit` are corrected from
+  `global` to `restart-to-apply` because no such consumer exists (either
+  the value is captured once in a closure at startup, or nothing in this
+  tree reads it again at all); `[env]` was already `restart-to-apply`.
+  Task 006 made every field that stayed or became `global` actually
+  refresh the running `config.Settings` on save (and, for `ui.mouse`'s
+  on-direction, issue the matching bubbletea command); task 007 added a
+  mechanical test that ties every field's declared `Scope` to its observed
+  save behaviour so the two can never silently disagree again; task 008
+  put the restart-to-apply consequence into the on-screen description text
+  of every restart-to-apply field, not only the `[env]` table, and proved
+  a live field's save is visible in the running client's actual render
+  (not just its in-memory settings) by reading a screen cell before and
+  after.
+
+  Per-field table (all eight `config.toml` keys `internal/config/schema.go`
+  declares):
+
+  | Field | `Scope` | Save effect | Why (consumer / lack of one) | Proof |
+  |---|---|---|---|---|
+  | `allow_yolo` | `global` | live, next keystroke | `internal/tui/tui.go`'s profile-switch/create/help call sites read `m.settings.AllowYolo` fresh every keystroke | `TestSettingsScopeParityMatchesSaveBehaviour/allow_yolo` |
+  | `stale_after` | `restart-to-apply` | restart only | `cmd/deck/main.go`'s `tuiReconcile` closure captures `settings.StaleAfter` once before `tui.New*`; the Model's own refreshed settings are a separate copy the closure never reads | `TestSettingsScopeParityMatchesSaveBehaviour/stale_after`; description prose proven on screen by the "a restart-to-apply flat key states so..." scenario below |
+  | `capture_min_interval` | `restart-to-apply` | restart only (no consumer exists yet) | §9.4's opportunistic-capture throttle has no reader anywhere in this tree today; nothing a running client could apply live even in principle | `TestSettingsScopeParityMatchesSaveBehaviour/capture_min_interval` |
+  | `ui.theme` | `global` | live, next frame, per-cell | `internal/tui/theme_color.go`'s `activeTheme()` reads `m.settings.Theme` on every render; task 006 makes the general takeover's ctrl+s refresh it the same way the theme picker already did | `TestSettingsScopeParityMatchesSaveBehaviour/ui.theme`; per-cell live-render proof by the "a settings takeover save of ui.theme..." scenario below |
+  | `ui.ascii` | `global` | live, next frame | every glyph choice reads `m.settings.ASCII` at render time (`internal/tui/panel.go`, `tui.go`'s `helpText`) | `TestSettingsScopeParityMatchesSaveBehaviour/ui.ascii` |
+  | `ui.mouse` | `global` | live, next event, both directions | the `tea.MouseMsg` off-guard already read `m.settings.Mouse` fresh; task 006 added the matching `EnableMouseCellMotion`/`DisableMouse` `tea.Cmd` on save so the on-direction is no longer restart-only either | `TestSettingsScopeParityMatchesSaveBehaviour/ui.mouse` |
+  | `ui.recent_cwd_limit` | `restart-to-apply` | restart only (no consumer exists yet) | §11.7's recent-cwd picker that would read this bound has no reader anywhere in this tree today | `TestSettingsScopeParityMatchesSaveBehaviour/ui.recent_cwd_limit` |
+  | `[env]` | `restart-to-apply` | restart only | tmux env changes reach only new processes; a running pane keeps its old environment until it or deck restarts (§6.2) | `TestSettingsScopeParityMatchesSaveBehaviour/[env]`; on-screen proof by the "the `[env]` table states its restart-to-apply scope on screen" scenario |
+
+  Label/behaviour agreement for all eight fields above is enforced
+  mechanically, not just documented: `TestSettingsScopeParityMatchesSaveBehaviour`
+  (`internal/tui/settings_scope_parity_test.go`, task 007) walks
+  `config.Schema` itself — never a second hand-maintained list — and for
+  every field drives a real `,` → select field → stage an edit → ctrl+s
+  save, then fails if a non-restart-to-apply field's save leaves the
+  running `config.Settings` unchanged, or if a restart-to-apply field's
+  save changes it, or if a restart-to-apply field's own on-screen text
+  does not say so. Real output, run fresh for this correction:
+
+  ```
+  $ ci/run.sh go test -v -run TestSettingsScopeParityMatchesSaveBehaviour ./internal/tui/...
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/allow_yolo
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/stale_after
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/capture_min_interval
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.theme
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.ascii
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.mouse
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.recent_cwd_limit
+  === RUN   TestSettingsScopeParityMatchesSaveBehaviour/[env]
+  --- PASS: TestSettingsScopeParityMatchesSaveBehaviour (0.03s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/allow_yolo (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/stale_after (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/capture_min_interval (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.theme (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.ascii (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.mouse (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.recent_cwd_limit (0.00s)
+      --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/[env] (0.00s)
+  PASS
+  ok  	github.com/n-orlov/deck/internal/tui	0.033s
+  ```
+
+  Task 007's RED demonstration (flipping `ui.ascii`'s `Scope` to
+  restart-to-apply while its live-apply code path stayed unchanged) is
+  quoted verbatim in commit `06ffca5` and not repeated here; it was not
+  re-run for this report entry since the tree it exercises is unchanged
+  since that commit.
+
+  Task 008's two feature scenarios, run fresh for this correction
+  (`@settings` tag, full log also has the pre-existing 11 scenarios green,
+  omitted here for brevity):
+
+  ```
+  $ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@settings" go test -run TestFeatures -v -count=1 .'
+  ...
+  13 scenarios (13 passed)
+  225 steps (225 passed)
+  --- PASS: TestFeatures (10.72s)
+      --- PASS: TestFeatures/a_restart-to-apply_flat_key_states_so_in_its_own_on-screen_description,_not_only_its_Scope_label_(requirement_19) (0.79s)
+      --- PASS: TestFeatures/a_settings_takeover_save_of_ui.theme_changes_the_running_client's_own_render_live,_read_per_cell_(requirement_19) (0.67s)
+      --- PASS: TestFeatures/the_[env]_table_states_its_restart-to-apply_scope_on_screen (0.76s)
+  PASS
+  ok  	github.com/n-orlov/deck/features	10.744s
+  ```
+
+  The first scenario opens `stale_after` — a flat key, not `[env]` — and
+  asserts the screen contains "Restart-to-apply: saving here writes
+  config" from the field's own description prose (not only the separate
+  "Kind: ... · Scope: restart-to-apply" line). The second pins
+  `config.toml` to theme `empire`, starts a colour-enabled client, opens
+  the takeover on `ui.theme`, cycles it to `daylight` with `+`, saves with
+  ctrl+s, and asserts the cell at row 0 column 0 (the now-unfocused
+  Categories panel's left border) carries the `daylight` theme's `border`
+  token colour both before and after the save — proving the change is
+  visible in the running client's own render without a restart, not
+  merely written to config.toml. `internal/tui/tui_test.go`'s
+  unavailable-action list and `cmd/deck/main_test.go`'s help overlay
+  assertions were not touched by this correction (`git diff` on both is
+  empty).
 - **R20** (ctrl+s atomic save, esc discard prompt, never-unparseable write):
   `61639b4`; the "a toggle and a bounded integer are edited..." and "esc
   with an unsaved change..." scenarios; `internal/config`'s atomic-writer
