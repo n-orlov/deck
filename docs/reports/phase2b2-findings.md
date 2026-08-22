@@ -1265,9 +1265,15 @@ state-specific to the detail view or crash handling.
 **Why this is a harness race, not a product defect.** Two real keystrokes
 typed by a human are separated by tens of milliseconds at minimum — far
 more than enough for deck's reader to drain and dispatch the first one
-before the second byte reaches the kernel's tty buffer, so this coalescing
-requires an artificially zero-delay double write, which only a test harness
-(or a bulk paste, already handled separately via bracketed-paste) produces.
+before the second byte reaches the kernel's tty buffer, so *this scenario's*
+coalescing requires an artificially zero-delay double write, which only a
+test harness produces — not a paste: `grep -rn "BracketedPaste\|Paste" cmd/
+internal/ --include=*.go | grep -v _test.go` finds no matches anywhere in
+the tree, and `cmd/deck/main.go`'s `programOptions` (`tea.WithAltScreen()`
+plus, conditionally, `tea.WithMouseCellMotion()`) enables no bracketed-paste
+mode. Deck does not handle paste separately; a pasted burst takes the exact
+same multi-rune-`KeyMsg` path this task diagnosed. See "Residual product
+exposure" below for where that path is, and is not, safe today.
 `features/crash.feature`'s SIGKILL scenario has exactly that shape:
 `deck client "A" opens detail for session "crashed claude"` sends `"i"`
 and returns immediately; the very next step,
@@ -1298,6 +1304,38 @@ same `read(2)`. Verified: `go test -count=25` against the unfixed harness
 reproduced the hang twice (8%); `go test -count=40` against the fixed
 harness reproduced it zero times, and the full suite
 (`go test ./... -count=1`) passes.
+
+**Residual product exposure (not fixed here, not this phase's scope).** The
+harness fix above closes requirement 54's flake; it does not touch the
+underlying behaviour that made the coalesced `KeyMsg` invisible, which is a
+genuine (if narrow) product gap deferred to Phase 3. The exposure is wider
+than "only a test harness can trigger it": any input path that can deliver
+two keystrokes inside one `read(2)` hits it, most realistically a laggy ssh
+or tmux link that buffers keystrokes during a stall and flushes them
+together on resume — ordinary behaviour on a poor connection, not something
+artificial. There is a sharp asymmetry in how deck's own `Update` code
+handles this today:
+- **Text fields consume all runes correctly**: `internal/tui/settings.go:459`,
+  `settings.go:933` and `internal/tui/tui.go:2243` all guard with
+  `if runes := msg.Runes; len(runes) > 0`, so a coalesced or pasted burst
+  typed into a text field is inserted whole.
+- **List and dialog navigation does not**: `internal/tui/tui.go:684` and
+  `tui.go:2228` `switch msg.String()`, which for a two-rune `KeyMsg` (e.g.
+  `"i"`+`"q"`) is the literal string `"iq"` and matches no `case`, so
+  *both* keys are silently discarded with no feedback — this is exactly the
+  mechanism this task diagnosed, just triggered by a human/network timing
+  accident instead of a harness `Send`.
+
+Deck already knows how to read `msg.Runes` (the three text-field sites
+above); the list/dialog navigation path simply never does. Re-dispatching a
+multi-rune `KeyMsg` one rune at a time (or otherwise handling it) across the
+list and the five dialogs is real, independently-testable product work, not
+a one-line fix, and is out of scope for this correction pass. It is not
+closed by this phase: the operator has added it to the Phase 3 PRD as
+follow-up work, and this entry records it here so it is traceable rather
+than lost. The flake itself (`clientOpensDetailForSession` never adopting
+the 25ms convention its sibling `sendClientKeys` documents) remains
+correctly classified as the harness's, per the diagnosis above.
 
 **Kept vs. reverted.** Kept permanently: `ScreenDriver.Stop`'s
 SIGQUIT-before-SIGKILL diagnostic and its `sent`/`sentLog` input-timeline
