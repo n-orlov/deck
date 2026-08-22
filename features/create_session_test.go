@@ -23,6 +23,8 @@ func registerCreateSessionCWDPrefillSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" with a fresh working directory labelled "([^"]+)"$`, clientCreatesShellSessionWithFreshCWDLabelled)
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" typing over the prefilled working directory with the directory labelled "([^"]+)"$`, clientCreatesShellSessionTypingOverPrefillWithLabelled)
 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the directory labelled "([^"]+)"$`, sessionHasCWDExactlyLabelled)
+	sc.Step(`^deck client "([^"]+)" presses "(up|down)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
+	sc.Step(`^deck client "([^"]+)" tabs to the cwd field$`, clientTabsToCWDField)
 }
 
 // namedDirectory returns the real path a prior step registered under
@@ -161,6 +163,57 @@ func clientCreatesShellSessionTypingOverPrefillWithLabelled(ctx context.Context,
 		return err
 	}
 	return createShellSessionInLabelledCWD(ctx, h, clientName, sessionName, label)
+}
+
+// clientTabsToCWDField sends a single tab, moving create-modal focus from
+// the name field (0, where "n" leaves it) to the cwd field (1) --
+// clientPressesArrowInCWDFieldNTimes below needs the cwd field actually
+// focused, since up/down are a no-op on every other create-modal field
+// (task 009: only field 1 binds them).
+func clientTabsToCWDField(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\t"); err != nil {
+		return err
+	}
+	time.Sleep(60 * time.Millisecond)
+	return nil
+}
+
+// clientPressesArrowInCWDFieldNTimes drives task 009's shell-history-style
+// up/down cycling: the caller must already have tabbed focus to the cwd
+// field (clientTabsToCWDField) since up/down are a no-op everywhere else in
+// the create modal. Sends the real terminal escape sequence for up
+// (\x1b[A) or down (\x1b[B) n times, pausing between presses exactly as
+// clientPressesKeyNTimes (features/layout_modes_test.go) does for any
+// other repeated-keystroke step, since the same pty-coalescing gotcha
+// applies to any raw byte sent back to back.
+func clientPressesArrowInCWDFieldNTimes(ctx context.Context, name, direction string, n int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	seq := "\x1b[A"
+	if direction == "down" {
+		seq = "\x1b[B"
+	}
+	for i := 0; i < n; i++ {
+		if err := client.Send(seq); err != nil {
+			return err
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+	return nil
 }
 
 // sessionHasCWDExactlyLabelled asserts the sessions table's cwd column for
