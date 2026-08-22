@@ -217,7 +217,55 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   ctrl+s saves, esc prompts/closes): `acdaed8`, and the `` `/` finds a field
   only its description mentions... `` scenario above.
 - **R17** (every flat key editable, `[notify]` the stated exception): the
-  "every category and its schema-declared fields are reachable" scenario.
+  "every category and its schema-declared fields are reachable" scenario
+  proves reachability of all seven flat keys, but reachability is not the
+  same claim as editability — an earlier pass of this report conflated the
+  two, and an independent review (2b-2 approach 02, commit `65e623e`) found
+  `[env]` display-only in the takeover despite that wording. Editability of
+  `[env]` (add/edit/remove an entry, no new footer verb) is now proven
+  separately: `internal/tui/settings_task003_test.go`'s
+  `TestSettingsEnvAddEntry`, `TestSettingsEnvEditExistingValue` and
+  `TestSettingsEnvRemoveEntry` (task 003), plus
+  `features/settings.feature`'s "adding an `[env]` entry and saving with
+  ctrl+s round-trips through config.toml..." and "discarding an unsaved
+  `[env]` edit leaves config.toml exactly as it was..." scenarios (task
+  004), which also cover the ctrl+s save and esc-discard paths end to end
+  against the real written file. Real output, re-run for this correction:
+
+  ```
+  $ ci/run.sh go test ./internal/tui/... -run TestSettingsEnv -v -count=1
+  === RUN   TestSettingsEnvEnterOpensEntriesEditor
+  --- PASS: TestSettingsEnvEnterOpensEntriesEditor (0.00s)
+  === RUN   TestSettingsEnvAddEntry
+  --- PASS: TestSettingsEnvAddEntry (0.00s)
+  === RUN   TestSettingsEnvEditExistingValue
+  --- PASS: TestSettingsEnvEditExistingValue (0.00s)
+  === RUN   TestSettingsEnvRemoveEntry
+  --- PASS: TestSettingsEnvRemoveEntry (0.00s)
+  === RUN   TestSettingsEnvEscCancelsEditWithoutStaging
+  --- PASS: TestSettingsEnvEscCancelsEditWithoutStaging (0.00s)
+  === RUN   TestSettingsEnvEscFromEntriesListReturnsToFieldList
+  --- PASS: TestSettingsEnvEscFromEntriesListReturnsToFieldList (0.00s)
+  PASS
+  ok  	github.com/n-orlov/deck/internal/tui	0.005s
+
+  $ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@settings" go test -run TestFeatures -v -count=1 .'
+  === RUN   TestFeatures/adding_an_[env]_entry_and_saving_with_ctrl+s_round-trips_through_config.toml,_preserving_keys_and_sections_the_takeover_does_not_understand_(requirement_17)
+    Scenario: adding an [env] entry and saving with ctrl+s round-trips through config.toml, preserving keys and sections the takeover does not understand (requirement 17) # settings.feature:175
+      And the scenario's config.toml parses with env "GREETING" set to "hello"
+  === RUN   TestFeatures/discarding_an_unsaved_[env]_edit_leaves_config.toml_exactly_as_it_was_(requirement_17)
+    Scenario: discarding an unsaved [env] edit leaves config.toml exactly as it was (requirement 17) # settings.feature:238
+      And the scenario's config.toml is captured as "before-env-discard"
+      And the scenario's config.toml still matches the captured "before-env-discard"
+  10 scenarios (10 passed)
+  186 steps (186 passed)
+  --- PASS: TestFeatures (6.38s)
+  PASS
+  ```
+
+  `[env]` editing is now covered as thoroughly as the seven flat keys: the
+  decision record for the requirement-17-vs-non-goals tension this raised
+  is in `docs/reports/phase2b2-findings.md` (task 005).
 - **R18** (field kinds explicit — toggle, bounded integer, string, path,
   enum, list-of-strings, link): `3b894d6`.
 - **R19** (scope labelled per field, incl. restart-to-apply): the "`[env]`
