@@ -885,3 +885,128 @@ mounted can push the existing commit history as-is with no rebase or
 squash needed. Task 036 attempts `git push origin main` again at
 sequence's end and will record the same finding if the environment is
 unchanged, or update this entry if it is not.
+
+## Tasks 003/004 — the [env]-editability tension the review named (requirement 17)
+
+**Provenance:** raised directly by the independent review at `65e623e`
+(this run's `discovered.reviewFindings`): approach 02's takeover rendered
+the `[env]` field as a read-only entry count (`settingsListValueDisplay`
+had no branch that let an operator add, change or remove a key), while
+`docs/reports/phase2b2.md`'s requirement 17 entry claimed the field was
+covered by substituting "reachable" for "editable" — the review's own
+phrase for the gap. This entry records the tension the reviewer named and
+which reading was implemented, so the fix (tasks 003/004) is traceable
+back to a real finding rather than presented as invented scope.
+
+**The tension, stated precisely.** Two lines of this same PRD
+(`prds/phase2b2-configuration-and-appearance.md`) appear to pull in
+opposite directions:
+
+- Requirement 17 (line 204): "Every flat key in `config.toml` is editable
+  here: `allow_yolo`, `stale_after`, `capture_min_interval`, `[ui] theme`,
+  `[ui] ascii`, `[ui] mouse`, `[ui] recent_cwd_limit`, **and the `[env]`
+  table**." — the `[env]` table is named explicitly, in the same sentence
+  as the seven flat keys, with no qualifier distinguishing it from them.
+- Requirement 13 (line 189), listing what must stay absent this phase:
+  "Dialogs for unbuilt behaviour are absent, not stubbed … No kill
+  confirm, **no env editor**, no rules dialog, no path picker beyond
+  requirement 39's minimum." `docs/PLAN.md:69` and
+  `prds/phase3-sessions-and-lifecycle.md:104` both scope "the env editor"
+  as a **Phase 3**, per-*session* feature: `e` on a session opens a
+  dialog showing, per key, "the effective value and the layer that won"
+  across all three of §6.1's layers (server env → `[env]` → session
+  `env` map) for that one session, plus the `env↻` badge and `R`-restart
+  machinery of §6.2. That is a different object from the global `[env]`
+  table requirement 17 names: the per-session `env` map is a per-row
+  column in `state.db` this phase does not touch at all, while the
+  global `[env]` table is one `config.toml` section every settings field
+  already round-trips through.
+
+**Reading implemented, and why.** The two requirements are read as
+naming two different objects that happen to share the word "env", not
+as contradicting each other: requirement 17's `[env]` table is
+`config.toml`'s middle layer (§6.1) — a flat `key = "value"` map with no
+per-session dimension, structurally identical in kind to the seven flat
+keys it's listed alongside (add/change/remove one entry, no "effective
+value across layers" computation, no `env↻` badge, no restart trigger of
+its own). Requirement 13's "env editor" is §6.2's specific UI: a
+per-*session* dialog reachable via `e` on a session row, showing a
+winning-layer computation and driving a restart. Task 003 built only the
+former (`internal/tui/settings.go`'s `settingsEnvOpen`/
+`settingsEnvEditing` states, reusing the takeover's own `enter`/`esc`/
+`-`/`_` keys per requirement 17's own "no new footer verb" instruction)
+and explicitly did not build the latter: no `e` binding was added, no
+per-session `env` map UI exists, `state.db`'s session-level `env` column
+is untouched, and the task's success criteria named
+`internal/tui/tui_test.go:49`'s unavailable-action list (which pins
+`"env editor"` as a phrase the footer must never offer). That line
+reference was already stale at the reviewed commit — the list sits at
+line 62 both before and after this fix, `git diff 65e623e..HEAD --
+internal/tui/tui_test.go` is empty (the file was not touched at all by
+tasks 003/004), so the list is provably unmodified.
+
+This reading is also the only one both requirements can jointly satisfy
+without one silently overriding the other: reading requirement 13's
+"no env editor" as *also* forbidding the global `[env]` table's edit
+UI would make requirement 17 impossible to satisfy at all (it would
+name a field it forbids building), and reading requirement 17 as
+license to build the full per-session, layer-resolving dialog would put
+Phase 3 scope (the `env↻` badge, `R`-restart, the winning-layer
+computation, the `state.db` session `env` column) into this phase,
+which requirement 13 forbids in the same sentence it forbids a kill
+confirm or a rules dialog. Only "two different `env`s" makes both
+sentences true simultaneously.
+
+**The restart-to-apply consequence, named for the operator (§6.2).**
+Editing the global `[env]` table in settings changes only
+`config.toml` on disk (via the same atomic `ctrl+s` save path every
+other field uses); it does **not** reach any tmux server, pane, or
+running process. §6.2 states plainly that "tmux env changes reach only
+*new* processes" — the mechanism §6.2 describes for a per-session edit
+(`env_dirty`, `tmux set-environment -t`, the `env↻` badge, an explicit
+`R` restart) does not exist for this phase's global-table edit at all,
+so an operator who edits `[env]` in settings and expects an *already
+running* session's environment to change immediately will be
+disappointed by design, not by a defect: the new value takes effect only
+after **this deck process itself restarts** — `cmd/deck/main.go` builds
+the one `service.Service` for the process's whole lifetime with
+`ConfigEnv: settings.Env` fixed at that single `config.Load()` call, and
+nothing in `internal/tui/settings.go`'s `settingsSave` (which only calls
+`config.WriteConfigFile`) or anywhere else feeds an edited `[env]` back
+into that already-constructed `Service` — so it is not enough for an
+operator to resume or create a session in the *same* deck invocation
+after saving; the whole `deck` binary has to be relaunched. This is a
+stricter restart requirement than §6.2's own per-session editor (whose
+`R` merely restarts the pane, not the whole program) and is worth
+stating explicitly rather than leaving "restart-to-apply" to be read as
+the lighter, per-session kind.
+
+`docs/reports/phase2b2.md`'s requirement 19 entry (task 019,
+"scope is labelled per field") is the place this is actually asserted on
+screen: the `[env]` field's schema entry sets `Scope: ScopeRestartToApply`
+(`internal/config/schema.go`, rendering literally as `restart-to-apply`),
+for exactly this reason, and `settings.go:841`'s field-detail line
+(`"Kind: %s · Scope: %s"`) renders it on screen unmodified whenever the
+`[env]` field is focused. This finding cross-references that mechanism
+rather than duplicating a second copy of the claim.
+
+**Verification that the distinction holds in the built tree:**
+
+```
+$ grep -n '"env editor"' internal/tui/tui_test.go
+62:	for _, unavailable := range []string{"suggested increment", ..., "delete", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
+$ git diff 65e623e..HEAD -- internal/tui/tui_test.go | grep -c '^[+-].*"env editor"'
+0
+$ grep -n 'Section:.*"env"' internal/config/schema.go
+203:		Section:     "env",
+$ grep -rn 'settingsEnvOpen\|settingsEnvEditing' internal/tui/settings.go | wc -l
+30
+```
+
+The unavailable-action list's `"env editor"` phrase is byte-for-byte
+untouched since the reviewed commit (it sits at line 62 of that file at
+both `65e623e` and `HEAD` — `internal/tui/tui_test.go` has zero diff
+across the range), the schema's `[env]` field is the sole object task 003
+wired an editor onto, and that editor lives entirely in
+`internal/tui/settings.go`'s takeover state machine — no `e`-key
+handler, no per-session dialog, exists anywhere in the diff.
