@@ -1010,3 +1010,99 @@ across the range), the schema's `[env]` field is the sole object task 003
 wired an editor onto, and that editor lives entirely in
 `internal/tui/settings.go`'s takeover state machine — no `e`-key
 handler, no per-session dialog, exists anywhere in the diff.
+
+## Task 034 — the 80-column footer legend clamp commit f935c2a promised and never wrote (requirement 20, SPEC §11.3)
+
+commit f935c2a's own message ("features: re-record the golden minimum
+frame under a pinned theme+depth") named this exact defect and
+explicitly deferred it: "footerLine()'s reliance on terminal auto-wrap
+rather than an explicit clamp is left as a finding for
+docs/reports/phase2b2-findings.md (task 034), not fixed here." No such
+entry was ever written — this section closes that gap.
+
+**The defect, reproduced against the checked-in golden.** At the SPEC
+minimum terminal size (80x24), row 24 — the one line SPEC §11.3
+guarantees always stays on screen — is not 80 columns of key legend; it
+is cut mid-word at 78 visible columns by the pty's own line-wrap, not by
+any width clamp `footerLine`/`footerKeyLegend` applies themselves:
+
+```
+$ python3 -c "
+with open('features/testdata/golden/side_by_side_80x24.golden') as f:
+    lines = f.readlines()
+line = lines[23].rstrip('\n')
+print('row 24 raw:', repr(line))
+print('visible width:', len(line))
+"
+row 24 raw: 'starting - awaiting signal    up/down - Enter attach - Y acknowledge - n new -'
+visible width: 78
+```
+
+The selected row's status reason (`"starting - awaiting signal"`) plus
+the full, un-clamped key legend the footer would otherwise draw is 145
+characters — reconstructed directly from `footerLegend`
+(`internal/tui/tui.go`) and `m.selectedRowReason()`'s literal text:
+
+```
+$ python3 -c "
+reason='starting - awaiting signal'
+legend = [('up/down',''),('Enter','attach'),('Y','acknowledge'),
+          ('n','new'),('x','kill'),('r','resume'),('P','profile'),
+          ('p','pin'),('i','detail'),('?','help'),('q','quit')]
+parts=[(k+' '+h if h else k) for k,h in legend]
+keys=' - '.join(parts)
+full=reason+'    '+keys
+print('full len', len(full))
+print(repr(full[:78]))
+print('cut-off tail:', repr(full[78:]))
+"
+full len 145
+'starting - awaiting signal    up/down - Enter attach - Y acknowledge - n new -'
+cut-off tail: ' x kill - r resume - P profile - p pin - i detail - ? help - q quit'
+```
+
+The reconstruction matches the golden's row 24 byte-for-byte through
+column 78, and the tail that the golden never shows —
+`- x kill - r resume - P profile - p pin - i detail - ? help - q quit`
+— names exactly which keycaps a session in this state loses at the
+supported minimum width: `x` (kill), `r` (resume), `P` (profile), `p`
+(pin), `i` (detail), `?` (help) and `q` (quit) are all present in
+`footerLegend` and all invisible on screen, cut off after "n new -"
+with no ellipsis or other signal that anything follows.
+
+**deck does not truncate this line itself.** `footerLine` (SPEC
+requirement 20's single footer line) only ever calls `truncateToWidth`
+on one string — `belowMinimumNotice`, SPEC requirement 14's separate
+below-80x24 copy:
+
+```
+$ grep -n 'truncateToWidth' internal/tui/tui.go
+1177:		return truncateToWidth(belowMinimumNotice, width)
+```
+
+The ordinary key-legend branch (`footerKeyLegend`, reached whenever the
+terminal is at or above the 80x24 minimum — the normal, supported case
+this golden captures) returns its string unmodified; deck relies
+entirely on the terminal emulator's own auto-wrap/clip behaviour to
+keep the line from overflowing, and at exactly 80 columns that clipping
+lands mid-word, not at a key boundary.
+
+**Provenance and scope.** The defect predates Phase 2b-1: `footerLine`
+and `footerLegend` (then a flatter, undifferentiated string) already
+existed before task 021 restructured the legend into `footerKeyHint`
+entries, and the 78-column clip is a function of the reason text's own
+length plus the *count* of legend entries — both grew across 2b-1/2b-2
+as keys (`P` profile, `i` detail) were added, but the absence of any
+explicit clamp is original, not something either phase introduced.
+
+**Target phase.** This is a display-polish defect, not a functional
+regression (every hidden key still works via its keystroke; the footer
+simply fails to advertise the tail of its own legend at the narrowest
+supported width) and is out of Phase 2b-2's scope (mouse gate, [env]
+editability, dialog assertions) to fix. It is filed against **Phase
+3**, tagged "footer legend must fit or elide within its own line
+(SPEC §11.3/§20), never rely on terminal auto-wrap" — the fix belongs
+with the wider footer-layout work already anticipated there (per-
+session status reasons of arbitrary length interacting with a growing
+key legend), not as an isolated patch to `truncateToWidth`'s call
+site in this pass.
