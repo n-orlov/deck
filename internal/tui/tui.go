@@ -844,7 +844,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm {
 			return m, nil
 		}
 		return m.handleMouse(msg)
