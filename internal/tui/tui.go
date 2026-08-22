@@ -2363,6 +2363,16 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.createYoloConfirmed = true
 			return m, nil
 		}
+	case "end":
+		// The ghost completion's other declared acceptance key (task 010),
+		// alongside right -- see cycleCreateField's case 1. Only field 1
+		// (cwd) ever has a ghost to accept; every other field leaves "end"
+		// unhandled here, falling through with no effect, exactly as it did
+		// before this task.
+		if m.createField == 1 {
+			m.acceptCWDGhost()
+			return m, nil
+		}
 	case "backspace", "ctrl+h":
 		m.backspaceCreateField()
 		return m, nil
@@ -2470,6 +2480,13 @@ func (m *Model) cycleCreateField(delta int) {
 			m.createYoloConfirmed = false
 		}
 		m.createProfile = next
+	case 1:
+		// Right (never left/space -- see updateCreate's SpaceTypesText gate
+		// and cycleCreateField's own delta<=0 no-op) accepts the ghost
+		// completion shown inline, if any (task 010).
+		if delta > 0 {
+			m.acceptCWDGhost()
+		}
 	case 7:
 		m.createLoginShell = !m.createLoginShell
 	}
@@ -2536,8 +2553,25 @@ func (m *Model) backspaceCreateField() {
 // depending on that length, whereas a label prefixed to the help text
 // never does. The plain directory-deck-started-in fallback (no history,
 // not cycling) carries no label at all.
+// createCWDDisplayValue is the cwd field's rendered value: m.createCWD,
+// plus its ghost completion (task 010) coloured in the theme's dimmed
+// token when one is available AND the field is actually focused --
+// "cursor at end of field" only means something while this field is the
+// one being edited, so a ghost is never shown, and right/end never has
+// anything to accept, on any OTHER field's rendering of this same row.
+func (m Model) createCWDDisplayValue() string {
+	if m.createField != 1 {
+		return m.createCWD
+	}
+	ghost, ok := createCWDGhostCompletion(m.createCWD)
+	if !ok || ghost == "" {
+		return m.createCWD
+	}
+	return m.createCWD + m.colorToken(theme.Dimmed, ghost)
+}
+
 func (m Model) createCWDHelp() string {
-	help := "the session's cwd; must exist and be a directory; \u2191/\u2193 cycles recent history"
+	help := "the session's cwd; must exist and be a directory; \u2191/\u2193 cycles recent history; right/end completes a shown directory match"
 	if m.createCWDRecentIndex >= 0 && len(m.createCWDRecents) > 0 {
 		return fmt.Sprintf("recent %d/%d ", m.createCWDRecentIndex+1, len(m.createCWDRecents)) + help
 	}
@@ -2571,7 +2605,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	}
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
-		{"Working directory", m.createCWD, m.createCWDHelp()},
+		{"Working directory", m.createCWDDisplayValue(), m.createCWDHelp()},
 		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.registry().Kinds(), ", ") + ")", "which coding agent adapter launches this session"},
 		{"Permission profile", profileValue, profileHelp},
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
