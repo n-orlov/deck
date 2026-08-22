@@ -19,10 +19,12 @@ import (
 )
 
 const (
-	DefaultSocket      = "deck"
-	DefaultReconcileMS = 500
-	DefaultPreviewMS   = 250
-	DefaultStaleAfter  = 45 * time.Second
+	DefaultSocket        = "deck"
+	DefaultReconcileMS   = 500
+	DefaultPreviewMS     = 250
+	DefaultStaleAfter    = 45 * time.Second
+	DefaultUndoMS        = 10000
+	DefaultDeleteGraceMS = 60000
 )
 
 // Paths are the locations used by deck at runtime. DECK_HOME deliberately
@@ -43,6 +45,13 @@ type Settings struct {
 	IDs       *IDGenerator
 	Reconcile time.Duration
 	Preview   time.Duration
+	// Undo mirrors DECK_UNDO_MS (default 10000): how long the undo toast
+	// shown after x stays actionable, per SPEC's determinism knobs. Purely a
+	// duration -- no behaviour branches on its value beyond that window.
+	Undo time.Duration
+	// DeleteGrace mirrors DECK_DELETE_GRACE_MS (default 60000): how long a
+	// dd tombstone remains undoable before it is reaped.
+	DeleteGrace time.Duration
 	// StaleAfter is the wall-clock age after which an agent verdict may be
 	// sampled from its pane. It is loaded from config.toml, not an elapsed
 	// process timer, so frozen-clock scenarios can advance it on demand.
@@ -128,6 +137,14 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if err != nil {
 		return Settings{}, err
 	}
+	undo, err := milliseconds(getenv("DECK_UNDO_MS"), DefaultUndoMS, "DECK_UNDO_MS")
+	if err != nil {
+		return Settings{}, err
+	}
+	deleteGrace, err := milliseconds(getenv("DECK_DELETE_GRACE_MS"), DefaultDeleteGraceMS, "DECK_DELETE_GRACE_MS")
+	if err != nil {
+		return Settings{}, err
+	}
 	socket := getenv("DECK_TMUX_SOCKET")
 	if socket == "" {
 		socket = DefaultSocket
@@ -179,7 +196,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	}
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
-		Reconcile: reconcile, Preview: preview, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval,
+		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
 		RecentCwdLimit: fileCfg.RecentCwdLimit,
 		Theme:          resolvedTheme, ThemeReason: themeReason,
