@@ -191,6 +191,23 @@ func (h *ScenarioHarness) StartClientWithSize(ctx context.Context, cols, rows ui
 	return client, nil
 }
 
+// StartClientInDir starts a client with the released binary's own process
+// working directory pinned to dir, so a scenario can assert exactly what
+// deck prefills its create modal's cwd field with when it started (task
+// 008, SPEC §11.7's no-history fallback) rather than depending on whatever
+// directory happens to be the test binary's own cwd.
+func (h *ScenarioHarness) StartClientInDir(ctx context.Context, dir string, extraEnv ...string) (*ScreenDriver, error) {
+	if h.Binary == "" {
+		return nil, errors.New("scenario deck binary is required")
+	}
+	client, err := StartScreenDriverInDir(ctx, h.Binary, h.Environment(extraEnv...), dir, terminalColumns, terminalRows)
+	if err != nil {
+		return nil, err
+	}
+	h.clients = append(h.clients, client)
+	return client, nil
+}
+
 // hasPATHOverride reports whether extraEnv already sets PATH itself (e.g.
 // startClientWithoutTMux/startClientWithTMuxVersion deliberately replace
 // PATH entirely), so agentPATHDir must not also append a second PATH entry.
@@ -230,6 +247,23 @@ func (h *ScenarioHarness) StartNamedClientWithSize(ctx context.Context, name str
 		return nil, fmt.Errorf("deck client %q is already running", name)
 	}
 	client, err := h.StartClientWithSize(ctx, cols, rows, extraEnv...)
+	if err != nil {
+		return nil, err
+	}
+	h.namedClients[name] = client
+	return client, nil
+}
+
+// StartNamedClientInDir is StartNamedClient with the released binary's own
+// process working directory pinned to dir (task 008).
+func (h *ScenarioHarness) StartNamedClientInDir(ctx context.Context, name, dir string, extraEnv ...string) (*ScreenDriver, error) {
+	if name == "" {
+		return nil, errors.New("client name is required")
+	}
+	if _, exists := h.namedClients[name]; exists {
+		return nil, fmt.Errorf("deck client %q is already running", name)
+	}
+	client, err := h.StartClientInDir(ctx, dir, extraEnv...)
 	if err != nil {
 		return nil, err
 	}
