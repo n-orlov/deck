@@ -149,7 +149,10 @@ var Schema = []Field{
 		Description: "The wall-clock age a hook-derived status verdict may reach " +
 			"before it becomes eligible for probing the agent's pane instead of " +
 			"being trusted as-is (SPEC §7). Lower values probe sooner after a " +
-			"quiet hook stream; higher values trust a stale hook verdict longer.",
+			"quiet hook stream; higher values trust a stale hook verdict longer. " +
+			"Restart-to-apply: saving here writes config.toml immediately, but the " +
+			"already-running client keeps probing on its old interval until deck " +
+			"restarts.",
 		// requirement 19: the only consumer is cmd/deck/main.go's
 		// tuiReconcile closure, `sessions.ReconcileWithProbes(ctx,
 		// settings.StaleAfter)`, which closes over run()'s own local
@@ -178,7 +181,9 @@ var Schema = []Field{
 			"captures of a session's pane triggered by _hook invocations " +
 			"(SPEC §9.4). Lower values capture more often at the cost of more " +
 			"tmux calls; higher values capture less often and risk a staler " +
-			"last-known pane on an unattended session.",
+			"last-known pane on an unattended session. Restart-to-apply: saving " +
+			"here writes config.toml immediately, but nothing in the already-" +
+			"running client reads it again until deck restarts.",
 		// requirement 19: §9.4's opportunistic-capture throttle has no
 		// consumer anywhere in this tree yet (`grep -rn CaptureMinInterval`
 		// outside config/settings plumbing finds nothing in internal/tui,
@@ -266,7 +271,9 @@ var Schema = []Field{
 		Description: "The number of recently used working directories offered " +
 			"when creating a session (SPEC §11.7). The recent-directory list " +
 			"itself lives in state.db, not config.toml — this key only bounds " +
-			"how many entries are kept/offered.",
+			"how many entries are kept/offered. Restart-to-apply: saving here " +
+			"writes config.toml immediately, but nothing in the already-running " +
+			"client reads it again until deck restarts.",
 		// requirement 19: §11.7's recent-cwd picker that would read this
 		// bound has no consumer anywhere in this tree yet (`grep -rn
 		// RecentCwdLimit` outside config/settings plumbing finds nothing in
@@ -282,7 +289,7 @@ var Schema = []Field{
 		Key:         "",
 		Kind:        KindListOfStrings,
 		Default:     []string{},
-		Description: "The middle PATH/env layer (SPEC §6.1): KEY=VALUE entries that sit between the tmux server's inherited environment (and captured_path) and a session's own env map override. A session's own env map, set via its own editor, always wins over this table for a key both define. Editable here: enter opens the entries list (up/down select, enter edits the highlighted entry or adds a new one on the trailing \"+ add entry\" row, - removes the highlighted entry); while typing an entry, tab switches between its key and value and enter on the value stages it. Nothing here is saved to config.toml until ctrl+s.",
+		Description: "The middle PATH/env layer (SPEC §6.1): KEY=VALUE entries that sit between the tmux server's inherited environment (and captured_path) and a session's own env map override. A session's own env map, set via its own editor, always wins over this table for a key both define. Editable here: enter opens the entries list (up/down select, enter edits the highlighted entry or adds a new one on the trailing \"+ add entry\" row, - removes the highlighted entry); while typing an entry, tab switches between its key and value and enter on the value stages it. Nothing here is saved to config.toml until ctrl+s. Restart-to-apply: a save writes config.toml immediately, but tmux env changes reach only new processes, so a running pane keeps its old environment until it or deck restarts.",
 		// §6.2: "tmux env changes reach only new processes, so a
 		// mid-flight edit is inherently restart-to-apply." A change here
 		// writes immediately but a running pane keeps its old
