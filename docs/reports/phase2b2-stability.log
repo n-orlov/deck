@@ -195,3 +195,45 @@ ok  	github.com/n-orlov/deck/internal/tui	0.169s
 === RUN 10: PASS (exit 0) ===
 full per-run logs and combined summary log kept in: /tmp/deck-stability.PzQxD7
 10/10 passed
+
+===============================================================================
+Re-run per task 012 (Phase 2b-2 approach 04, the narrow requirement-19/21
+correction pass), after tasks 001-011 (requirement 19/21 fixes and the
+build/vet/gofmt/test suite verification). Run from a clean tree
+(`git status --short` empty) at HEAD=68783da.
+
+Command: `ci/stability.sh 10` (unedited script, from repo root, in the ci
+sibling via ci/run.sh internally). Full unedited per-run + summary output
+below. This supersedes the requirement-54 reference to the pre-correction
+4388dd0 run above for the post-correction tree; that prior run is kept
+above for provenance and is unaffected by this run (this approach touched
+no test that run exercised beyond the eight internal/config, internal/tui
+and features tests added/modified by tasks 001-010).
+
+Requirements: 54 (stability run recorded honestly), applies also to
+requirements 19 and 21 (the correction pass this run verifies).
+
+=== FULL SUMMARY LOG (verbatim, ci/stability.sh's own summary_log file) ===
+
+=== RUN 1 ===
+=== RUN 1: PASS (exit 0) ===
+=== RUN 2 ===
+=== RUN 2: PASS (exit 0) ===
+=== RUN 3 ===
+=== RUN 3: PASS (exit 0) ===
+=== RUN 4 ===
+=== RUN 4: PASS (exit 0) ===
+=== RUN 5 ===
+=== RUN 5: PASS (exit 0) ===
+=== RUN 6 ===
+=== RUN 6: PASS (exit 0) ===
+=== RUN 7 ===
+=== RUN 7: PASS (exit 0) ===
+=== RUN 8 ===
+=== RUN 8: PASS (exit 0) ===
+=== RUN 9 ===
+=== RUN 9: PASS (exit 0) ===
+=== RUN 10 ===
+=== RUN 10: PASS (exit 0) ===
+full per-run logs and combined summary log kept in: /tmp/deck-stability.QuhbW8
+10/10 passed
