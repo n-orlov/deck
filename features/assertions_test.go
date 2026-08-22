@@ -43,6 +43,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the released running hook fires for session "([^"]+)"$`, releasedRunningHookForSession)
 	sc.Step(`^the released waiting hook fires for session "([^"]+)"$`, releasedWaitingHookForSession)
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with acknowledged=([01]), notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionAttentionFields)
+	sc.Step(`^the state database session "([^"]+)" has ([0-9]+) attached events?$`, databaseSessionAttachedEventCount)
 	sc.Step(`^the audit log is valid JSONL$`, auditLogIsJSONL)
 	sc.Step(`^the audit log contains event "([^"]+)" for a session$`, auditContainsSessionEvent)
 	sc.Step(`^the scenario home has mode "([0-7]+)"$`, scenarioHomeMode)
@@ -547,6 +548,36 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 	if status != wantStatus || source != wantSource || acknowledged != wantAcknowledged || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
 		return fmt.Errorf("session %q attention fields = status %q source %q acknowledged=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
 			name, status, source, acknowledged, epoch, attachedEvents, wantStatus, wantSource, wantAcknowledged, wantEpoch, wantAttachedEvents)
+	}
+	return nil
+}
+
+// databaseSessionAttachedEventCount is the narrower counterpart of
+// databaseSessionAttentionFields for scenarios that only need to prove
+// requirement 24 (a mouse gesture reaching the hidden main view while a
+// full-screen takeover is painted must never attach) -- pinning the
+// session's status/status_source/acknowledged/notify_epoch as well would
+// couple this proof to unrelated probe timing.
+func databaseSessionAttachedEventCount(ctx context.Context, name string, wantAttachedEvents int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var sessionID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM sessions WHERE name = ?`, name).Scan(&sessionID); err != nil {
+		return fmt.Errorf("observe session id for %q: %w", name, err)
+	}
+	var attachedEvents int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ? AND kind = 'attached'`, sessionID).Scan(&attachedEvents); err != nil {
+		return fmt.Errorf("observe attached events for session %q: %w", name, err)
+	}
+	if attachedEvents != wantAttachedEvents {
+		return fmt.Errorf("session %q has %d attached event(s), want %d", name, attachedEvents, wantAttachedEvents)
 	}
 	return nil
 }

@@ -144,3 +144,30 @@ Feature: The `,` settings takeover (requirement 48)
     And the state database contains session "keep-b"
     And the state database has exactly 2 sessions
     When deck client "A" exits cleanly
+
+  Scenario: the mouse cannot cancel the takeover, attach the session it covers, or change the selected session while it is open (requirement 24)
+    Given deck client "A" is started
+    And the scenario's config.toml is captured as "before-settings-mouse"
+    When deck client "A" creates shell session "mouse-guard"
+    Then the state database contains session "mouse-guard"
+    And the state database has exactly 1 sessions
+    When deck client "A" sends ","
+    Then deck client "A" screen contains "Categories"
+    When deck client "A" captures its frame as "settings-open-mouse"
+    # column 5 row 4: inside the categories panel, the exact cell the
+    # hidden sidebar's "mouse-guard" row occupies underneath the takeover
+    # (proven separately, before opening settings, in the mouse-gate unit
+    # test's own findRow helper: internal/tui/mouse_test.go). A click,
+    # double-click and wheel scroll all land here.
+    And deck client "A" clicks at column 5 row 4
+    And deck client "A" double-clicks at column 5 row 4
+    And deck client "A" scrolls the wheel down at column 5 row 4
+    Then deck client "A" frame still matches the captured "settings-open-mouse" frame
+    And deck client "A" screen contains "Categories"
+    And the state database contains session "mouse-guard"
+    And the state database has exactly 1 sessions
+    And the state database session "mouse-guard" has 0 attached events
+    And the scenario's config.toml still matches the captured "before-settings-mouse"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
