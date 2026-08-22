@@ -105,6 +105,26 @@ Feature: The `,` settings takeover (requirement 48)
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
+  Scenario: saving with ctrl+s and no edit leaves an environment-overridden flat key's own file value untouched (requirement 21)
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      ascii = false
+      """
+    And deck client "A" is started
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And deck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    And the scenario's config.toml parses with ascii false
+    When deck client "A" exits cleanly
+
   Scenario: the [env] table states its restart-to-apply scope on screen
     Given deck client "A" is started
     When deck client "A" sends ","

@@ -31,6 +31,8 @@ func registerConfigFileSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the scenario's config\.toml does not parse with stale_after "([^"]+)"$`, assertConfigNotStaleAfter)
 	sc.Step(`^the scenario's config\.toml parses with mouse (true|false)$`, assertConfigMouse)
 	sc.Step(`^the scenario's config\.toml does not parse with mouse (true|false)$`, assertConfigNotMouse)
+	sc.Step(`^the scenario's config\.toml parses with ascii (true|false)$`, assertConfigAscii)
+	sc.Step(`^the scenario's config\.toml does not parse with ascii (true|false)$`, assertConfigNotAscii)
 	sc.Step(`^the scenario's config\.toml parses with env "([^"]*)" set to "([^"]*)"$`, assertConfigEnv)
 	sc.Step(`^the scenario's config\.toml does not parse with env "([^"]*)" set to "([^"]*)"$`, assertConfigNotEnv)
 	sc.Step(`^the scenario's config\.toml contains the raw text:$`, assertConfigContainsRawText)
@@ -172,6 +174,43 @@ func checkConfigMouse(ctx context.Context, wantRaw string, positive bool) error 
 	}
 	if !positive && matches {
 		return fmt.Errorf("scenario config.toml parses with mouse=%v, want it not to match %v", settings.Mouse, want)
+	}
+	return nil
+}
+
+func assertConfigAscii(ctx context.Context, wantRaw string) error {
+	return checkConfigAscii(ctx, wantRaw, true)
+}
+
+func assertConfigNotAscii(ctx context.Context, wantRaw string) error {
+	return checkConfigAscii(ctx, wantRaw, false)
+}
+
+// checkConfigAscii is requirement 21's file-side probe: parseScenarioConfig's
+// getenv returns "" for every key but DECK_HOME (see above), so the
+// Settings.ASCII it produces is never env-overridden here even when the
+// client the scenario started DOES see DECK_ASCII in its own environment --
+// this reads exactly what a save left behind in the file, the same
+// requirement-5 guarantee assertConfigMouse already gives ui.mouse.
+func checkConfigAscii(ctx context.Context, wantRaw string, positive bool) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	want, err := strconv.ParseBool(wantRaw)
+	if err != nil {
+		return fmt.Errorf("parse expected ascii %q: %w", wantRaw, err)
+	}
+	settings, err := parseScenarioConfig(h)
+	if err != nil {
+		return err
+	}
+	matches := settings.ASCII == want
+	if positive && !matches {
+		return fmt.Errorf("scenario config.toml parses with ascii=%v, want %v", settings.ASCII, want)
+	}
+	if !positive && matches {
+		return fmt.Errorf("scenario config.toml parses with ascii=%v, want it not to match %v", settings.ASCII, want)
 	}
 	return nil
 }
