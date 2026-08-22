@@ -2526,8 +2526,6 @@ Runtime controls
   DECK_ID_SEED          deterministic generated UUIDs
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds
-  DECK_UNDO_MS          undo-toast window after x in milliseconds
-  DECK_DELETE_GRACE_MS  dd tombstone grace period before reap in milliseconds
   DECK_ASCII=1          use ASCII instead of optional glyphs
   DECK_ANIM=0           disable animation
   DECK_COLOR            explicitly enable or disable colour
