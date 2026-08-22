@@ -528,29 +528,27 @@ func (m *Model) settingsAdjustField(delta int) {
 }
 
 // settingsEditsFromSettings seeds the takeover's staged working copy
-// (Model.settingsEdits) from the already-resolved config.Settings the rest
-// of the program uses, the one time it needs to: when `,` opens the
-// takeover. Every member here mirrors a real config.FileConfig member a
-// real Settings field was itself loaded from (see config.Settings' own
-// doc comments) -- Theme is the one exception, since Settings keeps only
-// the already-*resolved* theme.Theme plus a fallback reason, not the raw
-// configured name; m.settings.Theme.Name (the resolved theme actually in
-// effect) is the closest honest approximation available without re-reading
-// config.toml's raw ui.theme value here.
+// (Model.settingsEdits) from config.Settings.File -- the values exactly as
+// parsed from config.toml, before any DECK_* environment override -- never
+// from the env-resolved fields Settings otherwise exposes for the rest of
+// the program to consume. Requirement 21: a save must edit the file's own
+// value for a key, never the value an environment variable substituted
+// into the running Settings for that same key; seeding from the resolved
+// fields would silently launder an env override into config.toml the
+// moment `,` is pressed and ctrl+s follows with no edit at all. Unlike the
+// pre-task-001 version, Theme needs no resolved-value fallback either:
+// config.FileConfig already carries the raw configured name (s.File.Theme),
+// not just the theme.Theme SPEC §11.6 resolved it to.
 func settingsEditsFromSettings(s config.Settings) config.FileConfig {
-	themeName := ""
-	if s.Theme != nil {
-		themeName = s.Theme.Name
-	}
 	return config.FileConfig{
-		AllowYolo:          s.AllowYolo,
-		StaleAfter:         s.StaleAfter,
-		CaptureMinInterval: s.CaptureMinInterval,
-		ASCII:              s.ASCII,
-		Mouse:              s.Mouse,
-		RecentCwdLimit:     s.RecentCwdLimit,
-		Theme:              themeName,
-		Env:                settingsCloneEnv(s.Env),
+		AllowYolo:          s.File.AllowYolo,
+		StaleAfter:         s.File.StaleAfter,
+		CaptureMinInterval: s.File.CaptureMinInterval,
+		ASCII:              s.File.ASCII,
+		Mouse:              s.File.Mouse,
+		RecentCwdLimit:     s.File.RecentCwdLimit,
+		Theme:              s.File.Theme,
+		Env:                settingsCloneEnv(s.File.Env),
 	}
 }
 

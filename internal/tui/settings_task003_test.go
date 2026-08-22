@@ -16,6 +16,17 @@ import (
 // silently invalidate.
 func settingsOpenOnEnvField(t *testing.T, cfg config.Settings) Model {
 	t.Helper()
+	// These tests build config.Settings by hand (never through
+	// config.LoadFrom), so unlike a real load, cfg.File is not
+	// automatically populated. Since none of these tests is about an
+	// env override (task 002's own tests own that), File.Env is mirrored
+	// from Env here so settingsEditsFromSettings -- which now seeds from
+	// Settings.File, per requirement 21 -- sees the same [env] table the
+	// test author intended, exactly as a real load would when nothing
+	// overrides it.
+	if cfg.File.Env == nil {
+		cfg.File.Env = cfg.Env
+	}
 	model := New(nil, cfg, "")
 	updated, _ := model.Update(key(","))
 	model = updated.(Model)
