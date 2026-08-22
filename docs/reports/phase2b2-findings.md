@@ -1126,3 +1126,72 @@ with the wider footer-layout work already anticipated there (per-
 session status reasons of arbitrary length interacting with a growing
 key legend), not as an isolated patch to `truncateToWidth`'s call
 site in this pass.
+
+## Task 011 — the built-in palettes' `archived` hex deviates from SPEC §11.6's own example, forced by requirement 30's 3:1 floor (§11.6 clarification request)
+
+SPEC.md's §11.6 worked example (the fenced `empire` TOML block a theme
+author is expected to copy from) states `archived = "#475569"`
+(SPEC.md:1164). The shipped built-in `empire` theme
+(`internal/theme/builtin/empire.toml`) ships `archived = "#7f8ea3"`
+instead — every other line of the example matches the shipped file
+exactly (verified with `diff <(sed -n '1138,1163p' SPEC.md)
+internal/theme/builtin/empire.toml`, whose only hunk is the `archived`
+line). This is not a typo or a stylistic choice: the SPEC's own example
+value fails requirement 30's loader-level 3:1 contrast floor against
+`empire`'s declared `background` (`#0f172a`), and the shipped value is
+the minimum change that clears it.
+
+**The forcing ratio, computed both ways.** A temporary evidence test
+added to `internal/theme` and run via `ci/run.sh go test
+./internal/theme/... -run TestSpecExampleArchivedHexWouldFailFloor -v
+-count=1` (then deleted — it existed only to produce this number, the
+permanent golden coverage is `TestBuiltinContrastFloor`) computed the
+SPEC example's own hex against `empire`'s background using the same
+`contrastRatio`/`quantize` this package's loader test holds every
+built-in to:
+
+```
+SPEC example archived #475569 vs empire background #0f172a: hex 2.36:1  quant #7f7f7f/#000000 5.24:1
+```
+
+`2.36:1 < 3.0:1` — SPEC §11.6's own example value fails requirement
+30's floor on the truecolour path (the quantised path happens to
+survive only because both `#475569` and the shipped `#7f8ea3` quantise
+to the same reference-palette entry, `#7f7f7f`, per
+`internal/theme/quantize.go`'s Euclidean-distance rule — quantisation
+is coarse enough to erase the difference between the two hexes, but
+the truecolour path is not). The shipped value clears the same check;
+running the permanent golden test confirms it, freshly, this iteration
+(`ci/run.sh go test ./internal/theme/... -run TestBuiltinContrastFloor
+-v -count=1`):
+
+```
+=== RUN   TestBuiltinContrastFloor/empire
+    contrast_test.go:86: empire   archived/background  hex #7f8ea3/#0f172a = 5.36:1   quant #7f7f7f/#000000 = 5.24:1
+--- PASS: TestBuiltinContrastFloor (0.00s)
+```
+
+`5.36:1` and `5.24:1` both clear the 3:1 floor with margin; `2.36:1`
+does not. The built-in's own source comment
+(`internal/theme/builtin/empire.toml`) already names the reason
+inline: "brighter than surrounding chrome so archived rows still read
+at ≥3:1 vs background (task 011)".
+
+The shipped `daylight` theme's `archived` (`#54657a`, darker than a
+plausible naive choice, per its own inline comment) is the same
+forced-by-the-floor pattern on a light background, but SPEC §11.6 only
+prints one worked example (`empire`, dark) — there is no light-theme
+example hex in the SPEC text for `daylight` to deviate *from*, so no
+SPEC quote is claimed for it here; it is noted only for completeness,
+not filed as a second deviation.
+
+**Clarification request for the operator/spec:** SPEC §11.6's example
+block is presented as a value a theme author would copy verbatim, but
+as written it does not clear the very floor the same section imposes
+on every built-in two paragraphs later. Should the example's
+`archived` line be updated to `#7f8ea3` (or another value that
+genuinely clears 3:1 against `#0f172a`) so a theme author copying the
+example byte-for-byte does not ship a theme that would fail
+`TestBuiltinContrastFloor`'s equivalent check if it were a built-in?
+This finding does not change `SPEC.md` itself (read-only for this
+pass) — it records the tension for the operator to resolve.
