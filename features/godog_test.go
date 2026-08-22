@@ -81,6 +81,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerAttentionSortSteps(sc)
 	registerStatusRecoverySteps(sc)
 	registerSettingsSteps(sc)
+	registerDialogsSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
