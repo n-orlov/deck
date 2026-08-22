@@ -204,7 +204,7 @@ var Schema = []Field{
 		Key:         "",
 		Kind:        KindListOfStrings,
 		Default:     []string{},
-		Description: "The middle PATH/env layer (SPEC §6.1): KEY=VALUE entries that sit between the tmux server's inherited environment (and captured_path) and a session's own env map override. A session's own env map, set via its own editor, always wins over this table for a key both define.",
+		Description: "The middle PATH/env layer (SPEC §6.1): KEY=VALUE entries that sit between the tmux server's inherited environment (and captured_path) and a session's own env map override. A session's own env map, set via its own editor, always wins over this table for a key both define. Editable here: enter opens the entries list (up/down select, enter edits the highlighted entry or adds a new one on the trailing \"+ add entry\" row, - removes the highlighted entry); while typing an entry, tab switches between its key and value and enter on the value stages it. Nothing here is saved to config.toml until ctrl+s.",
 		// §6.2: "tmux env changes reach only new processes, so a
 		// mid-flight edit is inherently restart-to-apply." A change here
 		// writes immediately but a running pane keeps its old
