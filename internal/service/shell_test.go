@@ -85,6 +85,45 @@ func TestCreateShellPersistsLaunchesAndAudits(t *testing.T) {
 	}
 }
 
+// TestCreateShellPromotesCWDToRecentCwds covers task 007's service-level
+// requirement that creating a session (shell path) promotes its cwd into
+// the §11.7 directory history.
+func TestCreateShellPromotesCWDToRecentCwds(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.Paths{Home: home, LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
+	db, err := store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	logger, err := audit.New(paths, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := "deck-service-recent-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
+	service := Service{
+		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
+		IDs: config.NewIDGenerator("service-recent-test"), Shell: "/bin/sh", RecentCwdLimit: 5,
+	}
+	session, err := service.CreateShell(context.Background(), ShellCreateInput{Name: "recent-cwd", CWD: cwd})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+	recent, err := db.RecentCwds(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 1 || recent[0].Path != session.CWD {
+		t.Fatalf("recent cwds after create shell = %+v, want exactly [%q]", recent, session.CWD)
+	}
+}
+
 func TestKillStopsSessionPreservesCWDAndRecordsTransition(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()

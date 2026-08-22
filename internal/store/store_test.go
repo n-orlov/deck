@@ -1166,3 +1166,125 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 		t.Fatalf("mode for %s = %#o, want %#o", path, got, want)
 	}
 }
+
+// openRecentCwdTestStore returns a fresh v4 store for the PromoteRecentCwd
+// tests below. DECK_CLOCK is frozen so these tests can prove ordering comes
+// from used_seq alone, never from wall time (task 007, SPEC §4/§13.1).
+func openRecentCwdTestStore(t *testing.T) *Store {
+	t.Helper()
+	t.Setenv("DECK_CLOCK", "2025-06-01T00:00:00Z")
+	home := filepath.Join(t.TempDir(), "deck")
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func TestPromoteRecentCwdOrdersMostRecentFirstByMonotonicSequence(t *testing.T) {
+	st := openRecentCwdTestStore(t)
+	ctx := context.Background()
+	for _, path := range []string{"/a", "/b", "/c"} {
+		if err := st.PromoteRecentCwd(ctx, path, 10); err != nil {
+			t.Fatalf("promote %s: %v", path, err)
+		}
+	}
+	got, err := st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/c", "/b", "/a"}
+	if len(got) != len(want) {
+		t.Fatalf("recent cwds = %+v, want %d entries", got, len(want))
+	}
+	for i, path := range want {
+		if got[i].Path != path {
+			t.Fatalf("recent cwds[%d] = %q, want %q (full: %+v)", i, got[i].Path, path, got)
+		}
+	}
+	// used_seq must strictly increase with promotion order (never a repeated
+	// or clock-derived value) even though DECK_CLOCK never advances above.
+	if !(got[0].UsedSeq > got[1].UsedSeq && got[1].UsedSeq > got[2].UsedSeq) {
+		t.Fatalf("used_seq did not strictly increase in promotion order: %+v", got)
+	}
+}
+
+func TestPromoteRecentCwdRepromotingExistingPathMovesToFrontWithoutDuplicating(t *testing.T) {
+	st := openRecentCwdTestStore(t)
+	ctx := context.Background()
+	for _, path := range []string{"/a", "/b", "/c"} {
+		if err := st.PromoteRecentCwd(ctx, path, 10); err != nil {
+			t.Fatalf("promote %s: %v", path, err)
+		}
+	}
+	if err := st.PromoteRecentCwd(ctx, "/a", 10); err != nil {
+		t.Fatalf("re-promote /a: %v", err)
+	}
+	got, err := st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/a", "/c", "/b"}
+	if len(got) != len(want) {
+		t.Fatalf("recent cwds = %+v, want %d entries (no duplicate /a)", got, len(want))
+	}
+	for i, path := range want {
+		if got[i].Path != path {
+			t.Fatalf("recent cwds[%d] = %q, want %q (full: %+v)", i, got[i].Path, path, got)
+		}
+	}
+}
+
+func TestPromoteRecentCwdLimitZeroKeepsNothing(t *testing.T) {
+	st := openRecentCwdTestStore(t)
+	ctx := context.Background()
+	if err := st.PromoteRecentCwd(ctx, "/a", 0); err != nil {
+		t.Fatalf("promote with limit 0: %v", err)
+	}
+	got, err := st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("recent cwds with limit 0 = %+v, want none", got)
+	}
+}
+
+func TestPromoteRecentCwdEvictsBeyondCallerSuppliedLimit(t *testing.T) {
+	st := openRecentCwdTestStore(t)
+	ctx := context.Background()
+	for _, path := range []string{"/a", "/b", "/c", "/d", "/e"} {
+		if err := st.PromoteRecentCwd(ctx, path, 3); err != nil {
+			t.Fatalf("promote %s: %v", path, err)
+		}
+	}
+	got, err := st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/e", "/d", "/c"}
+	if len(got) != len(want) {
+		t.Fatalf("recent cwds = %+v, want exactly the 3 most recent %v", got, want)
+	}
+	for i, path := range want {
+		if got[i].Path != path {
+			t.Fatalf("recent cwds[%d] = %q, want %q (full: %+v)", i, got[i].Path, path, got)
+		}
+	}
+}
+
+func TestPromoteRecentCwdRejectsRelativePath(t *testing.T) {
+	st := openRecentCwdTestStore(t)
+	ctx := context.Background()
+	if err := st.PromoteRecentCwd(ctx, "relative/path", 5); err == nil {
+		t.Fatal("promote of a relative path succeeded, want an error naming the requirement")
+	}
+	got, err := st.RecentCwds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("recent cwds after rejected promotion = %+v, want none", got)
+	}
+}

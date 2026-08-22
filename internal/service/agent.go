@@ -87,6 +87,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable agent session %q: %w", input.Name, err)
 	}
+	s.promoteRecentCwd(ctx, session.CWD)
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
 		return session, fmt.Errorf("audit starting agent session %q: %w", session.Name, err)
 	}
