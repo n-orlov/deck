@@ -30,6 +30,28 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch argv for session "claude one" does not contain "--continue"
     When deck client "A" exits cleanly
 
+  Scenario: R restarts a running claude session with the resume argv, preserving its conversation id
+    # Task 022: `R` kills the selected session's live pane if one exists and
+    # relaunches it with the adapter's resume argv -- the SAME conversation
+    # id, never a fresh one -- asserted from both the store and the raw
+    # audit log. A long-running fixture keeps the pane (and the row's
+    # non-stopped status) alive long enough to press `R` without racing a
+    # fixture that would otherwise exit almost immediately.
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "restart claude" with permission profile "safe"
+    Then deck client "A" screen contains "restart claude"
+    And the state database session "restart claude" has a non-empty conversation id
+    And the audit log has 1 launch record for session "restart claude"
+    And the audit log's most recent launch argv for session "restart claude" contains "--session-id"
+    When deck client "A" presses R on session "restart claude"
+    Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
+    And the audit log has 2 launch records for session "restart claude"
+    And the audit log's most recent launch argv for session "restart claude" contains "--resume"
+    And the audit log's most recent launch argv for session "restart claude" does not contain "--session-id"
+    And the audit log's most recent launch argv for session "restart claude" contains session "restart claude"'s conversation id
+    When deck client "A" exits cleanly
+
   Scenario: login_shell marks captured_path advisory in the row and its detail
     # SPEC §6.3: enabling login_shell is mutually exclusive with relying on
     # captured_path (rc files may rewrite PATH), so the two are always

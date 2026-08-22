@@ -866,6 +866,44 @@ func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, s
 	return nil
 }
 
+// ClearEnvDirty resets env_dirty back to false once an explicit restart
+// (task 022's `R`) has relaunched the pane carrying the session's
+// persisted environment, so the `env↻` pending-change badge never
+// outlives the change actually reaching a live process. It never touches
+// tmux or the sessions.env column itself -- only the flag.
+func (s *Store) ClearEnvDirty(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin clear env_dirty: %w", err)
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET env_dirty = 0 WHERE id = ?`, sessionID)
+	if err != nil {
+		return fmt.Errorf("clear env_dirty for session %q: %w", sessionID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check clear env_dirty for session %q: %w", sessionID, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, ?, ?, ?, ?)`,
+		sessionID, at, "env_applied", "restart", ""); err != nil {
+		return fmt.Errorf("record clear env_dirty event for session %q: %w", sessionID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit clear env_dirty for session %q: %w", sessionID, err)
+	}
+	return nil
+}
+
 // SetResumePin pins a session to resume a specific conversation id going
 // forward (resume_state=pinned), sticky across restarts until changed again.
 func (s *Store) SetResumePin(ctx context.Context, sessionID, conversationID, source string, at int64) error {

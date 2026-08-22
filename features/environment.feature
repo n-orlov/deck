@@ -62,3 +62,24 @@ Feature: The `e` env editor shows the effective value and winning layer per key,
     And the live tmux environment for session "env write target" has key "PATH" with value "/edited/only/path"
     And the live pane process environment for session "env write target" key "PATH" still matches the captured "before-edit"
     When deck client "A" exits cleanly
+
+  @requirement-022-restart-applies-pending-env-edit-and-clears-badge
+  Scenario: R kills and relaunches the pane with the resume argv, applying a pending env edit and clearing env_dirty
+    Given deck client "A" is started
+    When deck client "A" creates shell session "restart env target"
+    Then deck client "A" screen contains "restart env target"
+    And the live pane process environment for session "restart env target" key "PATH" is captured as "before-restart-edit"
+    When deck client "A" opens the env editor for session "restart env target"
+    Then deck client "A" screen contains "PATH"
+    When deck client "A" edits the highlighted env key to "/restart/applied/path"
+    Then deck client "A" screen contains "/restart/applied/path"
+    When deck client "A" closes the dialog with escape
+    Then deck client "A" screen contains "env*"
+    And the state database session "restart env target" is marked env_dirty
+    And the live pane process environment for session "restart env target" key "PATH" still matches the captured "before-restart-edit"
+    When deck client "A" presses R on session "restart env target"
+    Then within one configured reconcile interval deck client "A" screen contains "running"
+    And the state database session "restart env target" is not marked env_dirty
+    And deck client "A" screen does not contain "env*"
+    And the live pane process environment for session "restart env target" key "PATH" is "/restart/applied/path"
+    When deck client "A" exits cleanly

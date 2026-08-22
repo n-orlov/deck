@@ -86,7 +86,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	tuiReconcile := func(ctx context.Context) error {
 		return sessions.ReconcileWithProbes(ctx, settings.StaleAfter)
 	}
-	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerAndEnvSetter(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv)
+	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterAndRestarter(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart)
 	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
 	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
 	// whole program lifetime; §11.8's hit-testing and gesture handling land in

@@ -1484,3 +1484,87 @@ func TestSetSessionEnvValueRejectsMissingSessionOrKey(t *testing.T) {
 		t.Fatalf("expected an error for a session that does not exist")
 	}
 }
+
+// TestClearEnvDirtyResetsFlagAndPersistsAcrossReopen proves task 022's `R`
+// restart's own store-side half: ClearEnvDirty resets env_dirty back to
+// false (the sidebar's `env↻` badge source) without touching the
+// session's own env map, records an event naming the restart source, and
+// the cleared flag survives a close/reopen exactly like every other
+// durable column.
+func TestClearEnvDirtyResetsFlagAndPersistsAcrossReopen(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	const id = "00000000-0000-4000-8000-000000000022"
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "env-dirty-clear", CWD: "/work/env-dirty-clear", Agent: "claude", CapturedPath: "/bin",
+		StatusAt: 1, CreatedAt: 1, Env: map[string]string{"SOME_KEY": "some-value"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSessionEnvValue(ctx, id, "SOME_KEY", "edited-value", "user", 10); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.EnvDirty {
+		t.Fatalf("env_dirty = false, want true after an edit, before ClearEnvDirty")
+	}
+
+	if err := st.ClearEnvDirty(ctx, id, 20); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EnvDirty {
+		t.Fatalf("env_dirty = true, want false after ClearEnvDirty")
+	}
+	if got.Env["SOME_KEY"] != "edited-value" {
+		t.Fatalf("ClearEnvDirty changed env[SOME_KEY] = %q, want it untouched (edited-value)", got.Env["SOME_KEY"])
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err = reopened.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EnvDirty {
+		t.Fatalf("cleared env_dirty did not survive reopen")
+	}
+}
+
+// TestClearEnvDirtyRejectsMissingSessionOrUnknownID mirrors
+// TestSetSessionEnvValueRejectsMissingSessionOrKey's input-validation shape.
+func TestClearEnvDirtyRejectsMissingSessionOrUnknownID(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.ClearEnvDirty(ctx, "", 1); err == nil {
+		t.Fatalf("expected an error for a missing session id")
+	}
+	if err := st.ClearEnvDirty(ctx, "does-not-exist", 1); err == nil {
+		t.Fatalf("expected an error for a session that does not exist")
+	}
+	if err := st.ClearEnvDirty(ctx, "some-id", 0); err == nil {
+		t.Fatalf("expected an error for a missing timestamp")
+	}
+}
