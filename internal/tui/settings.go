@@ -176,7 +176,7 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.settingsOpen = false
 		}
 	case "ctrl+s":
-		m.settingsSave()
+		return m, m.settingsSave()
 	case "tab", "left", "right":
 		if m.settingsFocus == settingsFocusCategories {
 			m.settingsFocus = settingsFocusFields
@@ -207,9 +207,10 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 // the takeover opened with). esc uses this to decide between closing
 // outright and requirement 14/20's discard-confirm prompt; comparing
 // against settingsSavedEdits rather than settingsEditsFromSettings(m.
-// settings) directly means a successful ctrl+s (which does not refresh
-// m.settings -- that only happens on restart, per the restart-to-apply
-// scope label) does not leave esc wrongly re-prompting to discard a
+// settings) directly means a successful ctrl+s -- which as of task 006
+// does refresh m.settings.File and, for ScopeGlobal fields, their resolved
+// member too, but always leaves settingsSavedEdits equal to what it just
+// wrote either way -- does not leave esc wrongly re-prompting to discard a
 // change that is already safely on disk.
 func (m Model) settingsDirty() bool {
 	return !reflect.DeepEqual(m.settingsEdits, m.settingsSavedEdits)
@@ -224,18 +225,99 @@ func (m Model) settingsDirty() bool {
 // is surfaced in settingsNote rather than swallowed; settingsEdits is left
 // exactly as the user had it either way, so a failed save loses nothing
 // and can be retried.
-func (m *Model) settingsSave() {
+//
+// requirement 19 (task 006): on success, before advancing settingsSavedEdits,
+// it also refreshes m.settings itself -- both Settings.File (so config.toml
+// and the running model's idea of the file never disagree, e.g. on the next
+// `,` reopen) and, for every field config.Schema (task 005) declares
+// ScopeGlobal, the resolved top-level member the rest of the program
+// actually reads (m.settings.AllowYolo/ASCII/Mouse/Theme) -- via
+// settingsApplyLiveFields. A ScopeRestartToApply field's file value is still
+// refreshed (the file really was just rewritten), but its resolved member is
+// deliberately left alone: that member's one consumer only reads it once at
+// process start (see the per-field comment in schema.go), so touching it
+// here would claim an effect this tree cannot produce. The returned tea.Cmd
+// (non-nil only when Mouse's live value changed) is settingsApplyLiveFields'
+// way of telling the terminal itself to start/stop emitting SGR mouse
+// reports, since that is a runtime command, not a struct field.
+func (m *Model) settingsSave() tea.Cmd {
 	path := m.settings.Paths.ConfigFile
 	if path == "" {
 		m.settingsNote = "save failed: no config file path is configured"
-		return
+		return nil
 	}
 	if err := config.WriteConfigFile(path, m.settingsEdits); err != nil {
 		m.settingsNote = "save failed: " + err.Error()
-		return
+		return nil
 	}
-	m.settingsSavedEdits = settingsCloneFileConfig(m.settingsEdits)
+	previous := m.settings.File
+	saved := settingsCloneFileConfig(m.settingsEdits)
+	m.settings.File = saved
+	cmd := m.settingsApplyLiveFields(previous)
+	m.settingsSavedEdits = saved
 	m.settingsNote = "saved " + path
+	return cmd
+}
+
+// settingsApplyLiveFields refreshes m.settings for every schema field whose
+// Scope (config.Schema, task 005) is ScopeGlobal, comparing the just-saved
+// file values against previous (the file values before this save) so only
+// fields that actually changed are touched. This is what makes a
+// live-applying field's ctrl+s take effect in the already-running client
+// without a restart (requirement 19): AllowYolo/ASCII/Mouse copy straight
+// across (config.Settings mirrors config.FileConfig for those keys once the
+// env-override step -- which this takeover's saved edits never come from,
+// per task 001/002 -- is done), and Theme is re-resolved from its saved raw
+// name through theme.Resolve the same way config.Load itself does, since
+// config.Settings.Theme is a *theme.Theme plus a fallback ThemeReason, not
+// the raw string FileConfig.Theme holds (mirroring theme_picker.go's
+// themePickerConfirm, so the `,` takeover and the `t` picker agree on how a
+// saved theme name reaches the running client).
+//
+// Mouse additionally needs the terminal itself told to start or stop
+// emitting SGR mouse reports: cmd/deck/main.go only applies
+// tea.WithMouseCellMotion() once, as a ProgramOption before Run(), so
+// flipping m.settings.Mouse alone would silently disagree with what the
+// terminal is doing. bubbletea also exposes this as runtime commands
+// (screen.go's EnableMouseCellMotion/DisableMouse), so this returns the
+// matching one exactly when Mouse's live value changed -- closing the
+// turning-it-on gap the existing tea.MouseMsg gate (tui.go's `if
+// !m.settings.Mouse { return m, nil }`) only ever covered for turning it
+// off.
+//
+// StaleAfter, CaptureMinInterval, RecentCwdLimit and Env are
+// ScopeRestartToApply (schema.go's per-field comment names each one's
+// consumer, or lack of one) and are deliberately never touched here: their
+// resolved member is not what a save is claimed to affect live.
+func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
+	if m.settingsEdits.AllowYolo != previous.AllowYolo {
+		m.settings.AllowYolo = m.settingsEdits.AllowYolo
+	}
+	if m.settingsEdits.ASCII != previous.ASCII {
+		m.settings.ASCII = m.settingsEdits.ASCII
+	}
+	var cmd tea.Cmd
+	if m.settingsEdits.Mouse != previous.Mouse {
+		m.settings.Mouse = m.settingsEdits.Mouse
+		enable := m.settingsEdits.Mouse
+		// EnableMouseCellMotion/DisableMouse are themselves tea.Msg
+		// constructors, not tea.Cmd values (a tea.Cmd is a func() tea.Msg) --
+		// wrap the chosen one so bubbletea's runtime dispatches it as the
+		// program's next message, exactly as WithMouseCellMotion's own
+		// ProgramOption would have if this had been decided at startup.
+		if enable {
+			cmd = func() tea.Msg { return tea.EnableMouseCellMotion() }
+		} else {
+			cmd = func() tea.Msg { return tea.DisableMouse() }
+		}
+	}
+	if m.settingsEdits.Theme != previous.Theme {
+		userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(m.settings.Paths.ConfigFile))
+		resolved, reason := theme.Resolve(userThemes, userErrs, m.settingsEdits.Theme)
+		m.settings.Theme = resolved
+		m.settings.ThemeReason = reason
+	}
+	return cmd
 }
 
 // settingsCloneFileConfig deep-copies cfg's Env map (settingsCloneEnv
