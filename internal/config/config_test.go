@@ -44,12 +44,12 @@ func TestPathsRespectDeckHomeAndXDG(t *testing.T) {
 func TestControlsAndClock(t *testing.T) {
 	settings, err := LoadFrom(environment(map[string]string{
 		"DECK_HOME": t.TempDir(), "DECK_TMUX_SOCKET": "scenario_42", "DECK_CLOCK": "2025-01-02T03:04:05Z", "DECK_CLOCK_STEP": "2s",
-		"DECK_RECONCILE_MS": "9", "DECK_PREVIEW_MS": "11", "DECK_ASCII": "true", "DECK_ANIM": "false", "NO_COLOR": "1",
+		"DECK_RECONCILE_MS": "9", "DECK_PREVIEW_MS": "11", "DECK_UNDO_MS": "13", "DECK_DELETE_GRACE_MS": "17", "DECK_ASCII": "true", "DECK_ANIM": "false", "NO_COLOR": "1",
 	}), fakeHome)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Socket != "scenario_42" || settings.Reconcile != 9*time.Millisecond || settings.Preview != 11*time.Millisecond || !settings.ASCII || settings.Animation || settings.Color {
+	if settings.Socket != "scenario_42" || settings.Reconcile != 9*time.Millisecond || settings.Preview != 11*time.Millisecond || settings.Undo != 13*time.Millisecond || settings.DeleteGrace != 17*time.Millisecond || !settings.ASCII || settings.Animation || settings.Color {
 		t.Fatalf("controls = %+v", settings)
 	}
 	want := "2025-01-02T03:04:05Z"
@@ -374,13 +374,26 @@ func TestConfigFileMalformedIsRejected(t *testing.T) {
 
 func TestInvalidControlsAreRejected(t *testing.T) {
 	for key, value := range map[string]string{
-		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
+		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_UNDO_MS": "0", "DECK_DELETE_GRACE_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
 	} {
 		t.Run(key, func(t *testing.T) {
 			if _, err := LoadFrom(environment(map[string]string{key: value}), fakeHome); err == nil {
 				t.Fatalf("%s=%q was accepted", key, value)
 			}
 		})
+	}
+}
+
+func TestUndoAndDeleteGraceDefaultWhenUnset(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Undo != DefaultUndoMS*time.Millisecond {
+		t.Fatalf("Undo default = %v, want %dms", settings.Undo, DefaultUndoMS)
+	}
+	if settings.DeleteGrace != DefaultDeleteGraceMS*time.Millisecond {
+		t.Fatalf("DeleteGrace default = %v, want %dms", settings.DeleteGrace, DefaultDeleteGraceMS)
 	}
 }
 
