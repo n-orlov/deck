@@ -96,6 +96,16 @@ type ScenarioHarness struct {
 	// default black-box lifecycle used by feature scenarios.
 	tmuxProbe  func() bool
 	removeHome func(string) error
+
+	// namedDirectories and directoryFingerprints back requirement 29's
+	// working-directory fingerprint harness (task 002): the former maps a
+	// scenario-chosen label to a real directory path (populated today only
+	// by the scratch-directory seeding step, and by a session's own cwd in
+	// later tasks), the latter maps a fingerprint label to the snapshot
+	// taken of that path, so a later step can assert byte-for-byte and
+	// stat-for-stat identity without repeating the path.
+	namedDirectories      map[string]string
+	directoryFingerprints map[string]directoryFingerprintRecord
 }
 
 var scenarioSequence atomic.Uint64
