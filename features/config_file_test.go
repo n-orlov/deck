@@ -33,6 +33,8 @@ func registerConfigFileSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the scenario's config\.toml does not parse with mouse (true|false)$`, assertConfigNotMouse)
 	sc.Step(`^the scenario's config\.toml parses with env "([^"]*)" set to "([^"]*)"$`, assertConfigEnv)
 	sc.Step(`^the scenario's config\.toml does not parse with env "([^"]*)" set to "([^"]*)"$`, assertConfigNotEnv)
+	sc.Step(`^the scenario's config\.toml contains the raw text:$`, assertConfigContainsRawText)
+	sc.Step(`^the scenario's config\.toml contains "([^"]+)" exactly (\d+) times$`, assertConfigContainsTimes)
 }
 
 // writeScenarioConfigTOML writes doc's raw content verbatim (no templating,
@@ -170,6 +172,59 @@ func checkConfigMouse(ctx context.Context, wantRaw string, positive bool) error 
 	}
 	if !positive && matches {
 		return fmt.Errorf("scenario config.toml parses with mouse=%v, want it not to match %v", settings.Mouse, want)
+	}
+	return nil
+}
+
+// assertConfigContainsRawText proves content the takeover neither reads nor
+// writes (an unrecognised top-level key, an unrecognised key inside a known
+// section, or a whole unrecognised section family such as [notify]/
+// [[notify.rule]]) survives byte-for-byte inside the file the writer leaves
+// behind after a real save, the same guarantee
+// internal/config/toml_write_test.go's TestWriteConfigFileRoundTripsUnknownKeysAndSections
+// proves at the unit level, but exercised end-to-end through a real client's
+// ctrl+s. It checks raw bytes, deliberately outside internal/config's parser,
+// because the parser itself does not surface unknown content for a step like
+// assertConfigEnv to inspect.
+func assertConfigContainsRawText(ctx context.Context, doc *godog.DocString) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(h.Home, "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read scenario config.toml: %w", err)
+	}
+	want := strings.TrimSuffix(doc.Content, "\n")
+	if !strings.Contains(string(data), want) {
+		return fmt.Errorf("scenario config.toml lost or altered unknown content %q; got:\n%s", want, data)
+	}
+	return nil
+}
+
+// assertConfigContainsTimes proves an unrecognised, repeated array-of-tables
+// section ([[notify.rule]] and similar, SPEC §10) survives a save with every
+// occurrence intact -- not merged, deduplicated or dropped to one -- the same
+// count check TestWriteConfigFileRoundTripsUnknownKeysAndSections makes at
+// the unit level.
+func assertConfigContainsTimes(ctx context.Context, substr string, wantRaw string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	want, err := strconv.Atoi(wantRaw)
+	if err != nil {
+		return fmt.Errorf("parse expected count %q: %w", wantRaw, err)
+	}
+	path := filepath.Join(h.Home, "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read scenario config.toml: %w", err)
+	}
+	got := strings.Count(string(data), substr)
+	if got != want {
+		return fmt.Errorf("scenario config.toml contains %q %d times, want %d; got:\n%s", substr, got, want, data)
 	}
 	return nil
 }

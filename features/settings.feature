@@ -172,8 +172,26 @@ Feature: The `,` settings takeover (requirement 48)
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
-  Scenario: adding an [env] entry and saving with ctrl+s round-trips through config.toml (requirement 17)
-    Given deck client "A" is started
+  Scenario: adding an [env] entry and saving with ctrl+s round-trips through config.toml, preserving keys and sections the takeover does not understand (requirement 17)
+    Given the scenario's config.toml is written with:
+      """
+      allow_yolo = false
+      some_future_key = "whatever"
+
+      [ui]
+      mouse = true
+      some_future_ui_key = 7
+
+      [notify]
+      webhook = "https://example.invalid/hook"
+
+      [[notify.rule]]
+      match = "idle"
+
+      [[notify.rule]]
+      match = "error"
+      """
+    And deck client "A" is started
     When deck client "A" sends ","
     And deck client "A" sends "j"
     And deck client "A" sends "j"
@@ -192,6 +210,29 @@ Feature: The `,` settings takeover (requirement 48)
     When deck client "A" sends ""
     Then deck client "A" screen contains "deck - sessions"
     And the scenario's config.toml parses with env "GREETING" set to "hello"
+    And the scenario's config.toml parses with allow_yolo false
+    And the scenario's config.toml parses with mouse true
+    And the scenario's config.toml contains the raw text:
+      """
+      some_future_key = "whatever"
+      """
+    And the scenario's config.toml contains the raw text:
+      """
+      some_future_ui_key = 7
+      """
+    And the scenario's config.toml contains the raw text:
+      """
+      webhook = "https://example.invalid/hook"
+      """
+    And the scenario's config.toml contains the raw text:
+      """
+      match = "idle"
+      """
+    And the scenario's config.toml contains the raw text:
+      """
+      match = "error"
+      """
+    And the scenario's config.toml contains "[[notify.rule]]" exactly 2 times
     When deck client "A" exits cleanly
 
   Scenario: discarding an unsaved [env] edit leaves config.toml exactly as it was (requirement 17)
