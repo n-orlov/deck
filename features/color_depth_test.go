@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cucumber/godog"
 
@@ -39,6 +40,19 @@ func startNamedClientWithColourDepth(ctx context.Context, name, depth string) er
 	return client.WaitForFrame(ctx, false, "deck - sessions")
 }
 
+// noColourFloorProofText is the text this walk requires to still be findable
+// in the grid it just inspected, and whose rune length lower-bounds the
+// number of populated cells the walk must have actually seen. It is the
+// literal text harness.feature's only scenario using this step already
+// asserts is on screen (via "row ... contains \"waiting\"") immediately
+// before this step runs, so the floor below adds no new claim about the
+// frame -- it only requires this step's OWN walk to have observed what the
+// scenario already proved is there, rather than trusting that a walk which
+// touched nothing at all is equivalent to one that touched a colourless
+// frame (operator steer, 22 Aug 2026 -- see
+// docs/reports/phase2b2-findings.md).
+const noColourFloorProofText = "waiting"
+
 // clientFrameHasNoColourAnywhere walks every cell of the client's entire
 // grid -- not just a named row or a matched substring -- so requirement
 // 3/31's NO_COLOR proof is total: nothing anywhere in the frame carries a
@@ -46,25 +60,59 @@ func startNamedClientWithColourDepth(ctx context.Context, name, depth string) er
 // status under NO_COLOR must therefore be doing so through its glyphs and
 // words alone, which is the property this step exists to make assertable
 // rather than merely claimed in prose.
+//
+// Two failure modes let a naive version of this walk pass having examined
+// nothing at all: GridSize returning 0,0 for an emulator that has not been
+// sized yet (the loops below never execute), and CellAt returning nil for
+// every cell of a grid that has not been populated yet (every iteration
+// hits the `continue`). Both are silently indistinguishable from "a real,
+// rendered, monochrome frame" unless the walk also proves it actually
+// inspected populated content -- the floor below does that by requiring at
+// least as many populated cells as noColourFloorProofText has runes, and by
+// requiring that text still be locatable in the same grid the walk just
+// finished with. TestClientFrameHasNoColourAnywhereCanFail exercises this
+// same walk against a colour-enabled client to prove it is not merely
+// unfalsifiable by construction.
+//
+// This also does not conflate "the cell could not be read" with "the cell
+// carries no colour": it inspects cell.Style.Fg/Bg directly rather than
+// through cellForegroundHex/cellBackgroundHex, whose error return covers
+// both a nil cell AND a cell with no colour set -- exactly the ambiguity
+// that would let an unreadable frame silently pass this specific walk.
 func clientFrameHasNoColourAnywhere(ctx context.Context, name string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
 		return err
 	}
 	cols, rows := client.GridSize()
+	populated := 0
 	for y := 0; y < rows; y++ {
 		for x := 0; x < cols; x++ {
 			cell := client.CellAt(x, y)
 			if cell == nil {
+				// An unpopulated cell paints nothing, so skipping it here
+				// is correct -- what the floor below guards against is a
+				// walk that skipped EVERY cell this way.
 				continue
 			}
-			if hex, err := cellForegroundHex(cell); err == nil {
-				return fmt.Errorf("client %q cell at row %d column %d has foreground %s under NO_COLOR, want none", name, y, x, hex)
+			if strings.TrimSpace(cell.Content) != "" {
+				populated++
 			}
-			if hex, err := cellBackgroundHex(cell); err == nil {
-				return fmt.Errorf("client %q cell at row %d column %d has background %s under NO_COLOR, want none", name, y, x, hex)
+			if cell.Style.Fg != nil {
+				return fmt.Errorf("client %q cell at row %d column %d has foreground %s under NO_COLOR, want none", name, y, x, colorHex(cell.Style.Fg))
+			}
+			if cell.Style.Bg != nil {
+				return fmt.Errorf("client %q cell at row %d column %d has background %s under NO_COLOR, want none", name, y, x, colorHex(cell.Style.Bg))
 			}
 		}
+	}
+	floor := len([]rune(noColourFloorProofText))
+	proofRow, proofCol, findErr := client.FindText(noColourFloorProofText)
+	if findErr != nil {
+		return fmt.Errorf("client %q: NO_COLOR walk inspected %d populated cell(s) across a %dx%d grid but could not re-locate proof text %q in the same frame, so this walk's own floor cannot be established: %w", name, populated, cols, rows, noColourFloorProofText, findErr)
+	}
+	if populated < floor {
+		return fmt.Errorf("client %q NO_COLOR walk inspected only %d populated cell(s) across a %dx%d grid, want at least %d (the length of proof text %q, found at row %d column %d in this same frame) -- the walk did not actually inspect a rendered frame", name, populated, cols, rows, floor, noColourFloorProofText, proofRow, proofCol)
 	}
 	return nil
 }

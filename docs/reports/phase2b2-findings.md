@@ -700,3 +700,63 @@ scenario still asserts the full sentence verbatim, never a prefix.
 
 **Verification:** `ci/run.sh go test ./internal/tui/...` and
 `ci/run.sh sh -c 'cd features && go test -run TestFeatures .'` both pass.
+
+## Task 038 — a floor for the NO_COLOR frame assertion, and its negative proof (operator steer, 21/22 Aug 2026)
+
+**Provenance:** operator steering files `004-no-colour-floor.md.md` (21 Aug
+2026) and its re-send `005-no-colour-floor-resent.md` (22 Aug 2026, after the
+first steer was consumed by an iteration that crashed on the engine's
+iteration-timeout before doing any work). Sequenced ahead of tasks 034/036 by
+the re-send, via `dependsOn: ["038"]` on both in `tasks.json`.
+
+**The problem, precisely:** `clientFrameHasNoColourAnywhere`
+(`features/color_depth_test.go`) is the sole total proof of requirement
+3/31's headline claim that a session's status under `NO_COLOR` is carried
+by glyphs alone. As committed in task 026 it could pass having examined
+nothing at all, by three independent routes: `GridSize()` returning `0,0`
+for an unsized emulator (the walk's loops never execute); `CellAt` returning
+`nil` for every cell of a grid that never got populated (every iteration
+hits `continue`); and treating any error from
+`cellForegroundHex`/`cellBackgroundHex` as evidence of "no colour", when one
+of the two errors those helpers return (`"cell could not be read from the
+grid"`) actually means the opposite — a failure to observe, not a
+successful colourless observation.
+
+**The fix:**
+
+1. **A floor.** The walk now counts populated (non-blank `Content`) cells
+   it actually inspects, and additionally re-locates
+   `noColourFloorProofText` ("waiting" — the exact word
+   `harness.feature`'s only scenario using this step has just asserted is
+   on screen, one step earlier, via `contains "waiting"`) with `FindText`
+   in the same frame. It fails unless the populated-cell count is at least
+   that word's rune length AND the word is still findable. A walk that
+   inspected an unsized or unpopulated grid is now red, not green. A `nil`
+   cell itself is still not a failure — an unpopulated cell paints nothing,
+   so skipping it is correct; only the *totality* of skipping is now
+   caught.
+2. **No more conflating "unreadable" with "colourless."** The walk now
+   reads `cell.Style.Fg`/`cell.Style.Bg` directly rather than going through
+   `cellForegroundHex`/`cellBackgroundHex`, whose shared error path covers
+   both cases ambiguously. Silence about a cell's readability is no longer
+   treated as evidence about its colour.
+3. **A committed negative proof.** `TestClientFrameHasNoColourAnywhereCanFail`
+   (`features/color_depth_no_colour_floor_test.go`) runs this exact walk
+   against a real, colour-enabled deck client (`NO_COLOR=` lifted, same
+   sentinel `startNamedClientWithColour` uses) and asserts the step
+   reports colour — mirroring `TestCellAttributeAssertionsCanFail`'s
+   precedent, but committed in the tree rather than only claimed, ex post,
+   in a commit message (task 026's commit said this proof existed as a
+   throwaway before being committed; it did not survive as evidence).
+
+**Left untouched, as instructed:** the `DECK_COLOR_DEPTH=16` assertion,
+`ansiCodeToRenderedHex`, and the truecolor scenario (all correct as-is per
+the 21 Aug steer); the NO_COLOR-by-default harness behaviour; `SPEC.md`
+(`git diff` for it is empty).
+
+**Verification:** `ci/run.sh go build ./...`, `go vet ./...`, and
+`go test ./features/...` (full suite, ~150s) all pass, including the new
+`TestClientFrameHasNoColourAnywhereCanFail` and the existing
+`@requirement-3-no-color` scenario in `harness.feature` (still green,
+unweakened — same assertion, now with a real floor underneath it).
+`gofmt -l` on both changed/added files is clean.
