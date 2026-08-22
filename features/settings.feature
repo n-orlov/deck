@@ -125,6 +125,30 @@ Feature: The `,` settings takeover (requirement 48)
     And the scenario's config.toml parses with ascii false
     When deck client "A" exits cleanly
 
+  Scenario: saving an edit that moves away from an env-overridden field's running value leaves the running client unaffected (requirement 21 correction, operator steer 008-envoverride-applylive.md)
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      ascii = true
+      """
+    And deck client "A" is started
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Ascii: On (file value; overridden by DECK_ASCII, running: On)"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And deck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" screen contains "+"
+    And deck client "A" screen does not contain "╭"
+    And the scenario's config.toml parses with ascii false
+    When deck client "A" exits cleanly
+
   Scenario: the [env] table states its restart-to-apply scope on screen
     Given deck client "A" is started
     When deck client "A" sends ","

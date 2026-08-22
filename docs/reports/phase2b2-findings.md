@@ -1507,3 +1507,167 @@ untouched (requirement 21)") passed in the same fresh `@settings` run
 quoted in `docs/reports/phase2b2.md`'s R21 entry above; it is not
 repeated verbatim here to avoid the two documents drifting when one is
 edited and not the other.
+
+## Task 014 — requirement 19's live-apply fix (task 006) defeated requirement 21's env-over-file guarantee (operator steer `008-envoverride-applylive.md`, 22 Aug 2026 13:00 BST)
+
+**Provenance.** This finding is the operator's, not this pass's own
+discovery: `008-envoverride-applylive.md` (22 Aug 2026 13:00 BST) pointed
+at `internal/tui/settings.go`'s `settingsApplyLiveFields` (added by task
+006 to close requirement 19) and showed, by inspection, that it never
+consults `config.Settings.EnvOverrides` before copying a just-saved file
+value into the running `config.Settings`.
+
+**The defect.** Task 001/002 closed requirement 21's *load-then-save*
+half: a save can no longer launder an environment value into
+`config.toml` for a field the user never edited, because the takeover's
+staged edits are seeded from `Settings.File`, not from the env-resolved
+`Settings`. Task 006, in service of requirement 19, then added
+`settingsApplyLiveFields`, which refreshes the running `config.Settings`
+member for every `ScopeGlobal` field whenever the just-saved file value
+differs from what the file held before the save — with no check of
+`EnvOverrides` at all. `config.LoadFrom` has exactly two override paths,
+`ui.ascii`/`DECK_ASCII` and `ui.mouse`/`DECK_MOUSE`, and both of those
+keys are `ScopeGlobal` (they take effect live precisely because task 006
+made them). So for those two keys, an *edited* save (the case task
+001/002's fix does not touch, because the staged value genuinely changed)
+copied the new file value into the running settings even while the
+environment variable overriding that key stayed set — defeating
+requirement 21 ("the environment always outranks the file", §6.5) from
+the opposite direction: not a save leaking the environment into the
+file, but a save leaking the file into the running value the environment
+is supposed to keep pinned. For `ui.mouse` this is not confined to a
+struct field: the same branch also returns the
+`EnableMouseCellMotion`/`DisableMouse` `tea.Cmd`, so an operator running
+under `DECK_MOUSE=1` who toggled mouse off in the takeover had mouse
+reporting genuinely turned off in the terminal by a file edit the
+environment was supposed to outrank.
+
+**Why the existing tests did not catch it — by fixture blindness, not by
+weakening.**
+
+1. `TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie`
+   (`internal/tui/settings_task017_test.go`, task 003) toggles the staged
+   edit and asserts `m.settings.ASCII` did not move across a `ctrl+s`. Its
+   fixture has the file value `false` and `DECK_ASCII` resolving to `On`
+   (`true`); a `KindToggle` `enter` flips the staged value from `false` to
+   `true`, i.e. TOWARD the env-resolved value, so `m.settings.ASCII` goes
+   `true → true` with or without the exemption — the assertion cannot
+   observe the bug because nothing distinguishes "the exemption held" from
+   "the edit happened to land on the value the running settings already
+   had."
+2. `features/settings.feature`'s task-004 requirement-21 scenario ("saving
+   with ctrl+s and no edit leaves an environment-overridden flat key's own
+   file value untouched") is, by design, a **no-edit** save:
+   `settingsEdits.ASCII == previous.ASCII` going in, so
+   `settingsApplyLiveFields`'s own change-detection guard
+   (`m.settingsEdits.ASCII != previous.ASCII`) is false and the live-apply
+   branch never runs at all. It correctly proves the load-then-save half
+   of requirement 21 and cannot reach the edited case the defect lives in.
+3. `TestSettingsScopeParityMatchesSaveBehaviour`
+   (`internal/tui/settings_scope_parity_test.go`, task 007) asserts a
+   `ScopeGlobal` field's save *must* change the running settings. Its
+   fixture (`settingsLiveApplyTestModel`) never sets any `DECK_*`
+   variable, so `m.settings.EnvOverrides` is always empty in that test and
+   the exemption this fix adds is simply never exercised by it — the test
+   is correct as written for the no-override case, but would have *failed
+   the fix* had the fixture ever set an override, since the parity test's
+   own model does not know an override can flip the expected direction.
+
+**The fix.** `settingsApplyLiveFields` now looks up the field's key in
+`m.settings.EnvOverrides` (the same map `settingsFieldEnvOverride`
+already reads for the on-screen label, so this adds no second notion of
+"overridden") before touching `m.settings.ASCII`/`m.settings.Mouse`, and
+before returning the `Mouse` `tea.Cmd`. When the key is overridden, the
+file value is still written (`m.settings.File` and `config.toml` both
+change — editing an overridden field is never refused, only its effect
+on the *running* value is), but the resolved member and the terminal
+mouse command are left exactly as they were.
+
+**Each blind test was re-aimed, not weakened, and each protects something
+different:**
+
+- `settings_scope_parity_test.go` gained
+  `TestSettingsScopeParityEnvOverrideExemption`, a sibling test (not a
+  relaxation of the existing loop) that drives the identical `,` → select
+  → edit → `ctrl+s` path against a fixture where `DECK_ASCII`/`DECK_MOUSE`
+  IS set, and asserts the *inverted* expectation: a `ScopeGlobal` field's
+  save must NOT change the running settings when that field's own key is
+  env-overridden. The existing `TestSettingsScopeParityMatchesSaveBehaviour`
+  loop is untouched — its assertion still holds unconditionally for its
+  own no-override fixture, which is correct; the exemption only applies
+  when an override is actually present, which that loop's fixture never
+  has.
+- `settings_task017_test.go` gained
+  `TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue`,
+  using a new fixture (`settingsEnvOverrideMovesAwayTestModel`) where the
+  file value starts `true` (equal to what `DECK_ASCII=true` resolves to)
+  so the `enter` toggle stages a move AWAY from the running value
+  (`true → false`) — the one direction that actually distinguishes "the
+  exemption held" from "the edit happened to coincide with the running
+  value." The original `TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie`
+  is kept exactly as it was (it still proves the on-screen labelling, task
+  003's own scope) with a comment explaining why it cannot see this bug.
+- `features/settings.feature` gained a new scenario (after the task-004
+  requirement-21 scenario): `[ui] ascii = true` on disk, `DECK_ASCII=1` in
+  every client's default environment (per the harness's `Environment`
+  helper), toggle to stage `false`, `ctrl+s`, then assert (a) the row
+  still reads `running: On` after the save, (b) `config.toml` re-parses
+  with `ascii = false` (the file DID change), and (c) the main view after
+  closing the takeover still renders the ASCII box glyph `+` and never the
+  Unicode `╭` corner — a per-cell/glyph proof, not merely the row text
+  the operator's steer named as the thing a struct-only bug leaves looking
+  correct.
+
+**Negative proof (real output, `internal/tui/settings.go`'s exemption
+reverted then restored):**
+
+```
+$ ci/run.sh go test ./internal/tui/... -run TestSettingsScopeParityEnvOverrideExemption -v
+=== RUN   TestSettingsScopeParityEnvOverrideExemption
+=== RUN   TestSettingsScopeParityEnvOverrideExemption/ui.ascii
+    settings_scope_parity_test.go:312: field ui.ascii is env-overridden by DECK_ASCII but ctrl+s changed the running config.Settings snapshot anyway:
+    before: {... ASCII:true ...}
+    after:  {... ASCII:false ...}
+=== RUN   TestSettingsScopeParityEnvOverrideExemption/ui.mouse
+    settings_scope_parity_test.go:312: field ui.mouse is env-overridden by DECK_MOUSE but ctrl+s changed the running config.Settings snapshot anyway:
+    before: {... Mouse:true ...}
+    after:  {... Mouse:false ...}
+--- FAIL: TestSettingsScopeParityEnvOverrideExemption (0.01s)
+FAIL   [exemption reverted]
+
+# exemption restored:
+--- PASS: TestSettingsScopeParityEnvOverrideExemption (0.01s)
+    --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.ascii (0.00s)
+    --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.mouse (0.01s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.016s
+
+$ ci/run.sh go test ./internal/tui/... -run TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue -v
+# exemption reverted:
+--- FAIL: TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue (0.00s)
+    settings_task017_test.go:208: m.settings.ASCII changed from true to false after a save that moved AWAY from the env-resolved value -- an env-overridden field must not let a file edit move the already-running value, even when the edit moves in the opposite direction from where it started
+# exemption restored:
+--- PASS: TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue (0.00s)
+PASS
+
+$ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@settings" go test -run TestFeatures -count=1 -v .'
+# exemption reverted:
+    [31mAnd[0m [31mdeck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"[0m
+    after scenario hook failed: client "A" did not show "Ascii: Off (file value; overridden by DECK_ASCII, running: On)" within 5s: ... running: Off
+--- FAIL: TestFeatures/saving_an_edit_that_moves_away_from_an_env-overridden_field's_running_value_leaves_the_running_client_unaffected_(...)
+# exemption restored:
+14 scenarios (14 passed)
+243 steps (243 passed)
+--- PASS: TestFeatures (10.86s)
+PASS
+ok  	github.com/n-orlov/deck/features	10.903s
+```
+
+**What was deliberately not done, per the steer's own fences:** task 006
+was not reverted (the four live fields still apply live when no override
+is in play — requirement 19 stands); none of the four live fields were
+relabelled `restart-to-apply` to dodge this; none of the three re-aimed
+tests were weakened or deleted, only extended with a sibling/new fixture
+each; and the takeover still writes an env-overridden field's edit to the
+file (only the *running* value is exempt) — the PRD's own wording that
+editing writes the file, only the running effect is off limits.

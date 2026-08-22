@@ -445,6 +445,23 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   unavailable-action list and `cmd/deck/main_test.go`'s help overlay
   assertions were not touched by this correction (`git diff` on both is
   empty).
+
+  **Correction (operator steer `008-envoverride-applylive.md`, 22 Aug 2026
+  13:00 BST):** the `ui.ascii`/`ui.mouse` rows of the per-field table above
+  state "live, next frame"/"live, next event, both directions"
+  unconditionally, but that is only true when the key's environment
+  variable is NOT set. `internal/config.LoadFrom` is the only source of
+  `Scope`-vs-`EnvOverrides` overlap in this schema (`ui.ascii`/`DECK_ASCII`
+  and `ui.mouse`/`DECK_MOUSE` are its only two override paths), and for
+  those two keys `settingsApplyLiveFields` now checks
+  `m.settings.EnvOverrides` before touching the running member (and, for
+  `ui.mouse`, before returning the `EnableMouseCellMotion`/`DisableMouse`
+  `tea.Cmd`): if the key is overridden, the file value is still written
+  but the running value is left exactly where the environment put it, per
+  requirement 21's "the environment always outranks the file" (§6.5). See
+  requirement 21's entry below and `docs/reports/phase2b2-findings.md`'s
+  "Requirement 19/21 correction" section for the full defect, why two
+  existing tests did not catch it, and the re-aimed proof.
 - **R20** (ctrl+s atomic save, esc discard prompt, never-unparseable write):
   `61639b4`; the "a toggle and a bounded integer are edited..." and "esc
   with an unsaved change..." scenarios; `internal/config`'s atomic-writer
@@ -499,6 +516,81 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
 
   See `docs/reports/phase2b2-findings.md`'s "Task 010" section for the
   operator-facing clarification-request framing of this decision.
+
+  **Correction (operator steer `008-envoverride-applylive.md`, 22 Aug 2026
+  13:00 BST):** the fix above closes the save-vs-file half of requirement
+  21 (an unedited or edited save never launders an environment value into
+  `config.toml`), but requirement 19's task 006 ("apply on save the fields
+  whose scope claims they take effect live") reopened requirement 21 from
+  the other side: `settingsApplyLiveFields` copied the just-saved file
+  value straight into the running `config.Settings` for every `ScopeGlobal`
+  field, with no check of `m.settings.EnvOverrides` at all, so for
+  `ui.ascii`/`DECK_ASCII` and `ui.mouse`/`DECK_MOUSE` (the only two keys
+  `config.LoadFrom` can override) an edited `ctrl+s` DID move the running
+  value even while the environment variable overriding it stayed set —
+  the exact thing requirement 21 forbids, now happening on save rather
+  than on load. Two existing tests looked like they covered this and did
+  not: `TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie`
+  (`internal/tui/settings_task017_test.go`) passed by fixture coincidence
+  (its toggle happened to move the staged value TOWARD the env-resolved
+  value, so the bug was invisible), and the task-004
+  scenario above is a no-edit save, which the live-apply bug never
+  touches. The fix: `settingsApplyLiveFields` now skips the live-apply
+  (and, for `ui.mouse`, the terminal mouse-reporting `tea.Cmd`) for any
+  field named in `m.settings.EnvOverrides`, reusing that one map rather
+  than adding a second overridden-ness concept; the file value is still
+  written regardless. `settings_scope_parity_test.go`
+  (`TestSettingsScopeParityEnvOverrideExemption`) and
+  `settings_task017_test.go`
+  (`TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue`,
+  a fixture where the file value starts equal to the env-resolved value
+  and the staged edit moves AWAY from it) now assert the exemption
+  directly, and `features/settings.feature` gained a matching scenario
+  asserting both the on-screen row and a box-glyph frame check (`+` stays
+  present, the Unicode `╭` corner never appears) so the running render,
+  not just the row text, is proven unaffected. Real output (RED against
+  the pre-fix `internal/tui/settings.go`, restored GREEN):
+
+  ```
+  $ ci/run.sh go test ./internal/tui/... -run TestSettingsScopeParityEnvOverrideExemption -v
+  === RUN   TestSettingsScopeParityEnvOverrideExemption
+  === RUN   TestSettingsScopeParityEnvOverrideExemption/ui.ascii
+      settings_scope_parity_test.go:312: field ui.ascii is env-overridden by DECK_ASCII but ctrl+s changed the running config.Settings snapshot anyway:
+      ...
+  === RUN   TestSettingsScopeParityEnvOverrideExemption/ui.mouse
+      settings_scope_parity_test.go:312: field ui.mouse is env-overridden by DECK_MOUSE but ctrl+s changed the running config.Settings snapshot anyway:
+      ...
+  --- FAIL: TestSettingsScopeParityEnvOverrideExemption (0.01s)
+  FAIL   [exemption reverted in internal/tui/settings.go]
+
+  # exemption restored:
+  --- PASS: TestSettingsScopeParityEnvOverrideExemption (0.01s)
+      --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.ascii (0.00s)
+      --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.mouse (0.01s)
+  PASS
+  ok  	github.com/n-orlov/deck/internal/tui	0.016s
+
+  $ ci/run.sh go test ./internal/tui/... -run TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue -v
+  # exemption reverted:
+  --- FAIL: TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue (0.00s)
+      settings_task017_test.go:208: m.settings.ASCII changed from true to false after a save that moved AWAY from the env-resolved value ...
+  # exemption restored:
+  --- PASS: TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue (0.00s)
+  PASS
+
+  $ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@settings" go test -run TestFeatures -count=1 -v .'
+  # exemption reverted:
+  --- FAIL: TestFeatures/saving_an_edit_that_moves_away_from_an_env-overridden_field's_running_value_leaves_the_running_client_unaffected_(requirement_21_correction,_operator_steer_008-envoverride-applylive.md)
+      client "A" did not show "Ascii: Off (file value; overridden by DECK_ASCII, running: On)" within 5s
+  # exemption restored:
+  14 scenarios (14 passed)
+  243 steps (243 passed)
+  PASS
+  ok  	github.com/n-orlov/deck/features	10.903s
+  ```
+
+  See `docs/reports/phase2b2-findings.md`'s "Requirement 19/21 correction"
+  section for the full defect analysis.
 - **R23** (unknown key ignored, unparseable value is a stated error naming
   file+line, unknown keys survive a settings save): `internal/config`'s
   `toml_write_test.go` round-trip-of-unknown-key test, part of the
