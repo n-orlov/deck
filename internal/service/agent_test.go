@@ -312,6 +312,54 @@ func TestCreateAgentLoginShellInvocationForm(t *testing.T) {
 	}
 }
 
+// TestCreateAgentLoginShellStoresCapturedPathButMarksItAdvisory proves task
+// 017/SPEC §6.3: a created session with login_shell=1 still stores its
+// create-time captured_path (never blanked, even though the launch itself
+// does not inject it as PATH -- see TestCreateAgentLoginShellInvocationForm
+// above), but the row records that captured_path as advisory via a
+// persisted, queryable marking (store.Session.CapturedPathAdvisory, backed
+// by the login_shell column), not a code comment. A sibling session created
+// without login_shell reports the opposite on both counts.
+func TestCreateAgentLoginShellStoresCapturedPathButMarksItAdvisory(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, _ := newAgentTestService(t, nil, "login-shell-advisory")
+
+	loginSession, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "advisory: login", CWD: cwd, Agent: "shell", LoginShell: true,
+	})
+	if err != nil {
+		t.Fatalf("create login_shell agent: %v", err)
+	}
+	plainSession, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "advisory: plain", CWD: cwd, Agent: "shell",
+	})
+	if err != nil {
+		t.Fatalf("create plain agent: %v", err)
+	}
+
+	loginRow, err := db.GetSession(context.Background(), loginSession.ID)
+	if err != nil {
+		t.Fatalf("get login_shell session: %v", err)
+	}
+	if loginRow.CapturedPath == "" {
+		t.Fatal("login_shell=1 row must still store a non-empty captured_path")
+	}
+	if !loginRow.CapturedPathAdvisory() {
+		t.Fatal("login_shell=1 row: CapturedPathAdvisory() = false; want true")
+	}
+
+	plainRow, err := db.GetSession(context.Background(), plainSession.ID)
+	if err != nil {
+		t.Fatalf("get plain session: %v", err)
+	}
+	if plainRow.CapturedPath == "" {
+		t.Fatal("plain row must still store a non-empty captured_path")
+	}
+	if plainRow.CapturedPathAdvisory() {
+		t.Fatal("login_shell=0 row: CapturedPathAdvisory() = true; want false")
+	}
+}
+
 func TestCreateAgentShellHasNoInstrumentation(t *testing.T) {
 	cwd := t.TempDir()
 	service, _, logger, socket := newAgentTestService(t, nil, "shell-no-instrumentation")

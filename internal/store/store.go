@@ -216,6 +216,18 @@ type Session struct {
 	LastProbeAt int64
 }
 
+// CapturedPathAdvisory reports whether this row's CapturedPath is advisory
+// only, per SPEC §6.3: "enabling login_shell marks captured_path advisory
+// and the health view says so". login_shell (persisted, queryable — the
+// sessions.login_shell column, never a comment) and reliance on
+// captured_path are mutually exclusive by design (§6.3), so the marking
+// this reports IS the LoginShell column: a login_shell=1 row still stores
+// its create-time CapturedPath (it is never cleared or blanked), but the
+// $SHELL -lc launch lets rc files rewrite PATH, discarding it, so the
+// stored value is a record of what PATH used to be, not what governs the
+// pane.
+func (s Session) CapturedPathAdvisory() bool { return s.LoginShell }
+
 // StatusUpdateInput describes one durable state transition. EventKind is kept
 // separate because a caller may record a more specific source event than the
 // resulting session status; when omitted it is the status itself.

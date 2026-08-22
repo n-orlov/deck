@@ -1946,6 +1946,9 @@ func (m Model) detailView() string {
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
 	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+	if session.CapturedPathAdvisory() {
+		fmt.Fprintf(&b, "%s\n", m.detailField("Captured PATH:      ", "advisory only (login_shell overrides PATH; SPEC \u00a76.3)"))
+	}
 	status := session.Status
 	if status == "stopped" {
 		status += m.glyph(" · resumable", " - resumable")
