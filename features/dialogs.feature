@@ -95,6 +95,38 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 8, 9, 10,
     And the scenario's config.toml still matches the captured "before-detail-esc"
     When deck client "A" exits cleanly
 
+  Scenario: detail dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-detail-mouse"
+    Then within one configured reconcile interval deck client "A" screen contains "running"
+    When the scenario's config.toml is captured as "before-detail-mouse-cfg"
+    And deck client "A" opens detail for session "dc-detail-mouse"
+    Then deck client "A" screen contains "detail"
+    When deck client "A" captures its frame as "before-detail-mouse"
+    # column 1 row 1: the dialog's own top-left border corner.
+    And deck client "A" clicks at column 1 row 1
+    # column 5 row 4: the exact cell the hidden sidebar's "dc-detail-mouse"
+    # row occupies underneath the dialog (same technique task 001/002's
+    # settings-takeover test and features/settings.feature:157 use), so
+    # a bypassed guard's double click at this point would attach it.
+    And deck client "A" clicks at column 5 row 4
+    # column 95 row 25: past the box's own [26,80]-clamped width in the
+    # harness's 100x30 default terminal, and past its content rows too.
+    And deck client "A" clicks at column 95 row 25
+    # a double click at the border and the body is the attach gesture
+    # (SPEC requirement 11.8) applied to the hidden sidebar row underneath;
+    # a bypassed guard would attach "dc-detail-mouse" even with selection
+    # unchanged, so the attached-event count is the assertion, not the
+    # frame alone.
+    And deck client "A" double-clicks at column 1 row 1
+    And deck client "A" double-clicks at column 5 row 4
+    Then deck client "A" frame still matches the captured "before-detail-mouse" frame
+    And the state database has exactly 1 sessions
+    And the state database session "dc-detail-mouse" has 0 attached events
+    And the scenario's config.toml still matches the captured "before-detail-mouse-cfg"
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
+
   Scenario: profile switch dialog -- esc after altering its field leaves the persisted profile untouched
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
@@ -117,6 +149,39 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 8, 9, 10,
     And deck client "A" submits the open dialog
     Then the state database session "dc-profile2" has permission profile "plan"
     When deck client "A" exits cleanly
+
+  Scenario: profile switch dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "dc-profile-mouse" with permission profile "safe"
+    And the scenario's config.toml is captured as "before-profile-mouse-cfg"
+    And deck client "A" opens the permission profile dialog for session "dc-profile-mouse"
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "plan (left/right cycles"
+    When deck client "A" captures its frame as "before-profile-mouse"
+    # column 1 row 1: the dialog's own top-left border corner.
+    And deck client "A" clicks at column 1 row 1
+    # column 5 row 4: the exact cell the hidden sidebar's "dc-profile-mouse"
+    # row occupies underneath the dialog (same technique task 001/002's
+    # settings-takeover test and features/settings.feature:157 use), so
+    # a bypassed guard's double click at this point would attach it.
+    And deck client "A" clicks at column 5 row 4
+    # column 95 row 25: past the box's own [26,80]-clamped width in the
+    # harness's 100x30 default terminal, and past its content rows too.
+    And deck client "A" clicks at column 95 row 25
+    # a double click at the border and the body is the attach gesture
+    # (SPEC requirement 11.8) applied to the hidden sidebar row underneath;
+    # a bypassed guard would attach "dc-profile-mouse" even with selection
+    # unchanged, so the attached-event count is the assertion, not the
+    # frame alone.
+    And deck client "A" double-clicks at column 1 row 1
+    And deck client "A" double-clicks at column 5 row 4
+    Then deck client "A" frame still matches the captured "before-profile-mouse" frame
+    And the state database session "dc-profile-mouse" has permission profile "safe"
+    And the state database session "dc-profile-mouse" has 0 attached events
+    And the scenario's config.toml still matches the captured "before-profile-mouse-cfg"
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
 
   Scenario: pin dialog -- esc after altering its field leaves the persisted resume mode untouched
     Given a fake "claude" binary is on PATH for future deck clients
@@ -142,6 +207,39 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 8, 9, 10,
     Then the state database session "dc-pin2" has resume mode "pinned"
     When deck client "A" exits cleanly
 
+  Scenario: pin dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "dc-pin-mouse" with permission profile "safe"
+    And the scenario's config.toml is captured as "before-pin-mouse-cfg"
+    And deck client "A" opens the pin dialog for session "dc-pin-mouse"
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "pinned (left/right cycles"
+    When deck client "A" captures its frame as "before-pin-mouse"
+    # column 1 row 1: the dialog's own top-left border corner.
+    And deck client "A" clicks at column 1 row 1
+    # column 5 row 4: the exact cell the hidden sidebar's "dc-pin-mouse"
+    # row occupies underneath the dialog (same technique task 001/002's
+    # settings-takeover test and features/settings.feature:157 use), so
+    # a bypassed guard's double click at this point would attach it.
+    And deck client "A" clicks at column 5 row 4
+    # column 95 row 25: past the box's own [26,80]-clamped width in the
+    # harness's 100x30 default terminal, and past its content rows too.
+    And deck client "A" clicks at column 95 row 25
+    # a double click at the border and the body is the attach gesture
+    # (SPEC requirement 11.8) applied to the hidden sidebar row underneath;
+    # a bypassed guard would attach "dc-pin-mouse" even with selection
+    # unchanged, so the attached-event count is the assertion, not the
+    # frame alone.
+    And deck client "A" double-clicks at column 1 row 1
+    And deck client "A" double-clicks at column 5 row 4
+    Then deck client "A" frame still matches the captured "before-pin-mouse" frame
+    And the state database session "dc-pin-mouse" has resume mode "auto"
+    And the state database session "dc-pin-mouse" has 0 attached events
+    And the scenario's config.toml still matches the captured "before-pin-mouse-cfg"
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
+
   Scenario: help dialog -- esc changes nothing (it has no fields to alter)
     Given deck client "A" is started
     And the scenario's config.toml is captured as "before-help-esc"
@@ -150,3 +248,33 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 8, 9, 10,
     Then the state database has exactly 0 sessions
     And the scenario's config.toml still matches the captured "before-help-esc"
     When deck client "A" exits cleanly
+
+  Scenario: help dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-help-mouse"
+    And the scenario's config.toml is captured as "before-help-mouse-cfg"
+    And deck client "A" opens help
+    And deck client "A" captures its frame as "before-help-mouse"
+    # column 1 row 1: the dialog's own top-left border corner.
+    And deck client "A" clicks at column 1 row 1
+    # column 5 row 4: the exact cell the hidden sidebar's "dc-help-mouse"
+    # row occupies underneath the dialog (same technique task 001/002's
+    # settings-takeover test and features/settings.feature:157 use), so
+    # a bypassed guard's double click at this point would attach it.
+    And deck client "A" clicks at column 5 row 4
+    # column 95 row 25: past the box's own [26,80]-clamped width in the
+    # harness's 100x30 default terminal, and past its content rows too.
+    And deck client "A" clicks at column 95 row 25
+    # a double click at the border and the body is the attach gesture
+    # (SPEC requirement 11.8) applied to the hidden sidebar row underneath;
+    # a bypassed guard would attach "dc-help-mouse" even with selection
+    # unchanged, so the attached-event count is the assertion, not the
+    # frame alone.
+    And deck client "A" double-clicks at column 1 row 1
+    And deck client "A" double-clicks at column 5 row 4
+    Then deck client "A" frame still matches the captured "before-help-mouse" frame
+    And the state database has exactly 1 sessions
+    And the state database session "dc-help-mouse" has 0 attached events
+    And the scenario's config.toml still matches the captured "before-help-mouse-cfg"
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
