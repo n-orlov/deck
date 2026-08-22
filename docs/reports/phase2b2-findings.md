@@ -903,6 +903,23 @@ or placed in the remote URL to work around this. The full 77-commit local
 history on `main` remains the durable, pushable-as-is record for whichever
 future iteration has git credentials mounted.
 
+**Update (task 013, this correction pass's final hygiene check).** Re-ran
+`git push origin main` again from a clean tree (`git status` clean, HEAD at
+`a466d2c`, 90 commits ahead of `origin/main`) and it fails with the exact
+same symptom:
+
+```
+$ git push origin main
+fatal: could not read Username for 'https://github.com': No such device or address
+```
+(real exit code 128). The environment remains unchanged across three
+independent approaches now: no credential file, helper, or key has ever
+been mounted for git/GitHub in any of these runs. No token was generated,
+tried, or placed in the remote URL. The full local commit history on
+`main` (including this correction pass's requirement-19/21 fixes) remains
+the durable, pushable-as-is record for whichever future iteration has
+git credentials mounted.
+
 ## Tasks 003/004 — the [env]-editability tension the review named (requirement 17)
 
 **Provenance:** raised directly by the independent review at `65e623e`
