@@ -51,19 +51,39 @@ type Model struct {
 	// from §11.7 recent_cwds history (as opposed to the no-history
 	// directory-deck-started-in fallback), driving createFieldRows' "last
 	// used" label. Cleared together with createCWDPrefilled on first edit.
-	createCWDLastUsed  bool
-	createField        int
-	createError        string
-	create             func(context.Context, service.ShellCreateInput) (store.Session, error)
-	createAgentSession func(context.Context, service.AgentCreateInput) (store.Session, error)
-	attach             func(context.Context, string) (*exec.Cmd, error)
-	prepareAttach      func(context.Context, string) error
-	kill               func(context.Context, store.Session) error
-	acknowledge        func(context.Context, string) error
-	reconcile          func(context.Context) error
-	resume             func(context.Context, string) (store.Session, service.ResumeOutcome, error)
-	profileSwitch      func(context.Context, string, string) (store.Session, error)
-	selected           int
+	createCWDLastUsed bool
+	// createCWDRecents is the §11.7 recent_cwds snapshot the cwd field is
+	// currently cycling through (task 009), fetched once when up/down
+	// first starts a cycle rather than re-queried on every keypress, so
+	// the list a user is cycling through cannot change under them mid-
+	// cycle. nil while not cycling.
+	createCWDRecents []store.RecentCwd
+	// createCWDRecentIndex is the 0-based position within createCWDRecents
+	// the field currently shows (rendered 1-based as "recent N/M"), or -1
+	// while not cycling at all -- neither an untouched prefill nor a
+	// cycled recent entry, just whatever the user has typed (task 009).
+	createCWDRecentIndex int
+	// createCWDPreCycleValue/Prefilled/LastUsed snapshot the cwd field's
+	// state from the moment before the first "up" started a cycle, so
+	// pressing "down" back past the most recent entry restores exactly
+	// what was there -- the untouched §11.7 prefill and its "last used"
+	// label, or whatever the user had already typed -- rather than
+	// leaving the field on recents[0] or blanking it.
+	createCWDPreCycleValue     string
+	createCWDPreCyclePrefilled bool
+	createCWDPreCycleLastUsed  bool
+	createField                int
+	createError                string
+	create                     func(context.Context, service.ShellCreateInput) (store.Session, error)
+	createAgentSession         func(context.Context, service.AgentCreateInput) (store.Session, error)
+	attach                     func(context.Context, string) (*exec.Cmd, error)
+	prepareAttach              func(context.Context, string) error
+	kill                       func(context.Context, store.Session) error
+	acknowledge                func(context.Context, string) error
+	reconcile                  func(context.Context) error
+	resume                     func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	profileSwitch              func(context.Context, string, string) (store.Session, error)
+	selected                   int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -353,7 +373,7 @@ type resumeModeChanged struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}
@@ -746,6 +766,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createName = ""
 				m.createCWD, m.createCWDLastUsed = m.prefillCreateCWD()
 				m.createCWDPrefilled = true
+				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
+				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
 				m.createAgent, m.createProfile = defaultCreateAgent(m.registry().Kinds()), createProfileOptions[0]
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
 				m.createYoloConfirmed = false
@@ -2172,6 +2194,58 @@ func (m Model) validateCreateFields() string {
 	return ""
 }
 
+// cycleCreateCWDRecent implements the cwd field's second declared §11.7
+// per-field key set (task 009): up/down cycle recents shell-history style.
+// delta is +1 for "up" (older) and -1 for "down" (newer, eventually exiting
+// the cycle back to whatever the field held before it started).
+//
+// The first "up" snapshots both the recent_cwds list itself (so it cannot
+// change under a live cycle) and the field's pre-cycle state (value plus
+// its prefilled/last-used flags) so "down" can restore it exactly once the
+// cycle runs back past the most recent entry -- an untouched §11.7 prefill,
+// or whatever the user had already typed, comes back exactly as it was
+// rather than as a blank field or a stale recents[0]. A "down" with no
+// cycle in progress, or a store with no history at all, is a no-op: there
+// is nothing to cycle to.
+func (m *Model) cycleCreateCWDRecent(delta int) {
+	if m.createCWDRecentIndex < 0 {
+		if delta <= 0 || m.store == nil {
+			return
+		}
+		recents, err := m.store.RecentCwds(context.Background())
+		if err != nil || len(recents) == 0 {
+			return
+		}
+		m.createCWDRecents = recents
+		m.createCWDPreCycleValue = m.createCWD
+		m.createCWDPreCyclePrefilled = m.createCWDPrefilled
+		m.createCWDPreCycleLastUsed = m.createCWDLastUsed
+		m.createCWDRecentIndex = 0
+		m.createCWD = recents[0].Path
+		m.createCWDPrefilled = false
+		m.createCWDLastUsed = false
+		return
+	}
+	next := m.createCWDRecentIndex + delta
+	if next < 0 {
+		// Ran "down" back past the most recent entry: exit the cycle and
+		// restore exactly what was there before the first "up".
+		m.createCWD = m.createCWDPreCycleValue
+		m.createCWDPrefilled = m.createCWDPreCyclePrefilled
+		m.createCWDLastUsed = m.createCWDPreCycleLastUsed
+		m.createCWDRecentIndex = -1
+		return
+	}
+	if next >= len(m.createCWDRecents) {
+		// "up" at the oldest entry stays there rather than wrapping --
+		// shell history has an end, and wrapping back to recents[0] would
+		// be indistinguishable on screen from having never moved.
+		next = len(m.createCWDRecents) - 1
+	}
+	m.createCWDRecentIndex = next
+	m.createCWD = m.createCWDRecents[next].Path
+}
+
 // prefillCreateCWD returns the value and "is an untouched prefill" flag the
 // create modal's cwd field opens with (SPEC §11.7): the most recent
 // recent_cwds entry (rendered with the "(last used)" label in
@@ -2264,6 +2338,21 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch msg.String() {
+	case "up":
+		// §11.7's second declared per-field key set on the cwd field (task
+		// 009): shell-history-style cycling through recent_cwds, older with
+		// each press. Only field 1 (cwd) binds it -- every other field's
+		// up/down stays a no-op here, matching "up"/"down" doing nothing at
+		// all in this dialog before this task.
+		if m.createField == 1 {
+			m.cycleCreateCWDRecent(1)
+			return m, nil
+		}
+	case "down":
+		if m.createField == 1 {
+			m.cycleCreateCWDRecent(-1)
+			return m, nil
+		}
 	case "y":
 		// The yolo double-gate's explicit confirm keystroke; everywhere
 		// else "y" is just a typed character and must fall through to the
@@ -2290,6 +2379,12 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.createCWDPrefilled {
 				m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
 			}
+			// Typing ends any up/down cycle in progress (task 009): the
+			// field now holds what the user typed, not a recent_cwds
+			// snapshot, so "recent N/M" must stop being shown and a later
+			// "down" must not resurrect the pre-cycle value out from under
+			// what was just typed.
+			m.createCWDRecentIndex = -1
 			m.createCWD += string(runes)
 		case 4:
 			m.createLaunchArgs += string(runes)
@@ -2403,8 +2498,13 @@ func (m *Model) backspaceCreateField() {
 			// (SPEC §11.7's "typing replaces it wholesale" applies to any
 			// edit, not only appended runes).
 			m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
+			m.createCWDRecentIndex = -1
 			return
 		}
+		// Backspace also ends an up/down cycle in progress (task 009), same
+		// reasoning as the rune-append path above: the field is being edited
+		// now, so it must stop being a live view of createCWDRecents.
+		m.createCWDRecentIndex = -1
 		if len(m.createCWD) > 0 {
 			m.createCWD = m.createCWD[:len(m.createCWD)-1]
 		}
@@ -2424,17 +2524,23 @@ func (m *Model) backspaceCreateField() {
 }
 
 // createCWDHelp prefixes the cwd field's usual one-line explanation with
-// the "(last used)" label (task 008, SPEC §11.7) while the field still
-// holds its untouched most-recent recent_cwds prefill, rather than
-// appending the label to the value itself: the value line's own width
-// varies with the resolved path length, and framedDialog's word-wrap
-// (task 030) can split a value-suffixed label across two rendered lines
-// at an arbitrary point depending on that length, whereas the label
-// prefixed to the short, constant-length help text never does. The plain
-// directory-deck-started-in fallback (no history) carries no label: only
-// a genuine history entry is "last used".
+// either the "(last used)" label (task 008) while the field still holds
+// its untouched most-recent recent_cwds prefill, or "recent N/M" (task 009,
+// SPEC §11.7's declared up/down per-field key set) while an up/down cycle
+// through recent_cwds is in progress -- never both, since starting a cycle
+// clears the prefill flags (cycleCreateCWDRecent). Either label is
+// prefixed onto the field's short, constant-length help text rather than
+// appended to the value itself: the value line's own width varies with the
+// resolved path length, and framedDialog's word-wrap (task 030) can split
+// a value-suffixed label across two rendered lines at an arbitrary point
+// depending on that length, whereas a label prefixed to the help text
+// never does. The plain directory-deck-started-in fallback (no history,
+// not cycling) carries no label at all.
 func (m Model) createCWDHelp() string {
-	help := "the session's cwd; must exist and be a directory"
+	help := "the session's cwd; must exist and be a directory; \u2191/\u2193 cycles recent history"
+	if m.createCWDRecentIndex >= 0 && len(m.createCWDRecents) > 0 {
+		return fmt.Sprintf("recent %d/%d ", m.createCWDRecentIndex+1, len(m.createCWDRecents)) + help
+	}
 	if m.createCWDLastUsed {
 		return "(last used) " + help
 	}
