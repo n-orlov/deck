@@ -1115,6 +1115,22 @@ text's own length plus the *count* of legend entries, both of which
 grew across 2b-1 and 2b-2 as keys (`P` profile, `i` detail) were
 added.
 
+**Criterion correction (operator steer, 22 Aug 2026 07:00 BST).** An
+earlier draft of this task's success criterion asked this section to
+state that the defect "predates 2b-1", which the paragraph above
+already shows is false — the defect was introduced *during* Phase
+2b-1's own implementation, not before it. The operator reviewed the
+validator's independently-reproduced evidence and confirmed the
+criterion, not this finding's text, was wrong: `git merge-base
+--is-ancestor 17cc346 c215021` exits 0, proving `17cc346` ("prd: cut
+Phase 2b-1", the commit that first introduces that phase's PRD) is an
+ancestor of `c215021` (the commit that first writes the unclamped
+`footerLine`/`footerLegend`) — i.e. 2b-1's PRD already existed when the
+defect was introduced, so the defect cannot predate that phase. The
+task's `successCriteria` in tasks.json was corrected to match this
+section's already-accurate "introduced during Phase 2b-1" wording; no
+substantive claim in this finding changed.
+
 **Target phase.** This is a display-polish defect, not a functional
 regression (every hidden key still works via its keystroke; the footer
 simply fails to advertise the tail of its own legend at the narrowest
