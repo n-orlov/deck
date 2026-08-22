@@ -121,11 +121,77 @@ ok  	github.com/n-orlov/deck/internal/tui	0.011s
   is `updateCreate`.
 - **R8** (esc changes nothing, proven by state) and **R9** (`y` yolo confirm
   is the only additional load-bearing key, documented on screen) and **R10**
-  (validation retains the typed value) and **R11** (mouse cannot cancel/confirm):
-  see `features/dialogs.feature` under requirement 50 below — the state-based
-  assertions live there, not at the unit level, because "changes nothing"
-  is a claim about the store/config file, not about `dialog_contract.go`'s
-  return value.
+  (validation retains the typed value): see `features/dialogs.feature` under
+  requirement 50 below — the state-based assertions live there, not at the
+  unit level, because "changes nothing" is a claim about the store/config
+  file, not about `dialog_contract.go`'s return value.
+- **R11** (mouse cannot cancel/confirm — for **all five** §11.4 dialogs:
+  create, detail, profile switch, pin, help), proven at two levels after
+  the review found the original pass covered only create and help:
+
+  Unit level (`internal/tui/mouse_test.go`, `TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside`
+  and `TestSettingsTakeoverMouseIgnoredWhileOpen`) — for each dialog, a
+  press at its own border, a press inside its body and a press outside it
+  all leave that dialog's own state and `m.selected` unchanged with a nil
+  `tea.Cmd`:
+
+  ```
+  $ ci/run.sh go test ./internal/tui/... -run Mouse -v -count=1
+  === RUN   TestMouseIgnoredWhileOverlayOpen
+  --- PASS: TestMouseIgnoredWhileOverlayOpen (0.00s)
+  === RUN   TestSettingsTakeoverMouseIgnoredWhileOpen
+  === RUN   TestSettingsTakeoverMouseIgnoredWhileOpen/settingsOpen
+  === RUN   TestSettingsTakeoverMouseIgnoredWhileOpen/settingsDiscardConfirm
+  --- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen (0.00s)
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/help
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/help/border
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/help/body
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/help/outside
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/create
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/create/border
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/create/body
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/create/outside
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/detail
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/detail/border
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/detail/body
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/detail/outside
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/pin
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/pin/border
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/pin/body
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/pin/outside
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/profile
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/profile/border
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/profile/body
+  === RUN   TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside/profile/outside
+  --- PASS: TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside (0.00s)
+      [all 5 dialogs x 3 positions PASS]
+  === RUN   TestThemePickerMouseIgnoredWhileOpen
+  --- PASS: TestThemePickerMouseIgnoredWhileOpen (0.00s)
+  PASS
+  ok  	github.com/n-orlov/deck/internal/tui	0.006s
+  ```
+
+  Feature level (`features/dialogs.feature`) — the review found this file
+  had a "the mouse can neither cancel nor confirm it" scenario for create
+  only (and help, incompletely); it now has one for **all five** dialogs
+  (create, detail, profile switch, pin, help), each clicking at the
+  dialog's border, inside its body and outside it, then asserting the
+  captured frame is unchanged and the persisted state (store row /
+  config) is untouched:
+
+  ```
+  $ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@dialogs" go test -run TestFeatures -v -count=1 .'
+  --- PASS: TestFeatures (11.52s)
+      --- PASS: TestFeatures/create_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.54s)
+      --- PASS: TestFeatures/detail_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.77s)
+      --- PASS: TestFeatures/profile_switch_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.07s)
+      --- PASS: TestFeatures/pin_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.07s)
+      --- PASS: TestFeatures/help_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.65s)
+  ok  	github.com/n-orlov/deck/features	11.550s
+  ```
+
+  `27b373e`/`4cf61ec`/`45d9c39`.
 - **R12** (width clamp `[26,80]`, wrap not truncate): `TestDialogWidthClampedToViewport`
   above (all five geometry buckets, including both clamp ends) plus
   `docs/reports/phase2b2-findings.md`'s "Task 030" section for the
@@ -630,26 +696,33 @@ See requirements 25-36 above — same file, same scenario list.
 ## Requirement 50: `features/dialogs.feature`
 
 ```
-$ grep -E '^    --- PASS: TestFeatures/(create|detail|profile_switch|pin|help)_dialog_--' /tmp/features.log
-    --- PASS: TestFeatures/create_dialog_--_esc_after_altering_every_field_creates_no_session_and_touches_no_config (0.62s)
-    --- PASS: TestFeatures/create_dialog_--_enter_submits_a_valid_form (0.50s)
-    --- PASS: TestFeatures/create_dialog_--_tab_moves_focus_between_fields (0.44s)
-    --- PASS: TestFeatures/create_dialog_--_in-dialog_validation_retains_the_typed_value_and_states_the_reason (0.48s)
-    --- PASS: TestFeatures/create_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.56s)
-    --- PASS: TestFeatures/create_dialog_--_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends (0.39s)
+$ ci/run.sh sh -c 'cd features && DECK_GODOG_TAGS="@dialogs" go test -run TestFeatures -v -count=1 .' 2>&1 | grep -E '^    --- PASS: TestFeatures/(create|detail|profile_switch|pin|help)_dialog_--'
+    --- PASS: TestFeatures/create_dialog_--_esc_after_altering_every_field_creates_no_session_and_touches_no_config (0.71s)
+    --- PASS: TestFeatures/create_dialog_--_enter_submits_a_valid_form (0.45s)
+    --- PASS: TestFeatures/create_dialog_--_tab_moves_focus_between_fields (0.45s)
+    --- PASS: TestFeatures/create_dialog_--_in-dialog_validation_retains_the_typed_value_and_states_the_reason (0.49s)
+    --- PASS: TestFeatures/create_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.54s)
+    --- PASS: TestFeatures/create_dialog_--_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends (0.40s)
     --- PASS: TestFeatures/create_dialog_--_width_saturates_at_80_well_past_the_upper_clamp (0.39s)
-    --- PASS: TestFeatures/detail_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.47s)
-    --- PASS: TestFeatures/profile_switch_dialog_--_esc_after_altering_its_field_leaves_the_persisted_profile_untouched (0.88s)
+    --- PASS: TestFeatures/detail_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.48s)
+    --- PASS: TestFeatures/detail_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.77s)
+    --- PASS: TestFeatures/profile_switch_dialog_--_esc_after_altering_its_field_leaves_the_persisted_profile_untouched (0.90s)
     --- PASS: TestFeatures/profile_switch_dialog_--_enter_submits_the_cycled_value (0.92s)
+    --- PASS: TestFeatures/profile_switch_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.07s)
     --- PASS: TestFeatures/pin_dialog_--_esc_after_altering_its_field_leaves_the_persisted_resume_mode_untouched (0.91s)
-    --- PASS: TestFeatures/pin_dialog_--_enter_submits_the_cycled_value (0.90s)
-    --- PASS: TestFeatures/help_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.37s)
+    --- PASS: TestFeatures/pin_dialog_--_enter_submits_the_cycled_value (0.85s)
+    --- PASS: TestFeatures/pin_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.07s)
+    --- PASS: TestFeatures/help_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.38s)
+    --- PASS: TestFeatures/help_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.65s)
 ```
 
 All five dialogs (create, detail, profile switch, pin, help), each
 asserted state-based (session row / store / `config.toml`), not
 screen-based: `esc` proven unchanged by reading the store back out, not by
-reading the screen. `27b373e`.
+reading the screen. The mouse-cannot-cancel/confirm scenario now exists
+for all five dialogs (originally only create had one, per the review
+finding on requirement 11 above) — see requirement 11 above for the full
+list and its unit-level counterpart. `27b373e`/`4cf61ec`/`45d9c39`.
 
 ## Requirement 51: `features/status_recovery.feature`
 
