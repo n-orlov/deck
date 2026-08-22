@@ -136,6 +136,35 @@ Feature: The `,` settings takeover (requirement 48)
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
+  Scenario: a restart-to-apply flat key states so in its own on-screen description, not only its Scope label (requirement 19)
+    Given deck client "A" is started
+    When deck client "A" sends ","
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Stale After: 45 seconds (min 1)"
+    And deck client "A" screen contains "Kind: integer · Scope: restart-to-apply"
+    And deck client "A" screen contains "Restart-to-apply: saving here writes config"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+
+  Scenario: a settings takeover save of ui.theme changes the running client's own render live, read per cell (requirement 19)
+    Given the scenario's config.toml selects theme "empire"
+    And deck client "A" is started with colour enabled
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    Then deck client "A" screen contains "Theme: empire"
+    And deck client "A" cell at row 0 column 0 has foreground token "border"
+    When deck client "A" sends "+"
+    Then deck client "A" screen contains "Theme: daylight"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And deck client "A" cell at row 0 column 0 has foreground token "border"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+
   Scenario: driving every key the takeover binds leaves the session set untouched
     Given deck client "A" is started
     When deck client "A" creates shell session "keep-a"
