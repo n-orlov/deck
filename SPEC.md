@@ -156,7 +156,15 @@ Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
   `set -s exit-empty off` (an empty server exits immediately otherwise),
   `set -g remain-on-exit failed` (§7 — keeps a dead pane only when the command exited
   non-zero, which is what makes crash detection possible at all),
-  `set -g window-size latest` (§3.3), and `setw -g aggressive-resize on`.
+  `set -g window-size latest` (§3.3), `setw -g aggressive-resize on`, and `set -g mouse on`
+  (top-level `tmux_mouse`, default true, §6.5) so that a wheel notch scrolls the pane's
+  scrollback instead of reaching the shell as a history-recall arrow key: with mouse
+  reporting off, tmux never claims wheel events, and the outer terminal's alternate-scroll
+  behaviour turns them into `Up`/`Down`. One window and one pane per session (below) means
+  none of the pane-switching or window-list side effects of `mouse on` have anything to act
+  on; the one real cost is that a drag no longer makes the terminal's own selection, so
+  mouse copying needs **Shift** (or copy-mode), which the help view states next to the
+  `tmux -L deck ls` escape hatch.
   `detach-on-destroy` is deliberately left at its default (`on`) so that killing a session
   another client is viewing returns that client to its TUI rather than silently hopping it
   into an unrelated session.
@@ -387,9 +395,9 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4) |
+| top level | `allow_yolo` (default false, §5), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `group_by_workspace` (default true, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -872,7 +880,14 @@ session needs me" — and the preview is what makes an answer actionable without
 Both are described below; §11.2 covers what happens when the terminal is too narrow to
 hold them side by side.
 
-- Grouping by `workspace` (default: basename of `cwd`), collapsible. Never by repo.
+- Grouping by `workspace` (default: basename of `cwd`), collapsible, and **optional**:
+  `[ui] group_by_workspace` (default `true`, §6.5). Never by repo. With grouping off the
+  sidebar renders one flat list in the sort order below with **no header rows**, which is a
+  different row budget for §11.2's page-size and elision maths — the flat list is specified
+  here rather than left to a job to invent. Collapse state is meaningless in flat mode and is
+  absent rather than inert. Grouping is *preference*, not machine-local UI state: it is edited
+  in settings (§11.5) with an explicit save, so §6.5's rule that a keypress never rewrites
+  `config.toml` still holds, and it is not in `ui_state` alongside `layout_mode`.
 - Sort: `waiting` (oldest first) → `error` → `running` → `starting` → `idle` → `stopped`.
 - Live/sampled badge per row (§3), permission badge for non-`safe`, `env↻` when dirty.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
