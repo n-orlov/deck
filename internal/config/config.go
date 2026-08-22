@@ -94,6 +94,14 @@ type Settings struct {
 	// override, matching boolEnv's own "" means "defer to fallback" rule
 	// above. Nil when nothing in this environment overrode anything.
 	EnvOverrides map[string]string
+	// File holds this Load/LoadFrom call's config.toml contents exactly as
+	// parsed by loadConfigFile, before any DECK_* environment override is
+	// applied (§6.5: environment overrides the running value, never the
+	// file). Present independent of whether the file existed -- a missing
+	// file yields Schema's defaults here too, matching the rest of Settings.
+	// Requirement 21: a save must edit this value, never the one env may
+	// have substituted into Settings' own same-named fields above.
+	File FileConfig
 }
 
 // Load reads only documented DECK_ controls from env.
@@ -176,6 +184,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		RecentCwdLimit: fileCfg.RecentCwdLimit,
 		Theme:          resolvedTheme, ThemeReason: themeReason,
 		EnvOverrides: envOverrides,
+		File:         fileCfg,
 	}, nil
 }
 
