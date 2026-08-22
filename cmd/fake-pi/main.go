@@ -14,7 +14,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 )
@@ -41,7 +43,7 @@ type options struct {
 }
 
 func main() {
-	code, err := runWithIO(os.Args[1:], os.Stdin, os.Stdout, os.Getenv)
+	code, err := runWithIO(os.Args[1:], os.Stdin, os.Stdout, os.Getenv, os.Getwd)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake-pi:", err)
 		code = 2
@@ -49,11 +51,11 @@ func main() {
 	os.Exit(code)
 }
 
-func run(args []string, stdout io.Writer) (int, error) {
-	return runWithIO(args, os.Stdin, stdout, os.Getenv)
+func run(args []string, stdout io.Writer, getenv func(string) string, getwd func() (string, error)) (int, error) {
+	return runWithIO(args, os.Stdin, stdout, getenv, getwd)
 }
 
-func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string) (int, error) {
+func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string, getwd func() (string, error)) (int, error) {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprint(stdout, helpText)
 		return 0, nil
@@ -100,7 +102,215 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 		}
 	}
 
+	if err := replayAndRecord(opts, getenv, getwd, stdout); err != nil {
+		// Transcript persistence is best-effort scaffolding around the fixture's
+		// real observable contract (the banner, argv record, and exit status);
+		// an unwritable HOME must not turn an otherwise-accepted invocation into
+		// a fixture crash. Identical reasoning to cmd/fake-claude's own copy of
+		// this guard.
+		fmt.Fprintln(os.Stderr, "fake-pi: transcript unavailable:", err)
+	}
+
 	return configuredExitCode(getenv(exitCodeEnvironment))
+}
+
+// replayAndRecord implements the per-conversation transcript persisted at the
+// real pi CLI's on-disk path/naming convention (see transcriptDir and
+// createTranscript below for the convention itself and its provenance).
+// Unlike Claude Code's separate --session-id/--resume flags, pi reuses a
+// single --session-id flag for both creating and resuming a conversation
+// (see the comment where opts.sessionID is echoed above), so "resuming" here
+// means the caller passed a --session-id that already has a transcript file
+// on disk: this fixture then replays that conversation's own last recorded
+// message before appending anything new, exactly as cmd/fake-claude's
+// --resume path does.
+func replayAndRecord(opts options, getenv func(string) string, getwd func() (string, error), stdout io.Writer) error {
+	if opts.sessionID == "" {
+		return nil
+	}
+
+	dir, err := transcriptDir(getenv, getwd)
+	if err != nil {
+		return err
+	}
+	if dir == "" {
+		return nil
+	}
+
+	path, err := findExistingTranscript(dir, opts.sessionID)
+	if err != nil {
+		return err
+	}
+	if path != "" {
+		last, err := lastMessage(path)
+		if err != nil {
+			return err
+		}
+		if last != "" {
+			fmt.Fprintf(stdout, "fake-pi replay: %s\n", last)
+		}
+	} else {
+		cwd, err := getwd()
+		if err != nil {
+			return fmt.Errorf("resolve cwd: %w", err)
+		}
+		path, err = createTranscript(dir, opts.sessionID, cwd)
+		if err != nil {
+			return err
+		}
+	}
+
+	if opts.message != "" {
+		if err := appendMessage(path, opts.message); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// transcriptDir returns pi's own session-storage directory for the current
+// working directory: $HOME/.pi/agent/sessions/--<encoded-cwd>--, per pi's
+// documented layout (docs/session-format.md's "File Location" section,
+// ~/.pi/agent/sessions/--<path>--/<timestamp>_<uuid>.jsonl) and confirmed by
+// running a real pi 0.84.1 binary (see docs/reports/phase3-fake-pi-transcript-provenance.md for
+// the capture). Returns "" when HOME is unset, exactly like
+// cmd/fake-claude's transcriptPath degrading to "no transcript" rather than
+// erroring: replay/record is best-effort, not the fixture's core observable
+// contract.
+func transcriptDir(getenv func(string) string, getwd func() (string, error)) (string, error) {
+	home := getenv("HOME")
+	if home == "" {
+		return "", nil
+	}
+	cwd, err := getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve cwd: %w", err)
+	}
+	return filepath.Join(home, ".pi", "agent", "sessions", encodeCwd(cwd)), nil
+}
+
+// encodeCwd reproduces pi's own encoding exactly (pi-mono's
+// session-manager.ts getDefaultSessionDirPath: strip a single leading "/" or
+// "\\", then replace every remaining "/", "\\" or ":" with "-", and wrap the
+// result in a literal "--" prefix/suffix).
+func encodeCwd(cwd string) string {
+	trimmed := cwd
+	if len(trimmed) > 0 && (trimmed[0] == '/' || trimmed[0] == '\\') {
+		trimmed = trimmed[1:]
+	}
+	replaced := strings.Map(func(r rune) rune {
+		if r == '/' || r == '\\' || r == ':' {
+			return '-'
+		}
+		return r
+	}, trimmed)
+	return "--" + replaced + "--"
+}
+
+// findExistingTranscript looks for a file already ending in "_<conversationID>.jsonl"
+// in dir. Real pi's filename embeds a creation timestamp that a caller who
+// only knows the conversation id cannot predict, so resuming means globbing
+// for the id suffix rather than recomputing the exact name (this fixture's
+// stand-in for what a real deck adapter's TranscriptPaths lookup will also
+// have to do).
+func findExistingTranscript(dir, conversationID string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read transcript directory: %w", err)
+	}
+	suffix := "_" + conversationID + ".jsonl"
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
+			return filepath.Join(dir, entry.Name()), nil
+		}
+	}
+	return "", nil
+}
+
+// createTranscript creates a new transcript file named exactly as real pi
+// names one (<fileTimestamp>_<conversationID>.jsonl, fileTimestamp being an
+// ISO-8601 UTC timestamp with every ":" and "." replaced by "-") and writes
+// its session header line, mirroring the header a real pi always writes
+// immediately on session creation (observed in the capture recorded in
+// docs/reports/phase3-fake-pi-transcript-provenance.md), before any message exists.
+func createTranscript(dir, conversationID, cwd string) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create transcript directory: %w", err)
+	}
+	now := time.Now().UTC()
+	stamp := strings.NewReplacer(":", "-", ".", "-").Replace(now.Format("2006-01-02T15:04:05.000Z"))
+	path := filepath.Join(dir, stamp+"_"+conversationID+".jsonl")
+
+	header := map[string]any{
+		"type":      "session",
+		"version":   3,
+		"id":        conversationID,
+		"timestamp": now.Format("2006-01-02T15:04:05.000Z"),
+		"cwd":       cwd,
+	}
+	encoded, err := json.Marshal(header)
+	if err != nil {
+		return "", fmt.Errorf("encode transcript header: %w", err)
+	}
+	if err := os.WriteFile(path, append(encoded, '\n'), 0o644); err != nil {
+		return "", fmt.Errorf("write transcript header: %w", err)
+	}
+	return path, nil
+}
+
+type transcriptEntry struct {
+	Message string `json:"message"`
+}
+
+func appendMessage(path, message string) error {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open transcript: %w", err)
+	}
+	defer file.Close()
+
+	encoded, err := json.Marshal(transcriptEntry{Message: message})
+	if err != nil {
+		return fmt.Errorf("encode transcript entry: %w", err)
+	}
+	if _, err := file.Write(append(encoded, '\n')); err != nil {
+		return fmt.Errorf("write transcript entry: %w", err)
+	}
+	return nil
+}
+
+func lastMessage(path string) (string, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("open transcript: %w", err)
+	}
+	defer file.Close()
+
+	var last string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var entry transcriptEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue // The header line has no "message" field; skip lines that are not message entries.
+		}
+		if entry.Message != "" {
+			last = entry.Message
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read transcript: %w", err)
+	}
+	return last, nil
 }
 
 type fixtureCommand struct {

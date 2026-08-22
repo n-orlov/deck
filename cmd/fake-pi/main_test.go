@@ -10,13 +10,29 @@ import (
 	"github.com/n-orlov/deck/internal/agent"
 )
 
+func testGetwd(t *testing.T) func() (string, error) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	return os.Getwd
+}
+
+func testGetenv(home string) func(string) string {
+	return func(key string) string {
+		if key == "HOME" {
+			return home
+		}
+		return ""
+	}
+}
+
 func TestAcceptedPiFlagsProduceDeterministicTerminalRecord(t *testing.T) {
 	var first, second bytes.Buffer
 	arguments := []string{"--session-id", "abc-123", "--approve", "do the thing"}
-	if code, err := run(arguments, &first); err != nil || code != 0 {
+	getwd := testGetwd(t)
+	if code, err := run(arguments, &first, testGetenv(t.TempDir()), getwd); err != nil || code != 0 {
 		t.Fatalf("first run = (%d, %v)", code, err)
 	}
-	if code, err := run(arguments, &second); err != nil || code != 0 {
+	if code, err := run(arguments, &second, testGetenv(t.TempDir()), getwd); err != nil || code != 0 {
 		t.Fatalf("second run = (%d, %v)", code, err)
 	}
 	if first.String() != second.String() {
@@ -41,7 +57,7 @@ func TestRejectsUnknownFlags(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var output bytes.Buffer
-			if _, err := run(arguments, &output); err == nil {
+			if _, err := run(arguments, &output, testGetenv(t.TempDir()), testGetwd(t)); err == nil {
 				t.Fatalf("run(%q) unexpectedly succeeded", arguments)
 			}
 		})
@@ -50,15 +66,20 @@ func TestRejectsUnknownFlags(t *testing.T) {
 
 func TestSessionIDMissingValueIsRejected(t *testing.T) {
 	var output bytes.Buffer
-	if _, err := run([]string{"--session-id"}, &output); err == nil {
+	if _, err := run([]string{"--session-id"}, &output, testGetenv(t.TempDir()), testGetwd(t)); err == nil {
 		t.Fatal("run with --session-id and no value unexpectedly succeeded")
 	}
 }
 
 func TestExitStatusIsControlledOnlyByFixtureEnvironment(t *testing.T) {
 	var output bytes.Buffer
-	t.Setenv(exitCodeEnvironment, "23")
-	if code, err := run(nil, &output); err != nil || code != 23 {
+	getenv := func(key string) string {
+		if key == exitCodeEnvironment {
+			return "23"
+		}
+		return ""
+	}
+	if code, err := run(nil, &output, getenv, testGetwd(t)); err != nil || code != 23 {
 		t.Fatalf("run = (%d, %v), want (23, nil)", code, err)
 	}
 
@@ -73,7 +94,7 @@ func TestSessionIDCreatesSessionIfMissing(t *testing.T) {
 	// id is itself the "created if missing" behavior deck relies on (pi
 	// creates the conversation implicitly on first use of an id).
 	var output bytes.Buffer
-	if code, err := run([]string{"--session-id", "brand-new-id"}, &output); err != nil || code != 0 {
+	if code, err := run([]string{"--session-id", "brand-new-id"}, &output, testGetenv(t.TempDir()), testGetwd(t)); err != nil || code != 0 {
 		t.Fatalf("run = (%d, %v)", code, err)
 	}
 	if !strings.Contains(output.String(), "fake-pi session-id: brand-new-id") {
@@ -102,7 +123,7 @@ func TestPaneFixtureCommandRendersNamedFileByteForByte(t *testing.T) {
 		return ""
 	}
 	var output bytes.Buffer
-	if code, err := runWithIO(nil, input, &output, getenv); err != nil || code != 0 {
+	if code, err := runWithIO(nil, input, &output, getenv, testGetwd(t)); err != nil || code != 0 {
 		t.Fatalf("runWithIO = (%d, %v)", code, err)
 	}
 	got := bytes.TrimPrefix(output.Bytes(), []byte("Fake pi\nfake-pi argv: null\n"))
@@ -150,7 +171,10 @@ func TestRenderedFixturesProbeToTheRealPiVerdict(t *testing.T) {
 				return ""
 			}
 			var output bytes.Buffer
-			if code, err := runWithIO(nil, input, &output, getenv); err != nil || code != 0 {
+			// os.Getwd, not testGetwd(t): corpus above is a relative path resolved
+			// against the process's real working directory, and args is nil here
+			// (no --session-id), so getwd is never actually invoked by replayAndRecord.
+			if code, err := runWithIO(nil, input, &output, getenv, os.Getwd); err != nil || code != 0 {
 				t.Fatalf("runWithIO = (%d, %v)", code, err)
 			}
 			rendered := bytes.TrimPrefix(output.Bytes(), []byte("Fake pi\nfake-pi argv: null\n"))
@@ -181,4 +205,78 @@ func TestPaneFixtureCommandNeedsConfiguredCorpus(t *testing.T) {
 		t.Fatalf("runCommands error = %v, want missing corpus", err)
 	}
 
+}
+
+// TestTranscriptWrittenAtPisRealPathConvention proves requirement 4: a
+// per-conversation transcript lands at the same path/naming convention a
+// real pi CLI uses ($HOME/.pi/agent/sessions/--<encoded-cwd>--/<timestamp>_
+// <id>.jsonl, per docs/reports/phase3-fake-pi-transcript-provenance.md's recorded capture of a
+// real pi 0.84.1 binary), mirroring cmd/fake-claude's own
+// TestResumeReplaysOnlyItsOwnConversationsLastMessage in structure.
+func TestTranscriptWrittenAtPisRealPathConvention(t *testing.T) {
+	home := t.TempDir()
+	getenv := testGetenv(home)
+	getwd := testGetwd(t)
+
+	const sessionID = "11111111-1111-1111-1111-111111111111"
+	var out bytes.Buffer
+	if _, err := run([]string{"--session-id", sessionID, "hello from fake pi"}, &out, getenv, getwd); err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+
+	cwd, err := getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	trimmed := strings.TrimPrefix(cwd, string(filepath.Separator))
+	encoded := strings.NewReplacer(string(filepath.Separator), "-", ":", "-").Replace(trimmed)
+	dir := filepath.Join(home, ".pi", "agent", "sessions", "--"+encoded+"--")
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read session dir %s: %v", dir, err)
+	}
+	var transcript string
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), "_"+sessionID+".jsonl") {
+			transcript = filepath.Join(dir, entry.Name())
+		}
+	}
+	if transcript == "" {
+		t.Fatalf("no transcript file matching *_%s.jsonl in %s: entries %v", sessionID, dir, entries)
+	}
+
+	contents, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if !strings.Contains(string(contents), sessionID) {
+		t.Fatalf("transcript header %q missing session id", contents)
+	}
+	if !strings.Contains(string(contents), "hello from fake pi") {
+		t.Fatalf("transcript %q missing the recorded message", contents)
+	}
+
+	// Resuming with the same --session-id must find and append to the same
+	// file rather than create a second one.
+	out.Reset()
+	if _, err := run([]string{"--session-id", sessionID, "second turn"}, &out, getenv, getwd); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if !strings.Contains(out.String(), "fake-pi replay: hello from fake pi") {
+		t.Fatalf("resume output %q does not replay the prior message", out.String())
+	}
+	entriesAfter, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read session dir after resume: %v", err)
+	}
+	count := 0
+	for _, entry := range entriesAfter {
+		if strings.HasSuffix(entry.Name(), "_"+sessionID+".jsonl") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("got %d transcript files for the same conversation id, want 1: %v", count, entriesAfter)
+	}
 }
