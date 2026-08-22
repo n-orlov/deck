@@ -329,6 +329,23 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		return Session{}, fmt.Errorf("begin create session: %w", err)
 	}
 	defer tx.Rollback()
+	// A row whose name is exactly input.Name always computes the same slug
+	// (Slug is a pure function of the name), so an identical-name insert
+	// violates BOTH the name and slug UNIQUE constraints at once; which one
+	// the INSERT below reports is an accident of SQLite's own internal
+	// constraint-check order, not something this package controls or can
+	// rely on to distinguish "this exact name is taken" from "a different
+	// name happens to slug the same". Checking name equality first, inside
+	// this same transaction, makes the "already exists" message
+	// deterministic and reachable rather than incidentally shadowed by the
+	// slug branch below -- which remains exactly what surfaces a genuine
+	// slug collision (a different name whose slug matches an existing row).
+	var nameExists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE name = ?`, input.Name).Scan(&nameExists); err == nil {
+		return Session{}, fmt.Errorf("session name %q already exists", input.Name)
+	} else if err != sql.ErrNoRows {
+		return Session{}, fmt.Errorf("check session name %q: %w", input.Name, err)
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
 		 launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state)
