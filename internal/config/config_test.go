@@ -512,6 +512,28 @@ func TestDeckAsciiOverridesUIConfig(t *testing.T) {
 	}
 }
 
+// TestSettingsFileHoldsRawValueEvenWhenEnvOverrides is requirement 21's
+// probe: environment still outranks the file for the resolved Settings.ASCII
+// value (unchanged behaviour), but Settings.File.ASCII must retain exactly
+// what config.toml said, so a later save (task 002) has something honest to
+// write back instead of the env-resolved value.
+func TestSettingsFileHoldsRawValueEvenWhenEnvOverrides(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\nascii = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_ASCII": "1"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.ASCII {
+		t.Fatal("DECK_ASCII=1 should still override [ui] ascii = false for the resolved Settings.ASCII")
+	}
+	if settings.EnvOverrides["ui.ascii"] != "DECK_ASCII" {
+		t.Fatalf("EnvOverrides[%q] = %q, want %q", "ui.ascii", settings.EnvOverrides["ui.ascii"], "DECK_ASCII")
+	}
+	if settings.File.ASCII {
+		t.Fatal("Settings.File.ASCII should retain the file's own false, unaffected by DECK_ASCII")
+	}
+}
+
 func TestConfigFileUIRecentCwdLimit(t *testing.T) {
 	dir := writeConfigFile(t, "[ui]\nrecent_cwd_limit = 3\n")
 	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
