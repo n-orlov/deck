@@ -31,18 +31,51 @@ import (
 // but the ghost returned is always just raw's missing suffix -- raw's own
 // leading "~" is never rewritten in what gets displayed or appended.
 func createCWDGhostCompletion(raw string) (ghost string, ok bool) {
+	names, ok := createCWDMatches(raw)
+	if !ok || len(names) != 1 {
+		return "", false
+	}
+	_, segment := splitCWDSegment(raw)
+	return names[0][len(segment):] + "/", true
+}
+
+// createCWDAmbiguousMatchCount reports the number of directory candidates
+// for raw's segment (task 011, §11.7 requirement 15) whenever there are two
+// or more -- the case createCWDGhostCompletion deliberately ghosts nothing
+// for, since ghosting one arbitrary candidate (e.g. the alphabetically
+// first) would make right/end a coin flip that silently sends the session
+// to the wrong directory. ok=false whenever there is no ambiguity to
+// report at all: zero or one match (createCWDGhostCompletion owns those),
+// or the directory portion cannot be listed (does not exist, a permission
+// error, an unresolvable "~otheruser").
+func createCWDAmbiguousMatchCount(raw string) (count int, ok bool) {
+	names, ok := createCWDMatches(raw)
+	if !ok || len(names) < 2 {
+		return 0, false
+	}
+	return len(names), true
+}
+
+// createCWDMatches lists every directory-only candidate (never a file, see
+// createCWDGhostCompletion's doc comment for the hidden-directory and "~"
+// rules, both enforced identically here) whose name starts with raw's
+// segment being completed, shared by both createCWDGhostCompletion's
+// unique-match case and createCWDAmbiguousMatchCount's several-matches
+// case so the two agree on exactly what counts as a candidate. ok=false
+// only when the directory portion itself cannot be listed at all; an empty,
+// non-nil-ok result (no name starts with the segment) is a legitimate
+// zero-candidate answer, not an error.
+func createCWDMatches(raw string) (names []string, ok bool) {
 	dir, segment := splitCWDSegment(raw)
 	scanDir, ok := expandCWDDirForScan(dir)
 	if !ok {
-		return "", false
+		return nil, false
 	}
 	entries, err := os.ReadDir(scanDir)
 	if err != nil {
-		return "", false
+		return nil, false
 	}
 	dotSegment := strings.HasPrefix(segment, ".")
-	var match string
-	matches := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -54,16 +87,9 @@ func createCWDGhostCompletion(raw string) (ghost string, ok bool) {
 		if !strings.HasPrefix(name, segment) {
 			continue
 		}
-		matches++
-		match = name
-		if matches > 1 {
-			return "", false
-		}
+		names = append(names, name)
 	}
-	if matches != 1 {
-		return "", false
-	}
-	return match[len(segment):] + "/", true
+	return names, true
 }
 
 // splitCWDSegment splits raw at its last '/' into the directory portion

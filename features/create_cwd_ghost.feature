@@ -91,3 +91,22 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     Then deck client "A" screen contains "starting"
     And the state database session "cwd-ghost-tilde-session" has cwd "uniquetildehome" resolved under the scenario home
     When deck client "A" exits cleanly
+
+  @requirement-15-ghost-ambiguous-no-completion
+  Scenario: several matches with no further common prefix ghost nothing and show a match count
+    Given a scratch directory labelled "ambiguous" exists
+    And a directory named "matchaaa" exists in the scratch directory labelled "ambiguous"
+    And a directory named "matchbbb" exists in the scratch directory labelled "ambiguous"
+    And a directory named "matchccc" exists in the scratch directory labelled "ambiguous"
+    And deck client "A" is started with colour enabled
+    When deck client "A" opens the create modal
+    And deck client "A" tabs to the cwd field
+    And deck client "A" types the scratch directory labelled "ambiguous" followed by "match" into the cwd field
+    Then deck client "A" screen contains "3 matches — tab to list"
+    And deck client "A" cwd field shows no ghost text
+    When deck client "A" presses "right" in the cwd field
+    Then deck client "A" screen does not contain "matchaaa"
+    And deck client "A" screen does not contain "matchbbb"
+    And deck client "A" screen does not contain "matchccc"
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
