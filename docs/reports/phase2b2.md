@@ -1061,6 +1061,37 @@ run post-dates requirement 40's flake fix (requirement 41 above) and this
 correction pass's task 014 fix for the SIGKILL teardown race that caused
 the prior run's one failure.
 
+**Post-correction re-run (task 012, this approach, HEAD=68783da):** after
+closing requirements 19 and 21 (tasks 001-010) and re-verifying
+build/vet/gofmt/`go test ./...` (task 011), `ci/stability.sh 10` was run
+again from a clean tree (`git status --short` empty) at the new HEAD.
+Full real output appended to `docs/reports/phase2b2-stability.log`
+(the section headed "Re-run per task 012"). **Result: 10/10 green**,
+verified by re-reading that section's own tail in this iteration:
+
+```
+$ tail -15 docs/reports/phase2b2-stability.log
+=== RUN 4: PASS (exit 0) ===
+=== RUN 5 ===
+=== RUN 5: PASS (exit 0) ===
+=== RUN 6 ===
+=== RUN 6: PASS (exit 0) ===
+=== RUN 7 ===
+=== RUN 7: PASS (exit 0) ===
+=== RUN 8 ===
+=== RUN 8: PASS (exit 0) ===
+=== RUN 9 ===
+=== RUN 9: PASS (exit 0) ===
+=== RUN 10 ===
+=== RUN 10: PASS (exit 0) ===
+full per-run logs and combined summary log kept in: /tmp/deck-stability.QuhbW8
+10/10 passed
+```
+
+This is the run that governs requirement 54 for this approach's tree;
+the 4388dd0 run above is retained for provenance of the pre-correction
+state and the task-014 SIGKILL fix it validated, not superseded in place.
+
 ## Requirement 55: this report
 
 `docs/reports/phase2b2.md` (this file).
