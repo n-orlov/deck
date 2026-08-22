@@ -114,13 +114,26 @@ type Model struct {
 	pinning             bool
 	pinValue            string
 	pinNote             string
-	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a read-only
-	// listing of the selected session's effective environment, one row per
-	// key, naming which layer (server env, captured_path, config [env],
-	// session env) supplied the value actually in force. It has no fields
-	// of its own to submit or cycle -- only esc closes it, changing
-	// nothing (writing an edit is task 021's env_dirty/tmux mirroring).
-	envEditing bool
+	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a listing
+	// of the selected session's effective environment, one row per key,
+	// naming which layer (server env, captured_path, config [env], session
+	// env) supplied the value actually in force. envCursor selects a row;
+	// enter on it opens envEditKey/envEditValue (task 021's write path --
+	// non-empty envEditKey means a value is being typed right now). Esc
+	// while typing cancels only that edit; esc otherwise closes the whole
+	// dialog, changing nothing further. setSessionEnv persists a committed
+	// edit (env_dirty, tmux mirror); nil means editing is unavailable and
+	// submitting states so rather than silently doing nothing.
+	envEditing               bool
+	envCursor                int
+	envEditKey, envEditValue string
+	// envEditPrefilled tracks task 021's cwd-field-style prefill: enter
+	// preloads envEditValue with the row's current value, and the very
+	// FIRST typed rune or backspace replaces it wholesale rather than
+	// editing within it (see updateEnvDialog).
+	envEditPrefilled bool
+	envNote          string
+	setSessionEnv    func(context.Context, string, string, string) (store.Session, error)
 	// settingsOpen is task 013's `,` full-screen takeover (SPEC §11.5): a
 	// category list and the selected category's field list, both walking
 	// config.Schema rather than a hand-written field set. It is not a
@@ -392,6 +405,14 @@ type resumeModeChanged struct {
 	err     error
 }
 
+// envEdited is the reply to a committed `e` env-editor edit (task 021):
+// Service.SetSessionEnv's persisted-and-mirrored result, or the error that
+// kept the store/tmux state exactly as it was before the edit.
+type envEdited struct {
+	session store.Session
+	err     error
+}
+
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
@@ -523,6 +544,19 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryAndPreviewCapturer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error)) Model {
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry)
 	m.previewCapture = previewCapturer
+	return m
+}
+
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerAndEnvSetter
+// adds the `e` env editor's write path (task 021, SPEC §6.1/§6.3):
+// envSetter persists one session-env key/value edit (env_dirty) and
+// mirrors it into the live tmux pane's environment table for future panes
+// only, never the pane's already-running process. Until envSetter is
+// wired, committing an edit in the `e` dialog fails with "editing the
+// environment is unavailable" rather than silently doing nothing.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerAndEnvSetter(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error)) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryAndPreviewCapturer(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer)
+	m.setSessionEnv = envSetter
 	return m
 }
 
@@ -684,6 +718,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pinning = false
 		m.pinNote = ""
+		return m, m.loadSessions
+	case envEdited:
+		// Unlike profileSwitched/resumeModeChanged, a committed edit does
+		// NOT close the dialog: SPEC §6.1/§6.3's env editor is a listing of
+		// several keys, and a user editing one is very likely about to edit
+		// another in the same visit. Only esc (already wired in
+		// updateEnvDialog) closes it.
+		if msg.err != nil {
+			m.envNote = "Cannot edit environment: " + msg.err.Error()
+			return m, nil
+		}
+		m.envNote = ""
 		return m, m.loadSessions
 	case reconcileTick:
 		loadAfterReconcile := m.loadSessions
@@ -887,6 +933,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// showing -- there is no "not applicable here" case to refuse.
 			if !m.help && len(m.sessions) > 0 {
 				m.envEditing = true
+				m.envCursor = 0
+				m.envEditKey, m.envEditValue, m.envNote = "", "", ""
+				m.envEditPrefilled = false
 			}
 		case " ":
 			// SPEC requirements 31, 32: move to the next session needing
@@ -1660,6 +1709,15 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 	line2Segs := []settingsRowSegment{{Text: "  ", Tok: theme.Text}}
 	if text, tok, ok := m.profileBadgeSegment(session); ok {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: text, Tok: tok}, settingsRowSegment{Text: " ", Tok: theme.Text})
+	}
+	// SPEC §6.1/§6.3, task 021: env_dirty means a session-env edit has been
+	// persisted and mirrored into tmux's own environment table for future
+	// panes, but has NOT yet reached the pane's already-running process --
+	// only an explicit restart (task 022's `R`) applies it and clears the
+	// badge. Shown next to the profile badge (no room on line1, same
+	// reasoning sidebarRowLines' own doc already states for that badge).
+	if session.EnvDirty {
+		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("env\u21bb", "env*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
 	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
 	line2 := m.settingsRenderRow(line2Segs, theme.Selection, selected)
@@ -2859,8 +2917,12 @@ Keys
   i toggle detail view for the selected session
   e open the env editor for the selected session: every key deck resolved a
     layer for, its effective value, and which layer won -- server env,
-    captured_path, config [env] or session env (SPEC §6.1/§6.3); read-only,
-    Esc closes changing nothing
+    captured_path, config [env] or session env (SPEC §6.1/§6.3); j/k select
+    a key, Enter edits its value, typing then Enter saves it into the
+    session's own env and marks it env-dirty until a later restart picks
+    it up; the save mirrors into tmux's own environment for future panes,
+    never into whatever the pane's already-running process started with;
+    Esc cancels an edit in progress, or closes the dialog otherwise
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status

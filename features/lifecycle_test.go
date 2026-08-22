@@ -106,6 +106,14 @@ type ScenarioHarness struct {
 	// stat-for-stat identity without repeating the path.
 	namedDirectories      map[string]string
 	directoryFingerprints map[string]directoryFingerprintRecord
+
+	// livePaneEnvSnapshots backs task 021's own "an env-editor commit never
+	// applies silently to an already-running pane" criterion: a step
+	// captures a live pane process's /proc/<pid>/environ value for one key
+	// under a label (never a hardcoded expected string, since a session's
+	// real PATH varies by host), and a later step asserts the current
+	// value is still byte-identical to it.
+	livePaneEnvSnapshots map[string]string
 }
 
 var scenarioSequence atomic.Uint64

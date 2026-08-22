@@ -1396,3 +1396,91 @@ func TestClearRecentCwdsRemovesEveryEntryButNothingElse(t *testing.T) {
 		t.Fatalf("recent cwds after post-clear promote = %+v, want exactly [/z]", got)
 	}
 }
+
+// TestSetSessionEnvValueMergesMarksDirtyAndRecordsEventWithKeyOnly proves
+// task 021's write path at the store layer: an edit merges into the
+// session's existing env map (an untouched key survives), marks env_dirty,
+// records a set_env event whose payload is the key name only (never the
+// value -- the store's own never-log-a-value convention, task 019/024), and
+// the edit survives a close/reopen exactly like every other durable field.
+func TestSetSessionEnvValueMergesMarksDirtyAndRecordsEventWithKeyOnly(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	const id = "00000000-0000-4000-8000-000000000021"
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "env-edit", CWD: "/work/env-edit", Agent: "claude", CapturedPath: "/bin",
+		StatusAt: 1, CreatedAt: 1, Env: map[string]string{"UNTOUCHED_KEY": "keep-me"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.SetSessionEnvValue(ctx, id, "EDITED_KEY", "top-secret-value", "user", 10); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Env["EDITED_KEY"] != "top-secret-value" {
+		t.Fatalf("env[EDITED_KEY] = %q, want top-secret-value", got.Env["EDITED_KEY"])
+	}
+	if got.Env["UNTOUCHED_KEY"] != "keep-me" {
+		t.Fatalf("env[UNTOUCHED_KEY] = %q, want it left alone by an edit to a different key", got.Env["UNTOUCHED_KEY"])
+	}
+	if !got.EnvDirty {
+		t.Fatalf("env_dirty = false, want true after SetSessionEnvValue")
+	}
+
+	var payload string
+	if err := st.DB().QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND kind = 'set_env'`, id).Scan(&payload); err != nil {
+		t.Fatalf("read set_env event: %v", err)
+	}
+	if payload != "EDITED_KEY" {
+		t.Fatalf("set_env event payload = %q, want exactly the key name %q (never the value)", payload, "EDITED_KEY")
+	}
+	if strings.Contains(payload, "top-secret-value") {
+		t.Fatalf("set_env event payload leaks the value: %q", payload)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err = reopened.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Env["EDITED_KEY"] != "top-secret-value" || !got.EnvDirty {
+		t.Fatalf("edit did not survive reopen: env=%+v envDirty=%v", got.Env, got.EnvDirty)
+	}
+}
+
+// TestSetSessionEnvValueRejectsMissingSessionOrKey proves the same
+// input-validation shape every other Set* mutator in this package uses.
+func TestSetSessionEnvValueRejectsMissingSessionOrKey(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.SetSessionEnvValue(ctx, "", "KEY", "value", "user", 1); err == nil {
+		t.Fatalf("expected an error for a missing session id")
+	}
+	if err := st.SetSessionEnvValue(ctx, "some-id", "", "value", "user", 1); err == nil {
+		t.Fatalf("expected an error for a missing key")
+	}
+	if err := st.SetSessionEnvValue(ctx, "does-not-exist", "KEY", "value", "user", 1); err == nil {
+		t.Fatalf("expected an error for a session that does not exist")
+	}
+}

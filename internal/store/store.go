@@ -214,6 +214,14 @@ type Session struct {
 	// the moment any later verdict — probe or otherwise — updates the row,
 	// so a stale miss can never be shown once fresher evidence exists.
 	LastProbeAt int64
+	// EnvDirty is SPEC §6.1/§6.3's env_dirty column (task 021): true once a
+	// session-env edit has been written and mirrored into tmux's own
+	// environment table for future panes, but has NOT yet reached the
+	// pane's already-running process -- that only happens on an explicit
+	// restart (task 022's `R`), which is also what clears this back to
+	// false. It is the row's queryable, persisted source for the `env↻`
+	// sidebar badge; nothing here ever touches the live pane itself.
+	EnvDirty bool
 }
 
 // CapturedPathAdvisory reports whether this row's CapturedPath is advisory
@@ -432,16 +440,17 @@ func scanSession(row interface {
 	var session Session
 	var launchArgsJSON, envJSON string
 	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace sql.NullString
-	var loginShell, killedByUser, acknowledged int
+	var loginShell, killedByUser, acknowledged, envDirty int
 	var paneExitStatus sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace, &session.LastProbeAt); err != nil {
+		&workspace, &session.LastProbeAt, &envDirty); err != nil {
 		return Session{}, err
 	}
+	session.EnvDirty = envDirty != 0
 	if workspace.Valid && workspace.String != "" {
 		session.Workspace = workspace.String
 	} else {
@@ -488,7 +497,7 @@ const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace, last_probe_at`
+		workspace, last_probe_at, env_dirty`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.
@@ -790,6 +799,71 @@ func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, so
 	}
 	return s.mutateSessionWithEvent(ctx, sessionID, "permission_profile", "set_permission_profile", source, profile, at,
 		`UPDATE sessions SET permission_profile = ? WHERE id = ?`, profile)
+}
+
+// SetSessionEnvValue edits exactly one key in a session's own env map --
+// SPEC §6.1/§6.3's highest-priority layer -- and marks the row env_dirty
+// (task 021): a change has been persisted but not yet applied to the live
+// pane's already-running process. Only an explicit restart (task 022's `R`)
+// both re-launches the pane with it and clears env_dirty back to false;
+// this method itself never touches tmux at all (Service.SetSessionEnv
+// mirrors the same key into tmux's own environment table for future panes
+// in the same call, as a separate, tmux-side step). The recorded event's
+// payload is the key name only, matching internal/audit's own
+// never-log-a-value convention (task 019/024): a value a user typed here
+// may be secret-shaped, and nothing durable should ever quote it back.
+func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, source string, at int64) error {
+	if sessionID == "" || key == "" {
+		return errors.New("session id and environment key are required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin set session env: %w", err)
+	}
+	defer tx.Rollback()
+	var envJSON string
+	if err := tx.QueryRowContext(ctx, `SELECT env FROM sessions WHERE id = ?`, sessionID).Scan(&envJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("session %q not found", sessionID)
+		}
+		return fmt.Errorf("read session %q env: %w", sessionID, err)
+	}
+	env := map[string]string{}
+	if envJSON != "" {
+		if err := json.Unmarshal([]byte(envJSON), &env); err != nil {
+			return fmt.Errorf("decode session %q env: %w", sessionID, err)
+		}
+	}
+	env[key] = value
+	newEnvJSON, err := marshalEnv(env)
+	if err != nil {
+		return fmt.Errorf("encode session %q env: %w", sessionID, err)
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET env = ?, env_dirty = 1 WHERE id = ?`, newEnvJSON, sessionID)
+	if err != nil {
+		return fmt.Errorf("set session %q env: %w", sessionID, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check set session %q env: %w", sessionID, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, ?, ?, ?, ?)`,
+		sessionID, at, "set_env", source, key); err != nil {
+		return fmt.Errorf("record set session %q env event: %w", sessionID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit set session %q env: %w", sessionID, err)
+	}
+	return nil
 }
 
 // SetResumePin pins a session to resume a specific conversation id going
