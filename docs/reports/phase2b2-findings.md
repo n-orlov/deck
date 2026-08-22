@@ -886,6 +886,23 @@ squash needed. Task 036 attempts `git push origin main` again at
 sequence's end and will record the same finding if the environment is
 unchanged, or update this entry if it is not.
 
+**Update (task 018, this correction pass's final hygiene check).** Re-ran
+`git push origin main` from a clean tree (`git status` clean, HEAD at
+`979dc18`, 77 commits ahead of `origin/main`) and it fails with the exact
+same symptom:
+
+```
+$ git push origin main
+fatal: could not read Username for 'https://github.com': No such device or address
+```
+(real exit code 128). `ls ~/.gitconfig ~/.git-credentials` confirms neither
+exists in this container, and this run's credential set (per the job
+context's Credentials section) lists no git/GitHub entry. The environment
+is unchanged from the prior finding above: no token was generated, tried,
+or placed in the remote URL to work around this. The full 77-commit local
+history on `main` remains the durable, pushable-as-is record for whichever
+future iteration has git credentials mounted.
+
 ## Tasks 003/004 — the [env]-editability tension the review named (requirement 17)
 
 **Provenance:** raised directly by the independent review at `65e623e`
