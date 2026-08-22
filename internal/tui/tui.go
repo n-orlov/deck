@@ -114,6 +114,13 @@ type Model struct {
 	pinning             bool
 	pinValue            string
 	pinNote             string
+	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a read-only
+	// listing of the selected session's effective environment, one row per
+	// key, naming which layer (server env, captured_path, config [env],
+	// session env) supplied the value actually in force. It has no fields
+	// of its own to submit or cycle -- only esc closes it, changing
+	// nothing (writing an edit is task 021's env_dirty/tmux mirroring).
+	envEditing bool
 	// settingsOpen is task 013's `,` full-screen takeover (SPEC §11.5): a
 	// category list and the selected category's field list, both walking
 	// config.Schema rather than a hand-written field set. It is not a
@@ -729,6 +736,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pinning {
 			return m.updatePinDialog(msg)
 		}
+		if m.envEditing {
+			return m.updateEnvDialog(msg)
+		}
 		if m.settingsOpen {
 			return m.updateSettings(msg)
 		}
@@ -870,6 +880,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pinNote = ""
 			return m, nil
+		case "e":
+			// SPEC §6.1/§6.3, task 020: opens for any selected session (unlike
+			// `P`/`p`, which gate on adapter capabilities) since every session,
+			// including a plain shell one, has an effective environment worth
+			// showing -- there is no "not applicable here" case to refuse.
+			if !m.help && len(m.sessions) > 0 {
+				m.envEditing = true
+			}
 		case " ":
 			// SPEC requirements 31, 32: move to the next session needing
 			// attention, wrapping, via the one shared NeedsAttention answer
@@ -929,7 +947,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -1049,6 +1067,9 @@ func (m Model) View() string {
 	}
 	if m.pinning && len(m.sessions) > 0 {
 		return m.pinView()
+	}
+	if m.envEditing && len(m.sessions) > 0 {
+		return m.envView()
 	}
 	if m.settingsOpen {
 		return m.settingsView()
@@ -2836,6 +2857,10 @@ Keys
     reuse it, or launch a one-shot fresh conversation (reverts to normal
     auto-resume afterward, it does not stay pinned or cleared)
   i toggle detail view for the selected session
+  e open the env editor for the selected session: every key deck resolved a
+    layer for, its effective value, and which layer won -- server env,
+    captured_path, config [env] or session env (SPEC §6.1/§6.3); read-only,
+    Esc closes changing nothing
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status

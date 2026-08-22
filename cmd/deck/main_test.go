@@ -434,12 +434,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"click or wheel over the preview does nothing",
 		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
+		"e open the env editor", "which layer won", "captured_path, config [env] or session env",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "restart preserving", "send message", "env editor", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "restart preserving", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}

@@ -250,18 +250,23 @@ func TestSettingsEnvEscFromEntriesListReturnsToFieldList(t *testing.T) {
 	}
 }
 
-// TestTui049UnavailableActionListUntouched is a companion check for task
+// TestTui049UnavailableActionListUntouched was a companion check for task
 // 003's own success criteria ("nothing is removed from
 // internal/tui/tui_test.go:49's unavailable-action list... no per-session
-// env editor is built"): it re-asserts the exact phrase the help view must
-// still refuse to advertise, "env editor", so a future edit to that list
-// cannot silently drop it without a test noticing. This does not replace
-// git-diff review of the list, only backs it up.
+// env editor is built") -- task 003's own scope predated the env editor
+// entirely. Task 020 built that editor (SPEC §6.1/§6.3, the `e` key), so
+// "env editor" moved OFF tui_test.go's unavailable-action list and onto its
+// present-phrase list in the same commit, per this package's help-text
+// standing rule (never advertise a not-yet-shipped feature; when it ships,
+// move its word across in the same commit). This test now asserts the
+// opposite of what it used to: the phrase is expected to be present, not
+// forbidden, so a future edit that silently drops the shipped help line
+// still gets caught here alongside tui_test.go's own broader check.
 func TestTui049UnavailableActionListUntouched(t *testing.T) {
 	model := New(nil, config.Settings{Socket: "test-socket"}, "")
 	model.width = 100
 	model.help = true
-	if got := model.View(); strings.Contains(got, "env editor") {
-		t.Fatalf("help view advertises the unavailable per-session env editor:\n%s", got)
+	if got := model.View(); !strings.Contains(got, "env editor") {
+		t.Fatalf("help view no longer advertises the shipped `e` env editor:\n%s", got)
 	}
 }
