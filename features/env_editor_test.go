@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -28,6 +29,10 @@ func registerEnvEditorSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" is captured as "([^"]+)"$`, livePaneProcessEnvironmentKeyIsCapturedAs)
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" still matches the captured "([^"]+)"$`, livePaneProcessEnvironmentKeyStillMatchesCaptured)
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" is "([^"]*)"$`, livePaneProcessEnvironmentKeyEquals)
+	sc.Step(`^the live pane pid for session "([^"]+)" is captured as "([^"]+)"$`, livePanePidIsCapturedAs)
+	sc.Step(`^the live pane pid for session "([^"]+)" still matches the captured "([^"]+)"$`, livePanePidStillMatchesCaptured)
+	sc.Step(`^the live pane pid for session "([^"]+)" no longer matches the captured "([^"]+)"$`, livePanePidDiffersFromCaptured)
+	sc.Step(`^the live shell for session "([^"]+)" echoes env key "([^"]+)" as "([^"]+)"$`, liveShellEchoesEnvKeyAs)
 }
 
 // clientOpensEnvEditorForSession selects the named row and sends `e` (SPEC
@@ -321,6 +326,142 @@ func livePaneProcessEnvironmentKeyEquals(ctx context.Context, name, key, want st
 	}
 	if got != want {
 		return fmt.Errorf("live pane process environment for session %q key %q = %q, want %q", name, key, got, want)
+	}
+	return nil
+}
+
+// livePanePid reads a deck-owned session's current #{pane_pid} directly
+// from tmux -- task 023's own proof that inject-instead never kills or
+// relaunches the pane: a restart execs a brand-new process into the pane
+// and therefore always produces a different pid, while an inject reuses
+// the exact same one.
+func livePanePid(ctx context.Context, name string) (string, error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return "", err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return "", err
+	}
+	target := "deck_" + slug
+	output, err := tmuxOutput(ctx, h, "list-panes", "-t", target, "-F", "#{pane_pid}")
+	if err != nil {
+		return "", fmt.Errorf("locate live pane pid for session %q: %w", name, err)
+	}
+	pid := strings.TrimSpace(string(output))
+	if pid == "" {
+		return "", fmt.Errorf("live pane pid for session %q is empty", name)
+	}
+	return pid, nil
+}
+
+// livePanePidIsCapturedAs snapshots a session's current live pane pid
+// under a label, mirroring livePaneProcessEnvironmentKeyIsCapturedAs's own
+// capture-then-compare shape.
+func livePanePidIsCapturedAs(ctx context.Context, name, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	pid, err := livePanePid(ctx, name)
+	if err != nil {
+		return err
+	}
+	if h.livePanePidSnapshots == nil {
+		h.livePanePidSnapshots = make(map[string]string)
+	}
+	h.livePanePidSnapshots[label] = pid
+	return nil
+}
+
+// livePanePidStillMatchesCaptured proves task 023's inject-instead path
+// never killed or relaunched the pane it exported into: the pid captured
+// before the inject must still be the pid tmux reports afterwards.
+func livePanePidStillMatchesCaptured(ctx context.Context, name, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	want, ok := h.livePanePidSnapshots[label]
+	if !ok {
+		return fmt.Errorf("no live pane pid was captured as %q", label)
+	}
+	got, err := livePanePid(ctx, name)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("live pane pid for session %q changed since capture %q: before %q, after %q (the pane was killed and/or relaunched)", name, label, want, got)
+	}
+	return nil
+}
+
+// liveShellEchoesEnvKeyAs drives a real command into the session's own
+// live shell pane (via tmux send-keys, entirely independent of deck's own
+// TUI screen, which never renders another session's pane contents) and
+// reads the result back via capture-pane -p, proving task 023's inject
+// actually reached the running shell process's own environment -- never
+// merely deck's store or tmux's own mirrored table, either of which could
+// agree with each other while the live process still disagreed. It never
+// reads /proc/<pid>/environ (that is a start-of-process snapshot that an
+// `export` after the fact never changes) -- only the shell's own answer to
+// evaluating the variable right now proves the inject took effect.
+func liveShellEchoesEnvKeyAs(ctx context.Context, name, key, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	const marker = "DECK_INJECT_CHECK"
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "-l", "--", "echo "+marker+":$"+key); err != nil {
+		return fmt.Errorf("send echo command to session %q's live pane: %w", name, err)
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
+		return fmt.Errorf("send Enter to session %q's live pane: %w", name, err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	var output []byte
+	for {
+		output, err = tmuxOutput(ctx, h, "capture-pane", "-p", "-t", target)
+		if err == nil && strings.Contains(string(output), marker+":") {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q's live pane never echoed %q; last capture:\n%s", name, marker, string(output))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !strings.Contains(string(output), marker+":"+want) {
+		return fmt.Errorf("session %q's live shell echoed env key %q as something other than %q; pane:\n%s", name, key, want, string(output))
+	}
+	return nil
+}
+
+// livePanePidDiffersFromCaptured is livePanePidStillMatchesCaptured's
+// inverse, for the "restart really did happen" half of task 023's own
+// contrast: unlike inject-instead, a genuine restart execs a brand-new
+// process into the pane, so its pid must differ from whatever was
+// captured beforehand.
+func livePanePidDiffersFromCaptured(ctx context.Context, name, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	before, ok := h.livePanePidSnapshots[label]
+	if !ok {
+		return fmt.Errorf("no live pane pid was captured as %q", label)
+	}
+	after, err := livePanePid(ctx, name)
+	if err != nil {
+		return err
+	}
+	if after == before {
+		return fmt.Errorf("live pane pid for session %q is still %q after a restart, want a new pid (the pane was never actually killed and relaunched)", name, after)
 	}
 	return nil
 }
