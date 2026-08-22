@@ -45,3 +45,24 @@ Feature: Real agent session creation and resume through the TUI
     Then deck client "A" screen contains "Captured PATH:"
     And deck client "A" screen contains "advisory"
     When deck client "A" exits cleanly
+
+  Scenario: the launch audit records environment key names but never a value, across create and resume
+    # PRD requirement 10 / SPEC §6.4: the launch audit records the exact
+    # argv and the names of every applied environment variable -- never a
+    # value -- for every create and resume. This types a distinctive,
+    # secret-shaped value into the create modal's Env field so its presence
+    # or absence in the raw JSONL file is unambiguous either way.
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "audit env one" with permission profile "safe" and env "AUDIT_ENV_TOKEN=super-secret-do-not-log-8675309"
+    Then deck client "A" screen contains "audit env one"
+    And the audit log's most recent launch record for session "audit env one" names environment key "AUDIT_ENV_TOKEN"
+    And the audit log file never contains "super-secret-do-not-log-8675309"
+    And the audit log has 1 launch record for session "audit env one"
+    Then deck client "A" screen contains "resumable"
+    When deck client "A" presses r on session "audit env one"
+    Then deck client "A" screen contains "starting"
+    And the audit log has 2 launch records for session "audit env one"
+    And the audit log's most recent launch record for session "audit env one" names environment key "AUDIT_ENV_TOKEN"
+    And the audit log file never contains "super-secret-do-not-log-8675309"
+    When deck client "A" exits cleanly

@@ -39,6 +39,9 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database does not contain session "([^"]+)"$`, stateDatabaseDoesNotContainSession)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)"$`, clientCreatesAgentSessionWithProfile)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and message "([^"]+)"$`, clientCreatesAgentSessionWithProfileAndMessage)
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and env "([^"]+)"$`, clientCreatesAgentSessionWithProfileAndEnv)
+	sc.Step(`^the audit log's most recent launch record for session "([^"]+)" names environment key "([^"]+)"$`, mostRecentLaunchRecordHasEnvKey)
+	sc.Step(`^the audit log file never contains "([^"]+)"$`, auditLogFileNeverContains)
 	sc.Step(`^deck client "([^"]+)" presses r on session "([^"]+)"$`, clientPressesResumeOnNamedSession)
 	sc.Step(`^deck client "([^"]+)" is started with a slow reconcile interval$`, startNamedClientWithSlowReconcile)
 	sc.Step(`^the state database session "([^"]+)" has a non-empty conversation id$`, sessionHasNonEmptyConversationID)
@@ -179,6 +182,34 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 		if err := client.WaitForFrame(ctx, false, string(encoded)); err != nil {
 			return fmt.Errorf("type Launch args field with message %q: %w", message, err)
 		}
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// clientCreatesAgentSessionWithProfileAndEnv is clientCreatesAgentSessionWithProfile's
+// counterpart that also fills the Env field (createFieldRows field 5, two
+// tabs past Permission profile: 3 Permission profile, 4 Launch args, 5 Env)
+// with a comma-separated key=value entry before submitting. This is how a
+// launch record carrying a custom environment key gets onto the audit log
+// for a real create through the released TUI (task 019 / PRD requirement
+// 10) -- the create modal's Agent must be a real adapter kind, never
+// "shell", for the Env field to actually reach CreateAgent's launch path
+// (the "shell" option in this modal bypasses it entirely, per this
+// package's own standing gotcha).
+func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName, kind, name, profile, envText string) error {
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\t\t" + envText); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.WaitForFrame(ctx, false, envText); err != nil {
+		return fmt.Errorf("type Env field with %q: %w", envText, err)
 	}
 	if err := client.Send("\r"); err != nil {
 		return err
@@ -795,6 +826,103 @@ func auditHasLaunchRecordCountForSession(ctx context.Context, want int, name str
 	}
 	if len(records) != want {
 		return fmt.Errorf("audit log has %d launch records for session %q, want %d", len(records), name, want)
+	}
+	return nil
+}
+
+// launchRecordEnvKeysForSession returns the MOST RECENT launch record's
+// env_keys for the named session (task 019 / PRD requirement 10: the audit
+// log records the names of every applied environment variable, never a
+// value, for create and resume). It is deliberately built the same way
+// launchArgvRecordsForSession/mostRecentLaunchArgvForSession are: reading
+// only the released JSONL file and the store's own session id, never
+// internal/audit's Go types.
+func launchRecordEnvKeysForSession(h *ScenarioHarness, name string) ([]string, error) {
+	sessionID, err := sessionIDByName(h, name)
+	if err != nil {
+		return nil, err
+	}
+	records, err := readAudit(h)
+	if err != nil {
+		return nil, err
+	}
+	var keys []string
+	found := false
+	for _, record := range records {
+		var event, recordSessionID string
+		_ = json.Unmarshal(record["event"], &event)
+		_ = json.Unmarshal(record["session_id"], &recordSessionID)
+		if event != "launch" || recordSessionID != sessionID {
+			continue
+		}
+		var envKeys []string
+		if raw, ok := record["env_keys"]; ok {
+			if err := json.Unmarshal(raw, &envKeys); err != nil {
+				return nil, fmt.Errorf("parse launch env_keys for session %q: %w", name, err)
+			}
+		}
+		keys, found = envKeys, true
+	}
+	if !found {
+		return nil, fmt.Errorf("audit log has no launch record for session %q", name)
+	}
+	return keys, nil
+}
+
+// mostRecentLaunchRecordHasEnvKey polls up to 2s for the same reason
+// launchArgvForSessionContains does (its own comment explains the
+// cross-process ordering gap between this test process's file read and the
+// deck subprocess's audit.Launch write): it is used right after a
+// screen-based wait for "starting", which only proves the client's own
+// terminal grid updated, not that the audit JSONL write is yet visible to
+// this process.
+func mostRecentLaunchRecordHasEnvKey(ctx context.Context, name, key string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	var lastKeys []string
+	var lastErr error
+	for {
+		keys, keysErr := launchRecordEnvKeysForSession(h, name)
+		if keysErr == nil {
+			for _, candidate := range keys {
+				if candidate == key {
+					return nil
+				}
+			}
+		}
+		lastKeys, lastErr = keys, keysErr
+		if time.Now().After(deadline) {
+			if lastErr != nil {
+				return lastErr
+			}
+			return fmt.Errorf("most recent launch record's env_keys for session %q = %q, does not name %q", name, lastKeys, key)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// auditLogFileNeverContains reads $DECK_HOME/log/deck.jsonl's raw bytes
+// (never a parsed record, never internal/audit's Go types -- task 019's
+// literal "assertions read the file, not Go internals") and fails if
+// forbidden appears anywhere in it at all. Callers pass an environment
+// VALUE here, never a key name: this is the file-wide proof that no
+// environment value the audit log ever applies leaks into the one place
+// that is supposed to record only argv and key names (PRD requirement 10,
+// SPEC §6.4).
+func auditLogFileNeverContains(ctx context.Context, forbidden string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(filepath.Join(h.Home, "log", "deck.jsonl"))
+	if err != nil {
+		return fmt.Errorf("read audit log: %w", err)
+	}
+	if strings.Contains(string(data), forbidden) {
+		return fmt.Errorf("audit log unexpectedly contains %q", forbidden)
 	}
 	return nil
 }
