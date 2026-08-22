@@ -81,21 +81,30 @@ func TestSettingsCollapseTildeDisplaysPathUnderHome(t *testing.T) {
 
 // TestSettingsScopeLabelComesFromSchemaVerbatim proves every field's
 // rendered scope label is exactly one of the three §11.5 names, taken
-// straight off the schema Field, and that stale_after (global) never
+// straight off the schema Field, and that allow_yolo (global) never
 // claims restart-to-apply while [env] (restart-to-apply per §6.2) never
 // claims a live effect it does not have -- the "no field claims a live
 // effect it does not have" successCriteria, pinned by name.
+//
+// Uses allow_yolo, not stale_after, as the ScopeGlobal exemplar: task 005
+// (requirement 19, docs/reports/phase2b2-findings.md) moved stale_after
+// to ScopeRestartToApply after tracing its actual consumer
+// (cmd/deck/main.go's tuiReconcile closure never sees a refreshed
+// config.Settings), so it can no longer stand in for "a field that is
+// genuinely global." allow_yolo's consumers all read config.Settings
+// fresh from the running Model at call time, so it remains a true
+// ScopeGlobal exemplar.
 func TestSettingsScopeLabelComesFromSchemaVerbatim(t *testing.T) {
-	staleAfter, ok := config.FieldByFullKey("stale_after")
+	allowYolo, ok := config.FieldByFullKey("allow_yolo")
 	if !ok {
-		t.Fatal("schema has no stale_after field")
+		t.Fatal("schema has no allow_yolo field")
 	}
-	if staleAfter.Scope != config.ScopeGlobal {
-		t.Fatalf("stale_after scope = %q, want global", staleAfter.Scope)
+	if allowYolo.Scope != config.ScopeGlobal {
+		t.Fatalf("allow_yolo scope = %q, want global", allowYolo.Scope)
 	}
-	lines := settingsFieldDetailLines(staleAfter, 60, "", "", "")
+	lines := settingsFieldDetailLines(allowYolo, 60, "", "", "")
 	if !strings.Contains(lines[0], "Scope: global") {
-		t.Errorf("stale_after detail line = %q, want it to state Scope: global", lines[0])
+		t.Errorf("allow_yolo detail line = %q, want it to state Scope: global", lines[0])
 	}
 
 	env, ok := config.FieldByFullKey("[env]")

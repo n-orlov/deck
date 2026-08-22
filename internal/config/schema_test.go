@@ -71,15 +71,51 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 // TestSchemaScopes pins the scope each field carries, so a future change
 // to how a field's edit takes effect is a deliberate edit here, not a
 // silent drift discovered by a downstream test.
+//
+// requirement 19 (docs/reports/phase2b2-findings.md, task 005): these
+// eight values were previously all ScopeGlobal except [env], which the
+// independent review flagged as a lie for the seven flat keys -- nothing
+// in the tree refreshed the running config.Settings on save, so none of
+// them actually took effect live. This pin now records a decision reached
+// by tracing each field's actual (or, for two fields, not-yet-built)
+// consumer -- see the per-field comment beside each Scope in schema.go for
+// the code path:
+//   - allow_yolo, ui.ascii: every consumer reads config.Settings fresh at
+//     call/render time from the running Model's own copy, so refreshing it
+//     on save (task 006) is sufficient to make the very next keystroke/
+//     frame live.
+//   - ui.theme: already proven live today via the separate `t` picker
+//     (internal/tui/theme_picker.go), which writes config.toml and sets
+//     m.settings.Theme in the same keystroke; task 006 makes the general
+//     settings takeover agree instead of behaving differently for the
+//     same key depending on which editor changed it.
+//   - ui.mouse: the tea.MouseMsg gate in internal/tui/tui.go already
+//     re-checks m.settings.Mouse live on every message (independent of
+//     task 006), and bubbletea exposes runtime commands
+//     (EnableMouseCellMotion/DisableMouse) task 006 can return to close
+//     the enable-at-the-terminal-level half too.
+//   - stale_after: the sole consumer is cmd/deck/main.go's tuiReconcile
+//     closure, which reads a `settings` local captured once before the
+//     Model exists and has no path back into a refreshed
+//     config.Settings -- restart-to-apply, moved off ScopeGlobal by this
+//     task.
+//   - capture_min_interval, ui.recent_cwd_limit: neither field has any
+//     consumer anywhere in this tree yet (their SPEC sections, §9.4 and
+//     §11.7, describe features this phase has not built) -- there is
+//     nothing a running client could apply live even in principle today,
+//     so both are restart-to-apply as the honest, conservative label
+//     pending that consumer, moved off ScopeGlobal by this task.
+//   - [env]: unchanged, restart-to-apply per §6.2 (already correct, and
+//     already the subject of its own SPEC citation in schema.go).
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
 		"allow_yolo":           ScopeGlobal,
-		"stale_after":          ScopeGlobal,
-		"capture_min_interval": ScopeGlobal,
+		"stale_after":          ScopeRestartToApply,
+		"capture_min_interval": ScopeRestartToApply,
 		"ui.theme":             ScopeGlobal,
 		"ui.ascii":             ScopeGlobal,
 		"ui.mouse":             ScopeGlobal,
-		"ui.recent_cwd_limit":  ScopeGlobal,
+		"ui.recent_cwd_limit":  ScopeRestartToApply,
 		"[env]":                ScopeRestartToApply,
 	}
 	for _, field := range Schema {
