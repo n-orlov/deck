@@ -1363,3 +1363,61 @@ scenario), and the `clientOpensDetailForSession` fix in
 evidence above): the standalone minimal-repro test file, the temporary
 `tea.WithFilter` message-logging hook in `cmd/deck/main.go`, and a
 temporary `DECK_GODOG_PATHS` scoping override in `features/godog_test.go`.
+
+## Task 005 — deciding and recording requirement 19's per-field apply semantics
+
+The independent review's blocking finding on requirement 19 was: "only
+`[env]` is labelled restart-to-apply; the seven flat keys are labelled
+`global` but a ctrl+s never refreshes the running `config.Settings`, so
+none takes effect live; the report has no per-field statement." Closing
+that requires two things this task does the first of: (1) decide, field by
+field, whether a save *should* take effect live or only on restart, tracing
+the actual (or, for two fields, not-yet-built) consumer rather than
+guessing from the field's section; (2) make `internal/config/schema.go`'s
+`Scope` say that decision. Task 006 makes the code match the label for the
+fields decided live; task 007 adds the mechanical test tying the two
+together permanently.
+
+**The decision, traced against this tree (not the section a key lives
+in):**
+
+| field | decision | why (code path) |
+|---|---|---|
+| `allow_yolo` | live | Every read (`internal/tui/tui.go`'s `createProfileOptionsFor`, the profile-switch/create/help call sites) is `m.settings.AllowYolo`, checked fresh from the running `Model`'s own settings on each keystroke. |
+| `stale_after` | **restart-to-apply** (was `global`) | Sole consumer is `cmd/deck/main.go`'s `tuiReconcile` closure, `sessions.ReconcileWithProbes(ctx, settings.StaleAfter)`, closing over `run()`'s own local `settings` captured once before the `Model` is built. The `Model`'s `config.Settings` is a separate copy that closure never reads, and the `reconciler func(context.Context) error` signature it holds has no parameter to pass a current value back through. |
+| `capture_min_interval` | **restart-to-apply** (was `global`) | `grep -rn CaptureMinInterval` outside config/settings plumbing finds nothing in `internal/tui`, `internal/service` or `cmd/deck` — §9.4's opportunistic-capture throttle has no consumer built in this phase at all. Restart-to-apply is the honest, conservative label: there is nothing a running client could apply live even in principle today. |
+| `ui.theme` | live | Already proven live today by a *different* editor: `internal/tui/theme_picker.go`'s `t` picker writes `config.toml` and sets `m.settings.Theme = candidate` in the same keystroke, and `theme_color.go`'s `activeTheme()` reads `m.settings.Theme` every render. The general `,` settings takeover currently disagrees (it only writes the file) — task 006 unifies the two so the same key does not have two behaviours depending on which editor changed it. |
+| `ui.ascii` | live | Every glyph choice reads `m.settings.ASCII` directly at render time (`internal/tui/panel.go`, `tui.go`'s `helpText` and other `View()`-time sites) against the running `Model`'s own settings. |
+| `ui.mouse` | live | `internal/tui/tui.go`'s `tea.MouseMsg` branch already re-checks `m.settings.Mouse` fresh on every incoming mouse report, independent of task 006 — turning the field off is already live today at the "did we act on it" layer once `config.Settings` is refreshed on save. Turning it on additionally needs the terminal told to start emitting SGR reports, today only `tea.WithMouseCellMotion()` at `tea.NewProgram(...).Run()`; bubbletea's `screen.go` also exposes this as a runtime command (`EnableMouseCellMotion`/`DisableMouse`, and the matching `*Program` methods), which task 006 wires so both directions are genuinely live, not just the off-direction the existing gate already covers. |
+| `ui.recent_cwd_limit` | **restart-to-apply** (was `global`) | Same situation as `capture_min_interval`: `grep -rn RecentCwdLimit` outside config/settings plumbing finds nothing in `internal/tui`, `internal/service` or `cmd/deck` — §11.7's recent-cwd picker has no consumer built in this phase. |
+| `[env]` | restart-to-apply (unchanged) | Already correctly labelled per §6.2 (tmux env changes reach only new processes); `docs/reports/phase2b2-findings.md`'s "Tasks 003/004" section above already traces this in more depth. |
+
+**Verification that the label change is real, not cosmetic:**
+
+```
+$ ci/run.sh go test ./internal/config/... ./internal/tui/...
+ok  	github.com/n-orlov/deck/internal/config	0.027s
+ok  	github.com/n-orlov/deck/internal/tui	0.169s
+$ ci/run.sh go build ./... && ci/run.sh go vet ./...
+(no output — both exit 0)
+```
+
+`internal/config/schema_test.go`'s `TestSchemaScopes` now pins the table
+above (its doc comment restates the reasoning inline so the pin and this
+finding cannot drift apart silently). `internal/tui/settings_task015_test.go`'s
+`TestSettingsScopeLabelComesFromSchemaVerbatim` used `stale_after` as its
+`ScopeGlobal` exemplar before this task; since `stale_after` no longer
+qualifies, that test now uses `allow_yolo` instead (a field this task
+traced as genuinely still live) rather than being weakened or deleted —
+its assertion shape (a field's Scope renders verbatim in the detail line)
+is unchanged.
+
+**What this task does not do.** It does not yet make a live field's
+`ctrl+s` actually refresh `m.settings` (task 006), does not add the
+mechanical parity test enforcing label-vs-behaviour agreement (task 007),
+and does not put restart-to-apply copy on screen for the three fields now
+carrying that label for the first time (task 008). Until task 006 lands,
+`allow_yolo`/`ui.ascii`/`ui.mouse`/`ui.theme`'s `Scope: global` label is a
+*decision*, not yet an observed behaviour — the same gap the review named,
+now narrowed to exactly the three tasks that close it, each independently
+verifiable.
