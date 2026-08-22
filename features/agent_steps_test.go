@@ -896,6 +896,24 @@ func clientRowDoesNotContain(ctx context.Context, clientName, sessionName, unwan
 // clientOpensDetailForSession selects the named row (reusing
 // clientPressesResumeOnNamedSession's marker-matching down-arrow search) and
 // then presses "i" (internal/tui's detail-toggle key) instead of "r".
+//
+// It waits for the detail view's own header ("<name> detail", from
+// internal/tui's detailView) to actually render before returning, rather
+// than returning as soon as the "i" byte is written. Without that wait, a
+// caller that immediately sends another key (as clientExitsCleanly's "q"
+// does when no intervening assertion forces a genuinely fresh render, e.g.
+// features/crash.feature's SIGKILL scenario when "crash final line" is
+// already visible in the preview pane before "i" is even sent) can write
+// that key before deck's input loop has drained the "i" byte. bubbletea's
+// own reader coalesces same-buffer printable runes into a single KeyMsg
+// (key.go's detectOneMsg, "longest sequence of runes"), and deck's per-key
+// switch in internal/tui's Update silently ignores a msg whose String() is
+// "iq" -- matching neither the "i" nor the "q" case -- so tea.Quit never
+// fires and the client hangs at teardown (task 014's diagnosis; see
+// docs/reports/phase2b2-findings.md). Waiting for the real post-"i" render
+// here guarantees deck's reader has already drained and processed the "i"
+// byte by the time this step returns, so a following "q" cannot land in
+// the same read.
 func clientOpensDetailForSession(ctx context.Context, clientName, want string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -908,7 +926,15 @@ func clientOpensDetailForSession(ctx context.Context, clientName, want string) e
 	marker := "> " + want
 	for attempt := 0; attempt < 50; attempt++ {
 		if strings.Contains(client.Frame(false), marker) {
-			return client.Send("i")
+			if err := client.Send("i"); err != nil {
+				return err
+			}
+			wait, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			if err := client.WaitForFrame(wait, false, want+" detail"); err != nil {
+				return fmt.Errorf("deck client %q detail view for %q never rendered after \"i\": %w", clientName, want, err)
+			}
+			return nil
 		}
 		if err := client.Send("\x1b[B"); err != nil { // down arrow
 			return err

@@ -1195,3 +1195,100 @@ example byte-for-byte does not ship a theme that would fail
 `TestBuiltinContrastFloor`'s equivalent check if it were a built-in?
 This finding does not change `SPEC.md` itself (read-only for this
 pass) — it records the tension for the operator to resolve.
+
+## Task 014 — the SIGKILL scenario's after-scenario teardown hang is a harness-side coalesced-keystroke race, not a product defect
+
+**Symptom, reproduced.** `TestFeatures/SIGKILL_captures_and_sanitizes_the_agent_pane_without_relaunching`
+occasionally failed its `AfterScenario` hook with `deck client "A" did not
+exit cleanly: hung deck client killed after 5s`. Running the scenario 25
+times in one `go test -count=25` process (`ci/run.sh`, `deck-ci:local`)
+against the pre-fix code reproduced it twice (`FAIL` at counts 6 and 14 of
+25, both with `hung deck client killed after 5s`) — an ~8% rate, matching
+the "roughly one in ten to one in twenty runs" this task was filed against.
+
+**What the client was actually blocked on.** `features/pty_driver_test.go`'s
+`ScreenDriver.Stop` was changed (permanently kept, not scratch) to signal
+`SIGQUIT` before the final `SIGKILL` on timeout: Go's runtime default
+`SIGQUIT` handler dumps every goroutine's stack to the process's own
+stderr, which the driver already captures on the same pty as stdout. Every
+captured dump — both from the real scenario and from a 60-iteration
+standalone minimal repro (`go test`, a scratch file since deleted) that
+sends two back-to-back keystrokes with no delay to a freshly-started
+`deck` binary — showed the *same* idle state: `goroutine 1` parked in
+`bubbletea.(*Program).eventLoop`'s `select` (`tea.go:384`, waiting on
+`p.msgs`), and the input-reader goroutine blocked in
+`github.com/muesli/cancelreader.(*epollCancelReader).wait`
+(`cancelreader_linux.go:134`, an `EPOLL_WAIT` syscall) — i.e., deck's own
+event loop and reader were both idle, *not* deadlocked inside product code,
+waiting for a message that never arrived. No goroutine was stuck in
+`Update`, `View`, tmux/SQLite I/O, or any deck package.
+
+**The message that never arrived, and why.** A temporary `tea.WithFilter`
+hook added to `cmd/deck/main.go` (env-gated, logged every `tea.Msg` to a
+file; reverted after use, not kept) proved the missing piece: sending `"i"`
+immediately followed by `"q"` with no real delay between the two writes
+produced exactly one message —
+`tea.KeyMsg{Type:-1, Runes:[]int32{105, 113}, Alt:false, Paste:false}` (a
+single `KeyRunes` event carrying both runes) — never two separate `KeyMsg`s
+for `"i"` and `"q"`. This is documented, deliberate bubbletea behaviour
+(`key.go`'s `detectOneMsg`: "Find the longest sequence of runes that are
+not control characters from this point... we report the bunch of them as a
+single KeyRunes... event", explicitly to support IMEs/fast input landing in
+one `read(2)`). `internal/tui/tui.go`'s `Update` switches on
+`msg.String()` per individual key (`case "i":`, `case "q":`); a combined
+`KeyMsg` whose `String()` is `"iq"` matches neither case, so both the
+detail-view toggle and `tea.Quit` are silently dropped — the client never
+sends itself a `QuitMsg`, and the harness's 5s teardown wait times out.
+A minimal, unrelated-to-crash.feature repro (`"?"` then `"q"`, no delay, on
+a plain freshly-started client with zero sessions) reproduced this same
+coalesced-`KeyMsg`-drops-both-keys failure 60/60 times, and a single `"q"`
+alone or the same two keys separated by a 5ms sleep never reproduced it
+(0/20) — isolating the cause to same-`read()` coalescing, not anything
+state-specific to the detail view or crash handling.
+
+**Why this is a harness race, not a product defect.** Two real keystrokes
+typed by a human are separated by tens of milliseconds at minimum — far
+more than enough for deck's reader to drain and dispatch the first one
+before the second byte reaches the kernel's tty buffer, so this coalescing
+requires an artificially zero-delay double write, which only a test harness
+(or a bulk paste, already handled separately via bracketed-paste) produces.
+`features/crash.feature`'s SIGKILL scenario has exactly that shape:
+`deck client "A" opens detail for session "crashed claude"` sends `"i"`
+and returns immediately; the very next step,
+`deck client "A" screen contains "crash final line"`, calls
+`ScreenDriver.WaitForFrame`, which checks the *current* frame before
+waiting for a new one — and "crash final line" (the crash-tail fixture's
+last line, `features/crash_test.go`) is already visible in the session's
+preview pane from the earlier crash-capture steps, before `"i"` is ever
+sent. So that assertion returns instantly without forcing a fresh render,
+leaving zero real delay before the next step, `deck client "A" exits
+cleanly`, writes `"q"`. Under CI/sibling-container scheduling jitter the
+two writes occasionally land in the same `read(2)` on deck's side. Notably,
+`features/assertions_test.go`'s `sendClientKeys` already carries a comment
+describing this exact "pty write burst... can coalesce/drop all but the
+first byte" gotcha and already pads itself with a 25ms sleep after every
+`Send`; `clientOpensDetailForSession` (`features/agent_steps_test.go`) was
+the one caller of `Send` that predates that convention and never adopted
+it.
+
+**Fix.** `clientOpensDetailForSession` now waits (`ScreenDriver.WaitForFrame`,
+polled to a 5s deadline — not a fixed sleep, and never a raised 5s teardown
+timeout) for the detail view's own header (`"<name> detail"`, from
+`internal/tui/tui.go`'s `detailView`) to actually render before returning,
+rather than returning as soon as the `"i"` byte is written. This guarantees
+deck's reader has drained and dispatched the `"i"` keystroke — proven by
+its visible effect — before any later step's `Send` can race it into the
+same `read(2)`. Verified: `go test -count=25` against the unfixed harness
+reproduced the hang twice (8%); `go test -count=40` against the fixed
+harness reproduced it zero times, and the full suite
+(`go test ./... -count=1`) passes.
+
+**Kept vs. reverted.** Kept permanently: `ScreenDriver.Stop`'s
+SIGQUIT-before-SIGKILL diagnostic and its `sent`/`sentLog` input-timeline
+diagnostic in `features/pty_driver_test.go` (both general-purpose
+"what was the client blocked on" tooling, not specific to this one
+scenario), and the `clientOpensDetailForSession` fix in
+`features/agent_steps_test.go`. Reverted (scratch, used only to gather the
+evidence above): the standalone minimal-repro test file, the temporary
+`tea.WithFilter` message-logging hook in `cmd/deck/main.go`, and a
+temporary `DECK_GODOG_PATHS` scoping override in `features/godog_test.go`.
