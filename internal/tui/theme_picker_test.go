@@ -282,8 +282,10 @@ func TestThemePickerDegenerateCandidateLeavesActiveThemeUnchanged(t *testing.T) 
 
 // TestThemePickerMouseIgnoredWhileOpen proves SPEC §11.4/§11.8: no dialog
 // action is reachable by mouse alone, and the picker is no exception --
-// mirroring the identical guard already proven for creating/profileSwitching/
-// pinning/detail (mouse_test.go).
+// mirroring the identical guard TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside
+// (mouse_test.go, requirement 11, task 007) proves for help/creating/
+// detail/pinning/profileSwitching at the border, body and outside of each
+// dialog's own box, not merely the single top-left press this test drives.
 func TestThemePickerMouseIgnoredWhileOpen(t *testing.T) {
 	m, _ := themePickerTestModel(t)
 	m.settings.Mouse = true

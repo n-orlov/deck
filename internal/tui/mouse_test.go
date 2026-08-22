@@ -481,3 +481,155 @@ func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
 		})
 	}
 }
+
+// TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside proves requirement 11
+// (SPEC §11.4/§11.8, review finding on req 11 at 65e623e) for every one of
+// the five dialogs the guard at the top of the tea.MouseMsg case names --
+// create (m.creating), detail (m.detail), pin (m.pinning), profile
+// (m.profileSwitching) and help (m.help) -- not just create and help as the
+// pre-existing TestMouseIgnoredWhileOverlayOpen and dialog_contract_test.go
+// coverage did. Each dialog is rendered directly by View() (framedDialog
+// draws the box at (0,0) with no separate placement step), so "border",
+// "body" and "outside" are real coordinates against that box; the body
+// point is deliberately the same (x, y) findRow resolves for the second
+// session's row in the hidden main view underneath, so a guard regression
+// is caught the same way task 001/002's settings-takeover test catches it:
+// a bypassed guard would fall through to m.handleMouse and change
+// m.selected from 0 to 1, or (on a second press, i.e. a double click) call
+// attach -- this is verified by literally deleting the five flags from the
+// guard's condition and re-running (RED output below, restored for GREEN).
+// None of the five dialogs render an actual clickable button (they are
+// keyboard-only text dialogs, per createView/pinView/profileSwitchView/
+// detailView/helpText), so beyond selected/cmd/attach the dialog's own
+// state is asserted via View() being byte-for-byte identical before and
+// after, which subsumes every dialog-private field createView/pinView/
+// profileSwitchView read to render.
+//
+// RED (guard's five flags replaced with `false &&` on b1e2c05, before this
+// task's fix restored them):
+//
+//	--- FAIL: TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside (0.00s)
+//	    --- FAIL: .../help/body (0.00s)
+//	        mouse_test.go:605: help body press at (17,5) changed selected from 0 to 1
+//	    --- FAIL: .../create/body (0.00s)
+//	        mouse_test.go:605: create body press at (17,5) changed selected from 0 to 1
+//	    --- FAIL: .../detail/body (0.00s)
+//	        mouse_test.go:605: detail body press at (17,5) changed selected from 0 to 1
+//	    --- FAIL: .../pin/body (0.00s)
+//	        mouse_test.go:605: pin body press at (17,5) changed selected from 0 to 1
+//	    --- FAIL: .../profile/body (0.00s)
+//	        mouse_test.go:605: profile body press at (17,5) changed selected from 0 to 1
+//	FAIL
+//
+// GREEN is the real, captured `ci/run.sh go test ./internal/tui/... -run
+// Mouse -v` output quoted in this task's commit message.
+func TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
+	baseSessions := func() []store.Session {
+		return []store.Session{
+			{ID: "a1", Name: "a1", Agent: "claude", CWD: "/work/infra", Status: "waiting",
+				StatusReason: "needs input", PermissionProfile: "safe", ConversationID: "conv-1", ResumeState: "auto"},
+			{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+		}
+	}
+
+	cases := []struct {
+		name  string
+		setup func(m *Model)
+		open  func(Model) bool
+	}{
+		{name: "help", setup: func(m *Model) { m.help = true }, open: func(m Model) bool { return m.help }},
+		{
+			name: "create",
+			setup: func(m *Model) {
+				m.creating = true
+				m.createName = "my session"
+				m.createCWD = "/work/infra"
+				m.createAgent = "shell"
+				m.createField = 0
+			},
+			open: func(m Model) bool { return m.creating },
+		},
+		{name: "detail", setup: func(m *Model) { m.detail = true }, open: func(m Model) bool { return m.detail }},
+		{
+			name:  "pin",
+			setup: func(m *Model) { m.pinning = true; m.pinValue = "auto" },
+			open:  func(m Model) bool { return m.pinning },
+		},
+		{
+			name:  "profile",
+			setup: func(m *Model) { m.profileSwitching = true; m.profileSwitchValue = "safe" },
+			open:  func(m Model) bool { return m.profileSwitching },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			newModel := func() (Model, *int) {
+				attachCalls := 0
+				m := mouseTestModel(baseSessions())
+				m.attach = func(context.Context, string) (*exec.Cmd, error) {
+					attachCalls++
+					return exec.Command("true"), nil
+				}
+				m.width, m.height = 100, 30
+				m.selected = 0
+				tc.setup(&m)
+				if !tc.open(m) {
+					t.Fatalf("setup did not open the %s dialog", tc.name)
+				}
+				return m, &attachCalls
+			}
+			m0, _ := newModel()
+			boxWidth := m0.dialogWidth()
+			bodyX, bodyY := findRow(t, m0, 1)
+
+			positions := []struct {
+				where string
+				x, y  int
+			}{
+				{"border", 0, 0},
+				{"body", bodyX, bodyY},
+				{"outside", boxWidth + 5, 0},
+			}
+			for _, pos := range positions {
+				t.Run(pos.where, func(t *testing.T) {
+					m, attachCalls := newModel()
+					beforeView := m.View()
+
+					updated, cmd := m.Update(press(pos.x, pos.y))
+					got := updated.(Model)
+					if cmd != nil {
+						t.Fatalf("%s %s press at (%d,%d) returned a non-nil cmd", tc.name, pos.where, pos.x, pos.y)
+					}
+					if got.selected != 0 {
+						t.Fatalf("%s %s press at (%d,%d) changed selected from 0 to %d", tc.name, pos.where, pos.x, pos.y, got.selected)
+					}
+					if !tc.open(got) {
+						t.Fatalf("%s %s press at (%d,%d) closed the dialog", tc.name, pos.where, pos.x, pos.y)
+					}
+					if afterView := got.View(); afterView != beforeView {
+						t.Fatalf("%s %s press at (%d,%d) changed the dialog's rendered view (own state), before:\n%s\nafter:\n%s", tc.name, pos.where, pos.x, pos.y, beforeView, afterView)
+					}
+
+					// A second press right after (a double click) must be
+					// equally inert -- this is what would attach on the hidden
+					// sidebar row if the guard were bypassed.
+					updated2, cmd2 := got.Update(press(pos.x, pos.y))
+					got2 := updated2.(Model)
+					if cmd2 != nil {
+						t.Fatalf("%s %s second press (double click) at (%d,%d) returned a non-nil cmd", tc.name, pos.where, pos.x, pos.y)
+					}
+					if got2.selected != 0 || !tc.open(got2) {
+						t.Fatalf("%s %s double click at (%d,%d) changed selected/open state", tc.name, pos.where, pos.x, pos.y)
+					}
+					if afterView := got2.View(); afterView != beforeView {
+						t.Fatalf("%s %s double click at (%d,%d) changed the dialog's rendered view (own state)", tc.name, pos.where, pos.x, pos.y)
+					}
+					if *attachCalls != 0 {
+						t.Fatalf("%s %s double click at (%d,%d) attached %d time(s), want 0", tc.name, pos.where, pos.x, pos.y, *attachCalls)
+					}
+				})
+			}
+		})
+	}
+}
