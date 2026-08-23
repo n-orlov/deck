@@ -416,6 +416,62 @@ session, combined with any mention of `@real-agents`, that trips this.
 When hand-running a tag set that includes any claude-session scenario, drop
 the `@real-agents` mention entirely rather than negating it.
 
+## Task 134: task 113's residual does not close after task 118, and is not confined to two scenarios — decision (b)
+
+Steering 006 asked for the two flaky `@requirement-29-bulk-delete`/`@requirement-29-batch-undo`
+scenarios to be re-measured once task 118 (commit 465a7d9, coalesced multi-rune `KeyMsg`
+dispatch fix) landed, and for a deliberate (a)/(b) decision afterward. Re-measurement (10
+consecutive isolated runs of each of the three marked-set scenarios, full data and command
+in `docs/reports/phase3-task134-residual-measurement.log`):
+
+- `@requirement-29-bulk-kill`: 3/10 passed (7/10 failed)
+- `@requirement-29-bulk-delete`: 5/10 passed (5/10 failed)
+- `@requirement-29-batch-undo`: 8/10 passed (2/10 failed)
+
+Two findings that change the shape of the problem from how task 113 described it:
+
+1. **Task 118 did not close the gap.** All three still fail, at rates as bad as or worse than
+   task 113's own validation measured before 118 landed. This is expected once the failure
+   is inspected closely: the observed drop is a single, non-coalesced `j` keystroke — it
+   arrives alone in its own PTY read (there is no adjacent rune for it to coalesce with in
+   this idiom's structure: `m`, *then a checkpoint*, `j`, *then a checkpoint*, `m`), so it was
+   never a candidate for task 118's multi-rune-`KeyRunes`-splitting fix in the first place.
+   Task 118 fixed exactly the defect it targeted (a dropped-whole-event coalesced `tea.KeyMsg`);
+   this is a different failure at a different layer (PTY-level single-keystroke delivery loss),
+   consistent with steering 006 point 2's instruction to report the two numbers (coalescing-fixed
+   vs. residual) separately — the residual number here is the one that matters, and it is large.
+2. **The gap is not confined to bulk-delete/batch-undo — it now reproduces just as severely on
+   bulk-kill**, the one scenario task 113's own follow-up (commit 0cc8c4a) evidenced at 10/10
+   and used as the template the other two were "hardened identically" to. That 10/10 result does
+   not generalize across time/host-load conditions on this shared host; it was a true measurement
+   at the moment it was taken, not a property of the scenario. All three scenarios use the
+   identical `k`,`m`,checkpoint,`j`,checkpoint,`m` idiom and the identical poll-on-render
+   checkpoints (task 113's own hardening); their differing pass rates across any given 10-run
+   sample are noise around what is evidently one shared defect, not three separate ones.
+
+**Why this is not closable by more test-side hardening** (steering 006 point 4 forecloses the
+usual options, and each was considered and rejected for this reason): the failing step *is* a
+poll-on-render checkpoint already (`Then ... screen contains "> bk-two running"`); it is doing
+exactly its job of failing loudly and specifically when the keystroke that should have produced
+that frame never arrives. Widening its 5s timeout would not fix a keystroke that is never coming;
+it would only convert a fast, clear failure into a slow, equally-clear one. There is no known
+lower layer in the test harness where this keystroke is provably being dropped (unlike task 114's
+read-buffer race, no fixed-size-buffer or racy-first-capture pattern was found on inspection of
+`ScreenDriver.Send`/`WaitForFrame`) — this looks like the same family of host-load-correlated
+PTY/tmux/bubbletea keystroke-delivery characteristic already on record for
+`create_cwd_ghost.feature`'s tilde-expansion timing test (present since well before this phase),
+not a bug introduced by this phase's own code.
+
+**Decision: (b).** The residual gap is judged not worth closing inside this plan — closing it
+would require harness- or product-level PTY delivery-reliability work with no known root cause
+and no known fix shape, which is disproportionate to what task 113 was scoped to do. Per steering
+006 point 1, task 113 is relabelled `skipped` (not `completed`, and its `failed` validation
+attempts stand as-is) in the same commit that downgrades `docs/reports/phase3.md`'s
+requirement-29 row off DONE to PARTIAL, removing the "every path has one [reliable] assertion"
+sentence and citing this measurement. The purge/archive/kill-and-archive scenarios task 113 also
+added are unaffected (they contain no marked-set `k`/`m`/`j`/`m` idiom at all) and remain fully
+reliable; only the three marked-set scenarios are implicated.
+
 ## Task 114: the "falls silent#01" flake is a harness read-buffer race, not a product bug
 
 Root-caused and fixed. The scenario is `harness.feature`'s

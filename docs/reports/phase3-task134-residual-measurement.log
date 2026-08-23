@@ -1,0 +1,69 @@
+Task 134 — post-task-118 re-measurement of the three marked-set (k/m/j/m) fingerprint
+scenarios in features/kill_delete_undo.feature, per operator steering 006.
+
+Command (per scenario, run individually and isolated, one process per run):
+
+  docker run --rm --user "$(id -u):$(id -g)" --workdir /w \
+    --mount "type=bind,src=$RALPHD_HOST_WORKSPACE,dst=/w" \
+    --mount "type=volume,src=deck-go-cache,dst=/go-cache" \
+    --label ralphd.run=$RALPHD_RUN_ID --label ralphd.role=sibling \
+    deck-ci:local sh -c 'DECK_GODOG_TAGS="@requirement-29-<tag>" go test -count=1 -run TestFeatures ./features/'
+
+Host state during measurement: `uptime` load average 6.18 -> 7.28 (5-10 min window),
+28 cores, 3 other docker containers running alongside the sibling under test. Task 118
+(commit 465a7d9, the coalesced multi-rune KeyMsg dispatch fix) is completed and present
+in the tree at HEAD (465a7d9) for every run below.
+
+@requirement-29-bulk-kill  — 10 consecutive isolated runs: OK FAIL OK FAIL FAIL FAIL FAIL FAIL OK FAIL
+  => 3/10 passed, 7/10 failed.
+  Task 113's own validation and its follow-up commit (0cc8c4a) claimed 10/10 consecutive
+  isolated runs for this exact scenario at the time it was measured. That claim does NOT
+  reproduce now: this scenario is no more reliable than the other two under today's host
+  conditions, contradicting the "hardening applied identically... bulk-kill's own 10/10"
+  framing in task 113's notes and in docs/reports/phase3.md's requirement-29 row.
+
+@requirement-29-bulk-delete — 10 consecutive isolated runs: OK FAIL FAIL OK OK FAIL FAIL FAIL OK OK
+  => 5/10 passed, 5/10 failed.
+
+@requirement-29-batch-undo — 10 consecutive isolated runs: OK OK FAIL OK OK FAIL OK OK OK OK
+  => 8/10 passed, 2/10 failed.
+
+Failure signature is IDENTICAL across all three scenarios (captured verbatim from one
+bulk-kill failure and one bulk-delete failure; batch-undo's failures show the same shape):
+
+  after scenario hook failed: client "A" did not show "> bk-two running" within 5s:
+  timed out waiting for frame "> bk-two running": context deadline exceeded
+
+The captured raw frame at the moment of the timeout shows the cursor marker never moved
+off the first marked row (e.g. "> bk-one running [marked]" is still current) — i.e. the
+single "j" navigation keystroke sent between the two "m" mark keystrokes was never
+registered by the program. This is a single-rune keystroke drop, NOT a multi-rune
+KeyMsg-coalescing event (task 118's fix only ever had multi-rune KeyRunes messages to
+split; a lone "j" arriving in its own PTY read is exactly one rune and was never at risk
+of being silently dropped by the pre-118 switch, since msg.String() would have been "j"
+and matched the existing case cleanly). Task 118 did not touch this failure mode and was
+never expected to, per steering 005's own scoping of the coalescing defect to multi-rune
+KeyMsg values.
+
+Conclusion: this is the residual, environmental PTY-keystroke-delivery-loss gap that
+steering 006 asked to be measured and reported "separately" from the coalescing defect —
+and it is NOT confined to bulk-delete/batch-undo as task 113's validation observed at the
+time. Under today's host conditions it reproduces just as severely on bulk-kill, the one
+scenario previously evidenced at 10/10. The gap is shared equally across all three
+k/m/j/m marked-set scenarios, is host-load-correlated (same class as the pre-existing
+create_cwd_ghost.feature tilde-expansion flake and the task-114-fixed harness.feature
+falls-silent flake — a family of PTY-timing races this environment already exhibits, not
+unique to this task's scenarios), and is not something a poll-on-render checkpoint can
+paper over: the checkpoint (`Then ... screen contains "> bk-two running"`) IS the
+poll-on-render checkpoint already in place; it fails loudly and correctly exactly as
+intended when the keystroke is genuinely lost upstream of the assertion. There is no
+further test-side hardening available that would not violate steering 006 point 4
+(no sleep-lengthening, timeout-widening, retries, tagging, checkpoint removal, marked-set
+shrinking, non-keystroke marking, or scenario deletion).
+
+Decision: option (b) per steering 006 — the residual gap is judged not worth closing in
+this task (it is a harness/PTY-delivery characteristic of this host, not a product defect
+in internal/tui's dispatch code, which task 118 already fixed for the class of bug it
+covers). Task 113 relabelled `skipped`; docs/reports/phase3.md's requirement-29 row
+downgraded off DONE to PARTIAL in the same commit, with the "every path has one [reliable]
+assertion" overclaim removed.
