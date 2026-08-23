@@ -63,12 +63,13 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"A archive the selected session", "kill and archive", "archived_at is a flag",
 		"m toggle a mark", "survives a re-sort or re-group", "ONE u", "restores the entire batch",
 		"i toggle detail view", "r inside it renames", "display name only", "deck_<slug>", "never renamed",
+		"E open/close the event log", "every recorded event across every session", "newest first",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help view missing %q", want)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "send message", "event log", "filter list", "snooze", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "send message", "filter list", "snooze", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("help advertises unavailable action %q:\n%s", unavailable, help)
 		}

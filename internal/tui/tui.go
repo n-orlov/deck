@@ -287,6 +287,15 @@ type Model struct {
 	// across a close/reopen of the dialog.
 	envReveal     bool
 	setSessionEnv func(context.Context, string, string, string) (store.Session, error)
+	// eventLogOpen is task 124's `E` event log (SPEC §12/requirement 32,
+	// I-9): a read-only, newest-first listing of store.Event rows across
+	// every session, each payload run through maskEventPayload -- the same
+	// task 010 isSecretShapedKey/maskedSecretPlaceholder predicate the `e`
+	// env editor uses -- so a payload that happens to carry a secret-shaped
+	// key's value is never shown in the clear here either. There is
+	// nothing to submit or cycle (like detailView/helpView); Esc is its
+	// only interaction.
+	eventLogOpen bool
 	// settingsOpen is task 013's `,` full-screen takeover (SPEC §11.5): a
 	// category list and the selected category's field list, both walking
 	// config.Schema rather than a hand-written field set. It is not a
@@ -1479,6 +1488,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.detail {
 			return m.updateDetailView(msg)
 		}
+		if m.eventLogOpen {
+			return m.updateEventLog(msg)
+		}
 		// pendingDelete intercepts the very next key after a lone `d`
 		// (SPEC's dd chord): a second `d` opens the confirm dialog; every
 		// other key -- Esc included -- clears the pending indicator and is
@@ -1832,6 +1844,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.envEditPrefilled = false
 				m.envReveal = false
 			}
+		case "E":
+			// SPEC §12/requirement 32, task 124: unlike `e`, this is global
+			// -- not gated on a selected session -- since the event log
+			// lists every session's events, not one row's own environment.
+			if !m.help {
+				m.eventLogOpen = true
+			}
 		case " ":
 			// SPEC requirements 31, 32: move to the next session needing
 			// attention, wrapping, via the one shared NeedsAttention answer
@@ -1918,7 +1937,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.eventLogOpen {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -2056,6 +2075,9 @@ func (m Model) View() string {
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
+	}
+	if m.eventLogOpen {
+		return m.eventLogView()
 	}
 	return m.mainView()
 }
@@ -4282,6 +4304,9 @@ Keys
     never into whatever the pane's already-running process started with;
     secret-shaped keys mask by default (§6.4); r toggles reveal, resets on
     reopen; Esc cancels an edit in progress, or closes the dialog otherwise
+  E open/close the event log: every recorded event across every session --
+    kind, reason, a bounded payload -- newest first; a payload's
+    secret-shaped values mask the same way the env editor's do; Esc closes
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status

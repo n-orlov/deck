@@ -1568,3 +1568,70 @@ func TestClearEnvDirtyRejectsMissingSessionOrUnknownID(t *testing.T) {
 		t.Fatalf("expected an error for a missing timestamp")
 	}
 }
+
+// TestListEventsOrdersNewestFirstAndCapsAtLimit is task 124's (I-9,
+// requirement 32) own proof for the `E` event log view's store half:
+// three orphan events are recorded with a strictly increasing "at" but in
+// an order whose kind alphabetizes as archived < set_permission_profile <
+// set_resume_pin -- the reverse of insertion order -- so a reader sorting
+// by kind, by reason, or by any other column would produce a DIFFERENT
+// order than ListEvents does. ListEvents must return them newest-at-first
+// (set_resume_pin, set_permission_profile, archived), proving it orders by
+// recency and not merely returns rows in *some* stable order that happens
+// to look right. A fourth, later event with the same "at" as the third
+// proves seq (insertion order) breaks a same-millisecond tie, and a limit
+// of 2 proves the bound is respected -- a caller-supplied limit is not
+// merely a hint.
+func TestListEventsOrdersNewestFirstAndCapsAtLimit(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	if err := st.RecordOrphanEvent(ctx, EventInput{At: 100, Kind: "set_permission_profile", Reason: "user", Payload: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordOrphanEvent(ctx, EventInput{At: 50, Kind: "archived", Reason: "user", Payload: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordOrphanEvent(ctx, EventInput{At: 150, Kind: "set_resume_pin", Reason: "user", Payload: "third"}); err != nil {
+		t.Fatal(err)
+	}
+	// Same "at" as the immediately preceding event; only insertion order
+	// (seq) can tell them apart.
+	if err := st.RecordOrphanEvent(ctx, EventInput{At: 150, Kind: "set_resume_pin", Reason: "user", Payload: "fourth"}); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := st.ListEvents(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("ListEvents returned %d events, want 4", len(events))
+	}
+	var payloads []string
+	for _, e := range events {
+		payloads = append(payloads, e.Payload)
+	}
+	want := []string{"fourth", "third", "second", "first"}
+	for i, w := range want {
+		if payloads[i] != w {
+			t.Fatalf("ListEvents order = %v, want newest first %v", payloads, want)
+		}
+	}
+	if events[0].SessionID != "" {
+		t.Fatalf("orphan event SessionID = %q, want empty", events[0].SessionID)
+	}
+
+	limited, err := st.ListEvents(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 2 || limited[0].Payload != "fourth" || limited[1].Payload != "third" {
+		t.Fatalf("ListEvents(limit=2) = %v, want the two newest only", limited)
+	}
+}
