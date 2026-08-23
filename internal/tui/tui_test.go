@@ -58,6 +58,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
 		"u undo the most recent x", "DECK_UNDO_MS",
 		"dd delete the selected session", "pending indicator", "confirm dialog naming what survives",
+		"DECK_DELETE_GRACE_MS", "restores the row", "once the window expires the row is reaped",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help view missing %q", want)

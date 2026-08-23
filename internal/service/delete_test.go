@@ -88,3 +88,90 @@ func TestDeleteRefusesEmptySessionID(t *testing.T) {
 		t.Fatal("Delete with empty session, want error")
 	}
 }
+
+func newTombstoneTestService(t *testing.T) Service {
+	home := t.TempDir()
+	clock, _ := config.NewClock("2025-01-02T03:04:05Z", "")
+	paths := config.Paths{Home: home, LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
+	db, err := store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	logger, err := audit.New(paths, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := "deck-restore-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
+	return Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("restore-test"), Shell: "/bin/sh"}
+}
+
+// TestRestoreClearsTombstoneAndReturnsToListSessions proves task 106's `u`
+// undo-of-a-delete service path: Restore clears deleted_at (the row is
+// visible in ListSessions again) and records a "restored" audit
+// transition, without ever touching the live pane (it was already killed
+// or never existed; Restore never launches anything).
+func TestRestoreClearsTombstoneAndReturnsToListSessions(t *testing.T) {
+	svc := newTombstoneTestService(t)
+	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "restorable", CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := svc.Restore(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.DeletedAt != 0 {
+		t.Fatalf("restored session DeletedAt = %d, want 0", restored.DeletedAt)
+	}
+	rows, err := svc.Store.ListSessions(context.Background())
+	if err != nil || len(rows) != 1 || rows[0].ID != session.ID {
+		t.Fatalf("ListSessions after restore = %#v, %v, want the restored row", rows, err)
+	}
+	log, err := os.ReadFile(svc.Audit.Path())
+	if err != nil || !strings.Contains(string(log), `"event":"restored"`) {
+		t.Fatalf("restore audit = %q, %v", log, err)
+	}
+}
+
+// TestRestoreRefusesEmptySessionID mirrors Delete's own guard.
+func TestRestoreRefusesEmptySessionID(t *testing.T) {
+	svc := Service{}
+	if _, err := svc.Restore(context.Background(), ""); err == nil {
+		t.Fatal("Restore with empty session id, want error")
+	}
+}
+
+// TestReapRemovesTombstonedRowPermanently proves task 106's grace-window
+// expiry service path: Reap only ever acts on a row Delete has already
+// tombstoned (store.ReapSession's own contract), and afterward the row is
+// gone from the store entirely, not merely hidden.
+func TestReapRemovesTombstonedRowPermanently(t *testing.T) {
+	svc := newTombstoneTestService(t)
+	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "reapable", CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Reap(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := svc.Store.DB().QueryRow(`SELECT count(*) FROM sessions WHERE id = ?`, session.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("session row count after reap = %d, %v, want 0", count, err)
+	}
+}
+
+// TestReapRefusesEmptySessionID mirrors Delete's own guard.
+func TestReapRefusesEmptySessionID(t *testing.T) {
+	svc := Service{}
+	if err := svc.Reap(context.Background(), ""); err == nil {
+		t.Fatal("Reap with empty session id, want error")
+	}
+}
