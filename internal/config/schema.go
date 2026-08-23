@@ -308,6 +308,26 @@ var Schema = []Field{
 		Scope: ScopeRestartToApply,
 	},
 	{
+		Section: "ui",
+		Key:     "group_by_workspace",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "Groups the sidebar by sessions.workspace, defaulting to " +
+			"the basename of cwd, with each group's own collapsed/expanded state " +
+			"(`c`) preserved (SPEC §11/requirement 30). On by default; off is an " +
+			"explicit opt-out for a flat, ungrouped sidebar.",
+		// requirement 19: internal/tui/group.go's groupSessions() -- the sole
+		// place SPEC requirement 30's grouping happens -- has no consumer of
+		// this key anywhere in this tree yet (`grep -rn GroupByWorkspace`
+		// outside config/settings plumbing finds nothing in internal/tui,
+		// internal/service or cmd/deck): it groups unconditionally today. Same
+		// situation as recent_cwd_limit/capture_min_interval above -- schema/
+		// parse/write/edit plumbing only, so there is nothing a running client
+		// could apply live even in principle today. Labelled restart-to-apply
+		// pending that consumer, for the same honesty reason.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "env",
 		Key:         "",
 		Kind:        KindListOfStrings,

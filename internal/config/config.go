@@ -84,6 +84,11 @@ type Settings struct {
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
+	// GroupByWorkspace mirrors config.toml's [ui] group_by_workspace key
+	// (default true, SPEC §11/requirement 30): whether the sidebar groups
+	// sessions by workspace. DECK_GROUP_BY_WORKSPACE overrides the file when
+	// set.
+	GroupByWorkspace bool
 	// TmuxMouse mirrors config.toml's top-level tmux_mouse key (default true,
 	// SPEC §6.5/§11.8): whether tmux's own `mouse` server option is turned on
 	// on deck's private socket, independent of Mouse's terminal-side SGR
@@ -194,6 +199,15 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		}
 		envOverrides["ui.mouse"] = "DECK_MOUSE"
 	}
+	groupByWorkspace := fileCfg.GroupByWorkspace
+	groupByWorkspaceRaw := getenv("DECK_GROUP_BY_WORKSPACE")
+	if groupByWorkspaceRaw != "" {
+		groupByWorkspace, err = boolEnv(groupByWorkspaceRaw, groupByWorkspace, "DECK_GROUP_BY_WORKSPACE")
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["ui.group_by_workspace"] = "DECK_GROUP_BY_WORKSPACE"
+	}
 	tmuxMouse := fileCfg.TmuxMouse
 	tmuxMouseRaw := getenv("DECK_TMUX_MOUSE")
 	if tmuxMouseRaw != "" {
@@ -212,9 +226,10 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
-		TmuxMouse:      tmuxMouse,
-		RecentCwdLimit: fileCfg.RecentCwdLimit,
-		Theme:          resolvedTheme, ThemeReason: themeReason,
+		GroupByWorkspace: groupByWorkspace,
+		TmuxMouse:        tmuxMouse,
+		RecentCwdLimit:   fileCfg.RecentCwdLimit,
+		Theme:            resolvedTheme, ThemeReason: themeReason,
 		EnvOverrides: envOverrides,
 		File:         fileCfg,
 	}, nil

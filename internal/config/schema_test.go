@@ -8,9 +8,9 @@ import (
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
 // flat config.toml keys (task 010): allow_yolo, stale_after,
 // capture_min_interval, tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse,
-// [ui] recent_cwd_limit, and the [env] table. Adding, removing or
-// renaming a key must be a deliberate edit to this test alongside the
-// schema, never a silent drift.
+// [ui] group_by_workspace, [ui] recent_cwd_limit, and the [env] table.
+// Adding, removing or renaming a key must be a deliberate edit to this
+// test alongside the schema, never a silent drift.
 func TestSchemaPinsKeySet(t *testing.T) {
 	want := []string{
 		"allow_yolo",
@@ -20,6 +20,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.theme",
 		"ui.ascii",
 		"ui.mouse",
+		"ui.group_by_workspace",
 		"ui.recent_cwd_limit",
 		"[env]",
 	}
@@ -115,15 +116,16 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     already the subject of its own SPEC citation in schema.go).
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
-		"allow_yolo":           ScopeGlobal,
-		"stale_after":          ScopeRestartToApply,
-		"capture_min_interval": ScopeRestartToApply,
-		"tmux_mouse":           ScopeRestartToApply,
-		"ui.theme":             ScopeGlobal,
-		"ui.ascii":             ScopeGlobal,
-		"ui.mouse":             ScopeGlobal,
-		"ui.recent_cwd_limit":  ScopeRestartToApply,
-		"[env]":                ScopeRestartToApply,
+		"allow_yolo":            ScopeGlobal,
+		"stale_after":           ScopeRestartToApply,
+		"capture_min_interval":  ScopeRestartToApply,
+		"tmux_mouse":            ScopeRestartToApply,
+		"ui.theme":              ScopeGlobal,
+		"ui.ascii":              ScopeGlobal,
+		"ui.mouse":              ScopeGlobal,
+		"ui.group_by_workspace": ScopeRestartToApply,
+		"ui.recent_cwd_limit":   ScopeRestartToApply,
+		"[env]":                 ScopeRestartToApply,
 	}
 	for _, field := range Schema {
 		full := field.FullKey()
