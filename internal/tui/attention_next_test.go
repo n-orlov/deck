@@ -39,13 +39,20 @@ func TestNeedsAttentionMatchesWaitingAndErrorOnly(t *testing.T) {
 // around the end of the list, and skips a session hidden by a collapsed
 // workspace group even though that session's own status needs attention.
 func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
-	m := Model{sessions: []store.Session{
-		{ID: "a", Workspace: "ws", Status: "running"},
-		{ID: "b", Workspace: "ws", Status: "waiting"},
-		{ID: "c", Workspace: "ws", Status: "running"},
-		{ID: "d", Workspace: "hidden-ws", Status: "error"},
-		{ID: "e", Workspace: "ws", Status: "idle"},
-	}}
+	m := Model{
+		// This test is specifically about collapsed-group visibility
+		// (requirement 32 skipping a hidden row), so grouping must be on
+		// explicitly: config.Settings{}'s zero value now means grouping
+		// off (requirement 35), same convention as m.settings.Mouse.
+		settings: config.Settings{GroupByWorkspace: true},
+		sessions: []store.Session{
+			{ID: "a", Workspace: "ws", Status: "running"},
+			{ID: "b", Workspace: "ws", Status: "waiting"},
+			{ID: "c", Workspace: "ws", Status: "running"},
+			{ID: "d", Workspace: "hidden-ws", Status: "error"},
+			{ID: "e", Workspace: "ws", Status: "idle"},
+		},
+	}
 
 	// From "a" (index 0), the next session needing attention is "b".
 	if got, ok := m.nextAttentionSelection(0); !ok || got != 1 {

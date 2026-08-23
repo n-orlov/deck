@@ -316,15 +316,19 @@ var Schema = []Field{
 			"the basename of cwd, with each group's own collapsed/expanded state " +
 			"(`c`) preserved (SPEC §11/requirement 30). On by default; off is an " +
 			"explicit opt-out for a flat, ungrouped sidebar.",
-		// requirement 19: internal/tui/group.go's groupSessions() -- the sole
-		// place SPEC requirement 30's grouping happens -- has no consumer of
-		// this key anywhere in this tree yet (`grep -rn GroupByWorkspace`
-		// outside config/settings plumbing finds nothing in internal/tui,
-		// internal/service or cmd/deck): it groups unconditionally today. Same
-		// situation as recent_cwd_limit/capture_min_interval above -- schema/
-		// parse/write/edit plumbing only, so there is nothing a running client
-		// could apply live even in principle today. Labelled restart-to-apply
-		// pending that consumer, for the same honesty reason.
+		// I-5 update (task 008): internal/tui/group.go's groupingEnabled()
+		// is now this key's consumer -- sidebarEntries, visualOrder and
+		// isSessionVisible all read m.settings.GroupByWorkspace, so
+		// grouping is genuinely conditional, not unconditional, at render
+		// time. The label stays ScopeRestartToApply for a narrower reason
+		// than before: settingsApplyLiveFields (internal/tui/settings.go)
+		// does not yet copy this field from settingsEdits into the running
+		// m.settings the way it does for AllowYolo/ASCII/Mouse, so a save
+		// still only reaches a fresh client, not the one that made it.
+		// Wiring that live-copy (mirroring Mouse's EnvOverrides-guarded
+		// copy, since this key has the identical DECK_GROUP_BY_WORKSPACE
+		// override path) is unclaimed follow-up work, not this task's own
+		// scope.
 		Scope: ScopeRestartToApply,
 	},
 	{
