@@ -827,3 +827,65 @@ top-level key)") both point at §11.4 for rename's actual contract, and
 §11.4/I-8 is unambiguous that the tmux session itself is not part of what a
 rename changes. Filed here, per the PRD's own explicit request, rather than
 editing SPEC.md.
+
+## Task 002: three files were gofmt-dirty at HEAD before Part I (I-21 precondition)
+
+Before any Part I task ran, `ci/run.sh sh -c 'gofmt -l $(git ls-files "*.go")'` named three
+already-committed files as unformatted: `features/cell_attributes_test.go`,
+`features/layout_modes_test.go`, `internal/tui/group_visual_order_test.go`. This was not
+introduced by any task in this run — it predates task 001's own commit and had gone unnoticed
+because no earlier phase's own workflow ran a repo-wide `gofmt -l` sweep, only `gofmt` on the
+files each task itself touched. Task 002 fixed it with `gofmt -w` applied to exactly those three
+files, confirmed whitespace/alignment-only via `git show HEAD | grep -v '^[-+][[:space:]]*$'`
+showing no semantic line changed (commit `f8487fb`). Recorded here as the concrete instance of
+a durable process gap for whoever plans the next phase: `ci/run.sh sh -c 'gofmt -l $(git ls-files
+"*.go")'` catching zero files is worth checking repo-wide periodically, not only on the files a
+given task's own diff touches — per-task `gofmt` on touched files alone does not catch a
+pre-existing dirty file elsewhere in the tree.
+
+## Tasks 003–005a: I-1's single-keystroke drop was layer 4 (product), not delivery or render lag
+
+The full investigation and fix live in `docs/reports/phase3d-i1-rootcause.md` (excluded layers
+1/2/3/5 by direct measurement) and `docs/reports/phase3d-i1-repro.log`/`-counter-poll.log`
+(reproduction with task 003's `DECK_INPUT_COUNT_FILE` instrument, `cmd/deck/inputcount_hook.go`,
+proving the dropped keystroke *did* reach `Model.Update` — this was not a PTY/Bubble-Tea-reader
+drop). Summarised here since a load-correlated intermittent failure is exactly the kind of gotcha
+an operator or a later phase needs findable without reading four separate reports:
+
+- **Mechanism**: `internal/tui/attention.go`'s `sortSessionsByAttentionStable` broke ties on rank
+  and `StatusAt` (millisecond resolution) by session ID — a random UUID uncorrelated with
+  creation order or which row a keystroke targeted. When `internal/service/reconcile.go`
+  promotes two sessions from `starting` to `running` in the *same* reconcile pass, both get an
+  identical `StatusAt` millisecond stamp, so the tie-break silently reorders the two rows on
+  screen between a `k`/`m` mark and a following `j`, landing `j` on a row the test never intended
+  to move off of. The keystroke was never dropped; the row it moved from/to changed under it.
+- **Fix (task 005a)**: `posKey(s) = prevPos[s.ID]` if present, else `len(previous)`, then
+  `a.ID < b.ID` — a lexicographic composite key that keeps the sort a strict weak ordering (no
+  intransitive 3-way cycle) and, critically, keeps a previously-visible row's relative order
+  stable across a re-sort even when a brand-new row's tie-break ID would otherwise interleave
+  between two existing rows.
+- **Verification**: each of `@requirement-29-bulk-kill`, `@requirement-29-bulk-delete`,
+  `@requirement-29-batch-undo` measured 10/10 consecutive isolated runs post-fix (load 1.96–7.24,
+  `docs/reports/phase3d-i1-rootcause-stability-*.log`), spanning and exceeding task 134's own
+  6.18–7.28 failure-reproducing load range from before I-1 was root-caused.
+- **Not the same defect as task 118's coalesced-`KeyMsg` fix** — that fix targets two runes
+  landing in the *same* PTY read; this drop's `j` always arrived alone in its own read. Both are
+  real, independently-verified defects that happened to surface through the same `k`/`m`/`j`/`m`
+  idiom.
+
+## Part II's `~/deck-spikes/` spike-evidence directory is absent from this container
+
+`prds/phase3b-interactive-preview.md`:17 and `prds/phase3c-residual-and-interactive-preview.md`:397
+both instruct: "Every technical claim in this PRD was measured ... on both tmux and screen. Read
+`~/deck-spikes/interactive-preview/README.md` first, then `a/REPORT.md` (geometry) ... the spike
+evidence is the citation. Do not re-derive them." `~/deck-spikes` does not exist anywhere in this
+workspace/container (`ls ~/deck-spikes` → No such file or directory; no `deck-spikes` path found
+under `/` at all). Recorded here, not fixed, per the standing instruction that a `prds/` defect is
+filed as a finding for the operator rather than silently worked around: whichever task first opens
+Part II (task 025, the §11.9 pre-check, or task 026 itself) will hit this the moment it tries to
+follow that citation, and needs to either locate the real spike directory outside this container,
+ask the operator for it, or explicitly re-derive/measure the claim itself (documenting that
+departure per the PRD's own "do not contradict them without recording why" clause at
+`phase3c-residual-and-interactive-preview.md`:722) — not invent a citation to a file nobody can
+read.
+
