@@ -1264,6 +1264,65 @@ func (s *Store) ArchiveSession(ctx context.Context, sessionID string, at int64) 
 		`UPDATE sessions SET archived_at = ? WHERE id = ?`, at)
 }
 
+// Event is one row of the append-only events table (SPEC's schema listing:
+// audit trail, §12 search corpus, and notification source in one).
+// SessionID is empty for an orphan event (RecordOrphanEvent: a hook
+// payload that could not be resolved to any session, §8.1) or for a
+// reap's own tombstone record (ReapSession, recorded after the session row
+// it describes is gone). Reason and Payload are both nullable columns and
+// read back as "" when unset, never as a Go zero-value surprise for a
+// caller that never checked ok.
+type Event struct {
+	Seq       int64
+	SessionID string
+	At        int64
+	Kind      string
+	Reason    string
+	Payload   string
+}
+
+// defaultEventLogLimit is ListEvents' own bound when a caller passes a
+// non-positive limit -- the events table is append-only and can grow
+// without bound over a session's lifetime, so the `E` event log view (task
+// 124/I-9, SPEC requirement 32) this feeds is deliberately never
+// "everything ever recorded".
+const defaultEventLogLimit = 200
+
+// ListEvents returns the most recent events across every session (and any
+// orphan/reap rows with no session at all), newest first: ORDER BY at DESC
+// breaks ties with seq DESC so two events sharing the same millisecond
+// (routine under a frozen DECK_CLOCK) still order deterministically by
+// their own insertion order rather than however SQLite happens to walk
+// ties. limit caps how many rows come back; a non-positive limit falls
+// back to defaultEventLogLimit rather than returning the entire table.
+func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = defaultEventLogLimit
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, session_id, at, kind, reason, payload
+		FROM events ORDER BY at DESC, seq DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer rows.Close()
+	var events []Event
+	for rows.Next() {
+		var event Event
+		var sessionID, reason, payload sql.NullString
+		if err := rows.Scan(&event.Seq, &sessionID, &event.At, &event.Kind, &reason, &payload); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		event.SessionID = sessionID.String
+		event.Reason = reason.String
+		event.Payload = payload.String
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+	return events, nil
+}
+
 // ReapSession permanently removes a tombstoned session once its grace
 // window (task 106) has elapsed. Only a row SoftDeleteSession has already
 // tombstoned may be reaped; reaping a live row is refused so a caller
