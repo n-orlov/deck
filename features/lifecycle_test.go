@@ -181,6 +181,14 @@ type ScenarioHarness struct {
 	// restore_test.go already use), keyed by session so the matching detach
 	// step can find it again.
 	rawAttachedTmuxClients map[string]*rawAttachedTmuxClient
+
+	// optionTableDumps backs task 037's (II-12) byte-exact-restore scenario:
+	// every one of tmux's seven option tables for one target, captured under
+	// a caller-chosen label ("before"/"entered"/"after"), keyed by
+	// target+label so two labels for the same target can be diffed later
+	// without re-reading tmux (a second read could itself observe a
+	// different state than the one the scenario meant to freeze).
+	optionTableDumps map[string]optionTableDump
 }
 
 var scenarioSequence atomic.Uint64

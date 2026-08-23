@@ -99,6 +99,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerPaneHistoryLimitSteps(sc)
 	registerInteractiveGeometrySteps(sc)
 	registerInteractiveSigwinchBudgetSteps(sc)
+	registerInteractiveOptionTableSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
