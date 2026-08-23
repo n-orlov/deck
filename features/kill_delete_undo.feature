@@ -236,6 +236,174 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And the directory "fp-reap" still matches fingerprint "before-reap"
     When deck client "A" exits cleanly
 
+  @requirement-29-purge
+  Scenario: choosing purge in the delete confirm leaves its adversarially-seeded cwd fingerprint unchanged
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    And a scratch directory "fp-purge" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates claude session "fp-purge-session" with permission profile "safe" and message "hello from fp-purge" with cwd the scratch directory labelled "fp-purge"
+    Then deck client "A" screen contains "resumable"
+    And the directory "fp-purge" is fingerprinted as "before-purge"
+    When deck client "A" presses dd
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Will delete:"
+    When deck client "A" submits the open dialog
+    Then the state database session "fp-purge-session" is tombstoned
+    And the directory "fp-purge" still matches fingerprint "before-purge"
+    When deck client "A" exits cleanly
+
+  @requirement-29-archive
+  Scenario: archiving an already-stopped session leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started with a short undo window
+    And a scratch directory "fp-archive" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-archive-session" with cwd the scratch directory labelled "fp-archive"
+    And the directory "fp-archive" is fingerprinted as "before-archive"
+    When deck client "A" kills its selected session
+    Then the state database contains session "fp-archive-session" with status "stopped"
+    When 300 milliseconds pass
+    And deck client "A" archives its selected session "fp-archive-session"
+    Then the state database session "fp-archive-session" is archived
+    And the directory "fp-archive" still matches fingerprint "before-archive"
+    When deck client "A" exits cleanly
+
+  @requirement-29-kill-and-archive
+  Scenario: A on a non-stopped session (kill-and-archive as one action) leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started
+    And a scratch directory "fp-kill-and-archive" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-kill-and-archive-session" with cwd the scratch directory labelled "fp-kill-and-archive"
+    And the directory "fp-kill-and-archive" is fingerprinted as "before-kill-and-archive"
+    When deck client "A" archives its selected session "fp-kill-and-archive-session"
+    Then the private tmux session "deck_fp-kill-and-archive-session" does not exist
+    And the state database session "fp-kill-and-archive-session" is archived
+    And the directory "fp-kill-and-archive" still matches fingerprint "before-kill-and-archive"
+    When deck client "A" exits cleanly
+
+  @requirement-29-bulk-kill
+  Scenario: bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged
+    Given deck client "A" is started with a short undo window
+    And a scratch directory "fp-bk-1/cwd" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And a scratch directory "fp-bk-2/cwd" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "bk-one" with cwd the scratch directory labelled "fp-bk-1/cwd"
+    And deck client "A" creates shell session "bk-two" with cwd the scratch directory labelled "fp-bk-2/cwd"
+    And the directory "fp-bk-1/cwd" is fingerprinted as "before-bk-one"
+    And the directory "fp-bk-2/cwd" is fingerprinted as "before-bk-two"
+    When deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    And 100 milliseconds pass
+    And deck client "A" sends "j"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bk-one running [marked]"
+    And deck client "A" screen contains "bk-two running [marked]"
+    When deck client "A" sends "x"
+    Then the state database contains session "bk-one" with status "stopped"
+    And the state database contains session "bk-two" with status "stopped"
+    And the directory "fp-bk-1/cwd" still matches fingerprint "before-bk-one"
+    And the directory "fp-bk-2/cwd" still matches fingerprint "before-bk-two"
+    When deck client "A" exits cleanly
+
+  @requirement-29-bulk-delete
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged
+    Given deck client "A" is started
+    And 200 milliseconds pass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd"
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd"
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"
+    When deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    And 100 milliseconds pass
+    And deck client "A" sends "j"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bd-one running [marked]"
+    And deck client "A" screen contains "bd-two running [marked]"
+    When deck client "A" presses dd
+    Then deck client "A" screen contains "Delete 2 marked sessions"
+    When deck client "A" submits the open dialog
+    Then the state database session "bd-one" is tombstoned
+    And the state database session "bd-two" is tombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"
+    When deck client "A" exits cleanly
+
+  @requirement-29-batch-undo
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged
+    Given deck client "A" is started with a short undo window
+    And a scratch directory "fp-bu-1/cwd" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd"
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd"
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"
+    When deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    And 100 milliseconds pass
+    And deck client "A" sends "j"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bu-one running [marked]"
+    And deck client "A" screen contains "bu-two running [marked]"
+    When deck client "A" sends "x"
+    Then the state database contains session "bu-one" with status "stopped"
+    And the state database contains session "bu-two" with status "stopped"
+    When deck client "A" presses u
+    Then the state database contains session "bu-one" with status "running"
+    And the state database contains session "bu-two" with status "running"
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"
+    When deck client "A" exits cleanly
+
   @requirement-2-monotonic-windows
   Scenario: both the undo window and the delete grace window keep advancing while DECK_CLOCK is frozen
     Given deck client "A" is started with the clock frozen at "2025-01-02T03:04:05Z" and short undo and delete windows

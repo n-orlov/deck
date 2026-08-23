@@ -299,3 +299,48 @@ regardless of whether any other dialog is open — `Esc`'s existing
 `applyDialogContract` cancel path is untouched; the mark-clearing is a
 separate, unconditional statement in the top-level `case "esc":` branch, so
 `Esc` clearing marks holds even when nothing else was open to cancel.
+
+## Task 113: fingerprinting bulk actions needs same-basename scratch cwds
+
+Requirement 29's remaining destructive paths (purge, archive, kill-and-archive,
+bulk `x`, bulk `dd`, batch undo) needed their own adversarially-seeded scratch
+cwd per session, same as task 108. Two gotchas specific to giving each half of
+a *marked pair* its own scratch directory:
+
+- Sidebar grouping (`sessionWorkspace`, `internal/tui/group.go`) keys on
+  `store.DefaultWorkspace`, the basename of the session's cwd, whenever the
+  row has no explicit `workspace` value (nothing sets one explicitly from the
+  create modal). Two scratch directories under different labels
+  (`fp-bulk-kill-one`, `fp-bulk-kill-two`) therefore land in two DIFFERENT
+  workspace groups, inserting a group header between them. The existing
+  `k`,`m`,`j`,`m` two-row marking idiom (task 112's own gotcha) does not need
+  to change for this — headers are cosmetic and not part of `m.sessions`
+  index/selection — but the fixture must still put both scratch directories
+  under the SAME basename, or the two rows visually separate under two
+  headers and later readers may reasonably (if incorrectly) suspect that
+  changes navigation. `seedScratchDirectory`'s `label` param accepts a
+  slash-separated path (it is passed straight to `filepath.Join`), so
+  labelling both `fp-bk-1/cwd` and `fp-bk-2/cwd` gives two distinct
+  directories that both end in `cwd` — same workspace group, same as any
+  other same-workspace two-row marking scenario.
+- A grouped row is rendered one indent level deeper than a flat one, which
+  eats into the same fixed sidebar column width every row already shares
+  (`wrapText`/`padTrunc`, the standing narrow-width truncation gotcha).
+  Session names as long as the ones task 108 used for single-session
+  scenarios (e.g. `fp-bulk-kill-one-session`, 24 chars) truncate before
+  ` running [marked]` fits on screen once a group header is present, so a
+  `screen contains "<name> running [marked]"` assertion times out even
+  though the mark itself is set correctly (`m.marked` is keyed by session id,
+  never by rendered text). Keep bulk/marked-pair fixture session names short
+  (`bk-one`/`bk-two`, `bd-one`/`bd-two`, `bu-one`/`bu-two`) whenever a scenario
+  needs to assert the `[marked]` badge text on screen under grouping.
+
+`features/kill_delete_undo_fingerprint_test.go` gained
+`clientCreatesClaudeSessionWithScratchCWDLabelled`, the claude counterpart of
+task 108's shell-only `clientCreatesShellSessionWithScratchCWDLabelled`: it
+points the scenario's single shared create-modal working directory
+(`h.workingDir`, the same field `positionCreateModalOnProfileField` and
+`claudeTranscriptPathForSession` both read) at an already-seeded scratch
+directory before delegating to the existing profile+message creation flow, so
+the `@requirement-29-purge` scenario can fingerprint-test purge against a
+real declared claude transcript rooted in the adversarially seeded directory.
