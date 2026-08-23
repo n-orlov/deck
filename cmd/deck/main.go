@@ -94,7 +94,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	if settings.Mouse {
 		programOptions = append(programOptions, tea.WithMouseCellMotion())
 	}
-	if _, err := tea.NewProgram(wrapForDeliberateTestPanic(model), programOptions...).Run(); err != nil {
+	if _, err := tea.NewProgram(wrapForInputCounting(wrapForDeliberateTestPanic(model)), programOptions...).Run(); err != nil {
 		fmt.Fprintln(stderr, "deck:", err)
 		return 0
 	}
