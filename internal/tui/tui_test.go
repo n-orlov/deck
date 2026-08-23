@@ -56,12 +56,13 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"click or wheel over the preview does nothing",
 		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
+		"u undo the most recent x", "DECK_UNDO_MS",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help view missing %q", want)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "delete", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "> advance", "resume/start", "delete", "send message", "event log", "filter list", "snooze", "archive", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("help advertises unavailable action %q:\n%s", unavailable, help)
 		}

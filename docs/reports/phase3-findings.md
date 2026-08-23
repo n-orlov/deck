@@ -136,6 +136,31 @@ is a PRD cross-reference slip, not a defect in the tree; per operator instructio
 here for the operator to correct in the PRD, and is deliberately left unedited in
 `prds/phase3-sessions-and-lifecycle.md`.
 
+## DECK_UNDO_MS/DECK_DELETE_GRACE_MS as new determinism knobs (task 102)
+
+Task 001 already parsed both `DECK_UNDO_MS` (default 10000) and `DECK_DELETE_GRACE_MS` (default
+60000) into `config.Settings.Undo`/`DeleteGrace`, with `internal/config/config_test.go` proving both
+the override and default-when-unset paths. Task 102 is the first consumer: the `x` key still kills
+without confirmation and still refuses an already-stopped row, but a successful kill now starts a
+`tea.Tick(settings.Undo, ...)` window, keyed by a monotonically-increasing generation counter so a
+late-firing tick from a superseded kill can never clear a newer one's toast. While the window is
+open, a toast naming "undo" (`Killed "<name>" — press u to undo`) occupies a reserved layout line,
+and `u` resumes the named session through the same `resume` plumbing `r` already used, then clears
+the window immediately (rather than waiting for the tick) so a second `u` press is a no-op. Once the
+tick fires — or once `u` has already consumed the window — `u` does nothing and the toast is gone.
+`DECK_UNDO_MS` is a real, user-visible determinism knob: `features/kill_delete_undo.feature`'s third
+scenario sets it to 200 ms specifically so the test can wait past expiry on the real wall clock
+without a multi-second sleep, and the help overlay's new `DECK_UNDO_MS` line documents the same knob
+for operators.
+
+`DECK_DELETE_GRACE_MS` is parsed and defaulted identically but has no consumer yet — no code path
+reads `settings.DeleteGrace`, and no help-overlay line or feature scenario names it, matching the
+known gap tasks 105/106 (and task 001's blocked-validation handoff) describe: the strip that removed
+its help line was deliberate, since a knob with no feature behind it is not yet a real, testable
+determinism control. Recorded here as the second half of "both new determinism knobs" so a future
+worker on 105/106 has a paper trail for why the two knobs were parsed together in task 001 but only
+one is wired to behavior after task 102.
+
 ## SPEC.md
 
 Unmodified by this task — `git diff SPEC.md` is empty (verified below).
