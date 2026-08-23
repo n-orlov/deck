@@ -251,3 +251,34 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" presses u
     Then the state database session "frozen-monotonic" is reaped
     When deck client "A" exits cleanly
+
+  @requirement-25-delete-without-purge
+  Scenario: dd without purge leaves the agent's transcript intact through delete and reap
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started with a short delete grace window
+    When deck client "A" creates claude session "purge-keep" with permission profile "safe" and message "hello from purge-keep"
+    Then deck client "A" screen contains "resumable"
+    And the fake claude transcript for session "purge-keep" is captured as "keep-before"
+    When deck client "A" presses dd
+    Then deck client "A" screen contains "Purge:"
+    And deck client "A" screen contains "keep"
+    When deck client "A" submits the open dialog
+    And 400 milliseconds pass
+    Then the state database session "purge-keep" is reaped
+    And the transcript captured as "keep-before" still exists byte-identical
+    When deck client "A" exits cleanly
+
+  @requirement-26-purge-conversation
+  Scenario: choosing purge in the delete confirm removes only the agent's declared transcript file
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "purge-remove" with permission profile "safe" and message "hello from purge-remove"
+    Then deck client "A" screen contains "resumable"
+    And the fake claude transcript for session "purge-remove" is captured as "purge-before"
+    When deck client "A" presses dd
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Will delete:"
+    When deck client "A" submits the open dialog
+    Then the state database session "purge-remove" is tombstoned
+    And the transcript captured as "purge-before" no longer exists
+    When deck client "A" exits cleanly

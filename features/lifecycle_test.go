@@ -129,6 +129,15 @@ type ScenarioHarness struct {
 	// still needs it to build the $DECK_HOME/captures/<id>/ and history
 	// file paths and to match the audit JSONL's own session_id field.
 	capturedSessionIDs map[string]string
+
+	// transcriptSnapshots backs task 110's purge/no-purge scenarios
+	// (requirements 25/26): a step captures an agent's own declared
+	// transcript file's path and bytes under a label, right after the
+	// agent has written to it and before dd's own kill/reap can touch
+	// anything, so a later step can assert either that the exact same
+	// bytes are still there at that exact path (no purge) or that the
+	// path is gone (purge chosen).
+	transcriptSnapshots map[string]transcriptSnapshot
 }
 
 var scenarioSequence atomic.Uint64

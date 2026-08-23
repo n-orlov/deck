@@ -118,3 +118,22 @@ func (s Service) Reap(ctx context.Context, sessionID string) error {
 	}
 	return nil
 }
+
+// Purge is task 110's non-default "purge conversation" choice inside the
+// dd confirm dialog (SPEC.md:684-691, requirement 26): it deletes exactly
+// the path the caller already resolved via the session's own agent
+// adapter's declared TranscriptPaths (task 109, internal/agent) -- it
+// never resolves, infers or globs a path itself. An empty path is a
+// no-op, mirroring TranscriptPaths' own "cannot locate" contract: the
+// caller never calls Purge at all unless that lookup already succeeded,
+// but treating "" as a no-op here rather than a panic keeps the two
+// contracts consistent instead of trusting the caller never to slip.
+func (s Service) Purge(ctx context.Context, path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("purge transcript %q: %w", path, err)
+	}
+	return nil
+}

@@ -262,3 +262,41 @@ func TestReapLeavesEventsOutboxAndNotifyStateBehind(t *testing.T) {
 		t.Fatalf("events for session after reap = %d, %v, want 0 (cascaded)", after, err)
 	}
 }
+
+// TestPurgeRemovesExactlyTheDeclaredPathAndIsANoOpOnEmpty proves task
+// 110's Purge contract: it removes exactly the path it is given -- never
+// resolving, inferring or globbing one of its own -- and treats an empty
+// path (the "cannot locate a transcript" case, task 109) as a no-op
+// rather than an error, since the TUI never calls Purge with a non-empty
+// path unless TranscriptPaths itself already located one.
+func TestPurgeRemovesExactlyTheDeclaredPathAndIsANoOpOnEmpty(t *testing.T) {
+	svc := newTombstoneTestService(t)
+
+	if err := svc.Purge(context.Background(), ""); err != nil {
+		t.Fatalf("Purge(\"\") = %v, want nil (no-op)", err)
+	}
+
+	dir := t.TempDir()
+	transcript := filepath.Join(dir, "conversation.jsonl")
+	sibling := filepath.Join(dir, "sibling.jsonl")
+	if err := os.WriteFile(transcript, []byte("transcript\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sibling, []byte("sibling\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Purge(context.Background(), transcript); err != nil {
+		t.Fatalf("Purge(%q) = %v, want nil", transcript, err)
+	}
+	if _, err := os.Stat(transcript); !os.IsNotExist(err) {
+		t.Fatalf("stat purged %q = %v, want IsNotExist", transcript, err)
+	}
+	if _, err := os.Stat(sibling); err != nil {
+		t.Fatalf("unrelated file %q was touched by Purge: %v", sibling, err)
+	}
+
+	if err := svc.Purge(context.Background(), transcript); err == nil {
+		t.Fatal("Purge of an already-purged path returned nil, want an error")
+	}
+}
