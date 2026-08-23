@@ -43,6 +43,17 @@ const (
 	// the agent's own experience of a resize rather than infer it from tmux
 	// bookkeeping.
 	sizesLogName = "fake-claude-sizes.log"
+	// sigwinchCountName is where this fixture overwrites the exact running
+	// total of SIGWINCH signals it has received, as a bare decimal integer
+	// (never appended, unlike sizesLogName above) via write-to-temp-then-
+	// rename, so a poller never observes a partial write (identical
+	// mechanism to cmd/deck's -tags deckinputcount writeInputCount).
+	// requirement 11 / II-2 needs an exact count, not a comparison of
+	// before/after sizes: two SIGWINCH that happen to land the pane at the
+	// same size would still be one count each here, and this counter never
+	// calls pty.Getsize (recordSize's own early-return on failure), so it can
+	// never silently undercount a SIGWINCH the sizes log missed.
+	sigwinchCountName = "fake-claude-sigwinch-count"
 	// repaintModeEnvironment selects this fixture's repaint behaviour
 	// (PRD phase3b-interactive-preview.md requirement 1 / II-1): repaintModeSigwinch,
 	// repaintModeKeystroke or repaintModeNever. Setting it puts the fixture into a
@@ -623,19 +634,29 @@ func validUUID(name, value string) error {
 // loop.
 func startSizeRecorder(getenv func(string) string) func() {
 	path := sizesLogPath(getenv)
-	if path == "" {
+	countPath := sigwinchCountPath(getenv)
+	if path == "" && countPath == "" {
 		return func() {}
 	}
-	recordSize(path)
+	if path != "" {
+		recordSize(path)
+	}
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGWINCH)
 	done := make(chan struct{})
 	go func() {
+		var count int64
 		for {
 			select {
 			case <-signals:
-				recordSize(path)
+				if path != "" {
+					recordSize(path)
+				}
+				if countPath != "" {
+					count++
+					recordSigwinchCount(countPath, count)
+				}
 			case <-done:
 				return
 			}
@@ -655,6 +676,43 @@ func sizesLogPath(getenv func(string) string) string {
 		return ""
 	}
 	return filepath.Join(home, "log", sizesLogName)
+}
+
+// sigwinchCountPath resolves the SIGWINCH-count path under DECK_HOME,
+// identically to sizesLogPath, or "" when DECK_HOME is not set.
+func sigwinchCountPath(getenv func(string) string) string {
+	home := getenv("DECK_HOME")
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, "log", sigwinchCountName)
+}
+
+// recordSigwinchCount overwrites path with total as a bare decimal integer,
+// via write-to-temp-then-rename, exactly as cmd/deck's inputcount_hook.go
+// writeInputCount does for the same reason: a concurrent reader (the test
+// harness polling this file) must never observe a partially written value.
+// Any failure is silently swallowed -- counting is scaffolding for a test
+// harness, never part of this fixture's observable contract.
+func recordSigwinchCount(path string, total int64) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(dir, ".fake-claude-sigwinch-count-*")
+	if err != nil {
+		return
+	}
+	name := tmp.Name()
+	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
+	closeErr := tmp.Close()
+	if writeErr != nil || closeErr != nil {
+		os.Remove(name)
+		return
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+	}
 }
 
 // recordSize reads the current size of this process's own controlling

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,12 +25,13 @@ type fakeAgentSpec struct {
 	packagePath      string
 	commandsEnv      string
 	sizesLog         string
+	sigwinchCountLog string
 	silentFixtureEnv string
 }
 
 var fakeAgentSpecs = map[string]fakeAgentSpec{
-	"claude": {packagePath: "./cmd/fake-claude", commandsEnv: "FAKE_CLAUDE_COMMANDS=1", sizesLog: "fake-claude-sizes.log", silentFixtureEnv: "FAKE_CLAUDE_FIXTURE"},
-	"pi":     {packagePath: "./cmd/fake-pi", commandsEnv: "FAKE_PI_COMMANDS=1", sizesLog: "fake-pi-sizes.log", silentFixtureEnv: "FAKE_PI_FIXTURE"},
+	"claude": {packagePath: "./cmd/fake-claude", commandsEnv: "FAKE_CLAUDE_COMMANDS=1", sizesLog: "fake-claude-sizes.log", sigwinchCountLog: "fake-claude-sigwinch-count", silentFixtureEnv: "FAKE_CLAUDE_FIXTURE"},
+	"pi":     {packagePath: "./cmd/fake-pi", commandsEnv: "FAKE_PI_COMMANDS=1", sizesLog: "fake-pi-sizes.log", sigwinchCountLog: "fake-pi-sigwinch-count", silentFixtureEnv: "FAKE_PI_FIXTURE"},
 }
 
 func registerFakeAgentSizeSteps(sc *godog.ScenarioContext) {
@@ -39,6 +41,7 @@ func registerFakeAgentSizeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake "([^"]+)" agent is stopped$`, theFakeAgentIsStopped)
 	sc.Step(`^a fake "([^"]+)" agent renders the "([^"]+)" preview fixture and falls silent at (\d+)x(\d+)$`, aFakeAgentRendersThePreviewFixtureAndFallsSilentAt)
 	sc.Step(`^the fake "([^"]+)" agent's rendered pane is byte-identical across two consecutive captures$`, theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures)
+	sc.Step(`^the fake "([^"]+)" agent received exactly (\d+) SIGWINCH signals?$`, theFakeAgentReceivedExactlySigwinchSignals)
 }
 
 // previewFixtureDirectory returns the checked-in directory of requirement
@@ -247,6 +250,81 @@ func theFakeAgentRecordedSizesAre(ctx context.Context, kind, want string) error 
 		return fmt.Errorf("fake %q agent recorded sizes = %q, want %q", kind, got, want)
 	}
 	return nil
+}
+
+// theFakeAgentReceivedExactlySigwinchSignals reads the fixture's own
+// dedicated SIGWINCH counter (requirement 11 / II-2) -- a bare decimal
+// integer the fixture overwrites on every SIGWINCH it observes, never a
+// derivation of the sizes log above -- and asserts it equals want exactly.
+// It is deliberately an exact-equality check, not "at least want": the whole
+// point of a count assertion is to catch an off-by-one, and a step that only
+// ever asserted a lower bound could not.
+func theFakeAgentReceivedExactlySigwinchSignals(ctx context.Context, kind string, want int) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	spec, ok := fakeAgentSpecs[kind]
+	if !ok {
+		return fmt.Errorf("unknown fake agent kind %q", kind)
+	}
+	path := filepath.Join(h.Home, "log", spec.sigwinchCountLog)
+	got, err := waitForSigwinchCount(path, want)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("fake %q agent received %d SIGWINCH signals, want exactly %d", kind, got, want)
+	}
+	return nil
+}
+
+// readSigwinchCount reads path's bare decimal integer, treating a missing
+// file (no SIGWINCH observed yet) as 0, exactly like
+// features/input_count_test.go's readInputCount treats its own counter file.
+func readSigwinchCount(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("read sigwinch count %q: %w", path, err)
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return 0, nil
+	}
+	total, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("sigwinch count %q is not a bare integer: %q", path, trimmed)
+	}
+	return total, nil
+}
+
+// waitForSigwinchCount polls path until it reads want or a 2-second deadline
+// passes, returning whatever the last read was either way so the caller can
+// report the exact mismatch. It never returns early just because the count
+// reached or passed want-as-a-floor: SIGWINCH delivery and the fixture's own
+// file write are asynchronous with whatever step sent the signal, but once
+// the count is read as strictly greater than want the assertion is already
+// wrong and there is nothing more to wait for.
+func waitForSigwinchCount(path string, want int) (int, error) {
+	deadline := time.Now().Add(2 * time.Second)
+	var last int
+	for {
+		total, err := readSigwinchCount(path)
+		if err != nil {
+			return 0, err
+		}
+		last = total
+		if total == want || total > want {
+			return total, nil
+		}
+		if time.Now().After(deadline) {
+			return last, nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func waitForRecordedSizes(path, want string) (string, error) {

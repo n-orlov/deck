@@ -35,6 +35,12 @@ const (
 	// and every SIGWINCH-observed size, one "COLSxROWS" line per observation
 	// (SPEC Phase 2b-1 requirement 4).
 	sizesLogName = "fake-pi-sizes.log"
+	// sigwinchCountName is where this fixture overwrites the exact running
+	// total of SIGWINCH signals it has received, identical in mechanism and
+	// contract to cmd/fake-claude's own copy of this constant (requirement
+	// 11 / II-2's exact count, distinct from and never derived from the
+	// sizes log above).
+	sigwinchCountName = "fake-pi-sigwinch-count"
 	// repaintModeEnvironment selects this fixture's repaint behaviour
 	// (PRD phase3b-interactive-preview.md requirement 1 / II-1), identical in
 	// contract to cmd/fake-claude's own knob of the same purpose: see
@@ -523,19 +529,29 @@ func parse(args []string) (options, error) {
 // fixture crash.
 func startSizeRecorder(getenv func(string) string) func() {
 	path := sizesLogPath(getenv)
-	if path == "" {
+	countPath := sigwinchCountPath(getenv)
+	if path == "" && countPath == "" {
 		return func() {}
 	}
-	recordSize(path)
+	if path != "" {
+		recordSize(path)
+	}
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGWINCH)
 	done := make(chan struct{})
 	go func() {
+		var count int64
 		for {
 			select {
 			case <-signals:
-				recordSize(path)
+				if path != "" {
+					recordSize(path)
+				}
+				if countPath != "" {
+					count++
+					recordSigwinchCount(countPath, count)
+				}
 			case <-done:
 				return
 			}
@@ -555,6 +571,40 @@ func sizesLogPath(getenv func(string) string) string {
 		return ""
 	}
 	return filepath.Join(home, "log", sizesLogName)
+}
+
+// sigwinchCountPath resolves the SIGWINCH-count path under DECK_HOME,
+// identically to sizesLogPath, or "" when DECK_HOME is not set.
+func sigwinchCountPath(getenv func(string) string) string {
+	home := getenv("DECK_HOME")
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, "log", sigwinchCountName)
+}
+
+// recordSigwinchCount overwrites path with total as a bare decimal integer,
+// via write-to-temp-then-rename, identical in mechanism and reasoning to
+// cmd/fake-claude's own copy of this function.
+func recordSigwinchCount(path string, total int64) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(dir, ".fake-pi-sigwinch-count-*")
+	if err != nil {
+		return
+	}
+	name := tmp.Name()
+	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
+	closeErr := tmp.Close()
+	if writeErr != nil || closeErr != nil {
+		os.Remove(name)
+		return
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
+	}
 }
 
 // recordSize reads the current size of this process's own controlling
