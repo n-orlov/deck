@@ -153,6 +153,46 @@ the client's own screen before `window-size latest` sizes the window to
 fit. This is the client's own status-line chrome, distinct from task
 034/II-8's sibling-pane chrome inside the window.
 
+## II-10: `set -g window-size latest` is not a restore (task 039)
+
+PRD II-10 names a specific, plausible "simplification" of `RestoreWindowGeometry`
+distinct from II-9's reversed-order mistake: since `Client.Bootstrap` already
+writes `window-size latest` at the server-**global** scope (task 032), an
+implementer could believe re-asserting that same global value on exit is
+enough to restore the window, instead of unsetting the WINDOW-LOCAL override
+`resize-window` always leaves behind. It is not — the window-local value
+shadows the global one regardless of what the global value is re-asserted
+to.
+
+`internal/tmux/restore_test.go`'s
+`TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin` proves this directly
+against real tmux: after entering (which leaves `window-size manual`
+window-locally, per task 034/035), issuing `set-option -g window-size
+latest` directly — never through `RestoreWindowGeometry`, which never
+issues this call — leaves the window-local value unchanged at `manual`,
+and a **fresh** client attaching afterwards at a third size (`100x40`) is
+still ignored, staying pinned at the interactive preview's `45x15`. The
+same test then contrasts this with the correct scope: with that identical
+client still attached, unsetting the WINDOW-LOCAL `window-size` (not the
+global one) immediately hands the window to that client's own size,
+proving the failure above is about scope, not about the client or the
+value `"latest"` itself.
+
+### The shipping prior art documents this wrongly
+
+`docs/spikes/interactive-preview.md`'s finding 4 names this exact trap in
+`agent-of-empires`'s shipped code: "`set -g window-size latest` restores
+nothing — `resize-window` writes `window-size manual` window-locally,
+shadowing the global. AoE's code is accidentally right; its comment is
+wrong, and an implementer following the comment ships the broken
+version." `RestoreWindowGeometry` (task 035/II-9) already implements the
+correct recipe (unset the window-local option, never re-assert the
+global one) and never had this bug; this task's purpose is to pin that
+correctness with a scenario that would go red if a later
+"simplification" — following AoE's comment instead of its code — were
+ever applied here, rather than leaving the trap to be rediscovered
+against a live agent.
+
 ## II-11: exactly two SIGWINCH per full enter/exit cycle, attached and detached (task 036)
 
 `features/interactive_sigwinch_budget.feature` (two scenarios) proves the
