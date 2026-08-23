@@ -304,3 +304,87 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And the state database session "archive-running" is archived
     And the state database contains session "archive-running" with status "stopped"
     When deck client "A" exits cleanly
+
+  @requirement-28-mark-bulk-actions
+  Scenario: m marks a batch by session id, x kills every marked non-stopped session, and one u undoes the whole batch
+    Given deck client "A" is started with a short undo window
+    And deck client "A" creates shell session "batch-alpha"
+    When deck client "A" kills its selected session
+    Then the private tmux session "deck_batch-alpha" does not exist
+    And 300 milliseconds pass
+    And deck client "A" screen does not contain "press u to undo"
+    And deck client "A" creates shell session "batch-beta"
+    And deck client "A" creates shell session "batch-gamma"
+    And deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    And 100 milliseconds pass
+    And deck client "A" sends "j"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "batch-beta running [marked]"
+    And deck client "A" screen contains "batch-gamma running [marked]"
+    When deck client "A" sends "x"
+    Then the private tmux session "deck_batch-beta" does not exist
+    And the private tmux session "deck_batch-gamma" does not exist
+    And the state database contains session "batch-alpha" with status "stopped"
+    And the state database contains session "batch-beta" with status "stopped"
+    And the state database contains session "batch-gamma" with status "stopped"
+    And deck client "A" screen contains "Killed 2 sessions"
+    When deck client "A" presses u
+    Then deck client "A" screen contains "batch-beta running"
+    And deck client "A" screen contains "batch-gamma running"
+    And the private tmux session "deck_batch-beta" exists
+    And the private tmux session "deck_batch-gamma" exists
+    And the state database contains session "batch-beta" with status "running"
+    And the state database contains session "batch-gamma" with status "running"
+    And the state database contains session "batch-alpha" with status "stopped"
+    When deck client "A" exits cleanly
+
+  @requirement-28-mark-bulk-actions
+  Scenario: dd on a marked set deletes every marked session and one u restores the whole batch
+    Given deck client "A" is started
+    And 200 milliseconds pass
+    And deck client "A" creates shell session "batch-dd-one"
+    And deck client "A" creates shell session "batch-dd-two"
+    When deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    And 100 milliseconds pass
+    And deck client "A" sends "j"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "batch-dd-one running [marked]"
+    And deck client "A" screen contains "batch-dd-two running [marked]"
+    When deck client "A" presses dd
+    Then deck client "A" screen contains "Delete 2 marked sessions"
+    And deck client "A" screen contains "batch-dd-one"
+    And deck client "A" screen contains "batch-dd-two"
+    When deck client "A" submits the open dialog
+    Then the state database session "batch-dd-one" is tombstoned
+    And the state database session "batch-dd-two" is tombstoned
+    And deck client "A" screen contains "Deleted 2 sessions"
+    When deck client "A" presses u
+    Then deck client "A" screen contains "batch-dd-two"
+    And the state database session "batch-dd-one" is not tombstoned
+    And the state database session "batch-dd-two" is not tombstoned
+    When deck client "A" exits cleanly
+
+  @requirement-28-mark-bulk-actions
+  Scenario: esc clears the mark set without acting on it
+    Given deck client "A" is started
+    And 200 milliseconds pass
+    And deck client "A" creates shell session "batch-esc-one"
+    And deck client "A" creates shell session "batch-esc-two"
+    When deck client "A" sends "m"
+    And 100 milliseconds pass
+    And deck client "A" closes the dialog with escape
+    And 100 milliseconds pass
+    And deck client "A" sends "x"
+    Then the private tmux session "deck_batch-esc-one" does not exist
+    And the private tmux session "deck_batch-esc-two" exists
+    And the state database contains session "batch-esc-two" with status "running"
+    When deck client "A" exits cleanly
+

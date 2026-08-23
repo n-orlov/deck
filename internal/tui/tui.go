@@ -203,14 +203,43 @@ type Model struct {
 	deleteUndoSessionID   string
 	deleteUndoSessionName string
 	deleteUndoGeneration  int
-	profileSwitching      bool
-	profileSwitchValue    string
-	profileSwitchNote     string
-	profileSwitchYoloOK   bool
-	resumeMode            func(context.Context, string, string) (store.Session, error)
-	pinning               bool
-	pinValue              string
-	pinNote               string
+	// marked is task 112's `m` mark set (requirement 28), keyed by session
+	// id rather than any index or visual position -- a re-sort
+	// (attention.go, run on every loadSessions) or a re-group
+	// (collapsedGroups, group.go) never moves the underlying data this map
+	// keys off, so the set survives either without any special-case code.
+	// x and dd consult it FIRST (via markedSessions(), which resolves it
+	// through visualOrder() in the sidebar's own painted order, never
+	// index arithmetic): non-empty means "act on the whole batch", empty
+	// means the pre-existing single-selected-row behaviour. It clears on
+	// that action (kill fires immediately; delete clears it the instant
+	// the confirm dialog is submitted, before the async kill/tombstone
+	// step even runs) and on a plain Esc at the top level.
+	marked map[string]bool
+	// batchUndoSessionIDs/batchUndoGeneration mirror undoSessionID/
+	// undoGeneration exactly, but hold every session ID a marked-set `x`
+	// just killed, so a single `u` undoes the WHOLE batch in one action
+	// rather than leaving N separate single-session windows the operator
+	// would have to undo one press at a time. Never merged with
+	// undoSessionID: a plain unmarked x always uses that trio instead, and
+	// u below checks undoSessionID first, falling back to this one only
+	// when it is empty.
+	batchUndoSessionIDs []string
+	batchUndoGeneration int
+	// batchDeleteUndoSessionIDs/batchDeleteUndoGeneration mirror
+	// deleteUndoSessionID/deleteUndoGeneration exactly, for a marked-set
+	// dd's own DECK_DELETE_GRACE_MS window, covering every session that
+	// dd's bulk submit tombstoned in one shared window rather than N.
+	batchDeleteUndoSessionIDs []string
+	batchDeleteUndoGeneration int
+	profileSwitching          bool
+	profileSwitchValue        string
+	profileSwitchNote         string
+	profileSwitchYoloOK       bool
+	resumeMode                func(context.Context, string, string) (store.Session, error)
+	pinning                   bool
+	pinValue                  string
+	pinNote                   string
 	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a listing
 	// of the selected session's effective environment, one row per key,
 	// naming which layer (server env, captured_path, config [env], session
@@ -520,6 +549,55 @@ type sessionArchived struct {
 // newer delete or an intervening u has already superseded is ignored
 // rather than reaping the wrong row or clearing a newer toast.
 type deleteGraceExpired int
+
+// sessionsBulkKilled carries task 112's marked-set `x` result back: every
+// marked, non-stopped session's own kill outcome, in markedSessions()'s
+// own (visual) order. A successful entry starts ONE shared undo window
+// covering the whole batch (batchUndoSessionIDs), never N separate
+// single-session windows.
+type sessionsBulkKilled struct {
+	sessions []store.Session
+	errs     []error
+}
+
+// batchUndoExpired mirrors undoExpired exactly, but for the batch window
+// sessionsBulkKilled started.
+type batchUndoExpired int
+
+// sessionsBulkResumed carries a batch `u` undo's resume outcome back for
+// every session batchUndoSessionIDs named.
+type sessionsBulkResumed struct {
+	errs []error
+}
+
+// sessionsBulkDeleted mirrors sessionsBulkKilled exactly, for a marked-set
+// dd's bulk confirm submit: every marked session's own delete outcome, in
+// markedSessions()'s own order. A successful entry starts ONE shared
+// DECK_DELETE_GRACE_MS window (batchDeleteUndoSessionIDs) covering the
+// whole batch. Purge is not offered for a bulk delete (task 110's purge
+// choice resolves one session's one declared transcript path at a time;
+// see docs/reports/phase3-findings.md), so there is no purgeErr here.
+type sessionsBulkDeleted struct {
+	sessions []store.Session
+	errs     []error
+}
+
+// batchDeleteGraceExpired mirrors deleteGraceExpired exactly, but for the
+// batch window sessionsBulkDeleted started.
+type batchDeleteGraceExpired int
+
+// sessionsBulkRestored carries a batch `u` undo's restore outcome back for
+// every session batchDeleteUndoSessionIDs named.
+type sessionsBulkRestored struct {
+	errs []error
+}
+
+// sessionsBulkReaped carries every session batchDeleteGraceExpired reaped
+// (or failed to reap) back, mirroring sessionReaped's shape for the batch
+// case.
+type sessionsBulkReaped struct {
+	errs []error
+}
 
 // sessionRestored carries task 106's `u` undo-of-a-delete result back:
 // store.RestoreSession clears the tombstone, and a successful restore
@@ -992,6 +1070,104 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.attachError = "Cannot reap: " + msg.err.Error()
 		}
 		return m, nil
+	case sessionsBulkKilled:
+		var succeeded []string
+		var firstErr error
+		for i, s := range msg.sessions {
+			if msg.errs[i] != nil {
+				if firstErr == nil {
+					firstErr = msg.errs[i]
+				}
+				continue
+			}
+			succeeded = append(succeeded, s.ID)
+		}
+		if firstErr != nil {
+			m.attachError = "Cannot kill: " + firstErr.Error()
+		} else {
+			m.attachError = ""
+		}
+		if len(succeeded) == 0 {
+			return m, m.loadSessions
+		}
+		m.batchUndoSessionIDs = succeeded
+		m.batchUndoGeneration++
+		generation := m.batchUndoGeneration
+		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return batchUndoExpired(generation) }))
+	case batchUndoExpired:
+		if int(msg) == m.batchUndoGeneration {
+			m.batchUndoSessionIDs = nil
+		}
+		return m, nil
+	case sessionsBulkResumed:
+		for _, err := range msg.errs {
+			if err != nil {
+				m.attachError = "Cannot resume: " + err.Error()
+				return m, m.loadSessions
+			}
+		}
+		m.attachError = ""
+		return m, m.loadSessions
+	case sessionsBulkDeleted:
+		var succeeded []string
+		var firstErr error
+		for i, s := range msg.sessions {
+			if msg.errs[i] != nil {
+				if firstErr == nil {
+					firstErr = msg.errs[i]
+				}
+				continue
+			}
+			succeeded = append(succeeded, s.ID)
+		}
+		m.deleteConfirming = false
+		m.deleteNote = ""
+		if firstErr != nil {
+			m.attachError = "Cannot delete: " + firstErr.Error()
+		} else {
+			m.attachError = ""
+		}
+		if len(succeeded) == 0 {
+			return m, m.loadSessions
+		}
+		m.batchDeleteUndoSessionIDs = succeeded
+		m.batchDeleteUndoGeneration++
+		generation := m.batchDeleteUndoGeneration
+		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
+	case batchDeleteGraceExpired:
+		if int(msg) != m.batchDeleteUndoGeneration || len(m.batchDeleteUndoSessionIDs) == 0 {
+			return m, nil
+		}
+		ids := m.batchDeleteUndoSessionIDs
+		m.batchDeleteUndoSessionIDs = nil
+		if m.reapSvc == nil {
+			return m, nil
+		}
+		reapSvc := m.reapSvc
+		return m, func() tea.Msg {
+			result := sessionsBulkReaped{}
+			for _, id := range ids {
+				result.errs = append(result.errs, reapSvc(context.Background(), id))
+			}
+			return result
+		}
+	case sessionsBulkReaped:
+		for _, err := range msg.errs {
+			if err != nil {
+				m.attachError = "Cannot reap: " + err.Error()
+				return m, nil
+			}
+		}
+		return m, nil
+	case sessionsBulkRestored:
+		for _, err := range msg.errs {
+			if err != nil {
+				m.attachError = "Cannot restore: " + err.Error()
+				return m, m.loadSessions
+			}
+		}
+		m.attachError = ""
+		return m, m.loadSessions
 	case uiStatePersisted:
 		// A failed write to ui_state is not load-bearing (SPEC §11.2): the
 		// pin/width already changed in memory and keeps rendering; only the
@@ -1194,8 +1370,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "d" && len(m.sessions) > 0 {
 				m.deleteConfirming = true
 				m.deleteNote = ""
-				m.deletePurgeValue = "keep"
-				m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(m.sessions[m.selected])
+				if len(m.marked) > 0 {
+					// Task 112: purge resolves one session's one declared
+					// transcript path at a time (task 109/110) -- not
+					// offered at all for a bulk delete, so nothing here
+					// resolves a path.
+					m.deletePurgeValue = ""
+					m.deletePurgePath = ""
+					m.deletePurgeOK = false
+				} else {
+					m.deletePurgeValue = "keep"
+					m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(m.sessions[m.selected])
+				}
 			}
 			return m, nil
 		}
@@ -1209,10 +1395,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// the only §11.4 contract key either binds is esc — shared here
 			// through the same applyDialogContract implementation createView,
 			// profileSwitchView and pinView defer to, rather than a sixth
-			// hand-written cancel.
+			// hand-written cancel. Task 112: a plain top-level Esc also
+			// clears the mark set ("the marks clear on the action and on
+			// esc") regardless of help/detail being open.
 			_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
 				m.help = false
 				m.detail = false
+				m.marked = nil
 			}})
 		case "i":
 			if !m.help && len(m.sessions) > 0 {
@@ -1281,6 +1470,33 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.kill == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
+			if len(m.marked) > 0 {
+				// Task 112: a non-empty mark set means x acts on the WHOLE
+				// batch instead of just the selected row. An already-stopped
+				// marked row is silently skipped (never an error, unlike the
+				// single-row refusal below) since a batch action naming
+				// rows that need nothing done would be noise, not a
+				// destructive-action guard. Marks clear immediately -- "the
+				// action" here IS pressing x, not waiting for the kills to
+				// finish.
+				sessions := m.markedSessions()
+				m.marked = nil
+				if len(sessions) == 0 {
+					return m, nil
+				}
+				kill := m.kill
+				return m, func() tea.Msg {
+					result := sessionsBulkKilled{}
+					for _, s := range sessions {
+						if s.Status == "stopped" {
+							continue
+						}
+						result.sessions = append(result.sessions, s)
+						result.errs = append(result.errs, kill(context.Background(), s))
+					}
+					return result
+				}
+			}
 			session := m.sessions[m.selected]
 			if session.Status == "stopped" {
 				m.attachError = "Cannot kill: session is already stopped"
@@ -1288,6 +1504,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, func() tea.Msg {
 				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
+			}
+		case "m":
+			// Task 112, requirement 28: m toggles a mark on the selected row
+			// keyed by session id (never a visual index), so the set
+			// survives a re-sort or re-group untouched -- markedSessions()
+			// re-resolves it through visualOrder() fresh every time it is
+			// consulted rather than caching anything positional.
+			if !m.help && len(m.sessions) > 0 {
+				id := m.sessions[m.selected].ID
+				if m.marked == nil {
+					m.marked = map[string]bool{}
+				}
+				if m.marked[id] {
+					delete(m.marked, id)
+				} else {
+					m.marked[id] = true
+				}
 			}
 		case "A":
 			// SPEC requirement 27: on a stopped row this only sets archived_at;
@@ -1337,6 +1570,27 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return sessionResumed{session: resumed, outcome: outcome, err: err}
 				}
 			}
+			// Task 112: the batch-kill undo window is checked next, still
+			// ahead of the delete-undo trio below -- a batch x's undo is
+			// "undo the most recent x" too, exactly like the single-session
+			// case just above, just covering N sessions with one keypress.
+			if len(m.batchUndoSessionIDs) > 0 {
+				if m.resume == nil {
+					return m, nil
+				}
+				ids := m.batchUndoSessionIDs
+				m.batchUndoSessionIDs = nil
+				m.batchUndoGeneration++
+				resume := m.resume
+				return m, func() tea.Msg {
+					result := sessionsBulkResumed{}
+					for _, id := range ids {
+						_, _, err := resume(context.Background(), id)
+						result.errs = append(result.errs, err)
+					}
+					return result
+				}
+			}
 			if m.deleteUndoSessionID != "" {
 				if m.restoreSvc == nil {
 					return m, nil
@@ -1347,6 +1601,26 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					restored, err := m.restoreSvc(context.Background(), sessionID)
 					return sessionRestored{session: restored, err: err}
+				}
+			}
+			// Task 112: the batch-delete undo window mirrors the single dd
+			// undo case directly above, one shared window restoring every
+			// session a marked-set dd tombstoned.
+			if len(m.batchDeleteUndoSessionIDs) > 0 {
+				if m.restoreSvc == nil {
+					return m, nil
+				}
+				ids := m.batchDeleteUndoSessionIDs
+				m.batchDeleteUndoSessionIDs = nil
+				m.batchDeleteUndoGeneration++
+				restoreSvc := m.restoreSvc
+				return m, func() tea.Msg {
+					result := sessionsBulkRestored{}
+					for _, id := range ids {
+						_, err := restoreSvc(context.Background(), id)
+						result.errs = append(result.errs, err)
+					}
+					return result
 				}
 			}
 			return m, nil
@@ -1711,8 +1985,16 @@ func (m Model) resumeNoteLines(width int) []string {
 // DECK_UNDO_MS after a successful x, naming the killed session and stating
 // that u undoes it, then gone once undoSessionID is cleared (by u itself or
 // by the undoExpired tick). Wrapped/reserved the same way attachErrorLines
-// and resumeNoteLines are, so it never pushes the frame off-screen.
+// and resumeNoteLines are, so it never pushes the frame off-screen. Task
+// 112's batch-kill window is checked first: a marked-set x can never be
+// active AT THE SAME TIME as a single-row undoSessionID (x clears
+// m.marked and sets exactly one of the two tracker pairs, never both), but
+// checking the batch one first keeps this in the same priority order the
+// `u` key itself uses.
 func (m Model) undoNoteLines(width int) []string {
+	if len(m.batchUndoSessionIDs) > 0 {
+		return wrapText(fmt.Sprintf("Killed %d sessions \u2014 press u to undo", len(m.batchUndoSessionIDs)), width)
+	}
 	if m.undoSessionID == "" {
 		return nil
 	}
@@ -1728,8 +2010,13 @@ func (m Model) undoNoteLines(width int) []string {
 // submit scenario asserts the deleted session's name is gone from the
 // WHOLE screen immediately (dd hides the row, unlike x's "stopped" row
 // that stays visible), and a toast quoting that same name back would
-// violate that the instant it renders.
+// violate that the instant it renders. Task 112's batch-delete window
+// (checked first, mirroring undoNoteLines above) never names a session
+// either, for the same reason plus its own: it would have to name N.
 func (m Model) deleteUndoNoteLines(width int) []string {
+	if len(m.batchDeleteUndoSessionIDs) > 0 {
+		return wrapText(fmt.Sprintf("Deleted %d sessions \u2014 press u to undo", len(m.batchDeleteUndoSessionIDs)), width)
+	}
 	if m.deleteUndoSessionID == "" {
 		return nil
 	}
@@ -1742,10 +2029,15 @@ func (m Model) deleteUndoNoteLines(width int) []string {
 // never shown at the same time as the confirm dialog itself (deleteConfirmView
 // replaces the whole frame -- see View()) or the undo toast (a pending
 // delete on a session that was just killed makes little sense, and neither
-// key sets both flags together).
+// key sets both flags together). Task 112: a non-empty mark set names the
+// batch size instead of the selected row's own name -- the selected row is
+// not necessarily even one of the marked sessions dd is about to act on.
 func (m Model) pendingDeleteLines(width int) []string {
 	if !m.pendingDelete || len(m.sessions) == 0 {
 		return nil
+	}
+	if len(m.marked) > 0 {
+		return wrapText(fmt.Sprintf("Delete %d marked sessions? press d again to confirm, any other key cancels", len(m.marked)), width)
 	}
 	return wrapText(fmt.Sprintf("Delete %q? press d again to confirm, any other key cancels", m.sessions[m.selected].Name), width)
 }
@@ -2256,6 +2548,13 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 	if session.ArchivedAt != 0 {
 		parts = append(parts, settingsRowSegment{Text: m.glyph("\u25a3", "[archived]"), Tok: theme.Archived})
 	}
+	// Task 112: the mark badge is driven from m.marked by session id
+	// alone -- never a visual index -- so it stays attached to the right
+	// row through a re-sort or re-group exactly like every other lookup
+	// keyed off m.marked (markedSessions()).
+	if m.marked[session.ID] {
+		parts = append(parts, settingsRowSegment{Text: m.glyph("\u2713 marked", "[marked]"), Tok: theme.Badge})
+	}
 	for i, p := range parts {
 		if i > 0 {
 			segs = append(segs, settingsRowSegment{Text: " ", Tok: theme.Text})
@@ -2661,8 +2960,15 @@ var deletePurgeOptions = []string{"keep", "purge"}
 // to tab between) -- only Esc (cancel, tombstones nothing) and Enter
 // (submit: kill the live pane if any, then tombstone the row) -- so it
 // defers to the shared §11.4 contract exactly like detailView/helpView's
-// esc-only case does, just with a Submit as well.
+// esc-only case does, just with a Submit as well. Task 112: a non-empty
+// mark set at the moment this dialog opened routes to
+// updateBulkDeleteConfirm instead -- the two never run at the same time
+// (m.marked and the single-session deletePurge* trio are set by mutually
+// exclusive branches of the second-`d` intercept above).
 func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if len(m.marked) > 0 {
+		return m.updateBulkDeleteConfirm(msg)
+	}
 	session := m.sessions[m.selected]
 	cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{Cycle: func(delta int) {
@@ -2705,6 +3011,45 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateBulkDeleteConfirm is task 112's marked-set second-`d` confirm: no
+// Fields.Cycle at all (purge is not offered for a bulk delete -- it
+// resolves one session's one declared transcript path at a time, task
+// 109/110 -- so left/right/space are simply not contract keys here, which
+// applyDialogContract already handles via a nil Cycle). Submit clears the
+// mark set THE MOMENT it fires ("the marks clear on the action"), before
+// the async delete loop even runs, using the session list resolved right
+// now rather than re-reading m.marked after it is gone.
+func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	sessions := m.markedSessions()
+	cmd, handled := applyDialogContract(msg, dialogContract{
+		Cancel: func() {
+			m.deleteConfirming = false
+			m.deleteNote = ""
+			m.marked = nil
+		},
+		Submit: func() tea.Cmd {
+			if m.deleteSvc == nil {
+				m.deleteNote = "deleting is unavailable"
+				return nil
+			}
+			deleteSvc := m.deleteSvc
+			m.marked = nil
+			return func() tea.Msg {
+				result := sessionsBulkDeleted{}
+				for _, s := range sessions {
+					result.sessions = append(result.sessions, s)
+					result.errs = append(result.errs, deleteSvc(context.Background(), s))
+				}
+				return result
+			}
+		},
+	})
+	if handled {
+		return m, cmd
+	}
+	return m, nil
+}
+
 // deleteConfirmView renders task 105's second-`d` confirm dialog. It states
 // plainly what dd does NOT destroy -- the conversation id and the working
 // directory both survive -- and, since task 110, offers "purge" as an
@@ -2728,8 +3073,13 @@ func (m Model) deleteConfirmView() string {
 // truncation, which applies uniformly to every field in every dialog here
 // and is exactly why this is its own function: a test can assert against
 // this body directly, the same way it would grep the source, without a
-// terminal-rendering concern in between.
+// terminal-rendering concern in between. Task 112: a non-empty mark set
+// renders the batch body instead (no purge choice -- see
+// updateBulkDeleteConfirm's own doc for why).
 func (m Model) deleteConfirmBody() string {
+	if len(m.marked) > 0 {
+		return m.bulkDeleteConfirmBody()
+	}
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Delete %s\n\n", session.Name)
@@ -2744,6 +3094,26 @@ func (m Model) deleteConfirmBody() string {
 		b.WriteString("No transcript could be located for this agent; purge deletes nothing.\n")
 	}
 	b.WriteString("\nEnter deletes · Esc cancels\n")
+	if m.deleteNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
+	}
+	return b.String()
+}
+
+// bulkDeleteConfirmBody is deleteConfirmBody's task 112 counterpart for a
+// non-empty mark set: it names the batch size and every marked session's
+// own name rather than one session's conversation id/working directory (a
+// batch of N each has its own), and states plainly that purge is not
+// offered here.
+func (m Model) bulkDeleteConfirmBody() string {
+	sessions := m.markedSessions()
+	var b strings.Builder
+	fmt.Fprintf(&b, "Delete %d marked sessions\n\n", len(sessions))
+	b.WriteString("This kills each live pane (if any) and removes each session from the\nlist. Every marked session's own conversation and working directory\nsurvive, untouched. Purge is not offered for a bulk delete.\n\n")
+	for _, s := range sessions {
+		fmt.Fprintf(&b, "  %s\n", s.Name)
+	}
+	b.WriteString("\nEnter deletes all · Esc cancels\n")
 	if m.deleteNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
 	}
@@ -2991,6 +3361,28 @@ func (m Model) transcriptPathFor(session store.Session) (string, bool) {
 		CWD:            session.CWD,
 		ConversationID: session.ConversationID,
 	})
+}
+
+// markedSessions resolves task 112's `m` mark set into the actual
+// store.Session values, walking m.visualOrder() -- the sidebar's own
+// painted order -- rather than m.sessions index order or any range over
+// the m.marked map itself (map iteration order is unspecified in Go,
+// which would make a "batch" action's own effective order nondeterministic
+// run to run). This is the ONE place the mark set is turned into a session
+// list; x and dd both call this rather than re-walking m.sessions or
+// m.marked themselves.
+func (m Model) markedSessions() []store.Session {
+	if len(m.marked) == 0 {
+		return nil
+	}
+	var out []store.Session
+	for _, idx := range m.visualOrder() {
+		session := m.sessions[idx]
+		if m.marked[session.ID] {
+			out = append(out, session)
+		}
+	}
+	return out
 }
 
 // validateCreateFields checks the create modal's free-form fields (cwd,
@@ -3684,6 +4076,11 @@ Keys
     offers "kill and archive" as a single action rather than refusing the
     keypress the way x refuses an already-stopped row; archived_at is a flag,
     never a status, so the row keeps whatever status it had
+  m toggle a mark on the selected session (kept by session id, so it
+    survives a re-sort or re-group); with the mark set non-empty, x and dd
+    act on the whole batch instead of just the selected row, and ONE u
+    restores the entire batch in one action; the marks clear on that
+    action and on Esc
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells
