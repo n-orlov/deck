@@ -88,3 +88,29 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch record for session "audit env one" names environment key "AUDIT_ENV_TOKEN"
     And the audit log file never contains "super-secret-do-not-log-8675309"
     When deck client "A" exits cleanly
+
+  Scenario: R restarts a claude session, recording environment key names in the launch audit but never a value
+    # PRD requirement 10 / SPEC §6.4, extended to the R restart path (I-12):
+    # the same argv/env-key-names-never-a-value guarantee the prior
+    # scenario proves for create and resume (r) must also hold for
+    # restart (R), which builds its relaunch argv from the SAME stored
+    # env map rather than re-reading anything the user typed. This
+    # reuses task 011's whole-file scan (no_leak_test.go) rather than
+    # only the JSONL substring check, so a value leaking into
+    # state.db-wal or any other file under DECK_HOME -- not just the
+    # audit log -- would also be caught.
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "restart audit env" with permission profile "safe" and env "AUDIT_ENV_TOKEN=super-secret-restart-do-not-log-2468013"
+    Then deck client "A" screen contains "restart audit env"
+    And the audit log's most recent launch record for session "restart audit env" names environment key "AUDIT_ENV_TOKEN"
+    And the audit log file never contains "super-secret-restart-do-not-log-2468013"
+    And the audit log has 1 launch record for session "restart audit env"
+    When deck client "A" presses R on session "restart audit env"
+    Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
+    And the audit log has 2 launch records for session "restart audit env"
+    And the audit log's most recent launch argv for session "restart audit env" contains "--resume"
+    And the audit log's most recent launch record for session "restart audit env" names environment key "AUDIT_ENV_TOKEN"
+    And the audit log file never contains "super-secret-restart-do-not-log-2468013"
+    And no file under deck client "A" home directory, other than the state database, ever contains "super-secret-restart-do-not-log-2468013"
+    When deck client "A" exits cleanly
