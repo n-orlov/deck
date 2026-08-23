@@ -4342,6 +4342,7 @@ func helpText(ascii bool) string {
 
 Keys
   ↑/↓ or j/k select a session
+  PgUp/PgDn page up/down through the list, one page at a time
   ↵ attach the selected running session
   Y acknowledge the selected waiting/error session, clear its unseen marker
   n create a session (shell, or an agent: claude or pi)
