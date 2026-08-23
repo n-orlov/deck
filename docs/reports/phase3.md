@@ -96,7 +96,7 @@ per `discovered.approach`) are filled in now. Everything else is `PENDING`.
 | 27 | `A` archives (flag not status), requires `stopped`, "kill and archive" | PENDING | Task 111. |
 | 28 | `m` marks; `x`/`dd` act on the set; one undo covers the batch | PENDING | Task 112. |
 | 29 | R1: cwd fingerprint across every destructive path + every undo | PENDING | Tasks 108, 113. |
-| 30 | Every transient message inside the frame budget | PENDING | Task 103. |
+| 30 | Every transient message inside the frame budget | PARTIAL | `internal/tui` `TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode` (undo toast, all 4 layout modes, 80x24) and `TestUndoToastBudgetHoldsAcrossSizes` (5 sizes); `features/layout_modes.feature`'s 8 scenarios unchanged and still green. Task 103 proves the undo toast (the only transient message that exists yet) is counted in `computeLayout`'s reserved rows. The pending-`d` indicator (task 105) and the batch-undo message (task 112) do not exist yet; each of those tasks must add its own line to the same reserved-row expression and is expected to extend this row's evidence when it does. |
 | 31 | Rename inside `i` detail dialog only, tmux name unchanged, stated on screen | PENDING | Task 125. |
 | 32 | `E` event log: newest first, kind/reason/bounded payload, masked env | PENDING | Task 124. |
 | 33 | `/` filters by name/workspace/cwd; also how archived rows are reached | PENDING | Task 123. |
