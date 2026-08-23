@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -36,7 +38,31 @@ func (Claude) Capabilities() Caps {
 		Profiles:              claudeProfiles,
 		AssignsConversationID: true,
 		Resumable:             true,
+		HasTranscript:         true,
 	}
+}
+
+// TranscriptPaths locates Claude's on-disk transcript for a conversation,
+// following exactly the convention recorded in
+// docs/reports/phase3-findings.md's provenance section (established against
+// a real, authenticated Claude Code 2.1.237's own hook payload):
+// $HOME/.claude/projects/<cwd, every path separator replaced with "-">/
+// <conversation id>.jsonl. It returns ok=false -- never an error -- when
+// Home or ConversationID is empty, or when the computed path does not
+// exist: a missing HOME and "no matching file" both degrade to "cannot
+// locate", exactly as cmd/fake-claude's transcriptPath already does for its
+// fixture.
+func (Claude) TranscriptPaths(in TranscriptInput) (string, bool) {
+	if in.Home == "" || in.ConversationID == "" {
+		return "", false
+	}
+	project := strings.ReplaceAll(in.CWD, string(filepath.Separator), "-")
+	path := filepath.Join(in.Home, ".claude", "projects", project, in.ConversationID+".jsonl")
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	return path, true
 }
 
 func (c Claude) Launch(in LaunchInput) ([]string, error) {
