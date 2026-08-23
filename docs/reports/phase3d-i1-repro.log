@@ -1,0 +1,176 @@
+I-1 / task 004 -- reproducing the marked-set keystroke drop, with task 003's
+input-count instrument read at the moment of failure
+================================================================================
+
+Scope: features/kill_delete_undo.feature's @requirement-29-bulk-kill,
+@requirement-29-bulk-delete and @requirement-29-batch-undo scenarios, which
+Phase 3 (docs/reports/phase3-findings.md) and this run's own notes.md record
+as intermittently dropping a keystroke in the k/m/j/m marked-set idiom under
+load. This log records every run made while chasing a live reproduction, the
+host's nproc and /proc/loadavg at each one, and -- for the run that actually
+reproduced -- task 003's own counter read at the moment of failure, so "the
+byte never arrived" and "the byte arrived and was not acted on" are
+distinguishable rather than guessed.
+
+nproc for every run in this log: 28 (runtime.NumCPU() inside the ci/run.sh
+sibling; confirmed also via the sibling's own /proc/cpuinfo).
+
+--------------------------------------------------------------------------------
+1. Natural-load reproduction (no synthetic load needed)
+--------------------------------------------------------------------------------
+
+Command shape used (ci/run.sh's sibling does not forward -e, so every
+env var is set inside the `sh -c`/`bash -c` string itself):
+
+    ci/run.sh bash -c '
+      GOFLAGS=-tags=deckinputcount DECK_INPUT_COUNT_FILE=/tmp/i1-counter \
+        DECK_GODOG_TAGS="@requirement-29-bulk-kill" \
+        go test -count=1 -run TestFeatures -v ./features/
+    '
+
+GOFLAGS=-tags=deckinputcount is picked up transparently by the nested
+`go build -o <binary> ./cmd/deck` features/lifecycle_test.go's scenario-lifecycle
+Before hook runs for every scenario (it does not build with any -tags of its
+own), so every deck client this run launches is compiled with task 003's
+counting hook active, with no change to any shared test file.
+DECK_INPUT_COUNT_FILE is inherited the same way: startScreenDriver's
+`cmd.Env = append(os.Environ(), env...)` (features/pty_driver_test.go:101)
+means the value set on the outer `go test` process reaches every deck client
+process it starts.
+
+Three attempts, single scenario per attempt, single client "A" per attempt
+(so the counter file's cumulative total is unambiguous -- there is nothing
+else writing to it):
+
+    attempt 1: exit=0  loadavg="2.23 4.90 5.36 1/4610 732"
+    attempt 2: exit=0  loadavg="2.23 4.90 5.36 2/4611 1386"
+    attempt 3: exit=1  loadavg="2.83 4.94 5.37 1/4521 4883"   <-- REPRODUCED
+
+Note the 1-minute figure (2.83) is well inside the "whole suite green"
+range the planner already measured (1.8-2.6), not anywhere near Phase 3's
+documented 6-7 trigger band -- this reproduces on ordinary, unloaded runs of
+the isolated scenario, so it is not purely a heavy-load phenomenon (see
+section 3 for a second, independent confirmation that it is not scratch-dir-
+or fingerprint-specific either).
+
+A companion run tagging all three scenarios together also reproduced on its
+very first attempt.
+
+    attempt 1: exit=1 (2 of 3 scenarios failed: bulk-kill, bulk-delete)
+      loadavg="4.77 6.64 5.92 7/4566 6770"
+
+--------------------------------------------------------------------------------
+2. The failure signature (attempt 3 above, @requirement-29-bulk-kill)
+--------------------------------------------------------------------------------
+
+    When deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bk-one running [marked]"   -- PASSED
+    When deck client "A" sends "j"
+    Then deck client "A" screen contains "> bk-two running"          -- FAILED
+      after scenario hook failed: client "A" did not show "> bk-two running"
+      within 5s: timed out waiting for frame "> bk-two running":
+      context deadline exceeded
+
+The driver's own diagnostic on the hung client (features/pty_driver_test.go's
+Stop path) prints the exact input timeline it sent, confirming "j" really was
+written to the pty 25.6ms after "m":
+
+      [13:03:52.422] +22.97621ms "k"
+      [13:03:52.547] +125.604509ms "m"
+      [13:03:52.573] +25.607203ms "j"
+
+...and the frame at the 5s timeout shows the cursor never left bk-one:
+
+      |   bk-two running                 |
+      | > bk-one running [marked]        |
+
+Full trimmed transcript (godog pretty output, ANSI stripped, the SIGQUIT
+goroutine dump from the hung-client kill elided): see
+docs/reports/phase3d-i1-repro-godog-excerpt.log (same commit).
+
+--------------------------------------------------------------------------------
+3. Task 003's counter read at the moment of failure -- the verdict
+--------------------------------------------------------------------------------
+
+A background poller inside the same sibling sampled task 003's counter file
+every 10ms for the whole run (docs/reports/phase3d-i1-repro-counter-poll.log,
+thinned 3x here for size, full resolution reproducible with the command in
+section 1). Correlating counter value against each Send call's own wall-clock
+timestamp (recorded by the -v run's own timestamps, joined by seconds-since-
+epoch, both captured on the same clock inside the same container):
+
+    event                          count just before   count 300ms later
+    sends "k"                            141                  143
+    sends "m" (marks bk-one)             142                  143
+    sends "j"                            143                  143   <-- flat
+
+...and the counter is STILL 143 six full seconds later, at the moment the
+step's own 5s WaitForFrame deadline expires, and stays 143 for the rest of
+the poll window. "k" and "m" both advanced the counter by exactly 1 within
+one poll tick of being sent (the ordinary, working case); "j" never advanced
+it at all, at any point before, during, or after the 5s the assertion waited.
+
+VERDICT: the dropped "j" NEVER ARRIVED at deck's own tea.Model Update loop.
+This is a delivery-layer drop -- somewhere in the pty write / kernel tty
+line discipline / bubbletea's own PTY reader / task 118's coalescing splitter,
+strictly below deck's application code -- not a case of the application
+receiving the key and failing to act on it. Any fix belongs in that layer,
+not in the marked-set/list-navigation application logic itself.
+
+--------------------------------------------------------------------------------
+4. Synthetic-load attempt (the required negative control)
+--------------------------------------------------------------------------------
+
+Before the natural-load reproduction above was found, a dedicated, opt-in Go
+test was built to force the issue under deliberately elevated CPU load, in
+case natural load never reproduced it: features/i1_repro_test.go
+(TestI1KeystrokeDropReproduction, gated on DECK_I1_REPRO=1 so it is not part
+of any ordinary `go test ./...` run). It drives its own hand-rolled k/m/j/m
+idiom against two plainly-created (not scratch/fingerprint-seeded) sessions,
+first at natural load, then under self-spawned "yes > /dev/null" CPU hogs
+(PIDs captured at spawn, killed by this test's own code -- never by pattern).
+
+    phase 1 (natural load):   80 attempts, 0 reproductions,  loadavg 1.27-2.70
+    phase 2 (synthetic load): 190 attempts, 0 reproductions, loadavg climbed
+                               to 30.98 1m / 15.58 5m / 7.43 15m (28 hog
+                               processes on 28 cores) -- well past Phase 3's
+                               documented 6-7 trigger band, sustained for
+                               minutes, and still 0/270 reproductions.
+
+Full run log: see the CI invocation in this file's own commit message; the
+summary above is the entire result (t.Log output), no scenario text was
+weakened to obtain it, and none was needed since it never reproduced.
+
+Reading sections 1-4 together: raw CPU contention (this section) does not
+reproduce the drop at all in 270 tries even at ~4x Phase 3's documented
+trigger load, while the REAL scenario's own create-session-dialog/scratch-
+directory/fingerprinting path (section 1) reproduces it in 1-3 tries at
+ORDINARY load. The trigger condition correlates with something in the real
+scenario's own timing shape (dialog typing, tmux/sqlite calls interleaved
+with the marked-set keystrokes) rather than with bare CPU starvation. This is
+a finding for I-1's continuation, not a claim this task resolves I-1 itself;
+task 004's job was reproduction plus the counter's verdict, both delivered
+above.
+
+--------------------------------------------------------------------------------
+5. Reproduction commands (for anyone re-running this)
+--------------------------------------------------------------------------------
+
+    # single-scenario, instrumented, loop until it fails:
+    ci/run.sh bash -c '
+      i=0
+      while [ $i -lt 40 ]; do
+        i=$((i+1))
+        rm -f /tmp/i1-counter
+        GOFLAGS=-tags=deckinputcount DECK_INPUT_COUNT_FILE=/tmp/i1-counter \
+          DECK_GODOG_TAGS="@requirement-29-bulk-kill" \
+          go test -count=1 -run TestFeatures -v ./features/ && continue
+        echo "reproduced at attempt $i, loadavg=$(cat /proc/loadavg)"
+        break
+      done
+    '
+
+    # the opt-in synthetic-load driver:
+    ci/run.sh sh -c 'DECK_I1_REPRO=1 go test -count=1 -run TestI1KeystrokeDropReproduction -v -timeout 600s ./features/'
