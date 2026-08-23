@@ -490,6 +490,7 @@ func (m *Model) settingsActivateField() {
 			m.settingsEnvOpen = true
 			m.settingsEnvIndex = 0
 			m.settingsEnvEditing = false
+			m.settingsEnvReveal = false
 		}
 	case config.KindLink:
 		if f.FullKey() == "ui.clear_recent_cwds" {
@@ -569,6 +570,9 @@ func (m Model) updateSettingsEnvList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 	case "-", "_":
 		m.settingsEnvDeleteSelected()
+	case "r":
+		// SPEC §6.4/requirement 21: the explicit per-view reveal toggle.
+		m.settingsEnvReveal = !m.settingsEnvReveal
 	}
 	return m, nil
 }
@@ -1429,7 +1433,7 @@ func (m Model) settingsFooterLine() string {
 		return truncateToWidth("type to edit - tab switch key/value - enter on value saves the entry - esc cancels", width)
 	}
 	if m.settingsEnvOpen {
-		return truncateToWidth("up/down move - enter edit/add - - remove - esc back to fields", width)
+		return truncateToWidth("up/down move - enter edit/add - - remove - r reveal/mask - esc back to fields", width)
 	}
 	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
 	if m.settingsNote != "" {
@@ -1469,7 +1473,7 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 		}
 		rightLines = []string{
 			m.settingsRenderRow([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}, theme.Selection, m.settingsEnvEditingKeyPart),
-			m.settingsRenderRow([]settingsRowSegment{{Text: valueMarker + "Value: " + m.settingsEnvEditValue, Tok: theme.Text}}, theme.Selection, !m.settingsEnvEditingKeyPart),
+			m.settingsRenderRow([]settingsRowSegment{{Text: valueMarker + "Value: " + m.maskEnvValue(m.settingsEnvEditKey, m.settingsEnvEditValue, m.settingsEnvReveal), Tok: theme.Text}}, theme.Selection, !m.settingsEnvEditingKeyPart),
 		}
 	} else {
 		title = "[env]"
@@ -1485,7 +1489,7 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 				{Text: marker, Tok: theme.Text},
 				{Text: k, Tok: theme.Hint},
 				{Text: "=", Tok: theme.Text},
-				{Text: m.settingsEdits.Env[k], Tok: theme.Text},
+				{Text: m.maskEnvValue(k, m.settingsEdits.Env[k], m.settingsEnvReveal), Tok: theme.Text},
 			}
 			rightLines = append(rightLines, m.settingsRenderRow(segs, theme.Selection, selected))
 		}

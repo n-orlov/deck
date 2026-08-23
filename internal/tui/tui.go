@@ -259,7 +259,13 @@ type Model struct {
 	// editing within it (see updateEnvDialog).
 	envEditPrefilled bool
 	envNote          string
-	setSessionEnv    func(context.Context, string, string, string) (store.Session, error)
+	// envReveal is task 010's per-view explicit reveal toggle (SPEC §6.4,
+	// requirement 21): false (the default every time the dialog opens, per
+	// "r" below) masks every secret-shaped row's value via maskEnvValue;
+	// "r" while browsing (not mid-edit) flips it back off, never sticking
+	// across a close/reopen of the dialog.
+	envReveal     bool
+	setSessionEnv func(context.Context, string, string, string) (store.Session, error)
 	// settingsOpen is task 013's `,` full-screen takeover (SPEC §11.5): a
 	// category list and the selected category's field list, both walking
 	// config.Schema rather than a hand-written field set. It is not a
@@ -347,6 +353,11 @@ type Model struct {
 	settingsEnvEditKey         string
 	settingsEnvEditValue       string
 	settingsEnvEditOriginalKey string
+	// settingsEnvReveal is task 010's per-view explicit reveal toggle (SPEC
+	// §6.4, requirement 21): false (reset every time the entries list is
+	// opened) masks every secret-shaped entry's value via maskEnvValue;
+	// "r" while browsing the entries list (not mid-edit) flips it.
+	settingsEnvReveal bool
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -1748,6 +1759,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.envCursor = 0
 				m.envEditKey, m.envEditValue, m.envNote = "", "", ""
 				m.envEditPrefilled = false
+				m.envReveal = false
 			}
 		case " ":
 			// SPEC requirements 31, 32: move to the next session needing
@@ -4191,7 +4203,8 @@ Keys
     session's own env and marks it env-dirty until a later restart picks
     it up; the save mirrors into tmux's own environment for future panes,
     never into whatever the pane's already-running process started with;
-    Esc cancels an edit in progress, or closes the dialog otherwise
+    secret-shaped keys mask by default (§6.4); r toggles reveal, resets on
+    reopen; Esc cancels an edit in progress, or closes the dialog otherwise
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
@@ -4241,6 +4254,8 @@ Settings takeover (opened with ,)
   Ctrl+S                 save staged edits to config.toml
   Esc                    close; with unsaved changes, prompts to discard
                          (y/Enter discards, any other key keeps editing)
+  [env] entries editor: - removes an entry, r reveals/masks secret-shaped
+                         values (SPEC §6.4, resets to masked on reopen)
 
 Theme picker (opened with t)
   Left/Right or Up/Down or Space   change the previewed theme

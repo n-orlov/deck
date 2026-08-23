@@ -24,14 +24,14 @@ Feature: The `e` env editor shows the effective value and winning layer per key,
     Given the scenario's config.toml is written with:
       """
       [env]
-      ENV_LAYER_KEY = "config-value"
+      ENV_LAYER_VAR = "config-value"
       """
     And a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
-    When deck client "A" creates claude session "env layers" with permission profile "safe" and env "ENV_LAYER_KEY=session-value"
+    When deck client "A" creates claude session "env layers" with permission profile "safe" and env "ENV_LAYER_VAR=session-value"
     Then deck client "A" screen contains "env layers"
     When deck client "A" opens the env editor for session "env layers"
-    Then deck client "A" screen contains "ENV_LAYER_KEY"
+    Then deck client "A" screen contains "ENV_LAYER_VAR"
     And deck client "A" screen contains "session-value"
     And deck client "A" screen contains "session env"
     And deck client "A" screen contains "PATH"
@@ -48,7 +48,7 @@ Feature: The `e` env editor shows the effective value and winning layer per key,
     And deck client "A" closes the dialog with escape
     Then deck client "A" screen contains "deck - sessions"
     And the scenario's config.toml still matches the captured "before-env-esc"
-    And the state database session "plain env" has no env key "ENV_LAYER_KEY"
+    And the state database session "plain env" has no env key "ENV_LAYER_VAR"
     When deck client "A" exits cleanly
 
   @requirement-021-env-editor-writes-env-dirty-and-tmux-mirror
