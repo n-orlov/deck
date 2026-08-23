@@ -282,3 +282,25 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then the state database session "purge-remove" is tombstoned
     And the transcript captured as "purge-before" no longer exists
     When deck client "A" exits cleanly
+
+  @requirement-27-archive-stopped
+  Scenario: A archives an already-stopped session, hidden from the default list with its status unchanged
+    Given deck client "A" is started with a short undo window
+    And deck client "A" creates shell session "archive-stopped"
+    When deck client "A" kills its selected session
+    Then the state database contains session "archive-stopped" with status "stopped"
+    When 300 milliseconds pass
+    And deck client "A" archives its selected session "archive-stopped"
+    Then the state database session "archive-stopped" is archived
+    And the state database contains session "archive-stopped" with status "stopped"
+    When deck client "A" exits cleanly
+
+  @requirement-27-archive-kill-and-archive
+  Scenario: A on a non-stopped session offers kill and archive as one action instead of refusing
+    Given deck client "A" is started
+    And deck client "A" creates shell session "archive-running"
+    When deck client "A" archives its selected session "archive-running"
+    Then the private tmux session "deck_archive-running" does not exist
+    And the state database session "archive-running" is archived
+    And the state database contains session "archive-running" with status "stopped"
+    When deck client "A" exits cleanly

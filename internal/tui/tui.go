@@ -145,6 +145,14 @@ type Model struct {
 	// submitting with purge chosen then reports so rather than silently
 	// deleting nothing while claiming success.
 	purgeSvc func(context.Context, string) error
+	// archiveSvc is task 111's `A` submit path (SPEC requirement 27): it
+	// kills the selected session's live pane first if one exists (offering
+	// "kill and archive" as one action rather than refusing), then sets
+	// archived_at (store.ArchiveSession) -- a flag, never a status, so the
+	// row keeps whatever Status it ends up with. nil means archiving is
+	// unavailable and submitting states so rather than silently doing
+	// nothing.
+	archiveSvc func(context.Context, store.Session) error
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -494,6 +502,18 @@ type sessionDeleted struct {
 	purgeErr error
 }
 
+// sessionArchived carries task 111's `A` submit result back (SPEC
+// requirement 27): kill the live pane first if one exists (offering
+// "kill and archive" as one action rather than refusing), then set
+// archived_at. A successful archive reloads the session list so the
+// now-archived row disappears from the sidebar immediately, exactly as
+// sessionDeleted already does for dd -- there is no undo toast for this
+// one (unlike dd, requirement 27 names no grace window).
+type sessionArchived struct {
+	session store.Session
+	err     error
+}
+
 // deleteGraceExpired fires DECK_DELETE_GRACE_MS after a successful dd
 // delete, mirroring undoExpired's generation-tying shape exactly (task
 // 106): a stale tick left over from an earlier delete/undo cycle that a
@@ -802,6 +822,19 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver
+// adds task 111's `A` (SPEC requirement 27): archiver kills the selected
+// session's live pane first if one exists (offering "kill and archive" as
+// one action rather than refusing) and then sets archived_at
+// (store.ArchiveSession) -- a flag, never a status. Until archiver is
+// wired, A reports "archiving is unavailable" rather than silently doing
+// nothing.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error, purger func(context.Context, string) error, archiver func(context.Context, store.Session) error) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperAndPurger(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter, restorer, reaper, purger)
+	m.archiveSvc = archiver
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -904,6 +937,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionAcknowledged:
 		if msg.err != nil {
 			m.attachError = "Cannot acknowledge: " + msg.err.Error()
+			return m, nil
+		}
+		m.attachError = ""
+		return m, m.loadSessions
+	case sessionArchived:
+		if msg.err != nil {
+			m.attachError = "Cannot archive: " + msg.err.Error()
 			return m, nil
 		}
 		m.attachError = ""
@@ -1248,6 +1288,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, func() tea.Msg {
 				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
+			}
+		case "A":
+			// SPEC requirement 27: on a stopped row this only sets archived_at;
+			// on any other row it kills the live pane first and archives in the
+			// same action ("kill and archive", §4's invariant) rather than
+			// refusing the keypress the way x refuses an already-stopped row --
+			// archiveSvc (internal/service.Service.Archive) makes that decision,
+			// never this switch.
+			if m.archiveSvc == nil || len(m.sessions) == 0 {
+				if len(m.sessions) > 0 {
+					m.attachError = "Archiving is unavailable"
+				}
+				return m, nil
+			}
+			session := m.sessions[m.selected]
+			return m, func() tea.Msg {
+				return sessionArchived{session: session, err: m.archiveSvc(context.Background(), session)}
 			}
 		case "d":
 			// First half of task 105's dd chord: a visible pending indicator,
@@ -2189,6 +2246,16 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 		statusTok = t
 	}
 	parts = append(parts, settingsRowSegment{Text: session.Status, Tok: statusTok})
+	// SPEC requirement 27: archived_at is a FLAG, never a status -- the
+	// ▣ glyph is rendered from that flag directly, never from any
+	// notion of session.Status == "archived" (there is no such status;
+	// the six SPEC-enumerated ones are untouched by this task, see
+	// attention.go). An archived row keeps whatever status word it
+	// already had above, so this is an ADDITIONAL badge, not a
+	// replacement.
+	if session.ArchivedAt != 0 {
+		parts = append(parts, settingsRowSegment{Text: m.glyph("\u25a3", "[archived]"), Tok: theme.Archived})
+	}
 	for i, p := range parts {
 		if i > 0 {
 			segs = append(segs, settingsRowSegment{Text: " ", Tok: theme.Text})
@@ -3612,6 +3679,11 @@ Keys
     afterward -- u within that window restores the row (deleted_at
     cleared, back in the list); once the window expires the row is reaped
     and u does nothing
+  A archive the selected session, hidden from the default list from then
+    on: on a stopped row this only sets archived_at; on any other row it
+    offers "kill and archive" as a single action rather than refusing the
+    keypress the way x refuses an already-stopped row; archived_at is a flag,
+    never a status, so the row keeps whatever status it had
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells

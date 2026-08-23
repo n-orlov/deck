@@ -216,3 +216,20 @@ of a *missing* capture file elsewhere ("degrades to no replay, never to an error
 ## SPEC.md
 
 Unmodified by this task — `git diff SPEC.md` is empty (verified below).
+
+## Pre-existing dead code confirms requirement 27's own premise (task 111)
+
+`internal/tui.previewPlaceholderLines` (`internal/tui/tui.go`) has had a `case "archived":`
+branch since before this task, rendering "Session is archived. No live preview to show." — but
+`session.Status` can never actually equal the literal string `"archived"`: requirement 27 (and
+this task's own store/service work) makes archiving a flag (`archived_at`), never a status
+transition, and nothing anywhere in the tree ever calls `SetStatus`/writes `status="archived"`.
+That branch was unreachable before this task and stays unreachable after it — the archived rows
+this task adds keep whatever status they had going in (`stopped`, since archiving requires it or
+kill-and-archives to it), so they fall into the `case "stopped":` branch instead, same as any
+other stopped row. Left as-is rather than rewired to check `ArchivedAt` directly: requirement 27
+and task 111's `successCriteria` only asked for the sidebar glyph/list-visibility behavior (both
+covered by `internal/tui/archive_test.go` and the two new feature scenarios), not the preview
+pane's placeholder copy, and rewiring dead code the task wasn't asked to touch risks a scope
+change with no test pinning the new preview text. Recorded here so a later task that does want an
+"archived" preview message finds this branch already exists, just gated on the wrong condition.

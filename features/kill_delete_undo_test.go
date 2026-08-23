@@ -40,6 +40,9 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake claude transcript for session "([^"]+)" is captured as "([^"]+)"$`, fakeClaudeTranscriptForSessionIsCapturedAs)
 	sc.Step(`^the transcript captured as "([^"]+)" still exists byte-identical$`, transcriptCapturedStillExistsByteIdentical)
 	sc.Step(`^the transcript captured as "([^"]+)" no longer exists$`, transcriptCapturedNoLongerExists)
+	sc.Step(`^deck client "([^"]+)" archives its selected session "([^"]+)"$`, clientArchivesSelectedSession)
+	sc.Step(`^the state database session "([^"]+)" is archived$`, stateDatabaseSessionIsArchived)
+	sc.Step(`^the state database session "([^"]+)" is not archived$`, stateDatabaseSessionIsNotArchived)
 }
 
 // transcriptSnapshot is task 110's own fixture record, keyed by an
@@ -446,6 +449,72 @@ func stateDatabaseSessionIsNotTombstoned(ctx context.Context, name string) error
 	}
 	if deletedAt != 0 {
 		return fmt.Errorf("session %q has deleted_at=%d, want not tombstoned", name, deletedAt)
+	}
+	return nil
+}
+
+// clientArchivesSelectedSession sends `A` -- SPEC requirement 27's archive
+// key (task 111) -- and waits until the now-archived row's name is gone
+// from the screen: whether it was already stopped (archived_at set alone)
+// or not (kill-and-archive as one action), an archived row is hidden from
+// ListSessions' default view, so the render this waits for is exactly the
+// one requirement 27 requires.
+func clientArchivesSelectedSession(ctx context.Context, name, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("A"); err != nil {
+		return err
+	}
+	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return client.WaitForFrameGone(wait, false, sessionName)
+}
+
+// sessionArchivedAt/stateDatabaseSessionIsArchived/
+// stateDatabaseSessionIsNotArchived mirror sessionDeletedAt's tombstone
+// shape exactly, but read archived_at (task 111) -- a flag, never a
+// status, so these never touch or infer anything about the status column.
+func sessionArchivedAt(ctx context.Context, name string) (int64, error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return 0, err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	var archivedAt sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT archived_at FROM sessions WHERE name = ?`, name).Scan(&archivedAt); err != nil {
+		return 0, fmt.Errorf("observe session %q archived_at: %w", name, err)
+	}
+	return archivedAt.Int64, nil
+}
+
+func stateDatabaseSessionIsArchived(ctx context.Context, name string) error {
+	archivedAt, err := sessionArchivedAt(ctx, name)
+	if err != nil {
+		return err
+	}
+	if archivedAt == 0 {
+		return fmt.Errorf("session %q has archived_at=0, want archived", name)
+	}
+	return nil
+}
+
+func stateDatabaseSessionIsNotArchived(ctx context.Context, name string) error {
+	archivedAt, err := sessionArchivedAt(ctx, name)
+	if err != nil {
+		return err
+	}
+	if archivedAt != 0 {
+		return fmt.Errorf("session %q has archived_at=%d, want not archived", name, archivedAt)
 	}
 	return nil
 }
