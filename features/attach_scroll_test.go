@@ -3,6 +3,8 @@ package features
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,6 +25,72 @@ func registerAttachScrollSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" scrolls the wheel up (\d+) times over the attached pane at column (\d+) row (\d+)$`, clientScrollsWheelUpNTimesAt)
 	sc.Step(`^deck client "([^"]+)" attached pane shows the top of the scrollback$`, clientAttachedPaneShowsTopOfScrollback)
 	sc.Step(`^deck client "([^"]+)" exits copy-mode on the attached pane$`, clientExitsCopyModeOnAttachedPane)
+
+	// requirement 49 (task 117): capture-pane while a client is scrolled
+	// back in copy-mode.
+	sc.Step(`^probe fixture agents for attach-scroll are configured$`, configureAttachScrollProbeScenario)
+	sc.Step(`^deck client "([^"]+)" scrolls the wheel up (\d+) times over the attached pane at column (\d+) row (\d+) until it shows "([^"]+)"$`, clientScrollsWheelUpNTimesAtUntil)
+	sc.Step(`^deck client "([^"]+)" attached pane shows "([^"]+)"$`, clientAttachedPaneShowsText)
+}
+
+// configureAttachScrollProbeScenario is requirement 49's own, deliberately
+// smaller cousin of features/status_probe_test.go's configureProbeScenario:
+// it needs a claude fixture that can render probe golden fixtures and a
+// short stale_after, but none of that scenario's frozen-clock/SIGUSR1/
+// capture-race wrapper machinery -- this scenario never races a hook
+// against a probe, so real wall-clock time against a short stale_after is
+// simpler and just as deterministic (the wait is bounded by the fixed
+// wheel-scroll and fixture-render steps that precede the probe assertion,
+// which already take longer than a one-second stale_after in practice).
+func configureAttachScrollProbeScenario(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if err := installFakeClaudeOnPATH(ctx, true); err != nil {
+		return err
+	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	fixtureDir := filepath.Join(root, "internal", "agent", "testdata", "probes")
+	config := fmt.Sprintf("stale_after = \"1s\"\n[env]\nFAKE_AGENT_FIXTURE_DIR = %q\n", fixtureDir)
+	return os.WriteFile(filepath.Join(h.Home, "config.toml"), []byte(config), 0o600)
+}
+
+// clientScrollsWheelUpNTimesAtUntil is clientScrollsWheelUpNTimesAt's
+// counterpart for a scenario that needs to prove a specific, previously
+// rendered probe fixture's text (not attachScrollTopMarker) has scrolled
+// back into view.
+func clientScrollsWheelUpNTimesAtUntil(ctx context.Context, name string, times, col, row int, want string) error {
+	client, err := mouseSynthesisClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < times; i++ {
+		if err := client.WheelUp(col, row); err != nil {
+			return fmt.Errorf("wheel-up notch %d/%d: %w", i+1, times, err)
+		}
+	}
+	return client.WaitForFrame(ctx, false, want)
+}
+
+// clientAttachedPaneShowsText is a plain, non-polling confirmation of
+// whatever the immediately preceding wait step already established (it
+// never itself waits) -- kept as its own Then step purely so the scenario
+// states the invariant plainly rather than relying solely on a When step's
+// side effect.
+func clientAttachedPaneShowsText(ctx context.Context, name, want string) error {
+	client, err := mouseSynthesisClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	if !strings.Contains(frame, want) {
+		return fmt.Errorf("client %q pane does not show %q:\n%s", name, want, frame)
+	}
+	return nil
 }
 
 // attachScrollTopMarker is echoed once, before the pane is filled with more

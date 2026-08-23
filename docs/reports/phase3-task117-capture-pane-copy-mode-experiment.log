@@ -1,0 +1,98 @@
+Task 117 -- requirement 49 experiment: what does `capture-pane -p` return while
+a pane is scrolled back in copy-mode?
+
+Method: a real tmux server (deck-ci:local sibling, tmux 3.5a -- the same
+binary/version this repository's whole suite runs against, see
+docs/reports/toolchain-versions.md) with one 80x24 pane running a plain
+shell. The pane is filled with 200 numbered lines (LINE1..LINE200) so the
+live bottom (LINE197..LINE200, the shell prompt) is trivially distinguishable
+from the pane's history. A client then enters copy-mode and scrolls to the
+very top of history (`send-keys -X history-top`) -- exactly the state a real
+user's wheel-up gesture leaves an attached pane in (task 116). Four
+capture-pane invocations are taken: once before any client scrolls, twice
+while the client is sitting scrolled at the top of history (both `-S 0 -E -`,
+the exact range internal/tmux.Client.CapturePreview already uses, and `-S -
+-E -`, the exact shape of the wider range internal/service.reconcile.go's
+probe capture uses relative addressing within), and once after the client
+cancels copy-mode. Full raw transcript below.
+
+--- raw output ---
+tmux version: tmux 3.5a
+
+=== capture-pane -p -S 0 -E - BEFORE any client scrolls (live bottom expected) ===
+LINE197
+LINE198
+LINE199
+LINE200
+$
+
+=== a client enters copy-mode and scrolls to the very top of history ===
+
+=== capture-pane -p -S 0 -E - WHILE that client is scrolled to the top (head -5 / tail -5) ===
+--- head -5 ---
+LINE178
+LINE179
+LINE180
+LINE181
+LINE182
+--- tail -5 ---
+LINE197
+LINE198
+LINE199
+LINE200
+$
+
+=== capture-pane -p -S - -E - (whole history+screen) WHILE scrolled, tail -5 ===
+LINE197
+LINE198
+LINE199
+LINE200
+$
+
+=== the client cancels copy-mode (tmux own q binding) ===
+
+=== capture-pane -p -S 0 -E - AFTER that client exits copy-mode ===
+LINE197
+LINE198
+LINE199
+LINE200
+$
+--- end raw output ---
+
+Reading:
+- `-S 0 -E -` (the "visible pane" range: line 0 is the top row of the pane's
+  own grid geometry, `-` for the end means the bottom of that grid) returns
+  the SAME live tail (LINE197..LINE200, the prompt) in all three conditions:
+  before scrolling, WHILE a client is scrolled all the way to the top of
+  history in copy-mode, and after that client cancels copy-mode. The head -5
+  of the SAME invocation taken while scrolled additionally shows that a
+  0..-1 (i.e. one screen's worth from line 0) range still spans only the
+  pane's live 24-row grid (LINE178-LINE200ish), never the scrolled-to
+  position (LINE1..).
+- `-S - -E -` (the full history+screen range) taken while the client sits
+  scrolled at the very top of history STILL ends at the same live tail
+  (LINE197..LINE200) -- it does not end at wherever the client's copy-mode
+  viewport happens to be positioned, confirming the end bound is likewise a
+  property of the pane's own buffer, not of any attached client's cursor.
+
+Conclusion (stated plainly, and in docs/reports/phase3.md's requirement 49
+row): `capture-pane`'s `-S`/`-E` line addressing is always relative to the
+pane's own screen+history buffer, identically regardless of whether any
+client is attached, and regardless of where an attached client's copy-mode
+viewport is scrolled to. Copy-mode scroll position is purely client-local UI
+state inside tmux's own client-rendering layer; it is never consulted by
+`capture-pane`, which is a server-side, target-pane operation with no notion
+of "the requesting client's current view" at all. This means every existing
+deck capture already reads the pane's real (live) bottom/range no matter
+what an attached user happens to be scrolled to -- internal/tmux.Client.
+CapturePreview's `-S 0 -E -` (task 018/task 021, the live preview panel) and
+internal/service.reconcile.go's probe capture (`-S "-200" -E "-"`, the
+sampled-status fallback) are both already immune to this by construction.
+No pinning, no code change, and no new explicit range are needed anywhere in
+Phase 2's hook/probe machinery: the invariant already held before this task,
+and this experiment is the proof. features/attach_scroll.feature's
+@requirement-49-scrolling-does-not-flip-the-badge scenario proves the same
+invariant end-to-end against the real product path (a real attached,
+wheel-scrolled, copy-mode pane; a real stale probe; a real durable verdict;
+and a second, never-attached client's own sidebar row), not just against the
+raw tmux primitive this log isolates.

@@ -525,3 +525,54 @@ parity tests (`TestSchemaPinsKeySet`, `TestSchemaScopes`,
 `TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce`) all pass with the one
 new key added — the settings takeover surfaces it with no second
 declaration since `settingsCategories()` walks `config.Schema` directly.
+
+## Task 117 — what capture-pane returns while a pane is scrolled back in copy-mode (requirement 49)
+
+**Question**: could a user scrolling an attached pane's copy-mode viewport
+change what `tmux capture-pane -p` reports for that pane, and therefore flip
+a session's badge (its store-derived status) to something reflecting
+whatever the user happens to be looking at rather than the pane's real,
+live state?
+
+**Experiment** (full raw transcript at
+`docs/reports/phase3-task117-capture-pane-copy-mode-experiment.log`): a real
+tmux 3.5a server, one pane filled with 200 numbered lines so the live
+bottom is trivially distinguishable from history. `capture-pane -p -S 0
+-E -` (the exact range `internal/tmux.Client.CapturePreview` already uses)
+and `capture-pane -p -S - -E -` (the same shape as
+`internal/service/reconcile.go`'s wider `-S "-200" -E "-"` probe range) were
+each taken before any client scrolled, twice while a client sat scrolled to
+the very top of history inside copy-mode, and once after that client
+cancelled copy-mode.
+
+**Answer**: identical in all four conditions — the pane's live tail
+(the last few lines actually at the bottom of the pane's real screen).
+Copy-mode scroll position is purely local UI state inside the attached
+client's own rendering of the pane; `capture-pane` is a server-side,
+target-pane-ID operation that has no notion of "which client asked" or
+"what that client currently has scrolled to" at all. Its `-S`/`-E` line
+addressing is always relative to the pane's own screen+history buffer, the
+same whether zero, one, or many clients are attached, and the same whichever
+of those clients (if any) happens to be sitting in copy-mode.
+
+**Decision**: no pinning, no explicit-range change, and no other change to
+Phase 2's hook/probe machinery. Both existing capture call sites
+(`internal/tmux.Client.CapturePreview`'s `-S 0 -E -` live-preview capture,
+task 018/021, and `internal/service/reconcile.go`'s `-S "-200" -E "-"` probe
+capture, task 009) were already immune to this by construction, before this
+task ever ran. Task 117's diff is therefore a proof, not a fix: one new
+scenario (`features/attach_scroll.feature`'s
+`@requirement-49-scrolling-does-not-flip-the-badge`) that drives the real
+product end-to-end — a real attached, wheel-scrolled, copy-mode pane sitting
+on stale fixture text while the pane's actual live bottom already carries a
+newer one — and asserts both the durable probe verdict and a second, never-
+attached client's own sidebar row reflect the live content, never the
+scrolled-to one, plus this experiment log and the two docs above citing it.
+
+**Gotcha carried forward for any future scenario in this vein**: a session
+name long enough to make the sidebar truncate its trailing status/badge text
+(e.g. "scroll probe claude ! sampl...") will make a `row "<name>" contains
+"sampled"`-style assertion fail even though the badge is correct — same
+class of truncation already on record for task 113's `[marked]` badge.
+Keep any fixture/session name this kind of assertion depends on short (this
+task uses `sp-claude`).

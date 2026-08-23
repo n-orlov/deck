@@ -21,3 +21,45 @@ Feature: §3.2/§11.8 a wheel notch in an attached session scrolls the pane, not
     When deck client "A" detaches
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
+
+  # requirement 49: an experiment recorded at
+  # docs/reports/phase3-task117-capture-pane-copy-mode-experiment.log shows
+  # `capture-pane -p -S ... -E -` addresses the pane's real screen+history
+  # buffer by absolute line number and never consults any attached client's
+  # own copy-mode scroll offset -- scrolling is purely client-local state.
+  # This scenario proves the invariant end to end against the real probe
+  # path (internal/service.Service.ReconcileWithProbes ->
+  # internal/tmux.Client.CapturePane), not just against the raw primitive:
+  # client "A" scrolls an attached pane back to an old, superseded fixture
+  # render while the pane's real (live) bottom already carries a newer one,
+  # and both the durable probe verdict and a second, never-attached client
+  # "B"'s own sidebar row are asserted to reflect the live content while "A"
+  # is still sitting in copy-mode looking at the old one.
+  @requirement-49-scrolling-does-not-flip-the-badge
+  Scenario: scrolling an attached pane never flips its badge, and a stale probe reads the pane's live bottom, not the scrolled-back view
+    Given probe fixture agents for attach-scroll are configured
+    And deck client "A" is started
+    And deck client "B" is started
+    When deck client "A" creates claude session "sp-claude" with permission profile "safe"
+    And fake agent session "sp-claude" renders golden fixture "claude/waiting.txt"
+    And deck client "A" attaches to the selected session
+    And fake agent session "sp-claude" renders these exact golden fixtures:
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/error.txt   |
+    And deck client "A" scrolls the wheel up 40 times over the attached pane at column 20 row 15 until it shows "Do you want to proceed?"
+    Then deck client "A" attached pane shows "Do you want to proceed?"
+    And the state database session "sp-claude" has probe status "error" with reason "api error"
+    And within one configured reconcile interval deck client "B" row "sp-claude" contains "sampled"
+    When deck client "A" exits copy-mode on the attached pane
+    And deck client "A" detaches
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
