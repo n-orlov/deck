@@ -1,0 +1,55 @@
+=== 10 consecutive clean runs of @requirement-5-preview-fixtures after the fix, under the same
+=== synthetic host-CPU load (28 background `yes` processes, spawned and later killed by this
+=== worker's own PID list) that reproduced the failure captured in phase3-task114-repro.log.
+=== Command: DECK_GODOG_TAGS="@requirement-5-preview-fixtures" go test -count=1 -v -run TestFeatures ./features/
+
+--- run 1 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.148s
+
+--- run 2 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	9.974s
+
+--- run 3 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.632s
+
+--- run 4 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.376s
+
+--- run 5 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.425s
+
+--- run 6 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.889s
+
+--- run 7 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.603s
+
+--- run 8 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.407s
+
+--- run 9 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.527s
+
+--- run 10 ---
+8 scenarios ([32m8 passed[0m)
+24 steps ([32m24 passed[0m)
+ok  	github.com/n-orlov/deck/features	10.623s
+

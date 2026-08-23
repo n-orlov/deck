@@ -415,3 +415,68 @@ a multi-scenario tag set where at least one member creates a claude
 session, combined with any mention of `@real-agents`, that trips this.
 When hand-running a tag set that includes any claude-session scenario, drop
 the `@real-agents` mention entirely rather than negating it.
+
+## Task 114: the "falls silent#01" flake is a harness read-buffer race, not a product bug
+
+Root-caused and fixed. The scenario is `harness.feature`'s
+`@requirement-5-preview-fixtures` outline, example row #01 (`claude |
+oversized.txt`) — godog's own `#NN` suffixing for the second (0-indexed)
+`Examples:` row. `oversized.txt` is 4880 bytes, larger than the 4096-byte
+buffer `ScreenDriver.read()` (`features/pty_driver_test.go`) passes to each
+`terminal.Read`, so the fixture's single `io.Copy`/`Write` of the whole file
+(`renderThenFallSilent` -> `renderFixture`, `cmd/fake-claude/main.go` and
+`cmd/fake-pi/main.go`) legitimately arrives at this harness's pty reader
+split across two `Read` calls. The old assertion step
+(`theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures`,
+`features/fake_agent_size_test.go`) took its "first" capture the moment the
+frame became merely *non-empty* (`waitForNonEmptyFrame`), which is true as
+soon as the first ~4096-byte chunk lands — well before the fixture has
+finished rendering. Under low host load the two `Read`s happen microseconds
+apart, so by the time the 20ms poll notices non-empty, both chunks are
+usually already in; under load (a busy scheduler delaying the second `Read`,
+or delaying delivery through the pty), the remainder can land more than the
+fixed 150ms later than the first, making the "second" capture (taken exactly
+150ms after "first") different from "first" — a genuine harness-side race on
+the assertion's own timing budget, unrelated to task 118's coalesced-KeyMsg
+defect (this scenario sends no keystrokes at all; it only starts a fixture
+and watches its pty output).
+
+**Reproduced deterministically** by adding 28 background CPU-bound
+processes (`yes > /dev/null &`, spawned and later killed by this worker's
+own captured PIDs — never a pattern-based kill) on this 28-core host, then
+running `DECK_GODOG_TAGS="@requirement-5-preview-fixtures" go test -count=1
+-v -run TestFeatures ./features/` against the pre-fix code: failed on the
+very first attempt, on exactly `#01` (`claude | oversized.txt`), with `fake
+"claude" agent pane changed between captures`. Full raw failure output
+captured at `docs/reports/phase3-task114-repro.log`.
+
+**Fix** (`features/fake_agent_size_test.go`, `features/lifecycle_test.go`):
+the step that starts the fixture (`aFakeAgentRendersThePreviewFixtureAndFallsSilentAt`)
+now `os.Stat`s the fixture file first and records its exact on-disk byte
+length on the harness (`ScenarioHarness.fakeAgentFixtureBytes`, keyed by
+agent kind). The assertion step's "first capture" wait
+(`waitForFixtureFullyRendered`, replacing `waitForNonEmptyFrame`) now polls
+until the driver's *accumulated raw byte count* (`ScreenDriver.Raw()`, which
+for these dumb fixtures contains nothing but the fixture's own writes — no
+OSC/CPR negotiation to conflate it with) reaches that exact known length,
+not merely "non-empty". This is a deterministic proxy for "the whole write
+has arrived", with no dependency on any fixed sleep or guessed timing
+budget, and it changes only the harness's own polling condition — nothing
+about the product, the fixture binaries, or any scenario's outcome-relevant
+behaviour.
+
+**Verified the fix under the identical load** that reproduced the failure:
+the same 28 `yes` processes were left running (same host state) while 10
+consecutive `DECK_GODOG_TAGS="@requirement-5-preview-fixtures"` runs went
+against the fixed code — all green
+(`docs/reports/phase3-task114-fix.log`). The stress processes were then
+killed by their captured PIDs (all 28 confirmed gone) before this work was
+committed.
+
+**Scope note** (per the task's own remaining-flake-sources requirement):
+this task's fix addresses only its named target,
+`harness.feature`'s "...falls silent#01". It does **not** address either of
+the other two known flake sources already on record: the `k`/`m`/`j`/`m`
+marking idiom's coalesced-KeyMsg drop (task 113's follow-up above; task 118's
+job) or `create_cwd_ghost.feature`'s tilde-expansion timing test. Both remain
+open and are not claimed fixed by this task.

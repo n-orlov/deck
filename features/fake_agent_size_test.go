@@ -74,6 +74,10 @@ func aFakeAgentRendersThePreviewFixtureAndFallsSilentAt(ctx context.Context, kin
 	if err != nil {
 		return err
 	}
+	info, err := os.Stat(filepath.Join(fixtureDir, fixture))
+	if err != nil {
+		return fmt.Errorf("stat preview fixture %q: %w", fixture, err)
+	}
 	driver, err := h.StartFakeAgentWithSize(ctx, binary, cols, rows,
 		"FAKE_AGENT_FIXTURE_DIR="+fixtureDir,
 		spec.silentFixtureEnv+"="+fixture,
@@ -85,6 +89,10 @@ func aFakeAgentRendersThePreviewFixtureAndFallsSilentAt(ctx context.Context, kin
 		h.fakeAgents = make(map[string]*ScreenDriver)
 	}
 	h.fakeAgents[kind] = driver
+	if h.fakeAgentFixtureBytes == nil {
+		h.fakeAgentFixtureBytes = make(map[string]int)
+	}
+	h.fakeAgentFixtureBytes[kind] = int(info.Size())
 	return nil
 }
 
@@ -102,14 +110,22 @@ func theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures(ctx co
 	if err != nil {
 		return err
 	}
-	// The fixture's single render is asynchronous with this step, so the
-	// first capture must wait for something to have arrived at all --
-	// otherwise an empty "before it rendered" frame gets compared against a
-	// populated "after it rendered" one and the assertion fails for a race,
-	// not for the thing it means to test.
-	first, err := waitForNonEmptyFrame(driver)
+	// The fixture's single render is one Write() on the fixture side, but this
+	// harness's own pty reader (ScreenDriver.read, features/pty_driver_test.go)
+	// pulls it off the pty in a loop of up to-4096-byte Reads, so a fixture
+	// bigger than that (oversized.txt is 4880 bytes) legitimately arrives
+	// across two Reads with an unpredictable gap between them, especially
+	// under host CPU contention. "Frame is non-empty" is true after the FIRST
+	// of those Reads is processed, well before the fixture has finished
+	// rendering; comparing that partial frame against a later, complete one
+	// fails on a genuine harness-side race, not on any product misbehaviour
+	// (task 114). Waiting for the accumulated raw byte count to reach the
+	// fixture's own known, exact on-disk size is a deterministic proxy for
+	// "the whole write has arrived" -- no guessed sleep, no flakiness budget.
+	minBytes := h.fakeAgentFixtureBytes[kind]
+	first, err := waitForFixtureFullyRendered(driver, minBytes)
 	if err != nil {
-		return fmt.Errorf("fake %q agent never rendered a frame: %w", kind, err)
+		return fmt.Errorf("fake %q agent never fully rendered its fixture: %w", kind, err)
 	}
 	time.Sleep(150 * time.Millisecond)
 	second := driver.Frame(true)
@@ -119,15 +135,21 @@ func theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures(ctx co
 	return nil
 }
 
-func waitForNonEmptyFrame(driver *ScreenDriver) (string, error) {
+// waitForFixtureFullyRendered polls until the driver's accumulated raw byte
+// count reaches minBytes (the fixture's own on-disk size, stat'd before it
+// was rendered) AND the resulting frame is non-empty, then returns that
+// frame. If minBytes is 0 (unknown -- defensive only, every caller today
+// always sets it) it falls back to the old "merely non-empty" check.
+func waitForFixtureFullyRendered(driver *ScreenDriver, minBytes int) (string, error) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		frame := driver.Frame(true)
-		if strings.TrimSpace(frame) != "" {
+		nonEmpty := strings.TrimSpace(frame) != ""
+		if nonEmpty && (minBytes == 0 || len(driver.Raw()) >= minBytes) {
 			return frame, nil
 		}
 		if time.Now().After(deadline) {
-			return frame, errors.New("timed out waiting for a non-empty frame")
+			return frame, fmt.Errorf("timed out waiting for a fully rendered frame (raw bytes seen = %d, want >= %d)", len(driver.Raw()), minBytes)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
