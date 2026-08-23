@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
 
@@ -83,9 +85,18 @@ func (s Service) Restore(ctx context.Context, sessionID string) (store.Session, 
 
 // Reap is task 106's DECK_DELETE_GRACE_MS expiry: once the grace window
 // has elapsed since Delete tombstoned a row and it was never restored,
-// the row is permanently removed (store.ReapSession). Requirement 24's
-// deeper cascade -- deck's own per-session files, e.g. the captures
-// directory -- is task 107's; this is only the store half.
+// the row is permanently removed (store.ReapSession, which cascades the
+// row's own events -- and, with them, every deck-owned row hanging off
+// the session: there is no separate outbox or waiting/notify_epoch table
+// in this schema, so ON DELETE CASCADE already leaves nothing of those
+// behind). Requirement 24's deeper cascade -- deck's own per-session
+// *files* -- is task 107's addition here: the captures directory and the
+// §9.4 history file (config.CapturesDir/config.HistoryFile, the single
+// place those paths are defined) are removed if present, and their
+// absence -- the common case today, since nothing in this tree writes
+// either one yet -- is never an error. The JSONL audit log is deliberately
+// never touched: it keeps this session's earlier history past the reap,
+// per SPEC §9.2's "a log that rewrites itself ... is not a log".
 func (s Service) Reap(ctx context.Context, sessionID string) error {
 	if s.Store == nil || s.Clock == nil {
 		return errors.New("session reap requires store and clock")
@@ -96,6 +107,14 @@ func (s Service) Reap(ctx context.Context, sessionID string) error {
 	at := s.Clock.Now().UnixMilli()
 	if err := s.Store.ReapSession(ctx, sessionID, at); err != nil {
 		return fmt.Errorf("reap session %q: %w", sessionID, err)
+	}
+	if s.DeckHome != "" {
+		if err := os.RemoveAll(config.CapturesDir(s.DeckHome, sessionID)); err != nil {
+			return fmt.Errorf("remove captures for reaped session %q: %w", sessionID, err)
+		}
+		if err := os.Remove(config.HistoryFile(s.DeckHome, sessionID)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove history file for reaped session %q: %w", sessionID, err)
+		}
 	}
 	return nil
 }

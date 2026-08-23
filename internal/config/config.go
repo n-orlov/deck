@@ -205,6 +205,32 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	}, nil
 }
 
+// CapturesDir returns the single, canonical location SPEC §9.4 reserves for
+// a session's captured scrollback: $DECK_HOME/captures/<session id>/,
+// "referenced by convention rather than by row -- so a missing capture file
+// degrades to no replay, never to an error" (SPEC §9.4). Nothing in this
+// tree writes into it yet (that is Phase 6's own deliverable); task 107's
+// reap path is the first and, per that same convention, only caller that
+// needs the path today, and it treats absence as the normal case, not a
+// fault. home is Settings.Paths.Home (equivalently DataDir -- resolvePaths
+// always sets them equal), never a session's own cwd.
+func CapturesDir(home, sessionID string) string {
+	return filepath.Join(home, "captures", sessionID)
+}
+
+// HistoryFile returns the single, canonical location SPEC §9.4 reserves for
+// a shell session's per-command history file, under the deck data dir.
+// Defining that path in exactly this one place -- rather than letting a
+// future Phase 6 writer and today's reap path each grow their own guess --
+// is what requirement 24's "reap leaves no trace" actually depends on:
+// task 107's reap removes this path if it exists (SPEC never mandates a
+// history file for anything but shell sessions, so absence here is the
+// common case for agent sessions and is never an error). home is
+// Settings.Paths.Home (equivalently DataDir).
+func HistoryFile(home, sessionID string) string {
+	return filepath.Join(home, "history", sessionID)
+}
+
 func resolvePaths(getenv func(string) string, userHome func() (string, error)) (Paths, error) {
 	if root := getenv("DECK_HOME"); root != "" {
 		return Paths{Home: root, DataDir: root, ConfigFile: filepath.Join(root, "config.toml"), LogDir: filepath.Join(root, "log"), StateDB: filepath.Join(root, "state.db")}, nil

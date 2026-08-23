@@ -1,0 +1,28 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/reaping_a_deleted_session_removes_its_store_rows_and_deck's_own_per-session_files,_but_never_the_audit_log's_earlier_history
+
+  [1;37mScenario:[0m reaping a deleted session removes its store rows and deck's own per-session files, but never the audit log's earlier history [1;30m# kill_delete_undo.feature:142[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                                                                    [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-reap-no-trace"[0m                                                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" seeds captures and a history file for session "dd-reap-no-trace"[0m                                                 [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.clientSeedsCapturesAndHistoryFileForSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                                      [1;30m# kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                                          [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                                                            [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe state database session "dd-reap-no-trace" is reaped[0m                                                                         [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mAnd[0m [32mthe captures directory and history file for reaped session "dd-reap-no-trace" are gone[0m                                           [1;30m# kill_delete_undo_test.go:37 -> github.com/n-orlov/deck/features.capturesDirAndHistoryFileForReapedSessionAreGone[0m
+    [32mAnd[0m [32mthe audit log still contains an earlier event for reaped session "dd-reap-no-trace"[0m                                              [1;30m# kill_delete_undo_test.go:38 -> github.com/n-orlov/deck/features.auditLogStillContainsEarlierEventForReapedSession[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+10 steps ([32m10 passed[0m)
+1.064631571s
+--- PASS: TestFeatures (1.07s)
+    --- PASS: TestFeatures/reaping_a_deleted_session_removes_its_store_rows_and_deck's_own_per-session_files,_but_never_the_audit_log's_earlier_history (1.06s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.081s

@@ -3,10 +3,14 @@ package features
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/config"
 )
 
 // registerKillDeleteUndoSteps backs PRD requirement 22: x still kills with
@@ -29,6 +33,112 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" is tombstoned$`, stateDatabaseSessionIsTombstoned)
 	sc.Step(`^the state database session "([^"]+)" is not tombstoned$`, stateDatabaseSessionIsNotTombstoned)
 	sc.Step(`^the state database session "([^"]+)" is reaped$`, stateDatabaseSessionIsReaped)
+	sc.Step(`^deck client "([^"]+)" seeds captures and a history file for session "([^"]+)"$`, clientSeedsCapturesAndHistoryFileForSession)
+	sc.Step(`^the captures directory and history file for reaped session "([^"]+)" are gone$`, capturesDirAndHistoryFileForReapedSessionAreGone)
+	sc.Step(`^the audit log still contains an earlier event for reaped session "([^"]+)"$`, auditLogStillContainsEarlierEventForReapedSession)
+}
+
+// clientSeedsCapturesAndHistoryFileForSession seeds the two per-session
+// filesystem locations task 107's reap removes -- config.CapturesDir and
+// config.HistoryFile, SPEC §9.4's captured scrollback and history file --
+// since nothing in this tree writes either one yet (that is Phase 6's own
+// deliverable). It also remembers the session's durable store id under its
+// display name (h.capturedSessionIDs), because once dd's reap removes the
+// sessions row entirely a later step can no longer look the id up by name.
+func clientSeedsCapturesAndHistoryFileForSession(ctx context.Context, clientName, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var id string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM sessions WHERE name = ?`, sessionName).Scan(&id); err != nil {
+		return fmt.Errorf("look up session %q id: %w", sessionName, err)
+	}
+	if h.capturedSessionIDs == nil {
+		h.capturedSessionIDs = make(map[string]string)
+	}
+	h.capturedSessionIDs[sessionName] = id
+	capturesDir := config.CapturesDir(h.Home, id)
+	if err := os.MkdirAll(capturesDir, 0o700); err != nil {
+		return fmt.Errorf("seed captures dir for session %q: %w", sessionName, err)
+	}
+	if err := os.WriteFile(filepath.Join(capturesDir, "scrollback"), []byte("replay me\n"), 0o600); err != nil {
+		return fmt.Errorf("seed captures file for session %q: %w", sessionName, err)
+	}
+	historyFile := config.HistoryFile(h.Home, id)
+	if err := os.MkdirAll(filepath.Dir(historyFile), 0o700); err != nil {
+		return fmt.Errorf("seed history dir for session %q: %w", sessionName, err)
+	}
+	if err := os.WriteFile(historyFile, []byte("cd /work\n"), 0o600); err != nil {
+		return fmt.Errorf("seed history file for session %q: %w", sessionName, err)
+	}
+	return nil
+}
+
+// capturesDirAndHistoryFileForReapedSessionAreGone polls -- the reap that
+// removes these paths runs on the same asynchronous deleteGraceExpired tick
+// stateDatabaseSessionIsReaped already polls for -- until neither the
+// captures directory nor the history file exists, using the id
+// clientSeedsCapturesAndHistoryFileForSession stored before the row itself
+// became unqueryable by name.
+func capturesDirAndHistoryFileForReapedSessionAreGone(ctx context.Context, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	id, ok := h.capturedSessionIDs[sessionName]
+	if !ok {
+		return fmt.Errorf("no captured session id for %q -- seed captures/history first", sessionName)
+	}
+	capturesDir := config.CapturesDir(h.Home, id)
+	historyFile := config.HistoryFile(h.Home, id)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, capturesErr := os.Stat(capturesDir)
+		_, historyErr := os.Stat(historyFile)
+		if os.IsNotExist(capturesErr) && os.IsNotExist(historyErr) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("captures dir stat = %v, history file stat = %v, want both IsNotExist", capturesErr, historyErr)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// auditLogStillContainsEarlierEventForReapedSession proves the one
+// deliberate exception to "reap leaves no trace": the JSONL audit log
+// keeps this session's earlier records (its own "starting" transition,
+// written well before dd/reap ran) even after the sessions row and its
+// events rows are gone, per SPEC §9.2's "a log that rewrites itself when a
+// row is deleted is not a log".
+func auditLogStillContainsEarlierEventForReapedSession(ctx context.Context, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	id, ok := h.capturedSessionIDs[sessionName]
+	if !ok {
+		return fmt.Errorf("no captured session id for %q -- seed captures/history first", sessionName)
+	}
+	records, err := readAudit(h)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		var event, recordSessionID string
+		_ = json.Unmarshal(record["event"], &event)
+		_ = json.Unmarshal(record["session_id"], &recordSessionID)
+		if event == "starting" && recordSessionID == id {
+			return nil
+		}
+	}
+	return fmt.Errorf("audit log has no earlier \"starting\" record for reaped session %q (id %q)", sessionName, id)
 }
 
 // clientStartedWithShortDeleteGraceWindow mirrors
