@@ -254,6 +254,40 @@ var Schema = []Field{
 		Scope: ScopeRestartToApply,
 	},
 	{
+		Section: "",
+		Key:     "interactive_transport",
+		// II-5 (SPEC §6.5/§13.1): this is a selector between two
+		// implementations of the SAME §11.9 interactive-preview contract
+		// (pipe-pane -IO streaming into a grid, or a poll-and-capture-pane
+		// fallback), not the kind of user-visible behaviour switch §13.1
+		// forbids -- both paths must satisfy the same
+		// features/interactive_preview.feature scenarios except the
+		// pipe-only ones II-33 names (peeling a trailing `;` off a
+		// send-keys payload is meaningless to a transport that never runs
+		// send-keys). "pipe" is the default because it is the one measured
+		// in the Part II spikes (docs/spikes/interactive-preview.md); this
+		// task only declares the knob, it does not implement either path
+		// or the parity run task 070 owes.
+		Kind:       KindEnum,
+		Default:    "pipe",
+		EnumValues: []string{"pipe", "capture"},
+		Description: "Selects which of the two §11.9 interactive-preview " +
+			"transports deck uses: \"pipe\" arms tmux's pipe-pane -IO into a " +
+			"long-lived grid; \"capture\" polls and re-captures the pane " +
+			"instead. Both must satisfy the same scenarios except the " +
+			"pipe-only ones (peeling a trailing semicolon off a literal " +
+			"send-keys payload) that have no meaning under capture. " +
+			"DECK_INTERACTIVE_TRANSPORT overrides the file when set; any " +
+			"value other than pipe or capture is a stated error naming the " +
+			"variable, never a silent fallback.",
+		// requirement 19: interactive mode itself (II-7 onward) does not
+		// exist in this tree yet, so there is nothing a running client
+		// could apply live even in principle today -- the same honest-
+		// pending-consumer reasoning as capture_min_interval/interactive_ms
+		// above.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "ui",
 		Key:         "theme",
 		Kind:        KindEnum,
