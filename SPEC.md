@@ -65,7 +65,16 @@ idle reaping or any timer that stops a running session · **inbound remote contr
 ## 2. Stack
 
 - Go 1.25+, one module, one static binary `deck`.
-- TUI: `charmbracelet/bubbletea` + `lipgloss` + `bubbles` (latest stable, pinned).
+- TUI: `charmbracelet/bubbletea` + `lipgloss` + `bubbles` (latest stable, pinned). **Bubble
+  Tea stays at v1.3.10**, and `charmbracelet/x/vt` — §11.9's cell grid — coexists with it: the
+  incompatibility previously believed to force a v2 upgrade was a stale transitive
+  `x/cellbuf`, cleared by `go get github.com/charmbracelet/x/cellbuf@latest`. The one thing
+  v1.3.10 genuinely cannot represent is **`Ctrl+Enter`**: both enhanced encodings arrive as an
+  unexported `unknownCSISequenceMsg`, `KeyEnter == KeyCtrlM` so no `KeyType` value can mean
+  it, it would additionally require `extended-keys always` in the *user's own* tmux config,
+  and `send-keys` cannot emit it in either direction. It is therefore not bound anywhere; a
+  future v2 migration (`charm.land/bubbletea/v2`, which needs no opt-in) could offer it as a
+  configurable alias.
 - Store: `modernc.org/sqlite` (pure Go, no cgo) — `WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
 - tmux via the `tmux` CLI. No control mode in v1. **Minimum tmux 3.2**, required for
   `remain-on-exit failed` (§7) and the `window-size` option (§3.3).
@@ -165,6 +174,12 @@ Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
   on; the one real cost is that a drag no longer makes the terminal's own selection, so
   mouse copying needs **Shift** (or copy-mode), which the help view states next to the
   `tmux -L deck ls` escape hatch.
+  `set -g history-limit <N>`. tmux's default is 2000, and deck has never set it. This
+  matters because §11.9's interactive mode narrows the window: output produced while narrow
+  consumes history rows roughly **2.7× faster**, and rows evicted past the limit never
+  return — measured at 23 of 40 logical lines destroyed at `history-limit 100` where an
+  unnarrowed control lost none. A pane's limit is fixed when the pane is created, so this
+  must be set before `new-session`, not after.
   `detach-on-destroy` is deliberately left at its default (`on`) so that killing a session
   another client is viewing returns that client to its TUI rather than silently hopping it
   into an unrelated session.
@@ -185,8 +200,11 @@ Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
 
 ### 3.3 Attach
 
-`Enter` attaches the client directly: `tmux -L deck attach -t deck_<slug>`. On detach the
-client returns to the TUI, which resumes its render loop.
+**`a` attaches the client directly**: `tmux -L deck attach -t deck_<slug>`. On detach the
+client returns to the TUI, which resumes its render loop. `Enter` enters §11.9's interactive
+preview instead — the cheaper, reversible half of the same intent — and `a` is the
+escalation. Both resize the shared window under `window-size latest`; that is not new, and
+§11.9 states the difference in what size each picks.
 
 **Geometry, stated honestly:** two clients attached to the same session at different
 terminal sizes *share* one view. Grouped sessions do not fix this — a group shares its
@@ -196,6 +214,12 @@ govern the size, and `aggressive-resize` keeps the window matched to it; an idle
 a smaller terminal will therefore see truncation until it becomes the active one. This is
 the same behaviour every tmux-based manager has, it is not worth a redesign, and it must
 be documented in the help view rather than promised away.
+
+**Detaching does not restore geometry** when the detaching client was the only one. Under
+`window-size latest`, "latest" means the last client to *express* a size, and once it is gone
+nothing re-expresses the old one. Restoring is therefore a positive action, not a
+consequence — §11.9 specifies it for interactive mode, and an ordinary `a` attach/detach
+leaves the window at the size the attaching client had.
 
 Nested tmux (running the TUI inside another tmux) is out of scope for v1: detect `$TMUX`,
 warn, and attach with `TMUX` unset.
@@ -917,9 +941,18 @@ hold them side by side.
   crop is anchored **bottom-left**: the newest rows, from column one, because that is where
   an agent's current activity and its prompt are. Lines cut at the right edge are marked,
   and the panel states the real geometry (`45×22 of 120×40`) so the user knows they are
-  looking at a window rather than the whole pane. The alternative is to size the pane to
+  looking at a window rather than the whole pane. That form is a *crop* statement: fitted it
+  would degenerate to `45×22 of 45×22`, which reads as a bug, so §11.9's interactive mode
+  states fitted geometry differently. The alternative is to size the pane to
   the panel, which is exactly how a preview starts corrupting what it previews; deck does
   not buy a prettier preview with the agent's layout.
+- **The preview has two modes, and only one of them touches the pane.** Everything above
+  describes **passive** preview, which is the default and which remains exactly as
+  specified: a `capture-pane -e` poll, no attached client, no pipe, no resize, cropped
+  bottom-left, no scroll. §11.9's **interactive** mode is entered deliberately, per session,
+  and is the only thing in deck that fits a pane to the panel. A reader who takes "the
+  preview never resizes a pane" as unconditional is reading the passive mode, which is the
+  one that runs unbidden.
 - **Cropping and elision are cell-aware, and never split a wide cell.** Foreign pane output
   is the one place deck cannot enforce its own no-wide-glyphs rule (§11's glyph list binds
   deck, not the agent), and a session name is user-supplied text. So where a crop or an
@@ -973,6 +1006,13 @@ BMP box-drawing/geometric characters, and an ASCII fallback exists for every one
 
 ### 11.1 Sending text without attaching
 
+**Superseded by §11.9.** This protocol was narrow because typing into a full-screen editor
+blind is dangerous — it is refused in `waiting` precisely because "a menu is on screen and
+the keystrokes would blind-pick an option". Interactive preview removes that premise: the
+user can see the menu and the caret. `s` is therefore not built; §11.9 is the answer to the
+same need. The protocol is kept below as the record of what was specified, and of the
+reasoning that still binds any future blind-send path.
+
 `s` types into another program's full-screen editor, so the protocol is narrow on purpose:
 
 - **Only from `idle`.** Refused in `waiting` (a menu is on screen and the keystrokes would
@@ -1017,7 +1057,11 @@ they are what stops a later change from quietly breaking a size nobody tests:
 - **Sidebar floor 24** is `glyph + name + status` with nothing elided; a narrower sidebar
   cannot answer the one question it exists to answer.
 - **Stacked list 5–12 rows**: 5 is selection plus one neighbour plus the spinner row, so
-  the list still conveys movement; 12 keeps a tall terminal from starving the preview.
+  the list still conveys movement; 12 keeps a tall terminal from starving the preview. The
+  8-row stacked preview floor is also §11.9's refusal threshold: measured against a
+  Claude-shaped full-screen program, an inner box of 6 rows renders pure chrome and zero
+  transcript, and 7 inner rows is the smallest usable box. A real agent that soft-wraps its
+  input box needs more, so 7 is a floor, not a target.
 - **Collapsed strip 3 columns** is the `»` glyph plus its two borders. It exists to give
   the preview the maximum possible width while keeping the attention count on screen —
   one glance still answers "does anything need me", and `|` restores the sidebar.
@@ -1044,12 +1088,19 @@ truncated-but-honest frame beats an unpredictable one.
 - **A single seam.** The sidebar draws top, left and bottom borders only; the preview draws
   all four, and its left border *is* the divider. Two adjacent `Borders::ALL` panels
   produce a heavy `││` seam that reads as two windows rather than one surface.
-- **Focus is visible, and the main view has only one place for it.** The sidebar is the
-  single focusable region, because the preview is a non-interactive, non-scrolling crop
-  (§11) and there is nothing a second focus stop could do: `↑`/`↓`/`PgUp`/`PgDn` always
-  drive the list, and there is no `tab` panel cycle to learn. Focus is still drawn — the
-  focused surface's border uses the theme's `border_focus` token, so a dialog that opens
-  takes focus and the sidebar's border reverts to `border`. A keyboard-only UI that cannot
+- **Focus is visible, and there are exactly two places it can be.** The sidebar is focused
+  by default; §11.9's interactive preview is the second and only other stop, and it is
+  entered by `Enter` rather than by a `tab` cycle, because a cycle would imply stops that do
+  nothing. The focused surface's border uses the theme's `border_focus` token and the
+  unfocused one uses `border`, so a dialog that opens takes focus and the sidebar's border
+  reverts; the sidebar's selected row uses **`selection_idle`** while focus is elsewhere,
+  which is what that token has always meant. **Colour is not sufficient on its own.**
+  `NO_COLOR` drops deck to monochrome, and deck's own golden frames are captured that way,
+  so a focus indication carried only by a border colour is invisible to the user *and* to
+  the tests. While interactive, the preview's top border therefore carries the target
+  session's name as text — which doubles as the wrong-target safeguard, since a user must be
+  able to see which pane is receiving their keystrokes. Any glyph in it obeys §11's
+  no-East-Asian-Wide rule and has a `DECK_ASCII` fallback. A keyboard-only UI that cannot
   show where the keys are going is unusable; equally, a focus stop that changes nothing is
   worse than none at all, because the footer would then have to advertise keys that do
   nothing.
@@ -1266,24 +1317,29 @@ scroll, no close button that is the only way to dismiss.
 | event | effect | key it duplicates |
 |---|---|---|
 | click a sidebar row | selects that row; the preview follows on its next tick | `↑`/`↓` |
-| **double**-click a sidebar row | attach | `↵` |
+| **double**-click a sidebar row | enter §11.9's interactive preview | `↵` |
 | click a workspace group header | toggle collapse | the grouping key (§11) |
 | wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
 
-**A click or a wheel over the preview does nothing**, and that is a binding too. The preview
-is a non-interactive, non-scrolling crop (§11): there is no focus to take and no viewport to
-move, and a gesture aimed at the preview must not fall through to the sidebar instead. A
-mis-aimed click that quietly moved the selection would fire §7's status side effects from
-what the user experienced as a click on some text.
+**A click or a wheel over the passive preview does nothing**, and that is a binding too. The
+passive preview is a non-interactive, non-scrolling crop (§11): there is no focus to take and
+no viewport to move, and a gesture aimed at the preview must not fall through to the sidebar
+instead. A mis-aimed click that quietly moved the selection would fire §7's status side
+effects from what the user experienced as a click on some text. **While §11.9's interactive
+mode is active the wheel scrolls the grid's own scrollback**, which is the one viewport that
+does exist; a click still does nothing. Full attach (`a`) has no mouse affordance at all,
+which this section's rule permits: no capability is mouse-*only*, not every key has a
+gesture.
 
 Four decisions in that table are load-bearing, and each is the safer of two options rather
 than the obvious one:
 
-- **A single click never attaches.** Attaching hands the whole terminal to another program,
-  and a stray or mis-aimed click must not be able to do that. A double-click is the
-  deliberate second act that `↵` already is. This is also what makes the single click a
+- **A single click never hands over the keyboard.** Entering interactive mode resizes a live
+  agent's window (§11.9) and full attach hands the whole terminal to another program; a stray
+  or mis-aimed click must not be able to do either. A double-click is the deliberate second
+  act that `↵` already is. This is also what makes the single click a
   *switch* rather than a commitment: one click moves the preview to that session, which is
   the fast path the sidebar exists to provide.
 - **The wheel scrolls the list under the pointer and changes neither focus nor selection.**
@@ -1327,6 +1383,52 @@ no menu concept to hang them on, and a menu would become the second place every 
 declared); no drag-to-reorder (§11's sort order is defined by status and age, not arranged by
 hand — a hand-arranged list would stop answering "which session needs me"); no clickable
 footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is bound *now*).
+
+### 11.9 Interactive preview
+
+`Enter` hands the keyboard to the selected session without leaving the list. deck fits the
+session's window to the preview panel, streams the pane into an in-process cell grid, and
+forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
+
+The bet is that a **user-initiated, bounded** geometry change is acceptable where a
+continuous, passive one is not — because `a` already resizes the window today. Interactive
+mode changes which size is chosen, not whether a keypress may perturb a pane.
+
+- **Geometry is owned, claimed and restored.** Entering records the window's dimensions and
+  its window-local `window-size` value, claims ownership in a pid-tagged window option, then
+  resizes the **window** (never the pane — on a split window chrome is proportional and a
+  pane-targeting loop cannot converge). Exiting resizes back *only when no client is
+  attached*, then unsets the window-local `window-size`. The order is load-bearing and
+  `set -g window-size latest` does not substitute for it: `resize-window` writes `manual`
+  into the **window** options, which shadow the global. Cost is exactly two `SIGWINCH` per
+  cycle.
+- **Refused rather than degraded, in three cases**, each naming its reason and offering `a`:
+  another client is attached to that session (the squeeze it would inflict on them is not
+  avoidable — one window has one size); the preview box has fewer than **7 inner rows**,
+  which is deck's stacked height floor and leaves no transcript at all; or ownership is held
+  by a live process.
+- **The transport is `pipe-pane -IO` into a `charmbracelet/x/vt` grid**, seeded from
+  `capture-pane -e -N` plus the pane state tmux exposes as formats, and **reseeded on every
+  resize** — resizing the grid alone leaves it wrong for seconds. The pipe is armed before
+  the seed is taken. `pipe-pane` is single-holder per pane, so a second reader displaces the
+  first silently; a reader that sees EOF while `pane_pipe` is still 1 has been displaced,
+  falls back to passive capture, and **says so**. A dead pane never closes the pipe at all,
+  so `pane_dead` is polled rather than inferred from EOF.
+- **Foreign bytes never reach the outer terminal.** Only composed cells are emitted. This is
+  not an optimisation: pane bytes passed through leave the *outer* terminal on the alternate
+  screen and reprogram its scrolling region. Passive preview gets this property free from
+  `capture-pane`, which carries no such sequences; the moment bytes come from a pipe, the
+  grid is the only safe consumer.
+- **Input is dispatched on a verified identity**, re-resolved immediately before every send:
+  socket path, server pid, `pane_id`, **`pane_pid`** and session name. `pane_id` alone is not
+  sufficient — `respawn-pane` keeps it, and everything else tmux reports, unchanged.
+- **The grid keeps its own bounded scrollback, and the wheel scrolls it.** This is the only
+  way to scroll a full-screen agent: the alternate screen has no tmux history, which is why
+  tmux's own wheel binding declines to enter copy-mode for it.
+- **Honesty about what the user cannot see.** When the target has not repainted since the
+  resize, the panel says so; an empty frame otherwise reads as deck being broken rather than
+  the agent being wedged. Help states that entering interactive mode resizes the agent's
+  window and that output produced while narrow consumes scrollback faster.
 
 ---
 
@@ -1373,6 +1475,8 @@ listed here rather than left to a test package:
 | **Mouse reporting override** | `DECK_MOUSE` forces mouse reporting on or off as a boolean, overriding `[ui] mouse` (§11.8). | Enabling reporting writes enable/disable sequences into the stream, so byte-exact frame assertions (§11.2's golden frame) need it off; mouse scenarios need it on regardless of the config file. |
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 250) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
+| **Interactive render rate** | `DECK_INTERACTIVE_MS` — §11.9's grid render-coalescing interval. A duration, like the two ticks above. | Render frequency, not parsing, dominates the transport's cost, so it is the one axis worth pinning in a scenario. |
+| **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, notification attempt with outcome. | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
 
@@ -1626,6 +1730,17 @@ redesign upstream is a one-fixture fix.
 7. **Immediate notification vs noise.** Dropping debounce (§10.2) means a prompt answered in
    three seconds still pinged you. Acceptable, or is a *resolution* notification ("no longer
    waiting") the better shape — the same information without needing a timer?
-8. **Shared attach geometry** (§3.3). Living with `window-size latest` is the plan. If
-   two-terminals-at-once turns out to be a daily annoyance rather than a rare one, the only
-   real fix is one tmux session per client per agent, which is a different architecture.
+8. **Shared attach geometry** (§3.3). Living with `window-size latest` is still the plan, and
+   §11.9 has now shown a bounded resize is survivable and byte-exactly reversible, at exactly
+   two `SIGWINCH` per cycle. What remains is the **bystander squeeze**: one window has one
+   size, so fitting it for one viewer necessarily squeezes anyone already attached. deck
+   **refuses rather than inflicts it** (§11.9's first refusal). If two-terminals-at-once turns
+   out to be a daily annoyance rather than a rare one, the only real fix is one tmux session
+   per client per agent, which is a different architecture.
+9. **Is ~53 MiB of resident memory per gridded pane acceptable?** Measured for one 120×40
+   emulator. deck has no memory budget to judge it against, and it is the one axis on which
+   §11.9's grid is materially worse than polling.
+10. **Do real agents repaint their full transcript on widening?** If not, the alternate
+    screen's lack of scrollback makes §11.9's fit destroy transcript rows irreversibly —
+    measured at 19 of 40 rows against synthetic programs. Unmeasured against a real agent:
+    every spike was fenced from launching one.
