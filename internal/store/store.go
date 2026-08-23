@@ -230,6 +230,15 @@ type Session struct {
 	// grace window has elapsed) to act on by id; ListDeletedSessions is the
 	// only accessor that surfaces it.
 	DeletedAt int64
+	// ArchivedAt is SPEC requirement 27's `A` retention flag (task 111): zero
+	// for a live row, and the wall-clock millisecond ArchiveSession ran at
+	// once a row has been archived. It is a FLAG, never a status -- an
+	// archived row keeps whatever Status it had (SPEC.md:284-287), so
+	// nothing here ever writes or reads Status. Like DeletedAt, an archived
+	// row is excluded from ListSessions' default view; unlike DeletedAt there
+	// is (yet) no restore -- requirement 33's `/` filter (task 123) is how an
+	// archived row is reached again, not an undo.
+	ArchivedAt int64
 }
 
 // CapturedPathAdvisory reports whether this row's CapturedPath is advisory
@@ -455,7 +464,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt); err != nil {
+		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt); err != nil {
 		return Session{}, err
 	}
 	session.EnvDirty = envDirty != 0
@@ -505,7 +514,7 @@ const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace, last_probe_at, env_dirty, deleted_at`
+		workspace, last_probe_at, env_dirty, deleted_at, archived_at`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.
@@ -1082,14 +1091,16 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 }
 
 // ListSessions returns all durable rows, including stopped rows, but
-// excluding tombstoned rows (deleted_at != 0, task 104) -- a soft-deleted
-// session is never resurrected into the default view by ListSessions
-// itself; only RestoreSession (clearing deleted_at) does that. The stable
-// order avoids hiding resumable sessions and keeps independently connected
-// clients' views deterministic.
+// excluding tombstoned rows (deleted_at != 0, task 104) and archived rows
+// (archived_at != 0, task 111, requirement 27) -- a soft-deleted session is
+// never resurrected into the default view by ListSessions itself; only
+// RestoreSession (clearing deleted_at) does that, and an archived row has
+// no restore at all -- requirement 33's `/` filter (task 123) is how it is
+// reached again. The stable order avoids hiding resumable sessions and
+// keeps independently connected clients' views deterministic.
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
-		FROM sessions WHERE deleted_at = 0 ORDER BY created_at, id`)
+		FROM sessions WHERE deleted_at = 0 AND archived_at = 0 ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -1159,6 +1170,24 @@ func (s *Store) RestoreSession(ctx context.Context, sessionID string, at int64) 
 	}
 	return s.mutateSessionWithEvent(ctx, sessionID, "deleted_at", "restored", "user", "", at,
 		`UPDATE sessions SET deleted_at = 0 WHERE id = ?`)
+}
+
+// ArchiveSession sets SPEC requirement 27's `A` retention flag (task 111):
+// a durable timestamp, never a status. It never checks or requires the
+// current Status column -- the "archiving requires stopped" rule
+// (SPEC.md:284-286) is enforced by the caller (internal/service.Archive),
+// which kills a non-stopped session first, exactly as a plain kill would,
+// before this ever runs; this method itself would happily set the flag on
+// any row, matching SoftDeleteSession's own no-status-opinion shape. An
+// already-archived row may be archived again (idempotent, no error),
+// mirroring how a second SoftDeleteSession on an already-tombstoned row is
+// tolerated elsewhere in this file.
+func (s *Store) ArchiveSession(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "archived_at", "archived", "user", "", at,
+		`UPDATE sessions SET archived_at = ? WHERE id = ?`, at)
 }
 
 // ReapSession permanently removes a tombstoned session once its grace
