@@ -1,0 +1,10 @@
+=== RUN   TestStoreSurvivesProcessCrashMidTransaction
+=== RUN   TestStoreSurvivesProcessCrashMidTransaction/atomic_transaction_killed_before_Commit_leaves_nothing_behind
+=== RUN   TestStoreSurvivesProcessCrashMidTransaction/weakened_autocommit_path_killed_between_the_two_writes_leaves_an_inconsistent_partial_write
+    durability_test.go:289: atomicity violated: permission_profile mutated=true (now "yolo") but paired event logged=false (0 rows) -- the two writes of one transaction diverged
+--- FAIL: TestStoreSurvivesProcessCrashMidTransaction (0.07s)
+    --- PASS: TestStoreSurvivesProcessCrashMidTransaction/atomic_transaction_killed_before_Commit_leaves_nothing_behind (0.03s)
+    --- FAIL: TestStoreSurvivesProcessCrashMidTransaction/weakened_autocommit_path_killed_between_the_two_writes_leaves_an_inconsistent_partial_write (0.04s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.078s
+FAIL
