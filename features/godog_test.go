@@ -94,6 +94,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerAttachScrollSteps(sc)
 	registerNoLeakScanSteps(sc)
 	registerEventLogSteps(sc)
+	registerFilterSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {

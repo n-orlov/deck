@@ -296,6 +296,36 @@ type Model struct {
 	// nothing to submit or cycle (like detailView/helpView); Esc is its
 	// only interaction.
 	eventLogOpen bool
+	// filtering is task 123's `/` list filter (SPEC §11.3/requirement 33,
+	// I-10): true while the filter's own text field has keyboard focus
+	// (see updateFilter). filterQuery is the live, incrementally-applied
+	// query text. Unlike every full-screen dialog above, filtering never
+	// takes over View() -- the sidebar keeps rendering the (now filtered)
+	// session list underneath it (filterStatusLine states the filter is
+	// in force, per SPEC requirement 33's own wording, so a hidden row is
+	// never mistaken for a deleted one), and it stays applied after Enter
+	// closes the text field, clearing only on Esc.
+	filtering   bool
+	filterQuery string
+	// baseSessions is exactly what sessionsLoaded's ListSessions() call
+	// returned (SPEC's default view: excludes both tombstoned and
+	// archived rows) -- the one thing that handler ever assigns directly.
+	// m.sessions, by contrast, is the DISPLAYED list: baseSessions
+	// unfiltered when no query is in force, or filteredSessions()'s
+	// baseSessions-plus-archivedSessions match set while one is. Kept as
+	// two fields, rather than deriving one from the other on the fly at
+	// every read site, because every existing selection/navigation/render
+	// primitive already reads m.sessions directly (dozens of call sites);
+	// recomputing the displayed list at the few places that change what
+	// it should contain is far less invasive than teaching all of them
+	// about a filter.
+	baseSessions []store.Session
+	// archivedSessions caches requirement 33's ONLY route back to an
+	// archived row (Store.ListArchivedSessions): fetched fresh every time
+	// `/` opens (loadArchivedSessions), so the filter's archived-side
+	// search pool is at most one keypress stale. Empty and unread
+	// whenever no filter query is in force.
+	archivedSessions []store.Session
 	// settingsOpen is task 013's `,` full-screen takeover (SPEC §11.5): a
 	// category list and the selected category's field list, both walking
 	// config.Schema rather than a hand-written field set. It is not a
@@ -998,6 +1028,27 @@ func (m Model) loadSessions() tea.Msg {
 	return sessionsLoaded{sessions: rows, err: err}
 }
 
+// archivedSessionsLoaded carries task 123's fresh ListArchivedSessions
+// result back into Update (SPEC requirement 33/I-10): loadArchivedSessions
+// is issued every time `/` opens, so the filter's archived-side search
+// pool is at most one keypress stale.
+type archivedSessionsLoaded struct {
+	sessions []store.Session
+	err      error
+}
+
+// loadArchivedSessions is the `/` filter's own fetch of requirement 33's
+// ONLY route back to an archived row: store.ListArchivedSessions, mirroring
+// loadSessions' own no-store-attached degrade (an empty result, never a
+// panic).
+func (m Model) loadArchivedSessions() tea.Msg {
+	if m.store == nil {
+		return archivedSessionsLoaded{}
+	}
+	rows, err := m.store.ListArchivedSessions(context.Background())
+	return archivedSessionsLoaded{sessions: rows, err: err}
+}
+
 // capturePreview issues exactly one read-only capture-pane for the
 // currently selected row (SPEC requirement 21, task 017), or nil when there
 // is no engine wired, no row to capture, or the preview panel is not shown
@@ -1054,12 +1105,32 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// sortSessionsByAttentionStable's own doc comment
 			// (internal/tui/attention.go) and
 			// docs/reports/phase3d-i1-rootcause.md.
-			m.sessions = sortSessionsByAttentionStable(m.sessions, msg.sessions)
+			//
+			// Task 123/I-10: sorted into baseSessions, never m.sessions
+			// directly, so a filter query in force survives the periodic
+			// reconcile tick's own reload instead of being silently
+			// clobbered by it the moment ListSessions' own (archive-free)
+			// result lands.
+			m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
+			m.sessions = m.filteredSessions()
 			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
 				m.selected = idx
 			} else if m.selected >= len(m.sessions) {
 				m.selected = max(0, len(m.sessions)-1)
 			}
+		}
+	case archivedSessionsLoaded:
+		// Task 123/I-10: refreshes the filter's archived-side search pool.
+		// A failed fetch leaves the previous pool in place rather than
+		// wiping it to empty, matching sessionsLoaded's own
+		// error-preserves-the-last-good-frame convention elsewhere in
+		// this switch.
+		if msg.err == nil {
+			m.archivedSessions = msg.sessions
+		}
+		m.sessions = m.filteredSessions()
+		if m.selected >= len(m.sessions) {
+			m.selected = max(0, len(m.sessions)-1)
 		}
 	case shellCreated:
 		if msg.err != nil {
@@ -1491,6 +1562,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.eventLogOpen {
 			return m.updateEventLog(msg)
 		}
+		if m.filtering {
+			return m.updateFilter(msg)
+		}
 		// pendingDelete intercepts the very next key after a lone `d`
 		// (SPEC's dd chord): a second `d` opens the confirm dialog; every
 		// other key -- Esc included -- clears the pending indicator and is
@@ -1851,6 +1925,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.help {
 				m.eventLogOpen = true
 			}
+		case "/":
+			// SPEC.md:984/requirement 33, task 123: global like `E` above --
+			// not gated on a selected session, since an empty list is still
+			// worth filtering into (e.g. to prove nothing archived matches).
+			// Reopening with an existing query keeps it rather than clearing
+			// it, mirroring the rename dialog's own prefill convention, so a
+			// second `/` refines an already-applied filter instead of
+			// discarding it.
+			if !m.help {
+				m.filtering = true
+				return m, m.loadArchivedSessions
+			}
 		case " ":
 			// SPEC requirements 31, 32: move to the next session needing
 			// attention, wrapping, via the one shared NeedsAttention answer
@@ -1937,7 +2023,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.eventLogOpen {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.eventLogOpen || m.filtering {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -2238,7 +2324,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.pendingDeleteLines(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -2302,6 +2388,7 @@ func (m Model) mainView() string {
 	lines = append(lines, m.undoNoteLines(width)...)
 	lines = append(lines, m.deleteUndoNoteLines(width)...)
 	lines = append(lines, m.pendingDeleteLines(width)...)
+	lines = append(lines, m.filterStatusLine(width)...)
 	lines = append(lines, m.footerLine())
 	return strings.Join(lines, "\n")
 }
@@ -2592,7 +2679,15 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		}
 	}
 	if len(m.sessions) == 0 {
-		for _, line := range wrapText("No sessions yet. Press n to create a session.", contentWidth) {
+		msg := "No sessions yet. Press n to create a session."
+		if m.filterQuery != "" {
+			// Task 123/I-10: a filter query in force with zero matches is a
+			// different state from a genuinely empty store -- there is
+			// nothing to create here, and "press n" would be misleading
+			// copy while a query is narrowing an otherwise non-empty list.
+			msg = fmt.Sprintf("No sessions match %q.", m.filterQuery)
+		}
+		for _, line := range wrapText(msg, contentWidth) {
 			entries = append(entries, sidebarEntry{text: line})
 		}
 		return entries
@@ -4307,6 +4402,12 @@ Keys
   E open/close the event log: every recorded event across every session --
     kind, reason, a bounded payload -- newest first; a payload's
     secret-shaped values mask the same way the env editor's do; Esc closes
+  / filter the list by name, workspace or cwd, incrementally as you type;
+    Enter keeps the filter applied and returns the keymap to the (now
+    narrowed) list, Esc clears it back to the full list; this is also the
+    only route to an archived session (A), which is hidden from the
+    default list entirely -- type enough of its name, workspace or cwd to
+    match it and it appears like any other row
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status

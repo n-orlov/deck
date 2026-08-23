@@ -448,12 +448,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"m toggle a mark", "survives a re-sort or re-group", "ONE u", "restores the entire batch",
 		"i toggle detail view", "r inside it renames", "display name only", "deck_<slug>", "never renamed",
 		"E open/close the event log", "every recorded event across every session", "newest first",
+		"/ filter the list", "incrementally as you type", "only route to an archived session",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "send message", "filter list", "snooze", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "send message", "snooze", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}
