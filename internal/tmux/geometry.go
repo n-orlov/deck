@@ -1,0 +1,184 @@
+package tmux
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// WindowGeometry is what entering interactive mode reads before it changes
+// anything (PRD phase3b II-7 / SPEC.md §11.9), so exit (task 035, II-9) has
+// exactly what it needs to restore byte-exact. Width/Height are the
+// window's own current #{window_width}x#{window_height}. WindowSizeSet and
+// WindowSizeValue are the WINDOW-LOCAL `window-size` option exactly as
+// `show-options -wv` reports it -- never the merged/effective value (task
+// 028's scope distinction matters here specifically: what gets restored on
+// exit is whatever the window-local table held before entry, which is
+// "unset" on almost every window since deck's own Bootstrap only ever
+// writes `window-size latest` at the server-global scope, not the window
+// one).
+//
+// `window-size` is a BUILTIN option, not a "@"-prefixed user option like
+// ownership.go's OwnershipOption: tmux's two different "unset" shapes
+// (task 028) mean a builtin window option that has never been set
+// window-locally prints an empty line and exits 0, rather than the
+// "invalid option" error a user option produces when unset. WindowSizeSet
+// distinguishes "read, and it happens to be empty" (impossible for this
+// option, but the type does not assume that) from "never set", the same
+// way ownership.go's own windowOwnershipState does for its own option.
+type WindowGeometry struct {
+	Width           int
+	Height          int
+	WindowSizeSet   bool
+	WindowSizeValue string
+}
+
+// readBuiltinWindowOption reads a BUILTIN (non-"@"-prefixed) option in the
+// window scope via `show-options -wv`. An unset builtin window option
+// prints an empty line and exits 0 -- the shape task 028's
+// tmuxOptionScope_test.go step already distinguishes from a "@"-prefixed
+// user option's "invalid option" error (ownership.go's
+// readWindowOwnership); this is that same read, kept separate from
+// readWindowOwnership because the two option kinds fail differently when
+// unset and a helper that conflated them would silently misread whichever
+// kind it was never tested against.
+func (c Client) readBuiltinWindowOption(ctx context.Context, target, name string) (value string, set bool, err error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, err := c.command(commandCtx, "show-options", "-wv", "-t", target, name).CombinedOutput()
+	trimmed := strings.TrimRight(string(output), "\n")
+	if err != nil {
+		return "", false, fmt.Errorf("tmux -L %s show-options -wv -t %s %s: %w: %s", c.Socket, target, name, err, trimmed)
+	}
+	if trimmed == "" {
+		return "", false, nil
+	}
+	return trimmed, true, nil
+}
+
+// windowAndPaneSize reads #{window_width}, #{window_height},
+// #{pane_width} and #{pane_height} for paneTarget in a single
+// display-message invocation. window_width/height are window-scoped
+// formats but resolve identically from a pane target, since every pane
+// belongs to exactly one window -- the same target therefore serves both
+// the window-level and pane-level halves of one measurement without a
+// second round trip that tmux could process pane output in between (the
+// atomicity concern task 043/II-20 addresses for the transport does not
+// apply to a pure geometry read, but reading both in one invocation is
+// still one fewer place for the two numbers to be measured a moment
+// apart).
+func (c Client) windowAndPaneSize(ctx context.Context, paneTarget string) (windowWidth, windowHeight, paneWidth, paneHeight int, err error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, err := c.command(commandCtx, "display-message", "-p", "-t", paneTarget,
+		"#{window_width} #{window_height} #{pane_width} #{pane_height}").CombinedOutput()
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("tmux -L %s display-message -p -t %s window/pane size: %w: %s", c.Socket, paneTarget, err, strings.TrimSpace(string(output)))
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) != 4 {
+		return 0, 0, 0, 0, fmt.Errorf("tmux -L %s display-message -p -t %s window/pane size: unexpected output %q", c.Socket, paneTarget, string(output))
+	}
+	values := make([]int, 4)
+	for index, field := range fields {
+		parsed, convErr := strconv.Atoi(field)
+		if convErr != nil {
+			return 0, 0, 0, 0, fmt.Errorf("tmux -L %s display-message -p -t %s window/pane size: parse %q: %w", c.Socket, paneTarget, field, convErr)
+		}
+		values[index] = parsed
+	}
+	return values[0], values[1], values[2], values[3], nil
+}
+
+// CaptureWindowGeometry implements PRD phase3b II-7: read
+// #{window_width}x#{window_height} and the window-local `window-size`
+// value BEFORE entering interactive mode does anything else to target's
+// window. Callers pass a pane or window target; tmux resolves either to
+// the owning window for every format and command this file uses.
+func (c Client) CaptureWindowGeometry(ctx context.Context, target string) (WindowGeometry, error) {
+	windowWidth, windowHeight, _, _, err := c.windowAndPaneSize(ctx, target)
+	if err != nil {
+		return WindowGeometry{}, err
+	}
+	value, set, err := c.readBuiltinWindowOption(ctx, target, "window-size")
+	if err != nil {
+		return WindowGeometry{}, err
+	}
+	return WindowGeometry{Width: windowWidth, Height: windowHeight, WindowSizeSet: set, WindowSizeValue: value}, nil
+}
+
+// resizeWindow issues `resize-window`, the ONLY resize command this file
+// ever calls (PRD II-8: "resize the window, never the pane" -- grepping
+// this file (outside _test.go) for tmux's per-pane resizing subcommand
+// name finds nothing; geometry_test.go's own self-check enforces this by
+// reading this file's source rather than trusting a one-off manual grep).
+func (c Client) resizeWindow(ctx context.Context, target string, width, height int) error {
+	if _, err := c.run(ctx, "resize-window", "-t", target, "-x", strconv.Itoa(width), "-y", strconv.Itoa(height)); err != nil {
+		return fmt.Errorf("resize window %q to %dx%d: %w", target, width, height, err)
+	}
+	return nil
+}
+
+// maxFitWindowAttempts bounds FitWindowToPane's chrome-compensated resize
+// loop. It is not a retry-until-it-works loop against a moving target --
+// on every split-window layout measured here (a two- and a three-pane
+// vertical stack, both on a 42-row window, landing a 22-row main pane) the
+// loop converges in 3-4 resize-window calls (measured, see
+// docs/reports/phase3b.md; the PRD's own spike cites 5-6 for a layout this
+// repository cannot re-run, since the raw spike evidence is unavailable
+// here -- see tasks.json's discovered prdCorrections). The bound exists so
+// a layout this package has not seen fails loudly with an error instead of
+// looping forever, which is the treatment PRD II-8 reserves for the naive
+// pane-targeting alternative this function deliberately is not (that one
+// is demonstrated, not shipped, in geometry_test.go).
+const maxFitWindowAttempts = 10
+
+// FitWindowToPane implements PRD phase3b II-8: resize target's WINDOW --
+// never the pane -- until paneTarget's own #{pane_width}x#{pane_height}
+// equal wantWidth/wantHeight. target and paneTarget are usually the same
+// tmux target (a pane inside a single-pane window resolves to its own
+// window either way); they are separate parameters only so a caller
+// fitting one particular pane of a multi-pane window can still name the
+// window explicitly if it ever needs to.
+//
+// On a single-pane window, #{pane_height} == #{window_height} and the
+// first resize-window call lands it exactly (chrome is zero). On a SPLIT
+// window, tmux's layout engine redistributes space between sibling panes
+// PROPORTIONALLY on every resize, so the "chrome" a sibling pane and its
+// border consume is a function of the window's own current size, not a
+// fixed offset measured once: computing chrome := window - pane at the OLD
+// size and adding it to the wanted pane size gives the window size that
+// would have produced the wanted pane size at the OLD proportions, which is
+// close to but not exactly right once the window has actually changed size
+// -- hence the loop, re-measuring chrome fresh every iteration rather than
+// trusting the first reading, until the pane's own reported size matches
+// exactly or the bound is exhausted.
+//
+// The return value is the number of resize-window calls actually issued
+// (0 if the pane already matched on entry).
+func (c Client) FitWindowToPane(ctx context.Context, target, paneTarget string, wantWidth, wantHeight int) (int, error) {
+	resizes := 0
+	for attempt := 0; attempt < maxFitWindowAttempts; attempt++ {
+		windowWidth, windowHeight, paneWidth, paneHeight, err := c.windowAndPaneSize(ctx, paneTarget)
+		if err != nil {
+			return resizes, err
+		}
+		if paneWidth == wantWidth && paneHeight == wantHeight {
+			return resizes, nil
+		}
+		newWidth := wantWidth + (windowWidth - paneWidth)
+		newHeight := wantHeight + (windowHeight - paneHeight)
+		if newWidth < 1 {
+			newWidth = 1
+		}
+		if newHeight < 1 {
+			newHeight = 1
+		}
+		if err := c.resizeWindow(ctx, target, newWidth, newHeight); err != nil {
+			return resizes, err
+		}
+		resizes++
+	}
+	return resizes, fmt.Errorf("fit window %q to pane %q at %dx%d: did not converge in %d resizes", target, paneTarget, wantWidth, wantHeight, maxFitWindowAttempts)
+}
