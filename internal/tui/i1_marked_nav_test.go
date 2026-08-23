@@ -57,6 +57,56 @@ func TestSortSessionsByAttentionStableFallsBackToIDWithNoPreviousFrame(t *testin
 	}
 }
 
+// TestSortSessionsByAttentionStableCompositeKeyIsTransitiveWithThreeWayTie
+// is steering note 001-i1-comparator-strict-weak-order.md's exact defect:
+// the OLD comparator mixed "compare positions when both rows have one,
+// else fall back to ID" and that is not a strict weak ordering once three
+// or more rows tie on rank+StatusAt and at least one is absent from
+// previous. Concretely, with previous = [B, A] (B before A) and three
+// rows A (ID "a"), B (ID "b") and C (ID "aa", new this load, absent from
+// previous):
+//
+//	less(B,A) = prevPos 0 < 1        = true  -> B < A
+//	less(A,C) = ID fallback "a"<"aa" = true  -> A < C
+//	less(C,B) = ID fallback "aa"<"b" = true  -> C < B
+//
+// B<A<C<B is a cycle; sort.SliceStable's result under an intransitive
+// comparator is unspecified rather than reliably wrong, so this asserts
+// against the specific input permutation confirmed red against the OLD
+// code before the composite-key fix: incoming order [C, A, B] (IDs
+// ["aa","a","b"]), which the old comparator sorted to [a aa b] -- A ahead
+// of B, silently reversing the two rows that DID appear together in
+// previous. The composite (position, ID) key closes this: every row
+// absent from previous shares one sentinel position, so C never gets to
+// arbitrate A vs B by ID.
+func TestSortSessionsByAttentionStableCompositeKeyIsTransitiveWithThreeWayTie(t *testing.T) {
+	previous := []store.Session{
+		{ID: "b"}, // prevPos 0
+		{ID: "a"}, // prevPos 1 -- previous already has B before A
+	}
+	incoming := []store.Session{
+		{ID: "aa", Status: "running", StatusAt: 500}, // C: new this load
+		{ID: "a", Status: "running", StatusAt: 500},  // A
+		{ID: "b", Status: "running", StatusAt: 500},  // B
+	}
+
+	got := sortSessionsByAttentionStable(previous, incoming)
+	ids := idsOf(got)
+
+	posOf := func(id string) int {
+		for i, s := range got {
+			if s.ID == id {
+				return i
+			}
+		}
+		t.Fatalf("id %q missing from result %v", id, ids)
+		return -1
+	}
+	if posOf("b") >= posOf("a") {
+		t.Fatalf("sortSessionsByAttentionStable = %v, want B (\"b\") before A (\"a\") regardless of where C (\"aa\") lands -- previous had B before A", ids)
+	}
+}
+
 // TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether is the exact
 // requirement-29 marked-set idiom (k, m, j) reproduced at the Model level:
 // two sessions created moments apart, both still "starting" on the first

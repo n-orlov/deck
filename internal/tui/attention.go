@@ -113,10 +113,30 @@ func lessByAttention(a, b store.Session) bool {
 // the only case TestSortSessionsByAttentionTiesBrokenByID (which calls
 // sortSessionsByAttention directly, never this function) needs to keep
 // covering.
+//
+// The tie-break below is a single lexicographic composite key
+// (position, ID) rather than "compare positions when both rows have one,
+// else fall back to ID" -- the latter is NOT a strict weak ordering once
+// three or more rows tie on rank+StatusAt and at least one of them is
+// absent from previous (steering note
+// docs/reports/phase3d-i1-rootcause.md's comparator addendum has the
+// concrete 3-cycle: mixing the two rules lets less(B,A), less(A,C) and
+// less(C,B) all report true for a suitable position/ID disagreement,
+// which sort.SliceStable does not detect but silently mis-orders). Every
+// row absent from previous maps to ONE shared sentinel position
+// (len(previous)) so among themselves -- and against nothing else -- ID
+// still breaks the tie; two rows that share a real previous position never
+// reach the ID compare at all.
 func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.Session {
 	prevPos := make(map[string]int, len(previous))
 	for i, s := range previous {
 		prevPos[s.ID] = i
+	}
+	posKey := func(s store.Session) int {
+		if p, ok := prevPos[s.ID]; ok {
+			return p
+		}
+		return len(previous) // new this load: one shared key, ID breaks the rest
 	}
 	sorted := make([]store.Session, len(incoming))
 	copy(sorted, incoming)
@@ -129,10 +149,8 @@ func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.S
 		if a.StatusAt != b.StatusAt {
 			return a.StatusAt < b.StatusAt
 		}
-		if pa, aok := prevPos[a.ID]; aok {
-			if pb, bok := prevPos[b.ID]; bok {
-				return pa < pb
-			}
+		if ka, kb := posKey(a), posKey(b); ka != kb {
+			return ka < kb
 		}
 		return a.ID < b.ID
 	})
