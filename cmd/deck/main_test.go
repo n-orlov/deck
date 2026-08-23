@@ -437,6 +437,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
 		"e open the env editor", "which layer won", "captured_path, config [env] or session env",
 		"u undo the most recent x", "DECK_UNDO_MS",
+		"dd delete the selected session", "pending indicator", "confirm dialog naming what survives",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)

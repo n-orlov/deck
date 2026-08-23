@@ -118,8 +118,27 @@ type Model struct {
 	restartChoosing    bool
 	restartChoiceValue string
 	restartChoiceNote  string
-	profileSwitch      func(context.Context, string, string) (store.Session, error)
-	selected           int
+	// deleteSvc is task 105's `dd` submit path: it kills the selected
+	// session's live pane if one exists (never touching its cwd or
+	// conversation id/transcript) and then tombstones the row
+	// (store.SoftDeleteSession) so it disappears from ListSessions
+	// immediately, restorable within task 106's grace window. nil means
+	// deleting is unavailable and submitting states so rather than
+	// silently doing nothing.
+	deleteSvc func(context.Context, store.Session) error
+	// pendingDelete is true for exactly one keypress after a lone `d`
+	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
+	// key (including Esc) clears pendingDelete without performing any
+	// destructive action -- the pending indicator itself never touches
+	// the store.
+	pendingDelete bool
+	// deleteConfirming is true while the second `d`'s confirm dialog is
+	// open; deleteNote surfaces a failed submit (mirrors pinNote/
+	// profileSwitchNote's existing shape) without closing the dialog.
+	deleteConfirming bool
+	deleteNote       string
+	profileSwitch    func(context.Context, string, string) (store.Session, error)
+	selected         int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -414,6 +433,13 @@ type undoExpired int
 
 type sessionAcknowledged struct{ err error }
 
+// sessionDeleted carries task 105's dd submit result back: kill the live
+// pane (if any) and tombstone the row (store.SoftDeleteSession). A
+// successful delete reloads the session list so the now-tombstoned row
+// disappears from the sidebar immediately rather than waiting for the
+// next reconcile tick.
+type sessionDeleted struct{ err error }
+
 // previewCaptured reports one previewCapture tick's result for the session
 // selected at the moment the capture was issued (SPEC requirements 21, 22).
 // err is only ever a real tmux/transport failure; a session with no live
@@ -654,6 +680,20 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorAndDeleter
+// adds task 105's `dd` delete action (SPEC §9/§11.4): deleter kills the
+// selected session's live pane if one exists and tombstones the row
+// (store.SoftDeleteSession) so it disappears from ListSessions
+// immediately, restorable within task 106's grace window. It never
+// touches the session's cwd or its conversation id/transcript. Until
+// deleter is wired, submitting the confirm dialog fails with "deleting is
+// unavailable" rather than silently doing nothing.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorAndDeleter(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterAndInjector(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector)
+	m.deleteSvc = deleter
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -759,6 +799,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.attachError = ""
+		return m, m.loadSessions
+	case sessionDeleted:
+		if msg.err != nil {
+			m.deleteNote = "Cannot delete: " + msg.err.Error()
+			return m, nil
+		}
+		m.deleteConfirming = false
+		m.deleteNote = ""
 		return m, m.loadSessions
 	case uiStatePersisted:
 		// A failed write to ui_state is not load-bearing (SPEC §11.2): the
@@ -942,11 +990,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.restartChoosing {
 			return m.updateRestartChoice(msg)
 		}
+		if m.deleteConfirming {
+			return m.updateDeleteConfirm(msg)
+		}
 		if m.settingsOpen {
 			return m.updateSettings(msg)
 		}
 		if m.themePicking {
 			return m.updateThemePicker(msg)
+		}
+		// pendingDelete intercepts the very next key after a lone `d`
+		// (SPEC's dd chord): a second `d` opens the confirm dialog; every
+		// other key -- Esc included -- clears the pending indicator and is
+		// otherwise swallowed, so "d followed by any other key performs no
+		// destructive action" holds without also having to reason about
+		// whatever that other key would normally have done.
+		if m.pendingDelete {
+			m.pendingDelete = false
+			if msg.String() == "d" && len(m.sessions) > 0 {
+				m.deleteConfirming = true
+				m.deleteNote = ""
+			}
+			return m, nil
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -1037,6 +1102,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, func() tea.Msg {
 				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
+			}
+		case "d":
+			// First half of task 105's dd chord: a visible pending indicator,
+			// changing nothing in the store. The very next key (handled by
+			// the m.pendingDelete intercept above, on the NEXT tea.KeyMsg) is
+			// either another `d` (opens the confirm dialog) or clears this
+			// with no destructive action.
+			if len(m.sessions) > 0 {
+				m.pendingDelete = true
 			}
 		case "u":
 			// Requirement 22: u undoes the most recent x, not whatever row
@@ -1193,7 +1267,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -1320,6 +1394,9 @@ func (m Model) View() string {
 	if m.restartChoosing && len(m.sessions) > 0 {
 		return m.restartChoiceView()
 	}
+	if m.deleteConfirming && len(m.sessions) > 0 {
+		return m.deleteConfirmView()
+	}
 	if m.settingsOpen {
 		return m.settingsView()
 	}
@@ -1420,6 +1497,20 @@ func (m Model) undoNoteLines(width int) []string {
 	return wrapText(fmt.Sprintf("Killed %q \u2014 press u to undo", m.undoSessionName), width)
 }
 
+// pendingDeleteLines is task 105's first-`d` visible indicator: gone the
+// instant any key resolves it (the second `d`, opening the confirm dialog,
+// or anything else, clearing it with no destructive action), so it is
+// never shown at the same time as the confirm dialog itself (deleteConfirmView
+// replaces the whole frame -- see View()) or the undo toast (a pending
+// delete on a session that was just killed makes little sense, and neither
+// key sets both flags together).
+func (m Model) pendingDeleteLines(width int) []string {
+	if !m.pendingDelete || len(m.sessions) == 0 {
+		return nil
+	}
+	return wrapText(fmt.Sprintf("Delete %q? press d again to confirm, any other key cancels", m.sessions[m.selected].Name), width)
+}
+
 // computeLayout is the one place mainView and the page-size math below call
 // ComputeLayout, reserving exactly one row for the footer (SPEC §11.3: "the
 // footer is one line, outside both panels") plus the startup banner's own
@@ -1436,7 +1527,7 @@ func (m Model) undoNoteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.pendingDeleteLines(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -1498,6 +1589,7 @@ func (m Model) mainView() string {
 	lines = append(lines, m.attachErrorLines(width)...)
 	lines = append(lines, m.resumeNoteLines(width)...)
 	lines = append(lines, m.undoNoteLines(width)...)
+	lines = append(lines, m.pendingDeleteLines(width)...)
 	lines = append(lines, m.footerLine())
 	return strings.Join(lines, "\n")
 }
@@ -2303,6 +2395,54 @@ func (m Model) restartChoiceView() string {
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.restartChoiceNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.restartChoiceNote)
+	}
+	return m.framedDialog(b.String())
+}
+
+// updateDeleteConfirm handles keys while task 105's second-`d` confirm
+// dialog is open. It has no navigable fields (nothing to cycle, nothing
+// to tab between) -- only Esc (cancel, tombstones nothing) and Enter
+// (submit: kill the live pane if any, then tombstone the row) -- so it
+// defers to the shared §11.4 contract exactly like detailView/helpView's
+// esc-only case does, just with a Submit as well.
+func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	session := m.sessions[m.selected]
+	cmd, handled := applyDialogContract(msg, dialogContract{
+		Cancel: func() {
+			m.deleteConfirming = false
+			m.deleteNote = ""
+		},
+		Submit: func() tea.Cmd {
+			if m.deleteSvc == nil {
+				m.deleteNote = "deleting is unavailable"
+				return nil
+			}
+			return func() tea.Msg {
+				return sessionDeleted{err: m.deleteSvc(context.Background(), session)}
+			}
+		},
+	})
+	if handled {
+		return m, cmd
+	}
+	return m, nil
+}
+
+// deleteConfirmView renders task 105's second-`d` confirm dialog. It states
+// plainly what dd does NOT destroy -- the conversation id and the working
+// directory both survive -- so it is never mistaken for the eventual purge
+// action (task 110), which is offered from inside this same dialog once it
+// exists.
+func (m Model) deleteConfirmView() string {
+	session := m.sessions[m.selected]
+	var b strings.Builder
+	fmt.Fprintf(&b, "Delete %s\n\n", session.Name)
+	b.WriteString("This kills the live pane (if any) and removes the session from the\nlist. It survives, untouched:\n")
+	fmt.Fprintf(&b, "%s\n", m.detailField("Conversation:       ", session.ConversationID))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+	b.WriteString("\nEnter deletes · Esc cancels\n")
+	if m.deleteNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
 	}
 	return m.framedDialog(b.String())
 }
@@ -3199,6 +3339,11 @@ Keys
   u undo the most recent x within its DECK_UNDO_MS window: resumes that
     session with its own resume argv, exactly like r; once the window has
     expired, or nothing has been killed since the last undo, it does nothing
+  dd delete the selected session: the first d shows a pending indicator and
+    changes nothing; Esc or any other key cancels it; the second d opens a
+    confirm dialog naming what survives -- the conversation and its working
+    directory are never touched; Enter kills the live pane (if any) and
+    tombstones the row, which disappears from the list immediately
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells
