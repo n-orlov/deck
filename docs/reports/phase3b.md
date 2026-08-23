@@ -152,3 +152,68 @@ tmux's default status line (one row, on by default) is subtracted from
 the client's own screen before `window-size latest` sizes the window to
 fit. This is the client's own status-line chrome, distinct from task
 034/II-8's sibling-pane chrome inside the window.
+
+## II-11: exactly two SIGWINCH per full enter/exit cycle, attached and detached (task 036)
+
+`features/interactive_sigwinch_budget.feature` (two scenarios) proves the
+same claim task 035's own `TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch`
+already measured for the attached exit half, but for the **whole** cycle
+(`CaptureWindowGeometry` + `FitWindowToPane` to enter, `RestoreWindowGeometry`
+to exit) and read through the same fake-fixture SIGWINCH counter task 027
+built (`fake-claude`'s own `$DECK_HOME/log/fake-claude-sigwinch-count`,
+asserted via the existing `the fake "claude" agent received exactly N
+SIGWINCH signals` step), against a bare tmux session created directly on
+the scenario's own private socket (no deck-level Enter consumer exists yet;
+same precedent as task 034/035's own `.feature` scenarios).
+
+Measured, both against real tmux:
+
+| scenario | SIGWINCH count |
+|---|---|
+| detached (nobody attached for the whole cycle) | **2** |
+| a real client attached throughout the whole cycle | **2** |
+
+Not 3, in either case. The detached count is one `resize-window` to enter
+(single-pane window, zero chrome) plus one explicit `resize-window` back to
+the original dimensions on exit (`RestoreWindowGeometry`'s `attached == 0`
+branch); the attached count is the same entry resize plus, on exit, the
+unset-triggered automatic "follow the attached client" resize task 035
+already found — never a third, explicit `resize-window` while a client is
+attached.
+
+The attached scenario's client is deliberately attached at a size
+(`80x25` raw) that nets to the **same** effective pane size as the window
+already had (`80x24`, after subtracting the client's own one-row status
+line) before either the entry or exit resize runs, so the attach step
+itself costs zero SIGWINCH of its own — the two-signal budget measured
+above belongs entirely to the enter/exit cycle, not to attaching.
+
+### Gotcha discovered building this scenario: the fixture's own counter can undercount two back-to-back SIGWINCH
+
+`cmd/fake-claude/main.go`'s SIGWINCH counter uses `signal.Notify` into a
+channel with a buffer of exactly 1 (`signals := make(chan os.Signal, 1)`,
+main.go:645). Go's own `os/signal` contract for that shape: a signal that
+arrives while the channel already holds one undelivered notification is
+silently dropped, never queued. Measured directly here: running this
+scenario's enter and exit steps back-to-back with **no** pause between
+them let a real, independently-confirmed second kernel `SIGWINCH` land
+before the fixture's own counting goroutine had drained the first
+notification off the channel — the counter's own file then read `1`
+even though tmux really delivered two (confirmed by re-reading the same
+counter file via a bare, manually-paced `tmux resize-window` sequence
+against the same fixture, which reliably reports 2). This is a limitation
+of the fixture's own counting mechanism under back-to-back signals, not a
+deck defect; `features/interactive_sigwinch_budget.feature`'s two
+scenarios each insert an explicit 200ms pause between the enter and exit
+steps (and a second 200ms pause before the final assertion, guarding
+against task 027's own count step returning on a transient reading before
+a hypothetical extra signal would have landed) for exactly the same
+reason `features/sigwinch_count_test.go` (task 027) already paces its own
+resizes 50ms apart. Demonstrated directly: with the inter-step pause
+removed, this scenario's own "exactly 1" red control passed when it
+should have failed, because the second signal was coalesced away before
+ever being counted — restoring the pause reproduces the correct "exactly
+2, reject 1" result. Recorded here since a future consumer pacing real
+resizes against this same fixture (or reusing task 027's counter idiom
+against a different fixture with an identically small channel buffer)
+would hit the same silent undercount.
