@@ -1,0 +1,95 @@
+1787490231.872901891 === RUN   TestFeatures
+1787490231.876936798 Feature: Undo toast after x, and the dd delete/tombstone chord
+1787490231.877649930   x still kills with no confirmation and still refuses an already-stopped
+1787490231.878476446   row, but a successful kill leaves a toast naming undo, actionable for
+1787490231.879204866   exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+1787490231.879966899   or already spent by an earlier u), u does nothing. Task 106 adds dd's
+1787490231.880699342   own grace-window/reap scenarios to this same file.
+1787490231.882919934 === RUN   TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+1787490232.190092338 
+1787490232.191002829   Scenario: bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged               # kill_delete_undo.feature:297
+1787490232.191708362     Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+1787490232.192445273     And a scratch directory "fp-bk-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+1787490232.193176608       | path         | kind | content             | mode |
+1787490232.193819260       | state.db     | file | fake-database-bytes |      |
+1787490232.194523796       | .hidden      | file | dotfile-content     |      |
+1787490232.195302827       | subdir       | dir  |                     |      |
+1787490232.195922690       | readonly.txt | file | cannot-write-me     | 0444 |
+1787490232.196638759     And a scratch directory "fp-bk-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+1787490232.197319536       | path         | kind | content             | mode |
+1787490232.197990901       | state.db     | file | fake-database-bytes |      |
+1787490232.198796449       | .hidden      | file | dotfile-content     |      |
+1787490232.199583893       | subdir       | dir  |                     |      |
+1787490232.200327580       | readonly.txt | file | cannot-write-me     | 0444 |
+1787490232.306882520     And deck client "A" creates shell session "bk-one" with cwd the scratch directory labelled "fp-bk-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+1787490232.422527516     And deck client "A" creates shell session "bk-two" with cwd the scratch directory labelled "fp-bk-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+1787490232.423337794     And the directory "fp-bk-1/cwd" is fingerprinted as "before-bk-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+1787490232.424173585     And the directory "fp-bk-2/cwd" is fingerprinted as "before-bk-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+1787490232.447940322     When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+1787490232.548547557     And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+1787490232.573887561     And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+1787490232.574636571     Then deck client "A" screen contains "bk-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+1787490232.599305394     When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+1787490238.745297510     Then deck client "A" screen contains "> bk-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+1787490238.746293517     after scenario hook failed: client "A" did not show "> bk-two running" within 5s: timed out waiting for frame "> bk-two running": context deadline exceeded
+1787490238.747201550 frame:
+1787490238.748124272 + deck - sessions -----------------+---------------------------------------------------------------+
+1787490238.748990963 | socket: deck_test_1579_2         | 61x27 of 80x24                                                |
+1787490238.749895531 | v cwd  /tmp/deck-scenario-303... | $                                                             |
+1787490238.750709100 |   bk-two running                 |                                                               |
+1787490238.751526366 |   created <relative-time>               |                                                               |
+1787490238.752586170 | > bk-one running [marked]        |                                                               |
+1787490238.753285852 |   created <relative-time>               |                                                               |
+1787490238.754066489 |                                  |                                                               |
+1787490238.754855436 |                                  |                                                               |
+1787490238.755594372 |                                  |                                                               |
+1787490238.756382647 |                                  |                                                               |
+1787490238.757069277 |                                  |                                                               |
+1787490238.757891069 |                                  |                                                               |
+1787490238.758576100 |                                  |                                                               |
+1787490238.759346136 |                                  |                                                               |
+1787490238.760189219 |                                  |                                                               |
+1787490238.761341780 |                                  |                                                               |
+1787490238.762267816 |                                  |                                                               |
+1787490238.763063808 |                                  |                                                               |
+1787490238.763925960 |                                  |                                                               |
+1787490238.764886717 |                                  |                                                               |
+1787490238.765790114 |                                  |                                                               |
+1787490238.766653903 |                                  |                                                               |
+1787490238.767541273 |                                  |                                                               |
+1787490238.768309944 |                                  |                                                               |
+1787490238.768991666 |                                  |                                                               |
+1787490238.769703195 |                                  |                                                               |
+1787490238.770403666 |                                  |                                                               |
+1787490238.771329748 +----------------------------------+---------------------------------------------------------------+
+1787490238.772257262 up/down - Enter attach - Y acknowledge - n new - x kill - r resume - R relaunch - P profile - p pin
+1787490238.777242263 raw: "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[H\r+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_1579_2         | Select or create a session to preview it here.                |\r\n| No sessions yet. Press n to      |                                               ...[elided, long line]...
+1787490238.778129908 surviving deck client: hung deck client killed after 1s
+1787490238.779062225 sent (input timeline):
+1787490238.779812769   [13:03:52.189] +0 "n"
+1787490238.780487062   [13:03:52.205] +16.291837ms "bk-one"
+1787490238.781262876   [13:03:52.281] +75.998834ms "\t/tmp/deck-scenario-3039851284/fingerprint-scratch/fp-bk-1/cwd\r"
+1787490238.781988529   [13:03:52.306] +24.292826ms "n"
+1787490238.782698987   [13:03:52.323] +16.963462ms "bk-two"
+1787490238.783385959   [13:03:52.399] +75.94567ms "\t/tmp/deck-scenario-3039851284/fingerprint-scratch/fp-bk-2/cwd\r"
+1787490238.784118168   [13:03:52.422] +22.97621ms "k"
+1787490238.784950111   [13:03:52.547] +125.604509ms "m"
+1787490238.785675146   [13:03:52.573] +25.607203ms "j"
+1787490238.786311998 frame:
+1787490238.787128104 
+
+    [... a raw SIGQUIT goroutine dump from the hung-client kill elided here;
+     not needed -- the "sent (input timeline)" block above already proves
+     "j" was written to the pty at 25.6ms after "m", and the frame dump
+     above already proves the arrow never moved to bk-two ...]
+
+1 scenarios (1 failed)
+22 steps (12 passed, 1 failed, 9 skipped)
+7.043523084s
+=== NAME  TestFeatures
+    godog_test.go:38: godog feature suite failed
+--- FAIL: TestFeatures (7.05s)
+    --- FAIL: TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (6.93s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	7.159s
+FAIL
