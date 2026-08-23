@@ -93,3 +93,48 @@ func TestArchiveSessionRejectsMissingSession(t *testing.T) {
 		t.Fatal("ArchiveSession on an unknown id must fail, got nil error")
 	}
 }
+
+// TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow proves task
+// 123/I-10's store half: ListSessions excludes an archived row (already
+// covered above), and ListArchivedSessions is the dedicated accessor that
+// DOES return it -- while still excluding a merely-active row, and while
+// still excluding a row that is BOTH archived and tombstoned, since a
+// tombstoned row has no filter route back at all (SoftDeleteSession is a
+// harder removal than ArchiveSession).
+func TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	active := createTombstoneTestSession(t, st, ctx, "still-active")
+	archived := createTombstoneTestSession(t, st, ctx, "archived-away")
+	archivedAndDeleted := createTombstoneTestSession(t, st, ctx, "archived-then-deleted")
+
+	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if err := st.ArchiveSession(ctx, archivedAndDeleted.ID, 200); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if err := st.SoftDeleteSession(ctx, archivedAndDeleted.ID, 300); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	got, err := st.ListArchivedSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != archived.ID {
+		t.Fatalf("ListArchivedSessions = %+v, want only %q (never the active row, never the archived-and-tombstoned one)", got, archived.ID)
+	}
+
+	// And ListSessions' own default view still excludes it, exactly as
+	// requirement 27 already requires -- this is the fact requirement 33's
+	// filter exists to work around, restated here so a regression in either
+	// method is caught by the same test.
+	defaultView, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(defaultView) != 1 || defaultView[0].ID != active.ID {
+		t.Fatalf("ListSessions = %+v, want only the active row %q", defaultView, active.ID)
+	}
+}

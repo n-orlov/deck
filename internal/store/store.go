@@ -1220,6 +1220,35 @@ func (s *Store) ListDeletedSessions(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
+// ListArchivedSessions is the separate, explicit accessor for archived rows
+// (archived_at != 0, deleted_at == 0) that ListSessions itself never
+// returns (requirement 27/33, task 123). Unlike ListDeletedSessions there
+// is no reaper polling this list: the `/` filter's "archived" term
+// (internal/tui) is its only intended caller, and it is the ONLY route
+// back to an archived row -- there is no restore for archived_at the way
+// RestoreSession undoes deleted_at. Ordered the same way ListSessions is,
+// for the same determinism-under-a-frozen-clock reason.
+func (s *Store) ListArchivedSessions(ctx context.Context) ([]Session, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
+		FROM sessions WHERE deleted_at = 0 AND archived_at != 0 ORDER BY created_at, id`)
+	if err != nil {
+		return nil, fmt.Errorf("list archived sessions: %w", err)
+	}
+	defer rows.Close()
+	var sessions []Session
+	for rows.Next() {
+		session, err := scanSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan archived session: %w", err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate archived sessions: %w", err)
+	}
+	return sessions, nil
+}
+
 // SoftDeleteSession tombstones a session (task 104/105's `dd`): it records
 // deleted_at rather than removing the row, so RestoreSession can undo it
 // within the SPEC delete-grace window (task 106) and so a tombstoned row's
