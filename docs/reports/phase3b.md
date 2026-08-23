@@ -98,3 +98,57 @@ the quantity `window-size manual` actually pins (task 032/II-9's exit
 restore depends on this same fact), and it composes correctly with the
 chrome-compensation loop because window height IS the quantity the loop
 solves for.
+
+## II-9: exit restores in the load-bearing order (task 035)
+
+`internal/tmux/geometry.go`'s `RestoreWindowGeometry` implements the PRD's
+exit recipe exactly: `resize-window` back to the saved dimensions **only
+when** `#{session_attached} == 0` (new `Client.SessionAttachedCount`),
+**then** `set-option -w -u window-size`, unconditionally, last.
+
+### The reversed order, demonstrated red
+
+`internal/tmux/restore_test.go`'s `TestReversedRestoreOrderLeavesWindowPinned`
+issues the two steps in the wrong order directly (never through
+`RestoreWindowGeometry`, which never produces this order): unset first,
+`resize-window` second. Measured against real tmux:
+
+- after the reversed sequence, `window-size` reads `manual` again, not
+  unset — `resize-window` always writes that as a side effect regardless of
+  what the preceding unset just did.
+- a client then attaching at a **third** size is not followed at all: the
+  window stays exactly at whatever the reversed sequence's `resize-window`
+  last set, proving "pinned" is a real, observed behaviour, not merely
+  option state nobody reads.
+- run again with the **correct** order (same test, second half), the same
+  client-attach step instead lands the window at the attached client's own
+  size, on the unset alone — the contrast is captured in one test so the
+  before/after is unambiguous.
+
+### With a client attached: the unset alone, no third SIGWINCH
+
+`TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch`
+runs a pane trapping real `SIGWINCH` into an append-only counter file (a
+kernel signal count, not a size-log inference) through one full
+enter/exit-with-a-client-attached cycle:
+
+| step | SIGWINCH count |
+|---|---|
+| after entering (one `resize-window` call, single-pane window, zero chrome) | 1 |
+| after a client attaches at a third size (`window-size` still `manual`, so the attach itself must not move the window) | 1 (unchanged) |
+| after `RestoreWindowGeometry` with that client attached (resize-window skipped, unset only) | 2 |
+
+Measured here: exactly **2**, never 3 — the unset's own automatic
+"follow the latest attached client" behaviour (`window-size latest` at the
+server-global scope, set once by `Client.Bootstrap`/task 032) does the
+resize implicitly; `RestoreWindowGeometry` never issues an explicit
+`resize-window` while a client is attached, so there is no third,
+wasted `SIGWINCH`.
+
+One incidental finding recorded here rather than left as a silent -1 in
+the test: the pane the attached client sees is one row shorter than that
+client's own raw terminal (e.g. a 90x30 client yields a 90x29 pane) —
+tmux's default status line (one row, on by default) is subtracted from
+the client's own screen before `window-size latest` sizes the window to
+fit. This is the client's own status-line chrome, distinct from task
+034/II-8's sibling-pane chrome inside the window.
