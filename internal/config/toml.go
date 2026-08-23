@@ -22,6 +22,7 @@ type FileConfig struct {
 	AllowYolo          bool
 	StaleAfter         time.Duration
 	CaptureMinInterval time.Duration
+	InteractiveMS      time.Duration
 	TmuxMouse          bool
 	ASCII              bool
 	Mouse              bool
@@ -127,6 +128,9 @@ func defaultFileConfig() FileConfig {
 		case "capture_min_interval":
 			seconds, _ := field.Default.(int)
 			cfg.CaptureMinInterval = time.Duration(seconds) * time.Second
+		case "interactive_ms":
+			ms, _ := field.Default.(int)
+			cfg.InteractiveMS = time.Duration(ms) * time.Millisecond
 		case "tmux_mouse":
 			cfg.TmuxMouse, _ = field.Default.(bool)
 		case "ui.ascii":
@@ -180,6 +184,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.StaleAfter = time.Duration(value) * time.Second
 		case "capture_min_interval":
 			cfg.CaptureMinInterval = time.Duration(value) * time.Second
+		case "interactive_ms":
+			cfg.InteractiveMS = time.Duration(value) * time.Millisecond
 		case "ui.recent_cwd_limit":
 			cfg.RecentCwdLimit = value
 		}

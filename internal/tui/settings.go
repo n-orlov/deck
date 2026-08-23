@@ -721,6 +721,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		AllowYolo:          s.File.AllowYolo,
 		StaleAfter:         s.File.StaleAfter,
 		CaptureMinInterval: s.File.CaptureMinInterval,
+		InteractiveMS:      s.File.InteractiveMS,
 		TmuxMouse:          s.File.TmuxMouse,
 		ASCII:              s.File.ASCII,
 		Mouse:              s.File.Mouse,
@@ -790,6 +791,8 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 		return int(cfg.StaleAfter.Seconds())
 	case "capture_min_interval":
 		return int(cfg.CaptureMinInterval.Seconds())
+	case "interactive_ms":
+		return int(cfg.InteractiveMS.Milliseconds())
 	case "ui.recent_cwd_limit":
 		return cfg.RecentCwdLimit
 	default:
@@ -814,6 +817,8 @@ func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
 		cfg.StaleAfter = time.Duration(v) * time.Second
 	case "capture_min_interval":
 		cfg.CaptureMinInterval = time.Duration(v) * time.Second
+	case "interactive_ms":
+		cfg.InteractiveMS = time.Duration(v) * time.Millisecond
 	case "ui.recent_cwd_limit":
 		cfg.RecentCwdLimit = v
 	}
