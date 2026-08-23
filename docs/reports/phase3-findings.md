@@ -185,6 +185,34 @@ instant the row disappears (dd hides the row outright, unlike `x`'s row which st
 renders, so the generic "Deleted — press u to undo" text was chosen instead, and none of the new
 scenarios depend on the name appearing in that toast.
 
+## Reap leaves no trace: outbox/notify state has no separate cascade, and the §9.4 history file path is a new convention (task 107)
+
+SPEC §9.2's "reaping deletes the `sessions` row and every deck-owned row hanging off it —
+events, notification outbox entries, the `waiting` and `notify_epoch` state — together with
+deck's own per-session files" describes four things to clean up, but this schema (still schemaV1
+through schemaV4, unchanged by this task) only ever had two of them as actual rows: `sessions`
+and `events`. There is no `outbox` table anywhere in the tree, and `waiting`/`notify_epoch` are
+columns on `sessions` itself, not rows in a side table — so `ReapSession`'s existing single
+`DELETE FROM sessions ...` (which cascades `events` via `ON DELETE CASCADE`, schemaV1) already
+removes all four; there was no separate cascade to add. If a later phase introduces a real
+outbox table, `internal/store.ReapSession` is the one place that DELETE would need a sibling
+statement — recorded here so that phase doesn't have to rediscover this by reading the whole
+reap path again.
+
+The other half of requirement 24 — "deck's own per-session files ... §9.4's history file and
+captured scrollback" — needed an actual decision this task made explicit: SPEC §9.4 says a
+history file and captures live "under the deck data dir" / "under `$DECK_HOME/captures/<session_id>/`"
+but never names the history file's own path, because nothing in this tree writes either file yet
+(both are Phase 6 deliverables). `config.CapturesDir(home, sessionID)` and
+`config.HistoryFile(home, sessionID)` (`internal/config/config.go`) are the single place both
+paths are now defined — `$DECK_HOME/captures/<id>/` (matching SPEC's own wording exactly) and
+`$DECK_HOME/history/<id>` (SPEC left this one to be decided; a flat file per session id, one
+level under the data dir, mirroring captures' own shape) — so that when Phase 6 lands its actual
+writer, it has one existing convention to target rather than inventing its own that a stale reap
+path would then miss. `internal/service.Service.Reap` removes both if present and tolerates
+absence either way (the common case today), which is also the shape SPEC §9.4 already requires
+of a *missing* capture file elsewhere ("degrades to no replay, never to an error").
+
 ## SPEC.md
 
 Unmodified by this task — `git diff SPEC.md` is empty (verified below).

@@ -121,6 +121,14 @@ type ScenarioHarness struct {
 	// the pid is still identical afterwards -- a restart would produce a
 	// brand-new pid, since tmux exec's a fresh process into the pane.
 	livePanePidSnapshots map[string]string
+
+	// capturedSessionIDs backs task 107's reap-leaves-no-trace scenario: a
+	// step captures a session's durable store id, keyed by its display name,
+	// before dd/reap remove the sessions row entirely -- once the row is
+	// gone, the id can no longer be looked up by name, but the scenario
+	// still needs it to build the $DECK_HOME/captures/<id>/ and history
+	// file paths and to match the audit JSONL's own session_id field.
+	capturedSessionIDs map[string]string
 }
 
 var scenarioSequence atomic.Uint64

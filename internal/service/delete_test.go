@@ -104,7 +104,7 @@ func newTombstoneTestService(t *testing.T) Service {
 	}
 	socket := "deck-restore-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
-	return Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("restore-test"), Shell: "/bin/sh"}
+	return Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("restore-test"), Shell: "/bin/sh", DeckHome: home}
 }
 
 // TestRestoreClearsTombstoneAndReturnsToListSessions proves task 106's `u`
@@ -173,5 +173,92 @@ func TestReapRefusesEmptySessionID(t *testing.T) {
 	svc := Service{}
 	if err := svc.Reap(context.Background(), ""); err == nil {
 		t.Fatal("Reap with empty session id, want error")
+	}
+}
+
+// TestReapRemovesCapturesDirAndHistoryFile proves task 107's own addition
+// to Reap: SPEC §9.2's "deck's own per-session files, meaning §9.4's
+// history file and captured scrollback" are removed by the reap, using
+// exactly the two paths config.CapturesDir/config.HistoryFile define --
+// nothing in this tree writes either path yet (Phase 6), so this test
+// seeds them itself to prove the removal side independent of the writer.
+func TestReapRemovesCapturesDirAndHistoryFile(t *testing.T) {
+	svc := newTombstoneTestService(t)
+	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "reap-files", CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capturesDir := config.CapturesDir(svc.DeckHome, session.ID)
+	if err := os.MkdirAll(capturesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(capturesDir, "scrollback"), []byte("replay me\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	historyFile := config.HistoryFile(svc.DeckHome, session.ID)
+	if err := os.MkdirAll(filepath.Dir(historyFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(historyFile, []byte("cd /work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Reap(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(capturesDir); !os.IsNotExist(err) {
+		t.Fatalf("captures dir after reap: stat = %v, want IsNotExist", err)
+	}
+	if _, err := os.Stat(historyFile); !os.IsNotExist(err) {
+		t.Fatalf("history file after reap: stat = %v, want IsNotExist", err)
+	}
+}
+
+// TestReapToleratesMissingCapturesDirAndHistoryFile proves the degrade-to-
+// no-replay-never-to-an-error half of the same contract: for the common
+// case today -- nothing has ever written either path, since Phase 6 is
+// the only future writer -- Reap still succeeds.
+func TestReapToleratesMissingCapturesDirAndHistoryFile(t *testing.T) {
+	svc := newTombstoneTestService(t)
+	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "reap-no-files", CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Reap(context.Background(), session.ID); err != nil {
+		t.Fatalf("Reap with no captures dir or history file present: %v, want nil", err)
+	}
+}
+
+// TestReapLeavesEventsOutboxAndNotifyStateBehind proves requirement 24's
+// row-level half of "leave no trace": events rows cascade away with the
+// sessions row (ON DELETE CASCADE, schemaV1), and the notify_epoch/waiting
+// state that lived on the sessions row itself goes with it -- there is no
+// separate outbox table in this schema for anything to leave behind
+// (docs/reports/phase3-findings.md records this so a later phase that
+// adds one knows to extend this same reap path).
+func TestReapLeavesEventsOutboxAndNotifyStateBehind(t *testing.T) {
+	svc := newTombstoneTestService(t)
+	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "reap-cascade", CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	var before int
+	if err := svc.Store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ?`, session.ID).Scan(&before); err != nil || before == 0 {
+		t.Fatalf("events for session before reap = %d, %v, want > 0", before, err)
+	}
+	if err := svc.Reap(context.Background(), session.ID); err != nil {
+		t.Fatal(err)
+	}
+	var after int
+	if err := svc.Store.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ?`, session.ID).Scan(&after); err != nil || after != 0 {
+		t.Fatalf("events for session after reap = %d, %v, want 0 (cascaded)", after, err)
 	}
 }

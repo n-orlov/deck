@@ -138,6 +138,19 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then the state database session "dd-reap-expires" is reaped
     When deck client "A" exits cleanly
 
+  @requirement-24-reap-leaves-no-trace
+  Scenario: reaping a deleted session removes its store rows and deck's own per-session files, but never the audit log's earlier history
+    Given deck client "A" is started with a short delete grace window
+    And deck client "A" creates shell session "dd-reap-no-trace"
+    And deck client "A" seeds captures and a history file for session "dd-reap-no-trace"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    And 400 milliseconds pass
+    Then the state database session "dd-reap-no-trace" is reaped
+    And the captures directory and history file for reaped session "dd-reap-no-trace" are gone
+    And the audit log still contains an earlier event for reaped session "dd-reap-no-trace"
+    When deck client "A" exits cleanly
+
   @requirement-2-monotonic-windows
   Scenario: both the undo window and the delete grace window keep advancing while DECK_CLOCK is frozen
     Given deck client "A" is started with the clock frozen at "2025-01-02T03:04:05Z" and short undo and delete windows
