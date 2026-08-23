@@ -240,6 +240,27 @@ type Model struct {
 	pinning                   bool
 	pinValue                  string
 	pinNote                   string
+	// renamer is task 013's `i`-dialog-only rename action (SPEC §11.4, PRD
+	// requirement 31, I-8): it persists a new display name for the
+	// selected session and never touches its live tmux session -- deck's
+	// display name and tmux's session name are decoupled by
+	// service.Rename/store.RenameSession itself (never writes `slug`), not
+	// merely by this dialog choosing not to ask. nil means renaming is
+	// unavailable and submitting states so rather than silently doing
+	// nothing.
+	renamer func(context.Context, string, string) (store.Session, error)
+	// renaming is true while the rename sub-dialog (reachable ONLY from
+	// inside the `i` detail dialog, never as a top-level key) is open;
+	// m.detail stays true underneath it the whole time, so cancelling or
+	// submitting a rename returns to detailView, not the main list.
+	// renameValue is the locally-held candidate name, prefilled with the
+	// session's current name; renamePrefilled marks it untouched, so the
+	// very first typed rune or backspace replaces it wholesale exactly like
+	// createView's cwd field and the env editor's value field.
+	renaming        bool
+	renameValue     string
+	renamePrefilled bool
+	renameNote      string
 	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a listing
 	// of the selected session's effective environment, one row per key,
 	// naming which layer (server env, captured_path, config [env], session
@@ -678,6 +699,15 @@ type resumeModeChanged struct {
 	err     error
 }
 
+// sessionRenamed is the reply to a committed rename (task 013, SPEC §11.4,
+// PRD requirement 31/I-8): Service.Rename's persisted result, or the error
+// that kept the store's name column exactly as it was before -- the tmux
+// session itself is never part of this round trip either way.
+type sessionRenamed struct {
+	session store.Session
+	err     error
+}
+
 // envEdited is the reply to a committed `e` env-editor edit (task 021):
 // Service.SetSessionEnv's persisted-and-mirrored result, or the error that
 // kept the store/tmux state exactly as it was before the edit.
@@ -921,6 +951,21 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error, purger func(context.Context, string) error, archiver func(context.Context, store.Session) error) Model {
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperAndPurger(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter, restorer, reaper, purger)
 	m.archiveSvc = archiver
+	return m
+}
+
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer
+// adds task 013's rename action (SPEC §11.4, PRD requirement 31, I-8),
+// reachable ONLY from inside the `i` detail dialog, never as a top-level
+// key: renamer persists a new display name (service.Rename/
+// store.RenameSession) and never touches the session's live tmux session
+// -- deck's display name and tmux's own session name are decoupled by
+// design, and the dialog states so on screen. Until renamer is wired, the
+// rename sub-dialog reports "renaming is unavailable" rather than silently
+// doing nothing.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error, purger func(context.Context, string) error, archiver func(context.Context, store.Session) error, renamer func(context.Context, string, string) (store.Session, error)) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter, restorer, reaper, purger, archiver)
+	m.renamer = renamer
 	return m
 }
 
@@ -1304,6 +1349,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.pinning = false
 		m.pinNote = ""
 		return m, m.loadSessions
+	case sessionRenamed:
+		// Mirrors profileSwitched/resumeModeChanged exactly: a successful
+		// rename closes the rename sub-dialog (m.detail, underneath it,
+		// stays true -- rename is an action inside detail, so submitting
+		// it returns to detailView showing the new name, never all the way
+		// out to the main list).
+		if msg.err != nil {
+			m.renameNote = "Cannot rename: " + msg.err.Error()
+			return m, nil
+		}
+		m.renaming = false
+		m.renameNote = ""
+		return m, m.loadSessions
 	case envEdited:
 		// Unlike profileSwitched/resumeModeChanged, a committed edit does
 		// NOT close the dialog: SPEC §6.1/§6.3's env editor is a listing of
@@ -1415,6 +1473,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.themePicking {
 			return m.updateThemePicker(msg)
 		}
+		if m.renaming {
+			return m.updateRenameDialog(msg)
+		}
+		if m.detail {
+			return m.updateDetailView(msg)
+		}
 		// pendingDelete intercepts the very next key after a lone `d`
 		// (SPEC's dd chord): a second `d` opens the confirm dialog; every
 		// other key -- Esc included -- clears the pending indicator and is
@@ -1453,15 +1517,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// profileSwitchView and pinView defer to, rather than a sixth
 			// hand-written cancel. Task 112: a plain top-level Esc also
 			// clears the mark set ("the marks clear on the action and on
-			// esc") regardless of help/detail being open.
+			// esc") regardless of help being open. m.detail is never true
+			// here (task 013's updateDetailView intercepts every key,
+			// including esc, while it is) -- this branch only ever closes
+			// help, but keeps clearing m.detail too so a caller that somehow
+			// reaches it with m.detail already true is not left stuck open.
 			_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
 				m.help = false
 				m.detail = false
 				m.marked = nil
 			}})
 		case "i":
+			// m.detail is never true here (task 013's updateDetailView
+			// intercepts every key, including a second "i", while it is),
+			// so this only ever opens it.
 			if !m.help && len(m.sessions) > 0 {
-				m.detail = !m.detail
+				m.detail = true
 			}
 		case ",":
 			if !m.help {
@@ -1847,7 +1918,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -1979,6 +2050,9 @@ func (m Model) View() string {
 	}
 	if m.settingsOpen {
 		return m.settingsView()
+	}
+	if m.renaming && len(m.sessions) > 0 {
+		return m.renameView()
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
@@ -3285,7 +3359,7 @@ func (m Model) detailView() string {
 			fmt.Fprintf(&b, "\nCrash tail:\n%s\n", crashTail)
 		}
 	}
-	b.WriteString("\n" + m.glyph("i or Esc closes detail", "i or Esc closes detail") + "\n")
+	b.WriteString("\n" + m.glyph("r renames · i or Esc closes detail", "r renames - i or Esc closes detail") + "\n")
 	return m.framedDialog(b.String())
 }
 
@@ -4195,7 +4269,10 @@ Keys
   p pin the selected session's conversation id so future resumes always
     reuse it, or launch a one-shot fresh conversation (reverts to normal
     auto-resume afterward, it does not stay pinned or cleared)
-  i toggle detail view for the selected session
+  i toggle detail view for the selected session; r inside it renames the
+    session's display name only -- the tmux session keeps its own name
+    (deck_<slug>), never renamed, so a rename can never move or disturb a
+    live pane's identity
   e open the env editor for the selected session: every key deck resolved a
     layer for, its effective value, and which layer won -- server env,
     captured_path, config [env] or session env (SPEC §6.1/§6.3); j/k select

@@ -789,3 +789,41 @@ cleanly with task 010's changes in place.
 category navigation and the `ui.recent_cwd_limit`/`clear_recent_cwds`
 fields, none of which are `[env]` entries or otherwise touched by
 `maskEnvValue`.
+
+## Task 013 (I-8): rename does not touch the tmux session, despite SPEC.md:187's "Rename renames both"
+
+`prds/phase3-sessions-and-lifecycle.md`'s own "Findings, not spec edits" list
+names this exact question as an expected finding ("Whether a rename should
+touch the tmux session (requirement 31)"), and
+`prds/phase3c-residual-and-interactive-preview.md`'s I-8 answers it
+explicitly: "The tmux session name does not change — deck's name and tmux's
+name are decoupled — and the dialog states that on screen". That is what
+task 013 implemented: `store.RenameSession` writes only the `name` column,
+never `slug`, so the live tmux session (always `deck_<original slug>`)
+survives a rename completely unaffected — proven directly in
+`internal/service/rename_test.go`'s
+`TestRenameChangesNameLeavesSlugAndTmuxSessionUntouched` and end-to-end in
+`features/dialogs.feature`'s three new `rename dialog --` scenarios (esc,
+submit, and mouse-guard cases all assert the original `deck_<slug>` tmux
+session survives, and submit additionally asserts no second tmux session
+under a new slug is ever created).
+
+This appears to contradict `SPEC.md:187`: "Session naming: `deck_<slug>`,
+slug `[a-z0-9_-]+` derived from the name, uniqueness enforced in SQLite.
+**Rename renames both.**" Read in isolation, "renames both" says a rename
+changes both `name` and `slug` together — which would mean renaming an
+agent session moves/recreates its live tmux session too.
+
+Resolving the apparent conflict in the PRD's favor (SPEC.md is not edited by
+this run, per the standing rule): `SPEC.md:187`'s sentence sits inside a
+paragraph describing the create-time naming *scheme* (how `slug` is first
+derived from `name`, and that both columns are enforced unique) — it reads
+most naturally as "a rename supplies a new name, and slug is (freshly)
+derived from it the same way it always is," not as a promise that a later
+rename also *migrates* the live tmux session. `SPEC.md:194` ("rename [§11.4]
+treats [a default-derived name] like any other name") and `SPEC.md:982`
+("`i` session detail (§11.4 — **rename is an action inside it**, not a
+top-level key)") both point at §11.4 for rename's actual contract, and
+§11.4/I-8 is unambiguous that the tmux session itself is not part of what a
+rename changes. Filed here, per the PRD's own explicit request, rather than
+editing SPEC.md.

@@ -1055,6 +1055,80 @@ func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string, 
 	return tx.Commit()
 }
 
+// RenameSession implements the `i` detail dialog's rename action (SPEC
+// §11.4, PRD requirement 31, I-8): it changes ONLY the session's display
+// `name` column, never its `slug`. `slug` is fixed at CreateSession time and
+// is the tmux session's actual identity (`deck_<slug>`, §3.2), so a rename
+// never moves, recreates, or otherwise touches a live tmux session -- deck's
+// display name and tmux's session name are deliberately decoupled by this
+// method, not merely by omission. It still re-validates uniqueness against
+// BOTH columns exactly as CreateSession does: newName must not already be
+// some other session's display name, and Slug(newName) must not collide
+// with some other session's own (already assigned, immutable) slug --
+// either would leave the store in a state CreateSession could never
+// legally reach in the first place.
+func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source string, at int64) error {
+	if sessionID == "" || newName == "" {
+		return errors.New("session id and new name are required")
+	}
+	slug := Slug(newName)
+	if slug == "" {
+		return fmt.Errorf("session name %q does not produce a usable slug", newName)
+	}
+	if source == "" {
+		source = "user"
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rename session: %w", err)
+	}
+	defer tx.Rollback()
+	// Mirrors CreateSession's own name-then-slug pre-check order and
+	// reasoning (see the comment there): checking name equality first,
+	// inside this same transaction, makes "already exists" deterministic
+	// rather than an accident of SQLite's own UNIQUE-constraint-check order.
+	var nameExists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE name = ? AND id != ?`, newName, sessionID).Scan(&nameExists); err == nil {
+		return fmt.Errorf("session name %q already exists", newName)
+	} else if err != sql.ErrNoRows {
+		return fmt.Errorf("check session name %q: %w", newName, err)
+	}
+	var slugExists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE slug = ? AND id != ?`, slug, sessionID).Scan(&slugExists); err == nil {
+		return fmt.Errorf("session name %q collides with existing slug %q", newName, slug)
+	} else if err != sql.ErrNoRows {
+		return fmt.Errorf("check session slug %q: %w", slug, err)
+	}
+	// Note: only the `name` column is written here -- `slug` is deliberately
+	// left out of this UPDATE, which is the entire mechanism by which the
+	// live tmux session (named from the ORIGINAL slug) is left untouched.
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET name = ? WHERE id = ?`, newName, sessionID)
+	if err != nil {
+		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
+			return fmt.Errorf("session name %q already exists", newName)
+		}
+		return fmt.Errorf("rename session: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check rename session: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "renamed", source, newName); err != nil {
+		return fmt.Errorf("record rename session event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit rename session: %w", err)
+	}
+	return nil
+}
+
 // mutateSessionWithEvent runs a single targeted UPDATE against exactly one
 // session row and records a matching event in the same transaction, so
 // observers never see a changed row without its corresponding event. eventKind
