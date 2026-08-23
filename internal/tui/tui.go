@@ -4185,6 +4185,11 @@ Sessions use a private tmux server. Inspect it with:
 (or swap deck with DECK_TMUX_SOCKET). Plain tmux attach does not find deck
 sessions. Attach clears TMUX because nested tmux is unsupported. Attached
 clients share one pane geometry; the latest active client controls it.
+With mouse reporting on, a wheel notch in an attached pane scrolls its own
+scrollback via tmux's copy-mode instead of typing into the shell; the cost
+is that a drag no longer makes the terminal's own text selection there
+either -- hold your terminal's override modifier (usually Shift) to select
+and copy pane text, or use tmux's own copy-mode.
 
 Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a sidebar row       select it (like ↑/↓); the preview follows on
