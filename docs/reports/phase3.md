@@ -88,7 +88,7 @@ per `discovered.approach`) are filled in now. Everything else is `PENDING`.
 | 19 | Editing env sets `env_dirty`, mirrors via `tmux set-environment`, shows `env↻` | DONE | `features/environment.feature:54` `@requirement-021-env-editor-writes-env-dirty-and-tmux-mirror` "committing an edit writes session env, marks it env_dirty, mirrors into tmux, and leaves the live pane's own environment untouched". |
 | 20 | `R` restarts with resume argv, clears `env_dirty`; shell offers inject-instead | DONE | `features/environment.feature:72` `@requirement-022-restart-applies-pending-env-edit-and-clears-badge`; `:96` `@requirement-023-inject-instead-exports-into-live-shell-without-restarting`; `:117` `@requirement-023-inject-instead-restart-path-still-available`. `features/agent_session.feature:33` "R restarts a running claude session with the resume argv, preserving its conversation id". |
 | 21 | Secret-shaped values masked everywhere, reveal toggle, files never leak value | PENDING | Task 122. |
-| 22 | `x` kills, `stopped`, 10s undo toast, `u` resumes | PENDING | Task 102. |
+| 22 | `x` kills, `stopped`, 10s undo toast, `u` resumes | DONE | `features/kill_delete_undo.feature` `@requirement-22-undo-toast` (3 scenarios): "x kills without confirmation and refuses to kill an already-stopped row", "u undoes the most recent kill inside its DECK_UNDO_MS window", "u does nothing once the undo window has expired". Task 102. |
 | 23 | `dd` two-key delete: pending-`d`, confirm, tombstone, 60s undo, reap | PENDING | Tasks 104–106. |
 | 24 | Reaping leaves no trace (cascade rows + deck's own files, JSONL kept) | PENDING | Task 107. |
 | 25 | Delete without purge leaves the agent's transcript intact | PENDING | Task 110. |
