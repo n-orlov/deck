@@ -438,6 +438,47 @@ func TestDeckMouseUnsetLeavesUIConfigInPlace(t *testing.T) {
 	}
 }
 
+func TestTmuxMouseDefaultsToTrueWhenUnset(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.TmuxMouse {
+		t.Fatal("TmuxMouse should default to true when config.toml and DECK_TMUX_MOUSE are both absent")
+	}
+}
+
+func TestDeckTmuxMouseOverridesConfigOnAndOff(t *testing.T) {
+	dir := writeConfigFile(t, "tmux_mouse = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_TMUX_MOUSE": "1"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.TmuxMouse {
+		t.Fatal("DECK_TMUX_MOUSE=1 should override tmux_mouse = false")
+	}
+
+	dir = writeConfigFile(t, "tmux_mouse = true\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_TMUX_MOUSE": "0"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.TmuxMouse {
+		t.Fatal("DECK_TMUX_MOUSE=0 should override tmux_mouse = true")
+	}
+}
+
+func TestDeckTmuxMouseUnsetLeavesConfigInPlace(t *testing.T) {
+	dir := writeConfigFile(t, "tmux_mouse = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.TmuxMouse {
+		t.Fatal("unset DECK_TMUX_MOUSE should leave tmux_mouse = false in place")
+	}
+}
+
 func TestConfigFileUIMouseTrue(t *testing.T) {
 	dir := writeConfigFile(t, "[ui]\nmouse = true\n")
 	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)

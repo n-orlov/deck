@@ -84,6 +84,11 @@ type Settings struct {
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
+	// TmuxMouse mirrors config.toml's top-level tmux_mouse key (default true,
+	// SPEC §6.5/§11.8): whether tmux's own `mouse` server option is turned on
+	// on deck's private socket, independent of Mouse's terminal-side SGR
+	// reporting toggle above. DECK_TMUX_MOUSE overrides the file when set.
+	TmuxMouse bool
 	// Theme is the resolved theme (§11.6) this settings load selected:
 	// config.toml's [ui] theme name resolved against the embedded built-ins
 	// and any user theme discovered under theme.ThemesDir(ConfigFile), via
@@ -189,6 +194,15 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		}
 		envOverrides["ui.mouse"] = "DECK_MOUSE"
 	}
+	tmuxMouse := fileCfg.TmuxMouse
+	tmuxMouseRaw := getenv("DECK_TMUX_MOUSE")
+	if tmuxMouseRaw != "" {
+		tmuxMouse, err = boolEnv(tmuxMouseRaw, tmuxMouse, "DECK_TMUX_MOUSE")
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["tmux_mouse"] = "DECK_TMUX_MOUSE"
+	}
 	userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
 	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, fileCfg.Theme)
 	if len(envOverrides) == 0 {
@@ -198,6 +212,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
+		TmuxMouse:      tmuxMouse,
 		RecentCwdLimit: fileCfg.RecentCwdLimit,
 		Theme:          resolvedTheme, ThemeReason: themeReason,
 		EnvOverrides: envOverrides,

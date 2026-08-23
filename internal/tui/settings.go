@@ -717,6 +717,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		AllowYolo:          s.File.AllowYolo,
 		StaleAfter:         s.File.StaleAfter,
 		CaptureMinInterval: s.File.CaptureMinInterval,
+		TmuxMouse:          s.File.TmuxMouse,
 		ASCII:              s.File.ASCII,
 		Mouse:              s.File.Mouse,
 		RecentCwdLimit:     s.File.RecentCwdLimit,
@@ -749,6 +750,8 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 	switch f.FullKey() {
 	case "allow_yolo":
 		return cfg.AllowYolo
+	case "tmux_mouse":
+		return cfg.TmuxMouse
 	case "ui.ascii":
 		return cfg.ASCII
 	case "ui.mouse":
@@ -763,6 +766,8 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 	switch f.FullKey() {
 	case "allow_yolo":
 		cfg.AllowYolo = v
+	case "tmux_mouse":
+		cfg.TmuxMouse = v
 	case "ui.ascii":
 		cfg.ASCII = v
 	case "ui.mouse":

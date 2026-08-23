@@ -365,7 +365,7 @@ func TestLifecycleRejectsUnsafeInput(t *testing.T) {
 
 func TestBootstrapConfiguresOnlyPrivateServer(t *testing.T) {
 	socket := fmt.Sprintf("deck-test-%d-%d", os.Getpid(), time.Now().UnixNano())
-	client := Client{Socket: socket}
+	client := Client{Socket: socket, Mouse: true}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -382,6 +382,7 @@ func TestBootstrapConfiguresOnlyPrivateServer(t *testing.T) {
 		{[]string{"show-options", "-s", "exit-empty"}, "exit-empty off"},
 		{[]string{"show-options", "-g", "remain-on-exit"}, "remain-on-exit failed"},
 		{[]string{"show-options", "-g", "window-size"}, "window-size latest"},
+		{[]string{"show-options", "-g", "mouse"}, "mouse on"},
 		{[]string{"show-window-options", "-g", "aggressive-resize"}, "aggressive-resize on"},
 	} {
 		output, err := client.command(context.Background(), check.args...).CombinedOutput()
@@ -398,6 +399,43 @@ func TestBootstrapConfiguresOnlyPrivateServer(t *testing.T) {
 	output, err := exec.CommandContext(context.Background(), "tmux", "list-sessions").CombinedOutput()
 	if err == nil {
 		t.Fatalf("default tmux server unexpectedly responds after private bootstrap: %s", output)
+	}
+}
+
+// TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged proves the
+// tmux_mouse=false path (task 115): show-options -g mouse reads off, and
+// every other server option Bootstrap sets is exactly as
+// TestBootstrapConfiguresOnlyPrivateServer already pins with Mouse=true --
+// i.e. Client.Mouse gates nothing but the one mouse option.
+func TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged(t *testing.T) {
+	socket := fmt.Sprintf("deck-test-mouseoff-%d-%d", os.Getpid(), time.Now().UnixNano())
+	client := Client{Socket: socket} // Mouse left at its zero value, false.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = client.command(ctx, "kill-server").Run()
+	})
+
+	if err := client.Bootstrap(context.Background()); err != nil {
+		t.Fatalf("bootstrap private server: %v", err)
+	}
+	for _, check := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"show-options", "-s", "exit-empty"}, "exit-empty off"},
+		{[]string{"show-options", "-g", "remain-on-exit"}, "remain-on-exit failed"},
+		{[]string{"show-options", "-g", "window-size"}, "window-size latest"},
+		{[]string{"show-options", "-g", "mouse"}, "mouse off"},
+		{[]string{"show-window-options", "-g", "aggressive-resize"}, "aggressive-resize on"},
+	} {
+		output, err := client.command(context.Background(), check.args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("tmux -L %s %s: %v\n%s", socket, strings.Join(check.args, " "), err, output)
+		}
+		if got := strings.TrimSpace(string(output)); got != check.want {
+			t.Errorf("tmux -L %s %s = %q, want %q", socket, strings.Join(check.args, " "), got, check.want)
+		}
 	}
 }
 
