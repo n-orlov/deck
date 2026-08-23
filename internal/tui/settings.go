@@ -720,6 +720,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		TmuxMouse:          s.File.TmuxMouse,
 		ASCII:              s.File.ASCII,
 		Mouse:              s.File.Mouse,
+		GroupByWorkspace:   s.File.GroupByWorkspace,
 		RecentCwdLimit:     s.File.RecentCwdLimit,
 		Theme:              s.File.Theme,
 		Env:                settingsCloneEnv(s.File.Env),
@@ -756,6 +757,8 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 		return cfg.ASCII
 	case "ui.mouse":
 		return cfg.Mouse
+	case "ui.group_by_workspace":
+		return cfg.GroupByWorkspace
 	default:
 		b, _ := f.Default.(bool)
 		return b
@@ -772,6 +775,8 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 		cfg.ASCII = v
 	case "ui.mouse":
 		cfg.Mouse = v
+	case "ui.group_by_workspace":
+		cfg.GroupByWorkspace = v
 	}
 }
 

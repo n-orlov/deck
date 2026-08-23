@@ -479,6 +479,58 @@ func TestDeckTmuxMouseUnsetLeavesConfigInPlace(t *testing.T) {
 	}
 }
 
+func TestGroupByWorkspaceDefaultsToTrueWhenUnset(t *testing.T) {
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.GroupByWorkspace {
+		t.Fatal("GroupByWorkspace should default to true when config.toml and DECK_GROUP_BY_WORKSPACE are both absent")
+	}
+}
+
+func TestDeckGroupByWorkspaceOverridesConfigOnAndOff(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\ngroup_by_workspace = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_GROUP_BY_WORKSPACE": "1"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.GroupByWorkspace {
+		t.Fatal("DECK_GROUP_BY_WORKSPACE=1 should override [ui] group_by_workspace = false")
+	}
+
+	dir = writeConfigFile(t, "[ui]\ngroup_by_workspace = true\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_GROUP_BY_WORKSPACE": "0"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.GroupByWorkspace {
+		t.Fatal("DECK_GROUP_BY_WORKSPACE=0 should override [ui] group_by_workspace = true")
+	}
+}
+
+func TestDeckGroupByWorkspaceUnsetLeavesConfigInPlace(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\ngroup_by_workspace = false\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.GroupByWorkspace {
+		t.Fatal("unset DECK_GROUP_BY_WORKSPACE should leave [ui] group_by_workspace = false in place")
+	}
+}
+
+func TestDeckGroupByWorkspaceRecordsEnvOverride(t *testing.T) {
+	dir := writeConfigFile(t, "[ui]\ngroup_by_workspace = true\n")
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_GROUP_BY_WORKSPACE": "0"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.EnvOverrides["ui.group_by_workspace"] != "DECK_GROUP_BY_WORKSPACE" {
+		t.Fatalf("EnvOverrides[ui.group_by_workspace] = %q, want DECK_GROUP_BY_WORKSPACE", settings.EnvOverrides["ui.group_by_workspace"])
+	}
+}
+
 func TestConfigFileUIMouseTrue(t *testing.T) {
 	dir := writeConfigFile(t, "[ui]\nmouse = true\n")
 	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)

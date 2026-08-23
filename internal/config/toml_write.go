@@ -234,6 +234,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.FormatBool(cfg.ASCII)
 	case "ui.mouse":
 		return strconv.FormatBool(cfg.Mouse)
+	case "ui.group_by_workspace":
+		return strconv.FormatBool(cfg.GroupByWorkspace)
 	case "ui.recent_cwd_limit":
 		return strconv.Itoa(cfg.RecentCwdLimit)
 	case "ui.theme":
