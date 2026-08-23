@@ -315,10 +315,10 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    And 100 milliseconds pass
-    And deck client "A" sends "j"
-    And 100 milliseconds pass
-    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bk-one running [marked]"
+    When deck client "A" sends "j"
+    Then deck client "A" screen contains "> bk-two running"
+    When deck client "A" sends "m"
     Then deck client "A" screen contains "bk-one running [marked]"
     And deck client "A" screen contains "bk-two running [marked]"
     When deck client "A" sends "x"
@@ -351,10 +351,10 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    And 100 milliseconds pass
-    And deck client "A" sends "j"
-    And 100 milliseconds pass
-    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bd-one running [marked]"
+    When deck client "A" sends "j"
+    Then deck client "A" screen contains "> bd-two running"
+    When deck client "A" sends "m"
     Then deck client "A" screen contains "bd-one running [marked]"
     And deck client "A" screen contains "bd-two running [marked]"
     When deck client "A" presses dd
@@ -388,10 +388,10 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    And 100 milliseconds pass
-    And deck client "A" sends "j"
-    And 100 milliseconds pass
-    And deck client "A" sends "m"
+    Then deck client "A" screen contains "bu-one running [marked]"
+    When deck client "A" sends "j"
+    Then deck client "A" screen contains "> bu-two running"
+    When deck client "A" sends "m"
     Then deck client "A" screen contains "bu-one running [marked]"
     And deck client "A" screen contains "bu-two running [marked]"
     When deck client "A" sends "x"

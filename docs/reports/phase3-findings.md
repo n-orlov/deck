@@ -344,3 +344,67 @@ points the scenario's single shared create-modal working directory
 directory before delegating to the existing profile+message creation flow, so
 the `@requirement-29-purge` scenario can fingerprint-test purge against a
 real declared claude transcript rooted in the adversarially seeded directory.
+
+## Task 113 validation follow-up: hardening @requirement-29-bulk-kill's j/m race
+
+The prior validation pass flagged `@requirement-29-bulk-kill` as uniquely
+flaky (2/13 failed) relative to its five structurally-identical siblings
+(`@requirement-29-bulk-delete`, `@requirement-29-batch-undo`,
+`@requirement-28-mark-bulk-actions`'s own batch scenarios), which all passed
+5/5–6/6 in that same session. Root cause reproduced directly: the scenario's
+`k`,`m`,`j`,`m` idiom sent `j` after only a fixed `100 milliseconds pass`
+step, with no confirmation the first `m` had actually rendered before `j`
+was written, and no confirmation `j` had actually moved the selection before
+the second `m` was sent. Under host CPU contention the bubbletea reader
+goroutine can be descheduled long enough that two keys land in one PTY read;
+`j` and `m` are different runes so they don't hit the documented same-key
+coalescing gotcha (task 112's notes), they hit the *sibling* defect that
+task 118 exists to fix (multi-rune `tea.KeyMsg` dispatch only ever acts on
+the first rune) — under load, `j` can be silently absorbed with the
+following `m`, leaving the selection on the same row and toggling its mark
+back off instead of marking the second row.
+
+Fix applied here is test-side hardening, not a product change (task 118
+owns the real fix): replaced the fixed-duration sleeps around `m`/`j`/`m`
+with polling `Then screen contains "<row-one> running [marked]"` after the
+first `m` and `Then screen contains "> <row-two> running"` after `j`, so
+each step's own render is confirmed before the next key is written — the
+same pattern the notes' Gherkin-chord gotcha already recommends. Applied
+identically to `@requirement-29-bulk-delete` and `@requirement-29-batch-undo`
+(same idiom, same latent race) for consistency, though only bulk-kill was
+the validator's named target.
+
+Evidence: `docs/reports/phase3-task113-bulkkill-fix.log` — 10 consecutive
+isolated `DECK_GODOG_TAGS="@requirement-29-bulk-kill"` runs, all green (a
+second, unlogged batch of 20 consecutive runs during development was also
+100% green). This clears the specific validation bar ("at least 10/10
+consecutive runs").
+
+**Important residual finding, discovered while chasing this**: re-running
+the hardened bulk-kill scenario *combined* with its five siblings, and
+separately combined with task 108's five original requirement-29 scenarios,
+still shows occasional failures under sufficiently elevated host load —
+and, in one run, even the untouched pre-existing `@requirement-29-delete-undo`
+scenario failed the same way. This means the flakiness is a genuine shared,
+load-correlated characteristic of every `k`/`m`/`j`/`m` marking idiom in this
+suite (and possibly PTY-driven scenarios generally), not something specific
+to bulk-kill's original wording — the validator's session simply happened to
+land at a moment of lower ambient load. The hardening above measurably
+improves bulk-kill's *own* reliability (fixed-sleep → poll-on-render), but
+does not and cannot fully eliminate the underlying multi-rune coalescing
+drop; that is task 118's job. Do not re-litigate this by adding more sleeps
+or checkpoints to other scenarios in this pass — wait for task 118 to land,
+then re-run `ci/stability.sh` (task 131) to see whether the shared flake
+rate actually drops.
+
+**Separate, unrelated discovery from the same investigation**: running the
+`features` package with `DECK_GODOG_TAGS` set to any expression that
+*mentions* `@real-agents` (including `~@real-agents`, meant to exclude it)
+reliably corrupts every subsequent scenario in the same process with `step
+error: trust real Claude scenario cwd: open /.claude.json: permission
+denied`, because `trustRealClaudeScenarioWorkingDirectory`'s own gate is a
+bare substring check (task 110's notes already flagged this for a single
+scenario; this confirms it cascades to an entire run). When hand-running
+any subset of scenarios that are not themselves real-agents scenarios, pass
+only the specific tags wanted, with no `@real-agents` token anywhere in the
+expression, not even negated.
