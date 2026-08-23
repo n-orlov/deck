@@ -20,9 +20,9 @@ import (
 // end of m.sessions, so magpie's group is non-adjacent.
 func TestNavigationFollowsVisualOrderNotIndexOrder(t *testing.T) {
 	sessions := []store.Session{
-		{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", Workspace: "invp-ops-dev-agents"},         // idx0
-		{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", Workspace: "agent-sessions-tui"},        // idx1
-		{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", Workspace: "ralphd"},                           // idx2
+		{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", Workspace: "invp-ops-dev-agents"},                               // idx0
+		{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", Workspace: "agent-sessions-tui"},                             // idx1
+		{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", Workspace: "ralphd"},                                                 // idx2
 		{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", Workspace: "invp-ops-dev-agents"}, // idx3
 	}
 	m := groupTestModel(sessions)
@@ -93,7 +93,7 @@ func TestPageSelectionFollowsVisualOrder(t *testing.T) {
 	}
 	m := groupTestModel(sessions)
 
-	m.selected = 0 // magpie, visual row 0
+	m.selected = 0                                       // magpie, visual row 0
 	if got, want := m.pageSelection(1), 3; got != want { // one visual row down -> pytest-bdd-migration (idx3)
 		t.Fatalf("pageSelection(1) from idx0 = %d, want %d", got, want)
 	}
@@ -101,7 +101,7 @@ func TestPageSelectionFollowsVisualOrder(t *testing.T) {
 	if got, want := m.pageSelection(1), 1; got != want { // one visual row down from row1 -> deck-dev (idx1)
 		t.Fatalf("pageSelection(1) from idx3 = %d, want %d", got, want)
 	}
-	m.selected = 2 // ralphd-dev, last visual row
+	m.selected = 2                                       // ralphd-dev, last visual row
 	if got, want := m.pageSelection(3), 2; got != want { // overshooting past the end clamps at the last row
 		t.Fatalf("pageSelection(3) from the last visual row = %d, want %d (clamp, not wrap or overshoot)", got, want)
 	}
