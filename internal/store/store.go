@@ -222,6 +222,14 @@ type Session struct {
 	// false. It is the row's queryable, persisted source for the `env↻`
 	// sidebar badge; nothing here ever touches the live pane itself.
 	EnvDirty bool
+	// DeletedAt is the SPEC delete-tombstone timestamp (task 104): zero for a
+	// live row, and the wall-clock millisecond `dd`+confirm ran at once a row
+	// has been soft-deleted (SoftDeleteSession). A tombstoned row is excluded
+	// from ListSessions' default view but still exists for RestoreSession (a
+	// grace-window undo, task 106) or ReapSession (a permanent delete once the
+	// grace window has elapsed) to act on by id; ListDeletedSessions is the
+	// only accessor that surfaces it.
+	DeletedAt int64
 }
 
 // CapturedPathAdvisory reports whether this row's CapturedPath is advisory
@@ -447,7 +455,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace, &session.LastProbeAt, &envDirty); err != nil {
+		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt); err != nil {
 		return Session{}, err
 	}
 	session.EnvDirty = envDirty != 0
@@ -497,7 +505,7 @@ const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace, last_probe_at, env_dirty`
+		workspace, last_probe_at, env_dirty, deleted_at`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.
@@ -1073,12 +1081,15 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 	return nil
 }
 
-// ListSessions returns all durable rows, including stopped rows. The stable
+// ListSessions returns all durable rows, including stopped rows, but
+// excluding tombstoned rows (deleted_at != 0, task 104) -- a soft-deleted
+// session is never resurrected into the default view by ListSessions
+// itself; only RestoreSession (clearing deleted_at) does that. The stable
 // order avoids hiding resumable sessions and keeps independently connected
 // clients' views deterministic.
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
-		FROM sessions ORDER BY created_at, id`)
+		FROM sessions WHERE deleted_at = 0 ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -1095,6 +1106,105 @@ func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 		return nil, fmt.Errorf("iterate sessions: %w", err)
 	}
 	return sessions, nil
+}
+
+// ListDeletedSessions is the separate, explicit accessor for tombstoned rows
+// (deleted_at != 0) that ListSessions itself never returns. Task 106's
+// reaper is its only intended caller: it polls this list to find rows
+// whose DeletedAt plus DECK_DELETE_GRACE_MS has elapsed and calls
+// ReapSession on each. Ordered the same way ListSessions is, for the same
+// determinism-under-a-frozen-clock reason.
+func (s *Store) ListDeletedSessions(ctx context.Context) ([]Session, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
+		FROM sessions WHERE deleted_at != 0 ORDER BY created_at, id`)
+	if err != nil {
+		return nil, fmt.Errorf("list deleted sessions: %w", err)
+	}
+	defer rows.Close()
+	var sessions []Session
+	for rows.Next() {
+		session, err := scanSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan deleted session: %w", err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate deleted sessions: %w", err)
+	}
+	return sessions, nil
+}
+
+// SoftDeleteSession tombstones a session (task 104/105's `dd`): it records
+// deleted_at rather than removing the row, so RestoreSession can undo it
+// within the SPEC delete-grace window (task 106) and so a tombstoned row's
+// events remain queryable for as long as the row itself survives. It
+// never touches a live pane; callers that must kill one first (SPEC's
+// `dd` contract) do so as a separate, explicit step before calling this.
+func (s *Store) SoftDeleteSession(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "deleted_at", "deleted", "user", "", at,
+		`UPDATE sessions SET deleted_at = ? WHERE id = ?`, at)
+}
+
+// RestoreSession clears a tombstone set by SoftDeleteSession, returning the
+// row to ListSessions' default view. It is the store half of the grace-window
+// `u` undo (task 106); it never touches a live pane (SPEC's undo relaunches
+// or resumes the session through the normal launch path, a separate step).
+func (s *Store) RestoreSession(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "deleted_at", "restored", "user", "", at,
+		`UPDATE sessions SET deleted_at = 0 WHERE id = ?`)
+}
+
+// ReapSession permanently removes a tombstoned session once its grace
+// window (task 106) has elapsed. Only a row SoftDeleteSession has already
+// tombstoned may be reaped; reaping a live row is refused so a caller
+// cannot skip the tombstone/undo window by mistake. The deletion event is
+// recorded as an orphan event (session_id NULL, task 019's audit-log
+// convention for events that must outlive the row they describe) in the
+// same transaction, BEFORE the DELETE, because the sessions row's own
+// events cascade away with it (ON DELETE CASCADE, schemaV1) -- that
+// cascade is exactly what this method's own reap is for, not something to
+// route around. The JSONL audit log, not this events table, is where task
+// 107 keeps this session's earlier history durably past the reap.
+func (s *Store) ReapSession(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin reap session: %w", err)
+	}
+	defer tx.Rollback()
+	var deletedAt int64
+	if err := tx.QueryRowContext(ctx, `SELECT deleted_at FROM sessions WHERE id = ?`, sessionID).Scan(&deletedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("session %q not found", sessionID)
+		}
+		return fmt.Errorf("read session %q for reap: %w", sessionID, err)
+	}
+	if deletedAt == 0 {
+		return fmt.Errorf("session %q is not tombstoned, refusing to reap", sessionID)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (NULL, ?, 'reaped', 'user', ?)`, at, sessionID); err != nil {
+		return fmt.Errorf("record reap event for session %q: %w", sessionID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID); err != nil {
+		return fmt.Errorf("reap session %q: %w", sessionID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reap session %q: %w", sessionID, err)
+	}
+	return nil
 }
 
 func (s *Store) version() (int, error) {
