@@ -87,6 +87,58 @@ func lessByAttention(a, b store.Session) bool {
 	return a.ID < b.ID
 }
 
+// sortSessionsByAttentionStable is sortSessionsByAttention's exact
+// requirement-28/29 total order (rank, then StatusAt ascending), plus one
+// refinement Model's own sessionsLoaded handler needs and the pure
+// function above deliberately does not: when two sessions land on a
+// genuine tie on BOTH keys (same rank, same StatusAt down to the
+// millisecond -- unremarkable when a reconcile pass promotes two
+// co-created sessions from "starting" to "running" in the same loop, see
+// docs/reports/phase3d-i1-rootcause.md), sortSessionsByAttention's own
+// ID tie-break is a coin flip against the session's random UUID, uncorrelated
+// with which was created, marked, or selected first. A single k/m/j marked-set
+// idiom (SPEC requirement 29's own fingerprint scenarios) can span exactly
+// one such promotion: the row the user just marked can silently swap places
+// with its neighbor between two keystrokes, leaving the very next "down"
+// with nothing below it even though nothing the user did was wrong.
+//
+// previous is the sidebar's own last frame (m.sessions before this load).
+// For a pair that already appeared together in it, this prefers THEIR
+// existing relative order over the coin flip -- a tie that was already
+// resolved one way stays resolved that way until something the sort
+// itself cares about (rank or a distinguishable StatusAt) actually
+// changes. A pair with no shared previous frame (both brand new this very
+// load) still falls back to sortSessionsByAttention's own ID order,
+// exactly matching it -- there is no earlier order to prefer, and this is
+// the only case TestSortSessionsByAttentionTiesBrokenByID (which calls
+// sortSessionsByAttention directly, never this function) needs to keep
+// covering.
+func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.Session {
+	prevPos := make(map[string]int, len(previous))
+	for i, s := range previous {
+		prevPos[s.ID] = i
+	}
+	sorted := make([]store.Session, len(incoming))
+	copy(sorted, incoming)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		a, b := sorted[i], sorted[j]
+		ra, rb := attentionRank(a.Status), attentionRank(b.Status)
+		if ra != rb {
+			return ra < rb
+		}
+		if a.StatusAt != b.StatusAt {
+			return a.StatusAt < b.StatusAt
+		}
+		if pa, aok := prevPos[a.ID]; aok {
+			if pb, bok := prevPos[b.ID]; bok {
+				return pa < pb
+			}
+		}
+		return a.ID < b.ID
+	})
+	return sorted
+}
+
 // indexOfSessionID returns the index of the session with the given ID in
 // sessions, or -1 when id is empty (no prior selection to preserve) or no
 // longer present (the session was removed since the last load). Model's

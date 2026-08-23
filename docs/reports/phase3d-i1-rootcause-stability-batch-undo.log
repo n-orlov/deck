@@ -1,0 +1,551 @@
+=== requirement-29-batch-undo attempt 1 loadavg=3.06 2.50 2.76 11/4611 9 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.217343274s
+--- PASS: TestFeatures (1.22s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.21s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.232s
+PASS attempt 1
+=== requirement-29-batch-undo attempt 2 loadavg=3.06 2.50 2.76 3/4619 302 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.128430606s
+--- PASS: TestFeatures (1.13s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.12s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.142s
+PASS attempt 2
+=== requirement-29-batch-undo attempt 3 loadavg=3.06 2.50 2.76 2/4619 606 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.099354969s
+--- PASS: TestFeatures (1.10s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.09s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.112s
+PASS attempt 3
+=== requirement-29-batch-undo attempt 4 loadavg=3.06 2.50 2.76 1/4569 907 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.110114864s
+--- PASS: TestFeatures (1.12s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.10s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.124s
+PASS attempt 4
+=== requirement-29-batch-undo attempt 5 loadavg=5.22 2.95 2.90 1/4555 1208 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.114569079s
+--- PASS: TestFeatures (1.12s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.11s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.128s
+PASS attempt 5
+=== requirement-29-batch-undo attempt 6 loadavg=5.22 2.95 2.90 2/4541 1501 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.091413505s
+--- PASS: TestFeatures (1.10s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.08s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.105s
+PASS attempt 6
+=== requirement-29-batch-undo attempt 7 loadavg=5.22 2.95 2.90 1/4534 1796 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.091902527s
+--- PASS: TestFeatures (1.10s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.08s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.104s
+PASS attempt 7
+=== requirement-29-batch-undo attempt 8 loadavg=4.96 2.94 2.90 2/4523 2091 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.120679524s
+--- PASS: TestFeatures (1.13s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.11s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.135s
+PASS attempt 8
+=== requirement-29-batch-undo attempt 9 loadavg=4.96 2.94 2.90 3/4525 2391 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.1093733s
+--- PASS: TestFeatures (1.11s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.10s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.122s
+PASS attempt 9
+=== requirement-29-batch-undo attempt 10 loadavg=4.96 2.94 2.90 1/4525 2691 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  # kill_delete_undo.feature:370
+    Given deck client "A" is started with a short undo window                                                # kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow
+    And a scratch directory "fp-bu-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bu-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bu-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bu-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bu-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "x"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then the state database contains session "bu-one" with status "stopped"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "stopped"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses u                                                                           # kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database contains session "bu-one" with status "running"                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the state database contains session "bu-two" with status "running"                                   # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.108727966s
+--- PASS: TestFeatures (1.11s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.10s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.120s
+PASS attempt 10
+requirement-29-batch-undo: 10/10 passed, final loadavg=4.96 2.94 2.90 5/4535 2993
