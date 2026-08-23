@@ -957,6 +957,8 @@ func (m Model) capturePreview() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	i1Trace("enter", message, m.selected)
+	i1TraceSessions(m)
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -977,7 +979,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selected >= 0 && m.selected < len(m.sessions) {
 				selectedID = m.sessions[m.selected].ID
 			}
-			m.sessions = sortSessionsByAttention(msg.sessions)
+			// sortSessionsByAttentionStable, not the plain
+			// sortSessionsByAttention: a genuine tie on both rank and
+			// StatusAt (task 005/I-1's finding -- two co-created sessions
+			// promoted running in the same reconcile pass round to the
+			// same millisecond) must not silently swap two rows' relative
+			// order out from under an in-flight k/m/j idiom just because
+			// their random UUIDs happen to compare the "wrong" way; see
+			// sortSessionsByAttentionStable's own doc comment
+			// (internal/tui/attention.go) and
+			// docs/reports/phase3d-i1-rootcause.md.
+			m.sessions = sortSessionsByAttentionStable(m.sessions, msg.sessions)
 			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
 				m.selected = idx
 			} else if m.selected >= len(m.sessions) {

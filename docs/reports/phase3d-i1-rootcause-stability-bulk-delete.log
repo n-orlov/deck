@@ -1,0 +1,551 @@
+=== requirement-29-bulk-delete attempt 1 loadavg=3.71 2.57 2.79 17/4563 9 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.15031773s
+--- PASS: TestFeatures (1.16s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.14s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.169s
+PASS attempt 1
+=== requirement-29-bulk-delete attempt 2 loadavg=3.71 2.57 2.79 2/4563 251 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.085238712s
+--- PASS: TestFeatures (1.09s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.08s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.099s
+PASS attempt 2
+=== requirement-29-bulk-delete attempt 3 loadavg=3.65 2.58 2.79 2/4605 511 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.057124817s
+--- PASS: TestFeatures (1.06s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.05s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.072s
+PASS attempt 3
+=== requirement-29-bulk-delete attempt 4 loadavg=3.65 2.58 2.79 1/4555 765 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.047607661s
+--- PASS: TestFeatures (1.05s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.04s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.059s
+PASS attempt 4
+=== requirement-29-bulk-delete attempt 5 loadavg=3.65 2.58 2.79 1/4559 1025 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.036209068s
+--- PASS: TestFeatures (1.04s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.03s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.047s
+PASS attempt 5
+=== requirement-29-bulk-delete attempt 6 loadavg=3.44 2.55 2.78 3/4559 1281 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.056542924s
+--- PASS: TestFeatures (1.06s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.05s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.073s
+PASS attempt 6
+=== requirement-29-bulk-delete attempt 7 loadavg=3.44 2.55 2.78 1/4572 1542 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.037822328s
+--- PASS: TestFeatures (1.04s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.03s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.050s
+PASS attempt 7
+=== requirement-29-bulk-delete attempt 8 loadavg=3.44 2.55 2.78 1/4567 1805 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.045927312s
+--- PASS: TestFeatures (1.05s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.04s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.061s
+PASS attempt 8
+=== requirement-29-bulk-delete attempt 9 loadavg=3.44 2.55 2.78 3/4566 2062 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.074118934s
+--- PASS: TestFeatures (1.08s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.07s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.087s
+PASS attempt 9
+=== requirement-29-bulk-delete attempt 10 loadavg=3.33 2.54 2.77 2/4544 2324 ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  Scenario: dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   # kill_delete_undo.feature:332
+    Given deck client "A" is started                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And 200 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And a scratch directory "fp-bd-1/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And a scratch directory "fp-bd-2/cwd" is seeded with:                                                    # fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content     |      |
+      | subdir       | dir  |                     |      |
+      | readonly.txt | file | cannot-write-me     | 0444 |
+    And deck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And deck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd" # kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled
+    And the directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    And the directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"                                      # fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory
+    When deck client "A" sends "k"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And 100 milliseconds pass                                                                                # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And deck client "A" sends "m"                                                                            # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "j"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "> bd-two running"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" sends "m"                                                                           # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    Then deck client "A" screen contains "bd-one running [marked]"                                           # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "bd-two running [marked]"                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                          # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD
+    Then deck client "A" screen contains "Delete 2 marked sessions"                                          # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" submits the open dialog                                                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "bd-one" is tombstoned                                                   # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the state database session "bd-two" is tombstoned                                                    # kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    And the directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    And the directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"                                # fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint
+    When deck client "A" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+25 steps (25 passed)
+1.035443752s
+--- PASS: TestFeatures (1.04s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.03s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.051s
+PASS attempt 10
+requirement-29-bulk-delete: 10/10 passed, final loadavg=3.33 2.54 2.77 1/4532 2587
