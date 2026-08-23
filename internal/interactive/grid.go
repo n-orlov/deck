@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	vt "github.com/charmbracelet/x/vt"
 
@@ -31,7 +32,15 @@ func newGrid(width, height int) *Grid {
 
 // Session streams one selected tmux pane's output into its own Grid via a
 // pipe-pane -IO connection armed before any seed capture (PRD II-16).
+//
+// grid is guarded by mu because Resize (task 044/II-21-22) replaces it
+// with a brand-new instance while drain is concurrently writing into
+// whatever the CURRENT grid is -- without the lock, a resize racing the
+// drain goroutine could write live bytes into the about-to-be-discarded
+// old grid, or Grid() could hand a caller a pointer that Resize swaps
+// out from under it mid-read.
 type Session struct {
+	mu   sync.RWMutex
 	grid *Grid
 	pipe *tmux.PanePipe
 	done chan struct{}
@@ -69,21 +78,27 @@ func Start(ctx context.Context, client tmux.Client, target string, width, height
 		}
 	}
 
-	s := &Session{grid: grid, pipe: pipe, done: make(chan struct{})}
+	s := &Session{pipe: pipe, done: make(chan struct{})}
+	s.grid = grid
 	go s.drain()
 	failed = false
 	return s, nil
 }
 
-// drain copies every byte the pipe delivers into the session's single
+// drain copies every byte the pipe delivers into the session's CURRENT
 // grid until the pipe errors (Close makes that happen deterministically).
+// It re-reads s.grid under the lock on every iteration rather than
+// caching the pointer once, so that a Resize taking effect mid-drain is
+// observed by the very next read instead of continuing to feed a grid
+// that Resize has already replaced.
 func (s *Session) drain() {
 	defer close(s.done)
 	buf := make([]byte, 64*1024)
 	for {
 		n, err := s.pipe.Read(buf)
 		if n > 0 {
-			_, _ = s.grid.Write(buf[:n])
+			g := s.currentGrid()
+			_, _ = g.Write(buf[:n])
 		}
 		if err != nil {
 			return
@@ -91,8 +106,19 @@ func (s *Session) drain() {
 	}
 }
 
-// Grid returns the session's single long-lived emulator.
-func (s *Session) Grid() *Grid { return s.grid }
+// currentGrid returns the session's grid as of right now, under the
+// read lock.
+func (s *Session) currentGrid() *Grid {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.grid
+}
+
+// Grid returns the session's current long-lived emulator. Note "current":
+// after a Resize (task 044/II-21-22) this is a DIFFERENT instance than
+// whatever a caller may have observed before, by design -- a reseed
+// always replaces the grid rather than mutating the old one's canvas.
+func (s *Session) Grid() *Grid { return s.currentGrid() }
 
 // Close disarms the pipe and waits for the drain goroutine to observe the
 // resulting read error, so a caller never observes a Session whose drain
