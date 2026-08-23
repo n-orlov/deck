@@ -171,12 +171,27 @@ func registerFingerprintSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a scratch directory "([^"]+)" is seeded with:$`, seedScratchDirectory)
 	sc.Step(`^the directory "([^"]+)" is fingerprinted as "([^"]+)"$`, fingerprintNamedDirectory)
 	sc.Step(`^the directory "([^"]+)" still matches fingerprint "([^"]+)"$`, assertNamedDirectoryMatchesFingerprint)
-	// TEMPORARY for task 020 (I-16)'s red demonstration: mutates a
-	// previously-fingerprinted directory using one of task 003's four
-	// mutation modes, so the very next "still matches fingerprint" step
-	// in the SAME real scenario is proven not to be a no-op. Reverted
-	// (with the .feature file's temporary use of it) before this commit
-	// lands; see docs/reports/phase3d-i16-mutation-redemo.log.
+	// This step (corruptNamedDirectoryForI16RedDemo below) is PERMANENT
+	// and REUSABLE, not temporary: it was added for task 020 (I-16)'s red
+	// demonstration and its registration here is committed for good, so
+	// any future task that needs to prove a fingerprint assertion is not
+	// a no-op can reach for it again rather than reinventing it. It is a
+	// no-op in every committed scenario today, because no committed
+	// .feature file names it (task 020's own red demonstration wired it
+	// into features/kill_delete_undo.feature TEMPORARILY, to watch all
+	// four of task 003's mutation modes fail red in a real BDD context;
+	// only that temporary .feature WIRING was reverted before task 020's
+	// commit landed -- see docs/reports/phase3d-i16-mutation-redemo.log --
+	// the step itself was not). Because it is destructive (it overwrites
+	// state.db, backdates mtimes an hour into the future, and os.Removes
+	// .hidden), what keeps it safe to leave registered is that it can
+	// only ever touch a directory the SCENARIO ITSELF already registered
+	// for fingerprinting via h.namedDirectories: it cannot be pointed at
+	// an arbitrary path, so a .feature file cannot use it to corrupt
+	// anything the scenario did not already hand it. See
+	// TestNoFeatureFileUsesTheI16RedDemoStep (fingerprint_guard_test.go)
+	// for the mechanical guard that keeps that "no committed .feature
+	// names it" claim true rather than merely asserted.
 	sc.Step(`^the directory "([^"]+)" is corrupted with mode "([^"]+)" for an I-16 red demonstration$`, corruptNamedDirectoryForI16RedDemo)
 }
 
