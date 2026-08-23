@@ -130,6 +130,37 @@ func (c Client) SessionAttachedCount(ctx context.Context, target string) (int, e
 	return count, nil
 }
 
+// PaneDead reads `#{pane_dead}` for target: whether tmux has observed the
+// pane's own process exit. This is the ONLY liveness signal the live path
+// (PRD phase3b II-23) may rely on -- unlike passive preview's capture-pane
+// snapshot, `pipe-pane`'s own stream gives no liveness signal of its own:
+// under `remain-on-exit failed` (deck's own server-wide default, set by
+// Bootstrap above) a dead pane's pipe never closes, because tmux keeps
+// pushing (nothing) into the still-open pty for as long as the pane
+// object exists, which under remain-on-exit=failed is forever. Polling
+// this format is therefore the only way the live path notices a crashed
+// target at all; EOF on the pipe is not a substitute (task 046/II-24
+// covers the one case EOF ever does carry a real signal: displacement by
+// a second pipe-pane holder, which this format cannot distinguish from
+// death by itself).
+func (c Client) PaneDead(ctx context.Context, target string) (bool, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, err := c.command(commandCtx, "display-message", "-p", "-t", target, "#{pane_dead}").CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("tmux -L %s display-message -p -t %s pane_dead: %w: %s", c.Socket, target, err, strings.TrimSpace(string(output)))
+	}
+	trimmed := strings.TrimSpace(string(output))
+	switch trimmed {
+	case "1":
+		return true, nil
+	case "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("tmux -L %s display-message -p -t %s pane_dead: unexpected output %q", c.Socket, target, trimmed)
+	}
+}
+
 // unsetWindowSize issues `set-option -w -u window-size`, removing whatever
 // value `resize-window` left in the WINDOW scope (task 034's
 // FitWindowToPane always leaves it "manual" there as a tmux side effect of

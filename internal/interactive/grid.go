@@ -8,11 +8,18 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	vt "github.com/charmbracelet/x/vt"
 
 	"github.com/n-orlov/deck/internal/tmux"
 )
+
+// paneDeadPollInterval is how often the live path polls `#{pane_dead}`
+// (PRD II-23). A test may lower this (it is a var, not a const) to keep
+// the death-detection assertion fast without changing production
+// behaviour.
+var paneDeadPollInterval = 200 * time.Millisecond
 
 // Grid is the SAME emulator instance for the whole life of one Session: the
 // seed capture (task 042/II-17-18) is written into it before the pipe's
@@ -44,6 +51,18 @@ type Session struct {
 	grid *Grid
 	pipe *tmux.PanePipe
 	done chan struct{}
+
+	// deadOnce/deadCh back Dead(): pane_dead polling (below) and Close
+	// both call markDead, and exactly one of them may be the one that
+	// actually closes deadCh and the pipe.
+	deadOnce sync.Once
+	deadCh   chan struct{}
+
+	// pollCancel/pollDone stop the pane_dead poll goroutine and let
+	// Close wait for it to have actually returned, the same shape
+	// drain/done already uses.
+	pollCancel context.CancelFunc
+	pollDone   chan struct{}
 }
 
 // Start arms the pipe pane BEFORE calling seed, so that any bytes the pane
@@ -78,12 +97,83 @@ func Start(ctx context.Context, client tmux.Client, target string, width, height
 		}
 	}
 
-	s := &Session{pipe: pipe, done: make(chan struct{})}
+	pollCtx, pollCancel := context.WithCancel(context.Background())
+	s := &Session{
+		pipe:       pipe,
+		done:       make(chan struct{}),
+		deadCh:     make(chan struct{}),
+		pollCancel: pollCancel,
+		pollDone:   make(chan struct{}),
+	}
 	s.grid = grid
 	go s.drain()
+	go s.pollPaneDead(pollCtx, client, target)
 	failed = false
 	return s, nil
 }
+
+// pollPaneDead is the live path's ONLY liveness signal (PRD II-23):
+// `pipe-pane`'s stream gives none of its own. Under `remain-on-exit
+// failed` (deck's own server default) a dead pane's pipe never closes --
+// tmux keeps the pane object, and therefore the still-open write end of
+// the FIFO, around for as long as remain-on-exit keeps the pane, which
+// under "failed" is forever -- so drain's read(2) blocks indefinitely and
+// the grid would otherwise render a stale frame with no way to notice.
+// Polling here, independently of drain, is what lets the session notice
+// a crashed target at all: on the first observed `pane_dead` (or the
+// target vanishing outright, which display-message reports as an error),
+// markDead closes the pipe itself, which unblocks drain deterministically
+// instead of leaving it parked on a read that would otherwise never
+// return, and closes deadCh so a caller selecting on Dead() observes the
+// death directly rather than inferring it from drain's side effects.
+func (s *Session) pollPaneDead(ctx context.Context, client tmux.Client, target string) {
+	defer close(s.pollDone)
+	ticker := time.NewTicker(paneDeadPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.done:
+			// drain already stopped through some other path (e.g. the
+			// pipe was displaced and disarmed, or Close ran); nothing
+			// left for this poll to detect or correct.
+			return
+		case <-ticker.C:
+		}
+		dead, err := client.PaneDead(ctx, target)
+		if err != nil {
+			// The target itself is gone (session/pane no longer
+			// resolves) -- as terminal as pane_dead==1 for this
+			// session's purposes.
+			s.markDead()
+			return
+		}
+		if dead {
+			s.markDead()
+			return
+		}
+	}
+}
+
+// markDead is the one place that closes deadCh and disarms the pipe on a
+// detected death; sync.Once makes it safe to call from both the poll
+// goroutine and Close without a second close-of-closed-channel panic or a
+// second (harmless but redundant) pipe-pane teardown.
+func (s *Session) markDead() {
+	s.deadOnce.Do(func() {
+		close(s.deadCh)
+		_ = s.pipe.Close()
+	})
+}
+
+// Dead returns a channel that is closed once the live path has observed
+// (via pane_dead polling, or via Close) that the target pane is gone.
+// PRD II-23 requires deck to notice a crashed target itself, since EOF on
+// the pipe never arrives for one under remain-on-exit=failed; Dead is
+// that notice. Task 046/II-24 builds the displacement-vs-death
+// distinction and the panel message on top of this signal.
+func (s *Session) Dead() <-chan struct{} { return s.deadCh }
 
 // drain copies every byte the pipe delivers into the session's CURRENT
 // grid until the pipe errors (Close makes that happen deterministically).
@@ -124,8 +214,10 @@ func (s *Session) Grid() *Grid { return s.currentGrid() }
 // resulting read error, so a caller never observes a Session whose drain
 // goroutine is still writing into its Grid after Close returns.
 func (s *Session) Close() error {
+	s.pollCancel()
 	err := s.pipe.Close()
 	<-s.done
+	<-s.pollDone
 	return err
 }
 

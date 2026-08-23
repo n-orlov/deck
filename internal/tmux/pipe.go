@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // PanePipe is a long-lived stream of one pane's raw bytes, produced by
@@ -16,12 +17,19 @@ import (
 // covers what happens when something else displaces it).
 //
 // Close disarms the pipe and removes the temporary FIFO. It is idempotent
-// and safe to call after a Read has already failed.
+// and safe to call after a Read has already failed. closeMu makes it also
+// safe to call CONCURRENTLY from two goroutines (task 045/II-23: the
+// pane_dead poll goroutine and an explicit Session.Close can both race to
+// call Close on the same PanePipe once a death is detected) -- without
+// it, two overlapping calls could each read/mutate disarmed and fifo
+// unsynchronized, which is a real data race, not merely a hypothetical
+// one (caught by go test -race while building task 045).
 type PanePipe struct {
 	client   Client
 	target   string
 	fifo     *os.File
 	tempDir  string
+	closeMu  sync.Mutex
 	disarmed bool
 }
 
@@ -84,6 +92,8 @@ func (p *PanePipe) Read(b []byte) (int, error) {
 // specially -- disarming a pipe that is not this one's anymore (task
 // 046/II-24's displacement case) is not this type's problem to detect.
 func (p *PanePipe) Close() error {
+	p.closeMu.Lock()
+	defer p.closeMu.Unlock()
 	if p.disarmed {
 		return nil
 	}
