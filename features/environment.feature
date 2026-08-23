@@ -114,6 +114,31 @@ Feature: The `e` env editor shows the effective value and winning layer per key,
     And the live shell for session "inject target" echoes env key "PATH" as "/inject/applied/path"
     When deck client "A" exits cleanly
 
+  @requirement-42-env-editor-masks-and-never-leaks-a-secret-shaped-value
+  Scenario: a secret-shaped key opened in this file's own env editor is masked by default, reveals on r, re-masks on r again, and never leaks to screen or disk
+    # Masking predicate: task 010's internal/tui/secret.go isSecretShapedKey /
+    # maskEnvValue (the ONE definition; not re-derived here). No-leak scan:
+    # task 011's whole-grid/whole-file instrument (features/no_leak_test.go's
+    # gridText/homeFileLeaks, wired as the "screen grid never contains" /
+    # "no file ... ever contains" steps below) -- its own positive control
+    # already proves the scan finds a value it is pointed at
+    # (@requirement-21-leak-scan-positive-control in no_leak_scan.feature),
+    # so this scenario reuses the steps rather than re-proving that.
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "env masking target" with permission profile "safe" and env "ENV_MASK_API_KEY=env-mask-secret-5b1e8d"
+    Then deck client "A" screen contains "env masking target"
+    When deck client "A" opens the env editor for session "env masking target"
+    Then deck client "A" screen contains "ENV_MASK_API_KEY"
+    And deck client "A" screen grid never contains "env-mask-secret-5b1e8d"
+    When deck client "A" sends "r"
+    Then deck client "A" screen contains "env-mask-secret-5b1e8d"
+    When deck client "A" sends "r"
+    Then deck client "A" screen grid never contains "env-mask-secret-5b1e8d"
+    When deck client "A" closes the dialog with escape
+    Then no file under deck client "A" home directory, other than the state database, ever contains "env-mask-secret-5b1e8d"
+    When deck client "A" exits cleanly
+
   @requirement-023-inject-instead-restart-path-still-available
   Scenario: R's restart path is still available and separately provable for a shell session
     Given deck client "A" is started
