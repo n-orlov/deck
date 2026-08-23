@@ -395,6 +395,92 @@ func TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize(t *testing.T) {
 	}
 }
 
+// TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin implements PRD
+// II-10: "Prove `set -g window-size latest` is not a restore." This is
+// NOT TestReversedRestoreOrderLeavesWindowPinned's mistake (the two correct
+// primitives issued in the wrong order) -- it is a different, plausible
+// "simplification" of RestoreWindowGeometry that never calls
+// unsetWindowSize at all: since Client.Bootstrap already writes
+// `window-size latest` at the server-global scope (task 032), an
+// implementer could believe re-asserting that global value on exit is
+// enough to "restore" the window. It is not: `resize-window` (task 034's
+// FitWindowToPane, used here to enter) always writes `window-size manual`
+// into the WINDOW scope, which shadows the global value entirely --
+// writing the global option again touches a table nothing reads while the
+// window-local override is still in effect. docs/spikes/interactive-preview.md's
+// finding 4 names this exact trap in AoE's shipping prior art ("AoE's code
+// is accidentally right; its comment is wrong, and an implementer
+// following the comment ships the broken version"); this test pins the
+// broken version so a later "simplification" along the same lines is
+// blocked here, not rediscovered against a live agent.
+func TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin(t *testing.T) {
+	socket := restoreSocket("global-write")
+	cleanup := newBareGeometrySession(t, socket, "s0", 80, 24)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 5 * time.Second}
+	ctx := context.Background()
+
+	if _, err := client.CaptureWindowGeometry(ctx, "s0"); err != nil {
+		t.Fatalf("capture original geometry: %v", err)
+	}
+
+	// Enter interactive mode: window-size becomes "manual" window-locally,
+	// as a side effect of resize-window, exactly as every other test in
+	// this file establishes.
+	if _, err := client.FitWindowToPane(ctx, "s0", "s0", 45, 15); err != nil {
+		t.Fatalf("fit window to pane (enter): %v", err)
+	}
+
+	// The mistaken "restore": write the GLOBAL window-size option to
+	// "latest" -- already its value since Client.Bootstrap, and never the
+	// scope FitWindowToPane's resize-window touched. RestoreWindowGeometry
+	// itself never issues this call; it is exercised directly here to prove
+	// the mistake, the same way TestReversedRestoreOrderLeavesWindowPinned
+	// calls the two correct primitives directly to prove a different one.
+	runTmux(t, socket, "set-option", "-g", "window-size", "latest")
+
+	// The window-local override is untouched by that write: it shadows the
+	// global value regardless of what the global value is re-asserted to.
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+		t.Fatalf("read window-size after the global write: %v", err)
+	} else if !set || value != "manual" {
+		t.Fatalf("window-size after writing the GLOBAL option = set=%v value=%q, want set=true value=\"manual\" -- a global write must not touch the window-local override left by resize-window", set, value)
+	}
+
+	// A FRESH client attaching now, at a third size distinct from both the
+	// original 80x24 and the interactive 45x15, must still be IGNORED: the
+	// global write did nothing to restore anything.
+	const pinnedClientCols, pinnedClientRows = 100, 40
+	pinnedTerminal, pinnedCmd := attachThroughPTY(t, socket, "s0", pinnedClientCols, pinnedClientRows)
+	defer func() { _ = pinnedTerminal.Close() }()
+	waitForSessionAttachedCount(t, client, "s0", 1)
+
+	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
+	if err != nil {
+		t.Fatalf("read pane size after the pinned attach: %v", err)
+	}
+	if paneWidth != 45 || paneHeight != 15 {
+		t.Fatalf("pane size after a fresh client at %dx%d attaches following the GLOBAL-only \"restore\" = %dx%d, want it to stay PINNED at the interactive preview's 45x15 -- writing the global option is not a restore", pinnedClientCols, pinnedClientRows, paneWidth, paneHeight)
+	}
+
+	// Contrast: with that same client still attached, the CORRECT unset
+	// (the scope resize-window actually shadowed) hands the window straight
+	// to it, proving the failure above is about scope, not about the
+	// client or the value "latest" itself.
+	if err := client.unsetWindowSize(ctx, "s0"); err != nil {
+		t.Fatalf("unset window-size (the correct scope): %v", err)
+	}
+	_, _, paneWidth, paneHeight, err = client.windowAndPaneSize(ctx, "s0")
+	if err != nil {
+		t.Fatalf("read pane size after the correct-scope unset: %v", err)
+	}
+	wantWidth, wantHeight := pinnedClientCols, pinnedClientRows-1 // status line, per this file's other tests
+	if paneWidth != wantWidth || paneHeight != wantHeight {
+		t.Fatalf("pane size after unsetting the WINDOW-local window-size while the same client stays attached = %dx%d, want %dx%d (that client's own size, minus its one-row status line) -- the window-local scope, not the global value, is what was pinning it", paneWidth, paneHeight, wantWidth, wantHeight)
+	}
+	detachAndWait(t, pinnedTerminal, pinnedCmd)
+}
+
 // attachThroughPTY attaches a real tmux client DIRECTLY to target (the raw
 // tmux session name, not a deck slug -- these tests attach to bare
 // sessions created outside Client.Create's "deck_"-prefixed naming
