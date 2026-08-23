@@ -51,6 +51,16 @@ type ScenarioHarness struct {
 	// perspective. Tracked in clients too, so Close tears them down the same
 	// way as every deck client.
 	fakeAgents map[string]*ScreenDriver
+	// fakeAgentFixtureBytes records, per agent kind, the exact on-disk byte
+	// length of the requirement-5 preview fixture that kind's driver was
+	// started with (task 114). The single render write on the fixture side
+	// can arrive at this harness's pty reader split across more than one
+	// 4096-byte Read (cmd/pty_driver_test.go's read loop), so "the pane has
+	// rendered something" and "the pane has rendered the WHOLE fixture" are
+	// different moments; polling the accumulated raw byte count against this
+	// exact, known length is what tells the two apart deterministically
+	// instead of guessing from a fixed sleep.
+	fakeAgentFixtureBytes map[string]int
 	// clientEnv holds scenario-scoped runtime controls that must be present in
 	// every subsequently started released client (for example a frozen probe
 	// clock). Steps set it before starting any client.
