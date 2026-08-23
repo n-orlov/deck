@@ -79,6 +79,12 @@ type Settings struct {
 	// DECK_RECONCILE_MS/DECK_PREVIEW_MS override their own (env-only) knobs.
 	// Defaults per internal/config.Schema.
 	InteractiveMS time.Duration
+	// InteractiveTransport mirrors config.toml's top-level
+	// interactive_transport key (SPEC §6.5/§13.1, II-5): "pipe" or
+	// "capture", selecting which of the two §11.9 interactive-preview
+	// transports deck uses. DECK_INTERACTIVE_TRANSPORT overrides the file
+	// when set. Defaults per internal/config.Schema.
+	InteractiveTransport string
 	// RecentCwdLimit mirrors config.toml's [ui] recent_cwd_limit key (SPEC
 	// §11.7): how many recently used working directories are kept/offered
 	// when creating a session. Defaults per internal/config.Schema.
@@ -230,6 +236,14 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if getenv("DECK_INTERACTIVE_MS") != "" {
 		envOverrides["interactive_ms"] = "DECK_INTERACTIVE_MS"
 	}
+	interactiveTransport := fileCfg.InteractiveTransport
+	if raw := getenv("DECK_INTERACTIVE_TRANSPORT"); raw != "" {
+		interactiveTransport, err = interactiveTransportEnv(raw)
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["interactive_transport"] = "DECK_INTERACTIVE_TRANSPORT"
+	}
 	userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
 	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, fileCfg.Theme)
 	if len(envOverrides) == 0 {
@@ -237,7 +251,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	}
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
-		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS,
+		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
 		GroupByWorkspace: groupByWorkspace,
 		TmuxMouse:        tmuxMouse,
@@ -330,6 +344,20 @@ func colorDepthEnv(raw string) (string, error) {
 		return raw, nil
 	default:
 		return "", fmt.Errorf("DECK_COLOR_DEPTH must be truecolor or 16, got %q", raw)
+	}
+}
+
+// interactiveTransportEnv validates DECK_INTERACTIVE_TRANSPORT (II-5). It is
+// only ever called with a non-empty raw value (LoadFrom's own "" check
+// guards the call), so unlike colorDepthEnv there is no "unset" case to
+// resolve here -- an unset variable simply leaves fileCfg's own value in
+// place.
+func interactiveTransportEnv(raw string) (string, error) {
+	switch raw {
+	case "pipe", "capture":
+		return raw, nil
+	default:
+		return "", fmt.Errorf("DECK_INTERACTIVE_TRANSPORT must be pipe or capture, got %q", raw)
 	}
 }
 

@@ -718,17 +718,18 @@ func (m *Model) settingsAdjustField(delta int) {
 // not just the theme.Theme SPEC §11.6 resolved it to.
 func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 	return config.FileConfig{
-		AllowYolo:          s.File.AllowYolo,
-		StaleAfter:         s.File.StaleAfter,
-		CaptureMinInterval: s.File.CaptureMinInterval,
-		InteractiveMS:      s.File.InteractiveMS,
-		TmuxMouse:          s.File.TmuxMouse,
-		ASCII:              s.File.ASCII,
-		Mouse:              s.File.Mouse,
-		GroupByWorkspace:   s.File.GroupByWorkspace,
-		RecentCwdLimit:     s.File.RecentCwdLimit,
-		Theme:              s.File.Theme,
-		Env:                settingsCloneEnv(s.File.Env),
+		AllowYolo:            s.File.AllowYolo,
+		StaleAfter:           s.File.StaleAfter,
+		CaptureMinInterval:   s.File.CaptureMinInterval,
+		InteractiveMS:        s.File.InteractiveMS,
+		InteractiveTransport: s.File.InteractiveTransport,
+		TmuxMouse:            s.File.TmuxMouse,
+		ASCII:                s.File.ASCII,
+		Mouse:                s.File.Mouse,
+		GroupByWorkspace:     s.File.GroupByWorkspace,
+		RecentCwdLimit:       s.File.RecentCwdLimit,
+		Theme:                s.File.Theme,
+		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
 
@@ -828,6 +829,8 @@ func settingsEnumValue(f config.Field, cfg config.FileConfig) string {
 	switch f.FullKey() {
 	case "ui.theme":
 		return cfg.Theme
+	case "interactive_transport":
+		return cfg.InteractiveTransport
 	default:
 		s, _ := f.Default.(string)
 		return s
@@ -838,6 +841,8 @@ func settingsSetEnum(cfg *config.FileConfig, f config.Field, v string) {
 	switch f.FullKey() {
 	case "ui.theme":
 		cfg.Theme = v
+	case "interactive_transport":
+		cfg.InteractiveTransport = v
 	}
 }
 

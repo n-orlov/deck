@@ -6,18 +6,20 @@ import (
 )
 
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
-// flat config.toml keys (task 010, extended by task 030's interactive_ms):
+// flat config.toml keys (task 010, extended by task 030's interactive_ms
+// and task 031's interactive_transport):
 // allow_yolo, stale_after, capture_min_interval, interactive_ms,
-// tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse, [ui] group_by_workspace,
-// [ui] recent_cwd_limit, and the [env] table. Adding, removing or
-// renaming a key must be a deliberate edit to this test alongside the
-// schema, never a silent drift.
+// interactive_transport, tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse,
+// [ui] group_by_workspace, [ui] recent_cwd_limit, and the [env] table.
+// Adding, removing or renaming a key must be a deliberate edit to this
+// test alongside the schema, never a silent drift.
 func TestSchemaPinsKeySet(t *testing.T) {
 	want := []string{
 		"allow_yolo",
 		"stale_after",
 		"capture_min_interval",
 		"interactive_ms",
+		"interactive_transport",
 		"tmux_mouse",
 		"ui.theme",
 		"ui.ascii",
@@ -103,15 +105,16 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     Model exists and has no path back into a refreshed
 //     config.Settings -- restart-to-apply, moved off ScopeGlobal by this
 //     task.
-//   - capture_min_interval, ui.recent_cwd_limit, interactive_ms: none of
-//     the three has any consumer anywhere in this tree yet (§9.4 and
-//     §11.7 describe features this phase has not built; §11.9's render-
-//     coalescing loop, II-27/task 049, is Part II work not yet landed) --
+//   - capture_min_interval, ui.recent_cwd_limit, interactive_ms,
+//     interactive_transport: none of the four has any consumer anywhere in
+//     this tree yet (§9.4 and §11.7 describe features this phase has not
+//     built; §11.9's render-coalescing loop and interactive mode itself,
+//     II-27/task 049 and II-7 onward, are Part II work not yet landed) --
 //     there is nothing a running client could apply live even in
-//     principle today, so all three are restart-to-apply as the honest,
+//     principle today, so all four are restart-to-apply as the honest,
 //     conservative label pending that consumer, moved off ScopeGlobal by
-//     this task (interactive_ms was never ScopeGlobal to begin with --
-//     it did not exist until task 030).
+//     this task (interactive_ms/interactive_transport were never
+//     ScopeGlobal to begin with -- neither existed until tasks 030/031).
 //   - tmux_mouse (task 115): internal/tmux.Client.Bootstrap reads it every
 //     time a session is created, but cmd/deck/main.go builds that Client
 //     once from a `settings` local captured before the Model exists, with
@@ -125,6 +128,7 @@ func TestSchemaScopes(t *testing.T) {
 		"stale_after":           ScopeRestartToApply,
 		"capture_min_interval":  ScopeRestartToApply,
 		"interactive_ms":        ScopeRestartToApply,
+		"interactive_transport": ScopeRestartToApply,
 		"tmux_mouse":            ScopeRestartToApply,
 		"ui.theme":              ScopeGlobal,
 		"ui.ascii":              ScopeGlobal,

@@ -19,17 +19,18 @@ import (
 // declares it as a single whole-table field (KindListOfStrings, arbitrary
 // member names), so its members go straight into Env.
 type FileConfig struct {
-	AllowYolo          bool
-	StaleAfter         time.Duration
-	CaptureMinInterval time.Duration
-	InteractiveMS      time.Duration
-	TmuxMouse          bool
-	ASCII              bool
-	Mouse              bool
-	GroupByWorkspace   bool
-	RecentCwdLimit     int
-	Theme              string
-	Env                map[string]string
+	AllowYolo            bool
+	StaleAfter           time.Duration
+	CaptureMinInterval   time.Duration
+	InteractiveMS        time.Duration
+	InteractiveTransport string
+	TmuxMouse            bool
+	ASCII                bool
+	Mouse                bool
+	GroupByWorkspace     bool
+	RecentCwdLimit       int
+	Theme                string
+	Env                  map[string]string
 }
 
 // loadConfigFile reads config.toml's implemented top-level controls, the
@@ -131,6 +132,8 @@ func defaultFileConfig() FileConfig {
 		case "interactive_ms":
 			ms, _ := field.Default.(int)
 			cfg.InteractiveMS = time.Duration(ms) * time.Millisecond
+		case "interactive_transport":
+			cfg.InteractiveTransport, _ = field.Default.(string)
 		case "tmux_mouse":
 			cfg.TmuxMouse, _ = field.Default.(bool)
 		case "ui.ascii":
@@ -194,9 +197,29 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 		if err != nil {
 			return fmt.Errorf("%s:%d: %s must be a quoted string: %w", path, line, field.FullKey(), err)
 		}
+		// A KindEnum field with a statically declared, non-dynamic choice
+		// set (unlike ui.theme's DynamicEnum, whose choices depend on
+		// runtime theme discovery and so are validated by theme.Resolve
+		// instead) is rejected here, at parse time, exactly like an
+		// out-of-bounds integer is -- never silently coerced to the
+		// default.
+		if field.Kind == KindEnum && !field.DynamicEnum && len(field.EnumValues) > 0 {
+			valid := false
+			for _, allowed := range field.EnumValues {
+				if unquoted == allowed {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("%s:%d: %s must be one of %v, got %q", path, line, field.FullKey(), field.EnumValues, unquoted)
+			}
+		}
 		switch field.FullKey() {
 		case "ui.theme":
 			cfg.Theme = unquoted
+		case "interactive_transport":
+			cfg.InteractiveTransport = unquoted
 		}
 	default:
 		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)

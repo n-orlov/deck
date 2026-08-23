@@ -374,7 +374,7 @@ func TestConfigFileMalformedIsRejected(t *testing.T) {
 
 func TestInvalidControlsAreRejected(t *testing.T) {
 	for key, value := range map[string]string{
-		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_UNDO_MS": "0", "DECK_DELETE_GRACE_MS": "soon", "DECK_INTERACTIVE_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
+		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_UNDO_MS": "0", "DECK_DELETE_GRACE_MS": "soon", "DECK_INTERACTIVE_MS": "soon", "DECK_INTERACTIVE_TRANSPORT": "carrier-pigeon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
 	} {
 		t.Run(key, func(t *testing.T) {
 			if _, err := LoadFrom(environment(map[string]string{key: value}), fakeHome); err == nil {
@@ -713,5 +713,61 @@ func TestConfigFileUnknownKeyIsIgnored(t *testing.T) {
 	}
 	if !settings.AllowYolo {
 		t.Fatal("allow_yolo = true should still take effect alongside ignored unknown keys")
+	}
+}
+
+// TestInteractiveTransportDefaultsFromSchemaAndDeckEnvOverrides is task 031
+// (II-5): interactive_transport is resolved from config.toml via the
+// schema's declared default the same way interactive_ms is (unset file ->
+// Schema's Default "pipe"), a config.toml value is honoured, and
+// DECK_INTERACTIVE_TRANSPORT overrides whatever the file said, recorded in
+// EnvOverrides -- the same override precedence DECK_TMUX_MOUSE/
+// DECK_INTERACTIVE_MS use for their own config.toml-backed keys. An
+// invalid value is rejected both from the file and from the environment.
+func TestInteractiveTransportDefaultsFromSchemaAndDeckEnvOverrides(t *testing.T) {
+	field, ok := FieldByFullKey("interactive_transport")
+	if !ok {
+		t.Fatal("interactive_transport not declared in Schema")
+	}
+	wantDefault, _ := field.Default.(string)
+
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.InteractiveTransport != wantDefault {
+		t.Fatalf("unset interactive_transport = %q, want Schema's default %q", settings.InteractiveTransport, wantDefault)
+	}
+	if _, overridden := settings.EnvOverrides["interactive_transport"]; overridden {
+		t.Fatalf("interactive_transport should not be recorded as env-overridden when DECK_INTERACTIVE_TRANSPORT is unset")
+	}
+
+	dir := writeConfigFile(t, `interactive_transport = "capture"`+"\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.InteractiveTransport != "capture" {
+		t.Fatalf(`config.toml interactive_transport = "capture" not honoured, got %q`, settings.InteractiveTransport)
+	}
+
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_INTERACTIVE_TRANSPORT": "pipe"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.InteractiveTransport != "pipe" {
+		t.Fatalf("DECK_INTERACTIVE_TRANSPORT=pipe should override config.toml's capture, got %q", settings.InteractiveTransport)
+	}
+	if envVar := settings.EnvOverrides["interactive_transport"]; envVar != "DECK_INTERACTIVE_TRANSPORT" {
+		t.Fatalf("EnvOverrides[interactive_transport] = %q, want DECK_INTERACTIVE_TRANSPORT", envVar)
+	}
+
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_INTERACTIVE_TRANSPORT": "carrier-pigeon"}), fakeHome); err == nil {
+		t.Fatal("DECK_INTERACTIVE_TRANSPORT=carrier-pigeon should have been rejected")
+	}
+
+	badDir := writeConfigFile(t, `interactive_transport = "carrier-pigeon"`+"\n")
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": badDir}), fakeHome); err == nil {
+		t.Fatal(`config.toml interactive_transport = "carrier-pigeon" should have been rejected`)
 	}
 }
