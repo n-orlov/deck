@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -170,6 +171,50 @@ func registerFingerprintSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a scratch directory "([^"]+)" is seeded with:$`, seedScratchDirectory)
 	sc.Step(`^the directory "([^"]+)" is fingerprinted as "([^"]+)"$`, fingerprintNamedDirectory)
 	sc.Step(`^the directory "([^"]+)" still matches fingerprint "([^"]+)"$`, assertNamedDirectoryMatchesFingerprint)
+	// TEMPORARY for task 020 (I-16)'s red demonstration: mutates a
+	// previously-fingerprinted directory using one of task 003's four
+	// mutation modes, so the very next "still matches fingerprint" step
+	// in the SAME real scenario is proven not to be a no-op. Reverted
+	// (with the .feature file's temporary use of it) before this commit
+	// lands; see docs/reports/phase3d-i16-mutation-redemo.log.
+	sc.Step(`^the directory "([^"]+)" is corrupted with mode "([^"]+)" for an I-16 red demonstration$`, corruptNamedDirectoryForI16RedDemo)
+}
+
+func corruptNamedDirectoryForI16RedDemo(ctx context.Context, dirLabel, mode string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path, ok := h.namedDirectories[dirLabel]
+	if !ok {
+		return fmt.Errorf("directory %q has not been registered for fingerprinting", dirLabel)
+	}
+	switch mode {
+	case "content":
+		target := filepath.Join(path, "state.db")
+		info, statErr := os.Stat(target)
+		if statErr != nil {
+			return statErr
+		}
+		originalModTime := info.ModTime()
+		if err := os.WriteFile(target, []byte("corrupted-for-i16-red-demo"), 0o644); err != nil {
+			return err
+		}
+		// Preserve mtime, same as task 003's own content-change subtest, so
+		// this mode's demonstration isolates content detection from the
+		// mtime mode below rather than tripping the mtime check as a
+		// side effect of os.WriteFile.
+		return os.Chtimes(target, originalModTime, originalModTime)
+	case "mtime":
+		future := time.Now().Add(time.Hour)
+		return os.Chtimes(filepath.Join(path, "state.db"), future, future)
+	case "new-file":
+		return os.WriteFile(filepath.Join(path, "i16-red-demo-new-file.txt"), []byte("x"), 0o644)
+	case "removed-file":
+		return os.Remove(filepath.Join(path, ".hidden"))
+	default:
+		return fmt.Errorf("unknown I-16 red-demonstration mutation mode %q", mode)
+	}
 }
 
 // seedScratchDirectory creates a fresh directory under the scenario's own
@@ -297,8 +342,38 @@ func assertNamedDirectoryMatchesFingerprint(ctx context.Context, dirLabel, fpLab
 	if err != nil {
 		return err
 	}
-	if err := compareFingerprints(record.fp, current); err != nil {
-		return fmt.Errorf("directory %q no longer matches fingerprint %q: %w", dirLabel, fpLabel, err)
+	compareErr := compareFingerprints(record.fp, current)
+	// logFingerprintAssertionExecution makes this comparison's execution
+	// observable from outside the process (task 020 / I-16): a step godog
+	// never runs (e.g. because an earlier step's own checkpoint timed out
+	// first) looks identical to a green scenario from the outside, but is
+	// silently absent from this log. It is a no-op unless
+	// DECK_FINGERPRINT_ASSERT_LOG names a file.
+	logFingerprintAssertionExecution(dirLabel, fpLabel, path, compareErr)
+	if compareErr != nil {
+		return fmt.Errorf("directory %q no longer matches fingerprint %q: %w", dirLabel, fpLabel, compareErr)
 	}
 	return nil
+}
+
+// logFingerprintAssertionExecution appends one line per execution of the
+// "still matches fingerprint" comparison to DECK_FINGERPRINT_ASSERT_LOG when
+// that env var names a file, so a run across many scenarios/repetitions can
+// be grepped afterwards to prove every expected assertion actually ran, not
+// merely that the scenario it belongs to reported green.
+func logFingerprintAssertionExecution(dirLabel, fpLabel, path string, compareErr error) {
+	logPath := os.Getenv("DECK_FINGERPRINT_ASSERT_LOG")
+	if logPath == "" {
+		return
+	}
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	outcome := "pass"
+	if compareErr != nil {
+		outcome = "FAIL: " + compareErr.Error()
+	}
+	fmt.Fprintf(f, "%s dirLabel=%q fpLabel=%q path=%q outcome=%s\n", time.Now().Format(time.RFC3339Nano), dirLabel, fpLabel, path, outcome)
 }
