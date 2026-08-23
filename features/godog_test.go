@@ -95,6 +95,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerNoLeakScanSteps(sc)
 	registerEventLogSteps(sc)
 	registerFilterSteps(sc)
+	registerTmuxOptionScopeSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
