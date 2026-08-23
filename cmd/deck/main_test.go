@@ -374,13 +374,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=deck-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
-	// helpView() (internal/tui) is ~100 lines (task 032 added space/|/</>
-	// and the mouse section); a 24-row PTY would clip the top sections out
-	// of the alt-screen redraw before this test can read them back, so use
-	// a tall enough window that the whole overlay is written to the PTY in
-	// one frame and every new key/control can be asserted through the real
-	// terminal, not just via View() directly.
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 130, Cols: 100})
+	// helpView() (internal/tui) is ~140 lines (task 102 added the u/undo
+	// lines); a 24-row PTY would clip the top sections out of the alt-screen
+	// redraw before this test can read them back, so use a tall enough
+	// window that the whole overlay is written to the PTY in one frame and
+	// every new key/control can be asserted through the real terminal, not
+	// just via View() directly.
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 160, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,12 +436,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
 		"e open the env editor", "which layer won", "captured_path, config [env] or session env",
+		"u undo the most recent x", "DECK_UNDO_MS",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
 		}
 	}
-	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "send message", "event log", "filter list", "snooze", "archive", "undo", "tab"} {
+	for _, unavailable := range []string{"suggested increment", "write it to advance", "_hook", "resume/start", "send message", "event log", "filter list", "snooze", "archive", "tab"} {
 		if strings.Contains(help, unavailable) {
 			t.Errorf("released help advertises unavailable action %q:\n%s", unavailable, help)
 		}

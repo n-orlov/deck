@@ -123,10 +123,19 @@ type Model struct {
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
-	startCWD            string
-	collapsedGroups     map[string]bool
-	attachError         string
-	resumeNote          string
+	startCWD        string
+	collapsedGroups map[string]bool
+	attachError     string
+	resumeNote      string
+	// undoSessionID/undoSessionName track the session killed by the most
+	// recent x, so u can undo it (requirement 22) within DECK_UNDO_MS
+	// without depending on it still being the current selection -- "undo"
+	// undoes the last kill, not "whatever row happens to be selected".
+	// undoGeneration invalidates a stale undoExpired tick left over from an
+	// earlier kill/undo cycle once a newer one has started or been undone.
+	undoSessionID       string
+	undoSessionName     string
+	undoGeneration      int
 	profileSwitching    bool
 	profileSwitchValue  string
 	profileSwitchNote   string
@@ -389,7 +398,19 @@ type shellCreated struct {
 
 type attachFinished struct{ err error }
 
-type sessionKilled struct{ err error }
+// sessionKilled carries the killed session back (not just the error) so a
+// successful x can start requirement 22's undo toast/window without a
+// second store round-trip to learn which session and name it was.
+type sessionKilled struct {
+	session store.Session
+	err     error
+}
+
+// undoExpired fires DECK_UNDO_MS after a successful kill; generation ties it
+// to the specific undo window it was scheduled for, so an undo (u) or a
+// later kill that has already moved on ignores a stale, already-superseded
+// tick instead of clearing a newer toast out from under it.
+type undoExpired int
 
 type sessionAcknowledged struct{ err error }
 
@@ -722,7 +743,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.attachError = ""
-		return m, m.loadSessions
+		m.undoSessionID = msg.session.ID
+		m.undoSessionName = msg.session.Name
+		m.undoGeneration++
+		generation := m.undoGeneration
+		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return undoExpired(generation) }))
+	case undoExpired:
+		if int(msg) == m.undoGeneration {
+			m.undoSessionID, m.undoSessionName = "", ""
+		}
+		return m, nil
 	case sessionAcknowledged:
 		if msg.err != nil {
 			m.attachError = "Cannot acknowledge: " + msg.err.Error()
@@ -1006,7 +1036,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, func() tea.Msg {
-				return sessionKilled{err: m.kill(context.Background(), session)}
+				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
+			}
+		case "u":
+			// Requirement 22: u undoes the most recent x, not whatever row
+			// happens to be selected right now -- undoSessionID is only ever
+			// set by a successful kill and cleared by either this key or the
+			// DECK_UNDO_MS expiry tick, so an expired or never-killed state
+			// makes u a no-op exactly as the requirement states.
+			if m.resume == nil || m.undoSessionID == "" {
+				return m, nil
+			}
+			sessionID := m.undoSessionID
+			m.undoSessionID, m.undoSessionName = "", ""
+			m.undoGeneration++
+			return m, func() tea.Msg {
+				resumed, outcome, err := m.resume(context.Background(), sessionID)
+				return sessionResumed{session: resumed, outcome: outcome, err: err}
 			}
 		case "r":
 			if m.resume == nil || len(m.sessions) == 0 {
@@ -1362,6 +1408,18 @@ func (m Model) resumeNoteLines(width int) []string {
 	return wrapText(m.resumeNote, width)
 }
 
+// undoNoteLines is requirement 22's transient toast: visible for exactly
+// DECK_UNDO_MS after a successful x, naming the killed session and stating
+// that u undoes it, then gone once undoSessionID is cleared (by u itself or
+// by the undoExpired tick). Wrapped/reserved the same way attachErrorLines
+// and resumeNoteLines are, so it never pushes the frame off-screen.
+func (m Model) undoNoteLines(width int) []string {
+	if m.undoSessionID == "" {
+		return nil
+	}
+	return wrapText(fmt.Sprintf("Killed %q \u2014 press u to undo", m.undoSessionName), width)
+}
+
 // computeLayout is the one place mainView and the page-size math below call
 // ComputeLayout, reserving exactly one row for the footer (SPEC §11.3: "the
 // footer is one line, outside both panels") plus the startup banner's own
@@ -1378,7 +1436,7 @@ func (m Model) resumeNoteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -1439,6 +1497,7 @@ func (m Model) mainView() string {
 	}
 	lines = append(lines, m.attachErrorLines(width)...)
 	lines = append(lines, m.resumeNoteLines(width)...)
+	lines = append(lines, m.undoNoteLines(width)...)
 	lines = append(lines, m.footerLine())
 	return strings.Join(lines, "\n")
 }
@@ -3135,7 +3194,11 @@ Keys
   ↵ attach the selected running session
   Y acknowledge the selected waiting/error session, clear its unseen marker
   n create a session (shell, or an agent: claude or pi)
-  x kill the selected running session
+  x kill the selected running session; a toast naming undo stays visible
+    for DECK_UNDO_MS afterward
+  u undo the most recent x within its DECK_UNDO_MS window: resumes that
+    session with its own resume argv, exactly like r; once the window has
+    expired, or nothing has been killed since the last undo, it does nothing
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells
@@ -3226,6 +3289,7 @@ Runtime controls
   DECK_ID_SEED          deterministic generated UUIDs
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds
+  DECK_UNDO_MS          undo-toast window after x, in milliseconds
   DECK_ASCII=1          use ASCII instead of optional glyphs
   DECK_ANIM=0           disable animation
   DECK_COLOR            explicitly enable or disable colour
