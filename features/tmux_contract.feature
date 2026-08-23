@@ -10,6 +10,7 @@ Feature: Private tmux contract
     And the private tmux option "remain-on-exit" is "failed"
     And the private tmux option "window-size" is "latest"
     And the private tmux option "aggressive-resize" is "on"
+    And tmux pane "deck_dots-and-colons" effective history-limit is 10000
     When deck client "contract" attempts shell session "dots and colons"
     Then deck client "contract" screen contains "name collides with existing slug"
     When deck client "contract" closes the create modal

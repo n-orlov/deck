@@ -383,6 +383,7 @@ func TestBootstrapConfiguresOnlyPrivateServer(t *testing.T) {
 		{[]string{"show-options", "-g", "remain-on-exit"}, "remain-on-exit failed"},
 		{[]string{"show-options", "-g", "window-size"}, "window-size latest"},
 		{[]string{"show-options", "-g", "mouse"}, "mouse on"},
+		{[]string{"show-options", "-g", "history-limit"}, "history-limit 10000"},
 		{[]string{"show-window-options", "-g", "aggressive-resize"}, "aggressive-resize on"},
 	} {
 		output, err := client.command(context.Background(), check.args...).CombinedOutput()
@@ -427,6 +428,7 @@ func TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged(t *testing.T) {
 		{[]string{"show-options", "-g", "remain-on-exit"}, "remain-on-exit failed"},
 		{[]string{"show-options", "-g", "window-size"}, "window-size latest"},
 		{[]string{"show-options", "-g", "mouse"}, "mouse off"},
+		{[]string{"show-options", "-g", "history-limit"}, "history-limit 10000"},
 		{[]string{"show-window-options", "-g", "aggressive-resize"}, "aggressive-resize on"},
 	} {
 		output, err := client.command(context.Background(), check.args...).CombinedOutput()

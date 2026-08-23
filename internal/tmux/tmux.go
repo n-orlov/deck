@@ -586,6 +586,19 @@ func pairs(values []string) func(func(string, string) bool) {
 	}
 }
 
+// historyLimit is the scrollback depth (in lines) deck sets on its own tmux
+// server via Bootstrap, replacing tmux's own default of 2000. SPEC.md:177
+// (II-15/requirement 15) requires an explicit, non-default value because
+// §11.9's interactive mode narrows the window, and output produced while
+// narrow consumes history rows roughly 2.7x faster than at full width --
+// rows evicted past the limit never return (measured: 23 of 40 logical
+// lines destroyed at history-limit 100 where an unnarrowed control lost
+// none). 10000 is comfortably larger than that failure mode's regime while
+// staying far short of the per-line memory cost becoming a real budget
+// concern; it is not itself a spike-measured number, and that is recorded
+// in docs/reports/phase3b.md.
+const historyLimit = 10000
+
 func (c Client) Bootstrap(ctx context.Context) error {
 	if c.Socket == "" {
 		return errors.New("tmux socket name is required")
@@ -599,12 +612,19 @@ func (c Client) Bootstrap(ctx context.Context) error {
 	if c.Mouse {
 		mouseState = "on"
 	}
+	// history-limit is set here, in this same single invocation, alongside
+	// exit-empty/remain-on-exit/window-size/mouse -- and nowhere else (grep
+	// for "history-limit" in internal/tmux proves it). A pane's history-limit
+	// is fixed at the moment the pane is created, so this must land before
+	// Create's new-session call; Bootstrap is always invoked from Create
+	// before that new-session, which satisfies the ordering requirement.
 	output, err := c.command(bootstrapCtx,
 		"start-server", ";",
 		"set-option", "-s", "exit-empty", "off", ";",
 		"set-option", "-g", "remain-on-exit", "failed", ";",
 		"set-option", "-g", "window-size", "latest", ";",
 		"set-option", "-g", "mouse", mouseState, ";",
+		"set-option", "-g", "history-limit", strconv.Itoa(historyLimit), ";",
 		"set-window-option", "-g", "aggressive-resize", "on",
 	).CombinedOutput()
 	if err != nil {
