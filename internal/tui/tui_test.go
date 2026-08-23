@@ -60,6 +60,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"dd delete the selected session", "pending indicator", "confirm dialog naming what survives",
 		"DECK_DELETE_GRACE_MS", "restores the row", "once the window expires the row is reaped",
 		"A archive the selected session", "kill and archive", "archived_at is a flag",
+		"m toggle a mark", "survives a re-sort or re-group", "ONE u", "restores the entire batch",
 	} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help view missing %q", want)

@@ -233,3 +233,69 @@ covered by `internal/tui/archive_test.go` and the two new feature scenarios), no
 pane's placeholder copy, and rewiring dead code the task wasn't asked to touch risks a scope
 change with no test pinning the new preview text. Recorded here so a later task that does want an
 "archived" preview message finds this branch already exists, just gated on the wrong condition.
+
+## Bulk mark/kill/delete design: purge is never offered for a batch (task 112)
+
+Requirement 28's `m` toggles a mark on the *selected row* keyed by session id
+(`Model.marked map[string]bool`), not by visual index — `markedSessions()` is
+the one place that set is turned back into a session list, and it always
+walks `visualOrder()` (never `m.sessions` directly), so a re-sort (attention
+rank changing under a marked session) or a re-group (`[ui] group_by_workspace`
+flipping, or the sort input changing) can never separate a mark from the
+session it was set on, nor silently reorder which sessions a subsequent bulk
+action targets. `x` and `dd` both resolve the batch through this same
+function; when the mark set is empty, both fall back to their pre-existing
+single-selected-row behavior unchanged (`len(m.marked) > 0` is the only
+branch either key's handler adds).
+
+One deliberate asymmetry from the single-session `dd` confirm dialog: the
+bulk confirm dialog (`bulkDeleteConfirmBody`) never offers a purge choice.
+Purge (requirement 26) resolves one session's own declared transcript path
+via that session's adapter, at dialog-open time, into one `deletePurgeValue`/
+`deletePurgePath` pair — a shape that has no batch equivalent without
+inventing either a matching one-purge-decision-for-N-different-adapters UI
+(no other dialog in this tree does that) or a second, unrequested set of
+per-row purge toggles. Requirement 28's own success criteria asks only that
+`dd` "act on the whole mark set" and that undo restore it — not that purge
+compose with batching — so the bulk path states plainly ("Purge is not
+offered for a bulk delete") and always keeps each marked session's own
+transcript, exactly like a single `dd` left at its own default `keep`.
+
+Undo is a single new pair of batch-scoped fields per action
+(`batchUndoSessionIDs`/`batchUndoGeneration` for `x`,
+`batchDeleteUndoSessionIDs`/`batchDeleteUndoGeneration` for `dd`) rather than
+reusing the existing single-session undo trio N times — one `u` press must
+restore (or, for delete, un-tombstone) every session the batch action
+touched, in one action, which the existing single-session undo fields have
+no way to express (they only ever name one session id). `u`'s handler checks
+priority order — single-kill undo, then batch-kill undo, then single-delete
+undo, then batch-delete undo — so a single-session undo window left open
+from an earlier action takes priority over a *later* batch action's own undo
+window; this is by construction (the single fields are always set by the
+action that opened them and cleared the instant `u` consumes or the window
+expires) but means a test (or an operator) exercising both kinds of undo in
+quick succession must let the single window expire first, or `u` resumes the
+wrong thing. `features/kill_delete_undo.feature`'s
+`@requirement-28-mark-bulk-actions` batch-kill scenario does exactly this: it
+kills one session alone first (with a short undo window), waits for that
+window's own toast to disappear, and only then builds and kills the batch —
+otherwise `u` would wrongly resume the earlier single-killed session instead
+of the batch.
+
+Bulk kill (`x` with a non-empty mark set) silently skips any marked session
+already `stopped` — killing an already-stopped session is a no-op for the
+single-session path too (`m.kill` is simply never called), so the batch path
+inherits the same behavior rather than treating "some of the batch was
+already stopped" as an error or a partial-failure state. The toast text is
+always plural (`"Killed %d sessions — press u to undo"`, even when a batch of
+one marked session gets killed) — there is no singular/plural branch, which
+keeps the toast's wording independent of how many sessions happened to still
+be running when `x` was pressed (that count is resolved from the mark set,
+not reported back into the message).
+
+Marks clear on the action that consumes them (synchronously, even though the
+kill/delete itself completes asynchronously) and on a plain top-level `Esc`,
+regardless of whether any other dialog is open — `Esc`'s existing
+`applyDialogContract` cancel path is untouched; the mark-clearing is a
+separate, unconditional statement in the top-level `case "esc":` branch, so
+`Esc` clearing marks holds even when nothing else was open to cancel.
