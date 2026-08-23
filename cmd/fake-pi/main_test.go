@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
 )
@@ -278,5 +283,165 @@ func TestTranscriptWrittenAtPisRealPathConvention(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("got %d transcript files for the same conversation id, want 1: %v", count, entriesAfter)
+	}
+}
+
+// lockedBuffer is a concurrency-safe io.Writer/observer for tests that drive
+// watchAndRepaint from one goroutine while asserting on the written bytes
+// from another -- same idiom as internal/tmux/tmux_test.go's own
+// lockedBuffer and cmd/fake-claude's identical copy of this helper.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+// waitUntil polls fn until it returns true or the deadline passes, returning
+// whether it ever became true.
+func waitUntil(deadline time.Duration, fn func() bool) bool {
+	end := time.Now().Add(deadline)
+	for {
+		if fn() {
+			return true
+		}
+		if time.Now().After(end) {
+			return fn()
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// TestRepaintModesProduceDistinguishingObservables is cmd/fake-claude's
+// identical test, run against fake-pi's own copy of the repaint fixture
+// (requirement 1 / II-1): the two binaries carry the same duplicated
+// implementation, and each is asserted independently. See
+// cmd/fake-claude/main_test.go's copy of this test for the full rationale
+// on registering the SIGWINCH channel before sending the signal.
+func TestRepaintModesProduceDistinguishingObservables(t *testing.T) {
+	sendSIGWINCH := func(t *testing.T) {
+		t.Helper()
+		if err := syscall.Kill(os.Getpid(), syscall.SIGWINCH); err != nil {
+			t.Fatalf("send SIGWINCH to self: %v", err)
+		}
+	}
+
+	t.Run("sigwinch mode repaints immediately on SIGWINCH, not on a keystroke", func(t *testing.T) {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGWINCH)
+		t.Cleanup(func() { signal.Stop(signals) })
+
+		var output lockedBuffer
+		stdinReader, stdinWriter := io.Pipe()
+		result := make(chan error, 1)
+		go func() { result <- watchAndRepaint(repaintModeSigwinch, stdinReader, &output, signals) }()
+		t.Cleanup(func() { stdinWriter.Close() })
+
+		sendSIGWINCH(t)
+		if !waitUntil(time.Second, func() bool { return strings.Contains(output.String(), "repaint #1") }) {
+			t.Fatalf("sigwinch mode never repainted after SIGWINCH; output = %q", output.String())
+		}
+
+		if _, err := stdinWriter.Write([]byte("x")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if waitUntil(150*time.Millisecond, func() bool { return strings.Contains(output.String(), "repaint #2") }) {
+			t.Fatalf("sigwinch mode repainted again on a bare keystroke; output = %q", output.String())
+		}
+	})
+
+	t.Run("keystroke mode ignores SIGWINCH until the next byte read from stdin", func(t *testing.T) {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGWINCH)
+		t.Cleanup(func() { signal.Stop(signals) })
+
+		var output lockedBuffer
+		stdinReader, stdinWriter := io.Pipe()
+		result := make(chan error, 1)
+		go func() { result <- watchAndRepaint(repaintModeKeystroke, stdinReader, &output, signals) }()
+		t.Cleanup(func() { stdinWriter.Close() })
+
+		if _, err := stdinWriter.Write([]byte("a")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if waitUntil(150*time.Millisecond, func() bool { return output.String() != "" }) {
+			t.Fatalf("keystroke mode repainted on a keystroke with no preceding SIGWINCH; output = %q", output.String())
+		}
+
+		sendSIGWINCH(t)
+		if waitUntil(150*time.Millisecond, func() bool { return output.String() != "" }) {
+			t.Fatalf("keystroke mode repainted on SIGWINCH alone; output = %q", output.String())
+		}
+
+		if _, err := stdinWriter.Write([]byte("b")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if !waitUntil(time.Second, func() bool { return strings.Contains(output.String(), "repaint #1") }) {
+			t.Fatalf("keystroke mode never repainted on the keystroke following SIGWINCH; output = %q", output.String())
+		}
+	})
+
+	t.Run("never mode never repaints, whatever arrives", func(t *testing.T) {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGWINCH)
+		t.Cleanup(func() { signal.Stop(signals) })
+
+		var output lockedBuffer
+		stdinReader, stdinWriter := io.Pipe()
+		result := make(chan error, 1)
+		go func() { result <- watchAndRepaint(repaintModeNever, stdinReader, &output, signals) }()
+		t.Cleanup(func() { stdinWriter.Close() })
+
+		sendSIGWINCH(t)
+		if _, err := stdinWriter.Write([]byte("c")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if waitUntil(300*time.Millisecond, func() bool { return output.String() != "" }) {
+			t.Fatalf("never mode repainted; output = %q", output.String())
+		}
+	})
+}
+
+// TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues
+// proves the env-var dispatch runWithIO does, and that an invalid mode value
+// is rejected rather than silently defaulting to one of the three. Unlike
+// fake-claude's run() helper, fake-pi's own run() reads the real os.Stdin by
+// default, so this test calls runWithIO directly with an explicit,
+// already-exhausted reader to avoid depending on the test process's stdin.
+func TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues(t *testing.T) {
+	getwd := testGetwd(t)
+	var output bytes.Buffer
+	getenv := func(key string) string {
+		if key == repaintModeEnvironment {
+			return "not-a-real-mode"
+		}
+		return ""
+	}
+	if _, err := runWithIO(nil, strings.NewReader(""), &output, getenv, getwd); err == nil {
+		t.Fatal("invalid repaint mode was unexpectedly accepted")
+	}
+
+	var neverOutput bytes.Buffer
+	neverGetenv := func(key string) string {
+		if key == repaintModeEnvironment {
+			return repaintModeNever
+		}
+		return ""
+	}
+	if code, err := runWithIO(nil, strings.NewReader(""), &neverOutput, neverGetenv, getwd); err != nil || code != 0 {
+		t.Fatalf("runWithIO(never repaint mode) = (%d, %v), want (0, nil)", code, err)
+	}
+	if strings.Contains(neverOutput.String(), "Fake pi") {
+		t.Fatalf("repaint mode printed the normal pi banner: %q", neverOutput.String())
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -42,6 +43,33 @@ const (
 	// the agent's own experience of a resize rather than infer it from tmux
 	// bookkeeping.
 	sizesLogName = "fake-claude-sizes.log"
+	// repaintModeEnvironment selects this fixture's repaint behaviour
+	// (PRD phase3b-interactive-preview.md requirement 1 / II-1): repaintModeSigwinch,
+	// repaintModeKeystroke or repaintModeNever. Setting it puts the fixture into a
+	// dedicated mode (see runRepaintFixture) mutually exclusive with the
+	// silent-fixture mode above and the argv/commands flow below -- it never
+	// prints the Claude banner, it only emits repaint markers per the selected
+	// behaviour and drains stdin until EOF.
+	repaintModeEnvironment = "FAKE_CLAUDE_REPAINT_MODE"
+)
+
+// Repaint modes for repaintModeEnvironment. "Repaint" here means the fixture
+// writes an observable "repaint #N" marker line to its own pane -- distinct
+// from startSizeRecorder's requirement-4 size log, which keeps recording
+// unconditionally regardless of the mode selected here. A scenario asserts
+// the marker's presence/timing against the pane's screen, not the size log,
+// to distinguish the three behaviours.
+const (
+	// repaintModeSigwinch repaints immediately on every SIGWINCH.
+	repaintModeSigwinch = "sigwinch"
+	// repaintModeKeystroke ignores SIGWINCH but repaints once on the next byte
+	// read from stdin after a SIGWINCH arrived (a keystroke forwarded into the
+	// pane, in the real interactive-mode flow this fixture stands in for).
+	repaintModeKeystroke = "keystroke"
+	// repaintModeNever never repaints, regardless of SIGWINCH or input -- the
+	// realistic worst case (a target waiting on a network round-trip), and the
+	// mode requirement 49 / II-49's "has not repainted" announcement uses.
+	repaintModeNever = "never"
 )
 
 var permissionModes = map[string]bool{
@@ -88,6 +116,10 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 
 	if name := getenv(silentFixtureEnvironment); name != "" {
 		return 0, renderThenFallSilent(stdin, stdout, getenv(fixtureDirectoryEnvironment), name)
+	}
+
+	if mode := getenv(repaintModeEnvironment); mode != "" {
+		return 0, runRepaintFixture(mode, stdin, stdout)
 	}
 
 	options, err := parse(args)
@@ -469,6 +501,92 @@ func renderFixture(output io.Writer, directory, name string) error {
 	return nil
 }
 
+// runRepaintFixture is a dedicated, self-contained mode (mutually exclusive
+// with the argv-parsing banner flow, the commands loop and the silent-fixture
+// mode above) that exists purely to give a scenario a selectable, observable
+// repaint behaviour (requirement 1 / II-1). It never terminates on its own;
+// it exits when stdin reaches EOF, exactly like the other blocking modes in
+// this file, so the harness's normal teardown (closing/killing the pane)
+// still works.
+func runRepaintFixture(mode string, stdin io.Reader, stdout io.Writer) error {
+	if mode != repaintModeSigwinch && mode != repaintModeKeystroke && mode != repaintModeNever {
+		return fmt.Errorf("invalid %s %q: want %q, %q or %q", repaintModeEnvironment, mode, repaintModeSigwinch, repaintModeKeystroke, repaintModeNever)
+	}
+
+	// Registered here, synchronously, before any goroutine starts reading from
+	// the (buffered, capacity-1) channel: a SIGWINCH delivered any time after
+	// this call returns is queued in the channel regardless of whether a
+	// consumer has started selecting on it yet, so there is no race between
+	// "registration happened" and "the test's signal arrives" (watchAndRepaint
+	// below is what a test drives directly, with its own Notify call made the
+	// same way, to keep that guarantee visible at the call site).
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGWINCH)
+	defer signal.Stop(signals)
+	return watchAndRepaint(mode, stdin, stdout, signals)
+}
+
+// watchAndRepaint is runRepaintFixture's behaviour with signal registration
+// factored out, so a test can register its own channel (guaranteeing no race
+// against the signal it is about to send) and drive this loop directly.
+func watchAndRepaint(mode string, stdin io.Reader, stdout io.Writer, signals <-chan os.Signal) error {
+	var mu sync.Mutex
+	counter := 0
+	pending := false
+	repaint := func() {
+		mu.Lock()
+		counter++
+		n := counter
+		mu.Unlock()
+		fmt.Fprintf(stdout, "repaint #%d\n", n)
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case <-signals:
+				switch mode {
+				case repaintModeSigwinch:
+					repaint()
+				case repaintModeKeystroke:
+					// Ignore the SIGWINCH itself; remember it happened so the
+					// next byte read from stdin (a forwarded keystroke) triggers
+					// the repaint instead.
+					mu.Lock()
+					pending = true
+					mu.Unlock()
+				case repaintModeNever:
+					// Never repaints, whatever arrives.
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := stdin.Read(buffer)
+		if n > 0 && mode == repaintModeKeystroke {
+			mu.Lock()
+			fire := pending
+			pending = false
+			mu.Unlock()
+			if fire {
+				repaint()
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
 // renderThenFallSilent renders the named fixture exactly once and then blocks
 // forever, producing no further output of any kind (requirement 5). It reads
 // stdin to end-of-file rather than selecting on a channel, so the blocking
@@ -586,6 +704,11 @@ Set FAKE_CLAUDE_EXIT_CODE to an integer from 0 through 125 to control this fixtu
 Set FAKE_CLAUDE_FIXTURE=<name> to render that fixture from FAKE_AGENT_FIXTURE_DIR verbatim and
 then produce no further output (this process idles forever, exactly like a real agent waiting
 for input that never arrives). Mutually exclusive with FAKE_CLAUDE_COMMANDS's interactive loop.
+Set FAKE_CLAUDE_REPAINT_MODE=sigwinch|keystroke|never to switch this fixture into a dedicated
+repaint-observation mode (mutually exclusive with FAKE_CLAUDE_FIXTURE and FAKE_CLAUDE_COMMANDS):
+it prints no banner and reads no commands, it only ever writes "repaint #N" lines to the pane
+per the selected behaviour (sigwinch: on every SIGWINCH; keystroke: on the next byte read from
+stdin after a SIGWINCH; never: not at all) until stdin reaches EOF.
 Set FAKE_CLAUDE_COMMANDS=1 to read newline-delimited commands from the pane. A hook
 command has the form {"command":"hook","event":"SessionStart","payload":{...}}.
 It invokes that event's command from --settings with the payload on stdin and with
