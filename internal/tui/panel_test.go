@@ -66,7 +66,10 @@ func TestSideBySideFrameHasOneSeamAndOneColumnPadding(t *testing.T) {
 // the column budget, and a group header row -- never just the first row a
 // smaller test happened to sample.
 func TestSidebarContentHasOneColumnPaddingBeforeSeam(t *testing.T) {
-	model := New(nil, config.Settings{}, "")
+	// Grouping must be explicit: config.Settings{} zero value now means
+	// grouping off (requirement 35); this test's own claim exercises a
+	// group header row, so it needs grouping on.
+	model := New(nil, config.Settings{GroupByWorkspace: true}, "")
 	model.width, model.height = 100, 30
 	model.sessions = []store.Session{
 		{Name: "a session name so long it will not fit and must be elided with an ellipsis for sure", Workspace: "ws", Agent: "claude", Status: "running"},

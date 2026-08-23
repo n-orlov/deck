@@ -1775,7 +1775,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// never actually wired to anything, so every keypress of `g` was
 			// silently doing collapse instead of the documented top/bottom jump.
 			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
-			if !m.help && !m.detail && len(m.sessions) > 0 {
+			// Requirement 35: with grouping off there is no group for `c`
+			// to collapse -- the binding is a no-op rather than silently
+			// populating m.collapsedGroups bookkeeping nothing will ever
+			// read (collapse state must be absent, not merely inert).
+			if !m.help && !m.detail && m.groupingEnabled() && len(m.sessions) > 0 {
 				m.toggleGroupCollapse(sessionWorkspace(m.sessions[m.selected]))
 			}
 		case "g":
@@ -2482,6 +2486,21 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	if len(m.sessions) == 0 {
 		for _, line := range wrapText("No sessions yet. Press n to create a session.", contentWidth) {
 			entries = append(entries, sidebarEntry{text: line})
+		}
+		return entries
+	}
+	if !m.groupingEnabled() {
+		// Requirement 35: grouping off renders one flat list, in
+		// visualOrder() (identity order when ungrouped), with ZERO header
+		// rows -- not a header with a blank/omitted label, no header
+		// sidebarEntry at all, so a scan for sidebarLineHeader entries
+		// finds none. Collapse state cannot apply (there is no group to
+		// collapse), so nothing here ever calls
+		// isGroupCollapsed/setGroupCollapsed.
+		for _, idx := range m.visualOrder() {
+			for _, line := range m.sidebarRowLines(idx, m.sessions[idx]) {
+				entries = append(entries, sidebarEntry{text: line, kind: sidebarLineRow, sessionIndex: idx})
+			}
 		}
 		return entries
 	}

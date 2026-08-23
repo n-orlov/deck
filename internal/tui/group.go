@@ -66,9 +66,27 @@ func (m Model) groupSessions() []sidebarGroup {
 	return groups
 }
 
+// groupingEnabled reports SPEC requirement 30/35's `[ui]
+// group_by_workspace` switch (default true in the real config, task 007's
+// I-4 schema plumbing; a zero-value config.Settings{} as many tests build
+// directly reads false here, exactly as it already does for
+// m.settings.Mouse -- a test that needs grouped-mode behaviour opts in
+// explicitly). This is the one place that decision is read; every
+// grouping-aware primitive below (visualOrder, isSessionVisible,
+// sidebarEntries, the `c` key) calls this rather than reading
+// m.settings.GroupByWorkspace itself, so there is exactly one switch to
+// flip if the setting is ever renamed or the default changes.
+func (m Model) groupingEnabled() bool {
+	return m.settings.GroupByWorkspace
+}
+
 // isGroupCollapsed reports whether m has collapsed the given workspace's
 // group. A workspace never explicitly collapsed defaults to expanded, so a
-// nil map (the zero Model) behaves exactly like an empty one.
+// nil map (the zero Model) behaves exactly like an empty one. This is
+// unconditional (it does not consult groupingEnabled) because it is a pure
+// bookkeeping read -- the callers that matter for requirement 35 (isSession
+// Visible, sidebarEntries, the `c` key handler) are themselves gated so
+// collapse state is never populated or consulted while grouping is off.
 func (m Model) isGroupCollapsed(workspace string) bool {
 	return m.collapsedGroups[workspace]
 }
@@ -100,10 +118,15 @@ func (m *Model) toggleGroupCollapse(workspace string) {
 
 // isSessionVisible reports whether the session at index i is presently
 // shown in the sidebar: false only when its workspace group is collapsed,
-// or when i is out of range.
+// or when i is out of range. Requirement 35: collapse state is meaningless
+// ("absent rather than inert") when grouping is off, so every session is
+// visible regardless of m.collapsedGroups' contents.
 func (m Model) isSessionVisible(i int) bool {
 	if i < 0 || i >= len(m.sessions) {
 		return false
+	}
+	if !m.groupingEnabled() {
+		return true
 	}
 	return !m.isGroupCollapsed(sessionWorkspace(m.sessions[i]))
 }
@@ -122,6 +145,19 @@ func (m Model) isSessionVisible(i int) bool {
 // attention sort's job, SPEC.md:876) and does not touch groupSessions'
 // own bucketing (SPEC requirement 30).
 func (m Model) visualOrder() []int {
+	// Requirement 35: with grouping off there are no buckets to flatten --
+	// the flat list paints m.sessions in its own existing (already
+	// attention-sorted, SPEC §11) order, index for index, never reordered
+	// by groupSessions' first-appearance bucketing. Task 009 (I-6) is the
+	// dedicated proof that this and the grouped branch agree with every
+	// navigation primitive built on top of this function.
+	if !m.groupingEnabled() {
+		order := make([]int, len(m.sessions))
+		for i := range m.sessions {
+			order[i] = i
+		}
+		return order
+	}
 	var order []int
 	for _, group := range m.groupSessions() {
 		for _, is := range group.Sessions {

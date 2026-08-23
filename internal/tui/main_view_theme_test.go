@@ -118,6 +118,10 @@ func TestSelectedSidebarRowUsesSelectionBackground(t *testing.T) {
 // workspace header line in the sidebar renders in the `group` token.
 func TestGroupHeaderRendersInGroupToken(t *testing.T) {
 	m := mainViewColorTestModel(t)
+	// Grouping must be explicit: config.Settings{} zero value now means
+	// grouping off (requirement 35); this test's own claim exercises a
+	// group header row, so it needs grouping on.
+	m.settings.GroupByWorkspace = true
 	groupHex := tokenHex(t, m, theme.Group)
 
 	view := m.View()
