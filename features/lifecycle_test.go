@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // ScenarioHarness owns every externally visible resource used by one Gherkin
@@ -165,6 +166,21 @@ type ScenarioHarness struct {
 	// reached the wanted size.
 	lastNaiveLoopConverged   bool
 	lastNaiveLoopFinalHeight int
+
+	// sigwinchCycleGeometries backs task 036's (II-11) full enter/exit
+	// SIGWINCH-budget scenario: the WindowGeometry captured by the "enters
+	// interactive mode" step, keyed by tmux session, so the matching
+	// "exits interactive mode" step has exactly what RestoreWindowGeometry
+	// needs without threading it through the Gherkin text itself.
+	sigwinchCycleGeometries map[string]tmux.WindowGeometry
+
+	// rawAttachedTmuxClients backs the same scenario's "attached throughout"
+	// half: a real `tmux attach-session` client, attached directly on this
+	// scenario's own private socket (bypassing deck entirely, the same
+	// black-box shape interactive_geometry_test.go and internal/tmux's own
+	// restore_test.go already use), keyed by session so the matching detach
+	// step can find it again.
+	rawAttachedTmuxClients map[string]*rawAttachedTmuxClient
 }
 
 var scenarioSequence atomic.Uint64
