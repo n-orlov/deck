@@ -400,11 +400,18 @@ rate actually drops.
 **Separate, unrelated discovery from the same investigation**: running the
 `features` package with `DECK_GODOG_TAGS` set to any expression that
 *mentions* `@real-agents` (including `~@real-agents`, meant to exclude it)
-reliably corrupts every subsequent scenario in the same process with `step
-error: trust real Claude scenario cwd: open /.claude.json: permission
-denied`, because `trustRealClaudeScenarioWorkingDirectory`'s own gate is a
-bare substring check (task 110's notes already flagged this for a single
-scenario; this confirms it cascades to an entire run). When hand-running
-any subset of scenarios that are not themselves real-agents scenarios, pass
-only the specific tags wanted, with no `@real-agents` token anywhere in the
-expression, not even negated.
+reliably breaks every scenario in that same run that creates a claude
+session (shell-only scenarios are unaffected) with `step error: trust real
+Claude scenario cwd: open /.claude.json: permission denied`, because
+`trustRealClaudeScenarioWorkingDirectory`'s own gate is a bare substring
+check (task 110's notes already flagged this for a single scenario; this
+confirms it fires for every claude-session scenario across a combined run,
+not just the one it was first noticed on). The standing rule's own
+recommended one-scenario invocation
+(`DECK_GODOG_TAGS="@tag && ~@real-agents"`) is still safe for any scenario
+that never creates a claude session (the gate function is only reachable
+from that step); it is specifically a claude-session-creating scenario, or
+a multi-scenario tag set where at least one member creates a claude
+session, combined with any mention of `@real-agents`, that trips this.
+When hand-running a tag set that includes any claude-session scenario, drop
+the `@real-agents` mention entirely rather than negating it.
