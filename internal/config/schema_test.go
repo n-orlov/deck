@@ -7,7 +7,7 @@ import (
 
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
 // flat config.toml keys (task 010): allow_yolo, stale_after,
-// capture_min_interval, [ui] theme, [ui] ascii, [ui] mouse,
+// capture_min_interval, tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse,
 // [ui] recent_cwd_limit, and the [env] table. Adding, removing or
 // renaming a key must be a deliberate edit to this test alongside the
 // schema, never a silent drift.
@@ -16,6 +16,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"allow_yolo",
 		"stale_after",
 		"capture_min_interval",
+		"tmux_mouse",
 		"ui.theme",
 		"ui.ascii",
 		"ui.mouse",
@@ -105,6 +106,11 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     nothing a running client could apply live even in principle today,
 //     so both are restart-to-apply as the honest, conservative label
 //     pending that consumer, moved off ScopeGlobal by this task.
+//   - tmux_mouse (task 115): internal/tmux.Client.Bootstrap reads it every
+//     time a session is created, but cmd/deck/main.go builds that Client
+//     once from a `settings` local captured before the Model exists, with
+//     no path back into a refreshed config.Settings -- restart-to-apply,
+//     the same reasoning as stale_after above.
 //   - [env]: unchanged, restart-to-apply per §6.2 (already correct, and
 //     already the subject of its own SPEC citation in schema.go).
 func TestSchemaScopes(t *testing.T) {
@@ -112,6 +118,7 @@ func TestSchemaScopes(t *testing.T) {
 		"allow_yolo":           ScopeGlobal,
 		"stale_after":          ScopeRestartToApply,
 		"capture_min_interval": ScopeRestartToApply,
+		"tmux_mouse":           ScopeRestartToApply,
 		"ui.theme":             ScopeGlobal,
 		"ui.ascii":             ScopeGlobal,
 		"ui.mouse":             ScopeGlobal,

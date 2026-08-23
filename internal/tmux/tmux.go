@@ -26,11 +26,18 @@ var (
 )
 
 // Client runs tmux exclusively against deck's configured private socket.
-// Binary defaults to "tmux" and Timeout defaults to five seconds.
+// Binary defaults to "tmux" and Timeout defaults to five seconds. Mouse
+// mirrors config.toml's top-level tmux_mouse key (SPEC §6.5/§11.8): whether
+// Bootstrap turns on tmux's own `mouse` server option on deck's private
+// socket. It defaults to Go's zero value (false, i.e. tmux's own default)
+// like every other Client field -- callers that want it on must set it
+// explicitly from a resolved config.Settings, the same way Socket is never
+// implicitly config.DefaultSocket here either.
 type Client struct {
 	Binary  string
 	Socket  string
 	Timeout time.Duration
+	Mouse   bool
 }
 
 // Version is the parsed tmux version reported by `tmux -V`.
@@ -585,11 +592,19 @@ func (c Client) Bootstrap(ctx context.Context) error {
 	}
 	bootstrapCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
+	// mouse is set in this same single invocation, on deck's own -L socket
+	// only, alongside the other server options -- never touching the user's
+	// default socket or ~/.tmux.conf (c.command always carries -L c.Socket).
+	mouseState := "off"
+	if c.Mouse {
+		mouseState = "on"
+	}
 	output, err := c.command(bootstrapCtx,
 		"start-server", ";",
 		"set-option", "-s", "exit-empty", "off", ";",
 		"set-option", "-g", "remain-on-exit", "failed", ";",
 		"set-option", "-g", "window-size", "latest", ";",
+		"set-option", "-g", "mouse", mouseState, ";",
 		"set-window-option", "-g", "aggressive-resize", "on",
 	).CombinedOutput()
 	if err != nil {

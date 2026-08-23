@@ -197,6 +197,29 @@ var Schema = []Field{
 		Scope: ScopeRestartToApply,
 	},
 	{
+		Section: "",
+		Key:     "tmux_mouse",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "Enables tmux's own `mouse on` server option on deck's " +
+			"private -L socket (SPEC §6.5/§11.8), so a wheel notch scrolls an " +
+			"attached pane's scrollback instead of tmux ignoring it. Independent " +
+			"of [ui] mouse above, which is the terminal-side SGR reporting toggle " +
+			"that lets deck's own client navigate the sidebar/dialogs with the " +
+			"mouse; this key is tmux's own server-side mouse option on deck's " +
+			"private socket only -- it never touches the user's default tmux " +
+			"socket or ~/.tmux.conf. DECK_TMUX_MOUSE overrides the file when set. " +
+			"On by default.",
+		// requirement 19: internal/tmux.Client.Bootstrap sets this option every
+		// time a session is created (Client.Create calls Bootstrap
+		// unconditionally), but cmd/deck/main.go builds the one tmux.Client used
+		// for session creation once, from settings.TmuxMouse captured before
+		// tui.New* builds the Model -- a save through the settings takeover
+		// writes config.toml immediately, but the already-running process's own
+		// client value does not change until deck restarts.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "ui",
 		Key:         "theme",
 		Kind:        KindEnum,

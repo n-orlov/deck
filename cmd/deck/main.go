@@ -69,7 +69,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "deck executable:", err)
 		return 0
 	}
-	client := tmux.Client{Socket: settings.Socket}
+	client := tmux.Client{Socket: settings.Socket, Mouse: settings.TmuxMouse}
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
 	registry.Register(agent.NewClaude())

@@ -480,3 +480,48 @@ the other two known flake sources already on record: the `k`/`m`/`j`/`m`
 marking idiom's coalesced-KeyMsg drop (task 113's follow-up above; task 118's
 job) or `create_cwd_ghost.feature`'s tilde-expansion timing test. Both remain
 open and are not claimed fixed by this task.
+
+## DECK_TMUX_MOUSE is §6.5's environment layer of a declared key, not an invented behaviour switch (task 115)
+
+`tmux_mouse` is declared exactly once, in `internal/config/schema.go` (top
+level, `KindToggle`, default `true`), and resolved in
+`internal/config/config.go`'s `LoadFrom` the same way every other boolean
+schema key with an environment override already is (`ui.ascii`/`DECK_ASCII`,
+`ui.mouse`/`DECK_MOUSE`): `fileCfg.TmuxMouse` is the file's value, and a set
+`DECK_TMUX_MOUSE` overrides it and is recorded in
+`Settings.EnvOverrides["tmux_mouse"]` — §6.5's "environment always outranks
+the file" applied to a key this phase declares, not a new mechanism and not
+a knob that gates anything beyond the one tmux server option it names.
+`internal/tmux.Client` gained a `Mouse bool` field (zero value `false`,
+matching every other `Client` field's own zero-value-is-the-honest-default
+convention — nothing implicitly substitutes `config.DefaultSocket`-style
+here either); `Bootstrap` sets `mouse on`/`mouse off` in the exact same
+single `tmux` invocation as `exit-empty`/`remain-on-exit`/`window-size`/
+`aggressive-resize`, still scoped to deck's own `-L` socket only. Only the
+one `tmux.Client` cmd/deck/main.go actually uses for session creation
+(`sessions.CreateShell`/`CreateAgent`/`Resume`/`Restart`, the client at
+`cmd/deck/main.go:72`) is constructed with `Mouse: settings.TmuxMouse`; the
+liveness-only client built for hook post-processing (`main.go:187`, which
+never calls `Create`/`Bootstrap`) and `TmuxHealth`'s discovery-only client
+(`internal/tui/tui.go`, which never calls `Create` either) are deliberately
+left at the zero value since nothing they do reads `Client.Mouse`.
+
+**Scope**: `ScopeRestartToApply`, by the same reasoning already applied to
+`stale_after` — `Bootstrap` re-reads `Client.Mouse` on every `Create` call,
+but `cmd/deck/main.go` builds that one `Client` from a `settings` local
+captured once before `tui.New*` builds the Model, with no path back into a
+refreshed `config.Settings`. A save through the settings takeover writes
+`config.toml` immediately; the already-running process's own value does not
+change until deck restarts.
+
+**Verified against real tmux**
+(`internal/tmux/tmux_test.go`,`TestBootstrapConfiguresOnlyPrivateServer` now
+asserts `mouse on` with `Client.Mouse: true` alongside its four pre-existing
+option checks; the new
+`TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged` asserts `mouse off`
+with `Client.Mouse` left at its zero value and re-asserts the same four
+other options are unchanged from today). `internal/config`'s schema/settings
+parity tests (`TestSchemaPinsKeySet`, `TestSchemaScopes`,
+`TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce`) all pass with the one
+new key added — the settings takeover surfaces it with no second
+declaration since `settingsCategories()` walks `config.Schema` directly.
