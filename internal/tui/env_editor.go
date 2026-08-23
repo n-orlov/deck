@@ -109,9 +109,13 @@ func (m Model) envView() string {
 				marker = "> "
 			}
 			label := fmt.Sprintf("%s%-24s", marker, row.Key)
-			value := fmt.Sprintf("%s  [%s]", row.Value, row.Layer)
+			// SPEC §6.4/requirement 21: a secret-shaped key's value is masked
+			// by default via the single maskEnvValue predicate, revealed only
+			// while m.envReveal is on (the "r" toggle in updateEnvDialog).
+			displayValue := m.maskEnvValue(row.Key, row.Value, m.envReveal)
+			value := fmt.Sprintf("%s  [%s]", displayValue, row.Layer)
 			if m.envEditKey != "" && m.envEditKey == row.Key {
-				value = m.envEditValue + "_"
+				value = m.maskEnvValue(row.Key, m.envEditValue, m.envReveal) + "_"
 			}
 			fmt.Fprintf(&b, "%s\n", m.detailField(label, value))
 		}
@@ -123,7 +127,11 @@ func (m Model) envView() string {
 	if m.envEditKey != "" {
 		b.WriteString("Enter saves this key into the session's own env; Esc cancels this edit.\n")
 	} else {
-		b.WriteString("j/k select a key, Enter edits it; Esc closes.\n")
+		revealHint := "r reveals secret-shaped values (masked by default)"
+		if m.envReveal {
+			revealHint = "r masks secret-shaped values again"
+		}
+		fmt.Fprintf(&b, "j/k select a key, Enter edits it, %s; Esc closes.\n", revealHint)
 	}
 	return m.framedDialog(b.String())
 }
@@ -198,6 +206,12 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// wholesale instead of editing within it, exactly like createView's
 		// own cwd field prefill.
 		m.envEditKey, m.envEditValue, m.envEditPrefilled, m.envNote = row.Key, row.Value, true, ""
+	case "r":
+		// SPEC §6.4/requirement 21: the explicit per-view reveal toggle.
+		// Only meaningful while browsing -- while a value is being typed
+		// (m.envEditKey != "") this branch is unreachable, since that
+		// case returns earlier in this function.
+		m.envReveal = !m.envReveal
 	}
 	return m, nil
 }

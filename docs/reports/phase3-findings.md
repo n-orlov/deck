@@ -760,3 +760,32 @@ by this run; the operator should fold `c` (group collapse) into §11's keymap
 list as a new entry the next time SPEC.md itself is revised — it was never
 in that document at all, is unrelated to the `g`/`G` fix, but is being
 newly documented here since this task is what surfaced the gap.
+
+## Task 010: pre-existing off-by-one in `@requirement-17-clear-recent-cwds-history` (unrelated to secret masking)
+
+While verifying task 010 (secret-shaped env value masking) did not collide
+with any `.feature` scenario, `DECK_GODOG_TAGS="@requirement-17-clear-recent-cwds-history"`
+failed: after `,` → `j` → Tab → four `j`s, the scenario asserts the screen
+shows `cleared recent directory history` once Enter is pressed, but the
+selection is actually still one row short, on `Group By Workspace`, not
+`Clear Recent Cwds` — Enter toggles that field (`Off`) instead. The UI
+category's field order is `Theme, Ascii, Mouse, Recent Cwd Limit, Group By
+Workspace, Clear Recent Cwds` (`config.Schema` order plus the appended
+`settingsClearRecentCwdsEntry`, `internal/tui/settings.go`), six entries
+needing five `j`s from `Theme` to reach `Clear Recent Cwds`; the scenario
+sends only four.
+
+**Confirmed pre-existing, not caused by this task's diff**: `git stash` (
+reverting every task 010 change) and re-running the same tagged scenario
+reproduces the identical failure on `main`'s HEAD before this task's commit.
+Not fixed here — out of task 010's scope (masking predicate + reveal
+toggle), and the standing rule against loosening assertions cuts the other
+way too: the fix belongs to whichever task owns `features/settings.feature`
+next (adding the missing fifth `j`), not this one. The rest of `@settings`
+(every other scenario in that tag group) and `@environment` both pass
+cleanly with task 010's changes in place.
+
+**Not a masking-related false failure**: this scenario asserts on UI-
+category navigation and the `ui.recent_cwd_limit`/`clear_recent_cwds`
+fields, none of which are `[env]` entries or otherwise touched by
+`maskEnvValue`.
