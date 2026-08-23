@@ -145,18 +145,16 @@ func writeANSIMode(b *bytes.Buffer, n int, on bool) {
 }
 
 // CaptureSeed reads target's current mode state and capture body from a
-// real tmux client and assembles them into a seed via BuildSeed. The two
-// reads are two separate tmux invocations here -- task 043/II-20 is what
-// pairs them atomically and retries on disagreement; this is the
-// unpaired building block that task depends on.
+// real tmux client and assembles them into a seed via BuildSeed. State
+// and body are paired atomically (PRD II-20): CapturePaneSeedAtomic
+// chains both tmux calls into one invocation and retries while its
+// before/after #{history_size}/#{pane_width}/#{pane_height} probes
+// disagree, so the state and the body handed to BuildSeed are never a
+// state read against a body the pane had already moved past.
 func CaptureSeed(ctx context.Context, client tmux.Client, target string) ([]byte, error) {
-	state, err := client.PaneSeedState(ctx, target)
+	state, body, err := client.CapturePaneSeedAtomic(ctx, target, tmux.SeedCaptureOptions())
 	if err != nil {
-		return nil, fmt.Errorf("capture seed state for %q: %w", target, err)
-	}
-	body, err := client.CapturePane(ctx, target, tmux.SeedCaptureOptions())
-	if err != nil {
-		return nil, fmt.Errorf("capture seed body for %q: %w", target, err)
+		return nil, fmt.Errorf("capture seed for %q: %w", target, err)
 	}
 	return BuildSeed(state, body), nil
 }
