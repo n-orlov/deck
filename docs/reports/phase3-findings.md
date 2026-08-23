@@ -702,3 +702,61 @@ text field instead of the main view. `clientCreatesShellSession` in
 `assertions_test.go` already avoids this by waiting on `"starting"`, not the
 name — any new black-box test driving session creation directly (bypassing
 that helper) needs the same unambiguous wait target.
+
+## Task 119: rebinding group collapse off `g`, and picking `c` (requirement 30's key gap)
+
+SPEC.md:952's own keymap line reads "`g`/`G` top/bottom", but no code in this
+tree ever wired `g`/`G` to a top/bottom jump — `g` had instead been bound
+(since an earlier phase, per group.go's own "task 028"/"task 039" comments)
+to toggle the selected row's workspace group collapsed/expanded, a capability
+SPEC.md's keymap line never lists at all. Every press of `g` was silently
+doing collapse instead of the documented jump; `G` did nothing.
+
+**Fix**: `g` and `G` are now `Model.Update`'s SPEC.md:952 top/bottom jump,
+implemented via the same `visibleSessionIndices()` (visual order, collapsed
+rows skipped) that `↑`/`↓` already walk one step at a time — `g` selects
+`visible[0]`, `G` selects `visible[len(visible)-1]`. Group collapse moved to
+`c` (mnemonic: collapse), a letter that appears nowhere in SPEC.md §11's
+keymap list (checked against every key `↵ space Y n r R x s i e P p E f / m
+z A u g G , t | < > ? q` plus the two-key `dd`) so it introduces no new
+collision either with an implemented key or a reserved-but-not-yet-built one
+(`E`, `f`, `s`, `/`, `z` are real gaps other tasks in this plan still owe —
+`c` is not one of them).
+
+**What changed**: `internal/tui/tui.go`'s key switch (`case "c"` for
+collapse, `case "g"`/`case "G"` for top/bottom); the released help text's
+`g toggle the selected row's workspace group...` line became `c toggle the
+selected row's workspace group collapsed/expanded` plus a new `g / G jump
+to the first / last visible row` line, with both phrases mirrored into the
+guard-word "present" lists in `internal/tui/tui_test.go` and
+`cmd/deck/main_test.go` (same commit). `internal/tui/group_test.go`'s
+`TestGKeyTogglesOnlySelectedRowsGroup`/`TestGKeyNoopUnderOverlaysAndWithNoSessions`
+now drive `key("c")` instead of `key("g")`; a new
+`TestGGKeysJumpToFirstAndLastVisibleRow` proves `g`/`G` land on the first/
+last visible row including across a collapsed group's hidden rows, and are
+no-ops under `help`/with no sessions. `features/attention_sort.feature`'s
+two collapse scenarios now send `"c"`; a new `@requirement-30-top-bottom`
+scenario drives `g`/`G` (including collapsing `gg-second-workspace` first
+and confirming `G` still lands correctly once one group's rows are hidden)
+and asserts via the pre-existing `has session "<name>" selected` step
+(`clientHasSessionSelected`) rather than inventing new assertion wording.
+`features/mouse.feature`'s group-header-click scenario needed no change —
+it drives `toggleGroupCollapse` directly via a mouse click, never through
+the `g`/`c` key at all.
+
+**Gotcha for whoever touches this next**: collapsing a group only hides its
+*member* rows from `visibleSessionIndices()` — the group's own header line
+(rendered by `groupHeaderText`) stays on screen with its collapse-state
+marker flipped from `▾`/`v` to `▸`/`>`, and still names the workspace and a
+representative cwd. A "screen stops containing `<workspace-name>`" assertion
+after collapsing is therefore always wrong; assert against a *member
+session's own name* instead (the pattern the pre-existing `grp-b-1`/`solo-a`
+scenarios already use, and the one this task's new scenario had to be
+corrected to match after a first draft asserted on the workspace name and
+failed — collapsing does not remove the header).
+
+**Not folded into SPEC.md**: per the standing rule, `SPEC.md` is never edited
+by this run; the operator should fold `c` (group collapse) into §11's keymap
+list as a new entry the next time SPEC.md itself is revised — it was never
+in that document at all, is unrelated to the `g`/`G` fix, but is being
+newly documented here since this task is what surfaced the gap.

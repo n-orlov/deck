@@ -46,7 +46,7 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     And deck client "A" screen contains "grp-a-2"
     And deck client "A" screen contains "grp-b-1"
     When deck client "A" selects session "grp-b-1"
-    And deck client "A" sends "g"
+    And deck client "A" sends "c"
     Then deck client "A" screen stops containing "grp-b-1"
     And deck client "A" screen contains "second-workspace"
     And deck client "A" screen contains "grp-a-1"
@@ -54,16 +54,38 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     When deck client "A" exits cleanly
 
   @requirement-30-workspace-grouping
-  Scenario: collapsing and expanding the sidebar's only workspace group round-trips via two `g` presses
+  Scenario: collapsing and expanding the sidebar's only workspace group round-trips via two `c` presses
     When deck client "A" creates shell session "solo-a"
     And deck client "A" creates shell session "solo-b"
     And deck client "A" selects session "solo-a"
-    And deck client "A" sends "g"
+    And deck client "A" sends "c"
     Then deck client "A" screen stops containing "solo-a"
     And deck client "A" screen stops containing "solo-b"
-    When deck client "A" sends "g"
+    When deck client "A" sends "c"
     Then deck client "A" screen contains "solo-a"
     And deck client "A" screen contains "solo-b"
+    When deck client "A" exits cleanly
+
+  @requirement-30-top-bottom
+  Scenario: g and G jump to the first and last visible row, skipping a collapsed group's hidden rows
+    When deck client "A" creates shell session "gg-a-1"
+    And deck client "A" creates shell session "gg-a-2"
+    And deck client "A" creates shell session "gg-b-1"
+    And the state database session "gg-b-1" has workspace "gg-second-workspace"
+    And the state database session "gg-a-1" has status "waiting" 20 seconds ago
+    And the state database session "gg-a-2" has status "idle" 10 seconds ago
+    Then within one configured reconcile interval deck client "A" screen contains "gg-second-workspace"
+    When deck client "A" selects session "gg-b-1"
+    And deck client "A" sends "g"
+    Then deck client "A" has session "gg-a-1" selected
+    When deck client "A" sends "G"
+    Then deck client "A" has session "gg-b-1" selected
+    When deck client "A" selects session "gg-b-1"
+    And deck client "A" sends "c"
+    Then deck client "A" screen stops containing "gg-b-1"
+    When deck client "A" selects session "gg-a-2"
+    And deck client "A" sends "G"
+    Then deck client "A" has session "gg-a-2" selected
     When deck client "A" exits cleanly
 
   @requirement-31-attention-count @requirement-15-collapsed-strip
