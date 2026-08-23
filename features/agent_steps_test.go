@@ -72,6 +72,8 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has captured_path marked advisory$`, sessionHasCapturedPathMarkedAdvisory)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and failing pre-launch command "([^"]+)"$`, clientCreatesAgentSessionWithFailingPreLaunch)
 	sc.Step(`^the state database session "([^"]+)" has an event of kind "([^"]+)" with reason containing "([^"]+)"$`, sessionHasEventOfKindWithReasonContaining)
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and pre-launch command "([^"]+)"$`, clientCreatesAgentSessionWithSucceedingPreLaunch)
+	sc.Step(`^the private tmux session for "([^"]+)" shows "([^"]+)" before "([^"]+)"$`, privateTMuxSessionShowsTextBeforeOtherText)
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
@@ -284,6 +286,77 @@ func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientNa
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// clientCreatesAgentSessionWithSucceedingPreLaunch is task 017/I-13's
+// counterpart to clientCreatesAgentSessionWithFailingPreLaunch: the same
+// keystroke-only route through the create dialog's Pre-launch command
+// field, but with a command that exits zero, so buildPaneCommand's `&&`
+// lets the agent argv run afterward in the same pane rather than
+// short-circuiting. Nothing in this codebase's black-box coverage yet
+// proves pre_launch actually ran (rather than being silently skipped) on
+// the path where the agent goes on to start -- crash.feature's own
+// pre_launch scenario only proves the failing half. privateTMuxSessionShows
+// TextBeforeOtherText is what turns "the agent started" (already proven by
+// agent_session.feature) into "pre_launch ran, and ran first".
+func clientCreatesAgentSessionWithSucceedingPreLaunch(ctx context.Context, clientName, kind, name, profile, command string) error {
+	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\t\t\t"); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.WaitForFrame(ctx, false, "Pre-launch command"); err != nil {
+		return fmt.Errorf("tab onto Pre-launch command field: %w", err)
+	}
+	if err := client.Send(command); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.WaitForFrame(ctx, false, command); err != nil {
+		return fmt.Errorf("type Pre-launch command field %q: %w", command, err)
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// privateTMuxSessionShowsTextBeforeOtherText polls the named session's own
+// private tmux pane (capture-pane -p -S -, entirely independent of deck's
+// own TUI screen) until it contains both first and second, then asserts
+// first's earliest occurrence precedes second's -- proving order, not just
+// presence, so a pre_launch marker being found anywhere in the pane is not
+// mistaken for it having run before the agent.
+func privateTMuxSessionShowsTextBeforeOtherText(ctx context.Context, name, first, second string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	deadline := time.Now().Add(5 * time.Second)
+	var output []byte
+	for {
+		output, err = tmuxOutput(ctx, h, "capture-pane", "-p", "-S", "-", "-t", target)
+		if err == nil && strings.Contains(string(output), first) && strings.Contains(string(output), second) {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q's private tmux pane never showed both %q and %q; last capture (err=%v):\n%s", name, first, second, err, string(output))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	text := string(output)
+	if strings.Index(text, first) >= strings.Index(text, second) {
+		return fmt.Errorf("session %q's private tmux pane showed %q at or after %q, want %q first:\n%s", name, first, second, first, text)
+	}
+	return nil
 }
 
 // positionCreateModalOnProfileField drives the real create modal by

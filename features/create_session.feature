@@ -163,3 +163,60 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     And deck client "A" closes the create modal
     Then the state database has zero sessions
     When deck client "A" exits cleanly
+
+  # Requirement 41 also names pre_launch as part of this file's own
+  # coverage. features/crash.feature's "a failing pre_launch leaves visible
+  # evidence without attaching" proves the FAILING half already -- a
+  # pre_launch that exits non-zero short-circuits before the agent argv
+  # ever execs (buildPaneCommand's `&&`), so no fixture is needed there.
+  # What is still unproven anywhere is that a SUCCEEDING pre_launch, typed
+  # into this same create dialog, actually runs at all rather than being
+  # silently skipped on the path where the agent goes on to start --
+  # agent_session.feature's plain claude-creation scenario proves the agent
+  # starts, but says nothing about pre_launch, since it never sets one.
+  @requirement-41-pre-launch-succeeds-before-agent
+  Scenario: a succeeding pre-launch command, typed into the create dialog, runs before the agent starts
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "cs-pre-launch-ok" with permission profile "safe" and pre-launch command "echo PRE_OK"
+    Then deck client "A" screen contains "starting"
+    And the private tmux session for "cs-pre-launch-ok" shows "PRE_OK" before "Fake Claude Code"
+    And the state database session "cs-pre-launch-ok" has a non-empty conversation id
+    When deck client "A" exits cleanly
+
+  # §11.7's remaining recent-cwd interaction this file did not yet cover:
+  # [ui] recent_cwd_limit (SPEC §6.5) actually bounds what the cwd field
+  # offers, and re-using an already-recent directory does not duplicate its
+  # entry (store.PromoteRecentCwd's ON CONFLICT dedup, proven at the Go
+  # level by internal/store/store_test.go's
+  # TestPromoteRecentCwdRepromotingExistingPathMovesToFrontWithoutDuplicating
+  # -- this scenario reaches the same behaviour through the actual create
+  # dialog rather than a direct store call). Ghost completion and tab
+  # completion remain, as already noted above, in the sibling files
+  # create_cwd_ghost.feature and create_cwd_tab.feature; this scenario does
+  # not re-litigate that split.
+  @requirement-41-recent-cwd-limit-evicts-and-dedupes
+  Scenario: recent_cwd_limit bounds the cwd field's history and re-using a directory does not duplicate its entry
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      recent_cwd_limit = 2
+      """
+    And deck client "A" is started
+    When deck client "A" creates shell session "cs-limit-1" with a fresh working directory labelled "limit-1"
+    And deck client "A" creates shell session "cs-limit-2" with a fresh working directory labelled "limit-2"
+    And deck client "A" creates shell session "cs-limit-1-reuse" with a fresh working directory labelled "limit-1"
+    And deck client "A" creates shell session "cs-limit-3" with a fresh working directory labelled "limit-3"
+    And deck client "A" opens the create modal
+    Then deck client "A" screen contains the directory labelled "limit-3"
+    And deck client "A" screen contains "(last used)"
+    When deck client "A" tabs to the cwd field
+    And deck client "A" presses "up" in the cwd field 2 times
+    Then deck client "A" screen contains the directory labelled "limit-1"
+    And deck client "A" screen contains "recent 2/2"
+    And deck client "A" screen does not contain the directory labelled "limit-2"
+    When deck client "A" presses "up" in the cwd field 1 times
+    Then deck client "A" screen contains the directory labelled "limit-1"
+    And deck client "A" screen contains "recent 2/2"
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
