@@ -29,6 +29,15 @@ type Caps struct {
 	// Resumable reports whether Resume is meaningful for this adapter at
 	// all. A shell has no conversation to resume.
 	Resumable bool
+	// HasTranscript declares whether this adapter has any transcript
+	// convention at all. false (shell) means TranscriptPaths must always
+	// decline outright: there is no notion of a transcript to locate, as
+	// opposed to true (claude, pi) where TranscriptPaths may still decline
+	// per-call because none could actually be located (missing HOME,
+	// missing project directory, no matching file) -- see
+	// docs/reports/phase3-findings.md's provenance section for the exact,
+	// non-inferred convention each declares.
+	HasTranscript bool
 }
 
 // SupportsProfile reports whether p is one of the profiles Caps declares.
@@ -89,6 +98,20 @@ type ResumeInput struct {
 	ExtraArgs      []string
 }
 
+// TranscriptInput carries what an adapter needs to locate its own
+// transcript file for a conversation. It is deliberately independent of
+// internal/store, mirroring LaunchInput/ResumeInput.
+type TranscriptInput struct {
+	// Home is the resolved $HOME to search under. An adapter whose
+	// Capabilities().HasTranscript is false ignores this entirely.
+	Home string
+	// CWD is the session's working directory, used by adapters whose
+	// convention keys the transcript location by cwd.
+	CWD string
+	// ConversationID is the conversation id to locate.
+	ConversationID string
+}
+
 // Adapter is implemented by each supported agent kind. It declares its
 // capabilities and turns launch/resume requests into argv — it never runs
 // anything itself; internal/service is responsible for the pane.
@@ -109,6 +132,17 @@ type Adapter interface {
 	// Probe classifies captured pane text into a sampled status verdict. An
 	// empty status means the adapter cannot justify a verdict from these bytes.
 	Probe(pane string) (status, reason string)
+	// TranscriptPaths attempts to locate this adapter's own transcript file
+	// for the given conversation, following exactly the convention recorded
+	// in docs/reports/phase3-findings.md's provenance section -- it is a
+	// declared capability, never an inferred path. ok=false is an explicit
+	// "cannot locate" result, returned both when Capabilities().HasTranscript
+	// is false (the adapter has no notion of a transcript at all) and when
+	// it does but none could actually be located this time (missing Home,
+	// missing project directory, no matching file) -- never an error, and
+	// never a guess: a caller (kill/delete/reap) must still succeed with no
+	// transcript found.
+	TranscriptPaths(in TranscriptInput) (path string, ok bool)
 }
 
 // Registry looks adapters up by kind. The zero value is not usable; use

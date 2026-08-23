@@ -1,0 +1,161 @@
+package agent
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestShellTranscriptPathAlwaysDeclines proves shell has no notion of a
+// transcript at all (Capabilities().HasTranscript is false): TranscriptPaths
+// declines regardless of input, never guessing a path.
+func TestShellTranscriptPathAlwaysDeclines(t *testing.T) {
+	if NewShell().Capabilities().HasTranscript {
+		t.Fatalf("Shell.Capabilities().HasTranscript = true, want false")
+	}
+	home := t.TempDir()
+	path, ok := NewShell().TranscriptPaths(TranscriptInput{Home: home, CWD: "/tmp/work", ConversationID: "any-id"})
+	if ok || path != "" {
+		t.Fatalf("Shell.TranscriptPaths = (%q, %v), want (\"\", false)", path, ok)
+	}
+}
+
+// TestClaudeTranscriptPathFindsRealFile proves Claude's TranscriptPaths
+// resolves exactly the convention recorded in
+// docs/reports/phase3-findings.md: $HOME/.claude/projects/<cwd with every
+// separator replaced by "-">/<conversation id>.jsonl.
+func TestClaudeTranscriptPathFindsRealFile(t *testing.T) {
+	if !NewClaude().Capabilities().HasTranscript {
+		t.Fatalf("Claude.Capabilities().HasTranscript = false, want true")
+	}
+	home := t.TempDir()
+	cwd := "/tmp/deck-scenario/agent-session-cwd"
+	id := "20d34654-9462-4781-8b14-680862724dc7"
+	project := strings.ReplaceAll(cwd, string(filepath.Separator), "-")
+	dir := filepath.Join(home, ".claude", "projects", project)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, id+".jsonl")
+	if err := os.WriteFile(want, []byte(`{"message":"hi"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := NewClaude().TranscriptPaths(TranscriptInput{Home: home, CWD: cwd, ConversationID: id})
+	if !ok {
+		t.Fatalf("Claude.TranscriptPaths ok = false, want true")
+	}
+	if got != want {
+		t.Fatalf("Claude.TranscriptPaths = %q, want %q", got, want)
+	}
+}
+
+// TestClaudeTranscriptPathMissingHomeDegrades proves an empty Home degrades
+// to an explicit "cannot locate" result rather than an error or a guess.
+func TestClaudeTranscriptPathMissingHomeDegrades(t *testing.T) {
+	got, ok := NewClaude().TranscriptPaths(TranscriptInput{Home: "", CWD: "/tmp/work", ConversationID: "some-id"})
+	if ok || got != "" {
+		t.Fatalf("Claude.TranscriptPaths with empty Home = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// TestClaudeTranscriptPathNoMatchingFileDegrades proves a well-formed,
+// deterministic path that simply does not exist on disk (no project
+// directory, or no file for this id) degrades the same way a missing HOME
+// does -- never an error.
+func TestClaudeTranscriptPathNoMatchingFileDegrades(t *testing.T) {
+	home := t.TempDir() // no .claude/projects/... created at all
+
+	got, ok := NewClaude().TranscriptPaths(TranscriptInput{Home: home, CWD: "/tmp/nowhere", ConversationID: "missing-id"})
+	if ok || got != "" {
+		t.Fatalf("Claude.TranscriptPaths with no project directory = (%q, %v), want (\"\", false)", got, ok)
+	}
+
+	// Project directory exists, but no file for this id.
+	cwd := "/tmp/deck-scenario/agent-session-cwd"
+	project := strings.ReplaceAll(cwd, string(filepath.Separator), "-")
+	if err := os.MkdirAll(filepath.Join(home, ".claude", "projects", project), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, ok = NewClaude().TranscriptPaths(TranscriptInput{Home: home, CWD: cwd, ConversationID: "no-such-id"})
+	if ok || got != "" {
+		t.Fatalf("Claude.TranscriptPaths with no matching file = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// TestPiTranscriptPathFindsRealFile proves Pi's TranscriptPaths resolves
+// exactly the convention recorded in docs/reports/phase3-findings.md:
+// directory $HOME/.pi/agent/sessions/--<encoded cwd>--, filename
+// "<timestamp>_<conversation id>.jsonl" located by globbing the id suffix
+// (the filename's timestamp component is not recomputable from the id
+// alone).
+func TestPiTranscriptPathFindsRealFile(t *testing.T) {
+	if !NewPi().Capabilities().HasTranscript {
+		t.Fatalf("Pi.Capabilities().HasTranscript = false, want true")
+	}
+	home := t.TempDir()
+	cwd := "/tmp/pi-provenance/work"
+	id := "43ac9425-9b54-4c5d-8063-ac52768d0cdb"
+	dir := filepath.Join(home, ".pi", "agent", "sessions", "--tmp-pi-provenance-work--")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filename := "2026-08-22T15-06-00-661Z_" + id + ".jsonl"
+	want := filepath.Join(dir, filename)
+	header, err := json.Marshal(map[string]any{"type": "session", "id": id, "cwd": cwd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(want, append(header, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A decoy file for a different conversation id must not be matched.
+	if err := os.WriteFile(filepath.Join(dir, "2026-08-22T15-05-00-000Z_other-id.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := NewPi().TranscriptPaths(TranscriptInput{Home: home, CWD: cwd, ConversationID: id})
+	if !ok {
+		t.Fatalf("Pi.TranscriptPaths ok = false, want true")
+	}
+	if got != want {
+		t.Fatalf("Pi.TranscriptPaths = %q, want %q", got, want)
+	}
+}
+
+// TestPiTranscriptPathMissingHomeDegrades proves an empty Home degrades to
+// an explicit "cannot locate" result rather than an error or a guess.
+func TestPiTranscriptPathMissingHomeDegrades(t *testing.T) {
+	got, ok := NewPi().TranscriptPaths(TranscriptInput{Home: "", CWD: "/tmp/work", ConversationID: "some-id"})
+	if ok || got != "" {
+		t.Fatalf("Pi.TranscriptPaths with empty Home = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// TestPiTranscriptPathNoMatchingFileDegrades proves both a wholly absent
+// session directory and an existing directory with no id-matching file
+// degrade to "cannot locate" -- never an error, never a glob outside the
+// one directory the convention names.
+func TestPiTranscriptPathNoMatchingFileDegrades(t *testing.T) {
+	home := t.TempDir() // no .pi/agent/sessions/... created at all
+
+	got, ok := NewPi().TranscriptPaths(TranscriptInput{Home: home, CWD: "/tmp/nowhere", ConversationID: "missing-id"})
+	if ok || got != "" {
+		t.Fatalf("Pi.TranscriptPaths with no session directory = (%q, %v), want (\"\", false)", got, ok)
+	}
+
+	cwd := "/tmp/pi-provenance/work"
+	dir := filepath.Join(home, ".pi", "agent", "sessions", "--tmp-pi-provenance-work--")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "2026-08-22T15-05-00-000Z_other-id.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, ok = NewPi().TranscriptPaths(TranscriptInput{Home: home, CWD: cwd, ConversationID: "no-such-id"})
+	if ok || got != "" {
+		t.Fatalf("Pi.TranscriptPaths with no matching file = (%q, %v), want (\"\", false)", got, ok)
+	}
+}

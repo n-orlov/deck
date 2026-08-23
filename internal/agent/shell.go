@@ -20,6 +20,7 @@ func (Shell) Capabilities() Caps {
 		Profiles:              nil,
 		AssignsConversationID: false,
 		Resumable:             false,
+		HasTranscript:         false,
 	}
 }
 
@@ -52,3 +53,8 @@ func (Shell) Instrument(LaunchInput) ([]string, map[string]string) { return nil,
 
 // Probe always declines: shell pane text has no meaningful agent verdict.
 func (Shell) Probe(string) (string, string) { return "", "" }
+
+// TranscriptPaths always declines: a shell has no notion of a transcript at
+// all (Capabilities().HasTranscript is false), so this is never a
+// missing-file degradation, just an adapter that has nothing to look for.
+func (Shell) TranscriptPaths(TranscriptInput) (string, bool) { return "", false }
