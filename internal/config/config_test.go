@@ -374,7 +374,7 @@ func TestConfigFileMalformedIsRejected(t *testing.T) {
 
 func TestInvalidControlsAreRejected(t *testing.T) {
 	for key, value := range map[string]string{
-		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_UNDO_MS": "0", "DECK_DELETE_GRACE_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
+		"DECK_CLOCK": "tomorrow", "DECK_CLOCK_STEP": "0s", "DECK_RECONCILE_MS": "0", "DECK_PREVIEW_MS": "soon", "DECK_UNDO_MS": "0", "DECK_DELETE_GRACE_MS": "soon", "DECK_INTERACTIVE_MS": "soon", "DECK_TMUX_SOCKET": "bad/name", "DECK_ASCII": "perhaps", "DECK_MOUSE": "maybe",
 	} {
 		t.Run(key, func(t *testing.T) {
 			if _, err := LoadFrom(environment(map[string]string{key: value}), fakeHome); err == nil {
@@ -394,6 +394,53 @@ func TestUndoAndDeleteGraceDefaultWhenUnset(t *testing.T) {
 	}
 	if settings.DeleteGrace != DefaultDeleteGraceMS*time.Millisecond {
 		t.Fatalf("DeleteGrace default = %v, want %dms", settings.DeleteGrace, DefaultDeleteGraceMS)
+	}
+}
+
+// TestInteractiveMSDefaultsFromSchemaAndDeckEnvOverrides is task 030
+// (II-4): interactive_ms is resolved from config.toml via the schema's
+// declared default the same way stale_after/capture_min_interval are
+// (unset file -> Schema's Default), and DECK_INTERACTIVE_MS overrides
+// whatever the file said, recorded in EnvOverrides, the same way
+// DECK_TMUX_MOUSE overrides tmux_mouse -- unlike DECK_RECONCILE_MS/
+// DECK_PREVIEW_MS, which have no config.toml counterpart to override and
+// so never appear in EnvOverrides at all.
+func TestInteractiveMSDefaultsFromSchemaAndDeckEnvOverrides(t *testing.T) {
+	defaultMS, ok := FieldByFullKey("interactive_ms")
+	if !ok {
+		t.Fatal("interactive_ms not declared in Schema")
+	}
+	wantDefault, _ := defaultMS.Default.(int)
+
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.InteractiveMS != time.Duration(wantDefault)*time.Millisecond {
+		t.Fatalf("InteractiveMS default = %v, want %dms (Schema's declared default)", settings.InteractiveMS, wantDefault)
+	}
+	if _, overridden := settings.EnvOverrides["interactive_ms"]; overridden {
+		t.Fatalf("interactive_ms should not be recorded as env-overridden when DECK_INTERACTIVE_MS is unset")
+	}
+
+	dir := writeConfigFile(t, "interactive_ms = 90\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.InteractiveMS != 90*time.Millisecond {
+		t.Fatalf("InteractiveMS from config.toml = %v, want 90ms", settings.InteractiveMS)
+	}
+
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_INTERACTIVE_MS": "25"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.InteractiveMS != 25*time.Millisecond {
+		t.Fatalf("DECK_INTERACTIVE_MS=25 should override config.toml's 90ms, got %v", settings.InteractiveMS)
+	}
+	if envVar := settings.EnvOverrides["interactive_ms"]; envVar != "DECK_INTERACTIVE_MS" {
+		t.Fatalf("EnvOverrides[interactive_ms] = %q, want DECK_INTERACTIVE_MS", envVar)
 	}
 }
 

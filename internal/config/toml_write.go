@@ -230,6 +230,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.Itoa(int(cfg.StaleAfter.Seconds()))
 	case "capture_min_interval":
 		return strconv.Itoa(int(cfg.CaptureMinInterval.Seconds()))
+	case "interactive_ms":
+		return strconv.Itoa(int(cfg.InteractiveMS.Milliseconds()))
 	case "ui.ascii":
 		return strconv.FormatBool(cfg.ASCII)
 	case "ui.mouse":

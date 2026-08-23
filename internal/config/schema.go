@@ -220,6 +220,40 @@ var Schema = []Field{
 		Scope: ScopeRestartToApply,
 	},
 	{
+		Section: "",
+		Key:     "interactive_ms",
+		// SPEC §13.1 documents DECK_INTERACTIVE_MS as "a duration, like the
+		// two ticks above" (DECK_RECONCILE_MS/DECK_PREVIEW_MS) but states no
+		// numeric default; 60ms is chosen here because it is the exact
+		// coalescing interval the Part II spike measured render cost
+		// against (per-read rendering costs 1.99x coalescing to 60ms --
+		// II-27/the spike report), not an arbitrary round number.
+		Default: 60,
+		Kind:    KindInteger,
+		Unit:    "milliseconds",
+		IntBounds: Bounds{
+			Min: 1,
+		},
+		Description: "The grid render-coalescing interval for §11.9's interactive " +
+			"preview: pane bytes arriving faster than this are batched into one " +
+			"repaint rather than one repaint per read (SPEC §13.1). Lower values " +
+			"repaint more often at higher CPU cost; higher values coalesce more " +
+			"aggressively at the cost of a laggier-feeling terminal. " +
+			"DECK_INTERACTIVE_MS overrides the file when set, exactly like " +
+			"DECK_RECONCILE_MS/DECK_PREVIEW_MS override their own knobs (those " +
+			"two have no config.toml counterpart at all; this one does, per " +
+			"§6.5's \"declared in the schema with its DECK_ override like every " +
+			"other key\"). Restart-to-apply: saving here writes config.toml " +
+			"immediately, but nothing in the already-running client reads it " +
+			"again until deck restarts.",
+		// requirement 19: interactive mode's render-coalescing loop (II-27,
+		// task 049) does not exist in this tree yet -- there is nothing a
+		// running client could apply live even in principle today, the same
+		// honest-pending-consumer reasoning as capture_min_interval and
+		// ui.recent_cwd_limit above.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "ui",
 		Key:         "theme",
 		Kind:        KindEnum,
