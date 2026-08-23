@@ -30,6 +30,11 @@ func registerDialogsSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" dialog box width is (\d+)$`, clientDialogBoxWidthIs)
 	sc.Step(`^deck client "([^"]+)" attempts to create a shell session named "([^"]+)" with working directory "([^"]+)"$`, clientAttemptsCreateModalWithCWD)
 	sc.Step(`^the state database session "([^"]+)" has resume mode "([^"]+)"$`, sessionHasResumeMode)
+	sc.Step(`^deck client "([^"]+)" opens the rename dialog$`, clientOpensRenameDialog)
+	sc.Step(`^deck client "([^"]+)" types "([^"]*)" into the rename field$`, clientTypesIntoRenameField)
+	sc.Step(`^deck client "([^"]+)" closes the rename dialog with escape$`, clientClosesRenameDialogWithEscape)
+	sc.Step(`^deck client "([^"]+)" submits the rename dialog$`, clientSubmitsRenameDialog)
+	sc.Step(`^deck client "([^"]+)" submits the rename dialog expecting rejection$`, clientSubmitsRenameDialogExpectingRejection)
 }
 
 // clientOpensProfileSwitchDialogForSession selects the named row and sends
@@ -386,4 +391,107 @@ func sessionHasResumeMode(ctx context.Context, name, want string) error {
 		return fmt.Errorf("session %q resume_state = %q, want %q", name, got, want)
 	}
 	return nil
+}
+
+// clientOpensRenameDialog sends `r` (task 013, SPEC §11.4, PRD requirement
+// 31/I-8) -- the only way the rename sub-dialog opens, and only while the
+// `i` detail dialog is already showing (there is no top-level `r` case for
+// it at all; see the sibling "top-level r does not open it" scenario).
+func clientOpensRenameDialog(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "New name:")
+}
+
+// clientTypesIntoRenameField sends value's runes, replacing the field's
+// prefilled current name wholesale on the first keystroke (task 013's
+// createView-cwd-field-style prefill rule), then gives the render a moment
+// to catch up -- mirroring clientCyclesOpenDialogFieldRight's own sleep,
+// since there is no distinctive substring to WaitForFrame on for arbitrary
+// typed text.
+func clientTypesIntoRenameField(ctx context.Context, clientName, value string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send(value); err != nil {
+		return err
+	}
+	time.Sleep(30 * time.Millisecond)
+	return nil
+}
+
+// clientClosesRenameDialogWithEscape sends the shared §11.4 esc key and
+// waits for the rename dialog's own "New name:" field label to leave the
+// screen -- unlike the other four dialogs' clientClosesDialogWithEscape,
+// rename's esc returns to detailView (m.detail stays true underneath it),
+// never all the way out to the main session list, so "deck - sessions"
+// never (re)appears here.
+func clientClosesRenameDialogWithEscape(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\x1b"); err != nil {
+		return err
+	}
+	return client.WaitForFrameGone(ctx, false, "New name:")
+}
+
+// clientSubmitsRenameDialog sends the shared §11.4 enter key and waits for
+// the rename dialog's own field label to leave the screen, exactly like
+// clientClosesRenameDialogWithEscape's own wait condition -- a successful
+// rename returns to detailView too (m.detail stays true), not to the main
+// list, so this cannot reuse clientSubmitsOpenDialog's "deck - sessions"
+// wait either.
+func clientSubmitsRenameDialog(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrameGone(ctx, false, "New name:")
+}
+
+// clientSubmitsRenameDialogExpectingRejection sends enter and waits for the
+// in-dialog validation's own note to appear instead -- unlike
+// clientSubmitsRenameDialog, the dialog stays open (SPEC requirement 10:
+// the rejected value is retained, not cleared) so "New name:" never leaves
+// the screen here.
+func clientSubmitsRenameDialogExpectingRejection(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "already exists")
 }

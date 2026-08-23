@@ -285,3 +285,86 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     And the scenario's config.toml still matches the captured "before-help-mouse-cfg"
     When deck client "A" closes the dialog with escape
     And deck client "A" exits cleanly
+
+  Scenario: rename dialog -- reachable only from inside detail, esc after altering it leaves the persisted name and tmux session untouched
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-rename-esc"
+    And the scenario's config.toml is captured as "before-rename-esc"
+    And deck client "A" opens detail for session "dc-rename-esc"
+    And deck client "A" opens the rename dialog
+    And deck client "A" types "dc-rename-esc-changed" into the rename field
+    And deck client "A" closes the rename dialog with escape
+    Then deck client "A" screen contains "dc-rename-esc detail"
+    When deck client "A" closes the dialog with escape
+    Then the state database contains session "dc-rename-esc"
+    And the state database does not contain session "dc-rename-esc-changed"
+    And the private tmux session "deck_dc-rename-esc" exists
+    And the scenario's config.toml still matches the captured "before-rename-esc"
+    When deck client "A" exits cleanly
+
+  Scenario: rename dialog -- enter submits a new display name and returns to detail, without ever touching the tmux session
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-rename-submit"
+    Then the private tmux session "deck_dc-rename-submit" exists
+    When deck client "A" opens detail for session "dc-rename-submit"
+    And deck client "A" opens the rename dialog
+    And deck client "A" types "dc-rename-submit-new" into the rename field
+    And deck client "A" submits the rename dialog
+    Then deck client "A" screen contains "dc-rename-submit-new detail"
+    And the state database contains session "dc-rename-submit-new"
+    And the state database does not contain session "dc-rename-submit"
+    And the private tmux session "deck_dc-rename-submit" exists
+    And the private tmux session "deck_dc-rename-submit-new" does not exist
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
+
+  Scenario: rename dialog -- a top-level r does not open it; it still means resume
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "dc-rename-toplevel" with permission profile "safe"
+    And deck client "A" kills session "dc-rename-toplevel"
+    Then within one configured reconcile interval deck client "A" screen contains "stopped"
+    When deck client "A" sends "r"
+    Then deck client "A" screen does not contain "New name:"
+    When deck client "A" exits cleanly
+
+  Scenario: rename dialog -- in-dialog validation rejects a name collision, retaining the typed value and stating the reason
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-rename-collide-a"
+    And deck client "A" creates shell session "dc-rename-collide-b"
+    And deck client "A" opens detail for session "dc-rename-collide-b"
+    And deck client "A" opens the rename dialog
+    And deck client "A" types "dc-rename-collide-a" into the rename field
+    And deck client "A" submits the rename dialog expecting rejection
+    Then deck client "A" screen contains "dc-rename-collide-a"
+    And deck client "A" screen contains "already exists"
+    And the state database contains session "dc-rename-collide-b"
+    When deck client "A" closes the rename dialog with escape
+    And deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
+
+  Scenario: rename dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-rename-mouse"
+    And the scenario's config.toml is captured as "before-rename-mouse-cfg"
+    And deck client "A" opens detail for session "dc-rename-mouse"
+    And deck client "A" opens the rename dialog
+    When deck client "A" captures its frame as "before-rename-mouse"
+    # column 1 row 1: the dialog's own top-left border corner.
+    And deck client "A" clicks at column 1 row 1
+    # column 5 row 4: the exact cell the hidden sidebar's "dc-rename-mouse"
+    # row occupies underneath the dialog (same technique task 001/002's
+    # settings-takeover test and features/settings.feature:157 use), so
+    # a bypassed guard's double click at this point would attach it.
+    And deck client "A" clicks at column 5 row 4
+    # column 95 row 25: past the box's own [26,80]-clamped width in the
+    # harness's 100x30 default terminal, and past its content rows too.
+    And deck client "A" clicks at column 95 row 25
+    And deck client "A" double-clicks at column 1 row 1
+    And deck client "A" double-clicks at column 5 row 4
+    Then deck client "A" frame still matches the captured "before-rename-mouse" frame
+    And the state database session "dc-rename-mouse" has 0 attached events
+    And the scenario's config.toml still matches the captured "before-rename-mouse-cfg"
+    When deck client "A" closes the rename dialog with escape
+    And deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly

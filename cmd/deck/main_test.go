@@ -446,6 +446,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"DECK_DELETE_GRACE_MS", "restores the row", "once the window expires the row is reaped",
 		"A archive the selected session", "kill and archive", "archived_at is a flag",
 		"m toggle a mark", "survives a re-sort or re-group", "ONE u", "restores the entire batch",
+		"i toggle detail view", "r inside it renames", "display name only", "deck_<slug>", "never renamed",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)

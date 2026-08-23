@@ -490,28 +490,31 @@ func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
 	}
 }
 
-// TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside proves requirement 11
+// TestAllDialogsRejectMouseAtBorderBodyAndOutside proves requirement 11
 // (SPEC §11.4/§11.8, review finding on req 11 at 65e623e) for every one of
-// the five dialogs the guard at the top of the tea.MouseMsg case names --
+// the dialogs the guard at the top of the tea.MouseMsg case names --
 // create (m.creating), detail (m.detail), pin (m.pinning), profile
-// (m.profileSwitching) and help (m.help) -- not just create and help as the
-// pre-existing TestMouseIgnoredWhileOverlayOpen and dialog_contract_test.go
-// coverage did. Each dialog is rendered directly by View() (framedDialog
-// draws the box at (0,0) with no separate placement step), so "border",
-// "body" and "outside" are real coordinates against that box; the body
-// point is deliberately the same (x, y) findRow resolves for the second
-// session's row in the hidden main view underneath, so a guard regression
-// is caught the same way task 001/002's settings-takeover test catches it:
-// a bypassed guard would fall through to m.handleMouse and change
+// (m.profileSwitching), help (m.help), and (task 013) rename (m.renaming)
+// -- not just create and help as the pre-existing
+// TestMouseIgnoredWhileOverlayOpen and dialog_contract_test.go coverage
+// did. Each dialog is rendered directly by View() (framedDialog draws the
+// box at (0,0) with no separate placement step), so "border", "body" and
+// "outside" are real coordinates against that box; the body point is
+// deliberately the same (x, y) findRow resolves for the second session's
+// row in the hidden main view underneath, so a guard regression is caught
+// the same way task 001/002's settings-takeover test catches it: a
+// bypassed guard would fall through to m.handleMouse and change
 // m.selected from 0 to 1, or (on a second press, i.e. a double click) call
-// attach -- this is verified by literally deleting the five flags from the
-// guard's condition and re-running (RED output below, restored for GREEN).
-// None of the five dialogs render an actual clickable button (they are
+// attach -- this is verified by literally deleting the flags from the
+// guard's condition and re-running (RED output below, from the original
+// five-dialog version of this test, restored for GREEN; task 013 added
+// the sixth, rename, case afterward without re-capturing RED for it).
+// None of the dialogs render an actual clickable button (they are
 // keyboard-only text dialogs, per createView/pinView/profileSwitchView/
-// detailView/helpText), so beyond selected/cmd/attach the dialog's own
-// state is asserted via View() being byte-for-byte identical before and
-// after, which subsumes every dialog-private field createView/pinView/
-// profileSwitchView read to render.
+// detailView/helpText/renameView), so beyond selected/cmd/attach the
+// dialog's own state is asserted via View() being byte-for-byte identical
+// before and after, which subsumes every dialog-private field
+// createView/pinView/profileSwitchView/renameView read to render.
 //
 // RED (guard's five flags replaced with `false &&` on b1e2c05, before this
 // task's fix restored them):
@@ -531,7 +534,7 @@ func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
 //
 // GREEN is the real, captured `ci/run.sh go test ./internal/tui/... -run
 // Mouse -v` output quoted in this task's commit message.
-func TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
+func TestAllDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 	baseSessions := func() []store.Session {
 		return []store.Session{
 			{ID: "a1", Name: "a1", Agent: "claude", CWD: "/work/infra", Status: "waiting",
@@ -567,6 +570,11 @@ func TestAllFiveDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 			name:  "profile",
 			setup: func(m *Model) { m.profileSwitching = true; m.profileSwitchValue = "safe" },
 			open:  func(m Model) bool { return m.profileSwitching },
+		},
+		{
+			name:  "rename",
+			setup: func(m *Model) { m.detail = true; m.renaming = true; m.renameValue = "a1" },
+			open:  func(m Model) bool { return m.renaming },
 		},
 	}
 
