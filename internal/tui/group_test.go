@@ -152,30 +152,34 @@ func TestCollapsedGroupStaysNavigable(t *testing.T) {
 }
 
 // TestGKeyTogglesOnlySelectedRowsGroup is task 039's SPEC §11.8 keyboard
-// duplicate of toggleGroupCollapse: pressing "g" on a selected row flips
+// duplicate of toggleGroupCollapse: pressing "c" on a selected row flips
 // only that row's own workspace group, leaving every other group's
 // collapse state exactly as it was.
+//
+// Task 119: this was rebound from "g" to "c" because SPEC.md:952 reserves
+// g/G for top/bottom navigation, which this key previously silently
+// shadowed.
 func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	// Single-workspace round trip: with nothing else to move selection to,
 	// setGroupCollapsed's own "fall back to 0" behaviour (internal/tui/
 	// group.go's nearestVisibleSelection) keeps m.selected pointing at the
-	// same row across both collapse and the following expand, so two "g"
+	// same row across both collapse and the following expand, so two "c"
 	// presses in a row toggle the same group closed then open again.
 	one := groupTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
 	})
 	one.selected = 0
 
-	updated, _ := one.Update(key("g"))
+	updated, _ := one.Update(key("c"))
 	one = updated.(Model)
 	if !one.isGroupCollapsed("infra") {
-		t.Fatalf("g did not collapse the selected row's only group")
+		t.Fatalf("c did not collapse the selected row's only group")
 	}
 
-	updated, _ = one.Update(key("g"))
+	updated, _ = one.Update(key("c"))
 	one = updated.(Model)
 	if one.isGroupCollapsed("infra") {
-		t.Fatalf("a second g did not expand the group back")
+		t.Fatalf("a second c did not expand the group back")
 	}
 
 	// Multi-workspace: collapsing the selected row's group must never touch
@@ -189,20 +193,20 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	})
 	two.selected = 0 // "a1", inside "infra"
 
-	updated, _ = two.Update(key("g"))
+	updated, _ = two.Update(key("c"))
 	two = updated.(Model)
 	if !two.isGroupCollapsed("infra") {
-		t.Fatalf("g did not collapse the selected row's group")
+		t.Fatalf("c did not collapse the selected row's group")
 	}
 	if two.isGroupCollapsed("service-a") {
-		t.Fatalf("g collapsed a group other than the selected row's own")
+		t.Fatalf("c collapsed a group other than the selected row's own")
 	}
 	if !two.isSessionVisible(two.selected) {
-		t.Fatalf("selection %d landed on a hidden row after g collapsed its group", two.selected)
+		t.Fatalf("selection %d landed on a hidden row after c collapsed its group", two.selected)
 	}
 }
 
-// TestGKeyNoopUnderOverlaysAndWithNoSessions proves "g" behaves like every
+// TestGKeyNoopUnderOverlaysAndWithNoSessions proves "c" behaves like every
 // other bare-letter binding: a no-op while help or the `i` detail dialog
 // covers the sidebar, and a no-op (not a panic) with no session to resolve
 // a group from.
@@ -213,24 +217,83 @@ func TestGKeyNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
 	m.selected = 0
 
 	m.help = true
-	updated, _ := m.Update(key("g"))
+	updated, _ := m.Update(key("c"))
 	m = updated.(Model)
 	if m.isGroupCollapsed("infra") {
-		t.Fatalf("g collapsed a group while help was open")
+		t.Fatalf("c collapsed a group while help was open")
 	}
 	m.help = false
 
 	m.detail = true
-	updated, _ = m.Update(key("g"))
+	updated, _ = m.Update(key("c"))
 	m = updated.(Model)
 	if m.isGroupCollapsed("infra") {
-		t.Fatalf("g collapsed a group while the detail dialog was open")
+		t.Fatalf("c collapsed a group while the detail dialog was open")
 	}
 	m.detail = false
 
 	empty := groupTestModel(nil)
-	updated, _ = empty.Update(key("g"))
+	updated, _ = empty.Update(key("c"))
 	_ = updated.(Model) // must not panic with no sessions to select from
+}
+
+// TestGGKeysJumpToFirstAndLastVisibleRow is task 119's SPEC.md:952 "g/G
+// top/bottom" keyboard binding: g selects the first visible row in visual
+// order, G the last, and both skip a collapsed group's hidden rows exactly
+// like a single ↑/↓ press would.
+func TestGGKeysJumpToFirstAndLastVisibleRow(t *testing.T) {
+	m := groupTestModel([]store.Session{
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+	})
+	m.selected = 1
+
+	updated, _ := m.Update(key("g"))
+	m = updated.(Model)
+	if m.sessions[m.selected].ID != "a1" {
+		t.Fatalf("g did not select the first visible row, got %q", m.sessions[m.selected].ID)
+	}
+
+	updated, _ = m.Update(key("G"))
+	m = updated.(Model)
+	if got := m.sessions[m.selected].ID; got != "a1" && got != "a2" && got != "b1" {
+		t.Fatalf("G selected an unexpected row %q", got)
+	}
+	// visualOrder groups by workspace; the last group's last row is the
+	// overall last visible row regardless of which workspace sorts last.
+	order := m.visualOrder()
+	lastID := m.sessions[order[len(order)-1]].ID
+	if m.sessions[m.selected].ID != lastID {
+		t.Fatalf("G did not select the last visible row: got %q, want %q", m.sessions[m.selected].ID, lastID)
+	}
+
+	// Collapse the "infra" group: g must now skip straight to "b1", the
+	// first remaining visible row, not land on a hidden a1/a2.
+	m.selected = 2 // b1
+	m.toggleGroupCollapse("infra")
+	updated, _ = m.Update(key("g"))
+	m = updated.(Model)
+	if m.sessions[m.selected].ID != "b1" {
+		t.Fatalf("g with infra collapsed should land on the first visible row b1, got %q", m.sessions[m.selected].ID)
+	}
+
+	// No-ops: help/detail cover the sidebar, and no sessions means nothing
+	// to select.
+	m.help = true
+	prevSelected := m.selected
+	updated, _ = m.Update(key("g"))
+	m = updated.(Model)
+	if m.selected != prevSelected {
+		t.Fatalf("g moved selection while help was open")
+	}
+	m.help = false
+
+	empty := groupTestModel(nil)
+	updated, _ = empty.Update(key("g"))
+	_ = updated.(Model) // must not panic with no sessions
+	updated, _ = empty.Update(key("G"))
+	_ = updated.(Model) // must not panic with no sessions
 }
 
 // TestToggleGroupCollapseFlipsState is the direct collapse/expand unit

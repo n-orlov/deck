@@ -1749,7 +1749,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected = next
 				}
 			}
-		case "g":
+		case "c":
 			// SPEC §11.8 gap (requirement 30's collapsible headers had no key):
 			// toggle the selected row's own workspace group collapsed/expanded,
 			// via the identical helper task 028's mouse header click will call
@@ -1757,8 +1757,31 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// reach this capability. A no-op, like every other bare-letter
 			// binding, while help or the `i` detail overlay covers the sidebar,
 			// or when there is no row to resolve a group from.
+			//
+			// Task 119: this was originally bound to `g`, which collides with
+			// SPEC.md:952's own keymap entry "g/G top/bottom" -- `g`/`G` were
+			// never actually wired to anything, so every keypress of `g` was
+			// silently doing collapse instead of the documented top/bottom jump.
+			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
 			if !m.help && !m.detail && len(m.sessions) > 0 {
 				m.toggleGroupCollapse(sessionWorkspace(m.sessions[m.selected]))
+			}
+		case "g":
+			// SPEC.md:952 "g/G top/bottom": jump to the first visible row in
+			// visual order (mirrors ↑/↓'s own visualOrder-based navigation, so
+			// a collapsed group's hidden rows are skipped exactly like a single
+			// ↑/↓ press would skip them).
+			if !m.help && !m.detail && len(m.sessions) > 0 {
+				if visible := m.visibleSessionIndices(); len(visible) > 0 {
+					m.selected = visible[0]
+				}
+			}
+		case "G":
+			// SPEC.md:952 "g/G top/bottom": jump to the last visible row.
+			if !m.help && !m.detail && len(m.sessions) > 0 {
+				if visible := m.visibleSessionIndices(); len(visible) > 0 {
+					m.selected = visible[len(visible)-1]
+				}
 			}
 		case "|":
 			if !m.help {
@@ -4141,7 +4164,8 @@ Keys
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
-  g toggle the selected row's workspace group collapsed/expanded
+  c toggle the selected row's workspace group collapsed/expanded
+  g / G jump to the first / last visible row
   , open/close settings (edit config.toml's keys); Esc closes, prompting to
     discard if there are unsaved changes
   t open/close the theme picker; previews live on the real session list,
