@@ -355,6 +355,27 @@ func (d *ScreenDriver) WaitForFrame(ctx context.Context, clockFrozen bool, want 
 	}
 }
 
+// WaitForFrameGone is WaitForFrame's negation: it waits until a substring
+// that IS currently on screen has left it, polling the same d.updated
+// signal WaitForFrame does rather than sleeping a fixed guess. Task 105
+// uses it to prove a transient note (the pending-delete indicator) is
+// really cleared by the next render, not merely "probably gone by the time
+// we happened to look".
+func (d *ScreenDriver) WaitForFrameGone(ctx context.Context, clockFrozen bool, unwanted string) error {
+	for {
+		if frame := d.Frame(clockFrozen); !strings.Contains(frame, unwanted) {
+			return nil
+		}
+		select {
+		case <-d.done:
+			return fmt.Errorf("deck exited while frame still showed %q: %v\nframe:\n%s\nraw: %q", unwanted, d.processError(), d.Frame(clockFrozen), d.Raw())
+		case <-d.updated:
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for frame to stop showing %q: %w\nframe:\n%s\nraw: %q", unwanted, ctx.Err(), d.Frame(clockFrozen), d.Raw())
+		}
+	}
+}
+
 // Stop terminates a hung client and returns a useful transcript diagnostic.
 //
 // On timeout it signals SIGQUIT before the final SIGKILL: Go's runtime
