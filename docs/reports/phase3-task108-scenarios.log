@@ -1,0 +1,104 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/killing_a_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m killing a session leaves its adversarially-seeded cwd fingerprint unchanged                           [1;30m# kill_delete_undo.feature:155[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                              [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-kill" is seeded with:[0m                                                             [1;30m# fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-kill-session" with cwd the scratch directory labelled "fp-kill"[0m [1;30m# kill_delete_undo_fingerprint_test.go:21 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-kill" is fingerprinted as "before-kill"[0m                                                 [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                               [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe directory "fp-kill" still matches fingerprint "before-kill"[0m                                          [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/undoing_a_kill_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m undoing a kill leaves its adversarially-seeded cwd fingerprint unchanged                                        [1;30m# kill_delete_undo.feature:170[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-kill-undo" is seeded with:[0m                                                                  [1;30m# fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-kill-undo-session" with cwd the scratch directory labelled "fp-kill-undo"[0m [1;30m# kill_delete_undo_fingerprint_test.go:21 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-kill-undo" is fingerprinted as "before-kill-undo"[0m                                                 [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                         [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" presses u[0m                                                                                           [1;30m# kill_delete_undo_test.go:27 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "running"[0m                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe directory "fp-kill-undo" still matches fingerprint "before-kill-undo"[0m                                           [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dd_(delete)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m dd (delete) leaves its adversarially-seeded cwd fingerprint unchanged                                     [1;30m# kill_delete_undo.feature:187[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-delete" is seeded with:[0m                                                               [1;30m# fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-delete-session" with cwd the scratch directory labelled "fp-delete"[0m [1;30m# kill_delete_undo_fingerprint_test.go:21 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-delete" is fingerprinted as "before-delete"[0m                                                 [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                   [1;30m# kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                       [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "fp-delete-session" is tombstoned[0m                                                 [1;30m# kill_delete_undo_test.go:33 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe directory "fp-delete" still matches fingerprint "before-delete"[0m                                           [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/undoing_a_delete_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m undoing a delete leaves its adversarially-seeded cwd fingerprint unchanged                                          [1;30m# kill_delete_undo.feature:204[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                                                           [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-delete-undo" is seeded with:[0m                                                                    [1;30m# fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-delete-undo-session" with cwd the scratch directory labelled "fp-delete-undo"[0m [1;30m# kill_delete_undo_fingerprint_test.go:21 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-delete-undo" is fingerprinted as "before-delete-undo"[0m                                                 [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                             [1;30m# kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                                 [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" presses u[0m                                                                                               [1;30m# kill_delete_undo_test.go:27 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mthe state database session "fp-delete-undo-session" is not tombstoned[0m                                                  [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mAnd[0m [32mthe directory "fp-delete-undo" still matches fingerprint "before-delete-undo"[0m                                           [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/reaping_a_deleted_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m reaping a deleted session leaves its adversarially-seeded cwd fingerprint unchanged                   [1;30m# kill_delete_undo.feature:222[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                                             [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-reap" is seeded with:[0m                                                             [1;30m# fingerprint_test.go:170 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-reap-session" with cwd the scratch directory labelled "fp-reap"[0m [1;30m# kill_delete_undo_fingerprint_test.go:21 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-reap" is fingerprinted as "before-reap"[0m                                                 [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                               [1;30m# kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                   [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                                     [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe state database session "fp-reap-session" is reaped[0m                                                   [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mAnd[0m [32mthe directory "fp-reap" still matches fingerprint "before-reap"[0m                                           [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+5 scenarios ([32m5 passed[0m)
+45 steps ([32m45 passed[0m)
+3.519426641s
+--- PASS: TestFeatures (3.53s)
+    --- PASS: TestFeatures/killing_a_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.76s)
+    --- PASS: TestFeatures/undoing_a_kill_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.62s)
+    --- PASS: TestFeatures/dd_(delete)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.56s)
+    --- PASS: TestFeatures/undoing_a_delete_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.59s)
+    --- PASS: TestFeatures/reaping_a_deleted_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.96s)
+PASS
+ok  	github.com/n-orlov/deck/features	3.539s

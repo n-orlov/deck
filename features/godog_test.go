@@ -90,6 +90,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerDialogsSteps(sc)
 	registerEnvEditorSteps(sc)
 	registerKillDeleteUndoSteps(sc)
+	registerKillDeleteUndoFingerprintSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {

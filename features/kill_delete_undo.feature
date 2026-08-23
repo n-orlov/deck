@@ -151,6 +151,91 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And the audit log still contains an earlier event for reaped session "dd-reap-no-trace"
     When deck client "A" exits cleanly
 
+  @requirement-29-kill
+  Scenario: killing a session leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started
+    And a scratch directory "fp-kill" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-kill-session" with cwd the scratch directory labelled "fp-kill"
+    And the directory "fp-kill" is fingerprinted as "before-kill"
+    When deck client "A" kills its selected session
+    Then the directory "fp-kill" still matches fingerprint "before-kill"
+    When deck client "A" exits cleanly
+
+  @requirement-29-kill-undo
+  Scenario: undoing a kill leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started
+    And a scratch directory "fp-kill-undo" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-kill-undo-session" with cwd the scratch directory labelled "fp-kill-undo"
+    And the directory "fp-kill-undo" is fingerprinted as "before-kill-undo"
+    When deck client "A" kills its selected session
+    And deck client "A" presses u
+    Then deck client "A" screen contains "running"
+    And the directory "fp-kill-undo" still matches fingerprint "before-kill-undo"
+    When deck client "A" exits cleanly
+
+  @requirement-29-delete
+  Scenario: dd (delete) leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started
+    And a scratch directory "fp-delete" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-delete-session" with cwd the scratch directory labelled "fp-delete"
+    And the directory "fp-delete" is fingerprinted as "before-delete"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    Then the state database session "fp-delete-session" is tombstoned
+    And the directory "fp-delete" still matches fingerprint "before-delete"
+    When deck client "A" exits cleanly
+
+  @requirement-29-delete-undo
+  Scenario: undoing a delete leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started with a short delete grace window
+    And a scratch directory "fp-delete-undo" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-delete-undo-session" with cwd the scratch directory labelled "fp-delete-undo"
+    And the directory "fp-delete-undo" is fingerprinted as "before-delete-undo"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    And deck client "A" presses u
+    Then the state database session "fp-delete-undo-session" is not tombstoned
+    And the directory "fp-delete-undo" still matches fingerprint "before-delete-undo"
+    When deck client "A" exits cleanly
+
+  @requirement-29-reap
+  Scenario: reaping a deleted session leaves its adversarially-seeded cwd fingerprint unchanged
+    Given deck client "A" is started with a short delete grace window
+    And a scratch directory "fp-reap" is seeded with:
+      | path         | kind | content             | mode |
+      | state.db     | file | fake-database-bytes |      |
+      | .hidden      | file | dotfile-content      |      |
+      | subdir       | dir  |                      |      |
+      | readonly.txt | file | cannot-write-me      | 0444 |
+    And deck client "A" creates shell session "fp-reap-session" with cwd the scratch directory labelled "fp-reap"
+    And the directory "fp-reap" is fingerprinted as "before-reap"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    And 400 milliseconds pass
+    Then the state database session "fp-reap-session" is reaped
+    And the directory "fp-reap" still matches fingerprint "before-reap"
+    When deck client "A" exits cleanly
+
   @requirement-2-monotonic-windows
   Scenario: both the undo window and the delete grace window keep advancing while DECK_CLOCK is frozen
     Given deck client "A" is started with the clock frozen at "2025-01-02T03:04:05Z" and short undo and delete windows
