@@ -97,6 +97,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerFilterSteps(sc)
 	registerTmuxOptionScopeSteps(sc)
 	registerPaneHistoryLimitSteps(sc)
+	registerInteractiveGeometrySteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {

@@ -148,6 +148,23 @@ type ScenarioHarness struct {
 	// bytes are still there at that exact path (no purge) or that the
 	// path is gone (purge chosen).
 	transcriptSnapshots map[string]transcriptSnapshot
+
+	// lastGeometryFitResizes/lastGeometryFitErr back task 034's (II-7/II-8)
+	// scenario: the number of resize-window calls internal/tmux.Client.
+	// FitWindowToPane actually issued the last time deckFitsWindowPaneTo
+	// ran, and any error it returned (a non-convergent fit is asserted via
+	// this, not by the step itself failing immediately, so a scenario can
+	// assert ON the failure shape rather than merely triggering one).
+	lastGeometryFitResizes int
+	lastGeometryFitErr     error
+
+	// lastNaiveLoopConverged/lastNaiveLoopFinalHeight back task 034's
+	// mandatory negative control: the PRD-named naive pane-targeting
+	// alternative (resize-window with the WANTED pane size, never
+	// compensating for chrome) run to its own bound, and whether it ever
+	// reached the wanted size.
+	lastNaiveLoopConverged   bool
+	lastNaiveLoopFinalHeight int
 }
 
 var scenarioSequence atomic.Uint64
