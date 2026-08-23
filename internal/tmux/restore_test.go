@@ -266,6 +266,135 @@ func TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch(t *t
 	detachAndWait(t, terminal, cmd)
 }
 
+// TestFreshClientAtThirdSizeGovernsWindowAfterExit implements PRD II-13's
+// positive half: "A fresh client at a third size governs the window after
+// exit." Distinct from TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch
+// (task 035), which attaches a client BEFORE calling RestoreWindowGeometry
+// and proves the unset's automatic follow costs no extra SIGWINCH, this
+// test calls RestoreWindowGeometry first, WHILE NOBODY IS ATTACHED (the
+// ordinary exit case), and only THEN attaches a fresh client at a THIRD
+// size -- distinct from both the original 80x24 and the interactive
+// 45x15 -- proving the restore leaves the window in a state where a
+// LATER, unrelated client governs it via window-size latest, not merely
+// that an already-attached client is followed through the restore call
+// itself.
+func TestFreshClientAtThirdSizeGovernsWindowAfterExit(t *testing.T) {
+	socket := restoreSocket("third-size-positive")
+	cleanup := newBareGeometrySession(t, socket, "s0", 80, 24)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 5 * time.Second}
+	ctx := context.Background()
+
+	original, err := client.CaptureWindowGeometry(ctx, "s0")
+	if err != nil {
+		t.Fatalf("capture original geometry: %v", err)
+	}
+
+	// Enter interactive mode, then exit it -- with nobody attached, the
+	// ordinary detached restore path (task 035/II-9).
+	if _, err := client.FitWindowToPane(ctx, "s0", "s0", 45, 15); err != nil {
+		t.Fatalf("fit window to pane (enter): %v", err)
+	}
+	if err := client.RestoreWindowGeometry(ctx, "s0", original); err != nil {
+		t.Fatalf("restore window geometry (exit): %v", err)
+	}
+
+	// A FRESH client, at a THIRD size distinct from both 80x24 (original)
+	// and 45x15 (the interactive preview), attaches only AFTER exit has
+	// already completed.
+	const thirdClientCols, thirdClientRows = 100, 40
+	terminal, cmd := attachThroughPTY(t, socket, "s0", thirdClientCols, thirdClientRows)
+	defer func() { _ = terminal.Close() }()
+	waitForSessionAttachedCount(t, client, "s0", 1)
+
+	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
+	if err != nil {
+		t.Fatalf("read pane size after fresh attach: %v", err)
+	}
+	// One row short of the client's raw terminal size: its status line
+	// (on by default) is subtracted before window-size latest sizes the
+	// window to fit -- the same note TestReversedRestoreOrderLeavesWindowPinned
+	// and TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch
+	// already record.
+	wantWidth, wantHeight := thirdClientCols, thirdClientRows-1
+	if paneWidth != wantWidth || paneHeight != wantHeight {
+		t.Fatalf("pane size after a fresh client attached post-exit at %dx%d = %dx%d, want %dx%d (that client's own size, minus its one-row status line) -- the restore must leave window-size unset so a LATER client governs the window, not merely one already attached during the restore call itself", thirdClientCols, thirdClientRows, paneWidth, paneHeight, wantWidth, wantHeight)
+	}
+	detachAndWait(t, terminal, cmd)
+}
+
+// TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize is PRD II-13's
+// MANDATORY negative control: "skipping the restore leaves it pinned,
+// both while that client is attached and after it detaches." Without
+// this control, TestFreshClientAtThirdSizeGovernsWindowAfterExit alone
+// would not prove the restore is what made the fresh client's size take
+// effect -- it could equally be true that ANY client always governs the
+// window regardless of what exit did. This test skips
+// RestoreWindowGeometry entirely (never calls it, unlike
+// TestReversedRestoreOrderLeavesWindowPinned, which calls the two restore
+// primitives directly but in the wrong order) and shows the window stays
+// pinned at the interactive preview size for a fresh client at the same
+// THIRD size the positive test uses, both while that client is attached
+// AND after it detaches -- pinned is not a transient artifact of the
+// moment of attaching.
+func TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize(t *testing.T) {
+	socket := restoreSocket("third-size-negative")
+	cleanup := newBareGeometrySession(t, socket, "s0", 80, 24)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 5 * time.Second}
+	ctx := context.Background()
+
+	if _, err := client.CaptureWindowGeometry(ctx, "s0"); err != nil {
+		t.Fatalf("capture original geometry: %v", err)
+	}
+
+	// Enter interactive mode -- and deliberately never exit it. No call
+	// to RestoreWindowGeometry anywhere in this test: window-size stays
+	// "manual" at whatever FitWindowToPane last set it to, exactly as if
+	// exit's restore step had been skipped outright.
+	if _, err := client.FitWindowToPane(ctx, "s0", "s0", 45, 15); err != nil {
+		t.Fatalf("fit window to pane (enter): %v", err)
+	}
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+		t.Fatalf("read window-size after fit: %v", err)
+	} else if !set || value != "manual" {
+		t.Fatalf("window-size after fit = set=%v value=%q, want set=true value=\"manual\" (test assumption violated, not what this test is proving)", set, value)
+	}
+
+	// The SAME fresh client, at the SAME third size the positive test
+	// uses, attaches with no restore having ever run.
+	const thirdClientCols, thirdClientRows = 100, 40
+	terminal, cmd := attachThroughPTY(t, socket, "s0", thirdClientCols, thirdClientRows)
+	defer func() { _ = terminal.Close() }()
+	waitForSessionAttachedCount(t, client, "s0", 1)
+
+	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
+	if err != nil {
+		t.Fatalf("read pane size while the fresh client is attached: %v", err)
+	}
+	if paneWidth != 45 || paneHeight != 15 {
+		t.Fatalf("pane size while a fresh client at %dx%d is attached, with the restore skipped, = %dx%d, want it PINNED at the interactive preview's 45x15 -- window-size=manual must ignore this client entirely", thirdClientCols, thirdClientRows, paneWidth, paneHeight)
+	}
+
+	detachAndWait(t, terminal, cmd)
+
+	// AFTER the client detaches, the window must still be pinned at the
+	// preview size -- nothing about detaching itself unsets window-size,
+	// so "pinned" is not merely a property of the moment of attaching.
+	_, _, paneWidth, paneHeight, err = client.windowAndPaneSize(ctx, "s0")
+	if err != nil {
+		t.Fatalf("read pane size after the fresh client detaches: %v", err)
+	}
+	if paneWidth != 45 || paneHeight != 15 {
+		t.Fatalf("pane size after the fresh client detaches, with the restore skipped, = %dx%d, want it STILL pinned at the interactive preview's 45x15", paneWidth, paneHeight)
+	}
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+		t.Fatalf("read window-size after detach: %v", err)
+	} else if !set || value != "manual" {
+		t.Fatalf("window-size after detach, with the restore skipped, = set=%v value=%q, want set=true value=\"manual\" -- nothing detaches ever unsets, which is exactly why the restore step is not optional", set, value)
+	}
+}
+
 // attachThroughPTY attaches a real tmux client DIRECTLY to target (the raw
 // tmux session name, not a deck slug -- these tests attach to bare
 // sessions created outside Client.Create's "deck_"-prefixed naming
