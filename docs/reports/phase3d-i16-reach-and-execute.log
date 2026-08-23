@@ -1,0 +1,282 @@
+##### requirement-29-purge.log #####
+=== run 1 tag=@requirement-29-purge loadavg=1.96 1.61 1.59 13/5349 9 ===
+2026-08-23T17:35:18.364660942Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-1438894170/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.701s
+exit=0
+=== run 2 tag=@requirement-29-purge loadavg=1.96 1.61 1.59 6/5363 352 ===
+2026-08-23T17:35:20.253050339Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-1314086184/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.600s
+exit=0
+=== run 3 tag=@requirement-29-purge loadavg=1.96 1.61 1.59 4/5299 686 ===
+2026-08-23T17:35:22.092947671Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-3136334567/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.579s
+exit=0
+=== run 4 tag=@requirement-29-purge loadavg=1.97 1.62 1.59 2/5287 1024 ===
+2026-08-23T17:35:23.982051094Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-1788741013/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.606s
+exit=0
+=== run 5 tag=@requirement-29-purge loadavg=1.97 1.62 1.59 2/5269 1365 ===
+2026-08-23T17:35:25.859783592Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-2111602117/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.608s
+exit=0
+=== run 6 tag=@requirement-29-purge loadavg=2.05 1.64 1.60 4/5247 1710 ===
+2026-08-23T17:35:27.743057026Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-2369153812/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.595s
+exit=0
+=== run 7 tag=@requirement-29-purge loadavg=2.05 1.64 1.60 1/5245 2051 ===
+2026-08-23T17:35:29.617231759Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-4070356021/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.604s
+exit=0
+=== run 8 tag=@requirement-29-purge loadavg=2.05 1.64 1.60 4/5261 2388 ===
+2026-08-23T17:35:31.526782189Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-125488315/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.614s
+exit=0
+=== run 9 tag=@requirement-29-purge loadavg=2.04 1.65 1.60 2/5238 2722 ===
+2026-08-23T17:35:33.39556103Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-3332819402/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.596s
+exit=0
+=== run 10 tag=@requirement-29-purge loadavg=2.04 1.65 1.60 3/5252 3056 ===
+2026-08-23T17:35:35.286330414Z dirLabel="fp-purge" fpLabel="before-purge" path="/tmp/deck-scenario-311795969/fingerprint-scratch/fp-purge" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.591s
+exit=0
+
+##### requirement-29-archive.log #####
+=== run 1 tag=@requirement-29-archive loadavg=4.36 2.14 1.76 13/5319 9 ===
+2026-08-23T17:35:37.513844252Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-1225078581/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.975s
+exit=0
+=== run 2 tag=@requirement-29-archive loadavg=4.36 2.14 1.76 6/5308 230 ===
+2026-08-23T17:35:38.672698217Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-3255090154/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.842s
+exit=0
+=== run 3 tag=@requirement-29-archive loadavg=4.36 2.14 1.76 4/5308 458 ===
+2026-08-23T17:35:39.778886283Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-440694509/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.822s
+exit=0
+=== run 4 tag=@requirement-29-archive loadavg=4.36 2.14 1.76 1/5313 684 ===
+2026-08-23T17:35:40.859036878Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-349939461/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.804s
+exit=0
+=== run 5 tag=@requirement-29-archive loadavg=4.09 2.12 1.75 2/5283 915 ===
+2026-08-23T17:35:41.949058209Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-2143544539/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.837s
+exit=0
+=== run 6 tag=@requirement-29-archive loadavg=4.09 2.12 1.75 5/5278 1143 ===
+2026-08-23T17:35:43.062488893Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-1654041262/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.835s
+exit=0
+=== run 7 tag=@requirement-29-archive loadavg=4.09 2.12 1.75 4/5288 1370 ===
+2026-08-23T17:35:44.142207812Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-683665607/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.815s
+exit=0
+=== run 8 tag=@requirement-29-archive loadavg=4.09 2.12 1.75 3/5288 1602 ===
+2026-08-23T17:35:45.206625235Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-2536614997/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.806s
+exit=0
+=== run 9 tag=@requirement-29-archive loadavg=4.09 2.12 1.75 4/5285 1832 ===
+2026-08-23T17:35:46.345507682Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-4260354519/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.850s
+exit=0
+=== run 10 tag=@requirement-29-archive loadavg=4.01 2.13 1.76 4/5292 2063 ===
+2026-08-23T17:35:47.476833241Z dirLabel="fp-archive" fpLabel="before-archive" path="/tmp/deck-scenario-4281807744/fingerprint-scratch/fp-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.845s
+exit=0
+
+##### requirement-29-kill-and-archive.log #####
+=== run 1 tag=@requirement-29-kill-and-archive loadavg=4.01 2.13 1.76 24/5356 9 ===
+2026-08-23T17:35:49.259586376Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-4257646777/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.653s
+exit=0
+=== run 2 tag=@requirement-29-kill-and-archive loadavg=4.01 2.13 1.76 2/5350 217 ===
+2026-08-23T17:35:50.078466237Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-2416968217/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.525s
+exit=0
+=== run 3 tag=@requirement-29-kill-and-archive loadavg=4.01 2.13 1.76 2/5351 441 ===
+2026-08-23T17:35:50.885101303Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-1696680094/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.518s
+exit=0
+=== run 4 tag=@requirement-29-kill-and-archive loadavg=5.05 2.38 1.84 3/5327 663 ===
+2026-08-23T17:35:51.666778893Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-2417346482/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.501s
+exit=0
+=== run 5 tag=@requirement-29-kill-and-archive loadavg=5.05 2.38 1.84 1/5332 882 ===
+2026-08-23T17:35:52.450742675Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-1255204338/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.507s
+exit=0
+=== run 6 tag=@requirement-29-kill-and-archive loadavg=5.05 2.38 1.84 2/5281 1105 ===
+2026-08-23T17:35:53.227081777Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-826954678/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.498s
+exit=0
+=== run 7 tag=@requirement-29-kill-and-archive loadavg=5.05 2.38 1.84 2/5275 1325 ===
+2026-08-23T17:35:54.040039023Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-3474754169/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.534s
+exit=0
+=== run 8 tag=@requirement-29-kill-and-archive loadavg=5.05 2.38 1.84 2/5269 1548 ===
+2026-08-23T17:35:54.865780441Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-2316656263/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.521s
+exit=0
+=== run 9 tag=@requirement-29-kill-and-archive loadavg=5.05 2.38 1.84 3/5263 1770 ===
+2026-08-23T17:35:55.648283603Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-1416469451/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.498s
+exit=0
+=== run 10 tag=@requirement-29-kill-and-archive loadavg=4.72 2.36 1.84 1/5260 1988 ===
+2026-08-23T17:35:56.407490746Z dirLabel="fp-kill-and-archive" fpLabel="before-kill-and-archive" path="/tmp/deck-scenario-1492245167/fingerprint-scratch/fp-kill-and-archive" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.494s
+exit=0
+
+##### requirement-29-bulk-kill.log #####
+=== run 1 tag=@requirement-29-bulk-kill loadavg=4.72 2.36 1.84 23/5306 9 ===
+2026-08-23T17:35:58.67542538Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-1535007196/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:35:58.675627171Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-1535007196/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.024s
+exit=0
+=== run 2 tag=@requirement-29-bulk-kill loadavg=4.72 2.36 1.84 2/5296 250 ===
+2026-08-23T17:35:59.817103697Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-4188301868/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:35:59.817220538Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-4188301868/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.854s
+exit=0
+=== run 3 tag=@requirement-29-bulk-kill loadavg=4.72 2.36 1.84 1/5319 512 ===
+2026-08-23T17:36:00.917544373Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-3800692812/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:00.91767345Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-3800692812/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.839s
+exit=0
+=== run 4 tag=@requirement-29-bulk-kill loadavg=4.50 2.35 1.84 3/5270 769 ===
+2026-08-23T17:36:02.047081279Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-2828698283/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:02.047206346Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-2828698283/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.852s
+exit=0
+=== run 5 tag=@requirement-29-bulk-kill loadavg=4.50 2.35 1.84 3/5273 1023 ===
+2026-08-23T17:36:03.176693114Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-2932365463/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:03.176878434Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-2932365463/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.847s
+exit=0
+=== run 6 tag=@requirement-29-bulk-kill loadavg=4.50 2.35 1.84 5/5270 1274 ===
+2026-08-23T17:36:04.288742762Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-2352190807/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:04.288866588Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-2352190807/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.834s
+exit=0
+=== run 7 tag=@requirement-29-bulk-kill loadavg=4.50 2.35 1.84 2/5277 1528 ===
+2026-08-23T17:36:05.396631762Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-849963375/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:05.396759656Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-849963375/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.831s
+exit=0
+=== run 8 tag=@requirement-29-bulk-kill loadavg=4.50 2.35 1.84 3/5270 1783 ===
+2026-08-23T17:36:06.550216652Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-1267003601/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:06.550423166Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-1267003601/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.867s
+exit=0
+=== run 9 tag=@requirement-29-bulk-kill loadavg=6.07 2.71 1.96 4/5265 2037 ===
+2026-08-23T17:36:07.682953626Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-2649727593/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:07.683192065Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-2649727593/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.844s
+exit=0
+=== run 10 tag=@requirement-29-bulk-kill loadavg=6.07 2.71 1.96 1/5244 2294 ===
+2026-08-23T17:36:08.769439794Z dirLabel="fp-bk-1/cwd" fpLabel="before-bk-one" path="/tmp/deck-scenario-691157690/fingerprint-scratch/fp-bk-1/cwd" outcome=pass
+2026-08-23T17:36:08.769555095Z dirLabel="fp-bk-2/cwd" fpLabel="before-bk-two" path="/tmp/deck-scenario-691157690/fingerprint-scratch/fp-bk-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	0.827s
+exit=0
+
+##### requirement-29-bulk-delete.log #####
+=== run 1 tag=@requirement-29-bulk-delete loadavg=6.07 2.71 1.96 22/5311 9 ===
+2026-08-23T17:36:11.284893395Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-1928244171/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:11.285109176Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-1928244171/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.248s
+exit=0
+=== run 2 tag=@requirement-29-bulk-delete loadavg=7.34 3.03 2.07 3/5326 261 ===
+2026-08-23T17:36:12.627741325Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-3475176690/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:12.627934113Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-3475176690/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.062s
+exit=0
+=== run 3 tag=@requirement-29-bulk-delete loadavg=7.34 3.03 2.07 1/5342 510 ===
+2026-08-23T17:36:13.972704997Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-2005544910/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:13.972836629Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-2005544910/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.072s
+exit=0
+=== run 4 tag=@requirement-29-bulk-delete loadavg=7.34 3.03 2.07 4/5287 771 ===
+2026-08-23T17:36:15.33537526Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-3483751515/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:15.335485958Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-3483751515/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.080s
+exit=0
+=== run 5 tag=@requirement-29-bulk-delete loadavg=7.34 3.03 2.07 1/5285 1028 ===
+2026-08-23T17:36:16.652873206Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-3222318185/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:16.653072734Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-3222318185/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.053s
+exit=0
+=== run 6 tag=@requirement-29-bulk-delete loadavg=7.07 3.05 2.08 1/5293 1282 ===
+2026-08-23T17:36:17.99440146Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-3927296927/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:17.994527476Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-3927296927/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.070s
+exit=0
+=== run 7 tag=@requirement-29-bulk-delete loadavg=7.07 3.05 2.08 2/5302 1535 ===
+2026-08-23T17:36:19.33345622Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-133440524/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:19.333565935Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-133440524/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.064s
+exit=0
+=== run 8 tag=@requirement-29-bulk-delete loadavg=7.07 3.05 2.08 3/5292 1790 ===
+2026-08-23T17:36:20.648446431Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-1512934644/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:20.648554269Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-1512934644/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.044s
+exit=0
+=== run 9 tag=@requirement-29-bulk-delete loadavg=6.67 3.03 2.08 3/5246 2042 ===
+2026-08-23T17:36:21.983869771Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-1991462564/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:21.984000274Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-1991462564/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.066s
+exit=0
+=== run 10 tag=@requirement-29-bulk-delete loadavg=6.67 3.03 2.08 3/5253 2306 ===
+2026-08-23T17:36:23.350976121Z dirLabel="fp-bd-1/cwd" fpLabel="before-bd-one" path="/tmp/deck-scenario-3934429225/fingerprint-scratch/fp-bd-1/cwd" outcome=pass
+2026-08-23T17:36:23.351092714Z dirLabel="fp-bd-2/cwd" fpLabel="before-bd-two" path="/tmp/deck-scenario-3934429225/fingerprint-scratch/fp-bd-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.078s
+exit=0
+
+##### requirement-29-batch-undo.log #####
+=== run 1 tag=@requirement-29-batch-undo loadavg=6.67 3.03 2.08 19/5285 9 ===
+2026-08-23T17:36:25.872726935Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-2020625046/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:25.872916603Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-2020625046/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.295s
+exit=0
+=== run 2 tag=@requirement-29-batch-undo loadavg=6.29 3.01 2.08 3/5283 296 ===
+2026-08-23T17:36:27.287026283Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-3918678021/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:27.287145254Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-3918678021/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.130s
+exit=0
+=== run 3 tag=@requirement-29-batch-undo loadavg=6.29 3.01 2.08 1/5273 593 ===
+2026-08-23T17:36:28.675505788Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-2597825746/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:28.6756112Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-2597825746/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.112s
+exit=0
+=== run 4 tag=@requirement-29-batch-undo loadavg=6.29 3.01 2.08 1/5237 896 ===
+2026-08-23T17:36:30.078754619Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-3950864957/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:30.078877713Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-3950864957/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.131s
+exit=0
+=== run 5 tag=@requirement-29-batch-undo loadavg=6.29 3.01 2.08 3/5246 1192 ===
+2026-08-23T17:36:31.480647329Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-4271508471/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:31.480763642Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-4271508471/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.118s
+exit=0
+=== run 6 tag=@requirement-29-batch-undo loadavg=7.87 3.39 2.21 1/5237 1489 ===
+2026-08-23T17:36:32.86952884Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-33648813/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:32.869723308Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-33648813/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.116s
+exit=0
+=== run 7 tag=@requirement-29-batch-undo loadavg=7.87 3.39 2.21 2/5245 1783 ===
+2026-08-23T17:36:34.270550225Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-1905930713/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:34.270698962Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-1905930713/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.141s
+exit=0
+=== run 8 tag=@requirement-29-batch-undo loadavg=7.87 3.39 2.21 4/5248 2079 ===
+2026-08-23T17:36:35.682900615Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-2738600937/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:35.683108695Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-2738600937/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.133s
+exit=0
+=== run 9 tag=@requirement-29-batch-undo loadavg=7.24 3.34 2.19 1/5240 2372 ===
+2026-08-23T17:36:37.052932502Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-1282765551/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:37.053045517Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-1282765551/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.109s
+exit=0
+=== run 10 tag=@requirement-29-batch-undo loadavg=7.24 3.34 2.19 13/5241 2666 ===
+2026-08-23T17:36:38.491118021Z dirLabel="fp-bu-1/cwd" fpLabel="before-bu-one" path="/tmp/deck-scenario-111252095/fingerprint-scratch/fp-bu-1/cwd" outcome=pass
+2026-08-23T17:36:38.491337898Z dirLabel="fp-bu-2/cwd" fpLabel="before-bu-two" path="/tmp/deck-scenario-111252095/fingerprint-scratch/fp-bu-2/cwd" outcome=pass
+ok  	github.com/n-orlov/deck/features	1.147s
+exit=0
+

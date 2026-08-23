@@ -1,0 +1,622 @@
+===== red demonstration 1/4: @requirement-29-archive, mutation mode "content" =====
+expect: assertNamedDirectoryMatchesFingerprint(fp-archive, before-archive) fails after content is corrupted (mtime preserved so only content/size differ)
+
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+
+  [1;37mScenario:[0m archiving an already-stopped session leaves its adversarially-seeded cwd fingerprint unchanged              [1;30m# kill_delete_undo.feature:261[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                           [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-archive" is seeded with:[0m                                                                [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-archive-session" with cwd the scratch directory labelled "fp-archive"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-archive" is fingerprinted as "before-archive"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                     [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "fp-archive-session" with status "stopped"[0m                                 [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32m300 milliseconds pass[0m                                                                                          [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" archives its selected session "fp-archive-session"[0m                                              [1;30m# kill_delete_undo_test.go:43 -> github.com/n-orlov/deck/features.clientArchivesSelectedSession[0m
+    [32mThen[0m [32mthe state database session "fp-archive-session" is archived[0m                                                    [1;30m# kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mthe directory "fp-archive" is corrupted with mode "content" for an I-16 red demonstration[0m                       [1;30m# fingerprint_test.go:180 -> github.com/n-orlov/deck/features.corruptNamedDirectoryForI16RedDemo[0m
+    [31mAnd[0m [31mthe directory "fp-archive" still matches fingerprint "before-archive"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [1;31mafter scenario hook failed: directory "fp-archive" no longer matches fingerprint "before-archive": path "state.db" size changed: 19 -> 26
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:38:14.487] +0 "n"
+  [17:38:14.503] +16.615853ms "fp-archive-session"
+  [17:38:14.579] +75.439972ms "\t/tmp/deck-scenario-1622210891/fingerprint-scratch/fp-archive\r"
+  [17:38:14.603] +23.927114ms "x"
+  [17:38:14.920] +317.30744ms "A"
+frame:
+                                                           runtime.goexit({})
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0000f37e8 sp=0xc0000f37e0 pc=0x47dea1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+
+                                                                            goroutine 154 gp=0xc0004
+45340 m=nil [GC worker (idle)]:
+                               runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+ntime/proc.go:460 +0xce fp=0xc0000f3f38 sp=0xc0000f3f18 pc=0x47636e
+                                                                   runtime.gcBgMarkWorker(0xc00044d8
+10)
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+sp=0xc0000f3fc8 pc=0x423bc5
+                           runtime.goexit({})
+xc0000f3fe8 sp=0xc0000f3fe0 pc=0x47dea1
+                                       created by runtime.gcBgMarkStartWorkers in goroutine 1
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                        goroutine 155 gp=0xc000445500 m=nil [GC worker (idle)]:
+                                                                                               runti
+me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: archiving an already-stopped session leaves its adversarially-seeded cwd fingerprint unchanged[0m [1;30m# kill_delete_undo.feature:261[0m
+    [31mAnd the directory "fp-archive" still matches fingerprint "before-archive"[0m [1;30m# kill_delete_undo.feature:277[0m
+      [31mError: [0m[1;31mafter scenario hook failed: directory "fp-archive" no longer matches fingerprint "before-archive": path "state.db" size changed: 19 -> 26
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:38:14.487] +0 "n"
+  [17:38:14.503] +16.615853ms "fp-archive-session"
+  [17:38:14.579] +75.439972ms "\t/tmp/deck-scenario-1622210891/fingerprint-scratch/fp-archive\r"
+  [17:38:14.603] +23.927114ms "x"
+  [17:38:14.920] +317.30744ms "A"
+frame:
+                                                           runtime.goexit({})
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0000f37e8 sp=0xc0000f37e0 pc=0x47dea1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+
+                                                                            goroutine 154 gp=0xc0004
+45340 m=nil [GC worker (idle)]:
+                               runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+ntime/proc.go:460 +0xce fp=0xc0000f3f38 sp=0xc0000f3f18 pc=0x47636e
+                                                                   runtime.gcBgMarkWorker(0xc00044d8
+10)
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+sp=0xc0000f3fc8 pc=0x423bc5
+                           runtime.goexit({})
+xc0000f3fe8 sp=0xc0000f3fe0 pc=0x47dea1
+                                       created by runtime.gcBgMarkStartWorkers in goroutine 1
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                        goroutine 155 gp=0xc000445500 m=nil [GC worker (idle)]:
+                                                                                               runti
+me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+
+
+1 scenarios ([31m1 failed[0m)
+12 steps ([32m10 passed[0m, [31m1 failed[0m, [36m1 skipped[0m)
+1.896053747s
+--- FAIL: TestFeatures (1.90s)
+    --- FAIL: TestFeatures/archiving_an_already-stopped_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (1.89s)
+        suite.go:640: after scenario hook failed: directory "fp-archive" no longer matches fingerprint "before-archive": path "state.db" size changed: 19 -> 26
+            surviving deck client: hung deck client killed after 1s
+            sent (input timeline):
+              [17:38:14.487] +0 "n"
+              [17:38:14.503] +16.615853ms "fp-archive-session"
+              [17:38:14.579] +75.439972ms "\t/tmp/deck-scenario-1622210891/fingerprint-scratch/fp-archive\r"
+              [17:38:14.603] +23.927114ms "x"
+              [17:38:14.920] +317.30744ms "A"
+            frame:
+                                                                       runtime.goexit({})
+            ntime/asm_amd64.s:1693 +0x1 fp=0xc0000f37e8 sp=0xc0000f37e0 pc=0x47dea1
+                                                                                   created by runtime.gcBgMarkSt
+            artWorkers in goroutine 1
+            
+                                                                                        goroutine 154 gp=0xc0004
+            45340 m=nil [GC worker (idle)]:
+                                           runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+            ntime/proc.go:460 +0xce fp=0xc0000f3f38 sp=0xc0000f3f18 pc=0x47636e
+                                                                               runtime.gcBgMarkWorker(0xc00044d8
+            10)
+                                                                                                           runti
+            me.gcBgMarkStartWorkers.gowrap1()
+            sp=0xc0000f3fc8 pc=0x423bc5
+                                       runtime.goexit({})
+            xc0000f3fe8 sp=0xc0000f3fe0 pc=0x47dea1
+                                                   created by runtime.gcBgMarkStartWorkers in goroutine 1
+                                                                                                            /usr
+            /local/go/src/runtime/mgc.go:1373 +0x105
+            
+                                                    goroutine 155 gp=0xc000445500 m=nil [GC worker (idle)]:
+                                                                                                           runti
+            me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+    godog_test.go:38: godog feature suite failed
+FAIL
+FAIL	github.com/n-orlov/deck/features	1.910s
+FAIL
+
+===== red demonstration 2/4: @requirement-29-archive, mutation mode "mtime" =====
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+
+  [1;37mScenario:[0m archiving an already-stopped session leaves its adversarially-seeded cwd fingerprint unchanged              [1;30m# kill_delete_undo.feature:261[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                           [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-archive" is seeded with:[0m                                                                [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-archive-session" with cwd the scratch directory labelled "fp-archive"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-archive" is fingerprinted as "before-archive"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                     [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "fp-archive-session" with status "stopped"[0m                                 [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32m300 milliseconds pass[0m                                                                                          [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" archives its selected session "fp-archive-session"[0m                                              [1;30m# kill_delete_undo_test.go:43 -> github.com/n-orlov/deck/features.clientArchivesSelectedSession[0m
+    [32mThen[0m [32mthe state database session "fp-archive-session" is archived[0m                                                    [1;30m# kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mthe directory "fp-archive" is corrupted with mode "mtime" for an I-16 red demonstration[0m                         [1;30m# fingerprint_test.go:180 -> github.com/n-orlov/deck/features.corruptNamedDirectoryForI16RedDemo[0m
+    [31mAnd[0m [31mthe directory "fp-archive" still matches fingerprint "before-archive"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [1;31mafter scenario hook failed: directory "fp-archive" no longer matches fingerprint "before-archive": path "state.db" mtime changed
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:38:42.041] +0 "n"
+  [17:38:42.057] +16.139931ms "fp-archive-session"
+  [17:38:42.133] +75.810834ms "\t/tmp/deck-scenario-470400737/fingerprint-scratch/fp-archive\r"
+  [17:38:42.157] +24.375993ms "x"
+  [17:38:42.475] +317.698656ms "A"
+frame:
+e 149 gp=0xc000284e00 m=nil [GC worker (idle)]:
+                                               runtime.gopark(0xc0001f6070?, 0xc0001cd798?, 0x0?, 0x
+60?, 0x0?)
+36e
+   runtime.gcBgMarkWorker(0xc0003dc070)
+sp=0xc0001cd738 pc=0x423ceb
+                           runtime.gcBgMarkStartWorkers.gowrap1()
+c.go:1373 +0x25 fp=0xc0001cd7e0 sp=0xc0001cd7c8 pc=0x423bc5
+                                                           runtime.goexit({})
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0001cd7e8 sp=0xc0001cd7e0 pc=0x47dea1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+
+                                                                            goroutine 150 gp=0xc0002
+84fc0 m=nil [GC worker (idle)]:
+                               runtime.gopark(0xc0002ea070?, 0x0?, 0x70?, 0x0?, 0x0?)
+                                                                                        /usr/local/g
+o/src/runtime/proc.go:460 +0xce fp=0xc0001cdf38 sp=0xc0001cdf18 pc=0x47636e
+                                                                           runtime.gcBgMarkWorker(0x
+c0003dc070)
+ceb
+   runtime.gcBgMarkStartWorkers.gowrap1()
+01cdfe0 sp=0xc0001cdfc
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: archiving an already-stopped session leaves its adversarially-seeded cwd fingerprint unchanged[0m [1;30m# kill_delete_undo.feature:261[0m
+    [31mAnd the directory "fp-archive" still matches fingerprint "before-archive"[0m [1;30m# kill_delete_undo.feature:277[0m
+      [31mError: [0m[1;31mafter scenario hook failed: directory "fp-archive" no longer matches fingerprint "before-archive": path "state.db" mtime changed
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:38:42.041] +0 "n"
+  [17:38:42.057] +16.139931ms "fp-archive-session"
+  [17:38:42.133] +75.810834ms "\t/tmp/deck-scenario-470400737/fingerprint-scratch/fp-archive\r"
+  [17:38:42.157] +24.375993ms "x"
+  [17:38:42.475] +317.698656ms "A"
+frame:
+e 149 gp=0xc000284e00 m=nil [GC worker (idle)]:
+                                               runtime.gopark(0xc0001f6070?, 0xc0001cd798?, 0x0?, 0x
+60?, 0x0?)
+36e
+   runtime.gcBgMarkWorker(0xc0003dc070)
+sp=0xc0001cd738 pc=0x423ceb
+                           runtime.gcBgMarkStartWorkers.gowrap1()
+c.go:1373 +0x25 fp=0xc0001cd7e0 sp=0xc0001cd7c8 pc=0x423bc5
+                                                           runtime.goexit({})
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0001cd7e8 sp=0xc0001cd7e0 pc=0x47dea1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+
+                                                                            goroutine 150 gp=0xc0002
+84fc0 m=nil [GC worker (idle)]:
+                               runtime.gopark(0xc0002ea070?, 0x0?, 0x70?, 0x0?, 0x0?)
+                                                                                        /usr/local/g
+o/src/runtime/proc.go:460 +0xce fp=0xc0001cdf38 sp=0xc0001cdf18 pc=0x47636e
+                                                                           runtime.gcBgMarkWorker(0x
+c0003dc070)
+ceb
+   runtime.gcBgMarkStartWorkers.gowrap1()
+01cdfe0 sp=0xc0001cdfc
+
+
+1 scenarios ([31m1 failed[0m)
+12 steps ([32m10 passed[0m, [31m1 failed[0m, [36m1 skipped[0m)
+1.984192302s
+--- FAIL: TestFeatures (1.99s)
+    --- FAIL: TestFeatures/archiving_an_already-stopped_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (1.98s)
+        suite.go:640: after scenario hook failed: directory "fp-archive" no longer matches fingerprint "before-archive": path "state.db" mtime changed
+            surviving deck client: hung deck client killed after 1s
+            sent (input timeline):
+              [17:38:42.041] +0 "n"
+              [17:38:42.057] +16.139931ms "fp-archive-session"
+              [17:38:42.133] +75.810834ms "\t/tmp/deck-scenario-470400737/fingerprint-scratch/fp-archive\r"
+              [17:38:42.157] +24.375993ms "x"
+              [17:38:42.475] +317.698656ms "A"
+            frame:
+            e 149 gp=0xc000284e00 m=nil [GC worker (idle)]:
+                                                           runtime.gopark(0xc0001f6070?, 0xc0001cd798?, 0x0?, 0x
+            60?, 0x0?)
+            36e
+               runtime.gcBgMarkWorker(0xc0003dc070)
+            sp=0xc0001cd738 pc=0x423ceb
+                                       runtime.gcBgMarkStartWorkers.gowrap1()
+            c.go:1373 +0x25 fp=0xc0001cd7e0 sp=0xc0001cd7c8 pc=0x423bc5
+                                                                       runtime.goexit({})
+            ntime/asm_amd64.s:1693 +0x1 fp=0xc0001cd7e8 sp=0xc0001cd7e0 pc=0x47dea1
+                                                                                   created by runtime.gcBgMarkSt
+            artWorkers in goroutine 1
+            
+                                                                                        goroutine 150 gp=0xc0002
+            84fc0 m=nil [GC worker (idle)]:
+                                           runtime.gopark(0xc0002ea070?, 0x0?, 0x70?, 0x0?, 0x0?)
+                                                                                                    /usr/local/g
+            o/src/runtime/proc.go:460 +0xce fp=0xc0001cdf38 sp=0xc0001cdf18 pc=0x47636e
+                                                                                       runtime.gcBgMarkWorker(0x
+            c0003dc070)
+            ceb
+               runtime.gcBgMarkStartWorkers.gowrap1()
+            01cdfe0 sp=0xc0001cdfc
+    godog_test.go:38: godog feature suite failed
+FAIL
+FAIL	github.com/n-orlov/deck/features	2.004s
+FAIL
+
+===== red demonstration 3/4: @requirement-29-bulk-kill, mutation mode "new-file" (fp-bk-1/cwd) =====
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+
+  [1;37mScenario:[0m bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged               [1;30m# kill_delete_undo.feature:298[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-bk-1/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32ma scratch directory "fp-bk-2/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "bk-one" with cwd the scratch directory labelled "fp-bk-1/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "bk-two" with cwd the scratch directory labelled "fp-bk-2/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-bk-1/cwd" is fingerprinted as "before-bk-one"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mAnd[0m [32mthe directory "fp-bk-2/cwd" is fingerprinted as "before-bk-two"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bk-one running [marked]"[0m                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "> bk-two running"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bk-one running [marked]"[0m                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "bk-two running [marked]"[0m                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "x"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mthe state database contains session "bk-one" with status "stopped"[0m                                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "bk-two" with status "stopped"[0m                                   [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe directory "fp-bk-1/cwd" is corrupted with mode "new-file" for an I-16 red demonstration[0m          [1;30m# fingerprint_test.go:180 -> github.com/n-orlov/deck/features.corruptNamedDirectoryForI16RedDemo[0m
+    [31mAnd[0m [31mthe directory "fp-bk-1/cwd" still matches fingerprint "before-bk-one"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [1;31mafter scenario hook failed: directory "fp-bk-1/cwd" no longer matches fingerprint "before-bk-one": path "i16-red-demo-new-file.txt" was added
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:39:11.203] +0 "n"
+  [17:39:11.219] +15.219404ms "bk-one"
+  [17:39:11.295] +75.998138ms "\t/tmp/deck-scenario-3452392874/fingerprint-scratch/fp-bk-1/cwd\r"
+  [17:39:11.318] +23.886284ms "n"
+  [17:39:11.336] +17.254ms "bk-two"
+  [17:39:11.411] +75.447158ms "\t/tmp/deck-scenario-3452392874/fingerprint-scratch/fp-bk-2/cwd\r"
+  [17:39:11.435] +23.709784ms "k"
+  [17:39:11.561] +126.06527ms "m"
+  [17:39:11.586] +25.483234ms "j"
+  [17:39:11.612] +25.952284ms "m"
+  [17:39:11.638] +26.15176ms "x"
+frame:
+                goroutine 138 gp=0xc0001fd500 m=nil [GC worker (idle)]:
+                                                                       runtime.gopark(0x0?, 0x0?, 0x
+0?, 0x0?, 0x0?)
+36e
+   runtime.gcBgMarkWorker(0xc000111650)
+sp=0xc000685738 pc=0x423ceb
+                           runtime.gcBgMarkStartWorkers.gowrap1()
+c.go:1373 +0x25 fp=0xc0006857e0 sp=0xc0006857c8 pc=0x423bc5
+                                                           runtime.goexit({})
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0006857e8 sp=0xc0006857e0 pc=0x47dea1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+
+                                                                            goroutine 139 gp=0xc0001
+fd6c0 m=nil [GC worker (idle)]:
+                               runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+ntime/proc.go:460 +0xce fp=0xc000685f38 sp=0xc000685f18 pc=0x47636e
+                                                                   runtime.gcBgMarkWorker(0xc0001116
+50)
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+sp=0xc000685fc8 pc=0x42
+    [36mAnd[0m [36mthe directory "fp-bk-2/cwd" still matches fingerprint "before-bk-two"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged[0m [1;30m# kill_delete_undo.feature:298[0m
+    [31mAnd the directory "fp-bk-1/cwd" still matches fingerprint "before-bk-one"[0m [1;30m# kill_delete_undo.feature:329[0m
+      [31mError: [0m[1;31mafter scenario hook failed: directory "fp-bk-1/cwd" no longer matches fingerprint "before-bk-one": path "i16-red-demo-new-file.txt" was added
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:39:11.203] +0 "n"
+  [17:39:11.219] +15.219404ms "bk-one"
+  [17:39:11.295] +75.998138ms "\t/tmp/deck-scenario-3452392874/fingerprint-scratch/fp-bk-1/cwd\r"
+  [17:39:11.318] +23.886284ms "n"
+  [17:39:11.336] +17.254ms "bk-two"
+  [17:39:11.411] +75.447158ms "\t/tmp/deck-scenario-3452392874/fingerprint-scratch/fp-bk-2/cwd\r"
+  [17:39:11.435] +23.709784ms "k"
+  [17:39:11.561] +126.06527ms "m"
+  [17:39:11.586] +25.483234ms "j"
+  [17:39:11.612] +25.952284ms "m"
+  [17:39:11.638] +26.15176ms "x"
+frame:
+                goroutine 138 gp=0xc0001fd500 m=nil [GC worker (idle)]:
+                                                                       runtime.gopark(0x0?, 0x0?, 0x
+0?, 0x0?, 0x0?)
+36e
+   runtime.gcBgMarkWorker(0xc000111650)
+sp=0xc000685738 pc=0x423ceb
+                           runtime.gcBgMarkStartWorkers.gowrap1()
+c.go:1373 +0x25 fp=0xc0006857e0 sp=0xc0006857c8 pc=0x423bc5
+                                                           runtime.goexit({})
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0006857e8 sp=0xc0006857e0 pc=0x47dea1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+
+                                                                            goroutine 139 gp=0xc0001
+fd6c0 m=nil [GC worker (idle)]:
+                               runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+ntime/proc.go:460 +0xce fp=0xc000685f38 sp=0xc000685f18 pc=0x47636e
+                                                                   runtime.gcBgMarkWorker(0xc0001116
+50)
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+sp=0xc000685fc8 pc=0x42
+
+
+1 scenarios ([31m1 failed[0m)
+23 steps ([32m20 passed[0m, [31m1 failed[0m, [36m2 skipped[0m)
+2.05216866s
+--- FAIL: TestFeatures (2.06s)
+    --- FAIL: TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (2.04s)
+        suite.go:640: after scenario hook failed: directory "fp-bk-1/cwd" no longer matches fingerprint "before-bk-one": path "i16-red-demo-new-file.txt" was added
+            surviving deck client: hung deck client killed after 1s
+            sent (input timeline):
+              [17:39:11.203] +0 "n"
+              [17:39:11.219] +15.219404ms "bk-one"
+              [17:39:11.295] +75.998138ms "\t/tmp/deck-scenario-3452392874/fingerprint-scratch/fp-bk-1/cwd\r"
+              [17:39:11.318] +23.886284ms "n"
+              [17:39:11.336] +17.254ms "bk-two"
+              [17:39:11.411] +75.447158ms "\t/tmp/deck-scenario-3452392874/fingerprint-scratch/fp-bk-2/cwd\r"
+              [17:39:11.435] +23.709784ms "k"
+              [17:39:11.561] +126.06527ms "m"
+              [17:39:11.586] +25.483234ms "j"
+              [17:39:11.612] +25.952284ms "m"
+              [17:39:11.638] +26.15176ms "x"
+            frame:
+                            goroutine 138 gp=0xc0001fd500 m=nil [GC worker (idle)]:
+                                                                                   runtime.gopark(0x0?, 0x0?, 0x
+            0?, 0x0?, 0x0?)
+            36e
+               runtime.gcBgMarkWorker(0xc000111650)
+            sp=0xc000685738 pc=0x423ceb
+                                       runtime.gcBgMarkStartWorkers.gowrap1()
+            c.go:1373 +0x25 fp=0xc0006857e0 sp=0xc0006857c8 pc=0x423bc5
+                                                                       runtime.goexit({})
+            ntime/asm_amd64.s:1693 +0x1 fp=0xc0006857e8 sp=0xc0006857e0 pc=0x47dea1
+                                                                                   created by runtime.gcBgMarkSt
+            artWorkers in goroutine 1
+            
+                                                                                        goroutine 139 gp=0xc0001
+            fd6c0 m=nil [GC worker (idle)]:
+                                           runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+            ntime/proc.go:460 +0xce fp=0xc000685f38 sp=0xc000685f18 pc=0x47636e
+                                                                               runtime.gcBgMarkWorker(0xc0001116
+            50)
+                                                                                                           runti
+            me.gcBgMarkStartWorkers.gowrap1()
+            sp=0xc000685fc8 pc=0x42
+    godog_test.go:38: godog feature suite failed
+FAIL
+FAIL	github.com/n-orlov/deck/features	2.071s
+FAIL
+
+===== red demonstration 4/4: @requirement-29-bulk-kill, mutation mode "removed-file" (fp-bk-2/cwd) =====
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+
+  [1;37mScenario:[0m bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged               [1;30m# kill_delete_undo.feature:298[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-bk-1/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32ma scratch directory "fp-bk-2/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "bk-one" with cwd the scratch directory labelled "fp-bk-1/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "bk-two" with cwd the scratch directory labelled "fp-bk-2/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-bk-1/cwd" is fingerprinted as "before-bk-one"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mAnd[0m [32mthe directory "fp-bk-2/cwd" is fingerprinted as "before-bk-two"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bk-one running [marked]"[0m                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "> bk-two running"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bk-one running [marked]"[0m                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "bk-two running [marked]"[0m                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "x"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mthe state database contains session "bk-one" with status "stopped"[0m                                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "bk-two" with status "stopped"[0m                                   [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe directory "fp-bk-2/cwd" is corrupted with mode "removed-file" for an I-16 red demonstration[0m      [1;30m# fingerprint_test.go:180 -> github.com/n-orlov/deck/features.corruptNamedDirectoryForI16RedDemo[0m
+    [32mAnd[0m [32mthe directory "fp-bk-1/cwd" still matches fingerprint "before-bk-one"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [31mAnd[0m [31mthe directory "fp-bk-2/cwd" still matches fingerprint "before-bk-two"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [1;31mafter scenario hook failed: directory "fp-bk-2/cwd" no longer matches fingerprint "before-bk-two": path ".hidden" was removed
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:39:24.736] +0 "n"
+  [17:39:24.751] +15.842783ms "bk-one"
+  [17:39:24.827] +75.947284ms "\t/tmp/deck-scenario-459339791/fingerprint-scratch/fp-bk-1/cwd\r"
+  [17:39:24.851] +24.198254ms "n"
+  [17:39:24.869] +17.613527ms "bk-two"
+  [17:39:24.945] +75.691539ms "\t/tmp/deck-scenario-459339791/fingerprint-scratch/fp-bk-2/cwd\r"
+  [17:39:24.969] +24.105275ms "k"
+  [17:39:25.095] +126.117226ms "m"
+  [17:39:25.121] +26.21615ms "j"
+  [17:39:25.148] +26.409917ms "m"
+  [17:39:25.174] +26.2564ms "x"
+frame:
+ntime/proc.go:460 +0xce fp=0xc000570f38 sp=0xc000570f18 pc=0x47636e
+                                                                   runtime.gcBgMarkWorker(0xc0005665
+b0)
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+sp=0xc000570fc8 pc=0x423bc5
+                           runtime.goexit({})
+xc000570fe8 sp=0xc000570fe0 pc=0x47dea1
+                                       created by runtime.gcBgMarkStartWorkers in goroutine 1
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                        goroutine 122 gp=0xc000564a80 m=nil [GC worker (idle)]:
+                                                                                               runti
+me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+sp=0xc000571718 pc=0x47636e
+                           runtime.gcBgMarkWorker(0xc0005665b0)
+3 +0xeb fp=0xc0005717c8 sp=0xc000571738 pc=0x423ceb
+                                                   runtime.gcBgMarkStartWorkers.gowrap1()
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x25 fp=0xc0005717e0 sp=0xc0005717c8 pc=0x423bc5
+                                                                                   runtime.goexit({}
+)
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged[0m [1;30m# kill_delete_undo.feature:298[0m
+    [31mAnd the directory "fp-bk-2/cwd" still matches fingerprint "before-bk-two"[0m [1;30m# kill_delete_undo.feature:330[0m
+      [31mError: [0m[1;31mafter scenario hook failed: directory "fp-bk-2/cwd" no longer matches fingerprint "before-bk-two": path ".hidden" was removed
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [17:39:24.736] +0 "n"
+  [17:39:24.751] +15.842783ms "bk-one"
+  [17:39:24.827] +75.947284ms "\t/tmp/deck-scenario-459339791/fingerprint-scratch/fp-bk-1/cwd\r"
+  [17:39:24.851] +24.198254ms "n"
+  [17:39:24.869] +17.613527ms "bk-two"
+  [17:39:24.945] +75.691539ms "\t/tmp/deck-scenario-459339791/fingerprint-scratch/fp-bk-2/cwd\r"
+  [17:39:24.969] +24.105275ms "k"
+  [17:39:25.095] +126.117226ms "m"
+  [17:39:25.121] +26.21615ms "j"
+  [17:39:25.148] +26.409917ms "m"
+  [17:39:25.174] +26.2564ms "x"
+frame:
+ntime/proc.go:460 +0xce fp=0xc000570f38 sp=0xc000570f18 pc=0x47636e
+                                                                   runtime.gcBgMarkWorker(0xc0005665
+b0)
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+sp=0xc000570fc8 pc=0x423bc5
+                           runtime.goexit({})
+xc000570fe8 sp=0xc000570fe0 pc=0x47dea1
+                                       created by runtime.gcBgMarkStartWorkers in goroutine 1
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                        goroutine 122 gp=0xc000564a80 m=nil [GC worker (idle)]:
+                                                                                               runti
+me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+sp=0xc000571718 pc=0x47636e
+                           runtime.gcBgMarkWorker(0xc0005665b0)
+3 +0xeb fp=0xc0005717c8 sp=0xc000571738 pc=0x423ceb
+                                                   runtime.gcBgMarkStartWorkers.gowrap1()
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x25 fp=0xc0005717e0 sp=0xc0005717c8 pc=0x423bc5
+                                                                                   runtime.goexit({}
+)
+
+
+1 scenarios ([31m1 failed[0m)
+23 steps ([32m21 passed[0m, [31m1 failed[0m, [36m1 skipped[0m)
+2.038346315s
+--- FAIL: TestFeatures (2.05s)
+    --- FAIL: TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (2.03s)
+        suite.go:640: after scenario hook failed: directory "fp-bk-2/cwd" no longer matches fingerprint "before-bk-two": path ".hidden" was removed
+            surviving deck client: hung deck client killed after 1s
+            sent (input timeline):
+              [17:39:24.736] +0 "n"
+              [17:39:24.751] +15.842783ms "bk-one"
+              [17:39:24.827] +75.947284ms "\t/tmp/deck-scenario-459339791/fingerprint-scratch/fp-bk-1/cwd\r"
+              [17:39:24.851] +24.198254ms "n"
+              [17:39:24.869] +17.613527ms "bk-two"
+              [17:39:24.945] +75.691539ms "\t/tmp/deck-scenario-459339791/fingerprint-scratch/fp-bk-2/cwd\r"
+              [17:39:24.969] +24.105275ms "k"
+              [17:39:25.095] +126.117226ms "m"
+              [17:39:25.121] +26.21615ms "j"
+              [17:39:25.148] +26.409917ms "m"
+              [17:39:25.174] +26.2564ms "x"
+            frame:
+            ntime/proc.go:460 +0xce fp=0xc000570f38 sp=0xc000570f18 pc=0x47636e
+                                                                               runtime.gcBgMarkWorker(0xc0005665
+            b0)
+                                                                                                           runti
+            me.gcBgMarkStartWorkers.gowrap1()
+            sp=0xc000570fc8 pc=0x423bc5
+                                       runtime.goexit({})
+            xc000570fe8 sp=0xc000570fe0 pc=0x47dea1
+                                                   created by runtime.gcBgMarkStartWorkers in goroutine 1
+                                                                                                            /usr
+            /local/go/src/runtime/mgc.go:1373 +0x105
+            
+                                                    goroutine 122 gp=0xc000564a80 m=nil [GC worker (idle)]:
+                                                                                                           runti
+            me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+            sp=0xc000571718 pc=0x47636e
+                                       runtime.gcBgMarkWorker(0xc0005665b0)
+            3 +0xeb fp=0xc0005717c8 sp=0xc000571738 pc=0x423ceb
+                                                               runtime.gcBgMarkStartWorkers.gowrap1()
+                                                                                                            /usr
+            /local/go/src/runtime/mgc.go:1373 +0x25 fp=0xc0005717e0 sp=0xc0005717c8 pc=0x423bc5
+                                                                                               runtime.goexit({}
+            )
+    godog_test.go:38: godog feature suite failed
+FAIL
+FAIL	github.com/n-orlov/deck/features	2.056s
+FAIL
