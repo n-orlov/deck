@@ -126,6 +126,16 @@ type Model struct {
 	// deleting is unavailable and submitting states so rather than
 	// silently doing nothing.
 	deleteSvc func(context.Context, store.Session) error
+	// restoreSvc is task 106's `u` undo for a completed dd: it clears the
+	// tombstone (store.RestoreSession) so the row returns to ListSessions.
+	// nil means restoring is unavailable and u is a no-op, exactly like
+	// undoSessionID being empty makes u a no-op for the kill-undo path.
+	restoreSvc func(context.Context, string) (store.Session, error)
+	// reapSvc is task 106's DECK_DELETE_GRACE_MS expiry: it permanently
+	// removes a tombstoned row that was never restored
+	// (store.ReapSession). nil means the grace-window tick simply clears
+	// the toast without reaping -- see deleteGraceExpired.
+	reapSvc func(context.Context, string) error
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -152,17 +162,28 @@ type Model struct {
 	// undoes the last kill, not "whatever row happens to be selected".
 	// undoGeneration invalidates a stale undoExpired tick left over from an
 	// earlier kill/undo cycle once a newer one has started or been undone.
-	undoSessionID       string
-	undoSessionName     string
-	undoGeneration      int
-	profileSwitching    bool
-	profileSwitchValue  string
-	profileSwitchNote   string
-	profileSwitchYoloOK bool
-	resumeMode          func(context.Context, string, string) (store.Session, error)
-	pinning             bool
-	pinValue            string
-	pinNote             string
+	undoSessionID   string
+	undoSessionName string
+	undoGeneration  int
+	// deleteUndoSessionID/deleteUndoSessionName/deleteUndoGeneration mirror
+	// undoSessionID/undoSessionName/undoGeneration exactly (task 106), but
+	// track a successful dd delete's own DECK_DELETE_GRACE_MS window rather
+	// than x's DECK_UNDO_MS one. They are kept independent trackers, never
+	// merged with the trio above: dd's internal kill step never emits
+	// sessionKilled, so the two undo windows never contend for the same
+	// session at once, and u below checks the kill-undo trio first, falling
+	// back to this one only when it is empty.
+	deleteUndoSessionID   string
+	deleteUndoSessionName string
+	deleteUndoGeneration  int
+	profileSwitching      bool
+	profileSwitchValue    string
+	profileSwitchNote     string
+	profileSwitchYoloOK   bool
+	resumeMode            func(context.Context, string, string) (store.Session, error)
+	pinning               bool
+	pinValue              string
+	pinNote               string
 	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a listing
 	// of the selected session's effective environment, one row per key,
 	// naming which layer (server env, captured_path, config [env], session
@@ -437,8 +458,35 @@ type sessionAcknowledged struct{ err error }
 // pane (if any) and tombstone the row (store.SoftDeleteSession). A
 // successful delete reloads the session list so the now-tombstoned row
 // disappears from the sidebar immediately rather than waiting for the
-// next reconcile tick.
-type sessionDeleted struct{ err error }
+// next reconcile tick. session is carried back (task 106) so a successful
+// delete can start the deleteUndoSessionID/Name toast and its
+// DECK_DELETE_GRACE_MS window without a second store round-trip, exactly
+// as sessionKilled already does for x's undo toast.
+type sessionDeleted struct {
+	session store.Session
+	err     error
+}
+
+// deleteGraceExpired fires DECK_DELETE_GRACE_MS after a successful dd
+// delete, mirroring undoExpired's generation-tying shape exactly (task
+// 106): a stale tick left over from an earlier delete/undo cycle that a
+// newer delete or an intervening u has already superseded is ignored
+// rather than reaping the wrong row or clearing a newer toast.
+type deleteGraceExpired int
+
+// sessionRestored carries task 106's `u` undo-of-a-delete result back:
+// store.RestoreSession clears the tombstone, and a successful restore
+// reloads the session list so the row reappears in the sidebar
+// immediately, mirroring sessionResumed's reload-on-success shape.
+type sessionRestored struct {
+	session store.Session
+	err     error
+}
+
+// sessionReaped carries task 106's grace-window expiry result back: a
+// failure is surfaced (the row was already gone from the default view, so
+// there is nothing to reload) but is not silently swallowed.
+type sessionReaped struct{ err error }
 
 // previewCaptured reports one previewCapture tick's result for the session
 // selected at the moment the capture was issued (SPEC requirements 21, 22).
@@ -694,6 +742,24 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerAndReaper
+// adds task 106's grace-window half of `dd` (SPEC §9.2, requirements 2/23):
+// restorer clears a tombstone (store.RestoreSession) so u can undo a
+// completed delete within DECK_DELETE_GRACE_MS, and reaper permanently
+// removes a tombstoned row (store.ReapSession) once that window's own
+// tea.Tick fires without an intervening u. Both windows are scheduled
+// against a real tea.Tick, not m.settings.Clock, so they keep advancing
+// even while DECK_CLOCK is frozen -- exactly like DECK_UNDO_MS's own
+// undoExpired tick already does for x (task 102). Until restorer/reaper
+// are wired, u is a no-op for a deleted session and the grace-window tick
+// clears the toast without ever reaping the row.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerAndReaper(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorAndDeleter(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter)
+	m.restoreSvc = restorer
+	m.reapSvc = reaper
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -807,7 +873,35 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.deleteConfirming = false
 		m.deleteNote = ""
+		m.deleteUndoSessionID = msg.session.ID
+		m.deleteUndoSessionName = msg.session.Name
+		m.deleteUndoGeneration++
+		generation := m.deleteUndoGeneration
+		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) }))
+	case deleteGraceExpired:
+		if int(msg) != m.deleteUndoGeneration || m.deleteUndoSessionID == "" {
+			return m, nil
+		}
+		sessionID := m.deleteUndoSessionID
+		m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
+		if m.reapSvc == nil {
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			return sessionReaped{err: m.reapSvc(context.Background(), sessionID)}
+		}
+	case sessionRestored:
+		if msg.err != nil {
+			m.attachError = "Cannot restore: " + msg.err.Error()
+			return m, nil
+		}
+		m.attachError = ""
 		return m, m.loadSessions
+	case sessionReaped:
+		if msg.err != nil {
+			m.attachError = "Cannot reap: " + msg.err.Error()
+		}
+		return m, nil
 	case uiStatePersisted:
 		// A failed write to ui_state is not load-bearing (SPEC §11.2): the
 		// pin/width already changed in memory and keeps rendering; only the
@@ -1117,17 +1211,36 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// happens to be selected right now -- undoSessionID is only ever
 			// set by a successful kill and cleared by either this key or the
 			// DECK_UNDO_MS expiry tick, so an expired or never-killed state
-			// makes u a no-op exactly as the requirement states.
-			if m.resume == nil || m.undoSessionID == "" {
-				return m, nil
+			// makes u a no-op exactly as the requirement states. Requirement
+			// 23 (task 106): once the kill-undo trio is empty, u falls back
+			// to undoing the most recent dd delete within its own
+			// DECK_DELETE_GRACE_MS window, tracked by the separate
+			// deleteUndoSessionID trio (never merged with the one above).
+			if m.undoSessionID != "" {
+				if m.resume == nil {
+					return m, nil
+				}
+				sessionID := m.undoSessionID
+				m.undoSessionID, m.undoSessionName = "", ""
+				m.undoGeneration++
+				return m, func() tea.Msg {
+					resumed, outcome, err := m.resume(context.Background(), sessionID)
+					return sessionResumed{session: resumed, outcome: outcome, err: err}
+				}
 			}
-			sessionID := m.undoSessionID
-			m.undoSessionID, m.undoSessionName = "", ""
-			m.undoGeneration++
-			return m, func() tea.Msg {
-				resumed, outcome, err := m.resume(context.Background(), sessionID)
-				return sessionResumed{session: resumed, outcome: outcome, err: err}
+			if m.deleteUndoSessionID != "" {
+				if m.restoreSvc == nil {
+					return m, nil
+				}
+				sessionID := m.deleteUndoSessionID
+				m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
+				m.deleteUndoGeneration++
+				return m, func() tea.Msg {
+					restored, err := m.restoreSvc(context.Background(), sessionID)
+					return sessionRestored{session: restored, err: err}
+				}
 			}
+			return m, nil
 		case "r":
 			if m.resume == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -1497,6 +1610,23 @@ func (m Model) undoNoteLines(width int) []string {
 	return wrapText(fmt.Sprintf("Killed %q \u2014 press u to undo", m.undoSessionName), width)
 }
 
+// deleteUndoNoteLines mirrors undoNoteLines's SHAPE (task 106, requirement
+// 23): visible for DECK_DELETE_GRACE_MS after a successful dd delete,
+// stating that u restores it, then gone once deleteUndoSessionID is
+// cleared (by u itself or by the deleteGraceExpired tick, at which point
+// the row is also reaped). Deliberately never names the deleted session
+// the way undoNoteLines names a killed one: the confirm dialog's own
+// submit scenario asserts the deleted session's name is gone from the
+// WHOLE screen immediately (dd hides the row, unlike x's "stopped" row
+// that stays visible), and a toast quoting that same name back would
+// violate that the instant it renders.
+func (m Model) deleteUndoNoteLines(width int) []string {
+	if m.deleteUndoSessionID == "" {
+		return nil
+	}
+	return wrapText("Deleted \u2014 press u to undo", width)
+}
+
 // pendingDeleteLines is task 105's first-`d` visible indicator: gone the
 // instant any key resolves it (the second `d`, opening the confirm dialog,
 // or anything else, clearing it with no destructive action), so it is
@@ -1527,7 +1657,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.pendingDeleteLines(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.pendingDeleteLines(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -1589,6 +1719,7 @@ func (m Model) mainView() string {
 	lines = append(lines, m.attachErrorLines(width)...)
 	lines = append(lines, m.resumeNoteLines(width)...)
 	lines = append(lines, m.undoNoteLines(width)...)
+	lines = append(lines, m.deleteUndoNoteLines(width)...)
 	lines = append(lines, m.pendingDeleteLines(width)...)
 	lines = append(lines, m.footerLine())
 	return strings.Join(lines, "\n")
@@ -2418,7 +2549,7 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return nil
 			}
 			return func() tea.Msg {
-				return sessionDeleted{err: m.deleteSvc(context.Background(), session)}
+				return sessionDeleted{session: session, err: m.deleteSvc(context.Background(), session)}
 			}
 		},
 	})
@@ -3343,7 +3474,10 @@ Keys
     changes nothing; Esc or any other key cancels it; the second d opens a
     confirm dialog naming what survives -- the conversation and its working
     directory are never touched; Enter kills the live pane (if any) and
-    tombstones the row, which disappears from the list immediately
+    tombstones the row, which disappears from the list immediately; a toast
+    naming undo stays visible for DECK_DELETE_GRACE_MS afterward -- u
+    within that window restores the row (deleted_at cleared, back in the
+    list); once the window expires the row is reaped and u does nothing
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells
@@ -3435,6 +3569,7 @@ Runtime controls
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds
   DECK_UNDO_MS          undo-toast window after x, in milliseconds
+  DECK_DELETE_GRACE_MS  undo/reap window after dd, in milliseconds
   DECK_ASCII=1          use ASCII instead of optional glyphs
   DECK_ANIM=0           disable animation
   DECK_COLOR            explicitly enable or disable colour

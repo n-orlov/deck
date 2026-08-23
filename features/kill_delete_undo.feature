@@ -111,3 +111,45 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then deck client "A" dialog box width is 80
     When deck client "A" closes the dialog with escape
     And deck client "A" exits cleanly
+
+  @requirement-23-delete-undo
+  Scenario: u restores a deleted row inside its DECK_DELETE_GRACE_MS window
+    Given deck client "A" is started with a short delete grace window
+    And deck client "A" creates shell session "dd-undo-restores"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    Then deck client "A" screen contains "press u to undo"
+    And the state database session "dd-undo-restores" is tombstoned
+    When deck client "A" presses u
+    Then deck client "A" screen contains "dd-undo-restores"
+    And the state database session "dd-undo-restores" is not tombstoned
+    When deck client "A" exits cleanly
+
+  @requirement-23-delete-reap
+  Scenario: u does nothing once the delete grace window has expired, and the row is reaped
+    Given deck client "A" is started with a short delete grace window
+    And deck client "A" creates shell session "dd-reap-expires"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    And 400 milliseconds pass
+    Then deck client "A" screen does not contain "press u to undo"
+    And the state database session "dd-reap-expires" is reaped
+    When deck client "A" presses u
+    Then the state database session "dd-reap-expires" is reaped
+    When deck client "A" exits cleanly
+
+  @requirement-2-monotonic-windows
+  Scenario: both the undo window and the delete grace window keep advancing while DECK_CLOCK is frozen
+    Given deck client "A" is started with the clock frozen at "2025-01-02T03:04:05Z" and short undo and delete windows
+    And deck client "A" creates shell session "frozen-monotonic"
+    When deck client "A" kills its selected session
+    Then deck client "A" screen contains "press u to undo"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    Then the state database session "frozen-monotonic" is tombstoned
+    When 400 milliseconds pass
+    Then deck client "A" screen does not contain "press u to undo"
+    And the state database session "frozen-monotonic" is reaped
+    When deck client "A" presses u
+    Then the state database session "frozen-monotonic" is reaped
+    When deck client "A" exits cleanly

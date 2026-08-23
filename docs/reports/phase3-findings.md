@@ -161,6 +161,30 @@ determinism control. Recorded here as the second half of "both new determinism k
 worker on 105/106 has a paper trail for why the two knobs were parsed together in task 001 but only
 one is wired to behavior after task 102.
 
+## DECK_DELETE_GRACE_MS gains its consumer (task 106)
+
+The gap the previous section flagged — `DECK_DELETE_GRACE_MS` parsed and defaulted but read by no
+code path — is closed by task 106. `dd`'s confirm-dialog submit already killed the pane and
+tombstoned the row (task 105/133); task 106 adds the other half of the same shape task 102 gave `x`:
+a successful delete now starts its own `tea.Tick(settings.DeleteGrace, ...)` window (a second,
+independent generation-counter trio, `deleteUndoSessionID`/`deleteUndoGeneration`, since dd's
+internal kill step never emits the `sessionKilled` message the `x`-path trio keys off), a toast
+occupies its own reserved layout line for that long, `u` falls back to restoring the tombstoned row
+when the kill-undo trio is empty, and once the window is gone `u` does nothing and
+`reapSvc` (`Service.Reap`) permanently removes the row. Both windows are scheduled via `tea.Tick`
+against the real Go runtime clock, never `settings.Clock`, so `features/kill_delete_undo.feature`'s
+`@requirement-2-monotonic-windows` scenario can freeze `DECK_CLOCK` for the whole run and still watch
+both the toast disappear and the row get reaped. The help overlay's new `DECK_DELETE_GRACE_MS` line
+documents the knob for operators, closing task 001's blocked-validation handoff for this half.
+
+One deliberate asymmetry from `x`'s toast: `deleteUndoNoteLines` never names the deleted session,
+unlike `undoNoteLines`'s `Killed "<name>" — press u to undo`. The pre-existing "submitting the
+confirm dialog..." scenario asserts the deleted session's name is gone from the *whole* screen the
+instant the row disappears (dd hides the row outright, unlike `x`'s row which stays visible with a
+"stopped" status) — a toast quoting that same name back would violate that assertion the moment it
+renders, so the generic "Deleted — press u to undo" text was chosen instead, and none of the new
+scenarios depend on the name appearing in that toast.
+
 ## SPEC.md
 
 Unmodified by this task — `git diff SPEC.md` is empty (verified below).

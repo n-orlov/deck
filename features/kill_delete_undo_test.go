@@ -18,6 +18,8 @@ import (
 // grace-window/reap scenarios.
 func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is started with a short undo window$`, clientStartedWithShortUndoWindow)
+	sc.Step(`^deck client "([^"]+)" is started with a short delete grace window$`, clientStartedWithShortDeleteGraceWindow)
+	sc.Step(`^deck client "([^"]+)" is started with the clock frozen at "([^"]+)" and short undo and delete windows$`, clientStartedWithFrozenClockAndShortUndoAndDeleteWindows)
 	sc.Step(`^deck client "([^"]+)" presses u$`, clientPressesUndo)
 	sc.Step(`^(\d+) milliseconds pass$`, millisecondsPass)
 	sc.Step(`^deck client "([^"]+)" presses d$`, clientPressesD)
@@ -26,6 +28,45 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" clears the pending delete indicator by pressing "([^"]+)"$`, clientClearsPendingDeleteWithKey)
 	sc.Step(`^the state database session "([^"]+)" is tombstoned$`, stateDatabaseSessionIsTombstoned)
 	sc.Step(`^the state database session "([^"]+)" is not tombstoned$`, stateDatabaseSessionIsNotTombstoned)
+	sc.Step(`^the state database session "([^"]+)" is reaped$`, stateDatabaseSessionIsReaped)
+}
+
+// clientStartedWithShortDeleteGraceWindow mirrors
+// clientStartedWithShortUndoWindow exactly (task 106): DECK_DELETE_GRACE_MS
+// short enough that a scenario can wait out dd's own undo/reap window in
+// real wall-clock time, since that window is scheduled via a real
+// tea.Tick, not the frozen DECK_CLOCK (see internal/tui.Model's
+// sessionDeleted/deleteGraceExpired handling).
+func clientStartedWithShortDeleteGraceWindow(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClient(ctx, name, "DECK_DELETE_GRACE_MS=200")
+	if err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "deck - sessions")
+}
+
+// clientStartedWithFrozenClockAndShortUndoAndDeleteWindows backs
+// requirement 2 (Phase 0 R7): DECK_CLOCK is frozen for the whole scenario
+// (m.settings.Clock.Now() never advances), while DECK_UNDO_MS and
+// DECK_DELETE_GRACE_MS are both short in REAL wall-clock terms -- proving
+// both windows tick from a real tea.Tick/monotonic source that keeps
+// advancing regardless of the frozen wall clock the rest of the UI
+// renders, rather than from m.settings.Clock, which would never expire
+// either window at all.
+func clientStartedWithFrozenClockAndShortUndoAndDeleteWindows(ctx context.Context, name, iso string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClient(ctx, name, "DECK_CLOCK="+iso, "DECK_UNDO_MS=200", "DECK_DELETE_GRACE_MS=200")
+	if err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "deck - sessions")
 }
 
 // clientStartedWithShortUndoWindow sets DECK_UNDO_MS short enough that a
@@ -190,4 +231,37 @@ func stateDatabaseSessionIsNotTombstoned(ctx context.Context, name string) error
 		return fmt.Errorf("session %q has deleted_at=%d, want not tombstoned", name, deletedAt)
 	}
 	return nil
+}
+
+// stateDatabaseSessionIsReaped polls -- task 106's DECK_DELETE_GRACE_MS
+// expiry dispatches store.ReapSession from a real tea.Tick's Cmd on its
+// own goroutine, which races this assertion exactly the way an in-flight
+// hook or probe does elsewhere, unlike a synchronous in-Update mutation --
+// until the row is gone from the sessions table entirely (not merely
+// tombstoned), mirroring databaseSessionStatus's own poll-rather-than-
+// read-once shape (features/assertions_test.go).
+func stateDatabaseSessionIsReaped(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	var count int
+	for {
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE name = ?`, name).Scan(&count); err != nil {
+			return fmt.Errorf("observe session %q count: %w", name, err)
+		}
+		if count == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q still present after reap deadline, count=%d", name, count)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }

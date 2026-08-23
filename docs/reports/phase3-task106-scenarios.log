@@ -1,0 +1,98 @@
+=== RUN   TestFeatures
+
+No scenarios
+No steps
+7.704µs
+--- PASS: TestFeatures (0.01s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.014s
+=== @requirement-23-delete-undo ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/u_restores_a_deleted_row_inside_its_DECK_DELETE_GRACE_MS_window
+
+  Scenario: u restores a deleted row inside its DECK_DELETE_GRACE_MS window # kill_delete_undo.feature:116
+    Given deck client "A" is started with a short delete grace window       # kill_delete_undo_test.go:21 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow
+    And deck client "A" creates shell session "dd-undo-restores"            # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    When deck client "A" presses dd                                         # kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientPressesDD
+    And deck client "A" submits the open dialog                             # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then deck client "A" screen contains "press u to undo"                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And the state database session "dd-undo-restores" is tombstoned         # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    When deck client "A" presses u                                          # kill_delete_undo_test.go:23 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then deck client "A" screen contains "dd-undo-restores"                 # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And the state database session "dd-undo-restores" is not tombstoned     # kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned
+    When deck client "A" exits cleanly                                      # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+10 steps (10 passed)
+934.362479ms
+--- PASS: TestFeatures (0.94s)
+    --- PASS: TestFeatures/u_restores_a_deleted_row_inside_its_DECK_DELETE_GRACE_MS_window (0.92s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.958s
+=== @requirement-23-delete-reap ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/u_does_nothing_once_the_delete_grace_window_has_expired,_and_the_row_is_reaped
+
+  Scenario: u does nothing once the delete grace window has expired, and the row is reaped # kill_delete_undo.feature:129
+    Given deck client "A" is started with a short delete grace window                      # kill_delete_undo_test.go:21 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow
+    And deck client "A" creates shell session "dd-reap-expires"                            # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    When deck client "A" presses dd                                                        # kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientPressesDD
+    And deck client "A" submits the open dialog                                            # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    And 400 milliseconds pass                                                              # kill_delete_undo_test.go:24 -> github.com/n-orlov/deck/features.millisecondsPass
+    Then deck client "A" screen does not contain "press u to undo"                         # agent_steps_test.go:32 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    And the state database session "dd-reap-expires" is reaped                             # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped
+    When deck client "A" presses u                                                         # kill_delete_undo_test.go:23 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database session "dd-reap-expires" is reaped                            # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped
+    When deck client "A" exits cleanly                                                     # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+10 steps (10 passed)
+1.351382026s
+--- PASS: TestFeatures (1.36s)
+    --- PASS: TestFeatures/u_does_nothing_once_the_delete_grace_window_has_expired,_and_the_row_is_reaped (1.34s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.378s
+=== @requirement-2-monotonic-windows ===
+=== RUN   TestFeatures
+Feature: Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/both_the_undo_window_and_the_delete_grace_window_keep_advancing_while_DECK_CLOCK_is_frozen
+
+  Scenario: both the undo window and the delete grace window keep advancing while DECK_CLOCK is frozen                 # kill_delete_undo.feature:142
+    Given deck client "A" is started with the clock frozen at "2025-01-02T03:04:05Z" and short undo and delete windows # kill_delete_undo_test.go:22 -> github.com/n-orlov/deck/features.clientStartedWithFrozenClockAndShortUndoAndDeleteWindows
+    And deck client "A" creates shell session "frozen-monotonic"                                                       # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    When deck client "A" kills its selected session                                                                    # assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession
+    Then deck client "A" screen contains "press u to undo"                                                             # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" presses dd                                                                                    # kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientPressesDD
+    And deck client "A" submits the open dialog                                                                        # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "frozen-monotonic" is tombstoned                                                   # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned
+    When 400 milliseconds pass                                                                                         # kill_delete_undo_test.go:24 -> github.com/n-orlov/deck/features.millisecondsPass
+    Then deck client "A" screen does not contain "press u to undo"                                                     # agent_steps_test.go:32 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    And the state database session "frozen-monotonic" is reaped                                                        # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped
+    When deck client "A" presses u                                                                                     # kill_delete_undo_test.go:23 -> github.com/n-orlov/deck/features.clientPressesUndo
+    Then the state database session "frozen-monotonic" is reaped                                                       # kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped
+    When deck client "A" exits cleanly                                                                                 # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+1 scenarios (1 passed)
+13 steps (13 passed)
+1.304070816s
+--- PASS: TestFeatures (1.31s)
+    --- PASS: TestFeatures/both_the_undo_window_and_the_delete_grace_window_keep_advancing_while_DECK_CLOCK_is_frozen (1.29s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.327s
