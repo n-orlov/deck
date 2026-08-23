@@ -89,8 +89,8 @@ func clientLayoutIs(ctx context.Context, name, want string) error {
 	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var (
-		frame string
-		got   string
+		frame  string
+		got    string
 		getErr error
 	)
 	for {

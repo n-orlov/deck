@@ -432,4 +432,3 @@ func textHasBackgroundToken(ctx context.Context, name, text, tokenName string) e
 	}
 	return textHasBackground(ctx, name, text, want)
 }
-
