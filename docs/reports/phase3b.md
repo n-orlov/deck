@@ -257,3 +257,68 @@ ever being counted — restoring the pause reproduces the correct "exactly
 resizes against this same fixture (or reusing task 027's counter idiom
 against a different fixture with an identically small channel buffer)
 would hit the same silent undercount.
+
+## II-19: seed state from tmux formats, including the three the prior art omits (task 041)
+
+`internal/tmux/paneseed.go`'s `PaneSeedState` reads a pane's full mode state
+in one `display-message -p` invocation, joining sixteen `#{...}` formats
+with `|`: `alternate_on`, `cursor_x`/`cursor_y`, `cursor_flag`,
+`insert_flag`, `keypad_cursor_flag`, `keypad_flag`, the five mouse-tracking
+flags (`mouse_any_flag`, `mouse_button_flag`, `mouse_sgr_flag`,
+`mouse_standard_flag`, `mouse_utf8_flag`), and the three PRD II-19 names as
+absent from the shipping prior art: `wrap_flag`, `origin_flag`,
+`scroll_region_upper`/`scroll_region_lower`.
+
+### Non-vacuous per field, measured against a real pane
+
+`TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane` drives a bare
+40x10 tmux pane into a non-default value for each field individually (a
+real `printf` of the corresponding escape sequence, run as the pane's own
+program output, never as tmux-buffer-pasted bytes or literal keyboard
+input) and asserts `PaneSeedState` reads exactly that value back. All
+sixteen fields pass; the boolean-field cases use single DEC private mode
+sequences (e.g. `ESC[?1049h` for `alternate_on`, `ESC[?7l` for
+`wrap_flag`), the cursor-position case uses `ESC[5;10H` and asserts
+`CursorX==9 && CursorY==4` (tmux's formats are 0-based), and the scroll
+region case uses `ESC[3;7r` and asserts `ScrollRegionUpper==2 &&
+ScrollRegionLower==6`.
+
+**Gotcha: a shell prompt redraw after the command finishes perturbs
+cursor position and can silently overwrite the very state a test just
+set.** Sending `printf '<escapes>'` via `send-keys -l -- ... ; Enter` and
+reading state after a settle sleep is enough for the *boolean* mode
+flags (a prompt reprinting text does not clear a DEC private mode or
+DECSTBM), but it is NOT enough for `cursor_x`/`cursor_y`: bash prints its
+next prompt immediately after the command returns, starting from wherever
+the command left the cursor, which silently relocates it again before the
+test ever reads state. The fix used throughout this test
+(`runInPaneBlocking`) appends `; cat > /dev/null` to every probe command,
+so the shell blocks reading stdin and never reaches its next prompt; the
+pane is left with that blocking `cat` running and torn down by
+`kill-server` in cleanup.
+
+### The negative half: a capture carries none of this
+
+`TestCapturePaneCarriesNoModeState` is the reason `PaneSeedState` has to
+exist as a separate read at all. It drives a pane into a pile of
+non-default mode state at once (alternate screen, a 3;7 scroll region,
+origin mode, hidden cursor, insert mode, mouse tracking, *and* SGR-coloured
+text) and then runs a plain `capture-pane -p -e`. The captured bytes are
+scanned for three dangerous escape classes — DEC private mode
+(`CSI ? ... h/l`), DECSTBM (`CSI ... r`) and absolute cursor positioning
+(`CSI ... H`/`CSI ... f`) — and contain **zero** occurrences of any of
+them, while the SGR-coloured literal text (`ESC[31mRED ESC[0m`) survives
+intact. A capture is cell content and SGR only; not one DEC private mode,
+no scroll region, and no cursor position survives it. This is exactly why
+`PaneSeedState`'s separate `display-message` read is needed, and why
+task 042 (II-17/II-18) seeds mode state from it rather than trying to
+infer any of it from the capture body.
+
+### Mechanical guard demonstrated red then reverted
+
+Swapping `WrapFlag`'s and `OriginFlag`'s field-index assignments in
+`parsePaneSeedState` (a plausible off-by-one when the format string and
+the struct literal drift) makes
+`TestPaneSeedStateReadsDefaultState` fail correctly, naming both fields;
+reverted before committing. The per-field non-default test would have
+caught the same class of bug for either field individually.
