@@ -1,0 +1,8 @@
+=== RUN   TestStoreSurvivesProcessCrashMidTransaction
+=== RUN   TestStoreSurvivesProcessCrashMidTransaction/atomic_transaction_killed_before_Commit_leaves_nothing_behind
+=== RUN   TestStoreSurvivesProcessCrashMidTransaction/weakened_autocommit_path_killed_between_the_two_writes_leaves_an_inconsistent_partial_write
+--- PASS: TestStoreSurvivesProcessCrashMidTransaction (0.08s)
+    --- PASS: TestStoreSurvivesProcessCrashMidTransaction/atomic_transaction_killed_before_Commit_leaves_nothing_behind (0.04s)
+    --- PASS: TestStoreSurvivesProcessCrashMidTransaction/weakened_autocommit_path_killed_between_the_two_writes_leaves_an_inconsistent_partial_write (0.04s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.084s
