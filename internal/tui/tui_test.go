@@ -432,10 +432,44 @@ func TestBelowMinimumFrameStaysWithinBudget(t *testing.T) {
 	}
 }
 
+// specialKeyTypes maps a name used by key() to the real bubbletea KeyType a
+// live PTY actually sends for it. Only names bubbletea itself gives a
+// dedicated, non-KeyRunes Type belong here.
+var specialKeyTypes = map[string]tea.KeyType{
+	"esc":       tea.KeyEscape,
+	"up":        tea.KeyUp,
+	"down":      tea.KeyDown,
+	"left":      tea.KeyLeft,
+	"right":     tea.KeyRight,
+	"tab":       tea.KeyTab,
+	"shift+tab": tea.KeyShiftTab,
+	"enter":     tea.KeyEnter,
+	"backspace": tea.KeyBackspace,
+	"pgup":      tea.KeyPgUp,
+	"pgdown":    tea.KeyPgDown,
+	"ctrl+s":    tea.KeyCtrlS,
+	"ctrl+c":    tea.KeyCtrlC,
+	"ctrl+h":    tea.KeyCtrlH,
+}
+
 // key avoids coupling these small behaviour tests to a terminal driver.
+//
+// Task 118 gotcha: before this task, every non-"esc" name -- including
+// genuine special keys like "backspace"/"up"/"enter" -- was built as a
+// tea.KeyRunes message whose Runes spelled out the name literally, relying
+// on Update's own switch matching msg.String() (which happens to also
+// return "backspace" for a real tea.KeyBackspace) rather than on Type. That
+// coincidence broke the moment Update started splitting any multi-rune
+// KeyRunes message rune-by-rune (task 118's own fix): key("backspace") was
+// no longer one keystroke, it was nine ('b','a','c','k',...). Every name
+// bubbletea itself gives a distinct KeyType is now built with that real
+// Type, exactly matching what a live PTY actually sends; only a name with
+// no dedicated KeyType (ordinary text, including a deliberately multi-rune
+// string like "jx" or "dd" used to test coalesced-keystroke dispatch)
+// falls through to tea.KeyRunes.
 func key(value string) tea.KeyMsg {
-	if value == "esc" {
-		return tea.KeyMsg(tea.Key{Type: tea.KeyEscape})
+	if t, ok := specialKeyTypes[value]; ok {
+		return tea.KeyMsg(tea.Key{Type: t})
 	}
 	return tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune(value)})
 }

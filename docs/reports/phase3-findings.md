@@ -576,3 +576,73 @@ name long enough to make the sidebar truncate its trailing status/badge text
 class of truncation already on record for task 113's `[marked]` badge.
 Keep any fixture/session name this kind of assertion depends on short (this
 task uses `sp-claude`).
+
+## Task 118: coalesced multi-rune KeyMsg — decision on what a paste does
+
+**Root cause**: bubbletea's own PTY reader (`readAnsiInputs`/`detectOneMsg` in
+its `key.go`) groups every consecutive run of printable, non-control runes it
+finds within one read buffer into a single `tea.KeyMsg{Type: KeyRunes}`,
+regardless of whether those runes came from one keystroke or several typed in
+quick succession (e.g. two fast presses of `j` then `x` landing in the same
+read arrive as one `KeyMsg{Runes: []rune("jx")}`). `internal/tui`'s dispatch
+switches on `msg.String()`, which for a `KeyRunes` message is
+`string(k.Runes)` verbatim — `"jx"` matches no case at all, so the whole
+event was silently dropped: neither `j` nor `x` took effect. This is
+fail-safe (nothing destructive happens) but not the documented per-key
+contract.
+
+**Fix**: `Model.Update`'s `tea.KeyMsg` case now detects `msg.Type ==
+tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste` and, for exactly that case,
+splits the message back into one single-rune `tea.KeyMsg` per character and
+replays them through `Update` in order — indistinguishable from the same
+runes arriving as separate keystrokes. A single keypress (`len(Runes)==1`)
+and every other `tea.KeyMsg` `Type` (arrow keys, Enter, Tab, Backspace, …,
+all of which bubbletea gives a dedicated non-`KeyRunes` `Type` and therefore
+never trigger this path at all) are untouched.
+
+**Decision on paste**: a bracketed-paste `KeyMsg` (`msg.Paste == true`) is
+deliberately exempted from the split and dispatched (or rather, *not*
+dispatched — see below) exactly as before task 118. bubbletea's own
+`Key.String()` already wraps a paste's runes in `"[...]"` specifically so a
+paste can never accidentally match a single-letter shortcut by string
+comparison; that bracketed string still matches no case in the switch, so a
+paste into the session list is silently ignored outright — no character of
+it is dispatched as a keystroke, and it edits no field (the list itself has
+no text field for a paste to land in). This is a deliberate decision, not
+the same silent-drop defect the rest of task 118 fixes: splitting a paste
+rune-by-rune would let a pasted `"dd"` or `"x"` fire a real destructive
+action from clipboard content the user never typed as a keystroke, which
+would be strictly worse than doing nothing. If a later phase adds a
+paste-target view (e.g. a text field the list itself owns), that view's own
+`Runes`-reading append path (the same shape `env_editor.go`/`settings.go`/
+`createCWD`'s already have) is the right place to accept it, not this
+dispatch switch.
+
+**Test-suite gotcha this fix exposed**: `internal/tui/tui_test.go`'s `key()`
+helper predates task 118 and built every non-`"esc"` name — including real
+special keys like `"backspace"`, `"up"`, `"down"`, `"enter"`, `"tab"`,
+`"shift+tab"`, `"ctrl+s"` — as a `tea.KeyRunes` message whose `Runes` spelled
+the name out literally, relying on the switch matching `msg.String()`
+(which happens to equal the same string for the real `tea.KeyBackspace` etc.)
+rather than on `Type`. That coincidence broke the moment multi-rune
+`KeyRunes` messages started being split: `key("backspace")` stopped being
+one keystroke and became nine (`'b','a','c','k',...`), typing literal text
+instead of backspacing. Fixed by giving `key()` a `specialKeyTypes` map from
+name to the real `tea.KeyType` bubbletea would actually send for it (`up`→
+`tea.KeyUp`, `enter`→`tea.KeyEnter`, etc.); only names with no dedicated
+`KeyType` (ordinary typed text, including deliberately multi-rune coalescing
+probes like `"jx"`/`"dd"`) still fall through to `tea.KeyRunes`. This also
+means the fix is *exactly* what a live PTY sends — the old hack was papering
+over a mismatch between the test's synthetic messages and reality.
+
+**PTY-level proof gotcha**: `features/coalesced_keymsg_test.go`'s black-box
+test creates a real session and waits for `"starting"` before sending the
+unpaced `"d"`,`"d"` pair — waiting on the session's own name instead (its
+first, wrong version) raced ahead of the create modal's own `Enter`
+submission, because the modal's Name field keeps showing the typed name on
+screen the whole time the user is still on a later field, well before Enter
+is even sent; the very next `Send` then lands inside the still-open cwd
+text field instead of the main view. `clientCreatesShellSession` in
+`assertions_test.go` already avoids this by waiting on `"starting"`, not the
+name — any new black-box test driving session creation directly (bypassing
+that helper) needs the same unambiguous wait target.

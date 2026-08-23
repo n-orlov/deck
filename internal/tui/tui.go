@@ -1335,6 +1335,39 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return animationTick(t) })
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
+			// Bubble Tea's own PTY reader coalesces multiple keystrokes that
+			// land in the same read into a single KeyMsg whose Runes holds
+			// every character (e.g. two quick presses of 'j' and 'x' can
+			// arrive as one KeyMsg{Runes: "jx"}). Every case below (and every
+			// dialog's own update* method) matches msg.String() against a
+			// single key's own string ("j", "x", ...); a coalesced "jx" would
+			// match NONE of them and the whole event would be silently
+			// dropped, leaving neither rune to act (task 118, requirement 51).
+			// Rather than teach every case and every dialog about multi-rune
+			// strings, split the coalesced KeyMsg back into one single-rune
+			// tea.KeyMsg per character and dispatch them through Update in
+			// order, exactly as if they had arrived as separate keystrokes. A
+			// single keypress (len(Runes)==1) is untouched and falls straight
+			// through to the handling below, unchanged.
+			//
+			// A bracketed-paste KeyMsg (msg.Paste) is deliberately exempted:
+			// Key.String() already wraps a paste's runes in "[...]" so it can
+			// never match a single-letter shortcut by accident (bubbletea's own
+			// key.go). Splitting pasted text into individual keystrokes would
+			// turn a paste of, say, "dd" into an actual delete chord -- the
+			// deliberate decision (docs/reports/phase3-findings.md, task 118)
+			// is that a paste into the list is ignored outright, never
+			// dispatched rune by rune.
+			var cmds []tea.Cmd
+			next := tea.Model(m)
+			for _, r := range msg.Runes {
+				var cmd tea.Cmd
+				next, cmd = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: msg.Alt})
+				cmds = append(cmds, cmd)
+			}
+			return next, tea.Batch(cmds...)
+		}
 		if m.creating {
 			return m.updateCreate(msg)
 		}
