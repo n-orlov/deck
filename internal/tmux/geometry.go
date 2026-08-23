@@ -108,6 +108,80 @@ func (c Client) CaptureWindowGeometry(ctx context.Context, target string) (Windo
 	return WindowGeometry{Width: windowWidth, Height: windowHeight, WindowSizeSet: set, WindowSizeValue: value}, nil
 }
 
+// SessionAttachedCount reads `#{session_attached}` for the session owning
+// target: the number of clients currently attached to it. PRD phase3b II-9
+// gates exit's restore on this being exactly zero -- resizing a window a
+// live client is still looking at fights that client's own next
+// resize/redraw, where unsetting `window-size` alone (below) lets tmux's
+// own `window-size latest` machinery follow that client immediately, with
+// no explicit resize-window call and therefore no extra SIGWINCH.
+func (c Client) SessionAttachedCount(ctx context.Context, target string) (int, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, err := c.command(commandCtx, "display-message", "-p", "-t", target, "#{session_attached}").CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("tmux -L %s display-message -p -t %s session_attached: %w: %s", c.Socket, target, err, strings.TrimSpace(string(output)))
+	}
+	trimmed := strings.TrimSpace(string(output))
+	count, convErr := strconv.Atoi(trimmed)
+	if convErr != nil {
+		return 0, fmt.Errorf("tmux -L %s display-message -p -t %s session_attached: parse %q: %w", c.Socket, target, trimmed, convErr)
+	}
+	return count, nil
+}
+
+// unsetWindowSize issues `set-option -w -u window-size`, removing whatever
+// value `resize-window` left in the WINDOW scope (task 034's
+// FitWindowToPane always leaves it "manual" there as a tmux side effect of
+// calling resize-window at all) so the window falls back to the
+// server-global value -- "latest" per Client.Bootstrap -- and, with a
+// client attached, is immediately resized to follow it without deck ever
+// issuing a second resize-window call.
+func (c Client) unsetWindowSize(ctx context.Context, target string) error {
+	if _, err := c.run(ctx, "set-option", "-w", "-u", "-t", target, "window-size"); err != nil {
+		return fmt.Errorf("unset window-size on %q: %w", target, err)
+	}
+	return nil
+}
+
+// RestoreWindowGeometry implements PRD phase3b II-9's exit recipe, in the
+// order the PRD states is load-bearing:
+//
+//  1. `resize-window` back to geometry's saved dimensions, but ONLY when
+//     #{session_attached} == 0. With a client attached, an explicit resize
+//     back to the pre-entry size is pointless (the very next step's unset
+//     immediately hands control back to that client's own size via
+//     tmux's `window-size latest`) and costs a real, wasted SIGWINCH the
+//     PRD counts and rejects.
+//  2. `set-option -w -u window-size`, unconditionally, LAST.
+//
+// Reversed, `unset` (step 2) then `resize-window` (step 1) would leave
+// window-size back at "manual" -- resize-window always writes that as a
+// side effect -- undoing the unset and pinning the window at whatever
+// resize-window just set, ignoring every future attach. geometry_test.go's
+// TestReversedRestoreOrderLeavesWindowPinned demonstrates exactly that,
+// red, by calling the two steps in the wrong order directly; this function
+// is the only place either order should ever be issued from shipped code.
+//
+// This does not attempt to restore geometry.WindowSizeValue if it was
+// somehow already set window-locally before entry (WindowSizeSet==true) --
+// deck's own Bootstrap never writes window-size window-locally (task
+// 034's CaptureWindowGeometry doc comment), so that state is not expected
+// to arise from deck's own entry path, and PRD II-9 names a plain unset,
+// not a value-preserving restore, as the recipe.
+func (c Client) RestoreWindowGeometry(ctx context.Context, target string, geometry WindowGeometry) error {
+	attached, err := c.SessionAttachedCount(ctx, target)
+	if err != nil {
+		return err
+	}
+	if attached == 0 {
+		if err := c.resizeWindow(ctx, target, geometry.Width, geometry.Height); err != nil {
+			return err
+		}
+	}
+	return c.unsetWindowSize(ctx, target)
+}
+
 // resizeWindow issues `resize-window`, the ONLY resize command this file
 // ever calls (PRD II-8: "resize the window, never the pane" -- grepping
 // this file (outside _test.go) for tmux's per-pane resizing subcommand
