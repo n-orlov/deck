@@ -89,6 +89,14 @@ type CaptureOptions struct {
 	StartLine              string
 	EndLine                string
 	IncludeEscapeSequences bool
+	// PreserveTrailingBlankLines is tmux's `-N`: without it, tmux trims
+	// trailing spaces from each line and the pane's own trailing blank
+	// lines before returning them, which silently discards
+	// background-styled blank cells (a filled row whose only content is
+	// its own background colour looks, character-for-character, exactly
+	// like an empty one). PRD phase3b II-18's seed capture always sets
+	// this; ordinary crash-tail/preview reads normally leave it unset.
+	PreserveTrailingBlankLines bool
 }
 
 func (v Version) String() string { return v.Raw }
@@ -311,6 +319,16 @@ func (c Client) List(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
+// SeedCaptureOptions is the exact capture-pane options PRD phase3b II-18
+// requires for an interactive-preview seed: the full visible pane
+// (StartLine "0" through EndLine "-"), escape sequences preserved so the
+// body carries its own SGR verbatim, and `-N` so trailing
+// background-styled blank cells survive instead of being trimmed (the
+// second mandatory negative control task 042 demonstrates).
+func SeedCaptureOptions() CaptureOptions {
+	return CaptureOptions{StartLine: "0", EndLine: "-", IncludeEscapeSequences: true, PreserveTrailingBlankLines: true}
+}
+
 // CapturePane returns exactly the requested range from a pane previously
 // obtained from List or Create. Requiring both bounds keeps capture ownership
 // explicit and allows the same primitive to serve bounded crash tails and
@@ -331,6 +349,9 @@ func (c Client) CapturePane(ctx context.Context, paneID string, options CaptureO
 	args := []string{"capture-pane", "-p"}
 	if options.IncludeEscapeSequences {
 		args = append(args, "-e")
+	}
+	if options.PreserveTrailingBlankLines {
+		args = append(args, "-N")
 	}
 	args = append(args, "-S", options.StartLine, "-E", options.EndLine, "-t", paneID)
 	output, err := c.run(ctx, args...)
