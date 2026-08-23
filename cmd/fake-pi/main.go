@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,19 @@ const (
 	// and every SIGWINCH-observed size, one "COLSxROWS" line per observation
 	// (SPEC Phase 2b-1 requirement 4).
 	sizesLogName = "fake-pi-sizes.log"
+	// repaintModeEnvironment selects this fixture's repaint behaviour
+	// (PRD phase3b-interactive-preview.md requirement 1 / II-1), identical in
+	// contract to cmd/fake-claude's own knob of the same purpose: see
+	// runRepaintFixture below.
+	repaintModeEnvironment = "FAKE_PI_REPAINT_MODE"
+)
+
+// Repaint modes for repaintModeEnvironment -- identical in meaning to
+// cmd/fake-claude's own copy of these constants.
+const (
+	repaintModeSigwinch  = "sigwinch"
+	repaintModeKeystroke = "keystroke"
+	repaintModeNever     = "never"
 )
 
 type options struct {
@@ -69,6 +83,10 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 
 	if name := getenv(silentFixtureEnvironment); name != "" {
 		return 0, renderThenFallSilent(stdin, stdout, getenv(fixtureDirectoryEnvironment), name)
+	}
+
+	if mode := getenv(repaintModeEnvironment); mode != "" {
+		return 0, runRepaintFixture(mode, stdin, stdout)
 	}
 
 	opts, err := parse(args)
@@ -379,6 +397,84 @@ func renderThenFallSilent(input io.Reader, output io.Writer, directory, name str
 	return err
 }
 
+// runRepaintFixture is identical in contract and mechanism to
+// cmd/fake-claude's own copy of this function: a dedicated, self-contained
+// mode (mutually exclusive with the argv/banner flow, the commands loop and
+// the silent-fixture mode above) giving a scenario a selectable, observable
+// repaint behaviour (requirement 1 / II-1). It exits when stdin reaches EOF.
+func runRepaintFixture(mode string, stdin io.Reader, stdout io.Writer) error {
+	if mode != repaintModeSigwinch && mode != repaintModeKeystroke && mode != repaintModeNever {
+		return fmt.Errorf("invalid %s %q: want %q, %q or %q", repaintModeEnvironment, mode, repaintModeSigwinch, repaintModeKeystroke, repaintModeNever)
+	}
+
+	// Registered here, synchronously, before any goroutine starts reading from
+	// the (buffered, capacity-1) channel: identical reasoning to
+	// cmd/fake-claude's own copy of this split (see watchAndRepaint below,
+	// which a test drives directly with its own Notify call made the same
+	// way, to avoid a race against the signal it is about to send).
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGWINCH)
+	defer signal.Stop(signals)
+	return watchAndRepaint(mode, stdin, stdout, signals)
+}
+
+// watchAndRepaint is runRepaintFixture's behaviour with signal registration
+// factored out, so a test can register its own channel and drive this loop
+// directly, race-free.
+func watchAndRepaint(mode string, stdin io.Reader, stdout io.Writer, signals <-chan os.Signal) error {
+	var mu sync.Mutex
+	counter := 0
+	pending := false
+	repaint := func() {
+		mu.Lock()
+		counter++
+		n := counter
+		mu.Unlock()
+		fmt.Fprintf(stdout, "repaint #%d\n", n)
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case <-signals:
+				switch mode {
+				case repaintModeSigwinch:
+					repaint()
+				case repaintModeKeystroke:
+					mu.Lock()
+					pending = true
+					mu.Unlock()
+				case repaintModeNever:
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := stdin.Read(buffer)
+		if n > 0 && mode == repaintModeKeystroke {
+			mu.Lock()
+			fire := pending
+			pending = false
+			mu.Unlock()
+			if fire {
+				repaint()
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
 func parse(args []string) (options, error) {
 	var result options
 	var message []string
@@ -506,6 +602,11 @@ Set FAKE_PI_EXIT_CODE to an integer from 0 through 125 to control this fixture's
 Set FAKE_PI_FIXTURE=<name> to render that fixture from FAKE_AGENT_FIXTURE_DIR verbatim and then
 produce no further output (this process idles forever, exactly like a real agent waiting for
 input that never arrives). Mutually exclusive with FAKE_PI_COMMANDS's interactive loop.
+Set FAKE_PI_REPAINT_MODE=sigwinch|keystroke|never to switch this fixture into a dedicated
+repaint-observation mode (mutually exclusive with FAKE_PI_FIXTURE and FAKE_PI_COMMANDS): it
+prints no banner and reads no commands, it only ever writes "repaint #N" lines to the pane per
+the selected behaviour (sigwinch: on every SIGWINCH; keystroke: on the next byte read from stdin
+after a SIGWINCH; never: not at all) until stdin reaches EOF.
 Set FAKE_PI_COMMANDS=1 to read newline-delimited commands from the pane. A fixture
 command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies that
 file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.

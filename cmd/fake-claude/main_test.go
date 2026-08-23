@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func testGetwd(t *testing.T) func() (string, error) {
@@ -378,5 +382,172 @@ func TestResumeReplaysOnlyItsOwnConversationsLastMessage(t *testing.T) {
 	project := strings.ReplaceAll(cwd, string(filepath.Separator), "-")
 	if _, err := os.Stat(filepath.Join(home, ".claude", "projects", project, firstUUID+".jsonl")); err != nil {
 		t.Fatalf("expected transcript file for alpha at the real Claude path: %v", err)
+	}
+}
+
+// lockedBuffer is a concurrency-safe io.Writer/observer for tests that drive
+// runRepaintFixture/watchAndRepaint from one goroutine while asserting on the
+// written bytes from another -- same idiom as internal/tmux/tmux_test.go's
+// own lockedBuffer.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+// waitUntil polls fn until it returns true or the deadline passes, returning
+// whether it ever became true. Used below to assert a repaint eventually
+// happened (or, with a short deadline, to give one a real chance to happen
+// before asserting it did not).
+func waitUntil(deadline time.Duration, fn func() bool) bool {
+	end := time.Now().Add(deadline)
+	for {
+		if fn() {
+			return true
+		}
+		if time.Now().After(end) {
+			return fn()
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// TestRepaintModesProduceDistinguishingObservables drives all three
+// repaint behaviours requirement 1 (II-1) asks for and asserts the
+// distinguishing observable for each: whether and when a "repaint #N" line
+// appears in the fixture's own output after a SIGWINCH and after a byte
+// read from stdin (standing in for a forwarded keystroke). It registers its
+// own SIGWINCH channel and calls watchAndRepaint directly (rather than
+// runRepaintFixture, which registers internally) specifically so the
+// registration is guaranteed complete, synchronously, before this test
+// sends the signal -- see watchAndRepaint's own doc comment.
+func TestRepaintModesProduceDistinguishingObservables(t *testing.T) {
+	sendSIGWINCH := func(t *testing.T) {
+		t.Helper()
+		if err := syscall.Kill(os.Getpid(), syscall.SIGWINCH); err != nil {
+			t.Fatalf("send SIGWINCH to self: %v", err)
+		}
+	}
+
+	t.Run("sigwinch mode repaints immediately on SIGWINCH, not on a keystroke", func(t *testing.T) {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGWINCH)
+		t.Cleanup(func() { signal.Stop(signals) })
+
+		var output lockedBuffer
+		stdinReader, stdinWriter := io.Pipe()
+		result := make(chan error, 1)
+		go func() { result <- watchAndRepaint(repaintModeSigwinch, stdinReader, &output, signals) }()
+		t.Cleanup(func() { stdinWriter.Close() })
+
+		sendSIGWINCH(t)
+		if !waitUntil(time.Second, func() bool { return strings.Contains(output.String(), "repaint #1") }) {
+			t.Fatalf("sigwinch mode never repainted after SIGWINCH; output = %q", output.String())
+		}
+
+		// A keystroke alone must not repaint again in this mode.
+		if _, err := stdinWriter.Write([]byte("x")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if waitUntil(150*time.Millisecond, func() bool { return strings.Contains(output.String(), "repaint #2") }) {
+			t.Fatalf("sigwinch mode repainted again on a bare keystroke; output = %q", output.String())
+		}
+	})
+
+	t.Run("keystroke mode ignores SIGWINCH until the next byte read from stdin", func(t *testing.T) {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGWINCH)
+		t.Cleanup(func() { signal.Stop(signals) })
+
+		var output lockedBuffer
+		stdinReader, stdinWriter := io.Pipe()
+		result := make(chan error, 1)
+		go func() { result <- watchAndRepaint(repaintModeKeystroke, stdinReader, &output, signals) }()
+		t.Cleanup(func() { stdinWriter.Close() })
+
+		// A keystroke with no preceding SIGWINCH must not repaint.
+		if _, err := stdinWriter.Write([]byte("a")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if waitUntil(150*time.Millisecond, func() bool { return output.String() != "" }) {
+			t.Fatalf("keystroke mode repainted on a keystroke with no preceding SIGWINCH; output = %q", output.String())
+		}
+
+		sendSIGWINCH(t)
+		// The SIGWINCH alone must not repaint yet.
+		if waitUntil(150*time.Millisecond, func() bool { return output.String() != "" }) {
+			t.Fatalf("keystroke mode repainted on SIGWINCH alone; output = %q", output.String())
+		}
+
+		if _, err := stdinWriter.Write([]byte("b")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if !waitUntil(time.Second, func() bool { return strings.Contains(output.String(), "repaint #1") }) {
+			t.Fatalf("keystroke mode never repainted on the keystroke following SIGWINCH; output = %q", output.String())
+		}
+	})
+
+	t.Run("never mode never repaints, whatever arrives", func(t *testing.T) {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGWINCH)
+		t.Cleanup(func() { signal.Stop(signals) })
+
+		var output lockedBuffer
+		stdinReader, stdinWriter := io.Pipe()
+		result := make(chan error, 1)
+		go func() { result <- watchAndRepaint(repaintModeNever, stdinReader, &output, signals) }()
+		t.Cleanup(func() { stdinWriter.Close() })
+
+		sendSIGWINCH(t)
+		if _, err := stdinWriter.Write([]byte("c")); err != nil {
+			t.Fatalf("write keystroke: %v", err)
+		}
+		if waitUntil(300*time.Millisecond, func() bool { return output.String() != "" }) {
+			t.Fatalf("never mode repainted; output = %q", output.String())
+		}
+	})
+}
+
+// TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues
+// proves the env-var dispatch runWithIO does, and that an invalid mode value
+// is rejected rather than silently defaulting to one of the three.
+func TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues(t *testing.T) {
+	var output bytes.Buffer
+	getenv := func(key string) string {
+		if key == repaintModeEnvironment {
+			return "not-a-real-mode"
+		}
+		return ""
+	}
+	if _, err := run(nil, &output, getenv, testGetwd(t)); err == nil {
+		t.Fatal("invalid repaint mode was unexpectedly accepted")
+	}
+
+	// A recognised mode dispatches to the dedicated fixture: it prints no
+	// Claude banner, and it does not hang the test -- stdin is already at
+	// EOF (run()'s own empty reader), so it returns immediately.
+	var neverOutput bytes.Buffer
+	neverGetenv := func(key string) string {
+		if key == repaintModeEnvironment {
+			return repaintModeNever
+		}
+		return ""
+	}
+	if code, err := run(nil, &neverOutput, neverGetenv, testGetwd(t)); err != nil || code != 0 {
+		t.Fatalf("run(never repaint mode) = (%d, %v), want (0, nil)", code, err)
+	}
+	if strings.Contains(neverOutput.String(), "Fake Claude Code") {
+		t.Fatalf("repaint mode printed the normal Claude banner: %q", neverOutput.String())
 	}
 }
