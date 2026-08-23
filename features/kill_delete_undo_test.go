@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -36,6 +37,112 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" seeds captures and a history file for session "([^"]+)"$`, clientSeedsCapturesAndHistoryFileForSession)
 	sc.Step(`^the captures directory and history file for reaped session "([^"]+)" are gone$`, capturesDirAndHistoryFileForReapedSessionAreGone)
 	sc.Step(`^the audit log still contains an earlier event for reaped session "([^"]+)"$`, auditLogStillContainsEarlierEventForReapedSession)
+	sc.Step(`^the fake claude transcript for session "([^"]+)" is captured as "([^"]+)"$`, fakeClaudeTranscriptForSessionIsCapturedAs)
+	sc.Step(`^the transcript captured as "([^"]+)" still exists byte-identical$`, transcriptCapturedStillExistsByteIdentical)
+	sc.Step(`^the transcript captured as "([^"]+)" no longer exists$`, transcriptCapturedNoLongerExists)
+}
+
+// transcriptSnapshot is task 110's own fixture record, keyed by an
+// operator-chosen label (registerKillDeleteUndoSteps' transcriptSnapshots):
+// the exact absolute path an agent's own declared TranscriptPaths
+// convention (internal/agent, task 109) resolved to, and the bytes it held
+// at capture time, so a later step can assert either "still there,
+// byte-identical" (requirement 25, no purge) or "gone" (requirement 26,
+// purge chosen) without re-deriving the path from a session row that dd's
+// own reap may since have removed entirely.
+type transcriptSnapshot struct {
+	path    string
+	content []byte
+}
+
+// claudeTranscriptPathForSession mirrors sessionLastMessage's own path
+// convention exactly (cmd/fake-claude's transcriptPath / internal/agent's
+// Claude.TranscriptPaths, task 109's provenance): $HOME/.claude/projects/
+// <cwd, every path separator replaced with "-">/<conversation id>.jsonl,
+// against the scenario's own fixture HOME (h.agentHOMEDir) and working
+// directory (h.workingDir) rather than the real developer's.
+func claudeTranscriptPathForSession(h *ScenarioHarness, name string) (string, error) {
+	if h.agentHOMEDir == "" {
+		return "", fmt.Errorf("fixture HOME directory was not configured (call the fake claude PATH step first)")
+	}
+	conversationID, err := sessionConversationID(h, name)
+	if err != nil {
+		return "", err
+	}
+	if conversationID == "" {
+		return "", fmt.Errorf("session %q has no conversation id", name)
+	}
+	project := strings.ReplaceAll(h.workingDir, string(os.PathSeparator), "-")
+	return filepath.Join(h.agentHOMEDir, ".claude", "projects", project, conversationID+".jsonl"), nil
+}
+
+// fakeClaudeTranscriptForSessionIsCapturedAs resolves session's declared
+// transcript path and snapshots its current bytes under label, before dd's
+// own kill/reap can touch anything -- once the row is tombstoned/reaped
+// the conversation id can no longer be looked up by name, exactly like
+// clientSeedsCapturesAndHistoryFileForSession's own capturedSessionIDs
+// capture above.
+func fakeClaudeTranscriptForSessionIsCapturedAs(ctx context.Context, name, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path, err := claudeTranscriptPathForSession(h, name)
+	if err != nil {
+		return err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read transcript %q for session %q: %w", path, name, err)
+	}
+	if h.transcriptSnapshots == nil {
+		h.transcriptSnapshots = make(map[string]transcriptSnapshot)
+	}
+	h.transcriptSnapshots[label] = transcriptSnapshot{path: path, content: content}
+	return nil
+}
+
+// transcriptCapturedStillExistsByteIdentical proves requirement 25: a dd
+// delete (and its eventual reap) without purge never touches the agent's
+// own transcript file -- the exact bytes captured before dd ran are still
+// there afterwards, at the exact same path.
+func transcriptCapturedStillExistsByteIdentical(ctx context.Context, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	snapshot, ok := h.transcriptSnapshots[label]
+	if !ok {
+		return fmt.Errorf("no transcript was captured as %q", label)
+	}
+	got, err := os.ReadFile(snapshot.path)
+	if err != nil {
+		return fmt.Errorf("read transcript %q captured as %q: %w", snapshot.path, label, err)
+	}
+	if string(got) != string(snapshot.content) {
+		return fmt.Errorf("transcript %q captured as %q changed:\nbefore: %q\nafter:  %q", snapshot.path, label, snapshot.content, got)
+	}
+	return nil
+}
+
+// transcriptCapturedNoLongerExists proves requirement 26's other half:
+// choosing purge in the delete confirm removed exactly the declared
+// transcript file captured under label.
+func transcriptCapturedNoLongerExists(ctx context.Context, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	snapshot, ok := h.transcriptSnapshots[label]
+	if !ok {
+		return fmt.Errorf("no transcript was captured as %q", label)
+	}
+	if _, err := os.Stat(snapshot.path); err == nil {
+		return fmt.Errorf("transcript %q captured as %q still exists, want purged", snapshot.path, label)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat purged transcript %q captured as %q: %w", snapshot.path, label, err)
+	}
+	return nil
 }
 
 // clientSeedsCapturesAndHistoryFileForSession seeds the two per-session

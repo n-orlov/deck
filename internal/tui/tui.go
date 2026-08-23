@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -136,6 +137,14 @@ type Model struct {
 	// (store.ReapSession). nil means the grace-window tick simply clears
 	// the toast without reaping -- see deleteGraceExpired.
 	reapSvc func(context.Context, string) error
+	// purgeSvc is task 110's non-default "purge conversation" choice inside
+	// the dd confirm dialog: it deletes exactly the path already resolved
+	// by the dialog itself via the session's own adapter's declared
+	// TranscriptPaths (task 109) -- it never resolves a path on its own and
+	// is never called with an empty one. nil means purging is unavailable;
+	// submitting with purge chosen then reports so rather than silently
+	// deleting nothing while claiming success.
+	purgeSvc func(context.Context, string) error
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -147,6 +156,16 @@ type Model struct {
 	// profileSwitchNote's existing shape) without closing the dialog.
 	deleteConfirming bool
 	deleteNote       string
+	// deletePurgeValue is task 110's non-default "purge conversation"
+	// choice inside the dd confirm dialog (never offered anywhere else,
+	// never default): left/right cycles deletePurgeOptions, reset to
+	// "keep" every time the dialog opens. deletePurgePath/deletePurgeOK
+	// are resolved once, at that same moment, via the selected session's
+	// own adapter's declared TranscriptPaths (task 109) -- never guessed,
+	// never re-derived from anything the dialog renders.
+	deletePurgeValue string
+	deletePurgePath  string
+	deletePurgeOK    bool
 	profileSwitch    func(context.Context, string, string) (store.Session, error)
 	selected         int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
@@ -465,6 +484,14 @@ type sessionAcknowledged struct{ err error }
 type sessionDeleted struct {
 	session store.Session
 	err     error
+	// purgeErr is task 110's non-default purge choice's own outcome,
+	// reported separately from err: a purge is only ever attempted after
+	// the delete itself has already succeeded (err == nil), so a purge
+	// failure never leaves the tombstone half-applied or the dialog stuck
+	// open re-litigating a delete that already went through -- it
+	// surfaces as a plain error banner instead (see the sessionDeleted
+	// case in Update).
+	purgeErr error
 }
 
 // deleteGraceExpired fires DECK_DELETE_GRACE_MS after a successful dd
@@ -760,6 +787,21 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperAndPurger
+// adds task 110's non-default "purge conversation" choice inside the dd
+// confirm dialog (SPEC.md:684-691, requirement 26): purger deletes exactly
+// the path the dialog itself already resolved via the session's own
+// adapter's declared TranscriptPaths (task 109) -- it is never called with
+// a guessed or inferred path, and never with an empty one. Until purger is
+// wired, choosing "purge" and submitting leaves the tombstone applied (as
+// dd always has) but reports "purging the transcript is unavailable"
+// rather than silently deleting nothing while claiming success.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperAndPurger(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error, purger func(context.Context, string) error) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerAndReaper(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter, restorer, reaper)
+	m.purgeSvc = purger
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -873,6 +915,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.deleteConfirming = false
 		m.deleteNote = ""
+		m.deletePurgeValue = ""
+		m.deletePurgePath = ""
+		m.deletePurgeOK = false
+		if msg.purgeErr != nil {
+			m.attachError = "Deleted, but purge failed: " + msg.purgeErr.Error()
+		} else {
+			m.attachError = ""
+		}
 		m.deleteUndoSessionID = msg.session.ID
 		m.deleteUndoSessionName = msg.session.Name
 		m.deleteUndoGeneration++
@@ -1104,6 +1154,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "d" && len(m.sessions) > 0 {
 				m.deleteConfirming = true
 				m.deleteNote = ""
+				m.deletePurgeValue = "keep"
+				m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(m.sessions[m.selected])
 			}
 			return m, nil
 		}
@@ -2530,6 +2582,13 @@ func (m Model) restartChoiceView() string {
 	return m.framedDialog(b.String())
 }
 
+// deletePurgeOptions lists task 110's non-default "purge conversation"
+// choice inside the dd confirm dialog: "keep" (the default candidate,
+// so a bare dd+Enter still deletes exactly as task 105 always has) or
+// "purge" (additionally remove the agent's own declared transcript file,
+// SPEC.md:684-691 -- never implicit, never offered anywhere else).
+var deletePurgeOptions = []string{"keep", "purge"}
+
 // updateDeleteConfirm handles keys while task 105's second-`d` confirm
 // dialog is open. It has no navigable fields (nothing to cycle, nothing
 // to tab between) -- only Esc (cancel, tombstones nothing) and Enter
@@ -2539,17 +2598,37 @@ func (m Model) restartChoiceView() string {
 func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session := m.sessions[m.selected]
 	cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{Cycle: func(delta int) {
+			m.deletePurgeValue = cycleOption(deletePurgeOptions, m.deletePurgeValue, delta)
+		}},
 		Cancel: func() {
 			m.deleteConfirming = false
 			m.deleteNote = ""
+			m.deletePurgeValue = ""
+			m.deletePurgePath = ""
+			m.deletePurgeOK = false
 		},
 		Submit: func() tea.Cmd {
 			if m.deleteSvc == nil {
 				m.deleteNote = "deleting is unavailable"
 				return nil
 			}
+			purgePath := ""
+			if m.deletePurgeValue == "purge" && m.deletePurgeOK {
+				purgePath = m.deletePurgePath
+			}
+			purgeSvc := m.purgeSvc
 			return func() tea.Msg {
-				return sessionDeleted{session: session, err: m.deleteSvc(context.Background(), session)}
+				err := m.deleteSvc(context.Background(), session)
+				var purgeErr error
+				if err == nil && purgePath != "" {
+					if purgeSvc == nil {
+						purgeErr = errors.New("purging the transcript is unavailable")
+					} else {
+						purgeErr = purgeSvc(context.Background(), purgePath)
+					}
+				}
+				return sessionDeleted{session: session, err: err, purgeErr: purgeErr}
 			}
 		},
 	})
@@ -2561,21 +2640,47 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // deleteConfirmView renders task 105's second-`d` confirm dialog. It states
 // plainly what dd does NOT destroy -- the conversation id and the working
-// directory both survive -- so it is never mistaken for the eventual purge
-// action (task 110), which is offered from inside this same dialog once it
-// exists.
+// directory both survive -- and, since task 110, offers "purge" as an
+// explicit, non-default choice that names the exact absolute path it will
+// delete before doing it (SPEC.md:684-691, requirement 26): purge is
+// offered here and nowhere else. An adapter with no declared transcript
+// (or one that could not locate it for this session right now) is stated
+// plainly to decline, and submitting with purge chosen in that state
+// deletes nothing beyond the tombstone itself.
 func (m Model) deleteConfirmView() string {
+	return m.framedDialog(m.deleteConfirmBody())
+}
+
+// deleteConfirmBody builds deleteConfirmView's text before framedDialog's
+// box-width padTrunc gets anywhere near it (§11.4's dialog box is clamped
+// to at most 80 columns, exactly like every other dialog field with a long
+// value, e.g. Working directory above). Task 110's own "displays the exact
+// absolute path" is about what this function puts in the string -- the
+// literal, untruncated m.deletePurgePath, never an inferred or abbreviated
+// one -- not about the box renderer's separate, pre-existing display
+// truncation, which applies uniformly to every field in every dialog here
+// and is exactly why this is its own function: a test can assert against
+// this body directly, the same way it would grep the source, without a
+// terminal-rendering concern in between.
+func (m Model) deleteConfirmBody() string {
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Delete %s\n\n", session.Name)
 	b.WriteString("This kills the live pane (if any) and removes the session from the\nlist. It survives, untouched:\n")
 	fmt.Fprintf(&b, "%s\n", m.detailField("Conversation:       ", session.ConversationID))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+	fmt.Fprintf(&b, "\n%s\n", m.detailField("Purge:      ", fmt.Sprintf("%s (left/right cycles: %s)", m.deletePurgeValue, strings.Join(deletePurgeOptions, ", "))))
+	switch {
+	case m.deletePurgeValue == "purge" && m.deletePurgeOK:
+		fmt.Fprintf(&b, "%s\n", m.detailField("Will delete: ", m.deletePurgePath))
+	case m.deletePurgeValue == "purge":
+		b.WriteString("No transcript could be located for this agent; purge deletes nothing.\n")
+	}
 	b.WriteString("\nEnter deletes · Esc cancels\n")
 	if m.deleteNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
 	}
-	return m.framedDialog(b.String())
+	return b.String()
 }
 
 // detailView renders the selected session's full detail, including an
@@ -2793,6 +2898,32 @@ func (m Model) agentCapabilities(kind string) (agent.Caps, bool) {
 	}
 	caps := adapter.Capabilities()
 	return caps, len(caps.Profiles) > 0
+}
+
+// transcriptPathFor resolves the declared transcript path (task 109's
+// agent.Adapter.TranscriptPaths) for session against the current
+// process's own $HOME, exactly as expandCreateCWD/expandCWDDirForScan
+// already resolve `~` elsewhere in this package -- never an inferred or
+// guessed directory. ok is false whenever the adapter has no transcript
+// convention at all (Capabilities().HasTranscript false, e.g. shell) or
+// it does but none could be located for this session right now (missing
+// HOME, missing project directory, no matching file) -- task 110's
+// purge choice declines in every one of those cases rather than deleting
+// anything.
+func (m Model) transcriptPathFor(session store.Session) (string, bool) {
+	adapter, ok := m.registry().Lookup(session.Agent)
+	if !ok {
+		return "", false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	return adapter.TranscriptPaths(agent.TranscriptInput{
+		Home:           home,
+		CWD:            session.CWD,
+		ConversationID: session.ConversationID,
+	})
 }
 
 // validateCreateFields checks the create modal's free-form fields (cwd,
@@ -3473,11 +3604,14 @@ Keys
   dd delete the selected session: the first d shows a pending indicator and
     changes nothing; Esc or any other key cancels it; the second d opens a
     confirm dialog naming what survives -- the conversation and its working
-    directory are never touched; Enter kills the live pane (if any) and
-    tombstones the row, which disappears from the list immediately; a toast
-    naming undo stays visible for DECK_DELETE_GRACE_MS afterward -- u
-    within that window restores the row (deleted_at cleared, back in the
-    list); once the window expires the row is reaped and u does nothing
+    directory are never touched; the dialog also offers a non-default
+    purge choice naming the exact transcript path it will delete, or
+    declining when the agent has none to locate; Enter kills the live pane
+    (if any) and tombstones the row, which disappears from the list
+    immediately; a toast naming undo stays visible for DECK_DELETE_GRACE_MS
+    afterward -- u within that window restores the row (deleted_at
+    cleared, back in the list); once the window expires the row is reaped
+    and u does nothing
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells
