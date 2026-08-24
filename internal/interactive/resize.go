@@ -53,5 +53,9 @@ func (s *Session) Resize(ctx context.Context, width, height int, seed func(ctx c
 	s.mu.Lock()
 	s.grid = fresh
 	s.mu.Unlock()
+	// A resize replaces grid content wholesale (see this function's own
+	// doc); a consumer selecting on Renders() must be told a repaint is
+	// due for the same reason drain/fallbackLoop/writeNotice all do.
+	s.renders.MarkDirty()
 	return nil
 }
