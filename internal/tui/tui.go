@@ -4562,8 +4562,11 @@ func (m Model) createView() string {
 // rather than framedDialog -- helpText alone is 273 lines at 80x24, far
 // past the frame budget -- with m.helpScroll (PgUp/PgDn, updateHelpView)
 // selecting the visible window instead of ever truncating content away.
+// Task 082 (steer 005 item 2): the rendered body is styledHelpText, not
+// the bare helpText -- see help_style.go's own doc comment for why the
+// colouring lives here and never touches helpText itself.
 func (m Model) helpView() string {
-	return m.framedDialogScrollable(helpText(m.settings.ASCII), m.helpScroll)
+	return m.framedDialogScrollable(m.styledHelpText(), m.helpScroll)
 }
 
 // updateHelpView handles every key while the `?` help overlay is open
