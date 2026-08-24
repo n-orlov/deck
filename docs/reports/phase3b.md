@@ -491,3 +491,67 @@ afterward).
 `Dispatcher` does not yet drive any real key/keystroke encoding (that is
 tasks 054+); this task's scope is the verify-and-refuse bottleneck itself,
 generic over whatever tmux argv a caller supplies.
+
+## II-29: why pane_pid is in the identity tuple (task 051)
+
+`internal/tmux/pane_pid_identity_test.go` builds the complete scenario
+PRD II-29 asks for, on top of II-28's `respawn-pane` mechanism.
+
+### The measurement: only pane_pid moves
+
+`TestRespawnPaneChangesOnlyPanePID` reads `pane_id`, `session_name`,
+`pane_dead`, `pane_start_time` and `pane_current_command` (plus
+`pane_pid`) in one `display-message` call, respawns the pane
+(`respawn-pane -k -t s0 bash`, so the replacement runs the identical
+command name as the original -- a like-for-like comparison rather than an
+artifact of whatever shell the tmux server defaults to), and reads the
+same six fields again. All five PRD-named fields are confirmed unchanged;
+only `pane_pid` differs. **Finding, confirmed on this tmux version:
+`#{pane_start_time}` reads empty both before and after -- it is useless as
+a discriminator**, exactly as PRD II-29 states; the test logs this as an
+explicit FINDING line rather than leaving it implicit in a passing
+unchanged-value assertion (an always-empty field would trivially look
+"unchanged" even if the measurement were never actually taken).
+
+### The insufficiency chain: pane_id alone, pane_id+session_name, and all four non-pid fields together
+
+A deliberately minimal stand-in for `Dispatcher.Send`
+(`verifyAndSendOnFieldSubset`) is parameterized by exactly which fields it
+checks, so the same mechanism can be asked "does THIS subset notice a
+respawn":
+
+- `TestPaneIDAloneStillDeliversIntoTheReplacementProgramAfterRespawn`:
+  checking `pane_id` alone does not notice a respawn-pane at all -- the
+  marker is delivered straight into the **replacement** program.
+- `TestPaneIDPlusSessionNameStillDeliversIntoTheReplacementProgramAfterRespawn`:
+  adding `session_name` does not help either, because it too survives a
+  respawn unchanged.
+- `TestFourFieldVerifyStillDeliversIntoTheReplacementProgramAfterRespawn`:
+  the punchline -- even checking **all four** of PRD II-29's other named
+  fields together (`pane_id`, `session_name`, `pane_dead`,
+  `pane_current_command`; `pane_start_time` is left out of this set
+  deliberately, since the measurement above already shows it is always
+  empty and would add nothing but the appearance of a stronger check)
+  still fails to notice the respawn and still delivers into the
+  replacement program.
+
+### The non-vacuous control
+
+`TestFourFieldVerifyIsNonVacuousAndDeliversAgainstAnUnmutatedPane` runs
+the identical four-field verify against a pane that was never respawned,
+and confirms it still delivers. This rules out the alternative reading of
+the three insufficiency tests above -- that `verifyAndSendOnFieldSubset`
+is simply a stub that always allows the send regardless of any field --
+by proving the same mechanism, under ordinary unmutated conditions,
+succeeds for the ordinary reason (nothing drifted), not vacuously.
+
+### Adding pane_pid rejects
+
+`TestAddingPanePIDRejectsAfterRespawn` takes the exact four-field set
+above, adds `pane_pid`, and re-runs it against the same respawned pane:
+the verify now refuses, naming `pane_pid` as the drifted field, and
+`waitForMarkerAbsentFromPane` confirms the marker genuinely never reached
+the pane -- the refusal actually stopped the send, not merely returned an
+error while the command ran anyway. This is `pane_pid`'s entire reason for
+being in `Dispatcher`'s identity tuple: it is the *only* one of the six
+fields measured here that a respawn-pane actually changes.
