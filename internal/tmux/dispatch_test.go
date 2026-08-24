@@ -99,7 +99,7 @@ func TestDispatcherSendDeliversToARealPaneAndCountsOneVerification(t *testing.T)
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	dispatcher, err := NewDispatcher(ctx, client, "s0")
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
@@ -108,10 +108,10 @@ func TestDispatcherSendDeliversToARealPaneAndCountsOneVerification(t *testing.T)
 	}
 
 	marker := "dispatch-marker-38217"
-	if err := dispatcher.Send(ctx, "send-keys", "-t", "s0", "-l", "--", "echo "+marker); err != nil {
+	if err := dispatcher.Send(ctx, "send-keys", "-l", "--", "echo "+marker); err != nil {
 		t.Fatalf("Send echo: %v", err)
 	}
-	if err := dispatcher.Send(ctx, "send-keys", "-t", "s0", "Enter"); err != nil {
+	if err := dispatcher.Send(ctx, "send-keys", "Enter"); err != nil {
 		t.Fatalf("Send Enter: %v", err)
 	}
 	if got := dispatcher.Verifications(); got != 2 {
@@ -141,14 +141,14 @@ func TestDispatcherReResolvesIdentityBeforeEverySend(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	dispatcher, err := NewDispatcher(ctx, client, "s0")
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
 
 	const sends = 5
 	for i := 0; i < sends; i++ {
-		if err := dispatcher.Send(ctx, "send-keys", "-t", "s0", "-l", "--", "x"); err != nil {
+		if err := dispatcher.Send(ctx, "send-keys", "-l", "--", "x"); err != nil {
 			t.Fatalf("Send #%d: %v", i, err)
 		}
 	}
@@ -178,7 +178,7 @@ func TestDispatcherRejectsOnIdentityDriftAfterRespawn(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	dispatcher, err := NewDispatcher(ctx, client, "s0")
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestDispatcherRejectsOnIdentityDriftAfterRespawn(t *testing.T) {
 		t.Fatalf("PanePID unchanged across respawn (%d); test setup invalid, respawn-pane should replace the pane's process", after.PanePID)
 	}
 
-	err = dispatcher.Send(ctx, "send-keys", "-t", "s0", "-l", "--", "should-not-be-delivered")
+	err = dispatcher.Send(ctx, "send-keys", "-l", "--", "should-not-be-delivered")
 	if err == nil {
 		t.Fatalf("Send after respawn-pane: got nil error, want a refusal for identity drift")
 	}
@@ -221,7 +221,7 @@ func TestDispatcherRejectsOnPaneDead(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	dispatcher, err := NewDispatcher(ctx, client, "s0")
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestDispatcherRejectsOnPaneDead(t *testing.T) {
 	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
 	waitForPaneDeadTest(t, client, "s0", 5*time.Second)
 
-	err = dispatcher.Send(ctx, "send-keys", "-t", "s0", "-l", "--", "should-not-be-delivered")
+	err = dispatcher.Send(ctx, "send-keys", "-l", "--", "should-not-be-delivered")
 	if err == nil {
 		t.Fatalf("Send against a dead pane: got nil error, want a refusal")
 	}
@@ -250,7 +250,7 @@ func TestDispatcherRejectsOnNonZeroTmuxExit(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	dispatcher, err := NewDispatcher(ctx, client, "s0")
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestDispatcherRejectsOnNonZeroTmuxExit(t *testing.T) {
 	// exercise this refusal condition at all (task 054 covers that
 	// silent-zero-exit hazard on its own terms). An unrecognized flag is a
 	// genuine, real nonzero tmux exit.
-	err = dispatcher.Send(ctx, "send-keys", "-t", "s0", "--badflag")
+	err = dispatcher.Send(ctx, "send-keys", "--badflag")
 	if err == nil {
 		t.Fatalf("Send with an unrecognized flag: got nil error, want tmux's own nonzero exit surfaced")
 	}

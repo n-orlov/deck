@@ -555,3 +555,70 @@ the pane -- the refusal actually stopped the send, not merely returned an
 error while the command ran anyway. This is `pane_pid`'s entire reason for
 being in `Dispatcher`'s identity tuple: it is the *only* one of the six
 fields measured here that a respawn-pane actually changes.
+
+## II-30: never dispatch by session name, and the impostor lands (task 052)
+
+`internal/tmux/dispatch_impostor_test.go` proves PRD II-30 both ways: the
+raw hazard, and that deck's own `Dispatcher` closes it.
+
+### The raw hazard: renamed session, reused name, silent impostor delivery
+
+`TestNameDispatchedPayloadLandsInTheImpostorPane` renames a session
+(`orig` -> `orig-renamed`), creates a NEW session reusing the name
+`orig` (the impostor), and issues a bare `send-keys -t orig -l -- <marker>`
+-- never through `Dispatcher`. tmux resolves `-t orig` dynamically at
+call time, so it silently lands in the impostor's pane: measured `exit=0`,
+empty stderr, and the marker is confirmed present in the impostor's
+capture and absent from the renamed original's. Nothing about the
+command's own result distinguishes this from a correct dispatch.
+
+### The fix: Dispatcher requires a pane id and builds its own -t
+
+Two changes to `internal/tmux/dispatch.go` close this structurally, not
+just documentarily:
+
+1. `NewDispatcher` now validates `target` against `panePattern`
+   (`^%[0-9]+$`) and refuses anything else -- a session name can never
+   even be used to construct a `Dispatcher` in the first place
+   (`TestNewDispatcherRejectsASessionNameTarget`).
+2. `Dispatcher.Send`'s contract changed: callers pass the command name and
+   arguments **without** `-t` at all (`Send(ctx, "send-keys", "-l", "--",
+   payload)`, not `Send(ctx, "send-keys", "-t", target, "-l", "--",
+   payload)`). Send refuses outright if `args` contains `"-t"`, and always
+   builds the dispatch command's own target from `d.target` -- the exact
+   pane id captured and re-verified at entry. This closes a real gap in
+   task 050's original design: verify and the actual command target were
+   two independently-supplied values with nothing forcing them to agree;
+   after this task there is only one value, ever.
+
+### The green control: Dispatcher refuses in the identical setup
+
+`TestDispatcherRefusesAfterSessionRenameEvenThoughPaneIDIsUnchanged` runs
+the identical rename+reuse setup, but the `Dispatcher` was constructed on
+the ORIGINAL pane's id before the rename. `Send` refuses, wrapping
+`ErrIdentityDrifted` -- the captured `SessionName` (`orig`) no longer
+matches the pane's fresh `SessionName` (`orig-renamed`), which is exactly
+the drift check task 050 built for II-29's respawn case, now shown to
+also catch II-30's rename case for free. The marker is confirmed absent
+from BOTH the original (renamed) pane and the impostor's -- the refusal
+actually stopped the send, it did not merely report an error while
+delivering anyway.
+
+### The grep proof
+
+`TestNoSendPathUsesSessionNameAsTarget` scans every non-test `.go` file in
+`internal/tmux` for a `"-t"` tmux flag built from a `SessionName` field,
+and fails naming file+line if one ever appears. With `Send`'s new
+contract this is unreachable by construction (no caller can supply `-t`
+at all), but the test is what keeps that property honest against a future
+change, in the same idiom as `dispatch_test.go`'s own
+`TestNoSendPathBypassesTheDispatcherVerify`. Confirmed non-vacuous
+(`TestNoSendPathUsesSessionNameAsTargetIsNonVacuous`): the guard's pattern
+does match a realistic violation string, never wired into a real file.
+
+`dispatch_test.go`'s five pre-existing `NewDispatcher(ctx, client, "s0")`
+call sites were updated to `"%0"` (a fresh bare session's first pane,
+already pinned by `TestCaptureIdentityReadsAllFiveFieldsFromARealPane`)
+and their `Send` calls' `"-t", "s0"` pairs removed, to match the new
+pane-id-only/no-caller-`-t` contract -- no test assertion was loosened,
+only the argv shape callers must use.
