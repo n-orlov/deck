@@ -1,0 +1,26 @@
+ok  	github.com/n-orlov/deck/cmd/deck	7.173s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.834s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.781s
+ok  	github.com/n-orlov/deck/features	285.383s
+ok  	github.com/n-orlov/deck/internal/agent	0.008s
+ok  	github.com/n-orlov/deck/internal/audit	0.019s
+ok  	github.com/n-orlov/deck/internal/config	0.039s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.835s
+ok  	github.com/n-orlov/deck/internal/interactive	11.349s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.145s
+ok  	github.com/n-orlov/deck/internal/store	1.389s
+ok  	github.com/n-orlov/deck/internal/theme	0.006s
+ok  	github.com/n-orlov/deck/internal/tmux	19.348s
+ok  	github.com/n-orlov/deck/internal/tui	0.453s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+
+--- context ---
+Command: ci/run.sh go test -p=1 -count=1 ./...
+Also run this iteration, both clean:
+  ci/run.sh go build ./...
+  ci/run.sh go vet ./...
+  ci/run.sh sh -c "gofmt -l \$(git ls-files '*.go')"
+git status --short: (empty)
+git log origin/main..HEAD: (empty, before this commit)
