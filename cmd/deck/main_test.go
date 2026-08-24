@@ -453,6 +453,9 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"/ filter the list", "incrementally as you type", "only route to an archived session",
 		"enter interactive mode on the selected running session", "keystrokes",
 		"forward to its live pane", "until Ctrl+Q leaves", "a attach the selected running session",
+		"entering", "resizes the agent's window to fit the preview panel",
+		"consumes its own scrollback faster than the same output would at",
+		"full width",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)

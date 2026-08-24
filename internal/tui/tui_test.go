@@ -29,6 +29,9 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	help := model.View()
 	for _, want := range []string{
 		"↑/↓ or j/k select", "↵ enter interactive mode", "a attach the selected running session", "Y acknowledge", "unseen marker", "n create", "x kill",
+		"resizes the agent's window to fit the preview panel",
+		"consumes its own scrollback faster than the same output would at",
+		"full width",
 		"? open/close help", "Esc closes help", "q or Ctrl+C quit",
 		"r resume", "resumed agents", "starting · awaiting", "live shells", "become \"running\"", "starting elsewhere",
 		"P switch the permission profile", "restart to apply", "live pane",

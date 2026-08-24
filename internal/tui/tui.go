@@ -4425,7 +4425,11 @@ Keys
   PgUp/PgDn page up/down through the list, one page at a time
   ↵ enter interactive mode on the selected running session: keystrokes
     forward to its live pane exactly as a real attached client's would,
-    until Ctrl+Q leaves and returns the terminal to this list
+    until Ctrl+Q leaves and returns the terminal to this list; entering
+    resizes the agent's window to fit the preview panel, and output the
+    agent produces while that window is narrower than its usual size
+    consumes its own scrollback faster than the same output would at
+    full width
   a attach the selected running session (full-screen, like Ctrl+Q never
     happened -- ↵ enters interactive mode instead)
   Y acknowledge the selected waiting/error session, clear its unseen marker
