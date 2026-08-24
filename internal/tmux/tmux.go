@@ -265,19 +265,36 @@ func (c Client) SetEnvironment(ctx context.Context, slug, key, value string) err
 // to run `export KEY=value` in an already-running shell session's pane --
 // never to drive any coding agent's own input, and never anything but
 // this one line.
+//
+// PRD II-30 (task 052) forbids ever dispatching BY the session name --
+// this is exactly the hazard a renamed-then-reused session's impostor
+// pane can silently absorb. SendKeys therefore never builds its own
+// "-t" from the session name: it resolves the session's live pane id
+// once (PreviewPane, the same lookup the read-only preview path already
+// uses) and sends through a Dispatcher constructed on that pane id, so
+// the real tmux command's target is always a verified pane id and any
+// rename between resolution and send is caught as identity drift
+// (ErrIdentityDrifted) rather than silently landing in an impostor.
 func (c Client) SendKeys(ctx context.Context, slug, literal string) error {
 	if c.Socket == "" {
 		return errors.New("tmux socket name is required")
 	}
-	name, err := sessionName(slug)
+	pane, ok, err := c.PreviewPane(ctx, slug)
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve pane for session %q: %w", slug, err)
 	}
-	if _, err := c.run(ctx, "send-keys", "-t", name, "-l", "--", literal); err != nil {
-		return fmt.Errorf("send keys to session %q: %w", name, err)
+	if !ok {
+		return fmt.Errorf("send keys to session %q: no live pane", slug)
 	}
-	if _, err := c.run(ctx, "send-keys", "-t", name, "Enter"); err != nil {
-		return fmt.Errorf("send Enter to session %q: %w", name, err)
+	dispatcher, err := NewDispatcher(ctx, c, pane.ID)
+	if err != nil {
+		return fmt.Errorf("send keys to session %q: %w", slug, err)
+	}
+	if err := dispatcher.Send(ctx, "send-keys", "-l", "--", literal); err != nil {
+		return fmt.Errorf("send keys to session %q: %w", slug, err)
+	}
+	if err := dispatcher.Send(ctx, "send-keys", "Enter"); err != nil {
+		return fmt.Errorf("send Enter to session %q: %w", slug, err)
 	}
 	return nil
 }
