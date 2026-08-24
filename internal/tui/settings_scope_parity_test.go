@@ -40,6 +40,7 @@ import (
 // carries no information about whether THIS field applied live.
 type settingsResolvedSnapshot struct {
 	AllowYolo          bool
+	YoloDefault        bool
 	StaleAfter         string // Duration.String(), so a diff prints readably
 	CaptureMinInterval string
 	ASCII              bool
@@ -61,6 +62,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 	}
 	return settingsResolvedSnapshot{
 		AllowYolo:          s.AllowYolo,
+		YoloDefault:        s.YoloDefault,
 		StaleAfter:         s.StaleAfter.String(),
 		CaptureMinInterval: s.CaptureMinInterval.String(),
 		ASCII:              s.ASCII,

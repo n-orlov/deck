@@ -54,8 +54,9 @@ type dialogContract struct {
 // merely happen to agree with each other.
 //
 // It reports handled=false for any key outside that vocabulary, so a
-// dialog's own ADDITIONAL load-bearing keys (§5's `y` yolo confirm,
-// createView's free-text typing and backspace) reach the dialog's own
+// dialog's own ADDITIONAL load-bearing keys (createView's free-text
+// typing and backspace; the yolo confirm keystroke steer 017 item 2
+// removed used to be one such key) reach the dialog's own
 // switch exactly as §11.4 allows: "a dialog may declare additional
 // load-bearing keys of its own, but only if it states them inline where
 // they apply". Nothing here invents an undeclared binding: a contract key

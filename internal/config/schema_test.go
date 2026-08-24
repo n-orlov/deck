@@ -6,9 +6,9 @@ import (
 )
 
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
-// flat config.toml keys (task 010, extended by task 030's interactive_ms
-// and task 031's interactive_transport):
-// allow_yolo, stale_after, capture_min_interval, interactive_ms,
+// flat config.toml keys (task 010, extended by task 030's interactive_ms,
+// task 031's interactive_transport and steer 017 item 2's yolo_default):
+// allow_yolo, yolo_default, stale_after, capture_min_interval, interactive_ms,
 // interactive_transport, tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse,
 // [ui] group_by_workspace, [ui] recent_cwd_limit, and the [env] table.
 // Adding, removing or renaming a key must be a deliberate edit to this
@@ -16,6 +16,7 @@ import (
 func TestSchemaPinsKeySet(t *testing.T) {
 	want := []string{
 		"allow_yolo",
+		"yolo_default",
 		"stale_after",
 		"capture_min_interval",
 		"interactive_ms",
@@ -125,6 +126,7 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
 		"allow_yolo":            ScopeGlobal,
+		"yolo_default":          ScopeGlobal,
 		"stale_after":           ScopeRestartToApply,
 		"capture_min_interval":  ScopeRestartToApply,
 		"interactive_ms":        ScopeRestartToApply,

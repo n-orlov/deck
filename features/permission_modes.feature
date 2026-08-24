@@ -2,9 +2,11 @@ Feature: Permission profile mapping, degradation and the yolo gate
   SPEC §5's permission profile is a deck-level concept translated per
   adapter, never a boolean: each declared profile maps to a specific argv, an
   adapter that does not support a requested profile degrades to safe and
-  says so, yolo stays behind an `allow_yolo` config gate plus an explicit
-  per-launch confirm, and the resolved profile is persisted so it survives a
-  resume.
+  says so, yolo stays behind an `allow_yolo` config gate (steer 017 item 2
+  removed the separate per-launch confirm keystroke this feature used to
+  require once allow_yolo was already enabled), and the resolved profile is
+  persisted so it survives a resume. `yolo_default` (inert unless
+  `allow_yolo` is also true) opens the create modal already on yolo.
 
   Scenario: claude maps every declared permission profile to its own argv
     Given the deck config allows yolo
@@ -13,7 +15,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     When deck client "A" creates claude session "csafe" with permission profile "safe"
     And deck client "A" creates claude session "cplan" with permission profile "plan"
     And deck client "A" creates claude session "cedits" with permission profile "edits"
-    And deck client "A" creates claude session "cyolo" with permission profile "yolo" confirming yolo
+    And deck client "A" creates claude session "cyolo" with permission profile "yolo"
     Then the audit log's most recent launch argv for session "csafe" contains "--permission-mode"
     And the audit log's most recent launch argv for session "csafe" contains "manual"
     And the audit log's most recent launch argv for session "cplan" contains "--permission-mode"
@@ -31,7 +33,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     And deck client "A" is started
     When deck client "A" creates pi session "psafe" with permission profile "safe"
     And deck client "A" creates pi session "pedits" with permission profile "edits"
-    And deck client "A" creates pi session "pyolo" with permission profile "yolo" confirming yolo
+    And deck client "A" creates pi session "pyolo" with permission profile "yolo"
     Then the audit log's most recent launch argv for session "psafe" does not contain "--approve"
     And the audit log's most recent launch argv for session "pedits" contains "--approve"
     And the audit log's most recent launch argv for session "pyolo" contains "--approve"
@@ -80,24 +82,40 @@ Feature: Permission profile mapping, degradation and the yolo gate
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
 
-  Scenario: yolo requires an explicit confirm even once allow_yolo is enabled
+  Scenario: yolo takes effect immediately with no confirm once allow_yolo is enabled
+    # Requirement change (steer 017 item 2): this scenario used to be named
+    # "yolo requires an explicit confirm even once allow_yolo is enabled"
+    # and asserted the opposite -- that Enter on profile "yolo" with no "y"
+    # keystroke was refused. The operator's own SPEC push (395babf) removed
+    # that confirm: allow_yolo alone gates yolo's availability now, so
+    # choosing it takes effect on Enter directly, exactly like every other
+    # profile. This is a deliberate inversion of the prior assertion, not an
+    # assertion deleted without replacement.
     Given the deck config allows yolo
     And a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
-    When deck client "A" attempts claude session "noconfirm" with permission profile "yolo" without confirming
-    Then deck client "A" screen contains "yolo requires confirmation"
-    And the state database does not contain session "noconfirm"
-    When deck client "A" closes the create modal
-    And deck client "A" creates claude session "confirmed" with permission profile "yolo" confirming yolo
+    When deck client "A" creates claude session "confirmed" with permission profile "yolo"
     Then deck client "A" screen contains "starting"
     And the state database session "confirmed" has permission profile "yolo"
     When deck client "A" exits cleanly
+
+  Scenario: yolo_default opens the create modal already on yolo once allow_yolo is enabled
+    Given the deck config allows yolo and defaults new sessions to it
+    And a fake "claude" binary is on PATH for future deck clients
+    # Same 220-column rationale as the "yolo is unavailable" scenario above:
+    # a viewport this wide always hits framedDialog's 80-column ceiling, so
+    # the Permission profile row's exact text is asserted at a stable width.
+    And deck client "A" is started with terminal size 220x30
+    When deck client "A" opens the create modal for agent "claude"
+    Then deck client "A" screen contains "yolo (left/right cycles"
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
 
   Scenario: the permission profile survives a resume
     Given the deck config allows yolo
     And a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
-    When deck client "A" creates claude session "sticky" with permission profile "yolo" confirming yolo
+    When deck client "A" creates claude session "sticky" with permission profile "yolo"
     Then deck client "A" screen contains "resumable"
     When deck client "A" presses r on session "sticky"
     Then deck client "A" screen contains "starting"

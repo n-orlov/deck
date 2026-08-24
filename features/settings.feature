@@ -49,6 +49,10 @@ Feature: The `,` settings takeover (requirement 48)
     When deck client "A" sends ""
     Then deck client "A" screen contains "Allow Yolo: On"
     When deck client "A" sends "j"
+    # steer 017 item 2 inserted yolo_default between allow_yolo and
+    # stale_after in the schema (internal/config/schema.go): a second "j"
+    # is needed to land on Stale After now.
+    And deck client "A" sends "j"
     Then deck client "A" screen contains "Stale After: 45 seconds (min 1)"
     When deck client "A" sends "+"
     Then deck client "A" screen contains "Stale After: 46 seconds (min 1)"
@@ -164,6 +168,10 @@ Feature: The `,` settings takeover (requirement 48)
     Given deck client "A" is started
     When deck client "A" sends ","
     And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    # steer 017 item 2 inserted yolo_default between allow_yolo and
+    # stale_after in the schema (internal/config/schema.go): a second "j"
+    # is needed to land on Stale After now.
     And deck client "A" sends "j"
     Then deck client "A" screen contains "Stale After: 45 seconds (min 1)"
     And deck client "A" screen contains "Kind: integer · Scope: restart-to-apply"

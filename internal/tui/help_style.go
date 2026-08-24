@@ -11,7 +11,7 @@ import (
 // an explicit literal list, not a structural heuristic over indentation,
 // because helpText mixes true section headers ("Keys", "Runtime
 // controls") with free-floating prose paragraphs that also sit at column
-// 0 ("Yolo is gated twice...", "Sessions use a private tmux server...")
+// 0 ("Yolo is gated by allow_yolo...", "Sessions use a private tmux server...")
 // and with the dialog's own title line ("deck help", already visually
 // set apart by framedDialogScrollable's border) and its closing sentence
 // ("? closes help; Esc closes help; q quits deck.") -- none of which are
