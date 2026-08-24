@@ -29,6 +29,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
+	sc.Step(`^the deck config defaults new sessions to yolo without allowing it$`, deckConfigDefaultsYoloWithoutAllowing)
 	sc.Step(`^deck client "([^"]+)" opens the create modal for agent "([^"]+)"$`, clientOpensCreateModalForAgent)
 	sc.Step(`^deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContain)
 	sc.Step(`^deck client "([^"]+)" row "([^"]+)" does not contain "([^"]+)"$`, clientRowDoesNotContain)
@@ -1181,6 +1182,24 @@ func deckConfigAllowsYoloWithDefault(ctx context.Context) error {
 	}
 	path := filepath.Join(h.Home, "config.toml")
 	if err := os.WriteFile(path, []byte("allow_yolo = true\nyolo_default = true\n"), 0o600); err != nil {
+		return fmt.Errorf("write scenario config.toml: %w", err)
+	}
+	return nil
+}
+
+// deckConfigDefaultsYoloWithoutAllowing writes yolo_default = true alone
+// (no allow_yolo key at all, so it stays the schema's own default false) --
+// steer 020 item 2's stated, visible inconsistency: yolo_default is On but
+// inert because allow_yolo is off, and the settings row itself must say so
+// (internal/tui/settings.go's settingsFieldValueDisplay), not silently
+// override either key in either direction.
+func deckConfigDefaultsYoloWithoutAllowing(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(h.Home, "config.toml")
+	if err := os.WriteFile(path, []byte("yolo_default = true\n"), 0o600); err != nil {
 		return fmt.Errorf("write scenario config.toml: %w", err)
 	}
 	return nil

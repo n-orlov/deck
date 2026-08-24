@@ -25,8 +25,19 @@ written to the pane and no record anywhere of the drop.
   `cat` on a real tmux server, capture-pane output inspected byte for byte. **This repo's
   `ci/Dockerfile` (a protected path) pins `golang:1.25-trixie`, whose apt `tmux` package is
   `3.5a`**, not the `3.6b` the steer referenced as the host's own tmux — deck has no way to test
-  against a newer tmux without editing a protected path, so the confirmation stands at 3.5a, the
-  same version the pre-existing entries in this allowlist were confirmed against.
+  against a newer tmux directly from this repo's own CI without editing a protected path, so
+  this task's own confirmation stands at 3.5a, the same version the pre-existing entries in this
+  allowlist were confirmed against.
+
+  **Update (steer 020 §3):** the operator independently ran the identical survey method (private
+  `tmux -L specver36` socket, pane running `sh -c "stty -echo; cat -v > file"` so the bytes are
+  recorded rather than re-interpreted) against a real tmux `3.6b` server on their own host,
+  outside this workspace, and reports all 20 names above pass, byte for byte identical to the
+  3.5a survey's own sequences (also cross-checked against `charmbracelet/bubbletea@v1.3.10`'s own
+  key table, including the two page keys). This is second-hand evidence, source named: it is not
+  independently re-verified from inside this repo, and the `ci/Dockerfile`-pins-3.5a-only caveat
+  above still stands for what *this suite* can exercise — the allowlist's own comment
+  (`internal/tmux/key.go`) now states both facts side by side.
 - Alt-modified variants of these (e.g. Ctrl+Alt+Left) are a **known, stated gap, not a silent
   one**: `interactiveNamedKey` refuses any `msg.Alt` key before reaching this switch at all
   (pre-existing behaviour, unchanged here), so no caller can ever produce one of these names for

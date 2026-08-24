@@ -47,6 +47,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"p pin", "one-shot fresh conversation", "auto-resume",
 		"Permission profile", "Pre-launch command", "loading secrets",
 		"Login shell", "Launch args", "allow_yolo",
+		"waiting column goes quiet", "questions/needs-input",
 		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "clock.now", "resolved data root", "DECK_ID_SEED",
 		"kill -USR1 <deck-client-pid>", "each invocation advances", "shared clock by exactly DECK_CLOCK_STEP",
 		"the trigger updates it and every process reads it",

@@ -51,7 +51,17 @@ import (
 // map: sent (raw, no deck code) to a pane running `cat` on a real tmux
 // 3.5a server (this repo's ci/Dockerfile pins golang:1.25-trixie, whose
 // apt tmux package is 3.5a; a protected path deck cannot edit to test
-// against a newer one) and the resulting capture-pane bytes inspected.
+// against a newer one directly from THIS repo's own CI) and the
+// resulting capture-pane bytes inspected. Steer 020 §3 independently ran
+// the identical survey method (private `tmux -L specver36` socket, pane
+// running `sh -c "stty -echo; cat -v > file"` so bytes are recorded
+// rather than re-interpreted) against a real tmux 3.6b server outside
+// this workspace and reports all 20 names below pass, byte for byte
+// identical to the 3.5a survey's own sequences -- so this holds on 3.5a
+// (verified here) AND 3.6b (second-hand evidence, source: steer 020 §3,
+// not independently re-verified from this repo). The ci/Dockerfile-pins-
+// 3.5a-only caveat above still stands for what THIS suite can exercise;
+// 3.6b coverage exists only as that steer's own report.
 // Alt-modified variants of these (e.g. Ctrl+Alt+Left) are NOT included:
 // interactiveNamedKey refuses any msg.Alt key outright before it would
 // ever ask for one of these names, so no caller can reach them yet --
