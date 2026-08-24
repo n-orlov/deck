@@ -186,6 +186,104 @@ In-pane wheel-scroll (commit `4d3b070`, `features/attach_scroll.feature`'s
 this fix (it exercises the *attached* tmux client's own mouse handling, not
 deck's post-detach re-enable) and was re-run unchanged: still green.
 
+### Steer 005 item 2: colour the `?` help overlay using existing tokens (task 082)
+
+`helpView` (`internal/tui/tui.go`) now renders `m.styledHelpText()` instead of
+the bare `helpText(m.settings.ASCII)`; the new styling logic lives entirely in
+a new file, `internal/tui/help_style.go`, and never touches `helpText` itself
+-- `help_keymap_parity_test.go`'s `helpKeysSectionEntries` depends on that
+string staying plain (exact-equality section lookup, a `"  "` vs `"   "`
+prefix split between entries and continuations, and a fixed leading-token
+vocabulary), so any escape sequence embedded in `helpText`'s own literal would
+break all three ways that test reads it.
+
+Styling applied, using only existing tokens (no palette/`contrast.go` change):
+section headers in `theme.Title`; inside the "Keys" section only, each entry's
+leading keycap phrase (`q`, `dd`, `PgUp/PgDn`, `↑/↓ or j/k`, the alternation
+forms `g / G`/`< / >`/`q or Ctrl+C`) in `theme.Key`, the rest of that entry's
+first line in `theme.Text`, and its wrapped continuation lines (the existing
+3-space-indent boundary task 021/078 already established) in `theme.Dimmed`.
+
+**Header set is a deliberate superset of the task's four named examples.**
+The task named Keys/Settings/Theme picker/Mouse/"the env-var list" (Runtime
+controls) as headers to colour; `Create dialog fields` was added too, since it
+is structurally identical (a column-0 heading immediately followed by
+indented entries) and excluding it while including the other five would be
+inconsistent for no stated reason. Recorded here as a scope decision, not a
+silent addition.
+
+**Keycap/text/continuation treatment is scoped to the "Keys" section only,**
+not generalised to every section that resembles it (Settings takeover, Theme
+picker, Mouse, Runtime controls, Create dialog fields all get header colour
+only, body left exactly as `helpText` wrote it). Two reasons: those sections'
+continuation lines are column-aligned to the prose column, not the "Keys"
+section's own flat indent, and none of their leading labels (field names, env
+var names, mouse actions) are themselves keycaps the way the task's own
+examples all are. `TestHelpNonKeysSectionBodyStaysUnstyled` pins this.
+
+**A second, independent copy of the keycap vocabulary was necessary.** The
+existing one (`help_keymap_parity_test.go`'s `helpKeyTokenToBoundKeys`) lives
+in a `_test.go` file and is unavailable to production code, and answers a
+different question (which raw bound key(s) a token names, for the
+requirement-38 cross-check) than styling needs (merely: is this token part of
+a keycap phrase). `help_style.go`'s own `helpKeycapTokens` is that second copy;
+a token added to a "Keys" entry without a matching entry here would render
+unstyled, caught by `TestHelpKeysEntriesAllGetKeycapStyling` (which walks every
+real entry live, not a fixture) rather than corrupting `helpText`.
+
+**Two of the task's own predictions did not hold, checked empirically rather
+than assumed.** `internal/tui/tui_test.go`'s `TestEmptyAndHelpViewsAreDiscoverable`
+builds its model from a zero-value `config.Settings{Socket: ...}` literal
+(`Color` defaults `false`); `cmd/deck/main_test.go`'s
+`TestDeckBinaryEmptyHelpAndQuitThroughPTY` (the real-PTY `DECK_ASCII=1` test)
+sets `NO_COLOR=1` in its own env. Both already ran with colour off before this
+task, so `colorToken` no-ops in both and neither test's rendered output changes
+by a single byte -- confirmed by running both unchanged after the fix, not
+by assumption. Both tests were left untouched, since editing a pinned-copy
+test that has nothing to update would be pure churn.
+
+**Verification, since the two above weren't the load-bearing check for colour
+actually appearing:** a new file, `internal/tui/help_style_test.go`, builds a
+colour-enabled model (`config.Settings{Color: true}`, matching the existing
+`sidebar_hierarchy_test.go`/`settings_task019_test.go` idiom) and reads real
+per-cell foreground colour off a `vt.Emulator` grid: every named header in
+`theme.Title` (cross-checked against a second, test-owned literal list so a
+production edit dropping a header can't pass by iterating zero times over the
+missing entry -- demonstrated red by deleting "Keys" from the production map,
+reverted after); a single-token keycap (`dd`) and the multi-token alternation
+form (`↑/↓ or j/k`) both in `theme.Key` with their prose in `theme.Text`; a
+continuation line in `theme.Dimmed`; every real "Keys" entry resolving a
+non-empty keycap phrase (`TestHelpKeysEntriesAllGetKeycapStyling`, demonstrated
+red by removing `"dd"` from the vocabulary, reverted after); the NO_COLOR/
+`DECK_COLOR=0` degrade path producing byte-for-byte the same output as bare
+`helpText` with zero escape sequences; and the 80-column frame-budget test
+(`TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns`) re-run WITH colour on
+(not just assumed from the colour-off original), confirming `panel.go`'s
+`stringWidth`/`ansiEscapeLen` do skip the new escapes rather than spending
+columns on them. `TestHelpOverlayKeymapMatchesBoundKeys` and
+`TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns` (both pre-existing,
+colour off) stay green unchanged. `TestNoColorLiterals` stays green (no hex
+literal, no `lipgloss.Color`, no hand-written escape -- everything through
+`m.colorToken`). `go build`/`go vet`/`gofmt` clean;
+`go test -count=1 ./internal/... ./cmd/...` green; targeted godog runs green:
+`@requirement-3-no-color`, `@requirement-2-color-depth-truecolor`,
+`@requirement-29-color-depth-16`, `@mouse-bindings`. Neither `SPEC.md` nor
+`prds/` touched.
+
+**Plan-bug fix, folded into this task (tasks.json edit only, no code):** task
+082's `dependsOn` named task 078 (help overlay height-bounding), correct in
+intent -- the two changes must not conflict inside the same function -- but
+078 is permanently `failed`/validation-exhausted (steer 014 item 2's explicit
+decision to leave it that way as history) so that dependency could never
+resolve under the scheduler; a dead dependency, per the worker-loop rules on
+never grinding against one silently. The functional prerequisite the ordering
+existed for was already satisfied: 078's own commits (`58c8b8e`/`4784e48`,
+followed by task 091's `6cfbe4a`) landed `framedDialogScrollable` and
+`helpView`'s route through it well before this task started, unaffected by
+078's task-tracking status, confirmed by reading `helpView` at the start of
+this task. `dependsOn` was cleared to `[]` to reflect that reality, not to
+skip an unmet precondition.
+
 ### Steer 006 item 1: session-list name/detail hierarchy (task 083)
 
 `sidebarRowLines` (`internal/tui/tui.go`) swapped exactly three existing
