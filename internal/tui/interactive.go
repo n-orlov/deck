@@ -138,6 +138,7 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 	m.interactiveOwnership = ownership
 	m.interactiveGrid = grid
 	m.interactiveDispatcher = dispatcher
+	m.interactiveScrollOffset = 0
 	m.attachError = ""
 	return m, nil
 }
@@ -166,6 +167,7 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	m.interactiveOwnership = nil
 	m.interactiveGrid = nil
 	m.interactiveDispatcher = nil
+	m.interactiveScrollOffset = 0
 	return m, nil
 }
 
@@ -184,6 +186,14 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+q" {
 		return m.exitInteractive()
 	}
+	// Any keystroke forwarded to the target snaps the view back to the
+	// live bottom first (PRD II-51): scrolled-back history is read-only by
+	// construction (there is nowhere on screen to place a cursor a
+	// scrollback line's own text came from), so typing "blindly" into a
+	// pane the user cannot currently see would be far more surprising than
+	// the ordinary terminal-emulator convention this matches -- scrolling
+	// back, then resuming input, jumps back to the bottom.
+	m.interactiveScrollOffset = 0
 	if m.interactiveDispatcher == nil {
 		return m, nil
 	}
@@ -224,9 +234,14 @@ func (m Model) previewContentSize() (width, height int) {
 // width already, so this only needs to pad/truncate the row COUNT to
 // contentHeight, exactly like every other previewBodyLines branch.
 func (m Model) interactiveBodyLines(contentWidth, contentHeight int) []string {
-	rendered := m.interactiveGrid.Grid().Render()
-	lines := strings.Split(rendered, "\n")
-	if interactiveGridIsBlank(lines) {
+	lines, _ := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
+	// The not-repainted announcement (PRD II-49) only ever applies to the
+	// LIVE view: scrolled-back history, if any exists at all, is by
+	// definition real content that once appeared on screen, so it is never
+	// blank in the sense this check means, and showing the announcement
+	// over genuine history would misreport "nothing has happened yet" while
+	// looking straight at something that did.
+	if m.interactiveScrollOffset == 0 && interactiveGridIsBlank(lines) {
 		lines = append([]string{interactiveNotRepaintedNotice}, lines...)
 	}
 	return fitLines(lines, contentHeight)

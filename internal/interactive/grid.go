@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,8 +35,34 @@ var paneDeadPollInterval = 200 * time.Millisecond
 // convention.
 type Grid = vt.SafeEmulator
 
+// ScrollbackMaxLines bounds every Grid's own scrollback (PRD II-51): vt's
+// library default (vt.DefaultScrollbackSize, 10000 lines) is already a
+// bound, but it is the LIBRARY's choice, not a stated, deck-owned one, so
+// newGrid overrides it here -- the one place every *Grid this package
+// constructs is built (grid_test.go's TestExactlyOneGridConstructorCallSite
+// guards that invariant) -- rather than leaving it implicit. 2000 is
+// chosen from this repository's own measurement
+// (docs/reports/phase3b.md's II-51 section, internal/interactive's own
+// TestScrollbackMemoryDoesNotGrowWithoutBound): a 120-column grid whose
+// scrollback is fully packed with this many content-filled lines costs
+// roughly 28 MiB of resident heap over an empty grid's own baseline in
+// this container -- comfortably in the same order of magnitude as the
+// PRD's own cited (and, in this environment, unreachable -- see
+// tasks.json's discovered.prdCorrections) ~53 MiB/pane spike figure,
+// unlike an EMPTY grid's own baseline cost, which this repository
+// measures at roughly 6 MiB, nowhere near that figure on its own. 2000
+// lines is comfortably more history than a preview panel a few dozen
+// rows tall needs for one scroll session, while the bound itself is what
+// keeps that cost from growing any further no matter how much MORE is
+// written through it (the same test proves feeding 40x more input than
+// the bound adds well under a further 2% to that cost, not a further
+// 40x).
+const ScrollbackMaxLines = 2000
+
 func newGrid(width, height int) *Grid {
-	return vt.NewSafeEmulator(width, height)
+	g := vt.NewSafeEmulator(width, height)
+	g.SetScrollbackSize(ScrollbackMaxLines)
+	return g
 }
 
 // Session streams one selected tmux pane's output into its own Grid via a
@@ -269,8 +296,18 @@ func (s *Session) drain(client tmux.Client, target string) {
 	for {
 		n, err := s.pipe.Read(buf)
 		if n > 0 {
-			g := s.currentGrid()
-			_, _ = g.Write(buf[:n])
+			// Takes s.mu (not merely to fetch the grid pointer the way
+			// currentGrid does, but held across the Write itself) so that
+			// RenderRows -- which composes a scrolled view out of several
+			// separate SafeEmulator calls and therefore needs the WHOLE
+			// composition to see a consistent grid -- can never observe a
+			// Write landing partway through its own read of scrollback/
+			// screen state. See RenderRows' own doc for the gotcha this
+			// avoids (task 085's CellAt-after-return race, at its first
+			// production call site rather than a test helper).
+			s.mu.Lock()
+			_, _ = s.grid.Write(buf[:n])
+			s.mu.Unlock()
 			// One MarkDirty per READ, never per byte and never a
 			// render itself -- this is exactly the point II-27 makes:
 			// a consumer rendering directly here, once per read, is
@@ -378,10 +415,13 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 }
 
 // writeNotice writes plain text (no escape sequences of its own) into the
-// session's current grid.
+// session's current grid. Takes s.mu around the Write itself, the same as
+// drain's own per-read Write (see drain's doc for why): a caller of
+// RenderRows must never observe this write half-applied.
 func (s *Session) writeNotice(notice string) {
-	g := s.currentGrid()
-	_, _ = g.Write([]byte(notice))
+	s.mu.Lock()
+	_, _ = s.grid.Write([]byte(notice))
+	s.mu.Unlock()
 	s.renders.MarkDirty()
 }
 
@@ -398,6 +438,75 @@ func (s *Session) currentGrid() *Grid {
 // whatever a caller may have observed before, by design -- a reseed
 // always replaces the grid rather than mutating the old one's canvas.
 func (s *Session) Grid() *Grid { return s.currentGrid() }
+
+// RenderRows composes exactly `height` rows of the session's current
+// view, `offset` lines back from the live bottom (PRD II-51's scrollback:
+// offset 0 is byte-for-byte what Grid().Render() split on "\n" would
+// give -- the pre-068 behaviour -- and a positive offset pulls rows from
+// the grid's own bounded scrollback, oldest at the top). offset is
+// clamped against the CURRENT scrollback length (which only grows as
+// content actually scrolls off, and is itself bounded at
+// ScrollbackMaxLines) and the clamped value actually used is returned as
+// usedOffset, so a caller's own stored offset can be kept in bounds from
+// this single call rather than a second, separately-locked one racing
+// this one.
+//
+// This takes the session's OWN lock (s.mu) for the WHOLE composition,
+// not merely to fetch the grid pointer the way currentGrid does.
+// Composing a scrolled view needs MORE than one SafeEmulator call
+// (Scrollback(), then that Scrollback's own Len()/Line() methods, plus
+// Render() for the current screen), and unlike a single self-contained
+// call such as Render() -- whose own brief internal lock covers the
+// ENTIRE encode and hands back a plain string with no live pointers --
+// a value obtained from Scrollback() is a pointer to the SAME live
+// object a concurrent Write can still be mutating (Push-ing a new line,
+// evicting the oldest) after Scrollback()'s own lock has already
+// released on return. That is the exact CellAt/Scrollback-pointer-
+// after-return gotcha task 085 fixed in test code (grid_test.go's
+// gridContains); it is fixed here, at its first PRODUCTION call site,
+// by making every content-mutating call this package makes (drain's
+// per-read Write, writeNotice) take the SAME s.mu this does, so no
+// Write can land while a RenderRows call is in progress.
+func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g := s.grid
+	width := g.Width()
+	screenHeight := g.Height()
+	sb := g.Scrollback()
+	sbLen := sb.Len()
+
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > sbLen {
+		offset = sbLen
+	}
+
+	screenLines := strings.Split(g.Render(), "\n")
+	total := sbLen + screenHeight
+	end := total - offset
+	start := end - height
+
+	rows = make([]string, 0, height)
+	blank := strings.Repeat(" ", width)
+	for i := start; i < end; i++ {
+		switch {
+		case i < 0:
+			rows = append(rows, blank)
+		case i < sbLen:
+			rows = append(rows, sb.Line(i).Render())
+		default:
+			y := i - sbLen
+			if y >= 0 && y < len(screenLines) {
+				rows = append(rows, screenLines[y])
+			} else {
+				rows = append(rows, blank)
+			}
+		}
+	}
+	return rows, offset
+}
 
 // Renders delivers one notification per coalesced render (PRD II-27), at
 // most once per renderCoalesceInterval, however many writes into the

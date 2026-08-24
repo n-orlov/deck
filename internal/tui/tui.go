@@ -538,6 +538,16 @@ type Model struct {
 	// onward): built against the pane id, re-verifying identity before
 	// every send.
 	interactiveDispatcher *tmux.Dispatcher
+	// interactiveScrollOffset is PRD II-51's bounded scrollback position:
+	// 0 is the live bottom (interactiveBodyLines shows exactly what
+	// Grid().Render() itself would, unchanged from before task 068), and a
+	// positive value is how many lines back into the grid's own bounded
+	// scrollback (interactive.ScrollbackMaxLines) the view currently sits.
+	// Reset to 0 on every entry (enterInteractive), every exit
+	// (exitInteractive) and every keystroke forwarded to the target
+	// (updateInteractive) -- scrolled-back history is read-only, so typing
+	// or leaving snaps straight back to the live view.
+	interactiveScrollOffset int
 }
 
 // WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task
@@ -2072,6 +2082,26 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.settings.Mouse {
 			return m, nil
 		}
+		// PRD II-51: the wheel scrolls the interactive grid's own bounded
+		// scrollback while interactive mode owns the keyboard, the one
+		// mouse gesture interactive mode accepts at all -- every other
+		// gesture (press/drag/release/double-click) stays a no-op below,
+		// exactly as the whole of interactive mode already was before this
+		// (a click over a live pane makes no more sense here than it does
+		// over the passive preview in list mode, which also ignores
+		// clicks).
+		if m.interactive {
+			if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelPreview {
+					delta := interactiveWheelStepLines
+					if msg.Button == tea.MouseButtonWheelDown {
+						delta = -delta
+					}
+					return m.scrollInteractiveByLines(delta)
+				}
+			}
+			return m, nil
+		}
 		// SPEC §11.4/§11.8: the mouse can neither cancel nor confirm a dialog,
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
@@ -2080,6 +2110,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.handleMouse(msg)
+	}
+	if dir, ok := shiftPageScrollDir(message); ok {
+		return m.scrollInteractiveByPage(dir)
 	}
 	return m, nil
 }
@@ -4461,7 +4494,10 @@ Keys
     resizes the agent's window to fit the preview panel, and output the
     agent produces while that window is narrower than its usual size
     consumes its own scrollback faster than the same output would at
-    full width
+    full width; while interactive, a wheel notch or Shift+PgUp/PgDn
+    scrolls this bounded, deck-owned scrollback of the fitted view (not
+    the pane's own tmux scrollback) rather than forwarding to the pane;
+    typing snaps the view back to the live bottom
   a attach the selected running session (full-screen, like Ctrl+Q never
     happened -- ↵ enters interactive mode instead)
   Y acknowledge the selected waiting/error session, clear its unseen marker
@@ -4627,8 +4663,11 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
                             (like ↑/↓/PgUp/PgDn)
   drag the seam             adjust sidebar_width live (like </>)
   click the collapsed strip restore the previous layout mode (like |)
-  click or wheel over the preview does nothing; a click outside a dialog
-  does nothing (Esc cancels)
+  click over the preview     does nothing; a click outside a dialog does
+                            nothing (Esc cancels)
+  wheel over the preview     while interactive, scrolls the grid's own
+                            bounded scrollback (like Shift+PgUp/PgDn);
+                            otherwise does nothing
   DECK_MOUSE=0 (or [ui] mouse = false) disables all mouse reporting and
   every mouse binding above; every keyboard path keeps working, only the
   shortcuts are lost
