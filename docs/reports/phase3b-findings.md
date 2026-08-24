@@ -161,3 +161,26 @@ just that test were all green. A future task fixing it should join the
 goroutine (e.g. a `done` channel closed by the goroutine itself, waited on
 before `cleanup()` runs) rather than touching `gridContains` or anything
 this task changed.
+
+## II-34: tmux's Home/End escape translation is faithful to a real attach
+## (task 056)
+
+`send-keys Home`/`send-keys End` and a real attached client typing the
+same physical key produce the identical vt220 escape --
+`ESC[1~`/`ESC[4~` -- confirmed directly against a real tmux 3.5a server
+(`internal/tmux/key_test.go`'s `TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys`):
+tmux performs no retranslation of raw client input that does not match
+one of its own key bindings, it forwards what the client sent straight
+to the active pane, so `send-keys`'s translation is the same standard a
+real attach goes through, not a separate, merely-self-consistent
+convention deck invented. This is what makes it safe for
+`Dispatcher.SendNamedKey` to rely on `send-keys <Name>` for every named
+key interactive mode needs, rather than hand-encoding the escape itself.
+
+`capture-pane -p` renders a stored raw ESC control byte as the
+two-character caret notation `^[`, not the literal `0x1b` byte --
+confirmed by hexdumping its output directly while building this task
+(`5e 5b 5b 31 7e` = `^`, `[`, `[`, `1`, `~`). Any future test in this
+package comparing against `capture-pane` output for a control character
+should compare against that rendered form, not assume the raw byte
+survives capture-pane's own text rendering.

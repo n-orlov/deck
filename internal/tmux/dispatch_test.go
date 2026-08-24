@@ -291,6 +291,7 @@ func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 	allowed := map[string]bool{
 		"tmux.go": true, // Client.SendKeys, pre-existing task 023 scope only.
 		"send.go": true, // Dispatcher.SendLiteral, task 054/II-32's `-l --` primitive.
+		"key.go":  true, // Dispatcher.SendNamedKey, task 056/II-34/II-35's allowlisted named-key primitive.
 	}
 
 	dir, err := os.Getwd()
