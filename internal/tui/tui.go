@@ -2973,13 +2973,27 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 // mode: outside it (the only time list-mode row lookups/clicks run) the
 // name is still never in the title, so nothing that locates a row by name
 // in list mode is affected.
+//
+// PRD Part II requirement 46 also lands here: interactive mode fits the
+// window to the panel's own content box (enterInteractive), so
+// contentWidth/Height and the real pane size are always equal -- stating
+// that in cropPreviewBottomLeft's own "WxH of realWxrealH" form would
+// degenerate to the misleading "45x22 of 45x22" (a crop statement about a
+// pane that was never cropped). The title states it instead, in a form
+// that cannot be mistaken for a crop: "WxH fitted", no "of", no second
+// pair of dimensions, since fitted the two are the same number by
+// construction. This is a border-title addition, not a body line, so it
+// never steals a row from the live grid the way a crop's geometry line
+// steals one from previewBodyLines' content budget.
 func (m Model) previewTitle() string {
 	if m.interactive {
 		name := ""
 		if m.selected >= 0 && m.selected < len(m.sessions) {
 			name = m.sessions[m.selected].Name + " "
 		}
-		return " " + name + "interactive " + m.glyph("—", "-") + " Ctrl+Q to leave "
+		width, height := m.previewContentSize()
+		geom := fmt.Sprintf("%dx%d fitted", width, height)
+		return " " + name + "interactive " + geom + " " + m.glyph("—", "-") + " Ctrl+Q to leave "
 	}
 	return ""
 }

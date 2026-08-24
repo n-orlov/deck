@@ -25,10 +25,33 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" exits cleanly
 
   @requirement-23-preview-crop-geometry
-  Scenario: a live pane larger than the panel is cropped with its real geometry stated
+  Scenario: in passive preview, a live pane larger than the panel is cropped with its real geometry stated
+    # Scoped to passive preview (PRD Part II item 2 under "Assertions this
+    # phase must deliberately change"): this scenario never enters
+    # interactive mode, so the \d+x\d+ of \d+x\d+ crop statement it asserts
+    # is never the fitted, non-cropping case II-46 gives its own scenario
+    # below.
     Given deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     Then deck client "solo" screen matches the pattern "\d+x\d+ of \d+x\d+"
+    And deck client "solo" exits cleanly
+
+  @requirement-46-interactive-fitted-geometry
+  Scenario: interactive mode states the fitted geometry, never the crop form
+    # PRD Part II requirement 46: entering interactive mode fits the tmux
+    # window to exactly the panel's own content box, so the real pane size
+    # and the panel's content size are always equal. Stating that in the
+    # crop's own "WxH of realWxrealH" form would degenerate to the
+    # misleading "45x22 of 45x22" -- a crop statement about a pane that was
+    # never cropped. The panel states it differently instead: "WxH fitted".
+    Given deck client "solo" is started
+    And deck client "solo" creates shell session "alpha"
+    And within one configured reconcile interval deck client "solo" screen contains "running"
+    And deck client "solo" selects session "alpha"
+    When deck client "solo" enters interactive mode
+    Then deck client "solo" screen matches the pattern "\d+x\d+ fitted"
+    And deck client "solo" screen does not contain " of "
+    And deck client "solo" leaves interactive mode
     And deck client "solo" exits cleanly
 
   @requirement-24-preview-wide-cell-boundary
