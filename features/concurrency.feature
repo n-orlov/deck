@@ -52,5 +52,17 @@ Feature: Multi-client session refresh
     And the private tmux session "deck_externally-stopped" does not exist
     When deck client "A" sends "?"
     And deck client "A" terminal is resized to 100x130
-    Then deck client "A" screen contains "Runtime controls"
+    # This is a smoke check that the help overlay still opens and renders
+    # correctly after a reconcile-driven status change and a resize while
+    # open -- not a check that the WHOLE help text is reachable (there is
+    # no PgDn step here). "deck help"'s own title line is always the
+    # first content row at helpScroll==0 (reset on every open, task 078),
+    # so it is on screen regardless of overlay height or terminal size.
+    # Previously this asserted "Runtime controls" (far down helpText),
+    # which relied on the pre-task-078 unclipped overlay's own overflow
+    # pushing its TAIL onto screen by accident at this terminal size --
+    # task 078's real pagination (helpScroll now fixed at 0 on open)
+    # shows the TOP instead, so that string is no longer reachable
+    # without an explicit PgDn this scenario never sends.
+    Then deck client "A" screen contains "deck help"
     When deck client "A" exits cleanly
