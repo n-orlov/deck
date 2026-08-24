@@ -80,6 +80,15 @@ type Session struct {
 	// fallbackDone regardless of whether displacement was ever detected.
 	fallbackCh   chan struct{}
 	fallbackDone chan struct{}
+
+	// renders is II-27's render coalescer: every write that changes grid
+	// content (drain's per-read Write, the seed write in Start, the
+	// fallback loop's re-capture, writeNotice) calls renders.MarkDirty
+	// instead of a caller re-rendering directly off of that write, so
+	// that a consumer selecting on Renders() sees at most one
+	// notification per renderCoalesceInterval no matter how many writes
+	// landed in between.
+	renders *RenderCoalescer
 }
 
 // Status is the live path's own account of why bytes have stopped
@@ -158,8 +167,14 @@ func Start(ctx context.Context, client tmux.Client, target string, width, height
 		pollDone:     make(chan struct{}),
 		fallbackCh:   make(chan struct{}),
 		fallbackDone: make(chan struct{}),
+		renders:      NewRenderCoalescer(renderCoalesceInterval),
 	}
 	s.grid = grid
+	// The seed write above already changed grid content before renders
+	// existed to be told about it; mark it dirty now so the very first
+	// coalesced render (once a consumer starts selecting on Renders())
+	// reflects the seed, not an empty grid.
+	s.renders.MarkDirty()
 	go s.drain(client, target)
 	go s.pollPaneDead(pollCtx, client, target)
 	go s.fallbackLoop(pollCtx, client, target)
@@ -256,6 +271,11 @@ func (s *Session) drain(client tmux.Client, target string) {
 		if n > 0 {
 			g := s.currentGrid()
 			_, _ = g.Write(buf[:n])
+			// One MarkDirty per READ, never per byte and never a
+			// render itself -- this is exactly the point II-27 makes:
+			// a consumer rendering directly here, once per read, is
+			// the expensive baseline the coalescer exists to replace.
+			s.renders.MarkDirty()
 		}
 		if err != nil {
 			if !s.pipe.WasClosed() && errors.Is(err, io.EOF) {
@@ -352,6 +372,7 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 		s.mu.Lock()
 		s.grid = fresh
 		s.mu.Unlock()
+		s.renders.MarkDirty()
 		s.writeNotice(pipeDisplacedNotice)
 	}
 }
@@ -361,6 +382,7 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 func (s *Session) writeNotice(notice string) {
 	g := s.currentGrid()
 	_, _ = g.Write([]byte(notice))
+	s.renders.MarkDirty()
 }
 
 // currentGrid returns the session's grid as of right now, under the
@@ -377,6 +399,15 @@ func (s *Session) currentGrid() *Grid {
 // always replaces the grid rather than mutating the old one's canvas.
 func (s *Session) Grid() *Grid { return s.currentGrid() }
 
+// Renders delivers one notification per coalesced render (PRD II-27), at
+// most once per renderCoalesceInterval, however many writes into the
+// grid happened in between. A caller renders by calling Grid().Render()
+// each time it receives on this channel -- Renders() itself carries no
+// frame data, only the "a repaint is due" signal, so the render always
+// reflects whatever the grid holds at the moment the caller acts on it,
+// not a snapshot captured when the notification was produced.
+func (s *Session) Renders() <-chan struct{} { return s.renders.Renders() }
+
 // Close disarms the pipe and waits for the drain goroutine to observe the
 // resulting read error, so a caller never observes a Session whose drain
 // goroutine is still writing into its Grid after Close returns.
@@ -386,6 +417,7 @@ func (s *Session) Close() error {
 	<-s.done
 	<-s.pollDone
 	<-s.fallbackDone
+	s.renders.Close()
 	return err
 }
 

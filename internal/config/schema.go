@@ -246,11 +246,17 @@ var Schema = []Field{
 			"other key\"). Restart-to-apply: saving here writes config.toml " +
 			"immediately, but nothing in the already-running client reads it " +
 			"again until deck restarts.",
-		// requirement 19: interactive mode's render-coalescing loop (II-27,
-		// task 049) does not exist in this tree yet -- there is nothing a
-		// running client could apply live even in principle today, the same
-		// honest-pending-consumer reasoning as capture_min_interval and
-		// ui.recent_cwd_limit above.
+		// requirement 19: task 049/II-27 landed the render-coalescing loop
+		// itself (internal/interactive.RenderCoalescer, driven by that
+		// package's own renderCoalesceInterval var, currently 60ms to match
+		// this key's default) but nothing in internal/tui constructs an
+		// interactive.Session yet -- that wiring, whenever it lands, is
+		// what would read InteractiveMS out of Settings and set the var
+		// from it. Until then this key still has no live consumer to
+		// apply changes to, the same honest-pending-consumer reasoning as
+		// capture_min_interval and ui.recent_cwd_limit above -- only the
+		// reason has narrowed from "the mechanism doesn't exist" to "the
+		// mechanism exists but nothing hands it this setting yet".
 		Scope: ScopeRestartToApply,
 	},
 	{

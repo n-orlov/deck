@@ -322,3 +322,93 @@ the struct literal drift) makes
 `TestPaneSeedStateReadsDefaultState` fail correctly, naming both fields;
 reverted before committing. The per-field non-default test would have
 caught the same class of bug for either field individually.
+
+## II-27: coalesce renders at DECK_INTERACTIVE_MS (task 049)
+
+`internal/interactive/render.go`'s `RenderCoalescer` is a plain
+trailing-edge debounce on a fixed ticker: a background goroutine ticks
+every `interval`, and each tick delivers exactly one notification on
+`Renders()` if and only if at least one `MarkDirty` call happened since
+the previous tick, however many happened. `Session` (`grid.go`) wires one
+in (driven by the package var `renderCoalesceInterval`, default 60ms to
+match `internal/config/schema.go`'s `interactive_ms` default) and calls
+`MarkDirty` from every place that changes grid content: `drain`'s
+per-read `Write` (one call per pipe **read**, not per byte — this is the
+exact baseline II-27 measures against), the seed write in `Start`, the
+displacement fallback's periodic re-capture, `writeNotice`, and
+`Resize`'s reseed. `Renders()` itself carries no frame data, only an "a
+repaint is due" signal — a caller renders by calling `Grid().Render()`
+each time it receives one, so the render always reflects whatever the
+grid holds at that moment, never a stale snapshot from whenever the
+notification was produced.
+
+### Render frequency, not parsing, dominates the cost — measured, not assumed
+
+`internal/interactive/render_test.go`'s
+`TestRenderCostPerCallDominatesParsingCostPerCall` times 2000 `Write()`
+calls of a representative chunk (plain text, one SGR colour transition, a
+reset, a line ending) against 2000 `Render()` calls on the same 120x40
+grid (the geometry task 068's own ~53 MiB resident-cost baseline uses).
+Measured in this container:
+
+| operation | total (2000 calls) | per call |
+|---|---|---|
+| `Write()` | 38.4ms | 19.2µs |
+| `Render()` | 333.7ms | 166.8µs |
+
+`Render()` costs **8.69x** what `Write()` costs per call here — composing
+the whole grid into a string is the expensive step, not parsing the
+incoming bytes, exactly as II-27 claims.
+
+### Renders are coalesced against a real, known byte-arrival pattern — not one per read
+
+`TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern` drives a
+real tmux pane through a known, reproducible pattern (40 lines, ~12ms
+apart via a throttled shell loop — the same throttled-loop idiom task
+043's own gotcha already established as reproducible here, in contrast to
+an unthrottled flood) and counts `Session.Renders()` notifications, each
+followed by an actual `Grid().Render()` call whose cost is summed, at
+three settings of `renderCoalesceInterval`:
+
+| interval | renders (900ms window) | total `Render()` cost |
+|---|---|---|
+| 1ms (effectively per-read) | 42 | 1.00ms |
+| 60ms (SPEC default) | 9 | 0.196ms |
+| 2s (longer than the whole counting window — non-vacuous control) | 0 | 0 |
+
+Measured ratio here: per-read `Render()` cost is **5.11x** 60ms-coalesced
+`Render()` cost, for this pattern and this container. PRD II-27 cites
+1.99x, from the 2026-08-22 spikes' `b/REPORT.md`; that evidence is
+unreachable from this container (`tasks.json`'s
+`discovered.prdCorrections` — `~/deck-spikes/` does not exist here), so
+this number is not a reproduction of that figure, deliberately: it is
+this repository's own measurement of the identical property (coalescing
+to 60ms costs meaningfully less than rendering per read) on hardware and a
+tmux version this repository can actually exercise, following the same
+departure-and-say-so precedent task 048 already set for an equally
+unreachable spike number. The 0-renders control at a 2s interval confirms
+the ticker is genuinely gating on the interval — the pattern alone, run
+against a coalescer that never ticks inside the counting window, produces
+nothing.
+
+`internal/interactive/render_test.go`'s two `RenderCoalescer`-level tests
+(`TestRenderCoalescerFiresAtMostOncePerIntervalRegardlessOfDirtyCallCount`,
+`TestRenderCoalescerAtTwoIntervalSettingsGivesDifferentRenderCounts`) pin
+the same coalescing math deterministically, independent of tmux/pipe
+timing: 50 `MarkDirty` calls 1ms apart at a 20ms interval collapse to 2
+renders; ~200ms of continuous dirty signals at a 10ms interval produce 20
+renders (matching 200ms/10ms exactly) against 2 renders at a 100ms
+interval on the identical pattern (matching 200ms/100ms) — the two-setting
+comparison II-27's successCriteria names directly.
+
+### Not yet wired into internal/tui
+
+As of this commit, nothing in `internal/tui` constructs an
+`interactive.Session` (unchanged from task 044's own note to the same
+effect) — `RenderCoalescer`'s interval is the package var
+`renderCoalesceInterval`, not yet fed from `settings.InteractiveMS`.
+`internal/config/schema.go`'s comment on the `interactive_ms` key is
+updated in this commit to say so precisely: the mechanism now exists,
+but nothing hands it this setting yet. Whichever later task wires
+interactive mode into `internal/tui` is responsible for setting
+`renderCoalesceInterval` from `settings.InteractiveMS` at that point.
