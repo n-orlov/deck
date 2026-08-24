@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -128,6 +129,29 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 	output, err := c.command(commandCtx, args...).CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("tmux -L %s %s: %w: %s", c.Socket, strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return output, nil
+}
+
+// runWithStdin is run's twin for a command that reads its payload from
+// stdin instead of argv -- PRD II-36's whole point is that ONLY this
+// shape (used by send.go's load-buffer streaming) has no length ceiling
+// at all, unlike every argv-based command tmux accepts, which is capped
+// by tmux's own ~16 KiB internal command-string limit (see send.go's
+// literalChunkBytes/hexChunkArgs doc comments) long before the OS's much
+// larger ARG_MAX would ever matter. This helper is deliberately generic
+// (it never hardcodes a command name), so it does not itself need to be
+// added to dispatch_test.go's per-file send-primitive allowlist -- only
+// the call site that actually names "load-buffer" does, and that call
+// site lives in send.go, which is already allowlisted.
+func (c Client) runWithStdin(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	cmd := c.command(commandCtx, args...)
+	cmd.Stdin = stdin
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("tmux -L %s %s: %w: %s", c.Socket, strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}

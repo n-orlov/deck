@@ -972,3 +972,100 @@ own guard explicitly anticipated this).
 `go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tmux/...`
 green (17.5s); whole `./...` suite not re-run this task per the budget
 rule (change confined to `internal/tmux` plus this doc).
+
+## II-36: chunk literals at 8192 bytes, `-H` at 4096 args, stream anything larger through `load-buffer` (task 057)
+
+### The real ceiling, measured directly against tmux 3.5a in this repo's CI image
+
+`internal/tmux/chunk_test.go` bisects both of PRD II-36's named hazards
+raw, with no deck code involved, against the exact tmux binary
+`ci/Dockerfile` installs:
+
+- `send-keys -l --` with a 16340-byte literal payload succeeds (exit 0);
+  with a 16360-byte payload it fails with tmux's own `command too long`
+  (`TestSendKeysLiteralFailsAtTheRealCommandLengthCeiling`). A 100000-byte
+  payload -- six times larger, still comfortably under Linux's own
+  512 KiB per-argument `MAX_ARG_STRLEN` -- fails with the identical
+  `command too long`, not any OS/exec-level error
+  (`TestSendKeysLiteralFailureIsNotARGMAX`), confirming the ceiling is
+  tmux's own, not the OS's `ARG_MAX`.
+- `send-keys -H` with 5445 valid two-hex-digit arguments (e.g. `61`)
+  succeeds; 5455 fails with `command too long`
+  (`TestSendKeysHexFailsAtTheRealArgCountCeiling`).
+
+**Correction to the PRD's own numbers** (recorded in full in
+`docs/reports/phase3b-findings.md`'s II-36 entry): PRD II-36 states the
+`-l --` ceiling as "16380 bytes", which this measurement confirms almost
+exactly (the real crossover sits between 16340 and 16360). It also
+states the `-H` ceiling as "8192 args", which this measurement does
+**not** confirm for valid two-hex-digit arguments -- the real crossover
+measured here is between 5445 and 5455 args, roughly two thirds of 8192.
+5450 two-character hex tokens plus one separating space apiece is itself
+~16.3 KiB, matching the `-l --` crossover almost exactly, which strongly
+suggests the PRD's "8192" figure was derived assuming a narrower
+per-argument width (closer to one byte per argument) rather than
+measured with real two-digit hex bytes -- both figures point at the SAME
+underlying ~16 KiB internal command-string limit, not two independent
+ceilings.
+
+### The fix: chunk small, stream large
+
+`internal/tmux/send.go`'s `Dispatcher.SendLiteral` now splits its body
+at `literalChunkBytes` (8192 bytes, comfortably under either measured
+ceiling): a body at or under that size still goes through the single
+`send-keys -l --` call this package always used; a larger body is
+handed to a NEW `streamLiteralViaLoadBuffer`, which `load-buffer`s the
+body over stdin (no argv-length ceiling at all, regardless of payload
+size) into a uniquely-named server-side buffer, then delivers it with
+`paste-buffer -d -b <name>` through `Dispatcher.Send` (so the actual
+delivery step is still identity-re-verified like every other send in
+this package) -- `load-buffer` itself is not, since it never touches the
+target pane at all, only stages bytes into a scratch buffer. A failed
+`paste-buffer` calls `delete-buffer` explicitly, since `-d` only deletes
+the buffer on success (the same finding task 058/II-37 restates for its
+own `paste-buffer -d -p` multi-line path).
+
+The peeled-trailing-semicolon `-H` re-delivery (task 055/II-33) is
+chunked the same way at `hexChunkArgs` (4096 args): `sendHexByteRun`
+issues as many `send-keys -H` calls as needed, each capped at 4096 hex
+arguments. There is no `load-buffer` substitute for this path --
+`load-buffer`/`paste-buffer` inserts raw literal bytes, which is exactly
+the `-l` parser hazard `-H` exists to route around for a trailing `;` --
+so an oversized run is chunked into multiple calls instead of streamed.
+
+### Non-vacuous proof
+
+`TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesIntact`
+sends a 20000-byte, order-sensitive (non-repeating) payload through
+`SendLiteral` and confirms it arrives at the target pane byte-for-byte,
+verified via `capture-pane -p -J -S -` (join soft-wrapped lines, include
+full scrollback) so a single very long typed line that wrapped across
+far more physical rows than the pane's own height can be reassembled and
+compared as one continuous string. This is non-vacuous by construction,
+demonstrated directly while building this task (temporarily reverted
+before commit, `git diff` empty): with the `literalChunkBytes` check
+removed (every payload going straight to one `send-keys -l --` call,
+this package's pre-057 behaviour), this EXACT test fails with the same
+`command too long` demonstrated above -- success is only possible
+because the oversized body actually streamed through `load-buffer`.
+`TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact` proves
+the analogous claim for `-H`: 6000 trailing semicolons
+(`TestSendKeysHexFailsAtTheRealArgCountCeiling` already showed a single
+6000-argument `-H` call fails outright) still arrive intact, because
+`sendHexByteRun` splits the run into two calls (4096 + 1904).
+`TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall`
+is the regression control at the boundary itself: a body of exactly
+8192 bytes (nowhere near either measured ceiling) still round-trips
+correctly.
+
+`dispatch_test.go`'s `TestNoSendPathBypassesTheDispatcherVerify` widens
+`send.go`'s own allowlist entry (per-file, not per-command, as of this
+task) to include `load-buffer`/`paste-buffer` alongside `send-keys`, in
+this same commit, per that test's own documented escape hatch.
+`internal/tmux/tmux.go` gains a generic `Client.runWithStdin`, used only
+by `send.go`'s `streamLiteralViaLoadBuffer` -- it never itself names
+`load-buffer`, so it needed no allowlist change of its own.
+
+`go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tmux/...`
+green (18.2s); `go test -count=1 ./internal/... ./cmd/...` green (broader
+unit sweep, not the whole `./...` suite, per the budget rule).
