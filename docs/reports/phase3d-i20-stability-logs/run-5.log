@@ -1,0 +1,476 @@
+ok  	github.com/n-orlov/deck/cmd/deck	5.288s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.791s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.772s
+token-form assertions discriminate: accent=#00ff00
+[1;37mFeature:[0m Real agent session creation and resume through the TUI
+  A user can create a real coding-agent session (not just shell) and resume it
+  through the released deck TUI, and every relevant fact is observable
+  black-box: the assigned conversation id, the exact launch-audit argv, how
+  many launches happened, and how many private tmux sessions exist for the
+  session's slug.
+
+  [1;37mScenario:[0m create a claude session, observe its facts, then resume it                                 [1;30m# agent_session.feature:8[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                    [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "claude one" with permission profile "safe"[0m            [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "claude one"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "claude one" has a non-empty conversation id[0m                        [1;30m# agent_steps_test.go:48 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" contains "--session-id"[0m       [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" does not contain "--continue"[0m [1;30m# agent_steps_test.go:51 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "claude one"[0m                                     [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mexactly 0 private tmux sessions match slug "deck_claude-one"[0m                                   [1;30m# agent_steps_test.go:55 -> github.com/n-orlov/deck/features.exactlyNPrivateSessionsMatchSlug[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "claude one"[0m                                             [1;30m# agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "resumable"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log has 2 launch records for session "claude one"[0m                                    [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" contains "--resume"[0m           [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "claude one" does not contain "--continue"[0m [1;30m# agent_steps_test.go:51 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+  [1;37mScenario:[0m R restarts a running claude session with the resume argv, preserving its conversation id                             [1;30m# agent_session.feature:33[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                 [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "restart claude" with permission profile "safe"[0m                                  [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "restart claude"[0m                                                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "restart claude" has a non-empty conversation id[0m                                              [1;30m# agent_steps_test.go:48 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "restart claude"[0m                                                           [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "restart claude" contains "--session-id"[0m                             [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mWhen[0m [32mdeck client "A" presses R on session "restart claude"[0m                                                                   [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.clientPressesRestartOnNamedSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "fake-claude resume:"[0m                          [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mthe audit log has 2 launch records for session "restart claude"[0m                                                          [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "restart claude" contains "--resume"[0m                                 [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "restart claude" does not contain "--session-id"[0m                     [1;30m# agent_steps_test.go:51 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "restart claude" contains session "restart claude"'s conversation id[0m [1;30m# agent_steps_test.go:53 -> github.com/n-orlov/deck/features.launchArgvForSessionContainsOwnConversationID[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+  [1;37mScenario:[0m login_shell marks captured_path advisory in the row and its detail                                           [1;30m# agent_session.feature:55[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                      [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "login shell one" with permission profile "safe" and login shell enabled[0m [1;30m# agent_steps_test.go:69 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndLoginShell[0m
+    [32mThen[0m [32mthe state database session "login shell one" has login_shell enabled[0m                                            [1;30m# agent_steps_test.go:70 -> github.com/n-orlov/deck/features.sessionHasLoginShellEnabled[0m
+    [32mAnd[0m [32mthe state database session "login shell one" has a non-empty captured_path[0m                                       [1;30m# agent_steps_test.go:71 -> github.com/n-orlov/deck/features.sessionHasNonEmptyCapturedPath[0m
+    [32mAnd[0m [32mthe state database session "login shell one" has captured_path marked advisory[0m                                   [1;30m# agent_steps_test.go:72 -> github.com/n-orlov/deck/features.sessionHasCapturedPathMarkedAdvisory[0m
+    [32mWhen[0m [32mdeck client "A" opens detail for session "login shell one"[0m                                                      [1;30m# agent_steps_test.go:36 -> github.com/n-orlov/deck/features.clientOpensDetailForSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Captured PATH:"[0m                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "advisory"[0m                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+  [1;37mScenario:[0m the launch audit records environment key names but never a value, across create and resume                                                   [1;30m# agent_session.feature:71[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                                                      [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "audit env one" with permission profile "safe" and env "AUDIT_ENV_TOKEN=super-secret-do-not-log-8675309"[0m [1;30m# agent_steps_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndEnv[0m
+    [32mThen[0m [32mdeck client "A" screen contains "audit env one"[0m                                                                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch record for session "audit env one" names environment key "AUDIT_ENV_TOKEN"[0m                                    [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.mostRecentLaunchRecordHasEnvKey[0m
+    [32mAnd[0m [32mthe audit log file never contains "super-secret-do-not-log-8675309"[0m                                                                              [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.auditLogFileNeverContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "audit env one"[0m                                                                                    [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "audit env one"[0m                                                                                            [1;30m# agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log has 2 launch records for session "audit env one"[0m                                                                                   [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mthe audit log's most recent launch record for session "audit env one" names environment key "AUDIT_ENV_TOKEN"[0m                                    [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.mostRecentLaunchRecordHasEnvKey[0m
+    [32mAnd[0m [32mthe audit log file never contains "super-secret-do-not-log-8675309"[0m                                                                              [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.auditLogFileNeverContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+  [1;37mScenario:[0m R restarts a claude session, recording environment key names in the launch audit but never a value                                                       [1;30m# agent_session.feature:92[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                                                     [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                                   [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "restart audit env" with permission profile "safe" and env "AUDIT_ENV_TOKEN=super-secret-restart-do-not-log-2468013"[0m [1;30m# agent_steps_test.go:42 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndEnv[0m
+    [32mThen[0m [32mdeck client "A" screen contains "restart audit env"[0m                                                                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch record for session "restart audit env" names environment key "AUDIT_ENV_TOKEN"[0m                                            [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.mostRecentLaunchRecordHasEnvKey[0m
+    [32mAnd[0m [32mthe audit log file never contains "super-secret-restart-do-not-log-2468013"[0m                                                                                  [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.auditLogFileNeverContains[0m
+    [32mAnd[0m [32mthe audit log has 1 launch record for session "restart audit env"[0m                                                                                            [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mWhen[0m [32mdeck client "A" presses R on session "restart audit env"[0m                                                                                                    [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.clientPressesRestartOnNamedSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "fake-claude resume:"[0m                                                              [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mthe audit log has 2 launch records for session "restart audit env"[0m                                                                                           [1;30m# agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "restart audit env" contains "--resume"[0m                                                                  [1;30m# agent_steps_test.go:50 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch record for session "restart audit env" names environment key "AUDIT_ENV_TOKEN"[0m                                            [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.mostRecentLaunchRecordHasEnvKey[0m
+    [32mAnd[0m [32mthe audit log file never contains "super-secret-restart-do-not-log-2468013"[0m                                                                                  [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.auditLogFileNeverContains[0m
+    [32mAnd[0m [32mno file under deck client "A" home directory, other than the state database, ever contains "super-secret-restart-do-not-log-2468013"[0m                         [1;30m# no_leak_test.go:28 -> github.com/n-orlov/deck/features.homeFilesOtherThanStateDBNeverContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                               [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m §3.2/§11.8 a wheel notch in an attached session scrolls the pane, not the shell (requirement 48)
+  deck's private tmux server is bootstrapped with `mouse on` (task 115) so that
+  a wheel notch delivered to an attached pane scrolls its scrollback via
+  tmux's own copy-mode, instead of the outer terminal's alternate-scroll
+  translating it into an Up/Down arrow that a shell reads as history recall.
+  This proves the behaviour against real tmux -- the observable is pane
+  content, never the `mouse` option's own value.
+
+  [1;37mScenario:[0m a wheel notch scrolls an attached pane's scrollback and leaves the shell's input line untouched [1;30m# attach_scroll.feature:11[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "attach-scroll-target"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" attaches to the selected session[0m                                                    [1;30m# attach_scroll_test.go:23 -> github.com/n-orlov/deck/features.clientAttachesToSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" fills the attached pane with more than one screen of scrollback[0m                     [1;30m# attach_scroll_test.go:24 -> github.com/n-orlov/deck/features.clientFillsAttachedPaneWithScrollback[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "before-wheel-scroll"[0m                                         [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up 30 times over the attached pane at column 20 row 15[0m            [1;30m# attach_scroll_test.go:25 -> github.com/n-orlov/deck/features.clientScrollsWheelUpNTimesAt[0m
+    [32mThen[0m [32mdeck client "A" attached pane shows the top of the scrollback[0m                                      [1;30m# attach_scroll_test.go:26 -> github.com/n-orlov/deck/features.clientAttachedPaneShowsTopOfScrollback[0m
+panic: test timed out after 10m0s
+	running tests:
+		TestFeatures (9m58s)
+		TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (9m51s)
+
+goroutine 152 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/local/go/src/testing/testing.go:2682 +0x359
+created by time.goFunc
+	/usr/local/go/src/time/sleep.go:215 +0x2d
+
+goroutine 1 [chan receive, 9 minutes]:
+testing.(*T).Run(0xc00021ae00, {0xac2e2e?, 0x0?}, 0xaff248)
+	/usr/local/go/src/testing/testing.go:2005 +0x485
+testing.runTests.func1(0xc00021ae00)
+	/usr/local/go/src/testing/testing.go:2477 +0x3e
+testing.tRunner(0xc00021ae00, 0xc000129c70)
+	/usr/local/go/src/testing/testing.go:1934 +0xea
+testing.runTests(0xc0000122b8, {0xfaa780, 0x24, 0x24}, {0xfb2500?, 0x9bde6c113af4c69a?, 0xfb0a40?})
+	/usr/local/go/src/testing/testing.go:2475 +0x4b4
+testing.(*M).Run(0xc0001f80a0)
+	/usr/local/go/src/testing/testing.go:2337 +0x63a
+main.main()
+	_testmain.go:115 +0x9b
+
+goroutine 91 [chan receive, 9 minutes]:
+testing.(*T).Run(0xc000782e00, {0xc00399abdc?, 0xa4cf20?}, 0xc0071e5da0)
+	/usr/local/go/src/testing/testing.go:2005 +0x485
+github.com/cucumber/godog.(*suite).runPickle(0xc001f26c00, 0xc0112e9ef0)
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/suite.go:636 +0x4eb
+github.com/cucumber/godog.(*runner).concurrent.func1(0xc007700358, 0xc0112e9ef0)
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/run.go:133 +0x23e
+github.com/cucumber/godog.(*runner).concurrent(0xc0001e4000, 0x1)
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/run.go:144 +0x662
+github.com/cucumber/godog.runWithOptions({_, _}, {0x0, 0x0, 0x0, {0x0, 0x0}, 0x0, {0x0, 0x0, ...}, ...}, ...)
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/run.go:293 +0xd5d
+github.com/cucumber/godog.TestSuite.Run({{0x0, 0x0}, 0x0, 0xaffbe0, 0xc0000e4000})
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/run.go:357 +0x1b9
+github.com/n-orlov/deck/features.TestFeatures(0xc000782e00)
+	/w/features/godog_test.go:37 +0x14a
+testing.tRunner(0xc000782e00, 0xaff248)
+	/usr/local/go/src/testing/testing.go:1934 +0xea
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1997 +0x465
+
+goroutine 42 [select, 9 minutes]:
+io.(*pipe).read(0xc00012e300, {0xc00070c300, 0x100, 0xc00021af01?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0xc0002aff90?, {0xc00070c300?, 0xc0002affd0?, 0xc0002affd0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 55
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 43 [select, 9 minutes]:
+io.(*pipe).read(0xc0001d6360, {0xc00070c400, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00070c400?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 55
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 246 [select]:
+github.com/n-orlov/deck/features.(*ScreenDriver).WaitForFrameGone(0xc0083a4840, {0xba2c20, 0xc007213740}, 0x0, {0xacb79a, 0x18})
+	/w/features/pty_driver_test.go:369 +0x117
+github.com/n-orlov/deck/features.clientExitsCopyModeOnAttachedPane({0xba2c20, 0xc007213740}, {0xc000073d96?, 0x484b13?})
+	/w/features/attach_scroll_test.go:185 +0x6d
+reflect.Value.call({0xa413a0?, 0xaff748?, 0xabc040?}, {0xabe19c, 0x4}, {0xc00724c510, 0x2, 0x2?})
+	/usr/local/go/src/reflect/value.go:581 +0xcca
+reflect.Value.Call({0xa413a0?, 0xaff748?, 0xa62520?}, {0xc00724c510?, 0xabc040?, 0x5c8085?})
+	/usr/local/go/src/reflect/value.go:365 +0xb9
+github.com/cucumber/godog/internal/models.(*StepDefinition).Run(0xc0111ccea0, {0xba2c20, 0xc007213740})
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/internal/models/stepdef.go:241 +0x2c88
+github.com/cucumber/godog.(*suite).runStep(0xc001f26c00, {0xba2c20, 0xc007213740}, 0xc0112e9ef0, 0xc007f65900, {0x0, 0x0?}, 0x1?, 0x0?)
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/suite.go:291 +0xae5
+github.com/cucumber/godog.(*suite).runSteps(0xc001f26c00, {0xba2c20?, 0xc0071e5d70?}, 0xc0112e9ef0, {0xc008492d20, 0xc, 0x0?})
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/suite.go:582 +0xbb
+github.com/cucumber/godog.(*suite).runPickle.func1(0xc001f40380)
+	/go-cache/mod/github.com/cucumber/godog@v0.16.0/suite.go:638 +0x7d
+testing.tRunner(0xc001f40380, 0xc0071e5da0)
+	/usr/local/go/src/testing/testing.go:1934 +0xea
+created by testing.(*T).Run in goroutine 91
+	/usr/local/go/src/testing/testing.go:1997 +0x465
+
+goroutine 84 [select, 9 minutes]:
+io.(*pipe).read(0xc001f0d200, {0xc00070c500, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00070c500?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 100
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 85 [select, 9 minutes]:
+io.(*pipe).read(0xc0001d6660, {0xc00078c300, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00078c300?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 100
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 88 [select, 9 minutes]:
+io.(*pipe).read(0xc001f0c1e0, {0xc00000e700, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00000e700?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 114
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 89 [select, 9 minutes]:
+io.(*pipe).read(0xc001e00120, {0xc00000e900, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00000e900?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 114
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 133 [select, 9 minutes]:
+io.(*pipe).read(0xc0001d7620, {0xc00078c600, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00078c600?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 33
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 134 [select, 9 minutes]:
+io.(*pipe).read(0xc0001d7680, {0xc001f2c100, 0x100, 0xc0000c9101?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x429b80?, {0xc001f2c100?, 0xc000034008?, 0xc000075fd0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 33
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 162 [select, 9 minutes]:
+io.(*pipe).read(0xc0076d4de0, {0xc008890000, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc008890000?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 92
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 163 [select, 9 minutes]:
+io.(*pipe).read(0xc0076d4e40, {0xc008890100, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc008890100?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 92
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 194 [select, 9 minutes]:
+io.(*pipe).read(0xc00ad84480, {0xc00a50a000, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00a50a000?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 172
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 195 [select, 9 minutes]:
+io.(*pipe).read(0xc00ad844e0, {0xc00a50a100, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00a50a100?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 172
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 206 [select, 9 minutes]:
+io.(*pipe).read(0xc00a50d200, {0xc008890200, 0x100, 0xc00ca30901?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc008890200?, 0x4540f2?, 0xc00ca15ba0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 139
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 207 [select, 9 minutes]:
+io.(*pipe).read(0xc00ad84000, {0xc00d1b4100, 0x100, 0xc0000c8f01?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x429b80?, {0xc00d1b4100?, 0xc000050c08?, 0xc0000757d0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 139
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 221 [select, 9 minutes]:
+io.(*pipe).read(0xc00ad85320, {0xc00e50a200, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00e50a200?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 215
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 222 [select, 9 minutes]:
+io.(*pipe).read(0xc00ad85380, {0xc00e50a300, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00e50a300?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 215
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 235 [select, 9 minutes]:
+io.(*pipe).read(0xc003935e60, {0xc00d1b4200, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00d1b4200?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 229
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 236 [select, 9 minutes]:
+io.(*pipe).read(0xc00491e360, {0xc00e50a400, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00e50a400?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 229
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 248 [select, 9 minutes]:
+os/exec.(*Cmd).watchCtx(0xc00c916480, 0xc0075bdb90)
+	/usr/local/go/src/os/exec/exec.go:789 +0xb2
+created by os/exec.(*Cmd).Start in goroutine 246
+	/usr/local/go/src/os/exec/exec.go:775 +0x8fd
+
+goroutine 249 [syscall]:
+syscall.Syscall(0x0, 0x4, 0xc0085c6f70, 0x1000)
+	/usr/local/go/src/syscall/syscall_linux.go:74 +0x25
+syscall.read(0xc0071554a0?, {0xc0085c6f70?, 0x415701?, 0xc000703180?})
+	/usr/local/go/src/syscall/zsyscall_linux_amd64.go:736 +0x38
+syscall.Read(...)
+	/usr/local/go/src/syscall/syscall_unix.go:183
+internal/poll.ignoringEINTRIO(...)
+	/usr/local/go/src/internal/poll/fd_unix.go:738
+internal/poll.(*FD).Read(0xc0071554a0, {0xc0085c6f70, 0x1000, 0x1000})
+	/usr/local/go/src/internal/poll/fd_unix.go:161 +0x2ae
+os.(*File).read(...)
+	/usr/local/go/src/os/file_posix.go:30
+os.(*File).Read(0xc0001898d8, {0xc0085c6f70?, 0x90?, 0x1000?})
+	/usr/local/go/src/os/file.go:144 +0x4f
+github.com/n-orlov/deck/features.(*ScreenDriver).read(0xc0083a4840)
+	/w/features/pty_driver_test.go:251 +0x9f
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 246
+	/w/features/pty_driver_test.go:116 +0x5a9
+
+goroutine 250 [select, 9 minutes]:
+io.(*pipe).read(0xc00719fc80, {0xc00f657700, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00f657700?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainScreenInput(...)
+	/w/features/pty_driver_test.go:212
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 246
+	/w/features/pty_driver_test.go:117 +0x5e5
+
+goroutine 251 [select, 9 minutes]:
+io.(*pipe).read(0xc00719fd40, {0xc00f657800, 0x100, 0x1?})
+	/usr/local/go/src/io/pipe.go:57 +0xa5
+io.(*PipeReader).Read(...)
+	/usr/local/go/src/io/pipe.go:134
+github.com/charmbracelet/x/vt.(*Emulator).Read(0x0?, {0xc00f657800?, 0x0?, 0x0?})
+	/go-cache/mod/github.com/charmbracelet/x/vt@v0.0.0-20260816001655-68d539dca504/emulator.go:256 +0x45
+github.com/n-orlov/deck/features.(*ScreenDriver).drainBudgetInput(...)
+	/w/features/pty_driver_test.go:224
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 246
+	/w/features/pty_driver_test.go:118 +0x625
+
+goroutine 252 [syscall, 9 minutes]:
+syscall.Syscall6(0xf7, 0x3, 0xa, 0xc00f6b0e40, 0x4, 0xc00f646a20, 0x0)
+	/usr/local/go/src/syscall/syscall_linux.go:96 +0x39
+internal/syscall/unix.Waitid(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/local/go/src/internal/syscall/unix/waitid_linux.go:18 +0x39
+os.(*Process).pidfdWait.func1(...)
+	/usr/local/go/src/os/pidfd_linux.go:109
+os.ignoringEINTR(...)
+	/usr/local/go/src/os/file_posix.go:263
+os.(*Process).pidfdWait(0xc0073c9080)
+	/usr/local/go/src/os/pidfd_linux.go:108 +0x1a9
+os.(*Process).wait(0x0?)
+	/usr/local/go/src/os/exec_unix.go:25 +0x1a
+os.(*Process).Wait(...)
+	/usr/local/go/src/os/exec.go:340
+os/exec.(*Cmd).Wait(0xc00c916480)
+	/usr/local/go/src/os/exec/exec.go:922 +0x45
+github.com/n-orlov/deck/features.startScreenDriver.func1()
+	/w/features/pty_driver_test.go:120 +0x25
+created by github.com/n-orlov/deck/features.startScreenDriver in goroutine 246
+	/w/features/pty_driver_test.go:119 +0x679
+FAIL	github.com/n-orlov/deck/features	600.043s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.031s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.508s
+ok  	github.com/n-orlov/deck/internal/interactive	10.965s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	2.935s
+ok  	github.com/n-orlov/deck/internal/store	1.349s
+ok  	github.com/n-orlov/deck/internal/theme	0.003s
+ok  	github.com/n-orlov/deck/internal/tmux	19.004s
+ok  	github.com/n-orlov/deck/internal/tui	0.406s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+FAIL
