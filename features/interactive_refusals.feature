@@ -15,10 +15,13 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     Then within one configured reconcile interval deck client "host" screen contains "running"
     And deck client "host" selects session "watched"
     And a real tmux client attaches to deck session "watched" at 80x24
+    And the private tmux window for session "watched" is captured as "before-refusal"
     When deck client "host" enters interactive mode
     Then deck client "host" screen contains "attached to this session"
     And deck client "host" screen contains "press a to attach"
     And deck client "host" screen contains "deck - sessions"
+    And the private tmux window for session "watched" still matches "before-refusal"
+    And tmux window "deck_watched" option "@deck_isize_owner" is unset in the window scope
     And the real tmux client attached to session "watched" detaches
     And deck client "host" exits cleanly
 
