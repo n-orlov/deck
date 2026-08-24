@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -174,20 +175,123 @@ func clientAttachedPaneShowsTopOfScrollback(ctx context.Context, name string) er
 // is a deliberate test action to return to the pane's live tail for the
 // byte-identical comparison the scenario's next step makes -- not a stand-in
 // for anything the product itself sends.
+//
+// Root-caused (task 206, docs/reports/phase3d-206-attach-scroll-hang/): a
+// burst of 30 unpaced wheel-up SGR reports followed immediately (within a
+// few ms) by "q" occasionally (~13% isolated, loadavg uncorrelated) leaves
+// the REAL tmux server's pane still in copy-mode (confirmed against the
+// tmux socket directly, bypassing the harness's own screen emulator
+// entirely -- #{pane_in_mode}=1 at the moment of failure -- so this is not
+// an emulator desync, the cancel keystroke genuinely never registered
+// against the server). The scenario's own wait for the top-of-scrollback
+// marker (clientScrollsWheelUpNTimesAt's WaitForFrame) proves tmux rendered
+// A frame with the marker, but not that it has finished executing every
+// queued WheelUp command -- "q" can still race the tail of that queue.
+//
+// Any FIXED delay before "q" makes that race worse, not better: 40/40
+// isolated runs with a 300ms settle inserted here still failed, on a
+// different symptom (a post-cancel frame mismatch, not a hang) --
+// idle dwell in copy-mode lets tmux's own position/clock indicator
+// ("HH:MM:SS [line/total]", never normalized by NormalizeFrame, which only
+// strips deck's own ISO timestamps) tick, and a resend-on-timeout retry
+// that must itself wait out a whole WaitForFrameGone bound before checking
+// ground truth inherits the same problem (3/40 in an earlier attempt at
+// this fix, docs/reports/phase3d-206-attach-scroll-hang/diag3/). So this
+// polls the SAME ground truth as fast as tmux itself allows, entirely
+// event-driven (no sleep): before sending "q" it waits for the real
+// server's own #{copy_cursor_line} to stop moving for two consecutive polls
+// 5ms apart, proving the queued WheelUp commands are fully drained, then
+// sends "q" into a genuinely idle copy-mode instead of a still-draining one.
 func clientExitsCopyModeOnAttachedPane(ctx context.Context, name string) error {
 	client, err := mouseSynthesisClient(ctx, name)
 	if err != nil {
+		return err
+	}
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if err := waitForCopyModeQueueToDrain(ctx, h.Socket); err != nil {
 		return err
 	}
 	if err := client.Send("q"); err != nil {
 		return err
 	}
 	if err := client.WaitForFrameGone(ctx, false, attachScrollTopMarker); err != nil {
-		return err
+		stillInMode, checkErr := paneStillInCopyMode(ctx, h.Socket)
+		return fmt.Errorf("%w\nDIAGNOSTIC real tmux pane_in_mode after cancel: stillInMode=%v checkErr=%v", err, stillInMode, checkErr)
 	}
 	// Give the pane's post-cancel redraw a moment to settle before the
 	// scenario's byte-identical frame comparison, mirroring
 	// clientCapturesFrameAs/clientFrameStillMatchesCaptured's own settle.
 	time.Sleep(100 * time.Millisecond)
 	return nil
+}
+
+// copyModeDrainPollInterval is the gap between the two #{copy_cursor_line}
+// reads waitForCopyModeQueueToDrain compares -- short enough that it adds no
+// meaningful dwell in copy-mode of its own (task 206: any dwell of
+// hundreds of ms desyncs the post-cancel frame via tmux's own ticking
+// position/clock indicator), long enough that two genuinely back-to-back
+// tmux commands don't look stable by accident.
+const copyModeDrainPollInterval = 5 * time.Millisecond
+
+// copyModeDrainTimeout bounds waitForCopyModeQueueToDrain. 2s is generous
+// for draining a queue of 30 already-sent mouse events against a local
+// tmux server; it is not a mitigation for the race itself (nothing here
+// waits out a hang), only a diagnostic-carrying ceiling matching this
+// package's other checkpoints.
+const copyModeDrainTimeout = 2 * time.Second
+
+// waitForCopyModeQueueToDrain polls the real tmux server (never the
+// harness's screen emulator) until #{copy_cursor_line} reports the same
+// value on two consecutive reads copyModeDrainPollInterval apart, proving
+// the pane has stopped moving -- i.e. every WheelUp command queued ahead of
+// the caller's next keystroke has actually finished executing, not merely
+// that a frame containing the expected text was rendered at some point
+// during the burst.
+func waitForCopyModeQueueToDrain(ctx context.Context, socket string) error {
+	deadline := time.Now().Add(copyModeDrainTimeout)
+	var previous string
+	for {
+		current, err := copyCursorLine(ctx, socket)
+		if err != nil {
+			return err
+		}
+		if current == previous {
+			return nil
+		}
+		previous = current
+		if time.Now().After(deadline) {
+			return fmt.Errorf("tmux -L %s pane's copy_cursor_line never stopped moving within %s (last two reads: %q then unchanged never observed)", socket, copyModeDrainTimeout, current)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(copyModeDrainPollInterval):
+		}
+	}
+}
+
+// copyCursorLine reads the real tmux server's own #{copy_cursor_line} for
+// this scenario's single pane.
+func copyCursorLine(ctx context.Context, socket string) (string, error) {
+	out, err := exec.CommandContext(ctx, "tmux", "-L", socket, "list-panes", "-a", "-F", "#{copy_cursor_line}").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("tmux -L %s list-panes -F #{copy_cursor_line}: %w: %s", socket, err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// paneStillInCopyMode asks the real tmux server directly (never the
+// harness's own screen emulator) whether any pane on this scenario's socket
+// is still in a mode (copy-mode included) -- the ground truth task 206's
+// root-cause needs to tell a genuinely dropped cancel keystroke apart from
+// the emulator merely lagging behind a server that already left it.
+func paneStillInCopyMode(ctx context.Context, socket string) (bool, error) {
+	out, err := exec.CommandContext(ctx, "tmux", "-L", socket, "list-panes", "-a", "-F", "#{pane_in_mode}").CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("tmux -L %s list-panes -F #{pane_in_mode}: %w: %s", socket, err, strings.TrimSpace(string(out)))
+	}
+	return strings.Contains(string(out), "1"), nil
 }

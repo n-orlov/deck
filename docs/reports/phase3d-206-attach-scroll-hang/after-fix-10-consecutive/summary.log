@@ -1,0 +1,73 @@
+=== 10 consecutive isolated runs of @requirement-48-wheel-scrolls-attached-pane-without-typing (task 206) ===
+loadavg before: 5.60 5.52 5.44 21/5908 7
+loadavg after:  7.47 5.99 5.60 4/5965 2422
+--- run 1 ---
+12 steps ([32m12 passed[0m)
+1.751892894s
+--- PASS: TestFeatures (1.77s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.73s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.784s
+--- run 2 ---
+12 steps ([32m12 passed[0m)
+1.42263748s
+--- PASS: TestFeatures (1.43s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.41s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.442s
+--- run 3 ---
+12 steps ([32m12 passed[0m)
+1.370379266s
+--- PASS: TestFeatures (1.38s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.36s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.387s
+--- run 4 ---
+12 steps ([32m12 passed[0m)
+1.382758563s
+--- PASS: TestFeatures (1.39s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.37s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.400s
+--- run 5 ---
+12 steps ([32m12 passed[0m)
+1.358520013s
+--- PASS: TestFeatures (1.36s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.35s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.374s
+--- run 6 ---
+12 steps ([32m12 passed[0m)
+1.388577498s
+--- PASS: TestFeatures (1.40s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.38s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.408s
+--- run 7 ---
+12 steps ([32m12 passed[0m)
+1.381198034s
+--- PASS: TestFeatures (1.39s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.37s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.401s
+--- run 8 ---
+12 steps ([32m12 passed[0m)
+1.381211294s
+--- PASS: TestFeatures (1.39s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.37s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.397s
+--- run 9 ---
+12 steps ([32m12 passed[0m)
+1.368402289s
+--- PASS: TestFeatures (1.38s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.36s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.389s
+--- run 10 ---
+12 steps ([32m12 passed[0m)
+1.398389569s
+--- PASS: TestFeatures (1.41s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.39s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.419s
