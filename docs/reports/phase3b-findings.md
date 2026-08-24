@@ -184,3 +184,57 @@ confirmed by hexdumping its output directly while building this task
 package comparing against `capture-pane` output for a control character
 should compare against that rendered form, not assume the raw byte
 survives capture-pane's own text rendering.
+
+## II-36: the PRD's `-H` ceiling ("8192 args") does not reproduce with valid
+## hex bytes; the `-l --` ceiling ("16380 bytes") does (task 057)
+
+PRD II-36 states two numbers for tmux's own internal command-string length
+ceiling: `send-keys -l --` fails around 16380 bytes, `send-keys -H` fails
+around 8192 arguments. `internal/tmux/chunk_test.go` bisects both directly
+against the tmux 3.5a binary `ci/Dockerfile` installs, using ONLY valid
+two-hex-digit `-H` arguments (an invalid one, e.g. `zz`, is silently
+discarded instead of erroring — proven separately by
+`literal_send_test.go`'s pre-existing
+`TestSendKeysInvalidHexByteIsSilentlyDiscarded` — and would prove nothing
+about a length ceiling).
+
+**Measured here:**
+- `-l --`: 16340 bytes succeeds, 16360 bytes fails with `command too long`.
+  This confirms the PRD's "16380" figure closely — the real crossover sits
+  right around it.
+- `-H`: 5445 valid two-hex-digit arguments succeed, 5455 fail with
+  `command too long`. This does **not** confirm the PRD's "8192" figure —
+  the real crossover measured here is roughly two thirds of that.
+
+**Why the two are still the same underlying limit.** 5450 two-character hex
+tokens, each with one separating space, is itself ~16.3 KiB of internal
+command-string content — matching the `-l --` crossover almost exactly. A
+bisection run with single-CHARACTER (not two-character) `-H` tokens during
+this same investigation crossed over right around 8190-8192 arguments,
+which is consistent with the PRD's stated figure IF the argument width
+assumed during whatever measurement produced it was one byte per argument
+plus a separator, not tmux's actual minimum of two hex digits per `-H`
+argument. Both figures are almost certainly the SAME ~16 KiB ceiling,
+observed through two different argument-width assumptions — not two
+independent limits. This repository's own tests and chunk size
+(`hexChunkArgs = 4096` in `internal/tmux/send.go`) use the measurement made
+here (real two-digit hex arguments), not the PRD's approximate figure,
+since 4096 is comfortably under BOTH numbers regardless of which is used.
+
+**Not ARG_MAX, and not a single-argument OS limit either.** A 100000-byte
+single literal argument (six times the size that already fails against
+tmux) still fails with the identical `command too long`, confirming the
+ceiling belongs to tmux, not the OS's `ARG_MAX`. A MUCH larger single
+argument (1,636,000 bytes) was tried while building this task and instead
+failed before tmux ever ran at all, with Go's own `fork/exec ...: argument
+list too long` — Linux's `MAX_ARG_STRLEN` (512 KiB per single `execve`
+argument), a real but DIFFERENT ceiling that this task's tests deliberately
+stay well clear of (100000 bytes), since hitting it would prove nothing
+about tmux's own internal limit.
+
+**Also recorded here per steer 009 item 2 (task 086), since this task's own
+git history is itself evidence for future mining:** this finding is the
+kind task 072/073 (docs/reports/phase3b.md, phase3b-findings.md's own
+final drafts) are expected to mine directly from `git log`, not restate
+from memory — see this commit's own message and `internal/tmux/chunk_test.go`'s
+header comment for the reproduction steps in full.

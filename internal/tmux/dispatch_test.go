@@ -278,20 +278,35 @@ func TestDispatcherRejectsOnNonZeroTmuxExit(t *testing.T) {
 // Client.SendKeys (task 023's pre-existing, narrowly scoped
 // env-injection primitive, documented in tmux.go as never driving a
 // coding agent's own input), send.go's Dispatcher.SendLiteral (task
-// 054/II-32's one reviewed `-l --` literal-send code path), and
-// Dispatcher.Send itself (which never hardcodes a literal command name --
-// its argv comes entirely from the caller). This test fails, naming file
-// and line, if a future change adds ANY other literal
-// "send-keys"/"paste-buffer"/"load-buffer" tmux invocation outside those
-// three -- forcing whoever adds a new send primitive (tasks 055-060) to
-// either route it through Dispatcher.Send/SendLiteral or deliberately
+// 054/II-32's one reviewed `-l --` literal-send code path, widened by
+// task 057/II-36 to also stream an oversized body through
+// `load-buffer`+`paste-buffer` rather than ever handing it to send-keys'
+// own argv), and Dispatcher.Send itself (which never hardcodes a literal
+// command name -- its argv comes entirely from the caller). This test
+// fails, naming file and line, if a future change adds ANY other literal
+// "send-keys"/"paste-buffer"/"load-buffer" tmux invocation outside those,
+// or a NEW command name in a file that is only allowlisted for the
+// commands it already uses -- forcing whoever adds a new send primitive
+// to either route it through Dispatcher.Send/SendLiteral or deliberately
 // widen this allowlist in the same commit, never silently.
 func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 	dangerous := regexp.MustCompile(`"(send-keys|paste-buffer|load-buffer)"`)
-	allowed := map[string]bool{
-		"tmux.go": true, // Client.SendKeys, pre-existing task 023 scope only.
-		"send.go": true, // Dispatcher.SendLiteral, task 054/II-32's `-l --` primitive.
-		"key.go":  true, // Dispatcher.SendNamedKey, task 056/II-34/II-35's allowlisted named-key primitive.
+	// allowedCommands maps each allowlisted file to the literal command
+	// tokens (as they appear quoted in source) it may invoke. A file
+	// absent from this map may use none of the three dangerous commands
+	// at all; a file present may use ONLY the tokens listed for it --
+	// task 057/II-36 widened send.go's own entry to add load-buffer and
+	// paste-buffer (its oversized-payload streaming path) alongside the
+	// send-keys it already had, in this same commit, per this test's own
+	// documented escape hatch above.
+	allowedCommands := map[string][]string{
+		"tmux.go": {`"send-keys"`},                                    // Client.SendKeys, pre-existing task 023 scope only.
+		"send.go": {`"send-keys"`, `"load-buffer"`, `"paste-buffer"`}, // Dispatcher.SendLiteral (task 054/II-32) + oversized-payload streaming (task 057/II-36).
+		"key.go":  {`"send-keys"`},                                    // Dispatcher.SendNamedKey, task 056/II-34/II-35's allowlisted named-key primitive.
+	}
+	allowed := map[string]bool{}
+	for file := range allowedCommands {
+		allowed[file] = true
 	}
 
 	dir, err := os.Getwd()
@@ -329,12 +344,22 @@ func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 				file.Close()
 				t.Fatalf("%s:%d: literal tmux input-dispatch command found outside the allowlisted pre-existing SendKeys: %q -- route new send primitives through Dispatcher.Send, or widen this test's allowlist deliberately", name, lineNumber, strings.TrimSpace(line))
 			}
-			if dangerous.MatchString(line) && allowed[name] && !strings.Contains(line, `"send-keys"`) {
-				// tmux.go is allowlisted only for send-keys (its one
-				// pre-existing primitive); any OTHER dangerous command
-				// name appearing there would still be new and unreviewed.
-				file.Close()
-				t.Fatalf("%s:%d: unexpected new tmux input-dispatch command in the allowlisted file: %q", name, lineNumber, strings.TrimSpace(line))
+			if dangerous.MatchString(line) && allowed[name] {
+				matchesAllowedToken := false
+				for _, token := range allowedCommands[name] {
+					if strings.Contains(line, token) {
+						matchesAllowedToken = true
+						break
+					}
+				}
+				if !matchesAllowedToken {
+					// Each allowlisted file may only use the specific
+					// command tokens it is listed for above; any OTHER
+					// dangerous command name appearing there would still
+					// be new and unreviewed.
+					file.Close()
+					t.Fatalf("%s:%d: unexpected new tmux input-dispatch command in the allowlisted file: %q", name, lineNumber, strings.TrimSpace(line))
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
