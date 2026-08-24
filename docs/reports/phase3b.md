@@ -890,3 +890,85 @@ at its source rather than loosening the assertions.
 green (repeated 8x targeted, 3x whole-package, to confirm no flake from
 the prompt-race fix); whole `./...` suite not re-run this task per the
 budget rule (change confined to `internal/tmux` plus this doc).
+
+## II-34/II-35: named keys go by tmux name, validated against an allowlist before spawning (task 056)
+
+`internal/tmux/key.go` adds `Dispatcher.SendNamedKey(ctx, name)`: it sends
+`send-keys <name>` (never `-l`), so tmux's own key-string translation
+produces whatever bytes that name means, and checks `name` against a
+fixed `namedKeyAllowlist` *before anything else happens* -- an unlisted
+name returns an error with no tmux invocation of any kind, not even the
+identity re-resolution `Dispatcher.Send` would otherwise perform first.
+`key_test.go`'s `TestSendNamedKeyRejectsAnUnknownNameWithoutSpawningTmux`
+proves the "before spawning" half directly: `Verifications()` (task
+050's re-resolution counter) does not move at all for a rejected name.
+
+### The allowlist itself, confirmed against real tmux, not copied from a manual
+
+Every entry in `namedKeyAllowlist` was checked directly against a real
+tmux 3.5a server while building this task: each candidate name was sent
+(raw, no deck code) to a pane running `cat` -- which echoes whatever
+bytes it receives right back, unedited -- and the resulting
+`capture-pane` content inspected byte for byte. Accepted names
+(`Up`/`Down`/`Left`/`Right`, `Home`/`End`, `IC`/`DC`/`Insert`/`Delete`,
+`PPage`/`NPage`/`PageUp`/`PageDown`/`PgUp`/`PgDn`, `BSpace`/`BTab`/`Tab`,
+`Enter`/`Escape`/`Space`, `F1`-`F12`) all came back as tmux's own
+translated escape or control byte. Plausible-looking names that turned
+out NOT to be key-string translation targets at all were excluded and
+are asserted rejected by `TestSendNamedKeyRejectsEveryNameNotOnTheAllowlist`:
+`KPDivide`/`KPMultiply`/`KPMinus`/`KPPlus`/`KPPeriod` (unlike `KP0`-`KP9`
+and `KPEnter`, which ARE recognized but are not needed by this task and
+so were left out) and `WheelUpPane` (a mouse bind-key target, not a
+key-string name -- typed back literally, exactly like an unrecognized
+name). Ctrl/Shift/Alt-modified names (e.g. `C-a`, `S-Up`) are
+deliberately out of scope: task 060/II-40 forwards Ctrl combinations as
+literal control bytes through `SendLiteral` instead, precisely so `C-b`
+reaches the agent without ever matching tmux's own prefix table.
+
+### The named hazard, and deck's refusal of it
+
+PRD item 35's own hazard (`send-keys Frobnicate` types ten literal
+bytes into the pane, exit 0) is demonstrated raw, with no deck code
+involved, by `literal_send_test.go`'s pre-existing
+`TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero`. This
+task's `TestSendNamedKeyRejectsAnUnknownNameWithoutSpawningTmux` shows
+`SendNamedKey` refuses that exact input instead: an error, zero tmux
+invocations, and nothing delivered into the pane.
+
+### The finding: tmux's Home/End translation is faithful to a real attach, not just self-consistent
+
+`TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys` proves
+the finding PRD item 34 asks for directly, not by assertion: a real
+tmux 3.5a server emits the identical vt220 escape for Home (`ESC[1~`)
+and End (`ESC[4~`) whether the bytes arrive via `send-keys <Name>` (this
+task's `SendNamedKey`) or via a real attached client's own pty receiving
+the same raw bytes a physical terminal emulator would send for that
+key. tmux performs no retranslation of raw client input that does not
+match one of its own key bindings -- it forwards what the client sent
+straight to the active pane -- so writing those bytes directly into an
+attached client's pty (bypassing only the physical keyboard +
+terminal-emulator step) is a faithful stand-in for "a user pressed
+Home/End while attached". `capture-pane -p` itself renders a stored raw
+ESC byte as the two-character caret notation `^[`, not the literal
+`0x1b` byte -- confirmed by hexdumping its output directly
+(`5e 5b 5b 31 7e` = `^`, `[`, `[`, `1`, `~`) -- both tests compare
+against that rendered form rather than a `0x1b`-literal guess.
+
+### The grep proof: no hand-built escape sequence
+
+`key_grep_test.go`'s `TestNamedKeySendNeverHandBuildsAnEscapeSequence`
+fails, naming the line, if `key.go`'s own source ever contains a Go
+escape-literal spelling of an ESC byte (`\x1b`/`\033`/`\u001b`) --
+`SendNamedKey` only ever hands tmux the NAME, never the escape sequence
+itself. `key_test.go`'s own use of literal escape bytes (to describe
+tmux's expected translated output, and to stand in for a real
+terminal's translation of a physical keypress) is not covered by this
+guard, which only inspects `key.go`.
+
+`dispatch_test.go`'s `TestNoSendPathBypassesTheDispatcherVerify`
+allowlist is widened to include `key.go` in this same commit (task 052's
+own guard explicitly anticipated this).
+
+`go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tmux/...`
+green (17.5s); whole `./...` suite not re-run this task per the budget
+rule (change confined to `internal/tmux` plus this doc).
