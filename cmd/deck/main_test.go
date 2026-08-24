@@ -376,17 +376,21 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=deck-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
-	// helpView() (internal/tui) is ~168 lines with the border (task 010 added
-	// the reveal-toggle lines); a 24-row PTY would clip the top sections out
-	// of the alt-screen redraw before this test can read them back, so use a
-	// tall enough window that the whole overlay is written to the PTY in one
-	// frame and every new key/control can be asserted through the real
-	// terminal, not just via View() directly. bubbletea's standardRenderer
-	// crops from the TOP once rendered lines exceed the window's height
-	// (charmbracelet/bubbletea@v1.3.10/standard_renderer.go:186-187), so this
-	// must stay comfortably above helpView()'s current height, not merely
-	// above 24.
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 190, Cols: 100})
+	// helpView() (internal/tui) is ~195 lines with the border at this test's
+	// width (task 010 added the reveal-toggle lines; task 078 added
+	// framedDialogScrollable's own height-bounding, but that only clips once
+	// the FRAME is shorter than the content -- a tall enough PTY window
+	// never triggers it, keeping this test's "every phrase is on screen"
+	// assertions independent of scroll position). A 24-row PTY would clip
+	// the top sections out of the alt-screen redraw before this test can
+	// read them back, so use a tall enough window that the whole overlay is
+	// written to the PTY in one frame and every new key/control can be
+	// asserted through the real terminal, not just via View() directly.
+	// bubbletea's standardRenderer crops from the TOP once rendered lines
+	// exceed the window's height (charmbracelet/bubbletea@v1.3.10/
+	// standard_renderer.go:186-187), so this must stay comfortably above
+	// helpView()'s current height, not merely above 24.
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 220, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}

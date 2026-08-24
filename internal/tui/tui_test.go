@@ -26,6 +26,14 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		}
 	}
 	model.help = true
+	// Task 078 (requirement 39 residual): the help overlay now clips to a
+	// scrollable window at the frame budget (framedDialogScrollable), so a
+	// discoverability check like this one -- "every one of these phrases
+	// is somewhere in helpText" -- needs a tall enough frame that nothing
+	// is clipped off; the frame-budget/clipping behaviour itself has its
+	// own dedicated tests below (TestHelpOverlayScrollReachesEveryLine and
+	// friends).
+	model.height = 400
 	help := model.View()
 	for _, want := range []string{
 		"↑/↓ or j/k select", "↵ enter interactive mode", "a attach the selected running session", "Y acknowledge", "unseen marker", "n create", "x kill",

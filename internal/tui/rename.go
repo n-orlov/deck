@@ -28,9 +28,13 @@ import (
 // updateRenameDialog for that nested state). detailView itself has no
 // §11.4 fields to submit or cycle, so the only shared contract key it
 // binds is esc; "i" (declared inline, mirroring detailView's own footer
-// text "i or Esc closes detail") and "r" (this task's additional
-// load-bearing key, declared inline exactly as §11.4 allows) are the two
-// keys detailView adds beyond that shared contract.
+// text "i or Esc closes detail"), "r" (this task's additional
+// load-bearing key, declared inline exactly as §11.4 allows) and
+// pgup/pgdown (task 078's whole-dialog scroll, requirement 39 residual)
+// are the keys detailView adds beyond that shared contract. Task 079
+// (pending as of task 078) still owes a bare "q" handler here -- pgup/
+// pgdown deliberately leave both q and esc's existing cases untouched so
+// they cannot shadow that fix.
 func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if cmd, handled := applyDialogContract(msg, dialogContract{
 		Cancel: func() {
@@ -52,6 +56,12 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.renamePrefilled = true
 			m.renameNote = ""
 		}
+	case "pgup":
+		// Task 078 (requirement 39 residual): the whole dialog scrolls
+		// uniformly via detailBody's own content, never a per-field bound.
+		m.detailScroll = m.dialogScrollBy(m.detailScroll, m.detailBody(), -1)
+	case "pgdown":
+		m.detailScroll = m.dialogScrollBy(m.detailScroll, m.detailBody(), 1)
 	}
 	return m, nil
 }

@@ -265,6 +265,11 @@ func TestSettingsEnvEscFromEntriesListReturnsToFieldList(t *testing.T) {
 func TestTui049UnavailableActionListUntouched(t *testing.T) {
 	model := New(nil, config.Settings{Socket: "test-socket"}, "")
 	model.width = 100
+	// Task 078 (requirement 39 residual): the help overlay now clips to a
+	// scrollable window at the frame budget, so a tall enough frame is
+	// needed to keep this phrase-presence check from depending on which
+	// page it happens to land on.
+	model.height = 400
 	model.help = true
 	if got := model.View(); !strings.Contains(got, "env editor") {
 		t.Fatalf("help view no longer advertises the shipped `e` env editor:\n%s", got)

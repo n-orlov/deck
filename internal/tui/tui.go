@@ -26,13 +26,23 @@ import (
 // Model is the base session-list screen. Later modal and action work extends
 // this model rather than providing a separate command-line interface.
 type Model struct {
-	store               *store.Store
-	settings            config.Settings
-	sessions            []store.Session
-	startupNote         string
-	help                bool
-	creating            bool
-	detail              bool
+	store       *store.Store
+	settings    config.Settings
+	sessions    []store.Session
+	startupNote string
+	help        bool
+	creating    bool
+	detail      bool
+	// helpScroll/detailScroll are task 078's height-bounding fix (requirement
+	// 39 residual): the help overlay and `i` detail view are the only
+	// widgets on screen while open, so unlike every bounded §11.4 dialog
+	// their content can exceed the frame budget (helpText alone is 273
+	// lines at 80x24). Rather than truncate, framedDialogScrollable clips to
+	// a scrollable window; these hold the window's top line, reset to 0
+	// every time the overlay opens (never sticking across a close/reopen,
+	// like envReveal). See eventLogScroll below for the event log's own.
+	helpScroll          int
+	detailScroll        int
 	createName          string
 	createCWD           string
 	createAgent         string
@@ -295,8 +305,11 @@ type Model struct {
 	// env editor uses -- so a payload that happens to carry a secret-shaped
 	// key's value is never shown in the clear here either. There is
 	// nothing to submit or cycle (like detailView/helpView); Esc is its
-	// only interaction.
-	eventLogOpen bool
+	// only interaction. eventLogScroll is task 078's height-bounding fix
+	// (requirement 39 residual, see helpScroll's own comment above), reset
+	// to 0 every time `E` opens the log.
+	eventLogOpen   bool
+	eventLogScroll int
 	// filtering is task 123's `/` list filter (SPEC §11.3/requirement 33,
 	// I-10): true while the filter's own text field has keyboard focus
 	// (see updateFilter). filterQuery is the live, incrementally-applied
@@ -1614,6 +1627,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.themePicking {
 			return m.updateThemePicker(msg)
 		}
+		if m.help {
+			return m.updateHelpView(msg)
+		}
 		if m.renaming {
 			return m.updateRenameDialog(msg)
 		}
@@ -1656,19 +1672,26 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "?":
-			m.help = !m.help
+			// This switch is only ever reached with m.help == false (task 078:
+			// updateHelpView, dispatched above, now intercepts every key,
+			// including a second "?"/esc, while help is open), so this only
+			// ever opens it; helpScroll resets so a reopen never starts
+			// scrolled from wherever a previous visit left off.
+			m.help = true
+			m.helpScroll = 0
 		case "esc":
-			// detailView and helpView have no fields to submit or cycle, so
-			// the only §11.4 contract key either binds is esc — shared here
-			// through the same applyDialogContract implementation createView,
-			// profileSwitchView and pinView defer to, rather than a sixth
-			// hand-written cancel. Task 112: a plain top-level Esc also
-			// clears the mark set ("the marks clear on the action and on
-			// esc") regardless of help being open. m.detail is never true
-			// here (task 013's updateDetailView intercepts every key,
-			// including esc, while it is) -- this branch only ever closes
-			// help, but keeps clearing m.detail too so a caller that somehow
-			// reaches it with m.detail already true is not left stuck open.
+			// detailView has no fields to submit or cycle, so the only §11.4
+			// contract key it binds is esc — shared here through the same
+			// applyDialogContract implementation createView, profileSwitchView
+			// and pinView defer to, rather than a sixth hand-written cancel.
+			// Task 112: a plain top-level Esc also clears the mark set ("the
+			// marks clear on the action and on esc"). Neither m.help nor
+			// m.detail is ever true here (task 013's updateDetailView and
+			// task 078's updateHelpView each intercept every key, including
+			// esc, while their own overlay is open) -- this branch cannot
+			// close either today, but keeps clearing both anyway so a caller
+			// that somehow reaches it with one already true is not left
+			// stuck open.
 			_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
 				m.help = false
 				m.detail = false
@@ -1676,10 +1699,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}})
 		case "i":
 			// m.detail is never true here (task 013's updateDetailView
-			// intercepts every key, including a second "i", while it is),
-			// so this only ever opens it.
-			if !m.help && len(m.sessions) > 0 {
+			// intercepts every key, including a second "i", while it is), and
+			// m.help is never true here either (task 078's updateHelpView
+			// intercepts every key first), so this only ever opens it;
+			// detailScroll resets for the same reason helpScroll does above.
+			if len(m.sessions) > 0 {
 				m.detail = true
+				m.detailScroll = 0
 			}
 		case ",":
 			if !m.help {
@@ -1983,9 +2009,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// SPEC §12/requirement 32, task 124: unlike `e`, this is global
 			// -- not gated on a selected session -- since the event log
 			// lists every session's events, not one row's own environment.
-			if !m.help {
-				m.eventLogOpen = true
-			}
+			// eventLogScroll resets (task 078) so a reopen never starts
+			// scrolled from wherever a previous visit left off.
+			m.eventLogOpen = true
+			m.eventLogScroll = 0
 		case "/":
 			// SPEC.md:984/requirement 33, task 123: global like `E` above --
 			// not gated on a selected session, since an empty list is still
@@ -3555,11 +3582,14 @@ func (m Model) bulkDeleteConfirmBody() string {
 	return b.String()
 }
 
-// detailView renders the selected session's full detail, including an
-// explicit degradation sentence when the adapter could not honour the
-// originally requested permission profile (SPEC §5: "say so in the row
-// detail rather than silently lying").
-func (m Model) detailView() string {
+// detailBody builds the selected session's full detail text (detailView's
+// own content, before framedDialogScrollable's box/scroll wrapping),
+// including an explicit degradation sentence when the adapter could not
+// honour the originally requested permission profile (SPEC §5: "say so in
+// the row detail rather than silently lying"). Split out from detailView
+// (task 078) so updateDetailView's PgUp/PgDn handling can measure the
+// same content dialogMaxScroll would, without re-deriving it.
+func (m Model) detailBody() string {
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
@@ -3622,13 +3652,25 @@ func (m Model) detailView() string {
 		}
 	}
 	b.WriteString("\n" + m.glyph("r renames · i or Esc closes detail", "r renames - i or Esc closes detail") + "\n")
-	return m.framedDialog(b.String())
+	return b.String()
 }
 
-// renderCrashTail keeps the non-scrolling detail screen usable even when the
-// durable 200-line capture contains a full terminal of blank or noisy output.
-// The stored artifact is unchanged; detail shows both ends and says exactly
-// how much was omitted.
+// detailView renders detailBody inside framedDialogScrollable (task 078,
+// requirement 39 residual): the WHOLE dialog scrolls uniformly via
+// m.detailScroll (PgUp/PgDn, updateDetailView) once a session's fields --
+// most of all a long Last message -- push it past the frame budget; no
+// field (Last message included) gets its own truncation, line-count
+// indicator, or other special-cased bound.
+func (m Model) detailView() string {
+	return m.framedDialogScrollable(m.detailBody(), m.detailScroll)
+}
+
+// renderCrashTail keeps a single crash-tail field readable even when the
+// durable 200-line capture contains a full terminal of blank or noisy
+// output -- distinct from task 078's whole-dialog PgUp/PgDn scrolling,
+// which bounds the OVERALL detail view, not any one field. The stored
+// artifact is unchanged; detail shows both ends and says exactly how much
+// was omitted.
 func (m Model) renderCrashTail(tail string) string {
 	lines := strings.Split(strings.Trim(tail, "\n"), "\n")
 	const maxLines = 8
@@ -4477,9 +4519,44 @@ func (m Model) createView() string {
 // helpView renders the `?` help overlay (SPEC requirement 16: bordered like
 // every other panel/dialog/overlay). It is a Model method rather than a
 // free function so it can reuse framedDialog's box-drawing without
-// duplicating boxGlyphs/ASCII-fallback logic here.
+// duplicating boxGlyphs/ASCII-fallback logic here. Task 078 (requirement
+// 39 residual): the overlay is height-bounded via framedDialogScrollable
+// rather than framedDialog -- helpText alone is 273 lines at 80x24, far
+// past the frame budget -- with m.helpScroll (PgUp/PgDn, updateHelpView)
+// selecting the visible window instead of ever truncating content away.
 func (m Model) helpView() string {
-	return m.framedDialog(helpText(m.settings.ASCII))
+	return m.framedDialogScrollable(helpText(m.settings.ASCII), m.helpScroll)
+}
+
+// updateHelpView handles every key while the `?` help overlay is open
+// (task 078). It is dispatched ahead of the list-mode switch exactly like
+// updateDetailView/updateEventLog, which is why those two, and every
+// `!m.help` guard still scattered through that switch, now only ever see
+// m.help == false: PgUp/PgDn scroll the overlay's own window; q/Ctrl+C
+// still quit (matching the help text's own unconditional "q or Ctrl+C
+// quit deck", not "while help is closed"); esc and a second ? both close
+// it, esc also clearing the mark set exactly like the top-level esc case
+// this replaces for m.help already did. Every other key is a no-op, same
+// as the `!m.help` guards already made it.
+func (m Model) updateHelpView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if cmd, handled := applyDialogContract(msg, dialogContract{Cancel: func() {
+		m.help = false
+		m.detail = false
+		m.marked = nil
+	}}); handled {
+		return m, cmd
+	}
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "?":
+		m.help = false
+	case "pgup":
+		m.helpScroll = m.dialogScrollBy(m.helpScroll, helpText(m.settings.ASCII), -1)
+	case "pgdown":
+		m.helpScroll = m.dialogScrollBy(m.helpScroll, helpText(m.settings.ASCII), 1)
+	}
+	return m, nil
 }
 
 func helpText(ascii bool) string {
@@ -4487,7 +4564,10 @@ func helpText(ascii bool) string {
 
 Keys
   ↑/↓ or j/k select a session
-  PgUp/PgDn page up/down through the list, one page at a time
+  PgUp/PgDn page up/down through the list, one page at a time; while ?
+    help, E the event log or i the detail view covers the list, the
+    same keys instead page that overlay's own content once it grows
+    taller than the frame
   ↵ enter interactive mode on the selected running session: keystrokes
     forward to its live pane exactly as a real attached client's would,
     until Ctrl+Q leaves and returns the terminal to this list; entering
