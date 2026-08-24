@@ -1,0 +1,21 @@
+ok  	github.com/n-orlov/deck/cmd/deck	5.114s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.793s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.770s
+ok  	github.com/n-orlov/deck/features	261.696s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.027s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.409s
+ok  	github.com/n-orlov/deck/internal/interactive	10.582s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.002s
+ok  	github.com/n-orlov/deck/internal/store	1.327s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:184: Close's own disarm command did not produce io.EOF here (got n=0 err=read /tmp/deck-interactive-pipe-4100733139/pane.fifo: file already closed) -- if this changes, the WasClosed-first discriminator this test protects may no longer be necessary, but it would not make it wrong
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tmux	18.798s
+ok  	github.com/n-orlov/deck/internal/tui	0.393s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+FAIL
