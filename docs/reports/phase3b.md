@@ -1155,3 +1155,122 @@ three scenarios pass again, run individually and together
 `go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tui/...`
 green; the three new scenarios in `features/interactive_refusals.feature`
 pass individually and together via `DECK_GODOG_TAGS`.
+
+## II-51: the grid keeps its own bounded scrollback, scrolled by the wheel and Shift+PgUp/PgDn (task 068)
+
+`internal/interactive.Grid` (vendored `charmbracelet/x/vt`) already keeps a
+scrollback -- `vt.DefaultScrollbackSize` is 10000 lines, unbounded by any
+deck-owned limit -- and the wheel/Shift+PgUp/PgDn did not scroll it at all:
+`interactiveBodyLines` always rendered the grid's own *live* bottom
+(`Grid().Render()`), so the only way to see output that had scrolled off
+the fitted view was the pane's own tmux scrollback (`a`, full attach), not
+interactive mode's grid.
+
+### The bound: `ScrollbackMaxLines = 2000`, not the PRD's own unreachable spike figure
+
+PRD 51 states "the grid already costs ~53 MiB resident for one 120x40
+emulator before any scrollback" -- one of the three 2026-08-22 spikes
+whose raw evidence is not reachable from this container (see
+`discovered.prdCorrections` in `tasks.json`). Measured directly in this
+container instead (`TestScrollbackMemoryDoesNotGrowWithoutBound`,
+`internal/interactive/scrollback_test.go`), a bare empty 120x40 grid with
+no scrollback costs ~5.9 MiB `HeapAlloc` over an empty-process baseline --
+an order of magnitude below the PRD's own cited figure, and not something
+this task can reconcile without the missing spike evidence. What this
+task measured instead, and is responsible for, is the *scrollback's own*
+marginal cost, since that is what requirement 51 asks to be bounded:
+
+  * feeding exactly 2000 lines of full-width (120-column), realistic,
+    non-repeating content (`"line %06d"` padded to full width, not a
+    single repeated byte -- Go's static single-byte-string optimisation
+    made an earlier scratch measurement of ASCII filler misleadingly
+    cheap, ~250-300 bytes/line, before this was caught) grows `HeapAlloc`
+    by ~27.6 MiB over the empty baseline (5,930,088 -> 33,562,680 bytes);
+  * flooding 40x that many lines (80,000 lines fed, 40x the bound) grows
+    it by only ~0.55 MiB more (33,562,680 -> 34,138,824 bytes) --
+    `vt.Scrollback`'s own ring-buffer eviction (`SetMaxLines`, called once
+    from `newGrid` via `SetScrollbackSize(ScrollbackMaxLines)`) holds the
+    line count at exactly 2000 throughout, so the ~27.6 MiB is
+    (approximately) the ceiling, not a floor a real session could exceed
+    by typing enough.
+
+2000 lines (not vt's own `DefaultScrollbackSize` of 10000) is deck's own
+override, chosen as a comfortable multiple of a typical terminal's height
+(dozens of screens back) while keeping the measured ceiling in the tens,
+not hundreds, of MiB per interactive pane -- one deck client can only ever
+have one pane interactive at a time (§11.9's own single-target
+constraint), so this is a per-client ceiling, not a per-session one that
+would multiply across a sidebar full of sessions.
+
+### Non-vacuous proof the bound holds under real volume, not merely under the exact bound
+
+`TestScrollbackStaysBoundedRegardlessOfInputVolume` feeds exactly
+`ScrollbackMaxLines` lines (asserts `ScrollbackLen() == ScrollbackMaxLines`
+already), then 20x more again on top (asserts `ScrollbackLen() <=
+ScrollbackMaxLines` still, and `== ScrollbackMaxLines` once the flood
+settles) -- proof the *count* stays bounded, independent of the *memory*
+measurement above, which uses a completely separate grid so one test's
+result cannot leak into or mask the other's.
+
+### The wire-up: `RenderRows`, an offset the caller owns, and no scrolling of anything else
+
+`Session.RenderRows(offset, height)` composes `height` rows starting
+`offset` lines back from the live bottom (scrollback lines first, then
+the live grid's own rows), clamping `offset` to `[0, ScrollbackLen()]` and
+returning the clamped value so the caller's own stored offset
+(`Model.interactiveScrollOffset`) never drifts out of range from a single
+call. At `offset == 0` its output is byte-for-byte identical to the
+pre-068 `Grid().Render()` + `strings.Split` path
+(`TestRenderRowsMatchesLiveRenderAtZeroOffset`); scrolling into and back
+out of the scrollback finds and loses a known needle line exactly where
+expected (`TestRenderRowsScrollsIntoScrollbackAndBack`); an offset request
+past the actual scrollback length clamps down to it rather than reading
+garbage or padding with blank rows mid-history
+(`TestRenderRowsClampsOffsetToActualScrollbackLength`).
+
+The wheel scrolls this only when the wheel event hit-tests onto
+`hitPanelPreview` while `m.interactive` is true (so a wheel notch over the
+sidebar while interactive keeps scrolling the *list*, per requirement 52's
+own "scrolling never changes what deck reports" neighbour and the
+existing sidebar-wheel binding, not this grid) -- otherwise interactive
+mode's mouse behaviour is unchanged (click/drag/double-click over the
+preview still do nothing, per the Mouse section's own contract).
+
+Shift+PgUp/PgDn required detecting a message type Bubble Tea's pinned
+v1.3.10 has no named key for at all (`KeyShiftPgUp`/`KeyShiftPgDown` do
+not exist in this dependency's `key.go`; confirmed by grepping the
+vendored source) -- the raw bytes (`\x1b[5;2~` / `\x1b[6;2~`) fall through
+to Bubble Tea's own unexported `unknownCSISequenceMsg`, recognised here
+only via its `fmt.Stringer` interface, matched against two strings built
+with the exact same format Bubble Tea's own `String()` method uses
+(`fmt.Sprintf("?CSI%+v?", raw-bytes-after-\x1b[)`) so a future dependency
+bump breaks this visibly (a format mismatch) rather than silently.
+
+Any other keystroke while scrolled back -- and entering or leaving
+interactive mode -- resets the offset to 0, the ordinary
+terminal-emulator convention that scrolled-back history is read-only and
+typing snaps back to the live view; the "target has not repainted"
+notice (task 067, II-49) is suppressed while scrolled back for the
+inverse reason -- scrolled-back content is always genuine past output,
+never evidence that nothing has happened yet.
+
+### Coverage
+
+`internal/interactive/scrollback_test.go` (unit, both memory-bound proofs
+above plus the `RenderRows` correctness/clamping proofs) and
+`features/interactive_scroll.feature` (three godog scenarios against a
+real deck client and a real tmux pane: Shift+PgUp/PgDn round-tripping into
+and out of 60 lines of real scrollback; the mouse wheel doing the same via
+`locateText`-found coordinates over the preview panel; typing while
+scrolled back snapping the view back to the live bottom) all pass,
+individually and as a suite, including under `-race`
+(`go test -race ./internal/interactive/... ./internal/tui/...`, both
+packages race-clean).
+
+`go build`/`go vet ./...` clean; `go test ./internal/interactive/...
+./internal/tui/... ./cmd/deck/...` green; the three new scenarios in
+`features/interactive_scroll.feature` pass individually and together with
+the rest of `./features/...` (the suite's own pre-existing PTY-under-load
+flakiness in unrelated scenarios -- reproduced identically on a clean,
+unmodified checkout of this same commit -- is unrelated to this task and
+not introduced by it).

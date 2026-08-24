@@ -439,7 +439,8 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"select the previewed theme and save it", "revert to the theme active before the picker opened",
 		"click a sidebar row", "double-click a row", "click a group header",
 		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
-		"click or wheel over the preview does nothing",
+		"click over the preview", "scrolls the grid's own",
+		"bounded scrollback (like Shift+PgUp/PgDn)",
 		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
 		"e open the env editor", "which layer won", "captured_path, config [env] or session env",
@@ -455,7 +456,9 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"forward to its live pane", "until Ctrl+Q leaves", "a attach the selected running session",
 		"entering", "resizes the agent's window to fit the preview panel",
 		"consumes its own scrollback faster than the same output would at",
-		"full width",
+		"full width", "while interactive, a wheel notch or Shift+PgUp/PgDn",
+		"scrolls this bounded, deck-owned scrollback of the fitted view",
+		"typing snaps the view back to the live bottom",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)
