@@ -217,6 +217,78 @@ rendering-only change), and no row-location helper (`previewTitle` and
 friends) locates a row by colour, only by visible text, which this change
 does not alter. Neither `SPEC.md` nor `prds/` touched.
 
+### Steer 006 item 2: alternating session-row background stripe (task 084)
+
+`sidebarRowLines`/`sidebarEntries` (`internal/tui/tui.go`) now paint every
+other SESSION BLOCK (both of a session's two screen lines together, never a
+single line on its own) with `theme.Surface` as its row background, via
+`settingsRenderRow`'s existing selection-background mechanism
+(`internal/tui/settings.go`) rather than a new one: `settingsRenderRow`
+gained a fourth parameter, `idleBg theme.Token`, opened exactly like the
+existing `selected`-gated `bg` open/close pair but for the UNSELECTED case —
+every settings-takeover call site keeps passing `""` (no idle background)
+and is byte-for-byte unaffected; only `sidebarRowLines`'s two calls (one per
+line) pass `theme.Surface` on the stripe's "on" phase. `theme.Selection`/
+`theme.SelectionIdle` on the selected row still always wins over the
+stripe, since `selected` is checked first and the two paths are mutually
+exclusive in `settingsRenderRow`'s `if selected {...} else if idleBg != ""
+{...}`.
+
+The stripe's phase is a running counter over rendered SESSION rows only
+(`sidebarEntries`'s `pos`/`sessionPos`), continuing across a workspace-group
+boundary rather than resetting at each group's first session — a header
+row is never passed through `sidebarRowLines` at all (it renders via
+`groupHeaderText`'s own `m.colorToken(theme.Group, ...)`, foreground only,
+no background ever opened), so headers structurally cannot participate.
+This choice (continue vs. reset per group) is exercised directly by
+`internal/tui/sidebar_stripe_test.go`'s
+`TestSidebarStripeHeaderNeverParticipates`: two sessions in the first
+workspace group alternate as usual, and the first session of the SECOND
+group is pinned to continue that same alternation (matching the first
+group's first session's phase, two counted positions later) rather than
+restarting at phase 0.
+
+Non-vacuousness was demonstrated directly, not assumed: the stripe's `if
+stripe { idleBg = theme.Surface }` line was temporarily short-circuited to
+always leave `idleBg` empty, and `TestSidebarStripeAlternatesPerSessionBlockNotPerLine`
+and `TestSidebarStripeHeaderNeverParticipates` both failed with the
+predicted "all rows share one phase" message; the change was reverted
+before committing (`git diff` empty). Four new tests in
+`internal/tui/sidebar_stripe_test.go` cover: the three-consecutive-session
+alternation pattern (`TestSidebarStripeAlternatesPerSessionBlockNotPerLine`,
+including both screen lines of one session sharing a phase);
+`theme.Selection` winning over the stripe regardless of phase
+(`TestSidebarStripeSelectionWinsRegardlessOfPhase`); the stripe being
+completely absent under `Color: false`
+(`TestSidebarStripeAbsentUnderNoColor`, exercising `settingsRenderRow`'s own
+pre-existing `!m.settings.Color` early return, which never opens any
+background escape at all — the same code path NO_COLOR/`DECK_COLOR=0`
+already take); and the header-never-participates/counter-continues-across-
+groups property above.
+
+`internal/theme/contrast_test.go` gained
+`TestSessionRowTokensClearContrastFloorOnSurface`, checking every
+foreground token that can appear on a sidebar session row (`title`,
+`dimmed`, `text`, `badge`, `badge_warn`, and all seven §7 status tokens,
+including `archived`) against `theme.Surface` at both the theme's authored
+hex and its 16-colour quantisation — the same shape
+`TestBuiltinContrastFloor` already applies to `theme.Background`. Every
+check clears `minContrastRatio` (3:1) in both built-in themes; `dimmed`
+(the token task 083 gave the most new work) is the tightest margin, at
+3.42:1 hex / 5.24:1 quantised for `empire` and 4.23:1 hex / 4.00:1
+quantised for `daylight` — comfortably over the floor, no theme file
+change was needed. `TestSidebarContentHasOneColumnPaddingBeforeSeam` and
+the frame-geometry parity scenario (`themes.feature:148`, "the frame's
+geometry is identical across every built-in theme") were re-run and stay
+green: the stripe changes a background colour, never a column width or any
+visible character. `TestNoColorLiterals` stays green (the only new token
+reference is the pre-existing `theme.Surface`). Mouse hit-testing
+(`@mouse-bindings`) was re-run and stays green (the stripe changes no
+geometry). `search_match` does not in fact render on any sidebar session
+row at all (only inside the settings takeover's own search, a different
+screen) so there was nothing there for the stripe to interact with; noted
+here rather than silently assumed. Neither `SPEC.md` nor `prds/` touched.
+
 ## Gotchas discovered so far
 
 - **The baseline run's one failure is a pre-existing flake, not a regression.**

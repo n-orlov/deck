@@ -2853,22 +2853,35 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		// finds none. Collapse state cannot apply (there is no group to
 		// collapse), so nothing here ever calls
 		// isGroupCollapsed/setGroupCollapsed.
-		for _, idx := range m.visualOrder() {
-			for _, line := range m.sidebarRowLines(idx, m.sessions[idx]) {
+		//
+		// Task 084's stripe phase is this loop's own position (range's
+		// second value), NOT the session index idx -- the two only diverge
+		// once grouping is on, but keeping the same "running position over
+		// rendered session rows" idea in both branches means a group
+		// toggle never has to reconcile two different phase sources.
+		for pos, idx := range m.visualOrder() {
+			for _, line := range m.sidebarRowLines(idx, m.sessions[idx], pos%2 == 1) {
 				entries = append(entries, sidebarEntry{text: line, kind: sidebarLineRow, sessionIndex: idx})
 			}
 		}
 		return entries
 	}
+	// Task 084: sessionPos counts only rendered SESSION rows, continuing
+	// across group boundaries -- a workspace header never advances or
+	// resets it, so the stripe phase a session gets does not depend on
+	// which group happens to precede it, and headers themselves stay on
+	// theme.Background (sidebarRowLines is never called for a header).
+	sessionPos := 0
 	for _, group := range m.groupSessions() {
 		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group), kind: sidebarLineHeader, workspace: group.Workspace})
 		if m.isGroupCollapsed(group.Workspace) {
 			continue
 		}
 		for _, is := range group.Sessions {
-			for _, line := range m.sidebarRowLines(is.Index, is.Session) {
+			for _, line := range m.sidebarRowLines(is.Index, is.Session, sessionPos%2 == 1) {
 				entries = append(entries, sidebarEntry{text: line, kind: sidebarLineRow, sessionIndex: is.Index})
 			}
+			sessionPos++
 		}
 	}
 	return entries
@@ -2938,11 +2951,21 @@ func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarE
 // inside 33 columns; nothing tested requires the profile badge on that same
 // line, so it is the one dropped rather than risk ellipsis-truncating a
 // word an assertion depends on.
-func (m Model) sidebarRowLines(index int, session store.Session) []string {
+func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) []string {
 	marker := "  "
 	selected := index == m.selected
 	if selected {
 		marker = "> "
+	}
+	// Task 084 (steer 006 item 2): the alternating background stripe uses
+	// theme.Surface for every row in this session's block (both lines
+	// share the one phase the caller computed), passed to
+	// settingsRenderRow as idleBg so `selected`'s own theme.Selection
+	// background always wins regardless of stripe phase -- the stripe
+	// never overrides the focus cue, it only fills in when there is none.
+	idleBg := theme.Token("")
+	if stripe {
+		idleBg = theme.Surface
 	}
 	// SPEC requirement 35's `dimmed` covers a starting row (task 021): it
 	// carries no signal yet beyond its own liveness, so everything but the
@@ -3004,7 +3027,7 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 		}
 		segs = append(segs, p)
 	}
-	line1 := m.settingsRenderRow(segs, m.sidebarSelectionToken(), selected)
+	line1 := m.settingsRenderRow(segs, m.sidebarSelectionToken(), selected, idleBg)
 
 	// Both the default (steer 006) and the starting-row override (SPEC
 	// requirement 35 / task 021) resolve to theme.Dimmed now, so there is
@@ -3025,7 +3048,7 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("env\u21bb", "env*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
 	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
-	line2 := m.settingsRenderRow(line2Segs, m.sidebarSelectionToken(), selected)
+	line2 := m.settingsRenderRow(line2Segs, m.sidebarSelectionToken(), selected, idleBg)
 	return []string{line1, line2}
 }
 
