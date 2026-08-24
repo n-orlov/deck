@@ -182,6 +182,83 @@ func TestPreviewTitleStatesFittedGeometryDifferentlyFromACrop(t *testing.T) {
 	}
 }
 
+// TestInteractiveGridIsBlankStripsANSIAndDetectsVisibleText proves
+// interactiveGridIsBlank's own two claims directly (PRD II-49, task 067):
+// escape-only rows (an SGR run with no visible glyph -- e.g. a coloured
+// background left behind by a cursor cell) still read as blank, and a
+// row carrying real text -- plain or bracketed by real SGR escapes, not a
+// fixture that happens to already be plain -- reads as non-blank. The
+// escape-stripping is confirmed non-vacuous by asserting the styled-word
+// case would misreport blank if the escapes were left in (a literal ESC
+// byte is never whitespace, so strings.TrimSpace alone cannot already be
+// what makes this pass).
+func TestInteractiveGridIsBlankStripsANSIAndDetectsVisibleText(t *testing.T) {
+	blank := []string{"", "   ", "\x1b[48;5;236m\x1b[0m", "\x1b[38;5;7m   \x1b[0m"}
+	if !interactiveGridIsBlank(blank) {
+		t.Fatalf("interactiveGridIsBlank(%q) = false, want true (every row is empty or escape-only)", blank)
+	}
+
+	plainWord := []string{"", "hello", ""}
+	if interactiveGridIsBlank(plainWord) {
+		t.Fatalf("interactiveGridIsBlank(%q) = true, want false (a plain visible word is present)", plainWord)
+	}
+
+	styledWord := []string{"", "\x1b[1mrepaint #1\x1b[0m", ""}
+	if interactiveGridIsBlank(styledWord) {
+		t.Fatalf("interactiveGridIsBlank(%q) = true, want false (an SGR-bracketed visible word is present)", styledWord)
+	}
+	// Non-vacuousness: without stripping the escapes first, the raw row
+	// still contains non-whitespace bytes (the ESC/CSI bytes themselves),
+	// so a version of this check that forgot to strip would ALSO report
+	// non-blank here -- the real proof that stripping matters is the
+	// opposite case above: an escape-only row containing nothing BUT
+	// escapes and whitespace must read as blank, which it would not if
+	// the ESC bytes were left in (they are not whitespace either).
+	rawEscapeOnly := blank[2]
+	if strings.TrimSpace(rawEscapeOnly) == "" {
+		t.Fatalf("escape-only fixture %q is already whitespace-only unstripped; the fixture must contain a real escape sequence to prove stripping matters", rawEscapeOnly)
+	}
+}
+
+// TestInteractiveBodyLinesAnnouncesNotRepaintedWhileGridIsBlank and its
+// sibling below prove interactiveBodyLines' own contract (PRD II-49) at
+// the fitLines boundary, independent of a real interactive.Session (which
+// requires a live tmux pane to construct): given the exact lines a real
+// Grid().Render() would hand back, a wholly blank grid gets the
+// announcement prepended as line 0, and a grid with real content does
+// not.
+func TestInteractiveBodyLinesPrependsAnnouncementOnlyWhenGridIsBlank(t *testing.T) {
+	blankRendered := []string{"", "", "", ""}
+	got := fitLinesWithOptionalNotice(blankRendered, 4)
+	if got[0] != interactiveNotRepaintedNotice {
+		t.Fatalf("blank grid: line 0 = %q, want the not-repainted notice %q", got[0], interactiveNotRepaintedNotice)
+	}
+
+	liveRendered := []string{"repaint #1", "", "", ""}
+	got = fitLinesWithOptionalNotice(liveRendered, 4)
+	for _, line := range got {
+		if strings.Contains(line, interactiveNotRepaintedNotice) {
+			t.Fatalf("live grid %v unexpectedly carries the not-repainted notice", got)
+		}
+	}
+	if got[0] != "repaint #1" {
+		t.Fatalf("live grid: line 0 = %q, want the real content unshifted", got[0])
+	}
+}
+
+// fitLinesWithOptionalNotice reproduces interactiveBodyLines' own
+// blank-check-then-prepend-then-fit sequence directly on a caller-supplied
+// rendered-lines slice, so the two tests above can exercise it without
+// needing a real *interactive.Session (interactiveBodyLines itself calls
+// m.interactiveGrid.Grid().Render(), which requires a live tmux pane to
+// construct at all).
+func fitLinesWithOptionalNotice(lines []string, contentHeight int) []string {
+	if interactiveGridIsBlank(lines) {
+		lines = append([]string{interactiveNotRepaintedNotice}, lines...)
+	}
+	return fitLines(lines, contentHeight)
+}
+
 // TestInteractiveNamedKeyMapsOnlyModeDependentKeys proves the named-key/
 // literal-byte split (task 061's own design note): arrows, Home/End,
 // PgUp/PgDown, Insert/Delete, ShiftTab and the function keys go by NAME

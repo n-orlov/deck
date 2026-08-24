@@ -23,6 +23,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/google/uuid"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -524,6 +525,17 @@ func runRepaintFixture(mode string, stdin io.Reader, stdout io.Writer) error {
 		return fmt.Errorf("invalid %s %q: want %q, %q or %q", repaintModeEnvironment, mode, repaintModeSigwinch, repaintModeKeystroke, repaintModeNever)
 	}
 
+	// A real full-screen coding agent draws its own representation of
+	// typed input rather than relying on the tty's own local echo (PRD
+	// phase3b requirement 49 states plainly that a frozen agent's frame
+	// is "byte-identical before and after typing" -- true only if the
+	// tty itself never echoes the keystroke back on deck's behalf).
+	// disableStdinEcho is a no-op unless stdin is a real *os.File backed
+	// by an actual tty (every unit test in this package drives
+	// watchAndRepaint directly over a plain io.Pipe, never this
+	// function, so none of them are affected).
+	disableStdinEcho(stdin)
+
 	// Registered here, synchronously, before any goroutine starts reading from
 	// the (buffered, capacity-1) channel: a SIGWINCH delivered any time after
 	// this call returns is queued in the channel regardless of whether a
@@ -535,6 +547,30 @@ func runRepaintFixture(mode string, stdin io.Reader, stdout io.Writer) error {
 	signal.Notify(signals, syscall.SIGWINCH)
 	defer signal.Stop(signals)
 	return watchAndRepaint(mode, stdin, stdout, signals)
+}
+
+// disableStdinEcho turns off local ECHO/ECHONL on stdin's own tty, when
+// stdin is in fact a real tty -- a bare unix.IoctlGetTermios error
+// (stdin is a pipe, a regular file, or otherwise not a tty) degrades to a
+// silent no-op rather than an error, since neither case is a fixture
+// misconfiguration worth failing the process over. Only ECHO/ECHONL are
+// cleared; every other terminal mode (canonical line editing, signal
+// generation, etc.) is left exactly as the pty already had it, since
+// this fixture reads a byte at a time from a raw pipe-pane stream and
+// has no need to change anything else about how the kernel line
+// discipline behaves.
+func disableStdinEcho(stdin io.Reader) {
+	file, ok := stdin.(*os.File)
+	if !ok {
+		return
+	}
+	fd := int(file.Fd())
+	term, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return
+	}
+	term.Lflag &^= unix.ECHO | unix.ECHONL
+	_ = unix.IoctlSetTermios(fd, unix.TCSETS, term)
 }
 
 // watchAndRepaint is runRepaintFixture's behaviour with signal registration
