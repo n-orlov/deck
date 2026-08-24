@@ -317,6 +317,18 @@ func interactiveGridIsBlank(lines []string) bool {
 // (runes, Space, every C0 control byte including Enter/Tab/Escape/
 // Backspace) is handled by interactiveLiteralPayload instead; there is no
 // overlap between the two.
+//
+// Ctrl/Shift/Ctrl+Shift-modified arrows, Home, End and the page keys go
+// by tmux name here too (steer 017 item 1 / SPEC.md §11.9's "forwardable
+// set is enumerated and tested key by key"): bubbletea decodes each of
+// these to its OWN distinct KeyType (KeyCtrlLeft, KeyShiftHome, ... --
+// never KeyLeft with a modifier flag set), so leaving them out of this
+// switch is not a mistranslation, it is the key vanishing into the
+// default branch below with no bytes written and no record of the drop.
+// Alt-modified keys are refused above before reaching this switch, so an
+// Alt-modified Ctrl/Shift combination (e.g. Ctrl+Alt+Left) is a known,
+// deliberate gap, not silently handled here: internal/tmux/key.go's
+// allowlist comment records why (no caller can reach that name yet).
 func interactiveNamedKey(msg tea.KeyMsg) (string, bool) {
 	if msg.Alt {
 		return "", false
@@ -338,6 +350,46 @@ func interactiveNamedKey(msg tea.KeyMsg) (string, bool) {
 		return "PageUp", true
 	case tea.KeyPgDown:
 		return "PageDown", true
+	case tea.KeyCtrlUp:
+		return "C-Up", true
+	case tea.KeyCtrlDown:
+		return "C-Down", true
+	case tea.KeyCtrlLeft:
+		return "C-Left", true
+	case tea.KeyCtrlRight:
+		return "C-Right", true
+	case tea.KeyCtrlHome:
+		return "C-Home", true
+	case tea.KeyCtrlEnd:
+		return "C-End", true
+	case tea.KeyCtrlPgUp:
+		return "C-PgUp", true
+	case tea.KeyCtrlPgDown:
+		return "C-PgDn", true
+	case tea.KeyShiftUp:
+		return "S-Up", true
+	case tea.KeyShiftDown:
+		return "S-Down", true
+	case tea.KeyShiftLeft:
+		return "S-Left", true
+	case tea.KeyShiftRight:
+		return "S-Right", true
+	case tea.KeyShiftHome:
+		return "S-Home", true
+	case tea.KeyShiftEnd:
+		return "S-End", true
+	case tea.KeyCtrlShiftUp:
+		return "C-S-Up", true
+	case tea.KeyCtrlShiftDown:
+		return "C-S-Down", true
+	case tea.KeyCtrlShiftLeft:
+		return "C-S-Left", true
+	case tea.KeyCtrlShiftRight:
+		return "C-S-Right", true
+	case tea.KeyCtrlShiftHome:
+		return "C-S-Home", true
+	case tea.KeyCtrlShiftEnd:
+		return "C-S-End", true
 	case tea.KeyDelete:
 		return "Delete", true
 	case tea.KeyInsert:

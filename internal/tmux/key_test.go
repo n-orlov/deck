@@ -158,6 +158,75 @@ func TestSendNamedKeyDeliversHomeAndEndByTmuxsOwnTranslationNotHandEncoded(t *te
 	}
 }
 
+// TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation is
+// steer 017 item 1's real-tmux half: every modified-navigation name added
+// to namedKeyAllowlist (Ctrl/Shift/Ctrl+Shift + arrows/Home/End/page-keys)
+// is confirmed here against a real tmux 3.5a server, into a pane running
+// `cat`, the same discipline TestSendNamedKeyDeliversHomeAndEndByTmuxsOwnTranslationNotHandEncoded
+// already uses -- the want strings are exactly what this task's own
+// tmux-3.5a survey captured (see key.go's allowlist comment) and exactly
+// what charmbracelet/bubbletea@v1.3.10/key.go's `sequences` table decodes
+// back into KeyCtrlLeft/KeyShiftHome/KeyCtrlShiftEnd/etc, so tmux's
+// translation and bubbletea's decoding are proven to agree, not merely
+// assumed to.
+func TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"C-Up", "^[[1;5A"},
+		{"C-Down", "^[[1;5B"},
+		{"C-Right", "^[[1;5C"},
+		{"C-Left", "^[[1;5D"},
+		{"C-Home", "^[[1;5H"},
+		{"C-End", "^[[1;5F"},
+		{"C-PgUp", "^[[5;5~"},
+		{"C-PgDn", "^[[6;5~"},
+		{"S-Up", "^[[1;2A"},
+		{"S-Down", "^[[1;2B"},
+		{"S-Right", "^[[1;2C"},
+		{"S-Left", "^[[1;2D"},
+		{"S-Home", "^[[1;2H"},
+		{"S-End", "^[[1;2F"},
+		{"C-S-Up", "^[[1;6A"},
+		{"C-S-Down", "^[[1;6B"},
+		{"C-S-Right", "^[[1;6C"},
+		{"C-S-Left", "^[[1;6D"},
+		{"C-S-Home", "^[[1;6H"},
+		{"C-S-End", "^[[1;6F"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			socket := namedKeySocket("modnav-" + tc.name)
+			cleanup := newBareCatSession(t, socket, "s0")
+			defer cleanup()
+			client := Client{Socket: socket, Timeout: 5 * time.Second}
+			ctx := context.Background()
+
+			dispatcher, err := NewDispatcher(ctx, client, "%0")
+			if err != nil {
+				t.Fatalf("NewDispatcher: %v", err)
+			}
+			if err := dispatcher.SendNamedKey(ctx, tc.name); err != nil {
+				t.Fatalf("SendNamedKey(%s): %v", tc.name, err)
+			}
+
+			deadline := time.Now().Add(2 * time.Second)
+			var capture string
+			for time.Now().Before(deadline) {
+				capture = runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
+				if strings.Contains(capture, tc.want) {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if !strings.Contains(capture, tc.want) {
+				t.Fatalf("SendNamedKey(%s): pane capture = %q, want it to contain %q", tc.name, capture, tc.want)
+			}
+		})
+	}
+}
+
 // TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys is the
 // finding PRD item 34 asks this task to record: tmux emits the SAME
 // vt220 escape (ESC[1~ for Home, ESC[4~ for End) whether the bytes

@@ -285,11 +285,48 @@ func TestInteractiveNamedKeyMapsOnlyModeDependentKeys(t *testing.T) {
 		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftTab}), "BTab"},
 		{tea.KeyMsg(tea.Key{Type: tea.KeyF1}), "F1"},
 		{tea.KeyMsg(tea.Key{Type: tea.KeyF12}), "F12"},
+		// Modified navigation (steer 017 item 1 / SPEC.md §11.9): each of
+		// these is bubbletea's OWN distinct KeyType, never KeyLeft/KeyUp/...
+		// with a modifier flag set, so a switch that only matched the bare
+		// types (as this one did before) drops every one of these silently
+		// -- see internal/tmux/key_test.go for the real-tmux half proving
+		// the delivered bytes match.
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlUp}), "C-Up"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlDown}), "C-Down"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlLeft}), "C-Left"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlRight}), "C-Right"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlHome}), "C-Home"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlEnd}), "C-End"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlPgUp}), "C-PgUp"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlPgDown}), "C-PgDn"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftUp}), "S-Up"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftDown}), "S-Down"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftLeft}), "S-Left"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftRight}), "S-Right"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftHome}), "S-Home"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyShiftEnd}), "S-End"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlShiftUp}), "C-S-Up"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlShiftDown}), "C-S-Down"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlShiftLeft}), "C-S-Left"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlShiftRight}), "C-S-Right"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlShiftHome}), "C-S-Home"},
+		{tea.KeyMsg(tea.Key{Type: tea.KeyCtrlShiftEnd}), "C-S-End"},
 	}
 	for _, c := range cases {
 		got, ok := interactiveNamedKey(c.msg)
 		if !ok || got != c.want {
 			t.Errorf("interactiveNamedKey(%v) = (%q, %v), want (%q, true)", c.msg.Type, got, ok, c.want)
+		}
+		// The exact hazard steer 017 item 1 warns about: an unlisted or
+		// misspelled name is typed into the agent as literal text, exit
+		// 0, no error (key_test.go's own
+		// TestSendNamedKeyRejectsAnUnknownNameWithoutSpawningTmux is the
+		// other half). So every name this function can ever produce must
+		// already be on internal/tmux's compiled-in allowlist -- checked
+		// here, not assumed, so a future name added to one map and not
+		// the other fails a test instead of shipping.
+		if !tmux.IsNamedKeyAllowed(c.want) {
+			t.Errorf("interactiveNamedKey(%v) returned %q, which is NOT on internal/tmux's namedKeyAllowlist -- an unlisted name is typed into the agent as literal text by tmux, not refused", c.msg.Type, c.want)
 		}
 	}
 	// A fixed-byte key (Enter/Tab/Escape/Backspace/runes) is NOT a named
