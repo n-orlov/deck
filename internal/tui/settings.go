@@ -366,6 +366,9 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	if _, overridden := m.settings.EnvOverrides["ui.ascii"]; !overridden && m.settingsEdits.ASCII != previous.ASCII {
 		m.settings.ASCII = m.settingsEdits.ASCII
 	}
+	if _, overridden := m.settings.EnvOverrides["ui.preview_fit"]; !overridden && m.settingsEdits.PreviewFit != previous.PreviewFit {
+		m.settings.PreviewFit = m.settingsEdits.PreviewFit
+	}
 	var cmd tea.Cmd
 	if _, overridden := m.settings.EnvOverrides["ui.mouse"]; !overridden && m.settingsEdits.Mouse != previous.Mouse {
 		m.settings.Mouse = m.settingsEdits.Mouse
@@ -730,6 +733,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		TmuxMouse:            s.File.TmuxMouse,
 		ASCII:                s.File.ASCII,
 		Mouse:                s.File.Mouse,
+		PreviewFit:           s.File.PreviewFit,
 		GroupByWorkspace:     s.File.GroupByWorkspace,
 		RecentCwdLimit:       s.File.RecentCwdLimit,
 		Theme:                s.File.Theme,
@@ -769,6 +773,8 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 		return cfg.ASCII
 	case "ui.mouse":
 		return cfg.Mouse
+	case "ui.preview_fit":
+		return cfg.PreviewFit
 	case "ui.group_by_workspace":
 		return cfg.GroupByWorkspace
 	default:
@@ -789,6 +795,8 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 		cfg.ASCII = v
 	case "ui.mouse":
 		cfg.Mouse = v
+	case "ui.preview_fit":
+		cfg.PreviewFit = v
 	case "ui.group_by_workspace":
 		cfg.GroupByWorkspace = v
 	}
@@ -934,6 +942,8 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 		return onOff(s.ASCII)
 	case "ui.mouse":
 		return onOff(s.Mouse)
+	case "ui.preview_fit":
+		return onOff(s.PreviewFit)
 	default:
 		return fallback
 	}

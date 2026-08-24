@@ -7,9 +7,10 @@ import (
 
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
 // flat config.toml keys (task 010, extended by task 030's interactive_ms,
-// task 031's interactive_transport and steer 017 item 2's yolo_default):
-// allow_yolo, yolo_default, stale_after, capture_min_interval, interactive_ms,
-// interactive_transport, tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse,
+// task 031's interactive_transport, steer 017 item 2's yolo_default and
+// steer 018 item 4/task 215's preview_fit): allow_yolo, yolo_default,
+// stale_after, capture_min_interval, interactive_ms, interactive_transport,
+// tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse, [ui] preview_fit,
 // [ui] group_by_workspace, [ui] recent_cwd_limit, and the [env] table.
 // Adding, removing or renaming a key must be a deliberate edit to this
 // test alongside the schema, never a silent drift.
@@ -25,6 +26,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.theme",
 		"ui.ascii",
 		"ui.mouse",
+		"ui.preview_fit",
 		"ui.group_by_workspace",
 		"ui.recent_cwd_limit",
 		"[env]",
@@ -135,6 +137,7 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.theme":              ScopeGlobal,
 		"ui.ascii":              ScopeGlobal,
 		"ui.mouse":              ScopeGlobal,
+		"ui.preview_fit":        ScopeGlobal,
 		"ui.group_by_workspace": ScopeRestartToApply,
 		"ui.recent_cwd_limit":   ScopeRestartToApply,
 		"[env]":                 ScopeRestartToApply,

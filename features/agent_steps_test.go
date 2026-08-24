@@ -1529,14 +1529,27 @@ func sessionConversationIDCleared(ctx context.Context, name string) error {
 	return nil
 }
 
-// selectRowByName moves client's selection to the row whose name is want by
-// repeated down-arrows from wherever the cursor currently is, matching the
-// same "> name" marker clientPressesResumeOnNamedSession relies on. It is
+// selectRowByName moves client's selection to the row whose name is want,
+// matching the same "> name" marker clientPressesResumeOnNamedSession
+// relies on. There is no bound "go to top" key, and ↑/↓ never wrap
+// (nextVisibleSelection/prevVisibleSelection, group.go), so a search that
+// only walked downward from wherever the cursor happened to already be
+// could never reach a row ABOVE it (task 215's bounce-between-two-rows
+// scenarios need exactly that). Rewinding to the top with up-arrows first,
+// the same idiom status_probe_test.go already used ad hoc before this was
+// factored in, makes the search itself position-independent so callers
+// never need to reason about where a prior step left the cursor. It is
 // factored out so the launch-lease race step (task 027) can position every
 // racing client on the same row BEFORE firing `r` concurrently, since the
 // positioning itself must stay sequential (each keystroke is a real PTY
 // write) while only the final `r` needs to land within the race window.
 func selectRowByName(client *ScreenDriver, want string) error {
+	for i := 0; i < 20; i++ {
+		if err := client.Send("\x1b[A"); err != nil { // up arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 	marker := "> " + want
 	for attempt := 0; attempt < 50; attempt++ {
 		if strings.Contains(client.Frame(false), marker) {

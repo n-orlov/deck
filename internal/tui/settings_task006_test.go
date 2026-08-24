@@ -229,7 +229,7 @@ func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 
 	t.Run("ui.recent_cwd_limit", func(t *testing.T) {
 		m, _ := settingsLiveApplyTestModel(t)
-		m = settingsOpenAndSelect(t, m, 1, 3, "Recent Cwd Limit")
+		m = settingsOpenAndSelect(t, m, 1, 4, "Recent Cwd Limit")
 		updated, _ := m.Update(key("+"))
 		m = updated.(Model)
 		updated, _ = m.Update(key("ctrl+s"))

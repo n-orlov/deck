@@ -354,6 +354,10 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
+    # task 215 inserted preview_fit between mouse and recent_cwd_limit in
+    # the ui section (internal/config/schema.go): a sixth "j" is needed to
+    # land on Clear Recent Cwds now.
+    And deck client "A" sends "j"
     Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"
     When deck client "A" sends ""
     Then deck client "A" screen contains "cleared recent directory history"

@@ -28,6 +28,7 @@ type FileConfig struct {
 	TmuxMouse            bool
 	ASCII                bool
 	Mouse                bool
+	PreviewFit           bool
 	GroupByWorkspace     bool
 	RecentCwdLimit       int
 	Theme                string
@@ -143,6 +144,8 @@ func defaultFileConfig() FileConfig {
 			cfg.ASCII, _ = field.Default.(bool)
 		case "ui.mouse":
 			cfg.Mouse, _ = field.Default.(bool)
+		case "ui.preview_fit":
+			cfg.PreviewFit, _ = field.Default.(bool)
 		case "ui.group_by_workspace":
 			cfg.GroupByWorkspace, _ = field.Default.(bool)
 		case "ui.recent_cwd_limit":
@@ -179,6 +182,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.ASCII = value
 		case "ui.mouse":
 			cfg.Mouse = value
+		case "ui.preview_fit":
+			cfg.PreviewFit = value
 		case "ui.group_by_workspace":
 			cfg.GroupByWorkspace = value
 		}

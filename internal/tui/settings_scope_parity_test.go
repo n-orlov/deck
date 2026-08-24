@@ -45,6 +45,7 @@ type settingsResolvedSnapshot struct {
 	CaptureMinInterval string
 	ASCII              bool
 	Mouse              bool
+	PreviewFit         bool
 	RecentCwdLimit     int
 	Env                map[string]string
 	ThemeName          string
@@ -67,6 +68,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		CaptureMinInterval: s.CaptureMinInterval.String(),
 		ASCII:              s.ASCII,
 		Mouse:              s.Mouse,
+		PreviewFit:         s.PreviewFit,
 		RecentCwdLimit:     s.RecentCwdLimit,
 		Env:                env,
 		ThemeName:          themeName,

@@ -387,6 +387,32 @@ var Schema = []Field{
 	},
 	{
 		Section: "ui",
+		Key:     "preview_fit",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "When true, the passive preview fits the selected session's window " +
+			"to the preview panel as the list selection settles -- coalesced " +
+			"against the 250ms preview tick, skipped below the 7-inner-row " +
+			"interactive floor, and best-effort (owning and restoring nothing; " +
+			"an attaching client's own size simply wins) -- rather than leaving " +
+			"a session cropped bottom-left at whatever size it last had (SPEC " +
+			"§11). The cost: a fit sends the agent SIGWINCH and reflows its " +
+			"output, so output produced while narrow consumes scrollback rows " +
+			"faster and evicted rows never return. false restores a wholly " +
+			"passive preview -- capture-pane -e poll, no resize, cropped " +
+			"bottom-left. On by default. DECK_PREVIEW_FIT overrides the file " +
+			"when set.",
+		// requirement 19 (steer 018 item 4): tui.go's previewFit, called every
+		// previewTick alongside capturePreview, reads m.settings.PreviewFit
+		// fresh against the running Model's own settings on every tick -- the
+		// same live-read shape ui.mouse's tea.MouseMsg gate already has -- so
+		// task 006 refreshing config.Settings on save is sufficient to make a
+		// ctrl+s here take effect on the very next tick, live, with no
+		// restart.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "ui",
 		Key:     "recent_cwd_limit",
 		Kind:    KindInteger,
 		Default: 5,

@@ -21,6 +21,7 @@ import (
 // Every step here observes deck through the released binary's own rendered
 // frame or tmux's own public state, never an internal channel.
 func registerPreviewSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^the deck config disables preview fit$`, deckConfigDisablesPreviewFit)
 	sc.Step(`^deck client "([^"]+)" selects the next session$`, clientSelectsNextSession)
 	sc.Step(`^deck client "([^"]+)" screen matches the pattern "([^"]+)"$`, clientScreenMatchesPattern)
 	sc.Step(`^deck client "([^"]+)" every full-width row is bordered on both edges$`, clientEveryFullWidthRowIsBorderedOnBothEdges)
@@ -53,6 +54,22 @@ func clientSelectsNextSession(ctx context.Context, name string) error {
 		return err
 	}
 	time.Sleep(50 * time.Millisecond)
+	return nil
+}
+
+// deckConfigDisablesPreviewFit sets DECK_PREVIEW_FIT=0 for every client
+// subsequently started in this scenario (steer 018 item 4 / task 215,
+// SPEC §6.5/§11): [ui] preview_fit is on by default, so a scenario that
+// still means to prove the read-only capture engine's own no-side-effect
+// guarantee -- capture-pane never resizes, never attaches, never signals
+// -- against the ORTHOGONAL passive-fit feature must turn that feature off
+// first, exactly like deckConfigDisablesMouse does for [ui] mouse.
+func deckConfigDisablesPreviewFit(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	h.clientEnv = append(h.clientEnv, "DECK_PREVIEW_FIT=0")
 	return nil
 }
 
