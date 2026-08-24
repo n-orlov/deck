@@ -38,7 +38,7 @@ displacement/disablement"). Result: 30/30 isolated runs failed, captured in
 `red-run-ordering-broken.log`. The scratch change was fully reverted (`git diff` clean on
 `internal/tmux/pipe.go`) before committing this task.
 
-## Evidence
+## Evidence (first pass, commit 74538ac)
 
 - `ci/run.sh sh -c 'go test -count=30 -run TestPanePipeWasClosed ./internal/tmux/'` — green, logged in
   `green-run-fixed.log`.
@@ -46,3 +46,46 @@ displacement/disablement"). Result: 30/30 isolated runs failed, captured in
   `red-run-ordering-broken.log`.
 - `go build ./...`, `go vet ./...`, `gofmt -l internal/tmux/` all clean.
 - Full `internal/tmux` package suite (`go test -count=1 ./internal/tmux/...`) green, 19.5s.
+
+## Second race found on validation: `os.ErrClosed` ( "file already closed" )
+
+Validation of the first pass re-ran the exact required command
+(`ci/run.sh sh -c 'go test -count=30 -run TestPanePipeWasClosed ./internal/tmux/'`) 10 independent
+times in a fresh sibling container and hit a genuinely different failure 3/10 times:
+
+```
+Close's own disarm command did not produce io.EOF here (got n=0 err=read /tmp/deck-interactive-pipe-*/pane.fifo: file already closed)
+```
+
+`os.ErrClosed`'s message IS `"file already closed"` (`internal/oserror`, aliased by both `io/fs` and
+`os`). Root cause: `PanePipe.Close` (`internal/tmux/pipe.go`) issues tmux's disarm command and then,
+in the SAME goroutine right after, calls `p.fifo.Close()` on our own fd. That races the still-blocked
+`Read` against the real kernel-level EOF the disarmed job's eventual process exit produces. When our
+own `fifo.Close()` wins that race, the Go runtime's poller aborts the pending `Read` itself and
+returns `os.ErrClosed` — not `io.EOF` — because the fd was closed out from under it locally, before
+the kernel ever surfaced the writer-side close as a genuine EOF. This is a real race in `Close`'s own
+sequencing (disarm-then-closeLocal), not a test artifact — but it is also not a defect production
+code needs fixing for: `internal/interactive/grid.go`'s `drain` already checks `WasClosed()` FIRST
+and only escalates an `io.EOF` observed while `WasClosed()` is still false, so an `os.ErrClosed`
+observed once `WasClosed()` is true is silently accepted as an ordinary shutdown there too, by
+construction, with no special-casing needed. Only the test was too strict: it required `io.EOF`
+specifically instead of "any error, once WasClosed() is true", which is the actual property that
+matters and the one production code relies on.
+
+**Fix (this pass):** the test's terminal assertion now accepts EITHER `io.EOF` OR `os.ErrClosed` as
+a valid way to observe our own `Close`, while still requiring `WasClosed()` to be `true` at that
+point — i.e. it now asserts exactly the property production code depends on, no more and no less.
+No assertion was removed; the discriminator (`WasClosed()` first) is unchanged and still mandatory.
+
+## Evidence (second pass, this commit)
+
+- 10 independent runs of the exact required command in a fresh sibling container, post-fix: 10/10
+  green (`green-run-fixed-retry.log` is one of them; all ten were `ok` with no `FAIL`).
+- Non-vacuousness re-proved against the SAME fix: `internal/tmux/pipe.go`'s `Close` was again
+  scratch-rewritten (this time releasing `closeMu` before setting `disarmed = true`, deferring that
+  assignment until after the disarm command and `closeLocal` run) — 30/30 red
+  (`red-run-ordering-broken-retry.log`), confirming the fixed test still catches the ordering bug the
+  first pass's revert-test caught. Scratch change fully reverted (`git diff` clean on
+  `internal/tmux/pipe.go`) before this commit.
+- `go build ./...`, `go vet ./...`, `gofmt -l $(git ls-files '*.go')` all clean.
+- Full `internal/tmux` package suite (`go test -count=1 ./internal/tmux/...`) green, 19.4s.

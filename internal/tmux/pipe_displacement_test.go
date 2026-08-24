@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"testing"
 	"time"
 )
@@ -155,6 +156,28 @@ func TestPanePipeReceivesGenuineEOFOnDisableWithPanePipeZero(t *testing.T) {
 // of non-error reads -- each one is unrelated pane chatter -- and only
 // evaluates WasClosed() against the read that actually returns an
 // error, whichever real-numbered read that turns out to be.
+//
+// The unblocking error is ALSO not reliably io.EOF, for a second,
+// independent reason from the drained-chatter one above: Close (pipe.go)
+// issues tmux's disarm command and then, in the same goroutine right
+// after, calls p.fifo.Close() on our OWN fd -- and that races the
+// still-blocked Read against the real kernel-level EOF the disarmed
+// job's eventual process exit produces. When our own fifo.Close() wins
+// that race (confirmed directly: reproduces in roughly 3/10 runs of
+// -count=30, see docs/reports/phase3d-207-pipe-race/), the Go runtime's
+// poller aborts the pending Read itself and returns
+// "read ...: file already closed" (os.ErrClosed, internal/oserror) --
+// not io.EOF -- because the fd was closed out from under it locally,
+// before the kernel ever surfaced the writer-side close as a genuine
+// EOF. Production code (internal/interactive/grid.go's drain) already
+// treats this correctly: it checks WasClosed() FIRST and only escalates
+// an io.EOF observed while WasClosed() is still false, so an
+// os.ErrClosed observed once WasClosed() is true is silently accepted
+// as an ordinary shutdown there too, by construction, without any
+// special-casing. This test asserts the same tolerance: EITHER io.EOF OR
+// os.ErrClosed is an acceptable way to observe our own Close, since both
+// are proven -- by WasClosed() already being true -- to be our own
+// doing rather than something needing investigation.
 func TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF(t *testing.T) {
 	socket := pipeDisplacementSocket("selfclose")
 	cleanup := newBareGeometrySession(t, socket, "s0", 80, 24)
@@ -203,8 +226,8 @@ func TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF(t
 
 	select {
 	case r := <-readDone:
-		if !errors.Is(r.err, io.EOF) {
-			t.Fatalf("Close's own disarm command did not produce io.EOF here (got n=%d err=%v) -- if this changes, the WasClosed-first discriminator this test protects may no longer be necessary, but it would not make it wrong", r.n, r.err)
+		if !errors.Is(r.err, io.EOF) && !errors.Is(r.err, os.ErrClosed) {
+			t.Fatalf("Close's own disarm command produced neither io.EOF nor os.ErrClosed here (got n=%d err=%v) -- if this changes, the WasClosed-first discriminator this test protects may no longer be necessary, but it would not make it wrong", r.n, r.err)
 		}
 		if !r.wasClosed {
 			t.Fatalf("WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for")
