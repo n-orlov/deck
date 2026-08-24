@@ -52,26 +52,19 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Refusal case 1 (PRD II-47): another client is attached to this
-	// session. The squeeze is unavoidable -- one tmux window has one size
-	// -- so this is checked, and refused, before anything else touches the
-	// window; a bystander watching this session must never see it collapse
-	// into the preview panel's own box.
-	attached, err := client.SessionAttachedCount(ctx, windowTarget)
-	if err != nil {
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
-		return m, nil
-	}
-	if attached > 0 {
-		m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead"
-		return m, nil
-	}
-
-	// Refusal case 2 (PRD II-47/48): the preview box has fewer than the
+	// Refusal case 1 (PRD II-47/48): the preview box has fewer than the
 	// measured 7-inner-row floor (interactiveMinInnerRows;
 	// docs/reports/phase3b.md records the measurement). This is checked
-	// before any tmux call that would otherwise commit to a fit deck
-	// already knows is too small to be usable.
+	// FIRST, before the attached-client check below and before any tmux
+	// call at all: previewContentSize is pure arithmetic over m's own
+	// fields, it touches no tmux state and commits to nothing, so nothing
+	// about ordering it first weakens the attached-client check's own
+	// guarantee -- that check exists to stop deck from touching a window a
+	// bystander is watching, and a refusal that never calls tmux at all
+	// touches it even less. Ordering it first also makes the floor refusal
+	// exercisable by a deterministic unit test with no tmux server present
+	// at all (task 203/PRD F3 backstop): every check below this one calls
+	// into client, which requires a live tmux to answer meaningfully.
 	width, height := m.previewContentSize()
 	if width <= 0 {
 		m.attachError = "Cannot enter interactive mode: preview panel is too small; press a to attach instead"
@@ -79,6 +72,24 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 	}
 	if height < interactiveMinInnerRows {
 		m.attachError = fmt.Sprintf("Cannot enter interactive mode: preview panel has %d inner rows, fewer than the %d-row floor; press a to attach instead", height, interactiveMinInnerRows)
+		return m, nil
+	}
+
+	// Refusal case 2 (PRD II-47): another client is attached to this
+	// session. The squeeze is unavoidable -- one tmux window has one size
+	// -- so this is checked, and refused, before anything else touches the
+	// window; a bystander watching this session must never see it collapse
+	// into the preview panel's own box. This must still precede every check
+	// below it that actually touches the window (ClaimWindowOwnership,
+	// FitWindowToPane, ...) -- only the floor check above, which touches
+	// nothing, was allowed to move ahead of it.
+	attached, err := client.SessionAttachedCount(ctx, windowTarget)
+	if err != nil {
+		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		return m, nil
+	}
+	if attached > 0 {
+		m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead"
 		return m, nil
 	}
 

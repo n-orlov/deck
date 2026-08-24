@@ -1,0 +1,30 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m Interactive mode refuses rather than degrades in three named cases (Part II, requirement 47/48)
+  Requirement 47 names exactly three cases in which entering interactive mode
+  must be REFUSED, naming the reason on screen and offering `a` (the full
+  attach) as the alternative, rather than degrading (entering anyway at a
+  squeezed size, or silently doing nothing): another client already attached
+  to the session, a preview box below the measured 7-inner-row floor
+  (requirement 48), and a live process already holding the window's
+  ownership option.
+=== RUN   TestFeatures/entering_interactive_mode_is_refused_while_the_preview_box_has_fewer_than_7_inner_rows
+
+  [1;37mScenario:[0m entering interactive mode is refused while the preview box has fewer than 7 inner rows [1;30m# interactive_refusals.feature:29[0m
+    [32mGiven[0m [32mdeck client "cramped" is started[0m                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "cramped" creates shell session "squeezed"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "cramped" screen contains "running"[0m  [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "cramped" selects session "squeezed"[0m                                           [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "cramped" terminal is resized to 80x9[0m                                          [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mWhen[0m [32mdeck client "cramped" enters interactive mode[0m                                             [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "cramped" screen contains "7-row floor"[0m                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "cramped" screen contains "press a to attach"[0m                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "cramped" screen contains "deck - sessions"[0m                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "cramped" exits cleanly[0m                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+10 steps ([32m10 passed[0m)
+1.194900126s
+--- PASS: TestFeatures (1.21s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_the_preview_box_has_fewer_than_7_inner_rows (1.18s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.225s
