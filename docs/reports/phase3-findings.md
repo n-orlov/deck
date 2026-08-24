@@ -900,6 +900,22 @@ Each entry states what evidence for "confirmed genuinely intermittent, not deter
 broken" actually exists on record in `docs/reports/` or a task's own `notes` field in
 `tasks.json` — not invented confirmation where none was captured.
 
+**Correction (task 201): the second bullet below is wrong.** It classified
+`interactive_refusals.feature`'s 7-row-floor scenario as a load-correlated PTY timeout. It is
+neither load-correlated nor pre-existing: task 201 reproduced it on the FIRST TRY at 1-min
+loadavg 3.73 (well under the 4.0 this list's own load-correlation claims elsewhere), and the
+scenario (`interactive_refusals.feature:29`) was itself created in this run to cover requirement
+48, so it cannot be "pre-existing." The failing frame's title bar reads `interactive 41x6
+fitted` — deck ENTERED interactive mode at a 6-inner-row box; the refusal never fires, so the
+scenario's wait for the "7-row floor" text is waiting for text that literally never gets
+composed, which is why it reads as a timeout. Root cause and mechanism (a harness resize step
+that returns before deck processes the resize, racing against a floor check that only runs once
+at entry with no re-check after a shrink): `docs/reports/phase3d-201-req48-degrade-rootcause.md`,
+with the reproduction log at `docs/reports/phase3d-201-req48-repro.log`. The bullet is left below,
+struck through in spirit but not in text, as a record of what was previously believed; do not cite
+it as a correct classification. The fix for the underlying defect is tracked separately (tasks
+202-204); this correction is docs-only.
+
 1. **`internal/tmux`'s pane-pipe close-race family** —
    `TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne` and
    `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
@@ -920,11 +936,16 @@ broken" actually exists on record in `docs/reports/` or a task's own `notes` fie
      full-suite runs). Confirmed-in-isolation: task 076's report states it "has never been seen
      to fail deterministically at low/idle load in any isolated rerun on record"; task 091 reran
      it isolated at normal load (~1.8) and it passed in 1.4s.
-   - `interactive_refusals.feature`'s 7-row-floor scenario ("entering interactive mode is
+   - ~~`interactive_refusals.feature`'s 7-row-floor scenario ("entering interactive mode is
      refused while the preview box has fewer than 7 inner rows") times out waiting for the
      "7-row floor" frame under load (task 076's runs 6, 7, 8 and 10 — the majority of that
      measurement's failures). No isolated-rerun citation for this specific scenario is on record
-     beyond task 076's report; it is carried here on the strength of that report alone.
+     beyond task 076's report; it is carried here on the strength of that report alone.~~ **Struck
+     by task 201: this classification is wrong — see the correction note above this numbered
+     list.** This is not a load-correlated timeout and not pre-existing; it is a real
+     degrade-instead-of-refuse defect (deck enters interactive mode at `41x6 fitted` instead of
+     refusing), reproduced deterministically at loadavg 3.73. Retained here, struck, only so the
+     history of what was previously believed is not silently deleted.
 
 3. **`TestSessionResizeDuringLiveDrainIsRaceFree`** (`internal/interactive/resize_test.go:199`) —
    failed once in six whole-package `-race` runs (task 044's/task 085's notes) with a
