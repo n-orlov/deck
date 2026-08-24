@@ -1214,6 +1214,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.attachError = "Cannot attach: " + msg.err.Error()
 		}
+		// Steer 005: tea.ExecProcess (attachSelected, above) brackets the real
+		// tmux client's attach with bubbletea's own ReleaseTerminal/
+		// RestoreTerminal (ExecProcess doc, tea.go:184-188), which restores only
+		// altScreenWasActive/bpWasActive/reportFocus -- there is no
+		// mouseWasActive field anywhere in bubbletea v1, so mouse reporting
+		// enabled once at startup via tea.WithMouseCellMotion() (cmd/deck/main.go)
+		// never comes back after tmux's own DECRST-on-detach turns it off. Emit
+		// the same tea.EnableMouseCellMotion the startup ProgramOption would have
+		// enabled, gated by the SAME m.settings.Mouse condition so a user who
+		// asked for mouse off ([ui] mouse=false / DECK_MOUSE=0) does not get it
+		// silently switched back on by one attach/detach cycle.
+		if m.settings.Mouse {
+			return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion)
+		}
 		return m, m.loadSessions
 	case sessionKilled:
 		if msg.err != nil {

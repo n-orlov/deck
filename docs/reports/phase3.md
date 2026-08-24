@@ -119,6 +119,73 @@ per `discovered.approach`) are filled in now. Everything else is `PENDING`.
 | 50 | `tmux_mouse` config key + `DECK_TMUX_MOUSE`, declared once, `false` = today | DONE | Task 115. `internal/config/schema.go` declares `tmux_mouse` (top-level, `KindToggle`, default `true`) exactly once; `internal/config.LoadFrom` resolves `DECK_TMUX_MOUSE` the same way as `DECK_ASCII`/`DECK_MOUSE`, recording an override in `Settings.EnvOverrides`. `internal/tmux.Client` gains `Mouse bool`; `Bootstrap` sets `mouse on`/`off` in the same single invocation as `exit-empty`/`remain-on-exit`/`window-size`/`aggressive-resize`, on deck's own `-L` socket only. Verified against real tmux: `internal/tmux/tmux_test.go`'s `TestBootstrapConfiguresOnlyPrivateServer` (Mouse=true asserts `mouse on` alongside the four pre-existing option checks) and the new `TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged` (Mouse's zero value asserts `mouse off` and re-confirms the same four other options are unchanged from today). Schema/settings parity: `TestSchemaPinsKeySet`/`TestSchemaScopes`/`TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce` all pass with the one new key added, surfaced by `settingsCategories()` with no second declaration. Finding recorded in `docs/reports/phase3-findings.md`'s "DECK_TMUX_MOUSE is §6.5's environment layer" section. `ci/run.sh go build ./...`, `go vet ./...`, `gofmt -l` clean on every touched file, `ci/run.sh go test -count=1 ./internal/... ./cmd/...` green. |
 | 51 | Multi-rune `KeyMsg` dispatches every rune in navigation path | DONE | Task 118, commit `465a7d9`: `internal/tui/tui.go`'s `Update` splits any `tea.KeyMsg` with `Type==KeyRunes`, `len(Runes)>1` and `!Paste` back into one single-rune `tea.KeyMsg` per character, replayed through `Update` in order (a bracketed paste is deliberately exempted — see the commit message and `docs/reports/phase3-findings.md`). `internal/tui/coalesced_keymsg_test.go`'s three `Model.Update` unit tests: `TestCoalescedKeyMsgDispatchesNavigationalThenDestructiveRune`, `TestCoalescedKeyMsgDispatchesDDChordAsTwoSeparateDeletes`, `TestCoalescedKeyMsgSinglePressUnaffected`. Real-PTY no-delay proof: `features/coalesced_keymsg_test.go`'s `TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth` sends two keystrokes with no delay between the `Send` calls (bypassing the harness's usual 25ms pacing) and asserts the coalesced `dd` chord still opens the delete-confirm dialog from a single coalesced read. |
 
+## Operator-added scope (not PRD requirements)
+
+Items in this section are operator steering, not rows in the requirement table
+above — they do not get a row number and are not part of task 024's delivery
+audit. Recorded here per the operator's own instruction (steer 005/006) rather
+than by editing SPEC.md or prds/.
+
+### Steer 005 item 1: mouse reporting dead after one tmux attach→detach cycle (task 081)
+
+Root cause (already traced by the operator): `tea.ExecProcess` (deck's `a`
+attach key, `internal/tui/tui.go`'s `attachSelected`) brackets the real tmux
+attach with bubbletea v1.3.10's `Program.ReleaseTerminal`/`RestoreTerminal`
+(`tea.go:184-188`), which restores only `altScreenWasActive`/`bpWasActive`/
+`reportFocus` — there is no `mouseWasActive` field anywhere in bubbletea v1.
+Once the attached real tmux client's own detach sequence turns SGR mouse
+reporting off, nothing re-enables it for the rest of that deck process's
+life. Confirmed nothing else deck enables at startup has the same gap: alt
+screen, bracketed paste and focus reporting are all bubbletea's own restore
+responsibility and already covered; mouse is the only ProgramOption deck
+adds itself (`cmd/deck/main.go`'s `tea.WithMouseCellMotion()`) that bubbletea
+never re-arms on its own.
+
+Fix: the `attachFinished` case (`internal/tui/tui.go`) now returns
+`tea.Batch(m.loadSessions, tea.EnableMouseCellMotion)` instead of bare
+`m.loadSessions`, gated by the same `m.settings.Mouse` condition the startup
+ProgramOption uses, so `[ui] mouse=false`/`DECK_MOUSE=0` is not silently
+overridden by one attach/detach cycle.
+
+Test obligation and a harness-fidelity finding worth recording: the
+features/mouse.feature godog harness's `Click`/`WheelUp`/etc. helpers
+(`features/mouse_synthesis_test.go`) synthesize SGR mouse bytes and inject
+them directly into deck's stdin, unconditionally — there is no real terminal
+in that harness deciding whether to forward a hardware click as bytes at
+all, so a scenario built on that harness cannot distinguish "mouse reporting
+is dead" from "mouse reporting works": both send the identical bytes and
+both would be interpreted identically by bubbletea's parser. This was
+confirmed empirically, not assumed: two candidate `mouse.feature` scenarios
+(click-after-real-attach-detach, and its DECK_MOUSE=0 negative twin) were
+written and run against the pre-fix tree — both passed with the regression
+still present, i.e. vacuous — so they were discarded rather than committed.
+The real regression test instead lives at the raw-PTY level, in the same
+idiom as `features/mouse_exit_paths_test.go` (which already asserts deck's
+actual enable/disable escape-sequence traffic, not synthesized input):
+`features/mouse_reenable_after_attach_test.go`'s
+`TestMouseReportingReenabledAfterAttachDetachCycle` drives the real released
+binary through a real PTY, creates a session, attaches with `a`, detaches
+with a real `Ctrl+B d` against a real tmux server, and asserts the SGR
+cell-motion+extended-mode enable sequences (`\x1b[?1002h`, `\x1b[?1006h`)
+reappear in deck's own output stream after tmux's own `[detached (from
+session ...)]` message — i.e. after control returns to deck, not during the
+period tmux itself owns the terminal (tmux enables mouse tracking for its
+own pane/status-line clicks per the separate `tmux_mouse` config key,
+regardless of `[ui] mouse`, so bytes emitted *during* the attach are not
+attributable to either side of this bug and must be excluded from the
+assertion window). Its sibling
+`TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled` proves the
+negative control: with `DECK_MOUSE=0`, the same enable sequences never
+reappear post-detach. Both were demonstrated red against the pre-fix tree
+(the positive test failed with exactly the predicted "did not re-enable"
+message; the negative test passed unchanged, as expected) before the fix
+landed, then green after.
+
+In-pane wheel-scroll (commit `4d3b070`, `features/attach_scroll.feature`'s
+`@requirement-48-wheel-scrolls-attached-pane-without-typing`) is unrelated to
+this fix (it exercises the *attached* tmux client's own mouse handling, not
+deck's post-detach re-enable) and was re-run unchanged: still green.
+
 ## Gotchas discovered so far
 
 - **The baseline run's one failure is a pre-existing flake, not a regression.**
