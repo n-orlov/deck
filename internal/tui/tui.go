@@ -2949,7 +2949,7 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 	// status word itself -- coloured in its own starting token below, which
 	// must keep reading as "starting" rather than fade to grey -- is dimmed
 	// so the eye is not drawn to it the way a row with real news is.
-	nameTok := theme.Text
+	nameTok := theme.Title
 	if session.Status == "starting" {
 		nameTok = theme.Dimmed
 	}
@@ -2974,7 +2974,7 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 		parts = append(parts, settingsRowSegment{Text: unseen, Tok: tok})
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
-		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Badge})
+		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Dimmed})
 	}
 	statusTok := theme.Text
 	if t, ok := statusToken(session.Status); ok {
@@ -3006,10 +3006,11 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 	}
 	line1 := m.settingsRenderRow(segs, m.sidebarSelectionToken(), selected)
 
-	line2Tok := theme.Text
-	if session.Status == "starting" {
-		line2Tok = theme.Dimmed
-	}
+	// Both the default (steer 006) and the starting-row override (SPEC
+	// requirement 35 / task 021) resolve to theme.Dimmed now, so there is
+	// nothing left for a starting row to override on line 2 -- unlike
+	// nameTok above, where Title vs. Dimmed still differ.
+	line2Tok := theme.Dimmed
 	line2Segs := []settingsRowSegment{{Text: "  ", Tok: theme.Text}}
 	if text, tok, ok := m.profileBadgeSegment(session); ok {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: text, Tok: tok}, settingsRowSegment{Text: " ", Tok: theme.Text})

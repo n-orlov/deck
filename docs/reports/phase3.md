@@ -186,6 +186,37 @@ In-pane wheel-scroll (commit `4d3b070`, `features/attach_scroll.feature`'s
 this fix (it exercises the *attached* tmux client's own mouse handling, not
 deck's post-detach re-enable) and was re-run unchanged: still green.
 
+### Steer 006 item 1: session-list name/detail hierarchy (task 083)
+
+`sidebarRowLines` (`internal/tui/tui.go`) swapped exactly three existing
+token assignments, no theme-file changes: the session-name segment now uses
+`theme.Title` instead of `theme.Text`; line 2's `created <relative>` segment
+now uses `theme.Dimmed` instead of `theme.Text`; the status-source quality
+badge (`live`/`sampled`) now uses `theme.Dimmed` instead of `theme.Badge`.
+The starting-row override (SPEC requirement 35/task 021 — a `starting` row
+carries no signal yet beyond its own liveness, so nothing draws the eye)
+still wins over the new `theme.Title` default: `nameTok` is set to
+`theme.Title` first, then overridden to `theme.Dimmed` when
+`session.Status == "starting"`, exactly as before. A dedicated test,
+`internal/tui/sidebar_hierarchy_test.go`'s
+`TestStartingRowNameStaysDimmedNotTitle`, proves this distinctly from a
+bare "name is title" assertion (which would still pass if the override were
+silently deleted): demonstrated non-vacuous by temporarily deleting the
+override, confirming the test fails with the predicted message ("the
+starting-row dimmed override must win over the new title default"), then
+reverting (`git diff` empty before commit). Three more new tests
+(`TestSidebarNameRendersInTitleToken`, `TestSidebarCreatedLineRendersDimmed`,
+`TestSidebarQualityBadgeRendersDimmed`) cover each of the three swaps
+independently, reading real per-cell foreground colour off a `vt.Emulator`
+grid in the same idiom as `main_view_theme_test.go`'s existing sidebar-token
+tests. `TestNoColorLiterals` stays green (no new literals, only existing
+token names). No `.feature` scenario asserts the quality badge's colour
+token specifically (`@requirement-49`/`@requirement-52` only assert the
+badge's *text* — `live`/`sampled` — never flips, unaffected by this
+rendering-only change), and no row-location helper (`previewTitle` and
+friends) locates a row by colour, only by visible text, which this change
+does not alter. Neither `SPEC.md` nor `prds/` touched.
+
 ## Gotchas discovered so far
 
 - **The baseline run's one failure is a pre-existing flake, not a regression.**
