@@ -16,13 +16,16 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
-  @requirement-33-double-click-attaches
-  Scenario: a double click on a sidebar row attaches
+  @requirement-33-double-click-enters-interactive-mode
+  Scenario: a double click on a sidebar row enters interactive mode
     Given deck client "A" is started
-    When deck client "A" creates shell session "double-click-attaches"
-    And deck client "A" double-clicks on the row containing "double-click-attaches"
-    Then deck client "A" screen stops containing "deck - sessions"
-    When deck client "A" detaches
+    When deck client "A" creates shell session "dbl-click-enter"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" double-clicks on the row containing "dbl-click-enter"
+    Then deck client "A" screen contains "dbl-click-enter"
+    And deck client "A" screen contains "interactive"
+    And deck client "A" screen contains "Ctrl+Q"
+    When deck client "A" leaves interactive mode
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
@@ -84,7 +87,13 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     When deck client "A" exits cleanly
 
   @requirement-33-preview-gesture-no-ops
-  Scenario: clicking, double-clicking or scrolling over the preview panel does nothing
+  Scenario: clicking, double-clicking or scrolling over the PASSIVE preview panel does nothing
+    # Scoped to passive preview (task 064/II-45): this session is never
+    # selected into interactive mode, so the gestures below land on the
+    # passive preview -- the panel that never accepts input outside
+    # interactive mode. It says nothing about a click landing on the live
+    # pane while interactive mode is active, which is a different surface
+    # with its own forwarding contract (task 061).
     Given deck client "A" is started
     When deck client "A" creates shell session "preview-gesture-noop"
     And within one configured reconcile interval deck client "A" screen contains "running"

@@ -235,20 +235,23 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clickSidebarRow implements the single-click-selects/double-click-attaches
-// pair (SPEC §11.8, duplicating ↑/↓ and ↵ respectively): a second press on
+// clickSidebarRow implements the single-click-selects/double-click-enters-
+// interactive pair (SPEC §11.8, duplicating ↑/↓ and ↵ respectively, per
+// task 061's rebind of ↵ to interactive mode / II-45): a second press on
 // the same row within doubleClickWindow of the first is the deliberate
-// second act §11.8 requires before attaching hands the terminal away.
+// second act §11.8 requires before entering hands the terminal away. `a`
+// (full attach) is unchanged and stays reachable only via the key or the
+// footer's own "a attach" hint, never via a mouse gesture.
 func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
 	now := time.Now()
 	isDouble := index == m.lastClickIndex && !m.lastClickAt.IsZero() && now.Sub(m.lastClickAt) <= doubleClickWindow
 	m.selected = index
 	if isDouble {
 		// Consumed: a third rapid press starts a fresh pair rather than
-		// re-firing attach immediately again.
+		// re-firing entry immediately again.
 		m.lastClickAt = time.Time{}
 		m.lastClickIndex = -1
-		return m.attachSelected()
+		return m.enterInteractive()
 	}
 	m.lastClickAt = now
 	m.lastClickIndex = index
