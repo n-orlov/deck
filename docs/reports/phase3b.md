@@ -1,11 +1,27 @@
 # Phase 3b (Part II — interactive preview) report
 
-This report is assembled incrementally as Part II's tasks land; task 072 is
-responsible for its final completeness pass (SIGWINCH counts, the restore
-recipe, the seed byte sequence, resident-memory cost, the
-DECK_INTERACTIVE_TRANSPORT contract statement, and every spike departure).
-Each section below is added by the task that measured it, in the same
-commit.
+This report is assembled incrementally as Part II's tasks land. Task 072's
+completeness pass (this commit) confirmed each of the following is present
+and traceable to a committed log/commit in this repo: the measured SIGWINCH
+counts (II-11: exactly 2, both attached and detached), the restore recipe
+exactly as issued (II-9: the two `resize-window`/`set-option -w -u
+window-size` calls, in order), the seed exactly as issued (the new
+II-16/II-17/II-18/II-20/II-21/II-22 section: the seven-step escape
+sequence, in order, mined from commits 9ed0def/58af8e8/99da654/c89571c),
+the resident-memory cost of one grid as measured here (II-51: ~5.9 MiB for
+one empty 120x40 grid over an empty-process baseline, before any
+scrollback), the DECK_INTERACTIVE_TRANSPORT contract statement (new
+callout at the top of the II-5/task-089 section), the 7-inner-row floor
+(II-47/II-48), and every place this implementation diverged from a spike
+measurement with the reason (II-8's 4-vs-5-6 resizes, II-27's 5.11x-vs-1.99x
+render-coalescing ratio, II-36's measured 16340-16360/5445-5455 byte/arg
+ceilings vs the PRD's cited 16380/8192, and II-51's ~5.9 MiB baseline vs
+the PRD's cited ~53 MiB -- each attributed to the 2026-08-22 spikes' raw
+evidence being unreachable from this container, per `tasks.json`'s
+`discovered.prdCorrections`, not to a different algorithm). Each section
+below is added by the task that measured it, in the same commit, except
+where task 072's own completeness pass names a gap and fills it directly
+(marked as such in that section's own heading/commit).
 
 ## II-7/II-8: entry geometry capture and the chrome-compensated window fit
 ## (task 034)
@@ -102,9 +118,14 @@ solves for.
 ## II-9: exit restores in the load-bearing order (task 035)
 
 `internal/tmux/geometry.go`'s `RestoreWindowGeometry` implements the PRD's
-exit recipe exactly: `resize-window` back to the saved dimensions **only
-when** `#{session_attached} == 0` (new `Client.SessionAttachedCount`),
-**then** `set-option -w -u window-size`, unconditionally, last.
+exit recipe exactly, as these two tmux commands, in this order:
+
+1. `resize-window -t <target> -x <saved-width> -y <saved-height>` -- issued
+   **only when** `#{session_attached} == 0` on `target` (new
+   `Client.SessionAttachedCount`); skipped entirely when a client is
+   attached.
+2. `set-option -w -u -t <target> window-size` -- issued **unconditionally,
+   last**, regardless of whether step 1 ran.
 
 ### The reversed order, demonstrated red
 
@@ -322,6 +343,154 @@ the struct literal drift) makes
 `TestPaneSeedStateReadsDefaultState` fail correctly, naming both fields;
 reverted before committing. The per-field non-default test would have
 caught the same class of bug for either field individually.
+
+## II-16/II-17/II-18/II-20/II-21/II-22: arm the pipe before the seed, build the seed byte sequence in PRD order, pair it atomically, reseed into a fresh grid (tasks 040/042/043/044)
+
+`internal/tmux/pipe.go`'s `Client.ArmPipePane` arms `pipe-pane -IO` into a
+fresh FIFO this call opens itself and returns as a `PanePipe`; `Close`
+disarms with a bare `pipe-pane -t <target>` (no `-I`/`-O`, tmux's own
+syntax for turning a pipe back off) and removes the FIFO, idempotently.
+`internal/interactive.Start` arms this pipe **first**, invokes the seed
+capture second, and only then starts the drain goroutine that copies the
+pipe's bytes into the SAME grid the seed was written into -- never a
+throwaway emulator for the seed and a different one for the live stream.
+
+### The ordering, proven both ways against a real tmux pane (II-16)
+
+`internal/interactive/grid_test.go`'s
+`TestArmingPipeAfterSeedCaptureLosesInterstitialBytes` captures the seed
+FIRST, lets a keystroke land on the pane, THEN arms the pipe: the grid
+never sees that keystroke's text, even though the live pane itself does
+(asserted, so the control is not vacuous -- the bytes really were lost by
+the grid alone). `TestArmingPipeBeforeSeedCaptureDeliversInterstitialBytes`
+runs the real `Start()` ordering instead, landing the same keystroke
+strictly between arming and the capture: the grid picks it up once
+draining starts. `TestExactlyOneGridConstructorCallSite` greps this
+package's own non-test source for `vt.NewSafeEmulator(` and fails if it
+ever appears more than once, demonstrated red by temporarily wiring a
+second call site into `grid.go` and reverting before committing.
+
+### The seed byte sequence, exactly as issued, in order (II-17/II-18)
+
+`internal/interactive/seed.go`'s `BuildSeed(state tmux.PaneSeedState, body
+[]byte) []byte` assembles the fresh grid's seed as exactly these escape
+writes, in exactly this order -- the order is load-bearing, not
+stylistic, per `prds/phase3b-interactive-preview.md` #17/#18:
+
+1. **Alternate-screen selection first**, from `state.AlternateOn`:
+   `ESC[?1049h` (on) or `ESC[?1049l` (off) -- 1049 clears the buffer it
+   switches TO, so anything written before this step could be discarded
+   by the switch.
+2. **A neutral painting state**, unconditionally, so the capture body
+   below paints exactly as tmux intended, uncontaminated by whatever the
+   pane's real final mode state (steps 4-7) turns out to be:
+   `ESC[?6l` (DECOM off) `ESC[r` (full-screen scroll region) `ESC[?7h`
+   (DECAWM on) `ESC[4l` (IRM off).
+3. **The capture body, byte for byte** -- never re-addressed, never
+   SGR-reset per line, so a row that inherits its predecessor's pen
+   (`capture-pane -e` is one continuous SGR stream across every row)
+   keeps that inheritance. One correction rides along with "verbatim":
+   `capture-pane`'s own textual dump joins rows with a bare `\n` as a row
+   SEPARATOR in its snapshot format, not a literal terminal control code
+   (confirmed directly against real tmux via `od -c`) -- x/vt's own LF
+   handling is strict IND (down only, column unchanged) with no carriage
+   return unless ANSI mode 20 (LNM) is set, which it never is here.
+   `BuildSeed` therefore trims the capture's trailing newline
+   (`capture-pane -N`'s own end-of-snapshot marker, not one more row to
+   advance into -- left in, it forces a spurious scroll that evicts row
+   zero) and translates every remaining internal `\n` to `\r\n` before
+   writing the body. Neither operation is the "re-addressing" #18
+   forbids: no CUP, no SGR reset, no per-line `ESC[2K` is ever inserted.
+4. **DECSTBM from the scroll region, after the body**: `ESC[<upper+1>;
+   <lower+1>r` (tmux's `scroll_region_upper`/`lower` are 0-based, DECSTBM
+   is 1-based) -- issued after the body because setting the scroll
+   region homes the cursor, which would misplace the body if it ran
+   first.
+5. **Origin mode, the pane's real final value**: `ESC[?6h`/`l`, since
+   cursor addressing in step 6 depends on it.
+6. **Cursor position, then visibility**: `ESC[<cursor_y+1>;<cursor_x+1>H`
+   (tmux's `cursor_x`/`cursor_y` are 0-based, CUP is 1-based), then
+   `ESC[?25h`/`l`.
+7. **The modes that must not disturb the paint**, relative order among
+   themselves not load-bearing (none of them affects how already-painted
+   cells look, only how future input is interpreted): wrap (`ESC[?7h`/`l`),
+   insert (`ESC[4h`/`l` -- ECMA-48 IRM via plain SM/RM, no `?`, unlike
+   every other mode here), the keypad-cursor flag (`ESC[?1h`/`l`), the
+   keypad flag (`ESC=` DECKPAM if on, `ESC>` DECKPNM if off), and the five
+   independent mouse-tracking flags in this fixed order:
+   `ESC[?1000h`/`l` (standard), `ESC[?1002h`/`l` (button),
+   `ESC[?1003h`/`l` (any), `ESC[?1005h`/`l` (UTF-8), `ESC[?1006h`/`l`
+   (SGR).
+
+`internal/interactive/seed_test.go`'s
+`TestBuildSeedFieldOrderAndPerFieldEscapes` pins this exact order and
+escape spelling structurally for both the all-off and all-on case.
+`TestBuildSeedReproducesInheritedSGRAcrossLinesWithZeroDifferingCells`
+proves the payoff against a real pane (row 2 inherits row 1's blue with
+no SGR of its own; the seed and a plain-body write land cell-for-cell
+identical, inheritance included) against two PRD-mandated red controls:
+`TestNaivePerLineResetVariantIsWrongInColour` (a per-line
+`ESC[<row>;1H ESC[0m ESC[2K]` variant is byte-perfect in content and wrong
+in colour) and `TestDroppingPreserveTrailingBlankLinesTrimsBackground-
+StyledBlanks` (without tmux's `-N`, a trailing background-styled blank
+column is trimmed from the capture and lost from the seed).
+`internal/tmux/tmux.go`'s `SeedCaptureOptions()` is what supplies `-N`
+(`PreserveTrailingBlankLines`) plus full-pane/escape-sequence capture for
+this exact purpose.
+
+### State and body are paired atomically, retried on drift (II-20)
+
+`internal/tmux/paneseed_atomic.go`'s `CapturePaneSeedAtomic` chains
+`display-message` (state + three discriminators), `capture-pane`, and a
+second `display-message` (the same three discriminators again) into ONE
+tmux invocation via tmux's own bare `;` command separator, and retries
+the whole chain (bounded at `maxPaneSeedAtomicAttempts = 20`) whenever the
+before/after `#{history_size}`/`#{pane_width}`/`#{pane_height}` probes
+disagree -- `#{history_size}` catches the pane having produced output
+mid-capture, the other two catch a resize mid-capture. Chaining into one
+invocation narrows the race to the time `capture-pane` itself takes to
+run; it does not close it, which is why the bounded retry -- not the
+chaining alone -- is what actually delivers PRD II-20's atomicity.
+Measured directly: two SEPARATE, unpaired invocations against a
+throttled, deterministically-flooding pane CAN observe `#{history_size}`
+change between them (an unthrottled flood was tried first and rejected --
+it caused enough host CPU contention to reorder the two client
+invocations themselves, an artifact of the test rig, not the property
+under test). `interactive.CaptureSeed` now calls `CapturePaneSeedAtomic`
+exclusively; the two-separate-calls shape shown above is preserved only
+as the pre-II-20 code path this test replaced, never as production code.
+
+### Resize replaces the whole grid with a fresh one, never a bare `Resize()` (II-21/II-22)
+
+`internal/interactive/resize.go`'s `Session.Resize` builds a brand-new
+grid from a fresh `CaptureSeed` and swaps it in, rather than calling the
+existing emulator's own `Resize()` as "the correction": PRD II-21 cites
+the latter leaving ~1000 wrong cells for 3.4s against an append-only pane
+(spike measurement, not reproduced here -- the raw spike evidence is
+unreachable per `tasks.json`'s `discovered.prdCorrections`), against doing
+nothing at all leaving a stable divergence for 31.6s that never heals. A
+fresh grid instance also buys a fresh PARSER (II-22), not merely fresh
+content: reusing the same grid for a reseed can hand a live stream's
+truncated control sequence's unconsumed continuation bytes to the new
+seed's leading bytes, silently corrupting it --
+`TestReseedIntoSameGridCorruptsAfterTruncatedControlSequence` demonstrates
+this red directly (a bare CSI introducer with no final byte consumes the
+seed's leading `H` as CUP's final byte); `TestSessionResizeIntoFresh-
+GridDoesNotCorrupt` proves `Session.Resize`'s actual fresh-grid swap
+reproduces the seed exactly in the identical setup.
+`TestNoCodePathCallsGridResizeAlone` greps this package's non-test source
+for any `.Resize(` call and fails naming file+line if one is found,
+demonstrated red by temporarily wiring in such a call and reverting
+before committing. `Session` gained a `sync.RWMutex` guarding the grid
+pointer so `Resize` can swap it out from under a concurrently running
+drain goroutine without a torn read (`TestSessionResizeDuringLiveDrain-
+IsRaceFree`, under `-race`); `TestSessionResizeReplacesGridInstance` and
+`TestSessionResizeRejectsNilSeed` round out the coverage.
+
+`go build`/`go vet`/`gofmt` clean across all four tasks; `go test -race
+./internal/interactive/...` and `go test -count=1 ./internal/... ./cmd/...`
+green for each (whole `./...` suite not re-run per task, per the budget
+rule).
 
 ## II-27: coalesce renders at DECK_INTERACTIVE_MS (task 049)
 
@@ -1315,6 +1484,27 @@ unmodified checkout of this same commit -- is unrelated to this task and
 not introduced by it).
 
 ## II-5: the interactive scenario surface run under both transports, and the exclusion list (task 089)
+
+**The `DECK_INTERACTIVE_TRANSPORT` contract, stated plainly**:
+`DECK_INTERACTIVE_TRANSPORT` (`internal/config/schema.go`'s
+`interactive_transport`, default `pipe`, the only other value `capture`)
+selects between two implementations of ONE contract -- SPEC.md §11.9's
+interactive-preview panel -- not a §13.1 user-visible behaviour switch.
+`pipe` streams every byte a pane ever emits into one long-lived grid
+(II-16 onward); `capture` polls `capture-pane -p` on a timer and replaces
+the grid's content wholesale each tick (task 088). §11.9 never specifies
+HOW a transport keeps history, so a selector between two implementations
+of that one contract is in scope for this knob; §11.9 does NOT, however,
+extend the contract to scrollback depth or history accumulation, and
+`capture`'s poll-and-replace design has no meaningful scrollback at all --
+which is the stated, measured reason (below) that `capture` is excluded
+from exactly one of the seven files this contract spans
+(`interactive_scroll.feature`, all four of its scenarios), not from the
+other six. `capture` is opt-in and diagnostic/fallback, never the
+default; the parity sweep below is a manual one-off, never wired into the
+CI suite tasks 075/077 run, and task 088's five unit tests are the only
+standing regression cover for `capture` -- this report does not imply the
+delivery suite exercises both transports on every run.
 
 Naming correction first: there is no literal `features/interactive_preview.feature`
 file. The surface II-5's contract covers is spread across seven files --
