@@ -190,6 +190,16 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	m.interactiveGrid = nil
 	m.interactiveDispatcher = nil
 	m.interactiveScrollOffset = 0
+	// steer 018 item 4 / SPEC §11: RestoreWindowGeometry above just put the
+	// window back at its PRE-entry size, which is not generally the preview
+	// panel's own current content size -- previewFit's own coalescing
+	// (previewFitSessionID) would otherwise treat this session as already
+	// settled and skip re-fitting it, since its ID has not changed, leaving
+	// it stuck at the restored size until some OTHER selection is visited
+	// first. Clearing it here makes the very next previewTick re-evaluate
+	// and fit it back to the panel, exactly as if the selection had just
+	// settled on it.
+	m.previewFitSessionID = ""
 	return m, nil
 }
 

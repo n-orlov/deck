@@ -125,7 +125,16 @@ func renderGoldenMinimumFrame(t *testing.T) string {
 	// is pinned to" -- empire is deck's own DefaultName (internal/theme/
 	// registry.go), named explicitly rather than left to fall back, so this
 	// golden does not silently move the day the default theme does.
-	config := fmt.Sprintf("[ui]\ntheme = %q\n\n[env]\nFAKE_AGENT_FIXTURE_DIR = %q\nFAKE_CLAUDE_FIXTURE = %q\n", goldenFrameTheme, previewFixtureDir, "fitting.txt")
+	// task 215's preview_fit (default true) issues a best-effort
+	// resize-window as the list selection settles -- here, on the sole
+	// session's own creation-time default selection -- which reflows the
+	// fake-claude fixture's output and changes the rendered frame AFTER
+	// the point this test calls "settled", exactly the nondeterminism
+	// this golden exists to pin against. Disabled here for the same
+	// reason DECK_MOUSE=0 etc already are: this test proves byte-exact
+	// rendering, not preview_fit's own behaviour (that lives in
+	// features/preview.feature instead).
+	config := fmt.Sprintf("[ui]\ntheme = %q\npreview_fit = false\n\n[env]\nFAKE_AGENT_FIXTURE_DIR = %q\nFAKE_CLAUDE_FIXTURE = %q\n", goldenFrameTheme, previewFixtureDir, "fitting.txt")
 	if err := os.WriteFile(filepath.Join(h.Home, "config.toml"), []byte(config), 0o600); err != nil {
 		t.Fatalf("write scenario config.toml: %v", err)
 	}

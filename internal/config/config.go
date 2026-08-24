@@ -108,6 +108,11 @@ type Settings struct {
 	// sessions by workspace. DECK_GROUP_BY_WORKSPACE overrides the file when
 	// set.
 	GroupByWorkspace bool
+	// PreviewFit mirrors config.toml's [ui] preview_fit key (default true,
+	// SPEC §11, steer 018 item 4): whether the passive preview fits the
+	// selected session's window to the preview panel as the list selection
+	// settles. DECK_PREVIEW_FIT overrides the file when set.
+	PreviewFit bool
 	// TmuxMouse mirrors config.toml's top-level tmux_mouse key (default true,
 	// SPEC §6.5/§11.8): whether tmux's own `mouse` server option is turned on
 	// on deck's private socket, independent of Mouse's terminal-side SGR
@@ -227,6 +232,15 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		}
 		envOverrides["ui.group_by_workspace"] = "DECK_GROUP_BY_WORKSPACE"
 	}
+	previewFit := fileCfg.PreviewFit
+	previewFitRaw := getenv("DECK_PREVIEW_FIT")
+	if previewFitRaw != "" {
+		previewFit, err = boolEnv(previewFitRaw, previewFit, "DECK_PREVIEW_FIT")
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["ui.preview_fit"] = "DECK_PREVIEW_FIT"
+	}
 	tmuxMouse := fileCfg.TmuxMouse
 	tmuxMouseRaw := getenv("DECK_TMUX_MOUSE")
 	if tmuxMouseRaw != "" {
@@ -261,6 +275,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		GroupByWorkspace: groupByWorkspace,
+		PreviewFit:       previewFit,
 		TmuxMouse:        tmuxMouse,
 		RecentCwdLimit:   fileCfg.RecentCwdLimit,
 		Theme:            resolvedTheme, ThemeReason: themeReason,

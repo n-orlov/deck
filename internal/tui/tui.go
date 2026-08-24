@@ -514,6 +514,28 @@ type Model struct {
 	// since tmux trims trailing blank lines/columns from a capture.
 	previewPaneWidth  int
 	previewPaneHeight int
+	// previewFitSessionID names the session ID whose window passive fit
+	// (SPEC §11, steer 018 item 4) has already settled against -- the
+	// coalescing mechanism previewFit uses to fit at most once per
+	// SETTLED selection rather than once per row walked while holding an
+	// arrow key: previewTick fires every DECK_PREVIEW_MS regardless of how
+	// many times m.selected changed since the last tick, and previewFit
+	// only issues a fit when the currently selected session's ID differs
+	// from this field, which is updated (to the attempted session's ID,
+	// whether or not the fit itself succeeded) only once the attempt
+	// completes. Deliberately keyed to SELECTION identity, not to the
+	// preview panel's own geometry: a sidebar-width, layout-mode or outer-
+	// terminal change that leaves the selection unchanged does not retrigger
+	// a fit (steer 018 §1b's amendment to the passive-preview no-resize
+	// guarantee is scoped to fitting-on-navigation only, per task 215/
+	// docs/reports/phase3d-215-preview-fit-on-nav.md) -- best-effort, so a
+	// session left stale by one of those axes is corrected the next time
+	// its own selection settles again, never continuously chased. Reset to
+	// "" by exitInteractive so the session interactive mode just left (whose
+	// geometry was restored to its PRE-entry size, not the panel's) is
+	// re-evaluated on the very next tick even though its ID has not
+	// changed.
+	previewFitSessionID string
 	// sidebarScroll is the wheel-scroll offset into the sidebar's own
 	// content lines (SPEC §11.8, task 028): it moves which lines the
 	// panel shows without ever touching m.selected, and is clamped at
@@ -787,6 +809,14 @@ type previewCaptured struct {
 // sidebar_width to state.db's ui_state table after a `|`/`<`/`>` keypress
 // (task 016, SPEC §11.2). It never touches config.toml.
 type uiStatePersisted struct{ err error }
+
+// previewFitDone reports that one previewFit attempt for sessionID has
+// completed (SPEC §11, steer 018 item 4) -- whether or not the underlying
+// FitWindowToPane call actually issued a resize, and swallowing any error
+// it returned: passive fit is stated as best-effort in the spec itself, so
+// there is no error state to surface to the user, only a settled/
+// unsettled one, which previewFitSessionID (set from sessionID here) is.
+type previewFitDone struct{ sessionID string }
 
 type sessionResumed struct {
 	session store.Session
@@ -1156,6 +1186,88 @@ func (m Model) capturePreview() tea.Cmd {
 	return func() tea.Msg {
 		result, err := capture(context.Background(), session.Slug)
 		return previewCaptured{sessionID: session.ID, capture: result, err: err}
+	}
+}
+
+// previewFit is steer 018 item 4's passive-preview fit (SPEC §11: "The
+// preview fits the selected session's window to the panel"), issued
+// alongside capturePreview on every previewTick. It returns nil -- issuing
+// no tmux call at all -- whenever any of the properties SPEC §11 states
+// are not met:
+//
+//   - [ui] preview_fit is off, there is no tmux client wired, no row is
+//     selected, or the preview panel is not shown this frame (the same
+//     guards capturePreview itself already applies);
+//   - m.interactive is true: interactive mode OWNS the window's geometry
+//     (claimed, recorded, restored on exit) and runs its own
+//     FitWindowToPane at entry -- passive fit must never race that, or fit
+//     a window a moment before/after ClaimWindowOwnership/
+//     RestoreWindowGeometry touches the very same target;
+//   - the selected session's ID already matches m.previewFitSessionID:
+//     this selection has already settled and been fit (or found not
+//     applicable), so nothing re-issues a fit merely because the panel's
+//     OWN geometry changed under a sidebar-width/layout-mode/terminal-
+//     resize gesture with the selection unchanged (steer 018 §1b's
+//     amendment to the passive-preview no-resize guarantee is scoped to
+//     fitting-on-navigation only -- see previewFitSessionID's own doc
+//     comment and docs/reports/phase3d-215-preview-fit-on-nav.md);
+//   - the preview content box is below interactiveMinInnerRows (SPEC
+//     §11's "skipped below §11.9's 7-inner-row floor") or has no width:
+//     a box that small is left cropped, exactly like interactive mode's
+//     own entry refusal for the same floor, and never causes deck to enter
+//     interactive mode as a side effect of navigating (this function never
+//     starts a transport or claims ownership, only resize-window).
+//
+// Unlike enterInteractive's own attached-client refusal (case 1), passive
+// fit does NOT check SessionAttachedCount at all: SPEC §11.9 states that
+// refusal exists because interactive mode "needs a held size for its grid
+// to stay correct", a property passive fit does not have -- it is
+// best-effort, and "any attaching client re-expresses its own size under
+// window-size latest and simply wins" is the stated, accepted outcome, not
+// a case to refuse.
+func (m Model) previewFit() tea.Cmd {
+	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
+		return nil
+	}
+	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+		return nil
+	}
+	if !m.computeLayout().PreviewShown {
+		return nil
+	}
+	session := m.sessions[m.selected]
+	if session.ID == m.previewFitSessionID {
+		return nil
+	}
+	width, height := m.previewContentSize()
+	if width <= 0 || height < interactiveMinInnerRows {
+		return nil
+	}
+	client := m.tmuxClient
+	slug := session.Slug
+	sessionID := session.ID
+	return func() tea.Msg {
+		ctx := context.Background()
+		pane, ok, err := client.PreviewPane(ctx, slug)
+		if err != nil || !ok {
+			// No live pane (stopped/starting/archived/reaped) or a read
+			// error: nothing to fit, and nothing to retry until the
+			// selection changes again -- the same best-effort treatment
+			// capturePreview's own previewCaptured{err} gives a transport
+			// failure (it does not spam attachError every tick either).
+			return previewFitDone{sessionID: sessionID}
+		}
+		windowTarget, err := tmux.SessionName(slug)
+		if err != nil {
+			return previewFitDone{sessionID: sessionID}
+		}
+		// FitWindowToPane already no-ops (0 resize-window calls) when the
+		// pane already matches width/height, so a settled selection whose
+		// window some other action (an attaching client, a prior fit) has
+		// already brought to the panel's own size costs nothing beyond the
+		// one display-message read that discovers that.
+		_, _ = client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height)
+		return previewFitDone{sessionID: sessionID}
 	}
 }
 
@@ -1597,7 +1709,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.capturePreview(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// steer 018 item 4: the passive-preview fit is coalesced against this
+		// SAME tick, never issued once per row walked while holding an arrow
+		// key (previewFit's own guards decide whether this tick's selection
+		// still needs one at all).
+		if cmd := m.previewFit(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		return m, tea.Batch(cmds...)
+	case previewFitDone:
+		m.previewFitSessionID = msg.sessionID
+		return m, nil
 	case previewCaptured:
 		// A session with no live pane reports capture.Live == false and a nil
 		// err (see tmux.CapturePreview); only a genuine tmux/transport failure
@@ -4634,7 +4756,17 @@ func helpText(ascii bool) string {
 	text := `deck help
 
 Keys
-  ↑/↓ or j/k select a session
+  ↑/↓ or j/k select a session; as the selection settles (coalesced
+    against DECK_PREVIEW_MS, not once per row while a key is held),
+    deck also fits the newly selected session's window to the preview
+    panel -- [ui] preview_fit, on by default -- the same cost ↵ below
+    pays at entry: a SIGWINCH, and scrollback consumed faster while the
+    window is narrower than usual. Skipped below the interactive floor
+    (never resizes into a box too small to be worth it, and never
+    enters interactive mode as a side effect); best-effort, so a session
+    an attached client is also watching simply keeps that client's own
+    size the next time it redraws. preview_fit = false turns this off
+    and leaves a session cropped bottom-left instead.
   PgUp/PgDn page up/down through the list, one page at a time; while ?
     help, E the event log or i the detail view covers the list, the
     same keys instead page that overlay's own content once it grows

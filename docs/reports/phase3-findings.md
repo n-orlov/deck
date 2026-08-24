@@ -1070,3 +1070,36 @@ completed and is recorded above) and after task 075 declared itself the last cod
 run. Recorded here as a finding for whichever phase next touches `features/settings.feature`, with
 the exact one-line assertion to add and the file:line evidence needed to add it without
 re-deriving any of the above.
+
+## Task 215 discovery: `agent_session.feature`'s R-restart audit-count scenario fails deterministically, isolated, at HEAD — pre-existing, not caused by preview_fit
+
+While validating task 215 (passive preview fit-on-navigation) with a full `./features/...` run,
+`TestFeatures/R_restarts_a_claude_session,_recording_environment_key_names_in_the_launch_audit_but_never_a_value`
+(`features/agent_session.feature:92`) failed: `after scenario hook failed: audit log has 1
+launch records for session "restart audit env", want 2`, alongside a hung-client SIGKILL after
+the scenario's normal steps otherwise passed (the earlier `Then ... screen contains "fake-claude
+resume:"` step, right after pressing `R`, passes — the relaunch visibly happens — but the second
+audit record for it is missing when checked immediately after).
+
+**Confirmed NOT caused by task 215's change**: `git stash` (reverting every task-215 change to a
+clean HEAD at commit `c550045`) and rerunning
+`ci/run.sh sh -c 'go test -count=1 -run TestFeatures/R_restarts_a_claude_session ./features/ -v'`
+in isolation, 3 times, at whatever load this container had at the time, reproduces the identical
+failure all 3 times, with the plain `main` tree. This is a pre-existing, deterministic (not
+merely load-correlated) defect, not a task-215 regression — confirmed by isolating it with a
+temporary scratch tag (`@scratch-215-diag`, added and then reverted before commit — `git diff` on
+`features/agent_session.feature` is empty) and reproducing it 3/3 both with and without task 215's
+changes present.
+
+**Not root-caused or fixed this task**: out of task 215's scope (preview_fit), and the
+one-task-per-iteration rule this run operates under. Likely candidates for whoever picks this up
+next: a race between the `R` relaunch path's audit-log write and whatever the scenario's
+post-`R` assertion reads immediately afterward (the screen already shows the resume marker before
+the write lands, suggesting the audit write is not synchronized with the visible relaunch the way
+the `r` resume path's sibling scenario — passing, same file, a few lines above — apparently is);
+or a second real launch never actually firing for `R` specifically despite the screen updating.
+Needs the same isolated-rerun-with-instrumentation treatment task 201/206 above gave their two
+corrected entries before it is added to the "Standing pre-existing flake list" section above as
+confirmed-genuinely-intermittent (it currently looks deterministic, not intermittent, based on
+3/3 in-isolation reproduction — so it likely does not belong in that list as a "flake" at all,
+and should instead be treated as an open, real, unfixed bug).
