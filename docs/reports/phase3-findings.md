@@ -890,6 +890,62 @@ departure per the PRD's own "do not contradict them without recording why" claus
 read.
 
 
+## Standing pre-existing flake list (durable copy — this run's ralphd `notes.md` is not committed and does not survive the run)
+
+Added per operator steer 015 item 2: the run's scratch `notes.md` (in the ralphd run directory,
+not this repository) had been carrying the authoritative "open pre-existing flakes" list and
+being cited from this very file three times. `notes.md` is deleted when the run ends, so this
+section is now the durable copy; the three citations below were rewritten to point here instead.
+Each entry states what evidence for "confirmed genuinely intermittent, not deterministically
+broken" actually exists on record in `docs/reports/` or a task's own `notes` field in
+`tasks.json` — not invented confirmation where none was captured.
+
+1. **`internal/tmux`'s pane-pipe close-race family** —
+   `TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne` and
+   `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
+   (`internal/tmux/pipe_displacement_test.go`). Confirmed-in-isolation evidence: task 060's notes
+   record one of the two failing once in a full-package run, re-run 3x with a *different* test
+   failing each time (i.e. not a deterministic single culprit); task 075 confirmed 3/3
+   isolated-green for `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
+   via `ci/run.sh go test -race -count=1 -run TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF ./internal/tmux/...`
+   (see this file's requirement-17 section above); task 076's ten-run stability measurement
+   (`docs/reports/phase3d-i20-stability.md`) saw it once (run 8 of 10), consistent with genuine
+   intermittency rather than a regression.
+
+2. **Load-correlated PTY-under-load timeout class**, with two worked examples both fully
+   documented in `docs/reports/phase3d-i20-stability.md`:
+   - `attach_scroll.feature:11`'s `@requirement-48-wheel-scrolls-attached-pane-without-typing`
+     hangs the whole `TestFeatures` process to Go's hard 10-minute test timeout under concurrent
+     host load (task 076's runs 2 and 5; also seen once each by task 091's and task 075's own
+     full-suite runs). Confirmed-in-isolation: task 076's report states it "has never been seen
+     to fail deterministically at low/idle load in any isolated rerun on record"; task 091 reran
+     it isolated at normal load (~1.8) and it passed in 1.4s.
+   - `interactive_refusals.feature`'s 7-row-floor scenario ("entering interactive mode is
+     refused while the preview box has fewer than 7 inner rows") times out waiting for the
+     "7-row floor" frame under load (task 076's runs 6, 7, 8 and 10 — the majority of that
+     measurement's failures). No isolated-rerun citation for this specific scenario is on record
+     beyond task 076's report; it is carried here on the strength of that report alone.
+
+3. **`TestSessionResizeDuringLiveDrainIsRaceFree`** (`internal/interactive/resize_test.go:199`) —
+   failed once in six whole-package `-race` runs (task 044's/task 085's notes) with a
+   `t.Fatalf` from an unjoined background goroutine (`sendLiteralLine`, a real `send-keys`
+   subprocess call racing the test's own `defer cleanup()` tearing the tmux server down) — a
+   synchronization gap, not a `WARNING: DATA RACE` report. Confirmed-in-isolation: task 085's
+   notes record ten isolated reruns of just that test, all green.
+
+4. **`TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesIntact`**
+   (`internal/tmux/chunk_test.go`) — observed failing once each in task 060's and task 067's
+   full-package `go test ./internal/...` runs. Confirmed-in-isolation: both tasks' notes record
+   an isolated rerun passing cleanly immediately after (task 067: "reran isolated, passed").
+
+5. **`TestSigwinchCountDistinguishesTwoFromThree`** (`features/sigwinch_count_test.go`, added by
+   task 027) — was carried on the scratch `notes.md` flake list without a separately recorded
+   isolated-confirmation citation anywhere in `docs/reports/` or any task's `notes` field. Stated
+   honestly rather than inventing confirmation that was never actually captured: this entry's
+   only evidentiary basis is this run's own (uncommitted, now-gone) scratch notes having observed
+   it once. A future run that sees it fail again should reproduce it isolated 3x at low load
+   before trusting this list's classification, per this file's own requirement-17 lesson below.
+
 ## `@requirement-17-clear-recent-cwds-history`'s navigation math went stale, causing a deterministic (not merely load-correlated) failure
 
 Discovered while verifying task 075's precondition (whole-suite green before the final commit).
@@ -904,11 +960,13 @@ updating this scenario's `j` count. The result: the 4th `j` now lands on `group_
 instead of the action, so the scenario's subsequent Enter toggles `group_by_workspace` off instead
 of clearing the recent-cwd history, and the "cleared recent directory history" note never
 appears. This reproduced deterministically (3/3 isolated reruns at load ~2.3–3.3, no load
-correlation) — it had previously been miscategorised in `notes.md`'s standing "open pre-existing
-flakes" list as a load-correlated PTY timeout, which it is not.
+correlation) — it had previously been miscategorised in the standing "open pre-existing
+flakes" list (this file's own "Standing pre-existing flake list" section above) as a
+load-correlated PTY timeout, which it is not.
 
 **Fix**: add the missing 5th `j` (`features/settings.feature`, one line). Verified 3/3 isolated
-green post-fix. `notes.md`'s flake list is corrected to drop this entry (it was never a flake).
+green post-fix. The standing flake list (this file's section above) is corrected to drop this
+entry (it was never a flake).
 No production code changed; `internal/config/schema.go`'s field order is correct and unchanged.
 
 An earlier `docs/reports/phase3d-075-final-suite-run.log` (committed alongside this fix in the
@@ -924,7 +982,8 @@ also load-correlated failure instead: a 10-minute per-test timeout inside
 with a second `ralphd` job (`selfdev-v09-fsm-loop`) confirmed running concurrently on the host via
 `docker ps` at the time; that exact scenario passed 3/3 isolated (~1.5–3s each, nowhere near the
 timeout) immediately after. Neither failure was fixed by weakening a test — both are the standing
-load-correlated PTY/close-race class already on record in `notes.md`.
+load-correlated PTY/close-race class already on record in this file's "Standing pre-existing
+flake list" section above.
 
 A later retry (this iteration) ran the whole suite once more at load ~2.6–3.5 (concurrent job
 still present) and it came back fully green, including `internal/tmux` (18.7s) and `features`
@@ -933,3 +992,44 @@ run. That log now replaces the earlier (failing) one at
 `docs/reports/phase3d-075-final-suite-run.log`, and is the log task 075 cites as its green
 whole-suite run. Not re-run a second time in the same iteration to chase a repeat clean streak,
 per the standing budget rule.
+
+**Follow-up finding (operator steer 015 item 1, recorded not fixed): the fix restores the stale
+count but not a landing guard, so the same class of defect recurs on the next inserted `[ui]`
+field.** The scenario's only assertion after the `j` presses is
+`Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"`, and
+that string renders whenever the Clear Recent Cwds row is drawn at all — `settingsFieldValueDisplay`
+(`internal/tui/settings.go:934`, the `KindLink` branch at `:967`) is a pure function of
+`config.Field`/`FileConfig` with no selection parameter, so the assertion passes whether or not the
+cursor actually landed on that row. Reverting the fix's 5th `j` reproduces this directly: the
+cursor sits one row short on `group_by_workspace`, this assertion still passes (the row still
+renders its text), and the scenario only goes red two steps later at
+`contains "cleared recent directory history"` — which is why the original defect surfaced as an
+unrelated-looking failure instead of "the cursor is one row short," and why it was filed as a
+flake for a day before this file's own section above corrected that.
+
+The two sibling fixed-count-`j` scenarios in `features/settings.feature` (the `[env]` table's
+restart-to-apply-scope scenario at line 152, and requirement 19's restart-to-apply flat-key
+scenario at line 163) both already pin the landing with a second assertion on the selection-only
+detail line (`"Kind: … · Scope: …"`, emitted only for the selected row —
+`internal/tui/settings.go:1420`, `if selected { … settingsFieldDetailLines(…) }`). Requirement-17's
+scenario is the one outlier that omits this idiom, which is the file's own established convention,
+not a new one being proposed here.
+
+The concrete one-line fix, not landed per the operator's explicit instruction (see below): add
+`And deck client "A" screen contains "Kind: link · Scope: global"` immediately after the existing
+assertion. Confirmed the literals without landing them: `KindLink = "link"`
+(`internal/config/schema.go:21`), `ScopeGlobal = "global"` (`:47`), and
+`settingsClearRecentCwdsEntry` declares `Scope: config.ScopeGlobal` (`internal/tui/settings.go:143`)
+— so this matches the sibling idiom exactly, and states *why* the row is the right one rather than
+only *that* the cursor is there (the alternative, prefixing the existing assertion with the `"> "`
+selection marker per `settings.go:1388-1393`, works too but is less self-explanatory; the per-segment
+SGR caveat at `settings.go:1409` does not apply to either, since `clientScreenContains` reads the
+cell-grid `Frame`, not the escape stream — `features/pty_driver_test.go:317`).
+
+**Deliberately not landed this iteration.** Per operator steer 015: this is latent fragility in an
+already-green, already-correct scenario, not a live failure, and landing it now would touch the
+tree while task 076's `ci/stability.sh 10` measurement was in flight (that measurement has since
+completed and is recorded above) and after task 075 declared itself the last code commit of the
+run. Recorded here as a finding for whichever phase next touches `features/settings.feature`, with
+the exact one-line assertion to add and the file:line evidence needed to add it without
+re-deriving any of the above.
