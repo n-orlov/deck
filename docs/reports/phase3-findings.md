@@ -916,6 +916,17 @@ struck through in spirit but not in text, as a record of what was previously bel
 it as a correct classification. The fix for the underlying defect is tracked separately (tasks
 202-204); this correction is docs-only.
 
+**Correction (task 206): the first bullet below is also wrong.** It classified
+`attach_scroll.feature:11`'s `@requirement-48-wheel-scrolls-attached-pane-without-typing` scenario
+as a load-correlated PTY-under-load timeout. It is not: task 206 reproduced it isolated at loadavg
+as low as 3.7 (under this list's own 4.0 load-correlation threshold), root-caused it to a genuine
+harness pacing race (the copy-mode cancel key sent before tmux finishes draining the preceding
+burst of `WheelUp` SGR reports, confirmed against the real tmux server's own `#{pane_in_mode}`,
+not the harness's screen emulator), and fixed it (`features/attach_scroll_test.go`'s
+`waitForCopyModeQueueToDrain`). Full writeup and 10-consecutive-isolated-run evidence:
+`docs/reports/phase3d-206-attach-scroll-hang-rootcause.md`. The bullet is left below, struck
+through in spirit but not in text, as a record of what was previously believed.
+
 1. **`internal/tmux`'s pane-pipe close-race family** —
    `TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne` and
    `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
@@ -930,12 +941,17 @@ it as a correct classification. The fix for the underlying defect is tracked sep
 
 2. **Load-correlated PTY-under-load timeout class**, with two worked examples both fully
    documented in `docs/reports/phase3d-i20-stability.md`:
-   - `attach_scroll.feature:11`'s `@requirement-48-wheel-scrolls-attached-pane-without-typing`
+   - ~~`attach_scroll.feature:11`'s `@requirement-48-wheel-scrolls-attached-pane-without-typing`
      hangs the whole `TestFeatures` process to Go's hard 10-minute test timeout under concurrent
      host load (task 076's runs 2 and 5; also seen once each by task 091's and task 075's own
      full-suite runs). Confirmed-in-isolation: task 076's report states it "has never been seen
      to fail deterministically at low/idle load in any isolated rerun on record"; task 091 reran
-     it isolated at normal load (~1.8) and it passed in 1.4s.
+     it isolated at normal load (~1.8) and it passed in 1.4s.~~ **Struck by task 206: this
+     classification is wrong too — see the correction note below this numbered list.** Not a
+     load artifact; a real harness pacing race between the burst of `WheelUp` SGR reports and the
+     copy-mode cancel key sent right after it, reproduced at loadavg as low as 3.7. Root cause,
+     fix, and 10-consecutive-isolated-run evidence:
+     `docs/reports/phase3d-206-attach-scroll-hang-rootcause.md`.
    - ~~`interactive_refusals.feature`'s 7-row-floor scenario ("entering interactive mode is
      refused while the preview box has fewer than 7 inner rows") times out waiting for the
      "7-row floor" frame under load (task 076's runs 6, 7, 8 and 10 — the majority of that
