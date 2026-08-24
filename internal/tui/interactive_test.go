@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // TestEnterWithoutATmuxClientDoesNotEnterInteractiveMode proves task 061's
@@ -344,5 +345,59 @@ func TestInteractiveLiteralPayloadCoversEveryFixedByteKey(t *testing.T) {
 	// refused by both (see TestInteractiveNamedKeyMapsOnlyModeDependentKeys).
 	if _, ok := interactiveLiteralPayload(tea.KeyMsg(tea.Key{Type: tea.KeyUp})); ok {
 		t.Errorf("interactiveLiteralPayload claimed a mode-dependent named key")
+	}
+}
+
+// TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall is PRD
+// Part II requirement 48's own deterministic backstop (task 203, review
+// finding F3): F3 found that the ONLY coverage of the 7-row-floor refusal
+// was a real-tmux godog scenario that flakes under load, and that the
+// refusal's own published root cause was wrong (deck was observed entering
+// interactive mode at 41x6 rather than refusing -- see
+// docs/reports/phase3d-201-req48-degrade-rootcause.md). enterInteractive's
+// floor check (interactive.go's "Refusal case 1") now runs before the
+// attached-client check and before every other tmux call in the function,
+// specifically so this can be proved with NO live tmux server at all: the
+// tmux.Client below carries a non-empty Socket (so the zero-client degrade
+// path at the top of enterInteractive does not fire) that resolves to
+// nothing real, and the test still passes -- the moment any tmux call
+// actually ran, it would return a plain "exec: tmux: not found"/dial error
+// instead of the floor message, and this test would fail on the assertion
+// below. 80x9 is requirement 48's own godog fixture size
+// (features/interactive_refusals.feature's @requirement-48 scenario),
+// which this test independently confirms fits the exact 41x6 frame F3's
+// root-cause report captured (previewContentSize below).
+func TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-203"})
+	m.sessions = []store.Session{{ID: "s1", Name: "squeezed", Agent: "shell", Status: "running", Slug: "squeezed"}}
+	m.selected = 0
+	m.width, m.height = 80, 9
+
+	width, height := m.previewContentSize()
+	if width != 41 || height != 6 {
+		t.Fatalf("previewContentSize() at 80x9 = %dx%d, want 41x6 (requirement 48's own godog fixture frame); the fixture below no longer matches the scenario it stands in for", width, height)
+	}
+	if height >= interactiveMinInnerRows {
+		t.Fatalf("fixture height %d is not below interactiveMinInnerRows (%d); this test would be vacuous", height, interactiveMinInnerRows)
+	}
+
+	next, cmd := m.enterInteractive()
+	got := next.(Model)
+
+	if got.interactive {
+		t.Fatalf("enterInteractive entered interactive mode at %dx%d inner rows, below the %d-row floor -- this is exactly F3's degrade defect, not a refusal", width, height, interactiveMinInnerRows)
+	}
+	if cmd != nil {
+		t.Fatalf("enterInteractive returned a non-nil cmd on the floor refusal path, want nil")
+	}
+	if !strings.Contains(got.attachError, "7-row floor") {
+		t.Fatalf("attachError %q does not name the 7-row floor", got.attachError)
+	}
+	if !strings.Contains(got.attachError, "press a to attach") {
+		t.Fatalf("attachError %q does not offer the a-to-attach alternative (PRD II-47)", got.attachError)
+	}
+	if !strings.Contains(got.attachError, fmt.Sprintf("%d inner rows", height)) {
+		t.Fatalf("attachError %q does not name the measured inner-row count %d", got.attachError, height)
 	}
 }

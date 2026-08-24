@@ -1,0 +1,4 @@
+=== RUN   TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall
+--- PASS: TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.005s

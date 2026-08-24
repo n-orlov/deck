@@ -1,0 +1,6 @@
+=== RUN   TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall
+    interactive_test.go:382: fixture height 6 is not below interactiveMinInnerRows (1); this test would be vacuous
+--- FAIL: TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.003s
+FAIL
