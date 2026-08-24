@@ -275,6 +275,12 @@ func (c Client) SetEnvironment(ctx context.Context, slug, key, value string) err
 // the real tmux command's target is always a verified pane id and any
 // rename between resolution and send is caught as identity drift
 // (ErrIdentityDrifted) rather than silently landing in an impostor.
+//
+// The literal payload itself goes through Dispatcher.SendLiteral (task
+// 054/II-32), never a bare Send("send-keys", ...) built here -- that is
+// the one place in this package permitted to assemble a literal
+// send-keys argv, so this method and every later dispatch primitive stay
+// on the single reviewed `-l --` code path.
 func (c Client) SendKeys(ctx context.Context, slug, literal string) error {
 	if c.Socket == "" {
 		return errors.New("tmux socket name is required")
@@ -290,7 +296,7 @@ func (c Client) SendKeys(ctx context.Context, slug, literal string) error {
 	if err != nil {
 		return fmt.Errorf("send keys to session %q: %w", slug, err)
 	}
-	if err := dispatcher.Send(ctx, "send-keys", "-l", "--", literal); err != nil {
+	if err := dispatcher.SendLiteral(ctx, literal); err != nil {
 		return fmt.Errorf("send keys to session %q: %w", slug, err)
 	}
 	if err := dispatcher.Send(ctx, "send-keys", "Enter"); err != nil {

@@ -747,3 +747,93 @@ raw/no-deck-code hazard demonstration for each, not new production code.
 ./internal/tmux/...` green; `go test -count=1 ./internal/... ./cmd/...`
 green (whole `./...` suite not re-run this task per the budget rule --
 change confined to one new test file plus this doc).
+
+## II-32/II-38: `send-keys -l --` for every literal payload, every exit
+## code checked (task 054)
+
+`internal/tmux/send.go`'s `Dispatcher.SendLiteral` is the one reviewed
+code path this package permits for delivering a literal payload: it
+always builds `send-keys -l --` through `Dispatcher.Send` (never a bare
+`Client.run`), so the pane id target is always the identity-verified one
+(PRD II-30/II-28) and the underlying tmux command's own exit is always
+checked (PRD II-38). `Client.SendKeys` (task 023's pre-existing
+env-injection primitive) now calls `SendLiteral` instead of inlining its
+own `-l --` call, so there is exactly one call site in the whole package
+that ever assembles a literal `send-keys` argv.
+
+### The two named `--`/`-l` hazards, proven raw against real tmux
+
+PRD item 32 names two failure shapes for a payload sent without `--`, and
+they are genuinely different, not the same mistake twice:
+
+- A payload that happens to spell one of `send-keys`' own flag letters
+  (e.g. literally `-l`) is silently absorbed as ANOTHER occurrence of that
+  flag: `send-keys -l -t s0 -l` exits 0 and delivers nothing --
+  `TestSendKeysDashPayloadWithoutSeparatorIsSilentlyDiscarded`. This is
+  the sharpest form of the hazard, because a payload beginning with `-`
+  that does NOT name a real flag (e.g. `-foo`) instead fails outright
+  with "unknown flag" (exit 1) -- checking the exit code cannot tell
+  these two cases apart from "delivered correctly" without already
+  knowing which shape the payload takes.
+- A payload of exactly `--help` sent without `--` is parsed by tmux as
+  its own (invalid) long-flag syntax and errors outright --
+  `TestSendKeysDoubleDashHelpWithoutSeparatorErrors`. Both hazards close
+  the same way (always send `--`), but they are demonstrated separately
+  because their failure shapes differ.
+
+Without `-l`, tmux treats the payload's words as key NAMES, not text:
+`send-keys -t s0 -- Enter` on an otherwise-empty prompt line advances the
+cursor to a new, still-empty prompt line (a real carriage return) with no
+`"Enter"` text anywhere in the pane --
+`TestSendKeysWithoutLiteralFlagEnterBecomesACarriageReturn`.
+
+Two green controls confirm `Dispatcher.SendLiteral` actually closes the
+first two hazards, not merely avoids re-deriving them: sending literal
+`-l` and literal `--help` through `SendLiteral` both land in the pane as
+exactly the bytes given (`TestDispatcherSendLiteralDeliversADashPrefixedPayloadCorrectly`,
+`TestDispatcherSendLiteralDeliversDoubleDashHelpCorrectly`).
+
+### PRD II-38's three named "exit 0" hazards
+
+`-l -l` (an accidentally doubled literal flag immediately followed by a
+dash-shaped payload with no `--`) hits the exact same swallowed-as-a-flag
+mechanism as the first hazard above --
+`TestSendKeysDoubledLiteralFlagWithoutSeparatorIsSilentlyDiscarded`.
+`-H zz` (`zz` is not a valid hex byte) is accepted with exit 0 and
+delivers nothing -- `TestSendKeysInvalidHexByteIsSilentlyDiscarded`. An
+unrecognized key name (e.g. `Frobnicate`, no `-l`) is the odd one out:
+exit 0, but it IS delivered, character by character, as literal text --
+`TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero` (also
+PRD item 35's own hazard, closed properly by task 056's allowlist).
+Grouping all three under "returns 0" is the PRD's actual point: the exit
+code alone cannot distinguish "delivered correctly" from "silently
+discarded" from "delivered WRONG" for any of them -- the only real fix is
+never constructing the wrong argv shape in the first place, which is
+exactly what routing every literal send through the one `SendLiteral`
+call site accomplishes.
+
+### The two grep guards
+
+`TestEveryLiteralSendUsesDashLDashDash` fails, naming file and line, if
+`send-keys` and `-l` ever appear on the same line of production code
+without `--` also present there; confirmed non-vacuous by temporarily
+removing `send.go`'s own `--` and watching it fail with the exact
+predicted message, then reverting (`git diff` on `send.go` confirmed
+empty before commit). `TestNoIgnoredExitStatusForInputDispatch` fails if
+any of `send-keys`/`paste-buffer`/`load-buffer`'s return value is ever
+discarded via Go's blank identifier (both the two-value `Client.run` shape
+and the one-value `Dispatcher.Send`/`SendLiteral` shape); its
+non-vacuousness is demonstrated against realistic violation strings
+directly (the same string-literal idiom `dispatch_test.go`'s and
+`dispatch_impostor_test.go`'s own grep guards already use, since wiring a
+real single-value discard into `send.go` breaks the build on an unused
+import rather than exercising the grep path). `dispatch_test.go`'s
+pre-existing `TestNoSendPathBypassesTheDispatcherVerify` allowlist is
+widened to include `send.go` (task 052's own guard explicitly anticipated
+this: "forcing whoever adds a new send primitive ... to deliberately
+widen this allowlist in the same commit, never silently").
+
+`go build`/`go vet`/`gofmt` clean; `go test -race -count=1
+./internal/tmux/...` green; `go test -count=1 ./internal/... ./cmd/...`
+green (whole `./...` suite not re-run this task per the budget rule --
+change confined to `internal/tmux` plus this doc).
