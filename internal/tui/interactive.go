@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -225,7 +226,49 @@ func (m Model) previewContentSize() (width, height int) {
 func (m Model) interactiveBodyLines(contentWidth, contentHeight int) []string {
 	rendered := m.interactiveGrid.Grid().Render()
 	lines := strings.Split(rendered, "\n")
+	if interactiveGridIsBlank(lines) {
+		lines = append([]string{interactiveNotRepaintedNotice}, lines...)
+	}
 	return fitLines(lines, contentHeight)
+}
+
+// interactiveRepaintAnsiEscapeRe strips the CSI (SGR) and OSC (hyperlink)
+// escape sequences vt.SafeEmulator.Render() interleaves between styled
+// runs, the same pattern internal/interactive's own gridContains test
+// helper uses (task 085) -- without it, a coloured cursor cell or a
+// background-only style code would read as "content" and defeat the
+// blank check below on every render, announcement included.
+var interactiveRepaintAnsiEscapeRe = regexp.MustCompile(`\x1b\[[0-9:;]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
+// interactiveNotRepaintedNotice is PRD II-49's required text. Entering
+// interactive mode always resizes the target window first
+// (enterInteractive's FitWindowToPane, above); a target that produces no
+// output at all in response -- requirement 49's named worst case, a
+// target waiting on a network round-trip, is exactly what task 026's
+// FAKE_CLAUDE_REPAINT_MODE=never fixture stands in for -- would otherwise
+// leave the panel showing an empty bordered frame with no way to tell
+// "the target has not repainted yet" apart from "deck itself is broken".
+// Named once here so the render site and every test asserting it cannot
+// drift apart.
+const interactiveNotRepaintedNotice = "deck: the agent has not repainted since the resize"
+
+// interactiveGridIsBlank reports whether every rendered row, once its own
+// SGR/OSC escapes are stripped, is empty or all-whitespace. It is checked
+// fresh on every render rather than cached on the Session: whatever put
+// real content into the grid -- the initial seed capture racing ahead of
+// the live pipe's own arm (PRD II-16), or a byte the live drain path
+// delivered afterward -- clears the announcement the moment it happens,
+// with no extra bookkeeping needed to tell the two apart, and a target
+// that never writes anything at all (PRD II-49's fixture) leaves it
+// showing for as long as interactive mode lasts.
+func interactiveGridIsBlank(lines []string) bool {
+	for _, line := range lines {
+		stripped := interactiveRepaintAnsiEscapeRe.ReplaceAllString(line, "")
+		if strings.TrimSpace(stripped) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // interactiveNamedKey maps a Bubble Tea KeyMsg to one of
