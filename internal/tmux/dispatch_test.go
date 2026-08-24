@@ -273,21 +273,24 @@ func TestDispatcherRejectsOnNonZeroTmuxExit(t *testing.T) {
 }
 
 // TestNoSendPathBypassesTheDispatcherVerify is the grep proof PRD II-28
-// asks for. As of this task, the ONLY production code in this package
-// that ever runs a tmux command intended to deliver input to a live pane
-// is Client.SendKeys (task 023's pre-existing, narrowly scoped
+// asks for. As of task 054, production code in this package that ever
+// runs a tmux command intended to deliver input to a live pane is
+// Client.SendKeys (task 023's pre-existing, narrowly scoped
 // env-injection primitive, documented in tmux.go as never driving a
-// coding agent's own input) and Dispatcher.Send itself (which never
-// hardcodes a literal command name -- its argv comes entirely from the
-// caller). This test fails, naming file and line, if a future change adds
-// ANY other literal "send-keys"/"paste-buffer"/"load-buffer" tmux
-// invocation outside those two -- forcing whoever adds a new send
-// primitive (tasks 054-060) to either route it through Dispatcher.Send or
-// deliberately widen this allowlist in the same commit, never silently.
+// coding agent's own input), send.go's Dispatcher.SendLiteral (task
+// 054/II-32's one reviewed `-l --` literal-send code path), and
+// Dispatcher.Send itself (which never hardcodes a literal command name --
+// its argv comes entirely from the caller). This test fails, naming file
+// and line, if a future change adds ANY other literal
+// "send-keys"/"paste-buffer"/"load-buffer" tmux invocation outside those
+// three -- forcing whoever adds a new send primitive (tasks 055-060) to
+// either route it through Dispatcher.Send/SendLiteral or deliberately
+// widen this allowlist in the same commit, never silently.
 func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 	dangerous := regexp.MustCompile(`"(send-keys|paste-buffer|load-buffer)"`)
 	allowed := map[string]bool{
 		"tmux.go": true, // Client.SendKeys, pre-existing task 023 scope only.
+		"send.go": true, // Dispatcher.SendLiteral, task 054/II-32's `-l --` primitive.
 	}
 
 	dir, err := os.Getwd()
