@@ -911,10 +911,25 @@ flakes" list as a load-correlated PTY timeout, which it is not.
 green post-fix. `notes.md`'s flake list is corrected to drop this entry (it was never a flake).
 No production code changed; `internal/config/schema.go`'s field order is correct and unchanged.
 
-`docs/reports/phase3d-075-final-suite-run.log` (task 075's committed full-suite run, taken after
-this fix) shows every package green except one already-documented pre-existing flake unrelated to
-this fix: `internal/tmux`'s `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
-(sibling of the already-recorded `TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne`
-close-race family in `pipe_displacement_test.go`), confirmed non-reproducing 3/3 in isolation
-(`ci/run.sh go test -count=1 -run TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF ./internal/tmux/...`).
-Not re-run as a whole suite a second time to chase a clean streak, per the standing budget rule.
+An earlier `docs/reports/phase3d-075-final-suite-run.log` (committed alongside this fix in the
+same iteration) actually showed `internal/tmux`'s
+`TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF` FAILing (sibling of the
+already-recorded `TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne` close-race
+family in `pipe_displacement_test.go`) — the log was committed without actually being green, which
+validation caught. Confirmed non-reproducing 3/3 in isolation
+(`ci/run.sh go test -race -count=1 -run TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF ./internal/tmux/...`).
+A subsequent retry attempt (same iteration budget rules, one whole-suite run) hit a different,
+also load-correlated failure instead: a 10-minute per-test timeout inside
+`attach_scroll.feature:11`'s `@requirement-48-wheel-scrolls-attached-pane-without-typing` scenario,
+with a second `ralphd` job (`selfdev-v09-fsm-loop`) confirmed running concurrently on the host via
+`docker ps` at the time; that exact scenario passed 3/3 isolated (~1.5–3s each, nowhere near the
+timeout) immediately after. Neither failure was fixed by weakening a test — both are the standing
+load-correlated PTY/close-race class already on record in `notes.md`.
+
+A later retry (this iteration) ran the whole suite once more at load ~2.6–3.5 (concurrent job
+still present) and it came back fully green, including `internal/tmux` (18.7s) and `features`
+(257.7s) with the `@requirement-48` scenario passing inline this time — no FAIL anywhere in the
+run. That log now replaces the earlier (failing) one at
+`docs/reports/phase3d-075-final-suite-run.log`, and is the log task 075 cites as its green
+whole-suite run. Not re-run a second time in the same iteration to chase a repeat clean streak,
+per the standing budget rule.
