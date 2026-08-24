@@ -412,3 +412,82 @@ updated in this commit to say so precisely: the mechanism now exists,
 but nothing hands it this setting yet. Whichever later task wires
 interactive mode into `internal/tui` is responsible for setting
 `renderCoalesceInterval` from `settings.InteractiveMS` at that point.
+
+## II-28: dispatch on a verified five-field identity (task 050)
+
+`internal/tmux/dispatch.go`'s `Client.CaptureIdentity`/`Dispatcher` is the
+mechanism PRD II-28 asks for: socket path (`#{socket_path}`), server pid
+(`#{pid}`), pane id (`#{pane_id}`), pane pid (`#{pane_pid}`) and session
+name (`#{session_name}`) are read together with `#{pane_dead}` in one
+`display-message` invocation (`dispatchIdentityFormat`) — the same
+atomic-single-round-trip discipline task 043/II-20 established for the
+capture+state pairing, applied here to identity+liveness instead.
+`NewDispatcher` captures that tuple once, at construction ("at entry");
+every `Dispatcher.Send` call re-resolves the identical five fields
+immediately before running its dispatch command, and refuses instead of
+sending — returning `ErrIdentityDrifted`, `ErrPaneDead`, or the dispatch
+command's own wrapped tmux error — on any of the three conditions II-28
+names: drift from the entry identity, `pane_dead != 0`, or a nonzero tmux
+exit from the command itself.
+
+### Counting the re-resolutions against the sends
+
+`dispatch_test.go`'s `TestDispatcherReResolvesIdentityBeforeEverySend` is
+the direct proof: `Dispatcher.Verifications()` reads exactly the number of
+times `Send`/`Verify` have re-resolved identity. Five `Send` calls produce
+`Verifications() == 5`; a following bare `Verify` (no dispatch command
+run) brings it to 6 — one re-resolution per call, never one-at-entry-only.
+`TestDispatcherRejectsOnNonZeroTmuxExit` additionally confirms the
+re-resolution still happens even when the dispatch command itself then
+fails (`Verifications() == 1` after exactly one failed `Send`) — the
+count is "how many times identity was checked", not "how many sends
+succeeded".
+
+### The three refusal conditions, each proven against real tmux
+
+- **Drift** (`TestDispatcherRejectsOnIdentityDriftAfterRespawn`):
+  `respawn-pane -k` on the target leaves `PaneID` and `SessionName`
+  unchanged (confirmed directly) while `PanePID` moves; `Send` afterward
+  refuses with a wrapped `ErrIdentityDrifted`. This is the tmux-primitive
+  half of PRD II-29's full scenario; task 051 builds the complete
+  four-vs-five-field scenario this mechanism is meant to support.
+- **Dead pane** (`TestDispatcherRejectsOnPaneDead`): killing the pane's
+  process under `remain-on-exit failed` and waiting for `#{pane_dead}` to
+  flip true makes `Send` refuse with a wrapped `ErrPaneDead`, without ever
+  running the dispatch command.
+- **Nonzero tmux exit** (`TestDispatcherRejectsOnNonZeroTmuxExit`): an
+  unrecognized `send-keys` flag (a genuine tmux usage error, exit 1) is
+  surfaced as a plain wrapped error, distinct from the two named sentinel
+  errors. `send-keys -H zz` was deliberately NOT used for this case — PRD
+  II-38 documents it as one of three commands that **silently return exit
+  0**, so it would not have exercised this condition at all; that hazard
+  is task 054's to close, not this one's to fake past.
+
+### Non-vacuous positive control
+
+`TestDispatcherSendDeliversToARealPaneAndCountsOneVerification` sends a
+real marker string into a live pane through `Dispatcher.Send` and polls
+`capture-pane` until it appears — proving the verify-then-send path
+actually delivers, not merely that it can refuse.
+
+### Grep proof: no send path bypasses the verify
+
+`TestNoSendPathBypassesTheDispatcherVerify` scans every non-test `.go`
+file in `internal/tmux` for a literal `"send-keys"`, `"paste-buffer"` or
+`"load-buffer"` tmux command name outside comments, and fails naming
+file+line if one appears anywhere except `tmux.go`'s pre-existing,
+narrowly-scoped `Client.SendKeys` (task 023's env-injection primitive,
+documented there as never driving a coding agent's own input). As of this
+task there is no other production dispatch call site at all — later tasks
+(054-060) that add real send primitives (`send-keys -l --`,
+`load-buffer`+`paste-buffer`, etc.) must route their argv through
+`Dispatcher.Send`, or deliberately widen this test's allowlist in the same
+commit, never silently. Demonstrated non-vacuous directly: a throwaway
+file with a bypassing `c.run(ctx, "send-keys", ...)` call was added
+temporarily, the guard failed naming that exact file and line, and the
+file was removed before committing (`git status --short` confirmed clean
+afterward).
+
+`Dispatcher` does not yet drive any real key/keystroke encoding (that is
+tasks 054+); this task's scope is the verify-and-refuse bottleneck itself,
+generic over whatever tmux argv a caller supplies.
