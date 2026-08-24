@@ -1565,3 +1565,26 @@ restore, repaint-notice, and the SIGWINCH budget are all properties of the
 
 `go build`/`go vet ./...`/`gofmt` clean; `go test -count=1 ./internal/...
 ./cmd/...` green.
+
+## Final close-out (I-21 / task 077)
+
+Part II's own tasks (026-073, 085-091 plus the operator-steered additions) are all complete.
+This section cites the same final full-suite run described in `docs/reports/phase3.md`'s own
+"Final close-out" section, since that criterion asks both reports to cite the final runs.
+
+`ci/run.sh go test -p=1 -count=1 ./...` at the final commit before this task's own documentation
+commit (`9156c6b`), run 2026-08-24 16:02:51-16:08:06 UTC (~5m15s wall; `features` package
+267.049s), host loadavg 4.3-6.0 (a second, unrelated `ralphd` job sharing the host, confirmed via
+`docker ps`): every package `ok` except `features`, which failed exactly one scenario --
+`interactive_refusals.feature`'s 7-row-floor refusal case (II-47/II-48's own 7-inner-row floor),
+timing out waiting for the "7-row floor" frame under load. This is the standing load-correlated
+PTY-timeout class documented in `docs/reports/phase3-findings.md`'s "Standing pre-existing flake
+list" (Part I's file, since the class is not specific to Part II) -- not a Part II regression: the
+same scenario's refusal logic (`internal/interactive`'s geometry floor, II-47) is unchanged by any
+commit in this run's Part II task range, and task 076's own ten-run stability measurement already
+recorded this exact scenario failing under load 4 of 10 times before this run, for the identical
+reason.
+
+`go build`, `go vet ./...`, `gofmt -l` on every tracked `.go` file: all clean at this commit.
+`SPEC.md`/`prds/`/`ci/Dockerfile`/`ci/SPIKE.md` unmodified across the whole run (verified in
+`docs/reports/phase3.md`'s close-out section, same `git diff 9cda5a8..HEAD --stat` command).
