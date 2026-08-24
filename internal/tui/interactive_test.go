@@ -131,6 +131,26 @@ func TestPreviewTitleNamesInteractiveModeAndTheExitChord(t *testing.T) {
 	}
 }
 
+// TestPreviewTitleNamesTheTargetSessionWhileInteractive is task 063/II-44's
+// own requirement: because NO_COLOR drops deck to monochrome and its own
+// golden frames are captured that way, a colour-only focus indicator would
+// pass whether or not focus actually moved, so the preview's top border
+// must carry the TARGET SESSION'S NAME as plain screen text while
+// interactive -- not just say "interactive" generically.
+func TestPreviewTitleNamesTheTargetSessionWhileInteractive(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.sessions = []store.Session{{ID: "s1", Name: "focus-target", Agent: "shell", Status: "running", Slug: "focus-target"}}
+	m.selected = 0
+	m.interactive = true
+	got := m.previewTitle()
+	if !strings.Contains(got, "focus-target") {
+		t.Fatalf("interactive previewTitle %q does not name the target session", got)
+	}
+	if !strings.Contains(got, "interactive") || !strings.Contains(got, "Ctrl+Q") {
+		t.Fatalf("interactive previewTitle %q dropped the mode name or exit chord while adding the session name", got)
+	}
+}
+
 // TestInteractiveNamedKeyMapsOnlyModeDependentKeys proves the named-key/
 // literal-byte split (task 061's own design note): arrows, Home/End,
 // PgUp/PgDown, Insert/Delete, ShiftTab and the function keys go by NAME
