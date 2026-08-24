@@ -54,21 +54,44 @@ func rawCapturePane(t *testing.T, socket, target string) []byte {
 	return out
 }
 
-// gridContains scans every cell the grid holds for needle, so a byte-loss
-// bug that shows up anywhere on screen (not just a fixed row/column) is
-// caught.
+// ansiEscapeRe strips the CSI (SGR) and OSC (hyperlink) escape sequences
+// that Render() interleaves between styled cell runs, matching the same
+// two shapes composed_only_test.go's dangerousANSIClasses already greps
+// for (CSI ... final-byte, and OSC ... BEL/ST).
+var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9:;]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
+// gridContains scans a race-free rendered snapshot of the grid for
+// needle, so a byte-loss bug that shows up anywhere on screen (not just
+// a fixed row/column) is caught.
+//
+// This goes through Render(), never CellAt: vt's SafeEmulator.CellAt
+// (charmbracelet/x/vt@v0.0.0-20260816001655/safe_emulator.go:59) takes
+// its RLock, calls the embedded Emulator's CellAt, and returns -- but
+// what it returns is a *pointer into the emulator's live cell array*,
+// dereferenced by the caller (here, cell.Content) only *after* the lock
+// has already been released on return. That pointer races any
+// concurrent Write to the same grid (e.g. drain's goroutine), and does
+// so nondeterministically -- go test -race caught it only on a fraction
+// of runs against TestArmingPipeBeforeSeedCaptureDeliversInterstitialBytes,
+// not every run (see docs/reports/phase3b-findings.md). SafeEmulator.Render
+// (safe_emulator.go:45) holds the RLock across the WHOLE encode and
+// returns a plain string, so it is race-free by construction; that is
+// the only vt accessor with that property (String() is not safe either
+// -- SafeEmulator embeds *Emulator and never overrides String, so calling
+// it would call straight through to the unsynchronized encoder).
+//
+// Render()'s rows are separated by a bare '\n' (charmbracelet/ultraviolet
+// Lines.Render), so splitting on that reproduces gridContains' original
+// per-row search exactly -- not a single Contains over the whole encoded
+// screen, which could let a needle match across an artificial line-wrap
+// join that was never contiguous on screen. Each row still needs its
+// styling escapes stripped before the search, since Render() only emits
+// an SGR/OSC sequence when a cell's style or link actually changes
+// (charmbracelet/ultraviolet buffer.go's renderLine), so an escape can
+// land in the middle of what was contiguous plain cell content.
 func gridContains(g *Grid, needle string) bool {
-	for y := 0; y < g.Height(); y++ {
-		var row strings.Builder
-		for x := 0; x < g.Width(); x++ {
-			cell := g.CellAt(x, y)
-			if cell == nil || cell.Content == "" {
-				row.WriteByte(' ')
-				continue
-			}
-			row.WriteString(cell.Content)
-		}
-		if strings.Contains(row.String(), needle) {
+	for _, row := range strings.Split(g.Render(), "\n") {
+		if strings.Contains(ansiEscapeRe.ReplaceAllString(row, ""), needle) {
 			return true
 		}
 	}
@@ -204,6 +227,62 @@ func TestArmingPipeBeforeSeedCaptureDeliversInterstitialBytes(t *testing.T) {
 // `vt.NewSafeEmulator(1, 1)` call to grid.go and rerun this test -- it goes
 // red, naming the file, confirming the check is live and not decorative --
 // then remove it again before committing.
+// TestGridContainsFindsPlainAndStyledTextButNotAcrossRows is the
+// deliberate-mismatch control task 085 (steer 009) asks for alongside
+// the Render()-based rewrite: it proves gridContains still finds what it
+// used to find (plain text, and text whose row Render() actually breaks
+// with a real SGR escape -- a needle that would stop matching if the
+// escape-stripping regexp were wrong or missing), and still returns
+// false for text that is genuinely absent, INCLUDING a needle built by
+// concatenating the tail of one row with the head of the next (which a
+// single un-split Contains over the whole rendered screen would
+// wrongly match, since the two halves are contiguous once the '\n' row
+// separator is gone).
+func TestGridContainsFindsPlainAndStyledTextButNotAcrossRows(t *testing.T) {
+	g := newGrid(10, 3)
+
+	// Row 0: plain text.
+	if _, err := g.Write([]byte("HELLO")); err != nil {
+		t.Fatalf("write plain row: %v", err)
+	}
+
+	// Row 1: a red-styled word bracketed by plain text on both sides, so
+	// Render() must emit an SGR sequence entering AND leaving red style
+	// right at the word's boundaries -- exactly the shape that would
+	// break a naive (non-escape-stripping) Contains check.
+	if _, err := g.Write([]byte("\x1b[2;1HAB\x1b[31mRED\x1b[0mCD")); err != nil {
+		t.Fatalf("write styled row: %v", err)
+	}
+
+	// Row 2: plain text again, deliberately chosen so its head, glued to
+	// row 1's tail, spells a needle that must NOT be found.
+	if _, err := g.Write([]byte("\x1b[3;1HXYZ")); err != nil {
+		t.Fatalf("write third row: %v", err)
+	}
+
+	rendered := g.Render()
+	if strings.Contains(rendered, "\x1b") == false {
+		t.Fatalf("test assumption violated: Render() emitted no escape sequence at all -- the styled-row case below proves nothing without one; got %q", rendered)
+	}
+
+	for _, tc := range []struct {
+		needle string
+		want   bool
+	}{
+		{"HELLO", true},        // plain text, unchanged from before the rewrite
+		{"ABREDCD", true},      // spans a real SGR escape Render() inserted
+		{"RED", true},          // the styled word alone
+		{"XYZ", true},          // plain text on the third row
+		{"NOPE-ABSENT", false}, // genuinely absent: the deliberate-mismatch control
+		{"CDXYZ", false},       // row 1's tail glued to row 2's head: must not match
+		{"HELLOAB", false},     // row 0's tail glued to row 1's head: must not match
+	} {
+		if got := gridContains(g, tc.needle); got != tc.want {
+			t.Errorf("gridContains(g, %q) = %v, want %v", tc.needle, got, tc.want)
+		}
+	}
+}
+
 func TestExactlyOneGridConstructorCallSite(t *testing.T) {
 	constructorRe := regexp.MustCompile(`vt\.NewSafeEmulator\(`)
 
