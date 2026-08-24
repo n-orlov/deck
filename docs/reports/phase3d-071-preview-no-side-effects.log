@@ -1,0 +1,73 @@
+Task 071 verification: @requirement-21-preview-no-side-effects still green and text unchanged.
+
+## Environment
+nproc: 28
+loadavg (before run): 5.77 4.18 5.26 3/5396 91728
+
+## git diff 9cda5a8..HEAD -- features/preview.feature (proves the scenario's own text is unchanged; only the sibling crop-geometry scenario below it gained scoping comments, and a new II-46 scenario was appended after it)
+diff --git a/features/preview.feature b/features/preview.feature
+index 51c64bd..1301438 100644
+--- a/features/preview.feature
++++ b/features/preview.feature
+@@ -25,12 +25,35 @@ Feature: The preview capture engine and its visible behaviour
+     And deck client "solo" exits cleanly
+ 
+   @requirement-23-preview-crop-geometry
+-  Scenario: a live pane larger than the panel is cropped with its real geometry stated
++  Scenario: in passive preview, a live pane larger than the panel is cropped with its real geometry stated
++    # Scoped to passive preview (PRD Part II item 2 under "Assertions this
++    # phase must deliberately change"): this scenario never enters
++    # interactive mode, so the \d+x\d+ of \d+x\d+ crop statement it asserts
++    # is never the fitted, non-cropping case II-46 gives its own scenario
++    # below.
+     Given deck client "solo" is started
+     And deck client "solo" creates shell session "alpha"
+     Then deck client "solo" screen matches the pattern "\d+x\d+ of \d+x\d+"
+     And deck client "solo" exits cleanly
+ 
++  @requirement-46-interactive-fitted-geometry
++  Scenario: interactive mode states the fitted geometry, never the crop form
++    # PRD Part II requirement 46: entering interactive mode fits the tmux
++    # window to exactly the panel's own content box, so the real pane size
++    # and the panel's content size are always equal. Stating that in the
++    # crop's own "WxH of realWxrealH" form would degenerate to the
++    # misleading "45x22 of 45x22" -- a crop statement about a pane that was
++    # never cropped. The panel states it differently instead: "WxH fitted".
++    Given deck client "solo" is started
++    And deck client "solo" creates shell session "alpha"
++    And within one configured reconcile interval deck client "solo" screen contains "running"
++    And deck client "solo" selects session "alpha"
++    When deck client "solo" enters interactive mode
++    Then deck client "solo" screen matches the pattern "\d+x\d+ fitted"
++    And deck client "solo" screen does not contain " of "
++    And deck client "solo" leaves interactive mode
++    And deck client "solo" exits cleanly
++
+   @requirement-24-preview-wide-cell-boundary
+   Scenario: wide glyphs in a cropped pane never shear the preview's border
+     Given deck client "solo" is started
+
+## Targeted godog run
+$ DECK_GODOG_TAGS="@requirement-21-preview-no-side-effects" go test -count=1 -run TestFeatures ./features/
+
+ok  	github.com/n-orlov/deck/features	2.242s
+
+loadavg (after run): 5.77 4.18 5.26 3/5396 91732
+
+## Reading of the scenario itself (features/preview.feature:6-25)
+The @requirement-21-preview-no-side-effects scenario already exercises every
+axis the task asks for: selection change (selects the next session twice),
+mode change (sends "|" twice, then ">" then "<" -- the layout-mode-cycle
+keys), sidebar-width change (">"/"<" also adjust sidebar width per SPEC),
+and outer-terminal change (resized to 120x40 then 100x30). It then asserts:
+tmux reports no attached clients, the private tmux window for the session
+still matches its "before" snapshot, and the fake claude agent's size log
+(which would grow on any SIGWINCH/resize delivered to the pane) still
+matches its "before" snapshot too. All three assertions passed in the run
+above.
+
+## Conclusion
+Green, and the scenario's own text has not been touched since commit
+9cda5a8 (the Phase 3c SPEC/PRD cut that predates all of Part II's
+interactive-mode work). Passive preview's non-perturbation guarantee holds
+unmodified through Part II.
