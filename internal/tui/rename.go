@@ -29,12 +29,15 @@ import (
 // §11.4 fields to submit or cycle, so the only shared contract key it
 // binds is esc; "i" (declared inline, mirroring detailView's own footer
 // text "i or Esc closes detail"), "r" (this task's additional
-// load-bearing key, declared inline exactly as §11.4 allows) and
-// pgup/pgdown (task 078's whole-dialog scroll, requirement 39 residual)
-// are the keys detailView adds beyond that shared contract. Task 079
-// (pending as of task 078) still owes a bare "q" handler here -- pgup/
-// pgdown deliberately leave both q and esc's existing cases untouched so
-// they cannot shadow that fix.
+// load-bearing key, declared inline exactly as §11.4 allows), pgup/
+// pgdown (task 078's whole-dialog scroll, requirement 39 residual) and
+// "q"/"ctrl+c" (task 079: a bare q while m.detail is true used to be a
+// silent no-op here -- helpText's own "q or Ctrl+C quit deck" line in
+// the Keys section already promises this unconditionally, matching
+// updateHelpView's identical case below, so this is bringing the
+// implementation in line with copy that was already shipped, not
+// documenting a new binding) are the keys detailView adds beyond that
+// shared contract.
 func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if cmd, handled := applyDialogContract(msg, dialogContract{
 		Cancel: func() {
@@ -46,6 +49,8 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
 	case "i":
 		m.detail = false
 	case "r":
