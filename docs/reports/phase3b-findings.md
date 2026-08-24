@@ -33,6 +33,68 @@ Declaring the key (this task) does not implement either path; `pipe` is
 implemented starting at task 040, `capture` and the parity run are task
 070's job.
 
+### Task 070 split: `capture` did not exist in code at all until now (task 088)
+
+When task 070 was picked up, grepping for `InteractiveTransport` outside
+`_test.go` files showed the knob fully wired end to end -- settings UI
+(`internal/tui/settings.go`), the config file reader/writer
+(`internal/config/toml.go`/`toml_write.go`), env override validation
+(`internal/config/config.go`'s `interactiveTransportEnv`) -- but never
+consulted anywhere a Session is actually constructed
+(`internal/tui/interactive.go`'s one `interactive.Start` call site). `pipe`
+was the only implementation that existed; `capture` was a validated,
+settable, displayed value with no code path behind it at all. Proving
+"the same scenarios pass with `DECK_INTERACTIVE_TRANSPORT=capture`" was
+therefore not a test-writing task, it was an implementation task the PRD's
+own wording ("capture ... are task 070's job", above) already flagged --
+too large for one iteration alongside everything else task 070 asks for, so
+it was split into three tasks in `tasks.json`: 088 (implement the transport
+itself, in `internal/interactive`, with its own unit tests), 089 (wire it
+into `internal/tui/interactive.go` and run/log/document the parity sweep),
+and 070 itself, now the closing sign-off once 089's evidence exists.
+
+**Task 088's implementation** (`internal/interactive/grid.go`): a new
+`Transport` type (`TransportPipe`/`TransportCapture`) and
+`StartWithTransport(ctx, client, target, width, height, seed, transport)`,
+with `Start` kept as a thin `StartWithTransport(..., TransportPipe)`
+wrapper so every pre-088 call site (one production, ~14 in tests) keeps
+working unchanged. Under `TransportCapture`, `ArmPipePane` is never called
+at all (`s.pipe` stays `nil` for the Session's whole life -- `markDead` and
+`Close` gained nil guards, confirmed load-bearing by a red demonstration:
+forcing the pipe to arm anyway, and separately removing `Close`'s nil
+guard, both tried and reverted, `git diff` empty before commit) and a new
+`captureLoop` goroutine replaces `drain`/`fallbackLoop`: it polls
+`CaptureSeed` every `capturePollInterval` (a var, 200ms default, mirroring
+`paneDeadPollInterval`'s own test-overridable shape) and replaces the grid
+wholesale each tick, reusing the exact fresh-parser-per-reseed discipline
+`fallbackLoop`/`Resize` already established (task 044/II-21-22) rather than
+inventing a second one. `pollPaneDead` (II-23) is fully transport-agnostic
+and runs unmodified under either transport. `Status` never leaves
+`StatusLive` under `TransportCapture`, since `handlePipeGone` (the only
+thing that ever moves it) is unreachable with no pipe armed to displace.
+
+**Gotcha discovered building the tests**: `CaptureSeed`
+(`internal/tmux/paneseed_atomic.go`'s `CapturePaneSeedAtomic`) rejects any
+target that is not the exact `^%[0-9]+$` pane-id shape `Dispatcher` already
+enforces (PRD II-30) -- unlike `ArmPipePane`/`capture-pane -p`, which
+accept an ordinary session/window target string (e.g. `s0`) fine. A first
+draft of `capture_transport_test.go` passed `s0` to `StartWithTransport`
+directly and captureLoop silently failed every single poll (`CaptureSeed`'s
+error swallowed by design, per its own doc, so the panel never regresses on
+a transient tmux hiccup) -- confirmed by resolving `#{pane_id}` first and
+re-running, which fixed it. Production is already correct here
+(`interactive.Start(ctx, client, pane.ID, ...)`, always a real pane id);
+this was a test-only bug, not a production one.
+
+Verified for task 088: `go build`/`go vet`/`gofmt` clean; `go test -race
+-count=1 ./internal/interactive/...` green (84.6s); `go test -count=1
+./internal/... ./cmd/...` green; the five new tests in
+`capture_transport_test.go` demonstrated non-vacuous by two separate red
+demonstrations described above, both reverted before commit (`git diff`
+empty). Task 088 does **not** wire this into `internal/tui` or run any
+godog scenario under `capture` -- that is task 089's job, followed by 070's
+own sign-off against this exact PRD wording.
+
 ## II-14: ownership has no heartbeat and no TTL, because liveness is a
 ## syscall (task 033)
 

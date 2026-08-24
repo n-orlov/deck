@@ -1,6 +1,9 @@
 // Package interactive assembles PRD phase3b Part II's interactive-preview
 // transport: one long-lived charmbracelet/x/vt grid fed by a tmux pane's
-// live output, armed via internal/tmux's pipe-pane primitive.
+// live output, via either of the two mechanisms II-5 names
+// (TransportPipe, armed via internal/tmux's pipe-pane primitive; or
+// TransportCapture, a periodic capture-pane poll -- see the Transport
+// type below).
 package interactive
 
 import (
@@ -22,6 +25,32 @@ import (
 // the death-detection assertion fast without changing production
 // behaviour.
 var paneDeadPollInterval = 200 * time.Millisecond
+
+// Transport selects which mechanism a Session uses to keep its Grid fed
+// (PRD II-5, task 070). TransportPipe (the default -- see Start) arms
+// tmux's `pipe-pane -IO` and streams every byte it delivers into the
+// grid (II-16 onward); TransportCapture never touches pipe-pane at all
+// and instead re-polls `capture-pane` on capturePollInterval, replacing
+// the grid wholesale each tick the same way an ordinary resize reseeds
+// (II-21/22). There is no live byte stream to displace under
+// TransportCapture -- Status (below) stays StatusLive for a capture
+// Session's whole life, since handlePipeGone is a TransportPipe-only
+// mechanism and is never reached when there is no pipe armed to begin
+// with.
+type Transport int
+
+const (
+	// TransportPipe is the default (Start's own transport).
+	TransportPipe Transport = iota
+	// TransportCapture never arms pipe-pane; see captureLoop.
+	TransportCapture
+)
+
+// capturePollInterval is how often TransportCapture re-polls
+// `capture-pane` (task 070/II-5). A test may lower this (it is a var,
+// not a const) to keep a capture-transport assertion fast without
+// changing production behaviour.
+var capturePollInterval = 200 * time.Millisecond
 
 // Grid is the SAME emulator instance for the whole life of one Session: the
 // seed capture (task 042/II-17-18) is written into it before the pipe's
@@ -77,6 +106,14 @@ func newGrid(width, height int) *Grid {
 type Session struct {
 	mu   sync.RWMutex
 	grid *Grid
+	// transport records which mechanism Start (or StartWithTransport) was
+	// asked to use; informational only today (no method branches on it),
+	// but kept so a caller/test can confirm which path a Session is
+	// actually running.
+	transport Transport
+	// pipe is nil for a TransportCapture Session (captureLoop never arms
+	// pipe-pane, PRD II-5) -- every use of it elsewhere in this file
+	// (markDead, Close) is guarded accordingly.
 	pipe *tmux.PanePipe
 	done chan struct{}
 
@@ -153,22 +190,41 @@ func (s *Session) Status() Status {
 	return s.status
 }
 
-// Start arms the pipe pane BEFORE calling seed, so that any bytes the pane
-// emits between the two are delivered to the pipe (and, once draining
-// starts, written into the SAME grid the seed populates) instead of being
-// lost with no way to notice -- the ordering itself, not merely the
-// presence of a pipe, is what PRD II-16 requires. seed is invoked only
-// after the pipe is armed and its returned bytes are written into the
-// grid before the drain goroutine (which delivers whatever the pipe
-// already queued) starts running.
+// Start is StartWithTransport pinned to TransportPipe -- every pre-070
+// caller/test keeps working unchanged. It arms the pipe pane BEFORE
+// calling seed, so that any bytes the pane emits between the two are
+// delivered to the pipe (and, once draining starts, written into the
+// SAME grid the seed populates) instead of being lost with no way to
+// notice -- the ordering itself, not merely the presence of a pipe, is
+// what PRD II-16 requires. seed is invoked only after the pipe is armed
+// and its returned bytes are written into the grid before the drain
+// goroutine (which delivers whatever the pipe already queued) starts
+// running.
 func Start(ctx context.Context, client tmux.Client, target string, width, height int, seed func(ctx context.Context) ([]byte, error)) (*Session, error) {
-	pipe, err := client.ArmPipePane(ctx, target)
-	if err != nil {
-		return nil, fmt.Errorf("arm pipe-pane before seed capture: %w", err)
+	return StartWithTransport(ctx, client, target, width, height, seed, TransportPipe)
+}
+
+// StartWithTransport is Start, generalised over PRD II-5's transport
+// selector (task 070). Under TransportPipe its behaviour is exactly
+// Start's pre-070 behaviour (see Start's own doc for the arm-before-seed
+// ordering this preserves). Under TransportCapture, no pipe-pane is ever
+// armed -- seed (still called exactly once, at construction, the same
+// as TransportPipe) is this Session's only content until captureLoop's
+// first tick lands, and every subsequent update comes from captureLoop
+// re-polling capture-pane on capturePollInterval, never from a drained
+// byte stream.
+func StartWithTransport(ctx context.Context, client tmux.Client, target string, width, height int, seed func(ctx context.Context) ([]byte, error), transport Transport) (*Session, error) {
+	var pipe *tmux.PanePipe
+	if transport == TransportPipe {
+		var err error
+		pipe, err = client.ArmPipePane(ctx, target)
+		if err != nil {
+			return nil, fmt.Errorf("arm pipe-pane before seed capture: %w", err)
+		}
 	}
 	failed := true
 	defer func() {
-		if failed {
+		if failed && pipe != nil {
 			_ = pipe.Close()
 		}
 	}()
@@ -187,6 +243,7 @@ func Start(ctx context.Context, client tmux.Client, target string, width, height
 
 	pollCtx, pollCancel := context.WithCancel(context.Background())
 	s := &Session{
+		transport:    transport,
 		pipe:         pipe,
 		done:         make(chan struct{}),
 		deadCh:       make(chan struct{}),
@@ -202,11 +259,65 @@ func Start(ctx context.Context, client tmux.Client, target string, width, height
 	// coalesced render (once a consumer starts selecting on Renders())
 	// reflects the seed, not an empty grid.
 	s.renders.MarkDirty()
-	go s.drain(client, target)
+	switch transport {
+	case TransportCapture:
+		// There is no pipe to displace under this transport, so the
+		// displacement fallback (fallbackLoop) never runs; Close still
+		// unconditionally waits on fallbackDone, so it is closed here,
+		// immediately, rather than left to a goroutine with nothing to
+		// do.
+		close(s.fallbackDone)
+		go s.captureLoop(pollCtx, client, target)
+	default:
+		go s.drain(client, target)
+		go s.fallbackLoop(pollCtx, client, target)
+	}
 	go s.pollPaneDead(pollCtx, client, target)
-	go s.fallbackLoop(pollCtx, client, target)
 	failed = false
 	return s, nil
+}
+
+// captureLoop is TransportCapture's sole update source (task 070/II-5):
+// unlike fallbackLoop (which only starts once a live PIPE has already
+// been displaced, and announces that in the grid), this runs from the
+// moment a capture Session starts, polling CaptureSeed every
+// capturePollInterval and replacing the grid wholesale on every tick --
+// the same fresh-parser-per-reseed discipline task 044/II-21-22
+// established for ordinary resizes, applied here as the ordinary steady
+// state rather than an exceptional one. No notice is written (unlike
+// fallbackLoop's pipeDisplacedNotice): nothing has been displaced, this
+// is simply how TransportCapture always works. It closes s.done when it
+// returns (ctx cancelled, i.e. Session.Close), the same channel drain
+// closes under TransportPipe, so Close's own wait works unmodified
+// regardless of which transport a Session was started with. A
+// CaptureSeed error (a transient tmux error, or the target vanishing) is
+// not treated as fatal here -- it keeps polling until ctx is cancelled;
+// pollPaneDead, running independently, is the mechanism that decides
+// whether target has actually died.
+func (s *Session) captureLoop(ctx context.Context, client tmux.Client, target string) {
+	defer close(s.done)
+	ticker := time.NewTicker(capturePollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		data, err := CaptureSeed(ctx, client, target)
+		if err != nil {
+			continue
+		}
+		g := s.currentGrid()
+		fresh := newGrid(g.Width(), g.Height())
+		if _, err := fresh.Write(data); err != nil {
+			continue
+		}
+		s.mu.Lock()
+		s.grid = fresh
+		s.mu.Unlock()
+		s.renders.MarkDirty()
+	}
 }
 
 // pollPaneDead is the live path's ONLY liveness signal (PRD II-23):
@@ -260,7 +371,9 @@ func (s *Session) pollPaneDead(ctx context.Context, client tmux.Client, target s
 func (s *Session) markDead() {
 	s.deadOnce.Do(func() {
 		close(s.deadCh)
-		_ = s.pipe.Close()
+		if s.pipe != nil {
+			_ = s.pipe.Close()
+		}
 	})
 }
 
@@ -517,12 +630,19 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 // not a snapshot captured when the notification was produced.
 func (s *Session) Renders() <-chan struct{} { return s.renders.Renders() }
 
-// Close disarms the pipe and waits for the drain goroutine to observe the
-// resulting read error, so a caller never observes a Session whose drain
-// goroutine is still writing into its Grid after Close returns.
+// Close disarms the pipe (TransportPipe only -- a TransportCapture
+// Session has none, s.pipe is nil, see the Session struct's own doc) and
+// waits for the update goroutine (drain under TransportPipe, captureLoop
+// under TransportCapture -- pollCancel below stops the latter directly,
+// since it has no pipe read to unblock it) to observe the resulting
+// shutdown, so a caller never observes a Session whose update goroutine
+// is still writing into its Grid after Close returns.
 func (s *Session) Close() error {
 	s.pollCancel()
-	err := s.pipe.Close()
+	var err error
+	if s.pipe != nil {
+		err = s.pipe.Close()
+	}
 	<-s.done
 	<-s.pollDone
 	<-s.fallbackDone
