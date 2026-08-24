@@ -269,6 +269,31 @@ func TestHelpOverlayKeymapMatchesBoundKeys(t *testing.T) {
 	}
 }
 
+// TestFooterKeyLegendNamesOnlyBoundKeys is task 062's footer half of
+// requirement 38's cross-check: it reuses task 021's own two building
+// blocks -- listModeBoundKeys (re-parses tui.go's list-mode key switch)
+// and helpKeyTokenToBoundKeys (the fixed display-glyph -> raw-key-string
+// vocabulary already used to check the help overlay) -- to prove the
+// list-mode footer's key legend (footerLegend, tui.go) never names a key
+// that switch does not bind. Every footerLegend entry's unicodeKey is
+// already one of helpKeyTokenToBoundKeys' keys (the legend and the help
+// overlay share the same glyph vocabulary by construction), so a missing
+// translation is itself a failure worth reporting, not a silent skip.
+func TestFooterKeyLegendNamesOnlyBoundKeys(t *testing.T) {
+	bound := listModeBoundKeys(t)
+	for _, e := range footerLegend {
+		toks, ok := helpKeyTokenToBoundKeys[e.unicodeKey]
+		if !ok {
+			t.Fatalf("footer legend entry %q has no helpKeyTokenToBoundKeys translation -- add one so this check can see it", e.unicodeKey)
+		}
+		for _, key := range toks {
+			if !bound[key] {
+				t.Errorf("footer legend names key %q (glyph %q) that the list-mode switch does not bind", key, e.unicodeKey)
+			}
+		}
+	}
+}
+
 // TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns is requirement
 // 38/39's frame-budget component for the *width* dimension: at deck's
 // documented 80-column minimum, no rendered help-view line exceeds 80
