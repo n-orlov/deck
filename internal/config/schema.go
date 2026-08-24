@@ -266,14 +266,23 @@ var Schema = []Field{
 		// implementations of the SAME §11.9 interactive-preview contract
 		// (pipe-pane -IO streaming into a grid, or a poll-and-capture-pane
 		// fallback), not the kind of user-visible behaviour switch §13.1
-		// forbids -- both paths must satisfy the same
-		// features/interactive_preview.feature scenarios except the
-		// pipe-only ones II-33 names (peeling a trailing `;` off a
-		// send-keys payload is meaningless to a transport that never runs
-		// send-keys). "pipe" is the default because it is the one measured
-		// in the Part II spikes (docs/spikes/interactive-preview.md); this
-		// task only declares the knob, it does not implement either path
-		// or the parity run task 070 owes.
+		// forbids -- but §11.9's contract does not extend to scrollback
+		// depth or history accumulation, and the two transports are NOT
+		// equivalent there: TransportCapture's design (capture-pane -p on
+		// each poll tick, never -S, replacing the grid wholesale) has no
+		// meaningful scrollback at all, since anything that scrolls off
+		// between two polls is gone rather than merely delayed. That is
+		// why the four features/interactive_scroll.feature scenarios are
+		// pipe-only (task 089); it is a third exclusion class, distinct
+		// from and not named by requirement II-33 (peeling a trailing `;`
+		// off a send-keys payload, meaningless to a transport that never
+		// runs send-keys) or II-24. "pipe" is the default because it is
+		// the one measured in the Part II spikes
+		// (docs/spikes/interactive-preview.md); this task only declares
+		// the knob, it does not implement either path -- see
+		// features/interactive_*.feature and
+		// docs/reports/phase3b-findings.md's II-5 section for the parity
+		// sweep task 070/088/089 owed and ran.
 		Kind:       KindEnum,
 		Default:    "pipe",
 		EnumValues: []string{"pipe", "capture"},
