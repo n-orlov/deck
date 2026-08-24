@@ -3,6 +3,7 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // SendLiteral dispatches payload as literal typed text via
@@ -48,9 +49,66 @@ import (
 // into the target as literal text, exit 0 -- PRD item 35's hazard,
 // closed by never reaching this function with anything but -l --
 // literal text in the first place).
+//
+// PRD II-33 is a THIRD hazard, orthogonal to both of the above: even
+// with `--` present, tmux's `-l` parser consumes exactly ONE trailing
+// `;` from the payload, no matter how many actually trail. This is not
+// a guess -- semicolon_test.go's raw (no-deck-code) tests prove it
+// directly: a bare `send-keys -l -- "ab;"` delivers "ab" (the lone
+// trailing `;` vanishes); `"ab;;"` delivers "ab;" (one of the two
+// vanishes, never both); `"ab;;;"` delivers "ab;;". Always exactly one
+// fewer `;` than actually trailed -- never zero fewer, never more than
+// one fewer -- and interior semicolons (anywhere but the very end) are
+// completely unaffected either way. SendLiteral closes this by calling
+// peelTrailingSemicolons first: every trailing `;` is stripped from the
+// payload up front (so the remainder has nothing left at its end for
+// tmux's parser to eat and cannot lose anything), and every peeled `;`
+// is re-delivered explicitly via a SEPARATE `send-keys -H 3b` call
+// (one hex byte per peeled semicolon, batched into one invocation) --
+// `-H` bypasses the `-l` literal-text parser entirely, so a hex-encoded
+// semicolon can never be reinterpreted as tmux's own trailing-`;`
+// command separator. The PRD's own `\;` escape is deliberately NOT used:
+// PRD II-33 states it "is not composable" with the rest of this
+// package's dispatch machinery, and semicolon_test.go's
+// TestNoBackslashSemicolonEscapeIsUsedForTrailingSemicolons greps this
+// package to prove it never falls back to it.
 func (d *Dispatcher) SendLiteral(ctx context.Context, payload string) error {
-	if err := d.Send(ctx, "send-keys", "-l", "--", payload); err != nil {
-		return fmt.Errorf("send literal payload to %q: %w", d.target, err)
+	body, semicolons := peelTrailingSemicolons(payload)
+	if body != "" || semicolons == 0 {
+		if err := d.Send(ctx, "send-keys", "-l", "--", body); err != nil {
+			return fmt.Errorf("send literal payload to %q: %w", d.target, err)
+		}
+	}
+	if semicolons > 0 {
+		args := make([]string, 0, semicolons+2)
+		args = append(args, "send-keys", "-H")
+		for i := 0; i < semicolons; i++ {
+			args = append(args, "3b")
+		}
+		if err := d.Send(ctx, args...); err != nil {
+			return fmt.Errorf("send %d peeled trailing semicolon(s) to %q: %w", semicolons, d.target, err)
+		}
 	}
 	return nil
+}
+
+// peelTrailingSemicolons strips every trailing `;` off payload's end
+// (never an interior one -- the loop only ever inspects the current
+// last byte, so it stops the instant that byte is not `;`) and reports
+// how many it removed. Peeling ALL of them, not just one, is what makes
+// SendLiteral correct for any trailing count: PRD II-33's hazard loses
+// exactly one `;` per literal send regardless of how many trail, so a
+// naive single-peel-then-resend would still lose one whenever two or
+// more trail (the resent remainder would itself end in `;` and tmux
+// would eat it again). Peeling to a fixed point first, then sending the
+// now-semicolon-free body once and re-delivering the peeled count via
+// `-H` in one batched call, has nothing left for tmux's `-l` parser to
+// eat at any step.
+func peelTrailingSemicolons(payload string) (body string, count int) {
+	body = payload
+	for strings.HasSuffix(body, ";") {
+		body = body[:len(body)-1]
+		count++
+	}
+	return body, count
 }

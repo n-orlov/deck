@@ -837,3 +837,56 @@ widen this allowlist in the same commit, never silently").
 ./internal/tmux/...` green; `go test -count=1 ./internal/... ./cmd/...`
 green (whole `./...` suite not re-run this task per the budget rule --
 change confined to `internal/tmux` plus this doc).
+
+## II-33: peel exactly one trailing `;`, re-send it as `-H 3b` (task 055)
+
+Measured directly against real tmux (no deck code), zero/one/two/three
+trailing-semicolon cases: `send-keys -l -- "ab"` delivers `ab` intact;
+`"ab;"` delivers `ab` (the lone trailing `;` vanishes, even with `--`
+present -- `--` only protects a *leading* `-`, a different parser
+quirk); `"ab;;"` delivers `ab;` (exactly ONE of the two vanishes, never
+both, never neither); `"ab;;;"` delivers `ab;;`. The loss is always
+exactly one `;`, never `N-1`. An interior `;` (`"a;b"`) is completely
+unaffected either way.
+
+Because the loss is always exactly one regardless of how many trail, a
+single-peel-then-resend fix is not enough once two or more trail: the
+resent remainder would itself still end in `;` and lose one again.
+`Dispatcher.SendLiteral` (`internal/tmux/send.go`) now calls
+`peelTrailingSemicolons`, a fixed-point loop that strips ALL trailing
+`;` off the payload (interior ones are never touched -- the loop only
+ever inspects the current last byte), sends the now-semicolon-free body
+through the ordinary `-l --` path (nothing left there for tmux's parser
+to eat), and re-delivers every peeled semicolon through one batched
+`send-keys -H 3b` call (one hex byte per peeled `;`) -- `-H` bypasses
+the `-l` literal-text parser entirely, so a hex-encoded semicolon can
+never be reinterpreted as tmux's own trailing-`;` separator. The PRD's
+own `\;` escape is deliberately not used (PRD II-33: "not composable");
+`semicolon_test.go`'s `TestNoBackslashSemicolonEscapeIsUsedFor...` greps
+this package to prove it never appears.
+
+`semicolon_test.go` proves both the raw hazard (zero/one/two trailing
+semicolon cases named by the PRD, plus a three-semicolon case exercising
+the fixed-point loop beyond a single peel, plus the interior-untouched
+case) and the fix (`Dispatcher.SendLiteral` green controls for the same
+cases, plus the degenerate all-semicolon payload where the literal body
+is empty and only the `-H` batch runs). Non-vacuousness confirmed by
+temporarily reverting `SendLiteral` to the pre-fix single-call form and
+watching exactly the semicolon-related green controls turn red with the
+predicted messages (`git diff` on `send.go` empty before commit).
+
+Gotcha discovered building this: `newBareGeometrySession` returns as
+soon as `tmux new-session -d` completes, before the freshly-forked
+shell has started reading the pty -- `send-keys` issued immediately
+after can land bytes that the pty's local echo shows right away but the
+shell's own prompt then prints itself onto the SAME line, AFTER the
+already-echoed text (observed directly: `"a;b"` sent with zero delay
+after `new-session` came back as `a;b$`, the prompt landing after, not
+before). `semicolon_test.go`'s `waitForBarePrompt` polls for the pane's
+first line to read a bare `$` before sending anything, closing the race
+at its source rather than loosening the assertions.
+
+`go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tmux/...`
+green (repeated 8x targeted, 3x whole-package, to confirm no flake from
+the prompt-race fix); whole `./...` suite not re-run this task per the
+budget rule (change confined to `internal/tmux` plus this doc).
