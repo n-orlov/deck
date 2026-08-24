@@ -4888,7 +4888,12 @@ yolo -- at create time or when switching profile with P -- takes effect
 immediately, with no separate confirm keystroke. yolo_default (also
 config.toml, default false) opens the create modal already on yolo once
 allow_yolo is also enabled; with allow_yolo disabled it is inert, and
-settings says so on its own row rather than silently ignoring it.
+settings says so on its own row rather than silently ignoring it. In yolo,
+permission prompts never fire, so the waiting column goes quiet for that
+session -- attention then comes only from questions/needs-input
+notifications, not from waiting; this is expected, not deck failing to
+notice, and is worth remembering now that yolo_default can put a brand new
+session there without the user ever having chosen yolo by hand.
 
 Settings takeover (opened with ,)
   Tab or Left/Right      switch focus between the category list and the

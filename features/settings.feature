@@ -64,6 +64,29 @@ Feature: The `,` settings takeover (requirement 48)
     And the scenario's config.toml parses with stale_after "46s"
     When deck client "A" exits cleanly
 
+  Scenario: yolo_default is On but inert while allow_yolo stays off, and the settings row itself says so (steer 020 item 2)
+    # steer 020 item 2: this is the black-box half of the operator-mandated
+    # "yolo_default=true with allow_yolo=false is a stated, visible
+    # inconsistency ... settings says so on the row" requirement (SPEC.md
+    # §5/§6.5). internal/tui/settings_test.go and create_yolo_test.go
+    # already cover it via internal/tui directly; this scenario closes the
+    # gap that no Gherkin scenario read the row a real user would see.
+    Given the deck config defaults new sessions to yolo without allowing it
+    # Same 220-column rationale as permission_modes.feature's create-modal
+    # scenarios: settings.settingsView() sizes its field panel off the
+    # whole terminal width, and the default 100-column harness width
+    # truncates this row's text before "no effect yet" -- a wider
+    # viewport asserts the exact text at a stable width instead.
+    And deck client "A" is started with terminal size 220x30
+    When deck client "A" sends ","
+    And deck client "A" sends "	"
+    Then deck client "A" screen contains "Allow Yolo: Off"
+    When deck client "A" sends "j"
+    Then deck client "A" screen contains "Yolo Default: On (inert: allow_yolo is off, so this has no effect yet)"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+
   Scenario: `/` finds a field only its description mentions, and enter jumps both lists onto it
     Given deck client "A" is started
     When deck client "A" sends ","

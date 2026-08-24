@@ -427,6 +427,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"Name", "Working directory", "Agent", "Permission profile", "Launch args", "Env",
 		"Pre-launch command", "Login shell",
 		"Yolo is gated by allow_yolo", "allow_yolo", "yolo_default",
+		"waiting column goes quiet", "questions/needs-input",
 		"DECK_HOME", "DECK_TMUX_SOCKET", "DECK_CLOCK", "DECK_CLOCK_STEP", "clock.now",
 		"kill -USR1 <deck-client-pid>", "each invocation advances", "shared clock by exactly DECK_CLOCK_STEP",
 		"resolved data root", "the trigger updates it and every process reads it", "DECK_ID_SEED",

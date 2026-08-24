@@ -1103,3 +1103,24 @@ corrected entries before it is added to the "Standing pre-existing flake list" s
 confirmed-genuinely-intermittent (it currently looks deterministic, not intermittent, based on
 3/3 in-isolation reproduction — so it likely does not belong in that list as a "flake" at all,
 and should instead be treated as an open, real, unfixed bug).
+
+## Task 218 (steer 020 §2) deferred finding: `features/settings.feature`'s `j`-count idiom is now fragile on its second occurrence
+
+`features/settings.feature`'s General-category scenarios locate a field by counting `j` keypresses
+from the top of the category's field list (`"a toggle and a bounded integer are edited in place
+..."` and `"a restart-to-apply flat key states so ..."`), not by field name. This has now broken
+twice from the *same* cause — a new flat key inserted above the target field in
+`internal/config/schema.go` — first when task 075 (steer 015) landed a stale count, and again when
+task 214 (steer 017 item 2) inserted `yolo_default` between `allow_yolo` and `stale_after`
+(General's third scenario needed one extra `j`, fixed in that task's own commit). Task 218 (steer
+020 §2) added a THIRD General-category scenario (`yolo_default` row-text visibility) that also
+counts `j` from `allow_yolo`, so the exposure has grown, not shrunk.
+
+**Deliberately not refactored this task** (steer 020 §2's own instruction: "Do not refactor it
+now — that is scope this wall cannot afford"). Recorded here as a deferred requirement for
+whichever phase next touches `features/settings.feature`'s General category: address a field by
+name (e.g. a step that walks `j`/`k` until the selected row's label matches a given string,
+bounded, with a diagnostic on "never found") instead of by a keypress count that silently breaks
+every time `schema.go`'s General category gains or reorders a flat key. The break is silent in the
+sense that it looks like a product failure (wrong value asserted) until someone counts keypresses
+against the schema by hand — exactly what this note is meant to save the next person from doing.
