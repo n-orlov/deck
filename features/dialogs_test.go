@@ -90,12 +90,17 @@ func clientOpensHelp(ctx context.Context, clientName string) error {
 	if err := client.Send("?"); err != nil {
 		return err
 	}
-	// helpText is longer than the harness's default terminal height, so its
-	// own "deck help" title line (the very first line) can already have
-	// scrolled off screen by the time this returns -- wait for a phrase from
-	// its last line instead, which is always the most recently written and
-	// therefore always on screen regardless of terminal height.
-	return client.WaitForFrame(ctx, false, "closes help")
+	// helpText is longer than the frame budget, so since task 078
+	// (internal/tui/panel.go's framedDialogScrollable) the overlay opens
+	// paginated at m.helpScroll==0 rather than showing the whole thing --
+	// its own last line ("closes help") is on the LAST page, not
+	// necessarily reachable without an explicit PgDn the harness never
+	// sends, and waiting for it hangs. helpScroll always resets to 0 on
+	// open (see its own comment in internal/tui/tui.go), so the title
+	// line ("deck help", the very first line) is the one phrase
+	// guaranteed to be on screen the instant the overlay opens,
+	// regardless of terminal height or how long helpText has grown.
+	return client.WaitForFrame(ctx, false, "deck help")
 }
 
 // clientClosesDialogWithEscape sends the shared §11.4 esc key and waits for
