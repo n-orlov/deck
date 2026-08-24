@@ -1,0 +1,61 @@
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.23s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.23s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+--- FAIL: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
+    pipe_displacement_test.go:233: WasClosed() reported false immediately after Read returned from our own Close -- drain would misread this as an external displacement/disablement and start a passive-capture fallback nothing asked for
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tmux	6.675s
+FAIL
