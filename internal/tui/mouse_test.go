@@ -147,10 +147,17 @@ func TestClickSidebarRowSelectsNeverAttaches(t *testing.T) {
 	}
 }
 
-// TestDoubleClickSidebarRowAttaches proves the deliberate second act SPEC
-// §11.8 requires before attaching: two presses on the same row within the
-// double-click window resolve to attach, matching `↵`'s own path.
-func TestDoubleClickSidebarRowAttaches(t *testing.T) {
+// TestDoubleClickSidebarRowEntersInteractiveNotAttach proves the deliberate
+// second act SPEC §11.8 requires before entering interactive mode (task
+// 064/II-45: double-click now duplicates `↵`'s new job, not `a`): two
+// presses on the same row within the double-click window route to
+// enterInteractive, never to attachSelected. m.attach is set (mouseTestModel)
+// so attachSelected would return a non-nil *exec.Cmd here if it were still
+// called by the double click; enterInteractive degrades silently (no cmd,
+// m.interactive stays false) because this hermetic model has a zero
+// tmux.Client, exactly like TestEnterKeyRoutesToEnterInteractiveNotAttachSelected
+// proves for the `↵` key itself.
+func TestDoubleClickSidebarRowEntersInteractiveNotAttach(t *testing.T) {
 	m := mouseTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
 	})
@@ -161,15 +168,43 @@ func TestDoubleClickSidebarRowAttaches(t *testing.T) {
 	updated, cmd := m.Update(press(x, y))
 	got := updated.(Model)
 	if cmd != nil {
-		t.Fatalf("first click already returned an attach command")
+		t.Fatalf("first click already returned a command")
 	}
 	updated, cmd = got.Update(press(x, y))
 	got = updated.(Model)
 	if got.selected != 0 {
 		t.Fatalf("selected = %d, want 0", got.selected)
 	}
-	if cmd == nil {
-		t.Fatalf("double click did not schedule attachment")
+	if cmd != nil {
+		t.Fatalf("double click returned a non-nil cmd; attachSelected would have (m.attach is set), so this proves the double click did not call it")
+	}
+	if got.interactive {
+		t.Fatalf("double click entered interactive mode with a zero tmux.Client")
+	}
+}
+
+// TestSingleClickNeverEntersInteractiveMode is task 064's own success
+// criterion ("a test proves a single click never enters interactive
+// mode"): one press on a row, well outside any double-click pairing,
+// selects but never reaches enterInteractive/attachSelected.
+func TestSingleClickNeverEntersInteractiveMode(t *testing.T) {
+	m := mouseTestModel([]store.Session{
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+	})
+	m.width, m.height = 100, 30
+	m.selected = -1
+
+	x, y := findRow(t, m, 0)
+	updated, cmd := m.Update(press(x, y))
+	got := updated.(Model)
+	if got.selected != 0 {
+		t.Fatalf("selected = %d, want 0", got.selected)
+	}
+	if cmd != nil {
+		t.Fatalf("single click returned a non-nil cmd (must not attach or enter interactive mode)")
+	}
+	if got.interactive {
+		t.Fatalf("single click entered interactive mode")
 	}
 }
 

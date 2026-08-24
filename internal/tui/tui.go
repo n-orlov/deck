@@ -497,8 +497,9 @@ type Model struct {
 	draggingSeam bool
 	// lastClickAt/lastClickIndex track the previous sidebar-row press so
 	// a second press on the same row shortly after is resolved as a
-	// double-click (attach) rather than two independent single clicks
-	// (select). Neither field is persisted or read anywhere else.
+	// double-click (enter interactive mode, task 064/II-45) rather than
+	// two independent single clicks (select). Neither field is persisted
+	// or read anywhere else.
 	lastClickAt    time.Time
 	lastClickIndex int
 	// tmuxClient is the raw tmux.Client §11.9 interactive mode (task 061,
@@ -2083,9 +2084,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// attachSelected is the shared attach path behind both `↵` (SPEC §11) and
-// a sidebar double-click (SPEC §11.8): the mouse binding must duplicate the
-// key's exact behaviour, not a variant of it.
+// attachSelected is `a`'s job (SPEC §11.9, task 061): the full attach that
+// hands the terminal away entirely. Since task 064/II-45 the sidebar
+// double-click no longer duplicates this -- it enters interactive mode
+// instead (see clickSidebarRow/enterInteractive) -- so attachSelected is
+// reachable only by the `a` key.
 func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	if m.attach == nil || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		return m, nil
@@ -4604,7 +4607,7 @@ and copy pane text, or use tmux's own copy-mode.
 Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a sidebar row       select it (like ↑/↓); the preview follows on
                             its next tick
-  double-click a row        attach (like a)
+  double-click a row        enter interactive mode (like ↵)
   click a group header      toggle that group's collapse (like g)
   wheel over the sidebar    scroll the list without changing selection
                             (like ↑/↓/PgUp/PgDn)
