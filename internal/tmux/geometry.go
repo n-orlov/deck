@@ -161,6 +161,36 @@ func (c Client) PaneDead(ctx context.Context, target string) (bool, error) {
 	}
 }
 
+// PanePipe reads `#{pane_pipe}` for target: whether ANY `pipe-pane` is
+// currently armed on it, deck's own or someone else's. `pipe-pane` is
+// single-holder per pane (PRD phase3b II-24): a second `pipe-pane -IO`
+// arm on the same target silently displaces deck's own, in ~4 ms, with
+// no error to either side and an identical clean rc=0 EOF delivered to
+// the displaced reader -- indistinguishable from a deliberate disable by
+// EOF alone. Reading this format immediately after observing that EOF is
+// what tells the two apart: still 1 means something else has since armed
+// its own pipe-pane and deck's reader was simply cut off from it
+// (displacement); 0 means nothing is piping this pane at all right now
+// (the pipe was disabled, by deck's own release-on-exit path (task
+// 047/II-25) or otherwise).
+func (c Client) PanePipe(ctx context.Context, target string) (bool, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, err := c.command(commandCtx, "display-message", "-p", "-t", target, "#{pane_pipe}").CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("tmux -L %s display-message -p -t %s pane_pipe: %w: %s", c.Socket, target, err, strings.TrimSpace(string(output)))
+	}
+	trimmed := strings.TrimSpace(string(output))
+	switch trimmed {
+	case "1":
+		return true, nil
+	case "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("tmux -L %s display-message -p -t %s pane_pipe: unexpected output %q", c.Socket, target, trimmed)
+	}
+}
+
 // unsetWindowSize issues `set-option -w -u window-size`, removing whatever
 // value `resize-window` left in the WINDOW scope (task 034's
 // FitWindowToPane always leaves it "manual" there as a tmux side effect of
