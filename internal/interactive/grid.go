@@ -5,6 +5,7 @@ package interactive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -63,6 +64,57 @@ type Session struct {
 	// drain/done already uses.
 	pollCancel context.CancelFunc
 	pollDone   chan struct{}
+
+	// pipeGoneOnce/statusMu/status back Status() and the displacement
+	// fallback (task 046/II-24): drain calls handlePipeGone exactly once,
+	// on the first genuine (non-self-inflicted) EOF, and it alone decides
+	// -- by consulting #{pane_pipe} -- whether that EOF meant displaced
+	// or disabled.
+	pipeGoneOnce sync.Once
+	statusMu     sync.Mutex
+	status       Status
+
+	// fallbackCh/fallbackDone are the displacement fallback's own
+	// trigger/completion pair, always created and always run (grid.go's
+	// fallbackLoop below), so Close can unconditionally wait on
+	// fallbackDone regardless of whether displacement was ever detected.
+	fallbackCh   chan struct{}
+	fallbackDone chan struct{}
+}
+
+// Status is the live path's own account of why bytes have stopped
+// arriving through the pipe, distinct from Dead() (task 045/II-23, which
+// answers a different question -- whether the PANE's process has exited).
+// Task 046/II-24 requires telling displacement (something else is now
+// holding target's only pipe-pane slot; deck falls back to passive
+// capture) apart from disablement (nothing is piping target at all right
+// now, e.g. deck's own release-on-exit, task 047/II-25).
+type Status int
+
+const (
+	// StatusLive is the default: the pipe is (as far as this Session
+	// knows) still deck's own and still delivering bytes.
+	StatusLive Status = iota
+	// StatusDisplaced means EOF arrived while #{pane_pipe} was still 1:
+	// some other pipe-pane holder has taken target over.
+	StatusDisplaced
+	// StatusDisabled means EOF arrived while #{pane_pipe} was 0: nothing
+	// is piping target right now.
+	StatusDisabled
+)
+
+func (s *Session) setStatus(st Status) {
+	s.statusMu.Lock()
+	s.status = st
+	s.statusMu.Unlock()
+}
+
+// Status reports the live path's current account of the pipe, per the
+// Status type's own doc.
+func (s *Session) Status() Status {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	return s.status
 }
 
 // Start arms the pipe pane BEFORE calling seed, so that any bytes the pane
@@ -99,15 +151,18 @@ func Start(ctx context.Context, client tmux.Client, target string, width, height
 
 	pollCtx, pollCancel := context.WithCancel(context.Background())
 	s := &Session{
-		pipe:       pipe,
-		done:       make(chan struct{}),
-		deadCh:     make(chan struct{}),
-		pollCancel: pollCancel,
-		pollDone:   make(chan struct{}),
+		pipe:         pipe,
+		done:         make(chan struct{}),
+		deadCh:       make(chan struct{}),
+		pollCancel:   pollCancel,
+		pollDone:     make(chan struct{}),
+		fallbackCh:   make(chan struct{}),
+		fallbackDone: make(chan struct{}),
 	}
 	s.grid = grid
-	go s.drain()
+	go s.drain(client, target)
 	go s.pollPaneDead(pollCtx, client, target)
+	go s.fallbackLoop(pollCtx, client, target)
 	failed = false
 	return s, nil
 }
@@ -181,7 +236,19 @@ func (s *Session) Dead() <-chan struct{} { return s.deadCh }
 // caching the pointer once, so that a Resize taking effect mid-drain is
 // observed by the very next read instead of continuing to feed a grid
 // that Resize has already replaced.
-func (s *Session) drain() {
+//
+// A read error is not automatically a shutdown request (task 046/II-24):
+// deck's OWN Close (an explicit Session.Close, or markDead's death
+// handling) legitimately produces the exact same io.EOF a genuine
+// external displacement or disablement does, because Close's disarm
+// command makes tmux's job process exit too -- confirmed directly (an
+// earlier version of this drain, checking only errors.Is(err, io.EOF),
+// misread every ordinary Close as a displacement). It is
+// PanePipe.WasClosed(), checked FIRST, not the error's own type, that
+// tells "I did this on purpose" apart from "something else happened and
+// needs investigating". Only an io.EOF observed while WasClosed() still
+// reports false is handed to handlePipeGone.
+func (s *Session) drain(client tmux.Client, target string) {
 	defer close(s.done)
 	buf := make([]byte, 64*1024)
 	for {
@@ -191,9 +258,109 @@ func (s *Session) drain() {
 			_, _ = g.Write(buf[:n])
 		}
 		if err != nil {
+			if !s.pipe.WasClosed() && errors.Is(err, io.EOF) {
+				s.handlePipeGone(client, target)
+			}
 			return
 		}
 	}
+}
+
+// handlePipeGone runs exactly once (pipeGoneOnce), on drain's first
+// genuine EOF, and is what actually tells displacement apart from
+// disablement (PRD II-24): it re-reads #{pane_pipe} immediately, which
+// still reflects whichever of the two actually happened, because neither
+// case is reversed by the passage of time on its own. #{pane_pipe} still
+// 1 means some other pipe-pane holder has since taken target over
+// (displacement); the pipe deck itself armed is unrecoverably gone
+// either way, so CloseLocal (never Close -- see its own doc) releases
+// deck's own now-orphaned fd/tempdir without touching whatever is
+// currently armed. 0 means nothing is piping target right now
+// (disablement); Close is fine there since there is nothing live for it
+// to disturb.
+func (s *Session) handlePipeGone(client tmux.Client, target string) {
+	s.pipeGoneOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		stillPiped, err := client.PanePipe(ctx, target)
+		if err == nil && stillPiped {
+			s.setStatus(StatusDisplaced)
+			_ = s.pipe.CloseLocal()
+			close(s.fallbackCh)
+			return
+		}
+		s.setStatus(StatusDisabled)
+		_ = s.pipe.Close()
+	})
+}
+
+// pipeDisplacedFallbackInterval is how often the displacement fallback
+// (below) re-polls target once its own pipe has been displaced (PRD
+// II-24). A test may lower this (it is a var, not a const).
+var pipeDisplacedFallbackInterval = 200 * time.Millisecond
+
+// pipeDisplacedNotice is written into the grid -- and therefore into
+// whatever eventually renders the grid as the interactive panel -- the
+// moment displacement is detected, and again after every fallback
+// re-capture (a full reseed replaces the whole grid, notice included).
+// PRD II-24 requires deck to SAY that it fell back, in the panel, not
+// merely to fall back silently.
+const pipeDisplacedNotice = "\r\n[deck: preview pipe displaced by another process -- showing periodic snapshots]\r\n"
+
+// fallbackLoop is always started alongside drain/pollPaneDead, and always
+// runs to completion by the time Close returns (Close waits on
+// fallbackDone unconditionally) -- but it does nothing at all unless
+// handlePipeGone closes fallbackCh, which only happens on a confirmed
+// displacement. Once triggered, it is passive preview's own mechanism
+// (a periodic capture-pane snapshot, no pipe) substituting for the live
+// path that displacement just took away: each tick takes a fresh
+// CaptureSeed and writes it into a brand-new grid -- the same
+// fresh-parser-per-reseed discipline task 044/II-21-22 established for
+// ordinary resizes, for the same reason (a stale parser state has no
+// business surviving a full content replacement) -- then re-writes the
+// notice, since the fresh grid does not carry it over.
+func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target string) {
+	defer close(s.fallbackDone)
+	select {
+	case <-ctx.Done():
+		return
+	case <-s.fallbackCh:
+	}
+
+	s.writeNotice(pipeDisplacedNotice)
+
+	ticker := time.NewTicker(pipeDisplacedFallbackInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		data, err := CaptureSeed(ctx, client, target)
+		if err != nil {
+			// target may be gone entirely; keep trying until ctx is
+			// cancelled (Session.Close) rather than giving up on the
+			// panel.
+			continue
+		}
+		g := s.currentGrid()
+		fresh := newGrid(g.Width(), g.Height())
+		if _, err := fresh.Write(data); err != nil {
+			continue
+		}
+		s.mu.Lock()
+		s.grid = fresh
+		s.mu.Unlock()
+		s.writeNotice(pipeDisplacedNotice)
+	}
+}
+
+// writeNotice writes plain text (no escape sequences of its own) into the
+// session's current grid.
+func (s *Session) writeNotice(notice string) {
+	g := s.currentGrid()
+	_, _ = g.Write([]byte(notice))
 }
 
 // currentGrid returns the session's grid as of right now, under the
@@ -218,6 +385,7 @@ func (s *Session) Close() error {
 	err := s.pipe.Close()
 	<-s.done
 	<-s.pollDone
+	<-s.fallbackDone
 	return err
 }
 
