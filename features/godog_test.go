@@ -101,6 +101,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveSigwinchBudgetSteps(sc)
 	registerInteractiveOptionTableSteps(sc)
 	registerInteractiveFocusSteps(sc)
+	registerInteractiveRefusalsSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {

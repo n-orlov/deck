@@ -1,0 +1,74 @@
+=== 41x22 (comfortable-default, input box content rows=1) ===
+✻ Claude Code
+transcript line 0
+transcript line 1
+transcript line 2
+transcript line 3
+transcript line 4
+transcript line 5
+transcript line 6
+transcript line 7
+transcript line 8
+transcript line 9
+transcript line 10
+transcript line 11
+transcript line 12
+transcript line 13
+transcript line 14
+transcript line 15
+╭───────────────────────────────────────╮
+│ >                                  │
+╰───────────────────────────────────────╯
+
+? for shortcuts
+
+=== 36x22 (comfortable-narrow, input box content rows=1) ===
+✻ Claude Code
+transcript line 0
+transcript line 1
+transcript line 2
+transcript line 3
+transcript line 4
+transcript line 5
+transcript line 6
+transcript line 7
+transcript line 8
+transcript line 9
+transcript line 10
+transcript line 11
+transcript line 12
+transcript line 13
+transcript line 14
+transcript line 15
+╭──────────────────────────────────╮
+│ >                             │
+╰──────────────────────────────────╯
+
+? for shortcuts
+
+=== 41x7 (smallest-usable, input box content rows=1) ===
+✻ Claude Code
+transcript line 0
+╭───────────────────────────────────────╮
+│ >                                  │
+╰───────────────────────────────────────╯
+
+? for shortcuts
+
+=== 41x6 (pure-chrome-floor, input box content rows=1) ===
+✻ Claude Code
+╭───────────────────────────────────────╮
+│ >                                  │
+╰───────────────────────────────────────╯
+
+? for shortcuts
+
+=== 41x7 (soft-wrapped-input-needs-more-than-7, input box content rows=2) ===
+✻ Claude Code
+╭───────────────────────────────────────╮
+│ >                                  │
+│                                    │
+╰───────────────────────────────────────╯
+
+? for shortcuts
+
