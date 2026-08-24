@@ -401,3 +401,84 @@ func TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall(t *testi
 		t.Fatalf("attachError %q does not name the measured inner-row count %d", got.attachError, height)
 	}
 }
+
+// TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList is
+// PRD Part II requirement 48/task 204's own backstop (review finding F3's
+// second half): 203 fixed enterInteractive's floor check, but that check
+// only ever ran AT ENTRY -- previewTitle/previewContentSize (tui.go:3092)
+// recompute the preview box's inner size on every render, so nothing
+// re-checked the floor after a shrink WHILE ALREADY interactive, and deck
+// simply kept rendering the live grid into a box below the measured
+// floor. This proves the fix directly against Model.Update's own
+// tea.WindowSizeMsg case, with no live tmux server at all: m.interactive
+// starts true with every tmux-owning field already at ITS zero value
+// (interactiveWindowTarget/interactiveOwnership/interactiveGrid/
+// interactiveDispatcher), the exact shape
+// TestCtrlQExitsInteractiveModeAndClearsEveryField already uses to drive
+// exitInteractive without spawning tmux -- so if this test's WindowSizeMsg
+// reaches any real tmux call at all (it must not: the fix's whole point is
+// that the ordinary exit path, which DOES release ownership/restore
+// geometry when those fields are non-zero, is reused unconditionally), it
+// would be a no-op regardless, and the assertions below are what actually
+// prove the mode was left.
+func TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.sessions = []store.Session{{ID: "s1", Name: "squeezed", Agent: "shell", Status: "running", Slug: "squeezed"}}
+	m.selected = 0
+	m.width, m.height = 80, 24
+	m.interactive = true
+
+	// Sanity: 80x24 is comfortably above the floor, and a shrink that
+	// STAYS above the floor must not leave interactive mode -- otherwise
+	// every ordinary resize would kick the user out.
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	stillIn := next.(Model)
+	if !stillIn.interactive {
+		t.Fatalf("a resize that stays above the %d-row floor left interactive mode; only a resize BELOW the floor may do that", interactiveMinInnerRows)
+	}
+	if cmd != nil {
+		t.Fatalf("a resize that stays above the floor returned a non-nil cmd, want nil")
+	}
+
+	// The real case: 80x9 is requirement 48's own godog fixture size
+	// (features/interactive_refusals.feature's @requirement-48 scenario),
+	// reached here via a resize WHILE already interactive rather than at
+	// Enter time. Its expected geometry is measured on a probe BEFORE the
+	// resize (attachError still "" there, same as on stillIn), matching
+	// exactly what the product code's own previewContentSize call sees
+	// before it sets attachError -- previewContentSize's reserved-rows
+	// budget grows once attachError is populated (attachErrorLines), so
+	// measuring it on the POST-shrink model would silently disagree with
+	// the number the product actually put in the message.
+	probe := stillIn
+	probe.width, probe.height = 80, 9
+	wantWidth, wantHeight := probe.previewContentSize()
+	if wantWidth != 41 || wantHeight != 6 {
+		t.Fatalf("previewContentSize() at 80x9 = %dx%d, want 41x6; the fixture no longer matches requirement 48's own scenario", wantWidth, wantHeight)
+	}
+	if wantHeight >= interactiveMinInnerRows {
+		t.Fatalf("fixture height %d is not below interactiveMinInnerRows (%d); this test would be vacuous", wantHeight, interactiveMinInnerRows)
+	}
+
+	next, cmd = stillIn.Update(tea.WindowSizeMsg{Width: 80, Height: 9})
+	got := next.(Model)
+
+	if got.interactive {
+		t.Fatalf("deck remained interactive at %dx%d inner rows, below the %d-row floor, after a mid-session shrink -- this is F3's degrade defect, now reached by resize instead of entry", wantWidth, wantHeight, interactiveMinInnerRows)
+	}
+	if cmd != nil {
+		t.Fatalf("the below-floor shrink returned a non-nil cmd, want nil (exitInteractive never returns one)")
+	}
+	if got.interactiveWindowTarget != "" || got.interactiveOwnership != nil || got.interactiveGrid != nil || got.interactiveDispatcher != nil {
+		t.Fatalf("the below-floor shrink left interactive state behind: %+v", got)
+	}
+	if !strings.Contains(got.attachError, "7-row floor") {
+		t.Fatalf("attachError %q does not name the 7-row floor", got.attachError)
+	}
+	if !strings.Contains(got.attachError, "press a to attach") {
+		t.Fatalf("attachError %q does not offer the a-to-attach alternative (PRD II-47)", got.attachError)
+	}
+	if !strings.Contains(got.attachError, fmt.Sprintf("%d inner rows", wantHeight)) {
+		t.Fatalf("attachError %q does not name the measured inner-row count %d", got.attachError, wantHeight)
+	}
+}

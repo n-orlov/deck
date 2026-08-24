@@ -1,0 +1,6 @@
+=== RUN   TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList
+    interactive_test.go:467: deck remained interactive at 41x6 inner rows, below the 7-row floor, after a mid-session shrink -- this is F3's degrade defect, now reached by resize instead of entry
+--- FAIL: TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.003s
+FAIL

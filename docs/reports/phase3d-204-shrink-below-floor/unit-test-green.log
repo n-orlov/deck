@@ -1,0 +1,4 @@
+=== RUN   TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList
+--- PASS: TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.003s

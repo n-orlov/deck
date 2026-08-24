@@ -1,0 +1,557 @@
+=== @requirement-47-refuse-attached-client ===
+=== RUN   TestFeatures
+[1;37mFeature:[0m Interactive mode refuses rather than degrades in three named cases (Part II, requirement 47/48)
+  Requirement 47 names exactly three cases in which entering interactive mode
+  must be REFUSED, naming the reason on screen and offering `a` (the full
+  attach) as the alternative, rather than degrading (entering anyway at a
+  squeezed size, or silently doing nothing): another client already attached
+  to the session, a preview box below the measured 7-inner-row floor
+  (requirement 48), and a live process already holding the window's
+  ownership option.
+=== RUN   TestFeatures/entering_interactive_mode_is_refused_while_another_client_is_attached_to_the_session
+
+  [1;37mScenario:[0m entering interactive mode is refused while another client is attached to the session [1;30m# interactive_refusals.feature:12[0m
+    [32mGiven[0m [32mdeck client "host" is started[0m                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "host" creates shell session "watched"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "host" screen contains "running"[0m   [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "host" selects session "watched"[0m                                             [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32ma real tmux client attaches to deck session "watched" at 80x24[0m                           [1;30m# interactive_refusals_test.go:22 -> github.com/n-orlov/deck/features.aRealTmuxClientAttachesToDeckSessionAt[0m
+    [32mAnd[0m [32mthe private tmux window for session "watched" is captured as "before-refusal"[0m            [1;30m# preview_test.go:31 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "host" enters interactive mode[0m                                              [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "host" screen contains "attached to this session"[0m                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "host" screen contains "press a to attach"[0m                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "host" screen contains "deck - sessions"[0m                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux window for session "watched" still matches "before-refusal"[0m             [1;30m# preview_test.go:32 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mtmux window "deck_watched" option "@deck_isize_owner" is unset in the window scope[0m       [1;30m# tmux_option_scope_test.go:126 -> github.com/n-orlov/deck/features.tmuxWindowOptionIsUnsetInScope[0m
+    [32mAnd[0m [32mthe real tmux client attached to session "watched" detaches[0m                              [1;30m# interactive_sigwinch_budget_test.go:34 -> github.com/n-orlov/deck/features.theRealTmuxClientAttachedToSessionDetaches[0m
+    [32mAnd[0m [32mdeck client "host" exits cleanly[0m                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+14 steps ([32m14 passed[0m)
+985.942536ms
+--- PASS: TestFeatures (0.99s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_another_client_is_attached_to_the_session (0.98s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.005s
+
+=== @requirement-48-refuse-preview-below-seven-rows ===
+=== RUN   TestFeatures
+[1;37mFeature:[0m Interactive mode refuses rather than degrades in three named cases (Part II, requirement 47/48)
+  Requirement 47 names exactly three cases in which entering interactive mode
+  must be REFUSED, naming the reason on screen and offering `a` (the full
+  attach) as the alternative, rather than degrading (entering anyway at a
+  squeezed size, or silently doing nothing): another client already attached
+  to the session, a preview box below the measured 7-inner-row floor
+  (requirement 48), and a live process already holding the window's
+  ownership option.
+=== RUN   TestFeatures/entering_interactive_mode_is_refused_while_the_preview_box_has_fewer_than_7_inner_rows
+
+  [1;37mScenario:[0m entering interactive mode is refused while the preview box has fewer than 7 inner rows [1;30m# interactive_refusals.feature:29[0m
+    [32mGiven[0m [32mdeck client "cramped" is started[0m                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "cramped" creates shell session "squeezed"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "cramped" screen contains "running"[0m  [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "cramped" selects session "squeezed"[0m                                           [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "cramped" terminal is resized to 80x9[0m                                          [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mWhen[0m [32mdeck client "cramped" enters interactive mode[0m                                             [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "cramped" screen contains "7-row floor"[0m                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "cramped" screen contains "press a to attach"[0m                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "cramped" screen contains "deck - sessions"[0m                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "cramped" exits cleanly[0m                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+10 steps ([32m10 passed[0m)
+970.573422ms
+--- PASS: TestFeatures (0.98s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_the_preview_box_has_fewer_than_7_inner_rows (0.96s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.990s
+
+=== @requirement-47-refuse-live-ownership ===
+=== RUN   TestFeatures
+[1;37mFeature:[0m Interactive mode refuses rather than degrades in three named cases (Part II, requirement 47/48)
+  Requirement 47 names exactly three cases in which entering interactive mode
+  must be REFUSED, naming the reason on screen and offering `a` (the full
+  attach) as the alternative, rather than degrading (entering anyway at a
+  squeezed size, or silently doing nothing): another client already attached
+  to the session, a preview box below the measured 7-inner-row floor
+  (requirement 48), and a live process already holding the window's
+  ownership option.
+=== RUN   TestFeatures/entering_interactive_mode_is_refused_while_a_live_process_holds_the_window's_ownership
+
+  [1;37mScenario:[0m entering interactive mode is refused while a live process holds the window's ownership [1;30m# interactive_refusals.feature:42[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "owned"[0m                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m     [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "owned"[0m                                                 [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32manother live process holds ownership of deck session "owned"'s window[0m                      [1;30m# interactive_refusals_test.go:23 -> github.com/n-orlov/deck/features.anotherLiveProcessHoldsOwnershipOfDeckSessionsWindow[0m
+    [32mWhen[0m [32mdeck client "solo" enters interactive mode[0m                                                [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "solo" screen contains "holds ownership"[0m                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "solo" screen contains "press a to attach"[0m                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "solo" screen contains "deck - sessions"[0m                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+10 steps ([32m10 passed[0m)
+1.006948487s
+--- PASS: TestFeatures (1.02s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_a_live_process_holds_the_window's_ownership (0.99s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.026s
+
+=== @requirement-21-preview-no-side-effects ===
+=== RUN   TestFeatures
+[1;37mFeature:[0m The preview capture engine and its visible behaviour
+  §11 requirement 21's capture-pane -e engine never attaches a client, never
+  spawns a control-mode client, uses no pipe-pane, and never resizes a pane
+  it reads; §23-27 govern what the panel shows once a capture lands.
+=== RUN   TestFeatures/capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,_across_selection,_mode,_sidebar-width_and_outer-terminal_changes
+
+  [1;37mScenario:[0m capturing the preview never attaches a tmux client, resizes a pane, or triggers a SIGWINCH, across selection, mode, sidebar-width and outer-terminal changes [1;30m# preview.feature:7[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                                                         [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "solo" is started[0m                                                                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                                                                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "solo" creates claude session "beacon" with permission profile "safe"[0m                                                                                [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mthe private tmux window for session "beacon" is captured as "before"[0m                                                                                             [1;30m# preview_test.go:31 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mAnd[0m [32mthe fake claude agent's size log is captured as "before"[0m                                                                                                         [1;30m# preview_test.go:34 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "solo" selects the next session[0m                                                                                                                     [1;30m# preview_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsNextSession[0m
+    [32mAnd[0m [32mdeck client "solo" selects the next session[0m                                                                                                                      [1;30m# preview_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsNextSession[0m
+    [32mAnd[0m [32mdeck client "solo" sends "|"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends "|"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends ">"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends "<"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" terminal is resized to 120x40[0m                                                                                                                 [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" terminal is resized to 100x30[0m                                                                                                                 [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mthe private tmux server reports no attached clients[0m                                                                                                             [1;30m# preview_test.go:33 -> github.com/n-orlov/deck/features.privateTMuxServerReportsNoAttachedClients[0m
+    [32mAnd[0m [32mthe private tmux window for session "beacon" still matches "before"[0m                                                                                              [1;30m# preview_test.go:32 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mthe fake claude agent's size log still matches "before"[0m                                                                                                          [1;30m# preview_test.go:35 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogStillMatches[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+18 steps ([32m18 passed[0m)
+1.832168565s
+--- PASS: TestFeatures (1.84s)
+    --- PASS: TestFeatures/capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,_across_selection,_mode,_sidebar-width_and_outer-terminal_changes (1.81s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.860s
+
+=== II-11 SIGWINCH budget scenarios (untagged; selected by subtest name) ===
+=== RUN   TestFeatures
+[1;37mFeature:[0m Real agent session creation and resume through the TUI
+  A user can create a real coding-agent session (not just shell) and resume it
+  through the released deck TUI, and every relevant fact is observable
+  black-box: the assigned conversation id, the exact launch-audit argv, how
+  many launches happened, and how many private tmux sessions exist for the
+  session's slug.
+
+[1;37mFeature:[0m §3.2/§11.8 a wheel notch in an attached session scrolls the pane, not the shell (requirement 48)
+  deck's private tmux server is bootstrapped with `mouse on` (task 115) so that
+  a wheel notch delivered to an attached pane scrolls its scrollback via
+  tmux's own copy-mode, instead of the outer terminal's alternate-scroll
+  translating it into an Up/Down arrow that a shell reads as history recall.
+  This proves the behaviour against real tmux -- the observable is pane
+  content, never the `mouse` option's own value.
+
+[1;37mFeature:[0m The attention sort, workspace grouping/collapse, and `space` (requirement 40)
+  SPEC §11 requirements 28-32: sessions render in exactly one attention-driven
+  order (waiting oldest-first, then error, running, starting, idle, stopped),
+  grouped by workspace with collapsible headers, and `space` walks whatever
+  needs attention from the one shared source the sort and the collapsed
+  strip's count also use, without ever writing a session's status.
+
+[1;37mFeature:[0m Multi-client session refresh
+  Independent deck clients sharing one home and private tmux socket converge on
+  durable session changes without a restart.
+
+[1;37mFeature:[0m Clean exits and crashed agent panes
+  Reconciliation distinguishes an ordinary shell exit from a failed agent,
+  captures the failed pane before collection, and never relaunches it.
+
+[1;37mFeature:[0m The create modal's §11.7 directory-only ghost completion (requirement 14)
+  With the cursor at the end of the cwd field (there is no other cursor
+  position: typing only appends, backspace only trims the end), a UNIQUE
+  directory whose name starts with the segment after the field's last "/"
+  is shown inline in the theme's dimmed token, and right/end accept it,
+  completing to the match plus a trailing "/". Only directories are ever
+  candidates -- a same-named file never blocks or substitutes for one. A
+  hidden directory is a candidate only when the segment itself starts with
+  ".". A leading "~" expands for scanning without being rewritten in what
+  is typed or shown.
+
+[1;37mFeature:[0m The create modal's cwd field follows bash's tab-completion contract (requirement 16)
+  Tab completes to the longest common prefix shared by every directory
+  candidate for the segment being completed, when that advances the text
+  already typed; when it cannot advance any further and more than one
+  candidate remains, tab instead lists the candidates for selection, and
+  choosing one puts it in the field.
+
+[1;37mFeature:[0m The create modal's §11.7 cwd prefill (requirement 12)
+  The create modal's working-directory field opens pre-filled rather than
+  blank: with any §11.7 recent_cwds history it shows the most recently
+  promoted entry, labelled on screen as the last used so the user can tell
+  it is a default and not something they typed; with no history at all it
+  falls back to the directory deck itself was started in. Either way, the
+  first keystroke in the field replaces the whole prefill rather than
+  appending to it -- the user never has to clear a default they did not
+  ask for before typing their own path.
+
+[1;37mFeature:[0m Deterministic runtime controls
+  The released binary remains reproducible when its documented deterministic controls are set.
+
+[1;37mFeature:[0m The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 10, 11, 50)
+  createView, detailView, profileSwitchView, pinView and helpView all defer
+  to the ONE contract implementation in internal/tui/dialog_contract.go
+  (task 029): esc cancels and changes nothing, enter submits, tab/shift+tab
+  move between fields, left/right/space change a selection. This feature
+  proves that contract holds for each of the five dialogs on STATE, not on
+  screen text: opening a dialog, altering every field it has, and pressing
+  esc must leave the session row, the store and config.toml byte-identical
+  to what they were before -- "nothing happened" is the assertion, and a
+  wrong implementation that merely repaints the same screen cannot pass it
+  by accident. It also covers enter's submit, tab's field navigation, the
+  [26,80] width clamp (task 030) at both ends, the mouse's inability to
+  cancel or confirm a dialog (border, body and outside all no-ops), and
+  in-dialog validation retaining a rejected value.
+
+[1;37mFeature:[0m Durable conversation identity survives a tmux-server kill
+  SPEC §13.4's T1 scenario is the product's headline promise: three claude
+  sessions sharing one working directory each keep their own conversation,
+  and that identity survives losing every live tmux pane (this suite's
+  stand-in for a host reboot, since CI has no host to actually reboot) and a
+  full deck restart. Nothing is ever resumed by "most recent" — only by the
+  session's own persisted conversation id.
+
+[1;37mFeature:[0m The `e` env editor shows the effective value and winning layer per key, and writes an edit (requirements 20 and task 021, SPEC §6.1/§6.3)
+  `e` opens an editor listing every key deck resolved a layer for
+  (config.toml's [env] table, the session's own env map, and PATH via
+  captured_path), the value that actually reaches the pane, and which of
+  the SPEC §6.1/§6.3 layers -- server env, captured_path, config [env],
+  session env, lowest to highest -- supplied it. Esc with nothing being
+  edited closes the whole dialog, changing nothing. Enter on a highlighted
+  row opens it for editing; typing then Enter commits the new value into
+  the session's own env map, marks the row env_dirty (shown on the sidebar
+  as `env↻`) and mirrors the key into tmux's own environment table for
+  FUTURE panes only -- the live pane's already-running process keeps
+  whatever it started with until an explicit restart applies it (task
+  022's own deliverable). For a shell session, `R` offers a choice between
+  that restart (kill and relaunch, losing the shell's own running state)
+  and inject-instead (task 023): export the changed keys straight into
+  the SAME already-running shell process via `export`, never killing or
+  relaunching its pane. A non-shell (agent) session's `R` restarts
+  directly with no such choice, since an agent's own input has no safe
+  "inject a shell export line" equivalent.
+
+[1;37mFeature:[0m The E event log: newest first, kind/reason/bounded payload, masked env (I-9, task 124)
+  SPEC \u00a712/requirement 32 promises the event log is reachable and discoverable
+  (\u00a711's R7 rule): `E` opens a read-only listing of every recorded event across
+  every session, newest first, and any secret-shaped payload value masks the
+  same way the `e` env editor's does (task 010's one predicate, checked here
+  with task 011's own real-grid scan, never a substring search over the
+  trimmed frame string).
+
+[1;37mFeature:[0m Fake Claude fixture mechanism
+  The repository-built fake Claude is usable as a real tmux session command,
+  without a deck-only status back channel.
+
+[1;37mFeature:[0m The / list filter: by name, workspace and cwd, and the only route back to an archived row (I-10, task 123)
+  SPEC.md:984/\u00a711.3, requirement 33: `/` filters the sidebar by name,
+  workspace and cwd, incrementally as the query is typed, clearing on Esc.
+  Archived rows (requirement 27) are hidden from store.ListSessions' own
+  default view entirely and have no restore, unlike a tombstoned row -- the
+  filter is their only route back (phase3-sessions-and-lifecycle.md item 33:
+  "a stated filter term for archived, not a separate mode").
+
+[1;37mFeature:[0m Godog harness wiring
+  The repository's normal Go test command discovers default feature files.
+
+[1;37mFeature:[0m Hook receiver write contract
+  Hook status writes are measured around only the durable transaction, and the
+  terminal session-end path does not begin any later work.
+
+[1;37mFeature:[0m Interactive mode's focus indicator is unmistakable, including under NO_COLOR (Part II, requirement 44)
+  Entering interactive mode (task 061) moves the main view's one unit of
+  keyboard focus off the sidebar and onto the preview panel for the first
+  time -- every keystroke forwards to the live pane instead of driving list
+  navigation. That move must be unmistakable through colour (the focused
+  surface's border in border_focus, the unfocused one in plain border, the
+  sidebar's still-selected row in the existing selection_idle token) AND
+  through plain text once colour is unavailable, since NO_COLOR drops deck
+  to monochrome and a colour-only cue would pass a golden-frame diff
+  whether or not focus actually moved.
+
+[1;37mFeature:[0m Interactive mode entry geometry (Part II, requirements 7-8)
+  Entering interactive mode records the window's own geometry before doing
+  anything else, then fits the window -- never the pane -- to the preview
+  box. On a split window, the space a sibling pane and its border consume
+  ("chrome") is proportional to the window's own current size, not fixed,
+  so the resize is a chrome-compensated loop rather than a single shot; a
+  naive alternative that requests the wanted PANE size as the window size
+  directly, never compensating for chrome, is the mandatory negative
+  control this feature also proves.
+
+[1;37mFeature:[0m Interactive mode's restore is byte-exact across every tmux option table (Part II, requirement 12)
+  Exit's restore (task 035, II-9) must do more than land the pane at the
+  right size: every one of tmux's seven option tables -- server; global
+  and local session; global and local window; global and local pane --
+  must read exactly what it read before entry, with the sole exception of
+  the local WINDOW table's own `window-size`, which entering sets to
+  "manual" as a side effect of resize-window (task 034) and exiting
+  unsets again (task 035). Every table is dumped and diffed line by line,
+  not spot-checked by re-reading window-size alone.
+
+[1;37mFeature:[0m Interactive mode refuses rather than degrades in three named cases (Part II, requirement 47/48)
+  Requirement 47 names exactly three cases in which entering interactive mode
+  must be REFUSED, naming the reason on screen and offering `a` (the full
+  attach) as the alternative, rather than degrading (entering anyway at a
+  squeezed size, or silently doing nothing): another client already attached
+  to the session, a preview box below the measured 7-inner-row floor
+  (requirement 48), and a live process already holding the window's
+  ownership option.
+
+[1;37mFeature:[0m Interactive mode announces a target that has not repainted since the resize (Part II, requirement 49)
+  Entering interactive mode always resizes the target window first
+  (enterInteractive's FitWindowToPane). Requirement 49 names the realistic
+  worst case: a target waiting on a network round-trip that produces no
+  output at all in response. Without an explicit announcement, that leaves
+  the panel showing an empty bordered frame with no way to tell "the
+  target hasn't repainted yet" apart from "deck itself is broken". Task
+  026's FAKE_CLAUDE_REPAINT_MODE fixture gives this a deterministic,
+  observable stand-in for both the broken case ("never") and a working one
+  ("sigwinch"), so the panel's own announcement can be demonstrated red
+  without it and green with it, and distinguished from a working session.
+
+[1;37mFeature:[0m Interactive mode's own bounded scrollback (Part II, requirement 51)
+  The grid keeps its own bounded scrollback, and the wheel and
+  Shift+PgUp/PgDn scroll it (docs/reports/phase3b.md's II-51 section,
+  internal/interactive.ScrollbackMaxLines). This proves the scrolling
+  itself against a real tmux pane, real deck client and real terminal
+  input, not merely the internal RenderRows/offset arithmetic
+  internal/interactive's own unit tests already cover: content genuinely
+  scrolled off the live screen becomes visible again once scrolled back
+  to, by both input methods, and disappears again once scrolled back down
+  to the live view.
+
+[1;37mFeature:[0m Interactive mode's SIGWINCH budget (Part II, requirement 11)
+  A full enter/exit cycle -- capture the window's own geometry, fit the
+  window (never the pane) to the interactive size, then restore it on
+  exit -- must cost the target exactly two SIGWINCH: one to enter, one to
+  leave. Not three. This holds whether or not a real client stays attached
+  to the session throughout the whole cycle.
+  
+  Both settle pauses below are load-bearing, not decorative: the fake
+  fixture's own SIGWINCH counter (cmd/fake-claude/main.go) notifies on a
+  channel with a buffer of exactly 1 (Go's os/signal contract: a signal
+  arriving while the channel is already full is silently dropped, never
+  queued). Back-to-back resizes with no pause between them can therefore
+  undercount even when tmux really delivered two real kernel SIGWINCH --
+  measured here: without a pause between enter and exit, this scenario's
+  own "exactly 1" red control (enter fires, exit's SIGWINCH lands before
+  the fixture's goroutine has drained the first) passed when it should
+  have failed, because the second signal was coalesced away before the
+  fixture ever counted it. sigwinch_count_test.go's own 50ms inter-resize
+  pacing exists for the identical reason. The pause before the final
+  assertion is separate and guards the read itself: task 027's own count
+  step (fake_agent_size_test.go's waitForSigwinchCount) returns as soon as
+  it first observes the exact expected value rather than waiting out its
+  full poll window, so a read taken too early could match "2" transiently
+  on the way to a buggy 3.
+=== RUN   TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_nobody_attached
+
+  [1;37mScenario:[0m a full enter/exit cycle costs exactly two SIGWINCH with nobody attached     [1;30m# interactive_sigwinch_budget.feature:27[0m
+    [32mGiven[0m [32ma fake "claude" agent occupies a bare tmux session "winch-detached" at 80x24[0m  [1;30m# interactive_sigwinch_budget_test.go:30 -> github.com/n-orlov/deck/features.aFakeAgentOccupiesABareTmuxSessionAt[0m
+    [32mWhen[0m [32mdeck enters interactive mode on tmux session "winch-detached" fitting to 45x15[0m [1;30m# interactive_sigwinch_budget_test.go:31 -> github.com/n-orlov/deck/features.deckEntersInteractiveModeFittingTo[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                           [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck exits interactive mode on tmux session "winch-detached"[0m                    [1;30m# interactive_sigwinch_budget_test.go:32 -> github.com/n-orlov/deck/features.deckExitsInteractiveModeOnTmuxSession[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                           [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 2 SIGWINCH signals[0m                    [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+=== RUN   TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_a_client_attached_throughout
+
+  [1;37mScenario:[0m a full enter/exit cycle costs exactly two SIGWINCH with a client attached throughout [1;30m# interactive_sigwinch_budget.feature:35[0m
+    [32mGiven[0m [32ma fake "claude" agent occupies a bare tmux session "winch-attached" at 80x24[0m           [1;30m# interactive_sigwinch_budget_test.go:30 -> github.com/n-orlov/deck/features.aFakeAgentOccupiesABareTmuxSessionAt[0m
+    [32mAnd[0m [32ma real tmux client attaches to session "winch-attached" at 80x25[0m                         [1;30m# interactive_sigwinch_budget_test.go:33 -> github.com/n-orlov/deck/features.aRealTmuxClientAttachesToSessionAt[0m
+    [32mWhen[0m [32mdeck enters interactive mode on tmux session "winch-attached" fitting to 45x15[0m          [1;30m# interactive_sigwinch_budget_test.go:31 -> github.com/n-orlov/deck/features.deckEntersInteractiveModeFittingTo[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                    [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck exits interactive mode on tmux session "winch-attached"[0m                             [1;30m# interactive_sigwinch_budget_test.go:32 -> github.com/n-orlov/deck/features.deckExitsInteractiveModeOnTmuxSession[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                    [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 2 SIGWINCH signals[0m                             [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mAnd[0m [32mthe real tmux client attached to session "winch-attached" detaches[0m                       [1;30m# interactive_sigwinch_budget_test.go:34 -> github.com/n-orlov/deck/features.theRealTmuxClientAttachedToSessionDetaches[0m
+
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+
+[1;37mFeature:[0m Launch-lease stale/live breaking
+  The SPEC §9.3 launch lease must block a second launch only while a live
+  owner still holds it within its TTL, and must never leave a row wedged: a
+  lease from a dead process or one whose TTL has elapsed is breakable, and
+  the row remains usable by a plain `r` afterwards in every case.
+
+[1;37mFeature:[0m §11.2 layout modes, their keys, and their persistence
+  auto chooses side-by-side at or above deck's own 80-column minimum and
+  stacked below it; `|` cycles auto → side-by-side → stacked → collapsed →
+  auto; `<`/`>` step sidebar_width by one column, clamped; a pinned mode
+  that cannot hold its floors falls back to auto for that frame only, and
+  returns once the terminal can hold it again; layout_mode and
+  sidebar_width persist in state.db (never config.toml) across a restart.
+
+[1;37mFeature:[0m Launch-lease race
+  Multiple independent deck clients racing the resume key on the same
+  stopped row must converge on exactly one real launch (SPEC §9.3).
+
+[1;37mFeature:[0m §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirements 33-37, 41)
+  Every gesture below duplicates an existing key -- none is the only way to
+  perform its action -- and hit-testing resolves each click through the
+  same layout the renderer itself drew from (task 028). With mouse
+  reporting off, every one of these gestures is a no-op and only the
+  shortcut is lost; the keyboard path underneath keeps working.
+
+[1;37mFeature:[0m The whole-grid and whole-file no-leak scan instrument (I-7 assertion half, requirement 21, task 011)
+  Requirement 21's masking claim ("masked in every view ... reveal is a
+  per-view explicit toggle") is only as strong as the instrument used to
+  check it. This scan walks every cell of the live screen grid and every
+  regular file under DECK_HOME for a given value, rather than three named
+  strings or one named file (SPEC §6.4). The first scenario proves the scan
+  itself finds an unmasked value it is pointed at -- a scan that never
+  really looks anywhere would let every later "never contains" assertion
+  pass vacuously. The second scenario then points that same scan at a real
+  secret-shaped env value: the masked env editor's screen grid and every
+  file under DECK_HOME except the state database (which legitimately holds
+  a session's own env map in plaintext so deck can relaunch the pane) must
+  never carry it.
+
+[1;37mFeature:[0m Permission profile mapping, degradation and the yolo gate
+  SPEC §5's permission profile is a deck-level concept translated per
+  adapter, never a boolean: each declared profile maps to a specific argv, an
+  adapter that does not support a requested profile degrades to safe and
+  says so, yolo stays behind an `allow_yolo` config gate plus an explicit
+  per-launch confirm, and the resolved profile is persisted so it survives a
+  resume.
+
+[1;37mFeature:[0m The preview capture engine and its visible behaviour
+  §11 requirement 21's capture-pane -e engine never attaches a client, never
+  spawns a control-mode client, uses no pipe-pane, and never resizes a pane
+  it reads; §23-27 govern what the panel shows once a capture lands.
+
+[1;37mFeature:[0m Resume failure causes leave a retained, explained error row
+  SPEC §9.3 names three specific ways a resume can fail: an unknown/rejected
+  conversation id, a missing or non-directory cwd, and the agent binary not
+  being found on PATH. None of these may be mistaken for (or silently
+  produce) a fresh conversation: the row stays present with status "error"
+  and a stated reason naming its own cause, and the audit log gains no
+  additional launch record.
+
+[1;37mFeature:[0m Distinct conversation ids in one working directory
+  SPEC §13.4's identity guarantee does not depend on separate directories:
+  two agent sessions sharing one cwd must still be assigned distinct
+  conversation ids, and resuming one must never leak the other's id into
+  its argv.
+
+[1;37mFeature:[0m The `,` settings takeover (requirement 48)
+  SPEC §11.5's settings takeover is generated from
+  internal/config.Schema, not a second, hand-written field list: every flat
+  config.toml key is reachable and, where it has an in-place editor
+  (toggle, bounded integer, cycled enum), editable; `/` searches every
+  field's label AND description; ctrl+s writes through the atomic writer
+  (task 012) and the file it leaves behind parses back to what the
+  takeover showed; esc with unsaved changes prompts before discarding and
+  never touches config.toml when it does; a key the environment already
+  overrides is labelled honestly instead of pretending a save changed the
+  running value; [env]'s restart-to-apply scope is stated on screen; and
+  [notify] is a single honestly-unavailable entry, per §6.5/§11.5.
+  None of this may ever create, delete or otherwise touch a session row
+  (requirement 24) -- the takeover edits config.toml, nothing else.
+
+[1;37mFeature:[0m Shell liveness does not fabricate agent status
+  A live shell can be called running because its pane is its only signal, while
+  a live coding-agent pane stays starting until an agent signal or probe arrives.
+
+[1;37mFeature:[0m Attaching records the selected attention episode
+  Enter is an observed user action, not merely an acknowledgement. A waiting
+  row is answered atomically, while an error row keeps its verdict; both clear
+  their unseen marker before deck yields the terminal to tmux.
+
+[1;37mFeature:[0m Claude hook status truth
+  Claude events are fired by the fake agent inside its real pane through the
+  per-session instrumentation supplied by the released deck binary.
+
+[1;37mFeature:[0m Sampled probe status truth
+  Pane sampling uses the same captured fixture corpus as the adapter goldens and
+  never presents a sampled verdict as a live hook verdict.
+
+[1;37mFeature:[0m Status recovery chain (requirements 43-47)
+  The magpie-row evidence behind requirements 43-47 is one chain, not four
+  independent fixes: an in-session resume must not read as the process
+  ending; the stored conversation_id must follow wherever Claude's own hooks
+  say the live conversation now is; a stale lower-precedence verdict must not
+  block a later hook from landing; `r` on a pane deck already owns must never
+  masquerade as a launch failure; and none of that may let a hook resurrect a
+  row the user explicitly killed. Each scenario below is one link.
+
+[1;37mFeature:[0m the seven §7 status tokens colour the sidebar's status word (task 014)
+  SPEC §11.6 declares one theme token per §7 status (waiting, running, idle,
+  starting, stopped, error, archived); the sidebar's rendered status word
+  and its unseen-attention glyph must be coloured from that session's own
+  status token, never borrowed from another status. This asserts each of
+  the seven independently, per-cell, against the default theme's real
+  authored colour for that token, on a REAL running deck client (not the
+  swatch emulator requirement 4's harness steps paint) — the render path
+  this task actually changed.
+  
+  An "anchor" session stays selected throughout so the preview panel never
+  shows the "target" session's own status placeholder copy (e.g. "Session
+  is archived. No live preview to show.") alongside the sidebar row: that
+  placeholder text is plain, uncoloured copy, and if it ever collided with
+  the coloured status word substring the per-cell assertion below would
+  see a mix of coloured and uncoloured cells for the same substring and
+  fail for the wrong reason.
+
+[1;37mFeature:[0m User kill is terminal against later automation
+  An explicit x kill is durable user intent. A delayed agent hook may remain
+  useful evidence, but it must not resurrect the row behind the user's back.
+
+[1;37mFeature:[0m Durable SQLite store
+  The released deck binary maintains a private, compatible state database.
+
+[1;37mFeature:[0m theme rendering end-to-end (requirement 49)
+  SPEC §11.6 declares a fixed set of theme tokens (the seven §7 status
+  tokens plus the chrome/list/footer tokens task 021 wired) and the
+  discovery/fallback/live-preview contract task 024's first-paint notice
+  and task 025's `t` picker implement. This file is requirement 49's own
+  end-to-end proof, through the released deck binary (never a bare
+  emulator or an internal/tui unit test in isolation, both already
+  covered elsewhere): a built-in theme applied and read back per cell
+  across every one of those tokens; a user theme discovered from the
+  scenario's own themes directory (the same on-disk layout as
+  $XDG_CONFIG_HOME/deck/themes -- see internal/theme/loader.go's
+  ThemesDir); an unknown name falling back AND saying so on first paint;
+  `t` previewing a theme live on the real list and reverting byte-for-byte
+  (by colour, since Frame's own cell-grid text carries none) on esc;
+  DECK_COLOR_DEPTH=16's quantised palette; NO_COLOR's monochrome,
+  glyph-only status; and the frame's geometry staying identical across
+  every built-in.
+
+[1;37mFeature:[0m Tilde expansion in the create modal's working directory
+  SPEC §11.7 states that a leading `~` expands. The create modal used to stat
+  the typed string verbatim, so a `~`-prefixed cwd that exists on disk was
+  rejected as non-existent. A leading `~`/`~/` now expands to the user's home
+  directory both when validating and when submitting, and the durable
+  session row stores the resolved absolute path, never the tilde. Everything
+  else in §11.7 (recent_cwds, prefill, ↑/↓ cycling, ghost completion, tab)
+  stays out of scope for this phase.
+
+[1;37mFeature:[0m Private tmux contract
+  deck keeps managed sessions on its configured private tmux socket.
+
+[1;37mFeature:[0m Phase 0 walking skeleton
+  A user can manage a shell session solely through the released deck TUI.
+
+279 scenarios ([32m2 passed[0m, [33m277 undefined[0m)
+14 steps ([32m14 passed[0m)
+4.240587043s
+--- PASS: TestFeatures (4.26s)
+    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_nobody_attached (0.93s)
+    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_a_client_attached_throughout (0.92s)
+PASS
+ok  	github.com/n-orlov/deck/features	4.281s

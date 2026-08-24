@@ -1149,6 +1149,27 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		// PRD Part II requirement 48/task 204 (review finding F3's second
+		// half): the floor check in enterInteractive only ever ran AT
+		// ENTRY. previewTitle/previewContentSize recompute the preview
+		// box's inner size on every render, so a terminal shrink WHILE
+		// already interactive was never re-checked against
+		// interactiveMinInnerRows at all -- deck stayed interactive and
+		// simply rendered into a box below the measured floor, the same
+		// degrade-instead-of-refuse defect 201/203 fixed for entry.
+		// Checked here, right after m.width/m.height take the new size and
+		// before anything else looks at them, using the exact same
+		// previewContentSize arithmetic and interactiveMinInnerRows
+		// constant enterInteractive's own floor check uses, so the two can
+		// never disagree about what counts as below the floor.
+		if m.interactive {
+			if width, height := m.previewContentSize(); width <= 0 || height < interactiveMinInnerRows {
+				next, cmd := m.exitInteractive()
+				m = next.(Model)
+				m.attachError = fmt.Sprintf("Left interactive mode: preview panel shrank to %d inner rows, fewer than the %d-row floor; press a to attach instead", height, interactiveMinInnerRows)
+				return m, cmd
+			}
+		}
 	case sessionsLoaded:
 		if msg.err != nil {
 			m.startupNote = "Cannot read sessions: " + msg.err.Error()
