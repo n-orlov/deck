@@ -1,0 +1,34 @@
+=== @requirement-48-leave-interactive-mode-on-shrink-below-floor ===
+=== RUN   TestFeatures
+[1;37mFeature:[0m Interactive mode refuses rather than degrades in three named cases (Part II, requirement 47/48)
+  Requirement 47 names exactly three cases in which entering interactive mode
+  must be REFUSED, naming the reason on screen and offering `a` (the full
+  attach) as the alternative, rather than degrading (entering anyway at a
+  squeezed size, or silently doing nothing): another client already attached
+  to the session, a preview box below the measured 7-inner-row floor
+  (requirement 48), and a live process already holding the window's
+  ownership option.
+=== RUN   TestFeatures/interactive_mode_leaves_and_restores_the_window_when_the_terminal_shrinks_below_the_7-row_floor
+
+  [1;37mScenario:[0m interactive mode leaves and restores the window when the terminal shrinks below the 7-row floor [1;30m# interactive_refusals.feature:55[0m
+    [32mGiven[0m [32mdeck client "shrink" is started[0m                                                                   [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "shrink" creates shell session "live"[0m                                                   [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "shrink" screen contains "running"[0m            [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "shrink" selects session "live"[0m                                                         [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mthe private tmux window for session "live" is captured as "before-interactive"[0m                      [1;30m# preview_test.go:31 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "shrink" enters interactive mode[0m                                                       [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "shrink" screen contains "Ctrl+Q"[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "shrink" terminal is resized to 80x9[0m                                                   [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mdeck client "shrink" screen contains "7-row floor"[0m                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "shrink" screen contains "press a to attach"[0m                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "shrink" screen contains "deck - sessions"[0m                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux window for session "live" still matches "before-interactive"[0m                       [1;30m# preview_test.go:32 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mdeck client "shrink" exits cleanly[0m                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+13 steps ([32m13 passed[0m)
+962.405082ms
+--- PASS: TestFeatures (0.97s)
+    --- PASS: TestFeatures/interactive_mode_leaves_and_restores_the_window_when_the_terminal_shrinks_below_the_7-row_floor (0.95s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.981s

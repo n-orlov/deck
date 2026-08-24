@@ -50,3 +50,24 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     And deck client "solo" screen contains "press a to attach"
     And deck client "solo" screen contains "deck - sessions"
     And deck client "solo" exits cleanly
+
+  @requirement-48-leave-interactive-mode-on-shrink-below-floor
+  Scenario: interactive mode leaves and restores the window when the terminal shrinks below the 7-row floor
+    # Task 204/review finding F3's second half: 201-203 fixed the AT-ENTRY
+    # refusal; this scenario proves the OTHER half -- a shrink WHILE
+    # ALREADY interactive must leave by the ordinary exit path (window
+    # geometry restored, ownership released) rather than staying
+    # interactive and rendering into a box below the measured floor.
+    Given deck client "shrink" is started
+    And deck client "shrink" creates shell session "live"
+    Then within one configured reconcile interval deck client "shrink" screen contains "running"
+    And deck client "shrink" selects session "live"
+    And the private tmux window for session "live" is captured as "before-interactive"
+    When deck client "shrink" enters interactive mode
+    Then deck client "shrink" screen contains "Ctrl+Q"
+    When deck client "shrink" terminal is resized to 80x9
+    Then deck client "shrink" screen contains "7-row floor"
+    And deck client "shrink" screen contains "press a to attach"
+    And deck client "shrink" screen contains "deck - sessions"
+    And the private tmux window for session "live" still matches "before-interactive"
+    And deck client "shrink" exits cleanly
