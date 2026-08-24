@@ -1069,3 +1069,89 @@ by `send.go`'s `streamLiteralViaLoadBuffer` -- it never itself names
 `go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tmux/...`
 green (18.2s); `go test -count=1 ./internal/... ./cmd/...` green (broader
 unit sweep, not the whole `./...` suite, per the budget rule).
+
+## II-47/II-48: refuse to enter in three named cases, and the 7-row floor behind them (task 066)
+
+Requirement 47 names three, and only three, cases in which entering
+interactive mode is REFUSED rather than degraded: another client already
+attached to the session, the preview box below the measured 7-inner-row
+floor, or a live process already holding the window's ownership option.
+`internal/tui/interactive.go`'s `enterInteractive` checks all three before
+doing anything that would otherwise commit to entering, each setting
+`m.attachError` to a message that names the reason and states `press a to
+attach instead` -- `a` (`attachSelected`) is never disabled by a refusal,
+so the offer is not merely stated but true.
+
+1. **Another client attached** (`Client.SessionAttachedCount`, already
+   shipped for II-9's own exit gate): `#{session_attached} > 0` on the
+   session's own window is checked before any tmux call that would resize
+   it, because the squeeze is unavoidable -- one tmux window has one size,
+   and a bystander watching that session from a second, real tmux client
+   would see their own terminal collapse into the preview panel's box for
+   the duration.
+2. **Preview box below the 7-row floor**: `previewContentSize` is computed
+   (a pure function of `m`'s own layout, no tmux call) before anything
+   else, and refused if the row count is below `interactiveMinInnerRows`
+   (7) -- see the measurement below for why 7, not merely "greater than
+   zero".
+3. **A live process holds ownership**: `Client.ClaimWindowOwnership`
+   returning `acquired == false` (its own kill(pid, 0) liveness check
+   already excludes a stale claim from a dead process) is exactly this
+   case; the refusal message was renamed from the pre-066 "another deck is
+   resizing this window" to name the PRD's own wording and add the `press
+   a` offer.
+
+### The measurement behind "7"
+
+`docs/reports/phase3d-ii47-48-floor-measurement.log` is `capture-pane -p`
+output from a real tmux pane, on this repo's own CI image's tmux 3.5a, at
+each of the PRD's four named sizes plus a fifth case for the soft-wrap
+claim. The fixture (a disposable shell script, not committed -- see the
+layout below) draws a Claude-Code-shaped screen: a one-row header, a
+variable-height transcript region, a bordered input box (`╭─...─╮` /
+`│ > ... │` / `╰─...─╯`), and a one-row hint line, i.e. exactly the same
+row budget PRD 48 describes: `fixed = header(1) + blank(1) + box(3) +
+hint(1) = 6` fixed rows, `transcript = rows - fixed`.
+
+| size  | label               | transcript rows measured |
+|-------|---------------------|---------------------------|
+| 41x22 | comfortable-default | 16                        |
+| 36x22 | comfortable-narrow  | 16                        |
+| 41x7  | smallest-usable     | 1                         |
+| 41x6  | pure-chrome-floor   | 0                         |
+
+41x6 renders the header, the full 3-row box and the hint line and NOTHING
+else -- zero transcript rows, exactly PRD 48's "pure chrome and zero
+transcript" claim, measured rather than assumed. 41x7 renders exactly one
+transcript line above the same chrome -- the smallest box in which any
+transcript content is visible at all, which is why requirement 47's
+refusal threshold is `< 7`, not `<= 0`.
+
+The fifth case demonstrates the PRD's closing claim that 7 is a floor, not
+a guarantee: at the SAME 41x7 size, growing the input box's own content
+from 1 to 2 rows (a real agent's box soft-wrapping a longer typed line)
+grows the box from 3 to 4 fixed rows, pushing `fixed` from 6 to 7 --
+`transcript = 7 - 7 = 0`. A wrapped input at the 7-row floor is exactly as
+transcript-less as an unwrapped one at 6 rows; the floor is where SOME
+agent becomes usable, not every agent at every input length.
+
+### Non-vacuous demonstration (task 066's own refusal code)
+
+Reverting `internal/tui/interactive.go` to its pre-066 refusal
+messages/thresholds (`git stash` during this task, not part of the
+committed diff) and re-running
+`DECK_GODOG_TAGS="@requirement-47-refuse-attached-client,@requirement-48-refuse-preview-below-seven-rows,@requirement-47-refuse-live-ownership"
+go test -run TestFeatures ./features/` fails exactly where expected: the
+live-ownership scenario's `screen contains "holds ownership"` step times
+out against the old `"Cannot enter interactive mode: another deck is
+resizing this window"` wording (the attached-client and below-floor cases
+did not exist in the pre-066 code at all -- entering degraded through to
+a real `ClaimWindowOwnership` call in the attached-client case, and
+through to a `width<=0||height<=0` check that never fires at 6 content
+rows in the below-floor case). Restoring the committed code makes all
+three scenarios pass again, run individually and together
+(`go test -count=1 ./features/`, 2.5s for the three scenarios).
+
+`go build`/`go vet`/`gofmt` clean; `go test -count=1 ./internal/tui/...`
+green; the three new scenarios in `features/interactive_refusals.feature`
+pass individually and together via `DECK_GODOG_TAGS`.

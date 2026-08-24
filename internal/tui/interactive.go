@@ -2,12 +2,25 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/interactive"
 	"github.com/n-orlov/deck/internal/tmux"
 )
+
+// interactiveMinInnerRows is PRD Part II requirement 48's measured floor:
+// docs/reports/phase3b.md's real-tmux measurement (a Claude-shaped
+// full-screen fixture at 41x22/36x22/41x7/41x6) shows 41x7 as the smallest
+// USABLE box (one transcript row survives above the fixed header/box/hint
+// chrome) and 41x6 as pure chrome with zero transcript -- so 7 inner rows
+// is the refusal threshold requirement 47 names, not merely "greater than
+// zero". It is still only a floor: the same measurement shows a real
+// agent whose input box soft-wraps to two content rows consumes the
+// entire 7-row budget on chrome alone, leaving zero transcript exactly
+// like the 6-row case does for a single-line input.
+const interactiveMinInnerRows = 7
 
 // enterInteractive is `\u21b5`'s new job (SPEC \u00a711.9, PRD Part II task 061
 // onward): claim the selected session's window, fit it to the preview
@@ -37,6 +50,37 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
+
+	// Refusal case 1 (PRD II-47): another client is attached to this
+	// session. The squeeze is unavoidable -- one tmux window has one size
+	// -- so this is checked, and refused, before anything else touches the
+	// window; a bystander watching this session must never see it collapse
+	// into the preview panel's own box.
+	attached, err := client.SessionAttachedCount(ctx, windowTarget)
+	if err != nil {
+		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		return m, nil
+	}
+	if attached > 0 {
+		m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead"
+		return m, nil
+	}
+
+	// Refusal case 2 (PRD II-47/48): the preview box has fewer than the
+	// measured 7-inner-row floor (interactiveMinInnerRows;
+	// docs/reports/phase3b.md records the measurement). This is checked
+	// before any tmux call that would otherwise commit to a fit deck
+	// already knows is too small to be usable.
+	width, height := m.previewContentSize()
+	if width <= 0 {
+		m.attachError = "Cannot enter interactive mode: preview panel is too small; press a to attach instead"
+		return m, nil
+	}
+	if height < interactiveMinInnerRows {
+		m.attachError = fmt.Sprintf("Cannot enter interactive mode: preview panel has %d inner rows, fewer than the %d-row floor; press a to attach instead", height, interactiveMinInnerRows)
+		return m, nil
+	}
+
 	pane, ok, err := client.PreviewPane(ctx, session.Slug)
 	if err != nil {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
@@ -44,12 +88,6 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 	}
 	if !ok {
 		m.attachError = "Cannot enter interactive mode: no live pane"
-		return m, nil
-	}
-
-	width, height := m.previewContentSize()
-	if width <= 0 || height <= 0 {
-		m.attachError = "Cannot enter interactive mode: preview panel is too small"
 		return m, nil
 	}
 
@@ -64,7 +102,11 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if !acquired {
-		m.attachError = "Cannot enter interactive mode: another deck is resizing this window"
+		// Refusal case 3 (PRD II-47): a LIVE process (another deck, or a
+		// hand-crafted claim -- ClaimWindowOwnership's own liveness check via
+		// kill(pid, 0) is what decides this, not merely "the option is set")
+		// already holds ownership of this window.
+		m.attachError = "Cannot enter interactive mode: a live process holds ownership of this window; press a to attach instead"
 		return m, nil
 	}
 	if _, err := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height); err != nil {
