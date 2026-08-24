@@ -174,3 +174,75 @@ func TestFooterKeyAndHintTokens(t *testing.T) {
 		t.Fatalf("footer hint foreground = %s, want hint token %s", hintFg, hintHex)
 	}
 }
+
+// TestInteractiveModeSwapsBorderFocusFromSidebarToPreview proves SPEC
+// requirement 44/task 063: interactive mode is the one way focus in the
+// main view ever leaves the sidebar (§11.9), and when it does the two
+// panels' own border tokens swap -- the sidebar (idle, forwarding nothing)
+// now draws plain `border`, and the preview (every keystroke forwards to
+// its live pane) draws `border_focus`, the exact opposite of
+// TestSidebarBorderIsFocusPreviewBorderIsUnfocused's list-mode assertion.
+func TestInteractiveModeSwapsBorderFocusFromSidebarToPreview(t *testing.T) {
+	m := mainViewColorTestModel(t)
+	focusHex := tokenHex(t, m, theme.BorderFocus)
+	borderHex := tokenHex(t, m, theme.Border)
+	if focusHex == borderHex {
+		t.Skip("this theme's border_focus and border tokens happen to share a colour; the distinctness assertion below would be vacuous")
+	}
+	m.interactive = true
+	layout := m.computeLayout()
+	if layout.Effective == LayoutStacked {
+		t.Fatalf("120x30 frame computed as stacked, want side-by-side (test assumes a shared seam)")
+	}
+	sw := layout.Sidebar.Width
+
+	view := m.View()
+	term := renderSettingsToEmulator(t, view, m.width, m.height)
+	leftFg, ok := cellFgHex(t, term, 0, 0)
+	if !ok {
+		t.Fatalf("sidebar's top-left corner has no foreground colour")
+	}
+	if leftFg != borderHex {
+		t.Fatalf("interactive mode: sidebar border corner = %s, want plain border token %s (focus moved to the preview)", leftFg, borderHex)
+	}
+	seamFg, ok := cellFgHex(t, term, sw, 0)
+	if !ok {
+		t.Fatalf("preview's seam corner has no foreground colour")
+	}
+	if seamFg != focusHex {
+		t.Fatalf("interactive mode: preview border seam = %s, want border_focus token %s", seamFg, focusHex)
+	}
+}
+
+// TestInteractiveModeSelectedRowUsesSelectionIdle proves the other half of
+// SPEC requirement 44: while focus is in the preview, the sidebar's
+// previously-selected row keeps showing which session interactive mode
+// targets, but through the existing `selection_idle` token (no new token
+// needed, internal/theme/token.go:19 already declares it) rather than the
+// full `selection` background list mode uses when the sidebar itself is
+// focused.
+func TestInteractiveModeSelectedRowUsesSelectionIdle(t *testing.T) {
+	m := mainViewColorTestModel(t)
+	selHex := tokenHex(t, m, theme.Selection)
+	idleHex := tokenHex(t, m, theme.SelectionIdle)
+	if selHex == idleHex {
+		t.Skip("this theme's selection and selection_idle tokens happen to share a colour; the distinctness assertion below would be vacuous")
+	}
+	m.interactive = true
+
+	view := m.View()
+	term := renderSettingsToEmulator(t, view, m.width, m.height)
+
+	row := findRowContaining(t, term, "> alpha")
+	col := findCol(t, term, row, "alpha")
+	bg, ok := cellBgHex(t, term, col, row)
+	if !ok {
+		t.Fatalf("selected row %q has no background colour", "alpha")
+	}
+	if bg != idleHex {
+		t.Fatalf("interactive mode: selected row background = %s, want selection_idle token %s", bg, idleHex)
+	}
+	if bg == selHex {
+		t.Fatalf("interactive mode: selected row still carries the full selection background %s, want selection_idle", bg)
+	}
+}

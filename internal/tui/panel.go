@@ -36,19 +36,69 @@ func (m Model) box() boxGlyphs {
 }
 
 // borderColor renders a border glyph run in tok's colour (SPEC requirement
-// 19/42: "the focused surface's border uses the focus colour"). Task 021
-// generalises settings.go's settingsBorderColor pattern to every panel this
-// file draws: the sidebar (the main view's one focusable region — a dialog
-// replaces the whole screen rather than sharing it with the sidebar, so
-// there is never a moment where an unfocused sidebar border needs a
-// *different* colour) always passes theme.BorderFocus, the preview (never
-// focusable in the main view) always passes theme.Border, and fullBoxTop/
-// fullBoxBottom/fullBoxContentLine take an explicit focused bool because
-// they draw both roles depending on caller (the stacked layout's sidebar
-// box vs. its preview box; every framedDialog, which is always the one
-// interactive surface once open).
+// 19/42/44: "the focused surface's border uses the focus colour"). Task 021
+// generalised settings.go's settingsBorderColor pattern to every panel this
+// file draws: originally the sidebar (the main view's one focusable region
+// — a dialog replaces the whole screen rather than sharing it with the
+// sidebar, so there was never a moment where an unfocused sidebar border
+// needed a *different* colour) always passed theme.BorderFocus and the
+// preview always passed theme.Border. Task 063/II-44 adds interactive
+// mode as the ONE other place focus can live in the main view: while
+// m.interactive is true every keystroke forwards to the live pane the
+// preview renders instead of driving the sidebar, so the two panels swap
+// which token they draw in — see previewFocused/sidebarBorderToken/
+// previewBorderToken below, which every sidebar*Line/preview*Line function
+// now calls instead of a hardcoded token. fullBoxTop/fullBoxBottom/
+// fullBoxContentLine keep taking an explicit focused bool because they
+// draw both roles depending on caller (the stacked layout's sidebar box
+// vs. its preview box, both now driven by the same previewFocused split;
+// every framedDialog, which is always the one interactive surface once
+// open and always passes focused=true regardless of m.interactive).
 func (m Model) borderColor(tok theme.Token, s string) string {
 	return m.colorToken(tok, s)
+}
+
+// previewFocused reports whether the preview panel, rather than the
+// sidebar, currently owns the main view's one unit of keyboard focus (SPEC
+// requirement 44). Interactive mode (m.interactive, task 061 onward) is
+// the ONLY way that ever happens — outside it the sidebar is unconditionally
+// the main view's one focusable region (requirement 42's own reasoning,
+// which is also why `tab` stays unbound there).
+func (m Model) previewFocused() bool {
+	return m.interactive
+}
+
+// sidebarBorderToken/previewBorderToken resolve the two panels' own border
+// token from previewFocused, so every sidebar*Line/preview*Line function
+// below draws whichever token currently applies instead of one hardcoded
+// at task-021 time (before interactive mode existed, focus could never
+// leave the sidebar in the main view).
+func (m Model) sidebarBorderToken() theme.Token {
+	if m.previewFocused() {
+		return theme.Border
+	}
+	return theme.BorderFocus
+}
+
+func (m Model) previewBorderToken() theme.Token {
+	if m.previewFocused() {
+		return theme.BorderFocus
+	}
+	return theme.Border
+}
+
+// sidebarSelectionToken is the sidebar's selected-row background token
+// (SPEC requirement 42/44): `selection` while the sidebar itself holds
+// focus, `selection_idle` — the existing token internal/theme/token.go:19
+// already declares, no new token needed — while focus has moved to the
+// preview via interactive mode. Mirrors settings.go's
+// settingsSelectionToken, which resolves the identical two-token split for
+// the settings takeover's own pair of focusable lists.
+func (m Model) sidebarSelectionToken() theme.Token {
+	if m.previewFocused() {
+		return theme.SelectionIdle
+	}
+	return theme.Selection
 }
 
 // ellipsis is the marker used when content is truncated to fit a panel's
@@ -251,14 +301,16 @@ func (m Model) sidebarTopLine(width int, title string) string {
 	bc := m.box()
 	inner := width - 1
 	label, remain := m.borderLabel(title, inner)
-	return m.borderColor(theme.BorderFocus, bc.topLeft) + label + m.borderColor(theme.BorderFocus, strings.Repeat(bc.horizontal, remain))
+	tok := m.sidebarBorderToken()
+	return m.borderColor(tok, bc.topLeft) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain))
 }
 
 // sidebarBottomLine draws the sidebar's bottom border (left corner + bottom
 // only, same reasoning as sidebarTopLine).
 func (m Model) sidebarBottomLine(width int) string {
 	bc := m.box()
-	return m.borderColor(theme.BorderFocus, bc.bottomLeft) + m.borderColor(theme.BorderFocus, strings.Repeat(bc.horizontal, width-1))
+	tok := m.sidebarBorderToken()
+	return m.borderColor(tok, bc.bottomLeft) + m.borderColor(tok, strings.Repeat(bc.horizontal, width-1))
 }
 
 // sidebarContentLine draws one content row inside the sidebar: left border,
@@ -271,7 +323,7 @@ func (m Model) sidebarBottomLine(width int) string {
 // has no spare column to give up.
 func (m Model) sidebarContentLine(width int, text string) string {
 	bc := m.box()
-	return m.borderColor(theme.BorderFocus, bc.vertical) + " " + m.padTrunc(text, width-3) + " "
+	return m.borderColor(m.sidebarBorderToken(), bc.vertical) + " " + m.padTrunc(text, width-3) + " "
 }
 
 // collapsedStripContentLine draws one content row of the 3-column
@@ -282,7 +334,7 @@ func (m Model) sidebarContentLine(width int, text string) string {
 // up a column would leave no room for the » glyph or the attention digits.
 func (m Model) collapsedStripContentLine(width int, text string) string {
 	bc := m.box()
-	return m.borderColor(theme.BorderFocus, bc.vertical) + " " + m.padTrunc(text, width-2)
+	return m.borderColor(m.sidebarBorderToken(), bc.vertical) + " " + m.padTrunc(text, width-2)
 }
 
 // previewTopLine draws the preview's top border on all sides. When seam is
@@ -297,7 +349,8 @@ func (m Model) previewTopLine(width int, title string, seam bool) string {
 	}
 	inner := width - 2
 	label, remain := m.borderLabel(title, inner)
-	return m.borderColor(theme.Border, left) + label + m.borderColor(theme.Border, strings.Repeat(bc.horizontal, remain)) + m.borderColor(theme.Border, bc.topRight)
+	tok := m.previewBorderToken()
+	return m.borderColor(tok, left) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain)) + m.borderColor(tok, bc.topRight)
 }
 
 // previewBottomLine mirrors previewTopLine for the bottom edge.
@@ -308,7 +361,8 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 		left = bc.seamBottom
 	}
 	inner := width - 2
-	return m.borderColor(theme.Border, left) + m.borderColor(theme.Border, strings.Repeat(bc.horizontal, inner)) + m.borderColor(theme.Border, bc.bottomRight)
+	tok := m.previewBorderToken()
+	return m.borderColor(tok, left) + m.borderColor(tok, strings.Repeat(bc.horizontal, inner)) + m.borderColor(tok, bc.bottomRight)
 }
 
 // previewContentLine draws one content row inside the preview: left border
@@ -317,7 +371,8 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 func (m Model) previewContentLine(width int, text string) string {
 	bc := m.box()
 	inner := width - 4
-	return m.borderColor(theme.Border, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(theme.Border, bc.vertical)
+	tok := m.previewBorderToken()
+	return m.borderColor(tok, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(tok, bc.vertical)
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
@@ -451,9 +506,13 @@ func (m Model) borderLabel(title string, inner int) (label string, remain int) {
 // mode (§11.2), where the list and preview panels stack vertically rather
 // than sharing a vertical seam, so each keeps all four of its own borders,
 // and for framedDialog, which wraps every dialog/overlay in the same box.
-// focused selects theme.BorderFocus (the stacked layout's sidebar box; any
-// framedDialog, always the one interactive surface once open) vs.
-// theme.Border (the stacked layout's preview box, never focusable).
+// focused selects theme.BorderFocus vs. theme.Border for whichever role the
+// caller is drawing. Every framedDialog call always passes focused=true
+// (a dialog is always the one interactive surface once open). The stacked
+// layout's own two calls (renderStackedFrame) pass !m.previewFocused()/
+// m.previewFocused() respectively (task 063/II-44) — before interactive
+// mode existed the sidebar box was unconditionally true and the preview
+// box unconditionally false, since focus could never leave the sidebar.
 func (m Model) fullBoxTop(width int, title string, focused bool) string {
 	bc := m.box()
 	inner := width - 2

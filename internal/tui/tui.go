@@ -2677,20 +2677,22 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		for i, e := range visible {
 			body[i] = e.text
 		}
-		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText(), true))
+		sidebarFocused := !m.previewFocused()
+		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText(), sidebarFocused))
 		for i := 0; i < listRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(lw, body[i], true))
+			lines = append(lines, m.fullBoxContentLine(lw, body[i], sidebarFocused))
 		}
-		lines = append(lines, m.fullBoxBottom(lw, true))
+		lines = append(lines, m.fullBoxBottom(lw, sidebarFocused))
 	}
 	if ph >= 2 {
 		previewRows := ph - 2
 		body := m.previewBodyLines(max(pw-4, 0), previewRows)
-		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), false))
+		previewFocused := m.previewFocused()
+		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), previewFocused))
 		for i := 0; i < previewRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(pw, body[i], false))
+			lines = append(lines, m.fullBoxContentLine(pw, body[i], previewFocused))
 		}
-		lines = append(lines, m.fullBoxBottom(pw, false))
+		lines = append(lines, m.fullBoxBottom(pw, previewFocused))
 	}
 	return lines
 }
@@ -2925,7 +2927,7 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 		}
 		segs = append(segs, p)
 	}
-	line1 := m.settingsRenderRow(segs, theme.Selection, selected)
+	line1 := m.settingsRenderRow(segs, m.sidebarSelectionToken(), selected)
 
 	line2Tok := theme.Text
 	if session.Status == "starting" {
@@ -2945,23 +2947,36 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("env\u21bb", "env*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
 	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
-	line2 := m.settingsRenderRow(line2Segs, theme.Selection, selected)
+	line2 := m.settingsRenderRow(line2Segs, m.sidebarSelectionToken(), selected)
 	return []string{line1, line2}
 }
 
-// previewTitle is the preview panel's border title. It intentionally never
-// embeds the selected session's name: every helper across this package and
-// features/ that locates "a session's row" does so by finding the first
-// screen line containing that name, and the preview's top border shares a
-// screen line with the sidebar's own top border (row 0) — embedding the name
-// there would make it the *first* match for the selected session, ahead of
-// its real row, and silently break every such lookup. SPEC's §11 figure
-// shows a named preview title as an illustration, not a tested requirement;
-// this returns "" until a design exists that cannot collide with a row
-// name.
+// previewTitle is the preview panel's border title. Outside interactive
+// mode it intentionally never embeds the selected session's name: every
+// helper across this package and features/ that locates "a session's row"
+// does so by finding the first screen line containing that name, and the
+// preview's top border shares a screen line with the sidebar's own top
+// border (row 0) -- embedding the name there would make it the *first*
+// match for the selected session, ahead of its real row, and silently
+// break every such lookup.
+//
+// While m.interactive is true this changes (SPEC requirement 44/task 063):
+// the name IS embedded, naming which session's window now owns the
+// preview panel, because focus has moved off the sidebar and NO_COLOR
+// drops deck to monochrome -- a colour-only focus cue (border_focus vs.
+// border) would pass a golden-frame diff whether or not focus actually
+// moved, so the label must be legible as plain screen text too. The
+// row-lookup collision above is accepted deliberately, scoped to this one
+// mode: outside it (the only time list-mode row lookups/clicks run) the
+// name is still never in the title, so nothing that locates a row by name
+// in list mode is affected.
 func (m Model) previewTitle() string {
 	if m.interactive {
-		return " interactive " + m.glyph("—", "-") + " Ctrl+Q to leave "
+		name := ""
+		if m.selected >= 0 && m.selected < len(m.sessions) {
+			name = m.sessions[m.selected].Name + " "
+		}
+		return " " + name + "interactive " + m.glyph("—", "-") + " Ctrl+Q to leave "
 	}
 	return ""
 }
