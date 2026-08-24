@@ -20,6 +20,10 @@ func registerInteractiveScrollSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" sends shift\+pgdown (\d+) times?$`, clientSendsShiftPgDownNTimes)
 	sc.Step(`^deck client "([^"]+)" scrolls the interactive wheel up (\d+) times? over the line containing "([^"]+)"$`, clientScrollsInteractiveWheelUpOverLineContaining)
 	sc.Step(`^deck client "([^"]+)" scrolls the interactive wheel down (\d+) times? over the line containing "([^"]+)"$`, clientScrollsInteractiveWheelDownOverLineContaining)
+
+	// requirement 52 (task 069): scrolling the grid's own bounded
+	// scrollback must never leak into what deck reports for the session.
+	sc.Step(`^probe fixture agents for interactive-scroll are configured$`, configureAttachScrollProbeScenario)
 }
 
 // clientTypesNumberedLoopIntoInteractivePane types a shell for-loop that

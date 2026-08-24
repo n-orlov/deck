@@ -64,3 +64,56 @@ Feature: Interactive mode's own bounded scrollback (Part II, requirement 51)
     When deck client "A" leaves interactive mode
     Then deck client "A" screen contains "deck - sessions"
     And deck client "A" exits cleanly
+
+  # requirement 52 (task 069): the grid's own scroll position
+  # (m.interactiveScrollOffset, internal/tui/interactive_scroll.go) is
+  # purely local UI state -- it must never leak into what deck reports for
+  # the session. grep proves the probe path never consults it:
+  # interactiveScrollOffset/RenderRows/ScrollbackMaxLines appear only in
+  # internal/tui and internal/interactive, never in internal/service
+  # (Service.ReconcileWithProbes, the probe path), internal/store or
+  # internal/tmux. This scenario proves the same invariant end to end
+  # against the real product path, modelled on Phase 3's requirement 49
+  # evidence (docs/reports/phase3-task117-capture-pane-copy-mode-
+  # experiment.log, which showed the analogous invariant for tmux's own
+  # copy-mode scroll position): client "A" scrolls the interactive grid
+  # back to old, superseded fixture content while the pane's real (live)
+  # bottom already carries a newer one, and both the durable probe verdict
+  # and a second, never-attached client "B"'s own sidebar row are asserted
+  # to reflect the live content while "A" is still scrolled back inside
+  # interactive mode looking at the old one.
+  @requirement-52-scrolling-the-grid-does-not-flip-the-badge
+  Scenario: scrolling the interactive grid's own scrollback never flips the session's badge, and the probe reads the pane's live bottom, not the scrolled-back view
+    Given probe fixture agents for interactive-scroll are configured
+    And deck client "A" is started
+    And deck client "B" is started
+    When deck client "A" creates claude session "ig-claude" with permission profile "safe"
+    Then deck client "A" screen contains "ig-claude"
+    When deck client "A" enters interactive mode
+    And fake agent session "ig-claude" renders golden fixture "claude/waiting.txt"
+    Then deck client "A" screen contains "Do you want to proceed?"
+    When fake agent session "ig-claude" renders these exact golden fixtures:
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/running.txt |
+      | claude/error.txt   |
+    Then deck client "A" screen contains "API Error"
+    And deck client "A" screen does not contain "Do you want to proceed?"
+    When deck client "A" sends shift+pgup 3 times
+    Then deck client "A" screen contains "Do you want to proceed?"
+    And the state database session "ig-claude" has probe status "error" with reason "api error"
+    And within one configured reconcile interval deck client "B" row "ig-claude" contains "sampled"
+    When deck client "A" sends shift+pgdown 3 times
+    Then deck client "A" screen does not contain "Do you want to proceed?"
+    And deck client "A" screen contains "API Error"
+    When deck client "A" leaves interactive mode
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" exits cleanly
+    And deck client "B" exits cleanly
