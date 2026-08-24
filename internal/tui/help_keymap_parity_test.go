@@ -102,6 +102,7 @@ var helpKeyTokenToBoundKeys = map[string][]string{
 	"↑/↓":       {"up", "down"},
 	"j/k":       {"j", "k"},
 	"↵":         {"enter"},
+	"a":         {"a"},
 	"Y":         {"Y"},
 	"n":         {"n"},
 	"x":         {"x"},

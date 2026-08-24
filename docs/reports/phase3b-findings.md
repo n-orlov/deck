@@ -238,3 +238,84 @@ kind task 072/073 (docs/reports/phase3b.md, phase3b-findings.md's own
 final drafts) are expected to mine directly from `git log`, not restate
 from memory — see this commit's own message and `internal/tmux/chunk_test.go`'s
 header comment for the reproduction steps in full.
+
+## II-41/II-42: Ctrl+Enter cannot be bound in Bubble Tea v1.3.10; Ctrl+Q
+## survives interactive mode only because raw mode clears IXON (task 061)
+
+Task 061 rebinds `\u21b5` to enter §11.9 interactive mode, adds `a` as the
+full-attach key `\u21b5` used to be, and binds Ctrl+Q as the only way back out.
+Ctrl+Enter was investigated as a *fourth* binding (a natural "attach and
+skip interactive" chord) and is deliberately NOT bound anywhere in this
+repository. It is not a gap left for a later task -- there is no way to
+bind it at all, for three independent reasons stacked on top of each
+other, any ONE of which alone would already rule it out:
+
+1. **Bubble Tea v1.3.10 cannot decode it.** `internal/tui` receives every
+   keypress as a `tea.KeyMsg`; a modifier combination the decoder does not
+   recognise instead arrives as `tea.KeyMsg{Type: tea.KeyRunes, ...}` for
+   something it partially matched, or as the package's own
+   `unknownCSISequenceMsg([]byte)` type
+   (`charmbracelet/bubbletea@v1.3.10/key.go:544-548`) for a CSI sequence it
+   does not recognise at all -- and that type is **unexported**
+   (lowercase `unknownCSISequenceMsg`, confirmed by reading key.go directly
+   out of the module cache): `internal/tui` cannot even name the type in a
+   `case` to write a handler for it, regardless of what bytes a terminal
+   that DOES emit a distinct Ctrl+Enter sequence (e.g. a Kitty-protocol- or
+   CSI-u-aware terminal) would send.
+
+2. **Even if it decoded, it would be indistinguishable from plain Enter.**
+   Bubble Tea's own `KeyType` constants are the raw C0 control byte values
+   (`key.go:134-152`), and `KeyCtrlM` -- literally named as Ctrl+M, the
+   traditional name for the Enter/Return control code -- is defined as
+   `KeyType = keyCR` (`key.go:181`), the exact same value as `KeyEnter`
+   (`key.go:163`, `KeyEnter KeyType = keyCR`). A terminal that sends plain
+   `\r` for Ctrl+Enter (which is what "Ctrl+Enter" has always meant on a
+   real keyboard/terminal without an extended keyboard-protocol
+   negotiation) is indistinguishable from plain Enter at the `KeyType`
+   level by construction, not by a decoding gap.
+
+3. **tmux itself flattens it before it would ever reach send-keys.**
+   Confirmed directly against a real tmux 3.5a server in this task (not
+   copied from a manual page, matching II-34/II-35's own standard):
+   ```
+   tmux -L t new-session -d -s t "python3 -c 'import sys,tty; tty.setraw(0); open(\"/tmp/out\",\"wb\").write(sys.stdin.buffer.read(2))'"
+   tmux -L t send-keys -t t C-Enter
+   tmux -L t send-keys -t t Enter
+   ```
+   both land as the identical two bytes `0d 0d` on the pane's own raw
+   (ICRNL-disabled) stdin -- tmux's own key-name table has no distinct
+   encoding for "C-Enter" from plain "Enter" by default, so `send-keys`
+   cannot emit anything an attached program could tell apart, UNLESS the
+   user's own tmux config sets `extended-keys always` (off by default,
+   confirmed via `show-options -g extended-keys` above), which changes
+   tmux's OWN CSI-u reporting for modified keys server-wide -- a setting
+   deck does not control and must not silently assume, since flipping it
+   changes every OTHER key's encoding for every attached client on that
+   server, not just this one binding.
+
+Any one of these three closes the door; together they mean Ctrl+Enter is
+not a binding this repository chose to skip, it is one Bubble Tea
+v1.3.10 plus a default tmux server cannot express end to end. Recorded
+here rather than retried in a later task.
+
+**Ctrl+Q's own survival is a different, narrower mechanism, and worth
+recording precisely because it looks like it should fail the same way.**
+Ctrl+Q is DC1/XON (byte `0x11`), the same byte a cooked (non-raw) tty's
+line discipline uses for software flow control: with the termios `IXON`
+flag set (the default for a freshly-opened tty), the kernel tty driver
+itself intercepts `^S`/`^Q` to pause/resume output and never delivers
+either byte to the reading process's `read()` call at all -- a program
+running in a plain cooked terminal that binds Ctrl+Q simply never sees
+it, no decoding layer involved. Bubble Tea's `tea.Program.Run` puts the
+terminal into raw mode before reading any input (`golang.org/x/term`'s
+`MakeRaw`, which clears `ICANON`, `ECHO`, `ISIG`, `ICRNL` and `IXON`
+together as one termios state, not individually), so for the entire time
+deck's own program is running, `IXON` is already off and Ctrl+Q reaches
+`Update` as a completely ordinary `tea.KeyMsg` like any other control
+byte -- interactive mode's own Ctrl+Q binding does not need to do
+anything special to "unlock" flow control, it is simply never engaged
+while Bubble Tea owns the terminal. The exception this is worth stating
+plainly: outside deck (a genuinely cooked tty, or a terminal that has
+somehow not gone through Bubble Tea's raw-mode setup), the same byte is
+ordinary XON and would be swallowed before ever reaching an
+application-level handler.

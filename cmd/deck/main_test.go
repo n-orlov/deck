@@ -184,11 +184,13 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForScreen(t, output, done, "starting")
-	// Enter hands the actual terminal to the selected private tmux pane. The
-	// pane command proves that this is a real attachment, not merely a UI state
-	// change; Ctrl-B d returns control to Bubble Tea so it can redraw and accept
-	// the following new-session command.
-	if _, err := terminal.Write([]byte("\r")); err != nil {
+	// a hands the actual terminal to the selected private tmux pane (task
+	// 061, PRD Part II §11.9: Enter now enters interactive mode instead --
+	// a is the full-attach key). The pane command proves that this is a
+	// real attachment, not merely a UI state change; Ctrl-B d returns
+	// control to Bubble Tea so it can redraw and accept the following
+	// new-session command.
+	if _, err := terminal.Write([]byte("a")); err != nil {
 		t.Fatal(err)
 	}
 	waitForScreen(t, output, done, "$ ")
@@ -406,10 +408,10 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	}
 	waitForScreen(t, output, done, "DECK_TMUX_SOCKET")
 	// The released PTY shows the actionable footer before help opens; the
-	// companion lifecycle PTY test exercises n, Enter, attachment, and x.
+	// companion lifecycle PTY test exercises n, a, attachment, and x.
 	// Help itself must never advertise a later-phase command.
 	help := output.String()
-	if !strings.Contains(help, "up/down - Enter attach - Y acknowledge - n new - x kill - r resume") {
+	if !strings.Contains(help, "up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
 	}
 	// Every new key, create-modal field and control this phase added must be
@@ -449,6 +451,8 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"i toggle detail view", "r inside it renames", "display name only", "deck_<slug>", "never renamed",
 		"E open/close the event log", "every recorded event across every session", "newest first",
 		"/ filter the list", "incrementally as you type", "only route to an archived session",
+		"enter interactive mode on the selected running session", "keystrokes",
+		"forward to its live pane", "until Ctrl+Q leaves", "a attach the selected running session",
 	} {
 		if !strings.Contains(help, present) {
 			t.Errorf("released help missing %q through the real PTY:\n%s", present, help)

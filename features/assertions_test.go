@@ -868,7 +868,9 @@ func clientAttachesAndDetaches(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\r"); err != nil {
+	// a is the full-attach key (task 061, PRD Part II §11.9: Enter now
+	// enters interactive mode instead).
+	if err := client.Send("a"); err != nil {
 		return err
 	}
 	// Bubble Tea must first hand the terminal to tmux before pane input is
@@ -899,7 +901,9 @@ func clientAttachesToSelectedAgentAndDetaches(ctx context.Context, name string) 
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\r"); err != nil {
+	// a is the full-attach key (task 061, PRD Part II §11.9: Enter now
+	// enters interactive mode instead).
+	if err := client.Send("a"); err != nil {
 		return err
 	}
 	// Wait until Bubble Tea has yielded the PTY to tmux before sending tmux's

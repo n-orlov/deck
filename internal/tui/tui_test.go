@@ -28,7 +28,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 	model.help = true
 	help := model.View()
 	for _, want := range []string{
-		"↑/↓ or j/k select", "↵ attach the selected running session", "Y acknowledge", "unseen marker", "n create", "x kill",
+		"↑/↓ or j/k select", "↵ enter interactive mode", "a attach the selected running session", "Y acknowledge", "unseen marker", "n create", "x kill",
 		"? open/close help", "Esc closes help", "q or Ctrl+C quit",
 		"r resume", "resumed agents", "starting · awaiting", "live shells", "become \"running\"", "starting elsewhere",
 		"P switch the permission profile", "restart to apply", "live pane",
@@ -145,7 +145,7 @@ func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 	model := New(nil, config.Settings{ASCII: true, Clock: clock}, "")
 	model.sessions = []store.Session{{Name: "shell", Agent: "shell", Status: "running", CreatedAt: clock.Now().UnixMilli()}}
 	view := model.View()
-	for _, want := range []string{"deck - sessions", "created just now", "up/down", "Enter attach"} {
+	for _, want := range []string{"deck - sessions", "created just now", "up/down", "Enter interactive"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("ASCII/frozen view missing %q:\n%s", want, view)
 		}
