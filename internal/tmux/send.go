@@ -53,6 +53,18 @@ func nextLiteralBufferName() string {
 	return fmt.Sprintf("deck-literal-stream-%d-%d", os.Getpid(), n)
 }
 
+// multilineStreamSeq is SendMultiline's own counter, kept separate from
+// literalStreamSeq (rather than shared) so the two families of buffer
+// names never need to reason about each other's allocation order --
+// each is independently monotonic and, combined with the pid, unique
+// for the life of this process.
+var multilineStreamSeq int64
+
+func nextMultilineBufferName() string {
+	n := atomic.AddInt64(&multilineStreamSeq, 1)
+	return fmt.Sprintf("deck-multiline-stream-%d-%d", os.Getpid(), n)
+}
+
 // SendLiteral dispatches payload as literal typed text via
 // `send-keys -l --`, the ONLY form PRD phase3c item 32 (II-32) permits
 // for a literal payload -- and does so through Dispatcher.Send, so the
@@ -174,6 +186,47 @@ func (d *Dispatcher) streamLiteralViaLoadBuffer(ctx context.Context, body string
 			return fmt.Errorf("paste streamed literal payload (%d bytes) to %q: %w (buffer %q also left behind: delete-buffer failed: %v)", len(body), d.target, err, name, delErr)
 		}
 		return fmt.Errorf("paste streamed literal payload (%d bytes) to %q: %w", len(body), d.target, err)
+	}
+	return nil
+}
+
+// SendMultiline delivers a payload containing at least one embedded
+// newline as PRD phase3b item 37 (II-37) requires: `load-buffer` (over
+// stdin, so there is no argv-length ceiling at all, exactly like
+// streamLiteralViaLoadBuffer above) followed by `paste-buffer -d -p`
+// through Dispatcher.Send. This is the ONLY faithful path for multi-line
+// input, and deliberately not a hand-assembled `send-keys -H` run with
+// manually inserted ESC[200~/ESC[201~ markers around the payload's own
+// bytes: `-p` is what makes tmux actually EMIT those markers around the
+// pasted bytes, conditioned on the TARGET pane's own bracketed-paste
+// mode being on -- exactly the same condition a real attached terminal
+// is subject to (confirmed directly against tmux 3.5a: with the target
+// pane's bracketed-paste mode off, `-p` adds no markers at all, per the
+// raw demonstration in multiline_test.go); and paste-buffer's own
+// default behaviour (no `-r`) is what translates every "\n" in the
+// loaded buffer to "\r" -- the same translation a real terminal
+// performs when relaying a pasted block, where the user's own Enter key
+// is a carriage return, never a bare line-feed byte. `send-keys -H`
+// bypasses BOTH of those: it inserts exactly the hex bytes given, with
+// no translation and no tmux-side bracketed-paste emission, so a
+// hand-crafted payload of literal marker bytes around "\n"-separated
+// lines delivers those "\n" bytes completely unmodified -- the wrong
+// line ending, demonstrated as the red control by
+// TestSendKeysHexWithManualBracketMarkersDeliversTheWrongLineEndings.
+// `-d` is repeated here for the exact reason streamLiteralViaLoadBuffer
+// already documents: it only deletes buffer on SUCCESS, so the failure
+// path below calls delete-buffer explicitly rather than leaving a named
+// buffer behind forever.
+func (d *Dispatcher) SendMultiline(ctx context.Context, payload string) error {
+	name := nextMultilineBufferName()
+	if _, err := d.client.runWithStdin(ctx, strings.NewReader(payload), "load-buffer", "-b", name, "-"); err != nil {
+		return fmt.Errorf("stream multi-line payload (%d bytes) to %q via load-buffer: %w", len(payload), d.target, err)
+	}
+	if err := d.Send(ctx, "paste-buffer", "-d", "-p", "-b", name); err != nil {
+		if _, delErr := d.client.run(ctx, "delete-buffer", "-b", name); delErr != nil {
+			return fmt.Errorf("paste multi-line payload (%d bytes) to %q: %w (buffer %q also left behind: delete-buffer failed: %v)", len(payload), d.target, err, name, delErr)
+		}
+		return fmt.Errorf("paste multi-line payload (%d bytes) to %q: %w", len(payload), d.target, err)
 	}
 	return nil
 }
