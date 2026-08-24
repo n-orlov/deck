@@ -7,6 +7,16 @@ tmux as the only runtime dependency.
 Interaction model: **`deck` is a TUI. Every user action happens in the UI.** There is no
 user-facing command line.
 
+**deck is the primary way to control a session; direct `tmux` is the fallback for the awkward
+cases.** Where deck's own view and a bare `tmux attach` elsewhere want different things from
+the same session, deck's view wins — it is where the user is, and a manager that degrades its
+own display to stay polite to a hypothetical second client optimises for the rarer case.
+`tmux -L deck ls` and `tmux -L deck attach` stay supported and surfaced in help (§3): they
+are how a user recovers when the TUI is broken, not the intended daily path. Two consequences
+run through this document — deck may change a session's geometry to suit its own panel (§11,
+§11.9), and a second client attached at a different size may therefore see a cropped view
+(§3.3). Both are costs this design accepts and states rather than designs around.
+
 > Name note: `deck` collides on `$PATH` with Kong's `decK` CLI if that's ever installed.
 > Binary name is one constant; flagged, not blocking.
 
@@ -171,9 +181,9 @@ Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
   reporting off, tmux never claims wheel events, and the outer terminal's alternate-scroll
   behaviour turns them into `Up`/`Down`. One window and one pane per session (below) means
   none of the pane-switching or window-list side effects of `mouse on` have anything to act
-  on; the one real cost is that a drag no longer makes the terminal's own selection, so
-  mouse copying needs **Shift** (or copy-mode), which the help view states next to the
-  `tmux -L deck ls` escape hatch.
+  on; the cost is that a drag no longer makes the *terminal's* own selection, which is why
+  deck provides its own over the preview (§11.8) and why the terminal's **Shift** override
+  remains the route when `mouse` is off. The help view states which of the two applies.
   `set -g history-limit <N>`. tmux's default is 2000, and deck has never set it. This
   matters because §11.9's interactive mode narrows the window: output produced while narrow
   consumes history rows roughly **2.7× faster**, and rows evicted past the limit never
@@ -345,8 +355,14 @@ support until one is confirmed.
 - **Persisted**, so a `yolo` session comes back `yolo` on resume. That's the point, and
   that's why it needs a badge visible in the list, in the detail pane, and in every
   notification body.
-- Creating or switching a session to `yolo` requires an explicit confirm in the create
-  modal, gated behind `allow_yolo = true` in config (default false).
+- `yolo` is offered when `allow_yolo = true` in config (default false), and then needs no
+  further ceremony: choosing it in the create modal, or switching to it with `P`, takes
+  effect directly. With `yolo_default = true` (default false) the create modal opens already
+  on `yolo`; it is inert while `allow_yolo` is false, and settings says so on the row rather
+  than silently ignoring it. The gate is a deployment decision, not a per-launch speed bump —
+  a confirm on every create trains the user to press it, and the safeguard that survives
+  habituation is that the profile is *visible* everywhere it applies (below), not that it is
+  tedious to choose.
 - Claude hook payloads carry `permission_mode`, so if the user changes it in-session the
   row is reconciled from the hook instead of drifting.
 - In `yolo`, permission prompts never fire, so the `waiting` column goes quiet — attention
@@ -419,9 +435,9 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `group_by_workspace` (default true, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `group_by_workspace` (default true, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -928,31 +944,45 @@ hold them side by side.
 - Sidebar default width 35 columns, user-adjustable and persisted; the preview takes the
   rest.
 - Preview: pane capture with escapes preserved (`capture-pane -e`), **250 ms tick**,
-  selected row only. No embedded PTY emulator in v1 — the preview is a capture, so it is
-  never interactive. `↵` is how you get a real terminal.
-- **The preview attaches no tmux client and never resizes a pane.** This is the
-  load-bearing property, not an implementation detail. A second client sized to the preview
-  reflows the shared window under §3.2's `window-size latest` and sends the agent
-  `SIGWINCH`, so the pane would be perturbed by the act of previewing it, and the only
+  selected row only. Passive preview runs no PTY emulator — it is a capture, so it cannot be
+  typed into; `↵` (§11.9) and `a` are the two ways to reach a real terminal.
+- **The preview attaches no tmux client.** This is the load-bearing property, not an
+  implementation detail: a second client sized to the panel reflows the shared window under
+  §3.2's `window-size latest` and keeps re-expressing its own size thereafter, and the only
   escape — pinning the window — regresses every ordinary `↵` attach instead
-  (`docs/spikes/tmux-embedded-preview.md` measured both). Capture reads; it does not
-  participate in geometry.
-- **A pane larger than the preview panel is cropped — never resized, never reflowed.** The
-  crop is anchored **bottom-left**: the newest rows, from column one, because that is where
-  an agent's current activity and its prompt are. Lines cut at the right edge are marked,
-  and the panel states the real geometry (`45×22 of 120×40`) so the user knows they are
-  looking at a window rather than the whole pane. That form is a *crop* statement: fitted it
-  would degenerate to `45×22 of 45×22`, which reads as a bug, so §11.9's interactive mode
-  states fitted geometry differently. The alternative is to size the pane to
-  the panel, which is exactly how a preview starts corrupting what it previews; deck does
-  not buy a prettier preview with the agent's layout.
-- **The preview has two modes, and only one of them touches the pane.** Everything above
-  describes **passive** preview, which is the default and which remains exactly as
-  specified: a `capture-pane -e` poll, no attached client, no pipe, no resize, cropped
-  bottom-left, no scroll. §11.9's **interactive** mode is entered deliberately, per session,
-  and is the only thing in deck that fits a pane to the panel. A reader who takes "the
-  preview never resizes a pane" as unconditional is reading the passive mode, which is the
-  one that runs unbidden.
+  (`docs/spikes/tmux-embedded-preview.md` measured both). Capture reads. Where deck changes
+  geometry it does so with an explicit `resize-window` it can account for, never as a side
+  effect of holding a client open.
+- **The preview fits the selected session's window to the panel** — `[ui] preview_fit`,
+  default true (§6.5) — because the interaction model makes deck's panel the primary view of
+  a session rather than a courtesy window onto someone else's. Three properties make that
+  affordable: the fit
+  is **coalesced against the preview tick**, so walking a list fits the row the user settles
+  on and not every row passed on the way; it is **skipped below §11.9's 7-row inner floor**,
+  leaving the pane cropped, because a box that small has no transcript in it worth reflowing
+  for; and it is **best-effort, owning and restoring nothing** — a session the user looked at
+  is left at the size deck last chose, and any attaching client re-expresses its own size
+  under `window-size latest` and simply wins.
+- **The cost is stated, not hidden.** A fit sends the agent `SIGWINCH` and reflows its output,
+  so §3.2's history arithmetic applies: output produced while narrow consumes scrollback rows
+  faster and evicted rows never return. A second client attached at another size sees the crop
+  that implies (§3.3). Help states both. `preview_fit = false` restores a wholly passive
+  preview — `capture-pane -e` poll, no resize, cropped bottom-left — for a user who would
+  rather read a cropped pane than reflow an agent's.
+- **A pane deck is not fitting is cropped — never reflowed to fake a fit.** The crop is
+  anchored **bottom-left**: the newest rows, from column one, because that is where an
+  agent's current activity and its prompt are. Lines cut at the right edge are marked, and
+  the panel states the real geometry (`45×22 of 120×40`) so the user knows they are looking
+  at a window rather than the whole pane. That form is a *crop* statement; a fitted pane
+  states its geometry the way §11.9's interactive mode does, because the crop form would
+  degenerate to `45×22 of 45×22` and read as a bug.
+- **The preview has two modes, and they differ in input, not in geometry.** **Passive**
+  preview is the default: a `capture-pane -e` poll, no attached client, no pipe, no
+  keystrokes, no scroll, and the coalesced fit above unless `preview_fit` is off. §11.9's
+  **interactive** mode is entered deliberately, per session, and adds the pipe, the cell grid,
+  keystroke forwarding and its own bounded scrollback — with geometry it records, claims and
+  restores rather than leaves. Reading a session may resize it; only interactive mode may
+  *type* into it.
 - **Cropping and elision are cell-aware, and never split a wide cell.** Foreign pane output
   is the one place deck cannot enforce its own no-wide-glyphs rule (§11's glyph list binds
   deck, not the agent), and a session name is user-supplied text. So where a crop or an
@@ -1123,10 +1153,9 @@ contract so learning any one of them teaches the rest:
 
 - `esc` cancels and changes nothing. `↵` submits. `tab`/`shift+tab` move between fields.
   `←`/`→`/`space` change a selection. A dialog may declare **additional load-bearing keys
-  of its own**, but only if it states them inline where they apply — §5's mandatory `y`
-  yolo confirm ("press y to confirm yolo before creating") is the canonical example, and
-  it is required by §5, not an exception to be normalised away. Nothing *undeclared* is
-  load-bearing.
+  of its own**, but only if it states them inline where they apply — the `r` that reveals a
+  masked secret (§6.4) is the canonical example: an explicit per-view toggle, named on screen
+  at the place it acts. Nothing *undeclared* is load-bearing.
 - **Validation is in-dialog and specific**, and it retains what the user typed. A dialog
   never closes to reveal an error somewhere else.
 - **Destructive actions confirm**, and the confirmation names the target and what will
@@ -1321,15 +1350,20 @@ scroll, no close button that is the only way to dismiss.
 | click a workspace group header | toggle collapse | the grouping key (§11) |
 | wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
+| drag over the preview | select text; release copies it | `a`, then tmux's own copy-mode |
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
 
 **A click or a wheel over the passive preview does nothing**, and that is a binding too. The
 passive preview is a non-interactive, non-scrolling crop (§11): there is no focus to take and
 no viewport to move, and a gesture aimed at the preview must not fall through to the sidebar
 instead. A mis-aimed click that quietly moved the selection would fire §7's status side
-effects from what the user experienced as a click on some text. **While §11.9's interactive
-mode is active the wheel scrolls the grid's own scrollback**, which is the one viewport that
-does exist; a click still does nothing. Full attach (`a`) has no mouse affordance at all,
+effects from what the user experienced as a click on some text. **A drag is the exception**,
+because selecting text is reading rather than acting: it takes no focus, changes no status and
+moves no selection in the list. **While §11.9's interactive mode is active the wheel scrolls
+the grid's own scrollback**, which is the one viewport that does exist; a click still does
+nothing. A drag that begins on the seam adjusts the seam and a drag that begins in the preview
+selects — the gesture is resolved by where it *started*, so a selection that runs off the edge
+does not turn into a resize halfway through. Full attach (`a`) has no mouse affordance at all,
 which this section's rule permits: no capability is mouse-*only*, not every key has a
 gesture.
 
@@ -1358,12 +1392,19 @@ than the obvious one:
   a mode change touches one of them, and the symptom is a click that selects the wrong
   session — silent, intermittent, and indistinguishable from a user's mis-click.
 
-**What it costs, stated plainly.** Enabling mouse reporting takes the terminal's own
-selection behaviour over: click-drag no longer selects text for copy, and the user needs
-their terminal's override modifier (usually `shift`) to select and paste. That is a real
-loss for a tool people read output in, so mouse reporting is **opt-outable** — `[ui] mouse`
-(default true, §6.5) and `DECK_MOUSE` (§13.1) — and the `shift` caveat is documented in the
-help view rather than left to be discovered.
+**Selection and copy.** Enabling mouse reporting takes the terminal's own selection behaviour
+over, so deck provides the selection itself rather than leaving the user a worse tool for
+reading output in: **a drag beginning inside the preview selects, and releasing copies.** The
+gesture is tmux's, deliberately — a manager whose own view is the primary one cannot ask
+the user to leave it to copy a line. The selection is over the cells deck drew, which in
+§11.9's interactive mode includes the grid's own scrollback. The copy is written to a **tmux
+buffer** on deck's own server, which always works and is what `tmux paste-buffer` reads;
+where the outer terminal permits it an **OSC 52** write additionally reaches the user's system
+clipboard, and that half is best-effort by nature — it depends on the terminal and on tmux's
+`set-clipboard`, so it is never the only thing a copy does. Mouse reporting stays
+**opt-outable** — `[ui] mouse` (default true, §6.5) and `DECK_MOUSE` (§13.1) — and with it off
+the terminal's own `shift` override is the route again; the help view states which of the two
+applies rather than leaving it to be discovered.
 
 **Encoding and hygiene.** deck uses SGR extended reporting (1006), so coordinates past
 column 223 are correct rather than wrapped; it must not depend on X10 encoding. Reporting is
@@ -1390,9 +1431,11 @@ footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is
 session's window to the preview panel, streams the pane into an in-process cell grid, and
 forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
 
-The bet is that a **user-initiated, bounded** geometry change is acceptable where a
-continuous, passive one is not — because `a` already resizes the window today. Interactive
-mode changes which size is chosen, not whether a keypress may perturb a pane.
+What separates this from §11's passive fit is **ownership**, not permission: passive fitting
+picks a size and leaves it, while interactive mode records what it found, claims it, and puts
+it back. The interaction model settles whether deck may resize a session at all, and `a` has
+always resized the window; interactive mode changes what may be *typed* into a pane and what
+must be restored afterwards.
 
 - **Geometry is owned, claimed and restored.** Entering records the window's dimensions and
   its window-local `window-size` value, claims ownership in a pid-tagged window option, then
@@ -1403,10 +1446,11 @@ mode changes which size is chosen, not whether a keypress may perturb a pane.
   into the **window** options, which shadow the global. Cost is exactly two `SIGWINCH` per
   cycle.
 - **Refused rather than degraded, in three cases**, each naming its reason and offering `a`:
-  another client is attached to that session (the squeeze it would inflict on them is not
-  avoidable — one window has one size); the preview box has fewer than **7 inner rows**,
-  which is deck's stacked height floor and leaves no transcript at all; or ownership is held
-  by a live process.
+  another client is attached to that session — one window has one size, and an attached client
+  re-expresses its own under `window-size latest`, so the fit cannot be *held*, and unlike
+  §11's best-effort passive fit interactive mode needs a held size for its grid to stay
+  correct; the preview box has fewer than **7 inner rows**, which is deck's stacked height
+  floor and leaves no transcript at all; or ownership is held by a live process.
 - **The transport is `pipe-pane -IO` into a `charmbracelet/x/vt` grid**, seeded from
   `capture-pane -e -N` plus the pane state tmux exposes as formats, and **reseeded on every
   resize** — resizing the grid alone leaves it wrong for seconds. The pipe is armed before
@@ -1425,10 +1469,19 @@ mode changes which size is chosen, not whether a keypress may perturb a pane.
 - **The grid keeps its own bounded scrollback, and the wheel scrolls it.** This is the only
   way to scroll a full-screen agent: the alternate screen has no tmux history, which is why
   tmux's own wheel binding declines to enter copy-mode for it.
+- **Modified navigation keys forward, like the unmodified ones, by tmux key name.**
+  `Ctrl`, `Shift` and `Alt` combinations with the arrows, `Home`, `End` and the page keys are
+  what word-wise movement and selection are built from in every agent's line editor, so a mode
+  where they silently vanish is a mode the user has to leave to edit a line. Their encoding is
+  as mode-dependent as a bare arrow's, so tmux names them for the same reason it names those.
+  The forwardable set is **enumerated and tested key by key**, never left to a default branch:
+  a key deck cannot encode must be a known, listed gap, because the failure it otherwise
+  produces is a keystroke that does nothing and reports nothing.
 - **Honesty about what the user cannot see.** When the target has not repainted since the
   resize, the panel says so; an empty frame otherwise reads as deck being broken rather than
-  the agent being wedged. Help states that entering interactive mode resizes the agent's
-  window and that output produced while narrow consumes scrollback faster.
+  the agent being wedged. Help states that previewing and entering interactive mode both
+  resize the agent's window, that output produced while narrow consumes scrollback faster, and
+  that `[ui] preview_fit = false` turns the passive half of that off.
 
 ---
 
@@ -1529,9 +1582,12 @@ in the help view.
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,
   tagged suite (§13.5). They also **record every terminal size they observe** — the initial
-  one and each `SIGWINCH` — where a step can read it, which is what makes §11's "the preview
-  never resizes a pane" an assertion about the agent's own experience rather than an
-  inference from tmux's bookkeeping.
+  one and each `SIGWINCH` — where a step can read it, which is what makes §11's fit and
+  §11.9's restore assertions about the agent's own experience rather than inferences from
+  tmux's bookkeeping. It is also what a scenario reads to prove the negatives: that a fit is
+  coalesced to one `SIGWINCH` per settled selection rather than one per row walked, that no
+  fit reaches a pane below the 7-row floor, and that `preview_fit = false` produces none at
+  all.
 - **Webhook sink.** An `httptest` server registered as a `webhook` channel; steps assert
   on requests received, bodies rendered, dedupe collapses, and non-delivery during quiet
   hours. Notification behaviour is fully black-box because §10 has no built-in service.
@@ -1580,7 +1636,9 @@ features/
   launch_lease.feature          §9.3 — CAS acquire, TTL, stale-break, held vs not-leasable
   lease_race.feature            §9.3 — two clients press r, exactly one launch
   concurrency.feature           R4 — N clients, propagation, SIGKILL survival
-  permission_modes.feature      §5 — profile → argv mapping, badge, yolo gate, degradation
+  permission_modes.feature      §5 — profile → argv mapping, badge, yolo gate with no confirm,
+                                yolo_default opens the modal on yolo and is inert without the
+                                gate, degradation
   status_claude_hooks.feature   R6 — waiting/running/idle/error via hook payloads, live badge
   status_probe.feature          R6 — sampled badge, staleness, precedence over probe
   crash.feature                 §7 — error + crash tail + notify, and never auto-relaunch
@@ -1591,12 +1649,14 @@ features/
   notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
   codex_discovery.feature       §8.2 — serialised discovery, claims, ambiguity, unresolved
   layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
-  preview.feature               §11 — crop not resize, no attached client, no SIGWINCH,
-                                no scroll, crash tail for error, placeholder with no pane
+  preview.feature               §11 — coalesced fit, floor-skip, preview_fit=false is passive,
+                                no attached client, no scroll, crop when unfitted, crash tail
+                                for error, placeholder with no pane
   attention_sort.feature        §7/§11 — attention order, the collapsed strip's count,
                                 workspace grouping and collapse, space walks what needs me
   mouse.feature                 §11.8 — click selects, double-click attaches, wheel scrolls
-                                without selecting, seam drag resizes, DECK_MOUSE=0 disables
+                                without selecting, seam drag resizes, preview drag selects and
+                                release copies, DECK_MOUSE=0 disables
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
   themes.feature                §11.6 — picker, live preview/revert, fallback says so,
                                 quantised rendering under DECK_COLOR_DEPTH=16
