@@ -142,6 +142,19 @@ func TestPanePipeReceivesGenuineEOFOnDisableWithPanePipeZero(t *testing.T) {
 // already reports true, because Close sets it while still holding
 // closeMu, before the disarm command that is what actually unblocks the
 // read ever runs.
+//
+// The pane is a bare shell, not a program that stays silent until Close:
+// it can emit its own bytes (a prompt, a motd line) at any point,
+// including during the 200ms this test waits for the Read to block. An
+// earlier version of this test assumed the very FIRST Read call would be
+// the one Close unblocks and failed when the pane won that race instead
+// (observed: n=2 err=nil, two bytes of genuine pane output, not our
+// Close's EOF). That is real data, not a bug, and asserting on it would
+// be exactly the kind of "widen the checkpoint" fix this project
+// forbids. So the reader goroutine below drains and discards any number
+// of non-error reads -- each one is unrelated pane chatter -- and only
+// evaluates WasClosed() against the read that actually returns an
+// error, whichever real-numbered read that turns out to be.
 func TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF(t *testing.T) {
 	socket := pipeDisplacementSocket("selfclose")
 	cleanup := newBareGeometrySession(t, socket, "s0", 80, 24)
@@ -166,11 +179,21 @@ func TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF(t
 	readDone := make(chan readResult, 1)
 	go func() {
 		buf := make([]byte, 4096)
-		n, err := pipe.Read(buf)
-		// Read WasClosed() immediately after Read returns, in the same
-		// goroutine, so this genuinely reflects what a caller in drain's
-		// position would see at the moment it needs to decide.
-		readDone <- readResult{n, err, pipe.WasClosed()}
+		for {
+			n, err := pipe.Read(buf)
+			if err != nil {
+				// Read WasClosed() immediately after Read returns an
+				// error, in the same goroutine, so this genuinely
+				// reflects what a caller in drain's position would see
+				// at the moment it needs to decide.
+				readDone <- readResult{n, err, pipe.WasClosed()}
+				return
+			}
+			// n>0, err==nil: genuine pane output (a prompt, a motd
+			// line) that arrived before our Close. Not the discriminator
+			// this test exists to prove -- drain it and keep waiting for
+			// the read that actually observes Close's EOF.
+		}
 	}()
 
 	time.Sleep(200 * time.Millisecond) // let the Read actually block
