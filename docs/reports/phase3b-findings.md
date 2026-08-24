@@ -2,7 +2,95 @@
 
 Findings recorded as measurements/decisions against this repository, never as
 edits to SPEC.md or prds/ (`git diff` proves neither was touched by this
-file's own commits).
+file's own commits). Content below is mined directly from `git log` (commit
+messages and diffs), not written from memory — each section names the
+commit(s) it was mined from.
+
+## Findings, not spec edits (the PRD's own “Findings, not spec edits”
+## heading, `prds/phase3c-residual-and-interactive-preview.md`) (task 073)
+
+The PRD asks for exactly three things under this heading, answered here in
+order:
+
+**1. Every place a measurement here disagreed with the PRD's asserted
+numbers.** Four, all already measured and cited in `docs/reports/phase3b.md`
+(its own opening paragraph lists them together) — repeated here because this
+is the file the PRD names for this class of finding:
+- II-8: 4 real resizes measured (deck's own entry fit plus SIGWINCH's own
+  coalescing), not the PRD's cited 5-6.
+- II-27: render-coalescing measured at a 1.99x reduction here, not the
+  spikes' cited 5.11x.
+- II-36: tmux's own internal command-string ceiling measured at
+  16340-16360 bytes / 5445-5455 `-H` args, not the PRD's cited 16380/8192 —
+  shown above (same underlying ~16 KiB ceiling, two argument-width
+  assumptions, not two limits).
+- II-51: one empty 120x40 grid measured at ~5.9 MiB resident over an
+  empty-process baseline, not the PRD's cited ~53 MiB.
+
+Every one of the four is attributed, per `tasks.json`'s own
+`discovered.prdCorrections` record, to the 2026-08-22 spikes' raw evidence
+being unreachable from this container (confirmed again for this task: `ls
+~/deck-spikes` and a filesystem-wide `find` both come up empty here, exactly
+as task 022 already recorded) — not to a different algorithm running here
+versus there.
+
+**2. Whether a REAL agent repaints its full transcript on widening — "the
+single most valuable measurement this phase can add."** This is SPEC.md's
+own open question 10 (`## 14. Open questions`, SPEC.md:1743-1746:
+"Do real agents repaint their full transcript on widening? ... Unmeasured
+against a real agent: every spike was fenced from launching one."), still
+open at HEAD. Not measured here either; recorded explicitly rather than
+guessed, per the PRD's own fallback wording ("whether ... it could not be
+measured"). Checked directly before writing this down, not assumed: no real
+`claude` binary is on `PATH` in this
+container (`which claude` empty; `ci/Dockerfile` installs Go and tmux only,
+no agent CLI) — the one place this repository already gates a real-agent
+run, `features/real_agent_smoke.feature`/`fake_agent_drift.feature`
+(`@real-agents`, skipped by `features/godog_test.go`'s own
+`defaultTags = "~@real-agents && ~@nightly"` unless a caller opts in), only
+ever covers Claude, never a real `pi` CLI at all — there is no
+`installedPiIsAvailable`-shaped step anywhere in `features/`. A `pi` binary
+is on `PATH` in this container (`/usr/bin/pi`, resolving to
+`/usr/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js`), but it
+is this run's own coding-agent harness (the tool executing this very task),
+not a fixture with any real-agent godog coverage in this repo, and standing
+up a first-of-its-kind harness to launch it recursively as a deck-managed
+target and drive a widen-then-inspect-transcript probe through it would be a
+new, non-trivial harness addition — out of scope for measuring, not building,
+and risking recursive interference with the very process running this task.
+Recorded as unmeasured, with the reason, rather than fabricated or silently
+dropped. Requirement 49's announcement (task 067/II-49, this file's own
+II-41/II-42 section below and `docs/reports/phase3b.md`) therefore stays what
+the PRD calls it absent this measurement: load-bearing *if* real agents do
+not repaint on widening, defensive if they do — this phase cannot say which.
+
+**3. Whether ~53 MiB per gridded pane is acceptable, noting deck has no
+memory budget to judge it against.** This is SPEC.md's own open question 9
+in the same section (SPEC.md:1740-1742: "Is ~53 MiB of resident memory per
+gridded pane acceptable? ... deck has no memory budget to judge it against,
+and it is the one axis on which §11.9's grid is materially worse than
+polling"), also still open at HEAD — SPEC.md poses the question in its own
+words, it does not answer it. Judgement, not a fix: `grep -rn
+"memory.*budget\|MiB.*limit\|MaxMemory" internal/` (excluding SPEC.md/prds/,
+which only restate the open question itself) finds nothing — this
+repository defines no per-pane or aggregate memory ceiling anywhere in its
+own code, config, or docs/reports/, so "acceptable" cannot be checked
+against a stated number the way II-36's byte ceiling was. What can be
+stated: (a) the PRD's own non-goal list ("Grids
+for more than the selected session") already bounds the worst case to ONE
+grid at a time, not N sessions' worth, so the real question is whether one
+pane's cost is acceptable, not whether it multiplies; (b) the measured cost
+here (~5.9 MiB baseline, II-51) is an order of magnitude below even the
+PRD's own higher cited figure, so if the PRD's authors judged ~53 MiB
+tolerable enough to cite as a working number rather than a stop condition,
+the actual, smaller, measured cost clears that same bar without needing a
+formal budget to compare against; (c) 28 MiB more for a full 2000-line
+scrollback (task 068/II-51, `docs/reports/phase3b.md`) is the one number
+that could plausibly matter at scale (many sessions, all left with a full
+scrollback), and that number — not the empty-grid baseline — is the one a
+future operator setting an actual budget should size against. Recorded as a
+judgement call per this task's own successCriteria, not as a defect to
+correct.
 
 ## II-5: DECK_INTERACTIVE_TRANSPORT is a transport selector, not a §13.1
 ## behaviour switch (task 031)
@@ -17,17 +105,25 @@ spikes measured for streaming a pane's live output into deck's grid:
 
 This is a selector between **two implementations of the same contract** —
 §11.9's interactive-preview panel — not the kind of user-visible behaviour
-switch §13.1 forbids. Both paths are required to satisfy the same
-`features/interactive_preview.feature` scenarios (task 070 proves this once
-both paths exist), with one stated, named exception: the pipe-only
-scenarios II-33 names (peeling a trailing semicolon off a literal
-`send-keys` payload before re-sending it as `-H 3b`) have no meaning under
-`capture`, which never calls `send-keys` for output at all — output there
-is read back via `capture-pane`, not delivered through a pipe deck itself
-armed. Every other observable (seed byte sequence, resize behaviour, exit
-restore, dispatch identity checks, refusal cases) is a property of §11.9's
-contract, not of the transport, and so must hold under either value of the
-knob.
+switch §13.1 forbids: §11.9 never specifies HOW a transport keeps history,
+so a selector between two implementations of that one contract is in scope
+for this knob (this is the stated §13.1 position for `interactive_transport`,
+not a fallback argument underneath a stronger claim). There is no literal
+`features/interactive_preview.feature` file — the contract's surface spans
+seven files (`interactive_focus.feature`, `interactive_geometry.feature`,
+`interactive_option_tables.feature`, `interactive_refusals.feature`,
+`interactive_repaint_notice.feature`, `interactive_scroll.feature`,
+`interactive_sigwinch_budget.feature`, 16 `Scenario:` lines/187 steps total—
+named precisely in `docs/reports/phase3b.md`). The parity result, as
+measured (tasks 088/089, below): 12 of these 16 scenarios pass unchanged
+under `DECK_INTERACTIVE_TRANSPORT=capture`; the other 4 — all of
+`interactive_scroll.feature` — fail for a real, structural reason, not
+merely because they fail. `§11.9 does NOT extend the contract to scrollback
+depth or history accumulation` (below) is the scope this knob actually has;
+it is narrower than "every other observable ... must hold under either
+value of the knob" (this section's own earlier, now-stale framing) — that
+framing named only the pipe-only II-33 exception and never anticipated this
+second, structural one, which the parity run itself discovered.
 
 Declaring the key (this task) does not implement either path; `pipe` is
 implemented starting at task 040, `capture` and the parity run are task
@@ -156,6 +252,23 @@ Verified for task 089: `go build`/`go vet`/`gofmt` clean; `go test -count=1
 (transport selection only, no change to `interactive.StartWithTransport`
 itself, which task 088 already covered under `-race`).
 
+### Decision (steer 013 item 2): capture's inert scrollback keys are an
+### accepted, deliberate limitation, not a gap to fill
+
+Under `DECK_INTERACTIVE_TRANSPORT=capture`, the scrollback keys task
+068/II-51 added (mouse wheel, Shift+PgUp/PgDn) are silently inert: they
+still run their key/event handling in `internal/tui`, but with no
+scrollback ever accumulating (the mechanism section above), there is
+nothing for them to scroll into, and no UI notice tells the operator why
+nothing happened. This is deliberate, not an oversight, and no new
+UI-notice task is created for it: `DECK_INTERACTIVE_TRANSPORT` defaults to
+`pipe` (`internal/config/schema.go`, task 031), where the keys work exactly
+as task 068 built them; `capture` is an opt-in diagnostic/fallback value a
+user reaches only by deliberately setting the knob, at which point the
+scrollback gap above is already the documented, structural cost of that
+choice. Recorded here as fact so a future reader does not mistake silence
+for a bug.
+
 ### Task 070 sign-off against its own literal wording
 
 Task 070's own `successCriteria` text (written before 088/089 existed)
@@ -177,6 +290,70 @@ neither II-33 nor II-24 covers, that is a finding to record honestly ...
 not a scenario to quietly skip." Task 070 is signed off on that basis: the
 letter of its two named examples is stale (it predates the discovery), but
 the governing clause it exists to enforce holds.
+
+### Fact, no action required: the capture-transport parity sweep is a
+### manual one-off, not part of the delivery suite
+
+The parity run cited above (tasks 088/089) is `DECK_INTERACTIVE_TRANSPORT=
+capture go test -run <subset> ./features/`, run by hand once and logged
+(`docs/reports/phase3b-interactive-transport-{pipe,capture}.log`) — it was
+never wired into `ci/run.sh`, `ci/stability.sh`, or either of tasks 075/077's
+final CI runs, all of which run with `DECK_INTERACTIVE_TRANSPORT` unset
+(defaulting to `pipe`). Task 088's five unit tests
+(`internal/interactive/capture_transport_test.go`) are the only standing
+regression cover `capture` has going forward. Neither this file nor
+`docs/reports/phase3b.md` (which states the same fact directly above its
+own II-5 section, task 089) may be read as implying the delivery suite
+exercises both transports on every run — it exercises `pipe`, plus this one
+manually-run, logged snapshot of `capture`.
+
+## II-23/II-24: five gotchas that live only in commit messages, mined from
+## `git log` for this task (073)
+
+The PRD asks for these named explicitly if not already recorded elsewhere;
+they were not, at HEAD, before this task. All five are on the pipe
+transport's own drain path (`internal/tmux/pipe.go`,
+`internal/interactive/grid.go`), mined from commits `6490a6d` (II-24) and
+`8d7c2c7` (II-23) rather than restated from memory:
+
+1. **The EOF that could not happen.** `PanePipe`'s original reader opened
+   its FIFO end `O_RDWR` (a common non-blocking-open trick), which makes
+   deck's own descriptor count as a writer on that FIFO — so `read(2)`
+   never returns `0`, even once tmux's own `pipe-pane` job on the other end
+   is long gone. Demonstrated directly, not assumed: a throwaway `O_RDWR`
+   reader pointed at a displaced pipe just times out instead of ever
+   seeing EOF. Fixed via the standard one-open convention, `O_RDONLY|
+   O_NONBLOCK`, which lets a real EOF surface once no other writer remains.
+2. **`#{pane_pipe}` flips true before the forked job has actually opened
+   the FIFO.** tmux reports the option as set the instant it *accepts* the
+   arm command, not once the job it just forked has reached its own
+   `open()` of the FIFO — so a read immediately after arming can see a
+   transient zero-writer state that looks exactly like a genuine EOF, at
+   startup only. `waitForFifoWriter` polls (EAGAIN vs. immediate-EOF) to
+   positively confirm a real writer exists before `ArmPipePane` returns,
+   and buffers (`PanePipe.leftover`) any bytes it happens to consume while
+   probing so the drain still delivers them, in order, exactly once.
+3. **`os.NewFile` only poller-registers a descriptor that is *already*
+   non-blocking at the moment it is wrapped.** Clearing `O_NONBLOCK`
+   before handing the fd to `os.NewFile` (a plausible-looking
+   simplification) produces a `Read` the Go runtime's poller cannot
+   interrupt — silently breaking `Close`'s own unblock-a-blocked-`Read`
+   contract (task 045). The fd is kept `O_NONBLOCK` for the `PanePipe`'s
+   entire life instead, specifically because of this.
+4. **`Close`'s own disarm produces the identical `io.EOF` an external
+   displacement or disablement does** — tmux's `pipe-pane` job process
+   exits the same way either way, so the error's *type* alone cannot tell
+   an intentional shutdown apart from one that needs investigating.
+   `PanePipe.WasClosed()` is the actual discriminator the drain path checks
+   *first*, before ever inspecting the error itself.
+5. **`remain-on-exit=failed` (deck's own server-wide `Bootstrap` default)
+   keeps a dead pane's `pipe-pane` job — a bare `cat` still writing into
+   the FIFO — running forever.** `drain`'s `read(2)` therefore never sees
+   EOF on a dead pane at all, and would otherwise block indefinitely with
+   the grid stuck rendering a stale frame and no signal that anything is
+   wrong. Liveness has to become a poll (`pollPaneDead`, ticking
+   `#{pane_dead}` every `paneDeadPollInterval`) rather than something
+   inferred from the stream itself.
 
 ## II-14: ownership has no heartbeat and no TTL, because liveness is a
 ## syscall (task 033)
@@ -464,3 +641,91 @@ plainly: outside deck (a genuinely cooked tty, or a terminal that has
 somehow not gone through Bubble Tea's raw-mode setup), the same byte is
 ordinary XON and would be swallowed before ever reaching an
 application-level handler.
+
+## Steer 011: the footer legend at the minimum supported size (80x24) is
+## budget-cut, measured, not reasoned about (task 073)
+
+`internal/tui/tui.go`'s `footerLegend` currently holds **13** entries (not
+the fourteen an earlier note about this named — recounted directly by
+`grep`, not carried over uncorrected):
+`↑/↓`, `↵ interactive`, `a attach`, `Y acknowledge`, `n new`, `x kill`,
+`r resume`, `R relaunch`, `P profile`, `p pin`, `i detail`, `? help`,
+`q quit`. The checked-in golden frame for the minimum supported size
+(`features/testdata/golden/side_by_side_80x24.golden`, line 24, generated
+by a real deck binary through a real PTY at exactly 80x24) shows the
+footer line cut after:
+
+```
+starting - awaiting signal    up/down - Enter interactive - a attach - Y acknow
+```
+
+Measured against the 13-entry list above: the first three entries render in
+full; the fourth (`Y acknowledge`) is cut mid-word, showing only `Y acknow`;
+the remaining **nine** entries — `n new`, `x kill`, `r resume`,
+`R relaunch`, `P profile`, `p pin`, `i detail`, `? help` and `q quit` — are
+entirely absent from the line, including the two an earlier note called out
+by name (`q quit`, `? help`). Counting the truncated entry alongside the
+nine fully-missing ones, **ten of the thirteen** entries are not fully
+present on screen at 80x24 — the fraction an earlier note stated is
+confirmed, its stated total (fourteen) is not; thirteen is what `grep -c`
+against the current `footerLegend` literal returns.
+
+**Before/after task 061's rebind, measured from `git show 0153a28`, not
+reasoned about:** the pre-061 golden line (`git show 0153a28 --
+features/testdata/golden/side_by_side_80x24.golden`) read
+`up/down - Enter attach - Y acknowledge - n new -`, cut immediately before
+`x kill` — i.e. the line was *already* cut at that same class of boundary
+before task 061 touched anything, with `Y acknowledge` shown whole and
+`n new` fully visible. Task 061 inserted the new `a attach` entry ahead of
+`Y acknowledge` (shifting everything after it by exactly that entry's
+width) and reworded `Enter attach` to `Enter interactive`; the net effect,
+measured by diffing the two golden lines directly, is that `n new` — fully
+visible before — is now entirely off the end, and `Y acknowledge` — also
+fully visible before — is now cut mid-word. Task 061 marginally worsened a
+pre-existing condition (the line was already budget-cut before it landed);
+it did not create the cutting itself.
+
+**Whether the tail is truncated or would instead wrap in a wrapping
+emulator — measured from the dependency's own source, not inferred from
+behaviour:** `github.com/charmbracelet/bubbletea@v1.3.10`'s
+`standard_renderer.go` (read directly from the module cache via
+`ci/run.sh`) truncates every line before it is ever written to the
+terminal:
+
+```go
+// Truncate lines wider than the width of the window to avoid
+// wrapping, which will mess up rendering. If we don't have the
+// width of the window this will be ignored.
+if r.width > 0 {
+    line = ansi.Truncate(line, r.width, "")
+}
+```
+
+— unconditional whenever the renderer knows the terminal width (which it
+always does once the first `tea.WindowSizeMsg` arrives, `r.width = msg.Width`
+at the same file's line 632), specifically so the *real* terminal's own
+autowrap never fires for a line bubbletea produces. This is confirmed, not
+merely plausible from the comment alone: `charmbracelet/x/vt`'s `Emulator`
+(the library every golden/PTY test in this repo captures through) defaults
+`ansi.ModeAutoWrap` to **on** (`mode.go`, `ansi.ModeAutoWrap: ansi.ModeSet`)
+— if bubbletea's own line were ever written un-truncated past column 80 on
+the footer's row (the emulator's last row, with no row 25 to wrap onto),
+a real autowrap-driven terminal would have to scroll the whole 24-row
+screen up by one line to make room for the wrapped continuation, visibly
+destroying the golden's own top border. The checked-in golden's top border
+is untouched, exactly as the truncation-before-write behaviour above
+predicts and the scroll-up alternative would not. **Answer: truncated,
+never wraps** — deck's own footer relies on bubbletea's own width-aware
+truncation, not on the outer terminal's wrap setting one way or the other.
+
+**Stated plainly, per this task's own successCriteria:** the golden's
+current footer line at 80x24 is an **accepted budget outcome** of that
+truncation applied to a legend that does not fit in 80 columns — it is not
+an assertion, anywhere in this repository's tests, that the legend is
+*complete* at the minimum supported size. No code change follows from this
+finding; it is recorded so a future reader measures rather than assumes
+which of the missing entries' keys are still live (all of them are — this
+is strictly a display-budget gap, not a binding gap; task 021's own
+`TestFooterKeyLegendNamesOnlyBoundKeys` already proves every entry that
+*is* declared in `footerLegend` names a real bound key, independent of
+which of them fit on screen).
