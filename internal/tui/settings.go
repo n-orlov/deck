@@ -1215,7 +1215,17 @@ type settingsRowSegment struct {
 // background the moment the first inner foreground segment ended;
 // opening progressively and resetting once keeps the background live
 // under every segment's text.
-func (m Model) settingsRenderRow(segs []settingsRowSegment, bg theme.Token, selected bool) string {
+//
+// idleBg (task 084, steer 006 item 2's alternating sidebar stripe) is the
+// SAME mechanism applied to the UNSELECTED case: when selected is false
+// and idleBg is non-empty, its background opens instead of bg's, so a
+// caller with no stripe to paint (every settings-takeover call site) keeps
+// passing "" and gets exactly today's "no background unless selected"
+// behaviour, while sidebarRowLines can pass theme.Surface for the
+// alternate-phase session block and get a background that persists
+// whether or not that particular row happens to be selected -- selected
+// still always wins over any stripe, never the reverse.
+func (m Model) settingsRenderRow(segs []settingsRowSegment, bg theme.Token, selected bool, idleBg theme.Token) string {
 	if !m.settings.Color {
 		var b strings.Builder
 		for _, s := range segs {
@@ -1227,6 +1237,11 @@ func (m Model) settingsRenderRow(segs []settingsRowSegment, bg theme.Token, sele
 	opened := false
 	if selected {
 		if seq, ok := m.backgroundSGR(bg); ok {
+			b.WriteString(seq)
+			opened = true
+		}
+	} else if idleBg != "" {
+		if seq, ok := m.backgroundSGR(idleBg); ok {
 			b.WriteString(seq)
 			opened = true
 		}
@@ -1362,7 +1377,7 @@ func (m Model) settingsView() string {
 		if selected {
 			marker = "> "
 		}
-		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}, categorySelTok, selected)
+		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}, categorySelTok, selected, "")
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
@@ -1401,7 +1416,7 @@ func (m Model) settingsView() string {
 				{Text: ": ", Tok: theme.Text},
 				{Text: valueText, Tok: theme.Text},
 			}
-			rightLines = append(rightLines, m.settingsRenderRow(segs, fieldSelTok, selected))
+			rightLines = append(rightLines, m.settingsRenderRow(segs, fieldSelTok, selected, ""))
 			if selected {
 				envVar, _ := settingsFieldEnvOverride(f, m.settings)
 				runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
@@ -1467,7 +1482,7 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 
 	leftLines := make([]string, len(categories))
 	for i, cat := range categories {
-		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false)
+		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false, "")
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
@@ -1482,8 +1497,8 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 			valueMarker = "> "
 		}
 		rightLines = []string{
-			m.settingsRenderRow([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}, theme.Selection, m.settingsEnvEditingKeyPart),
-			m.settingsRenderRow([]settingsRowSegment{{Text: valueMarker + "Value: " + m.maskEnvValue(m.settingsEnvEditKey, m.settingsEnvEditValue, m.settingsEnvReveal), Tok: theme.Text}}, theme.Selection, !m.settingsEnvEditingKeyPart),
+			m.settingsRenderRow([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}, theme.Selection, m.settingsEnvEditingKeyPart, ""),
+			m.settingsRenderRow([]settingsRowSegment{{Text: valueMarker + "Value: " + m.maskEnvValue(m.settingsEnvEditKey, m.settingsEnvEditValue, m.settingsEnvReveal), Tok: theme.Text}}, theme.Selection, !m.settingsEnvEditingKeyPart, ""),
 		}
 	} else {
 		title = "[env]"
@@ -1501,14 +1516,14 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 				{Text: "=", Tok: theme.Text},
 				{Text: m.maskEnvValue(k, m.settingsEdits.Env[k], m.settingsEnvReveal), Tok: theme.Text},
 			}
-			rightLines = append(rightLines, m.settingsRenderRow(segs, theme.Selection, selected))
+			rightLines = append(rightLines, m.settingsRenderRow(segs, theme.Selection, selected, ""))
 		}
 		addMarker := "  "
 		addSelected := m.settingsEnvIndex == len(keys)
 		if addSelected {
 			addMarker = "> "
 		}
-		rightLines = append(rightLines, m.settingsRenderRow([]settingsRowSegment{{Text: addMarker + "+ add entry", Tok: theme.Hint}}, theme.Selection, addSelected))
+		rightLines = append(rightLines, m.settingsRenderRow([]settingsRowSegment{{Text: addMarker + "+ add entry", Tok: theme.Hint}}, theme.Selection, addSelected, ""))
 	}
 	rightLines = fitLines(rightLines, contentRows)
 
@@ -1539,7 +1554,7 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 
 	leftLines := make([]string, len(categories))
 	for i, cat := range categories {
-		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false)
+		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false, "")
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
@@ -1555,7 +1570,7 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 			{Text: marker + categories[r.CategoryIndex].Name + ": ", Tok: theme.Text},
 			{Text: settingsFieldLabel(r.Field), Tok: theme.Hint},
 		}
-		rightLines[i] = m.settingsRenderRow(segs, theme.Selection, selected)
+		rightLines[i] = m.settingsRenderRow(segs, theme.Selection, selected, "")
 	}
 	rightLines = fitLines(rightLines, contentRows)
 
