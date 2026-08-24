@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -148,6 +149,36 @@ func TestPreviewTitleNamesTheTargetSessionWhileInteractive(t *testing.T) {
 	}
 	if !strings.Contains(got, "interactive") || !strings.Contains(got, "Ctrl+Q") {
 		t.Fatalf("interactive previewTitle %q dropped the mode name or exit chord while adding the session name", got)
+	}
+}
+
+// TestPreviewTitleStatesFittedGeometryDifferentlyFromACrop is PRD Part II
+// requirement 46: interactive mode's enterInteractive fits the tmux window
+// to exactly the panel's own content box (previewContentSize), so the real
+// pane size and the panel's content size are always the same number --
+// stating that in cropPreviewBottomLeft's own "WxH of realWxrealH" form
+// would degenerate to the misleading "45x22 of 45x22" (a crop statement
+// about a pane that was never cropped). previewTitle must state it
+// differently: "WxH fitted", never containing " of " and never the
+// degenerate doubled form.
+func TestPreviewTitleStatesFittedGeometryDifferentlyFromACrop(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.sessions = []store.Session{{ID: "s1", Name: "focus-target", Agent: "shell", Status: "running", Slug: "focus-target"}}
+	m.selected = 0
+	m.interactive = true
+	got := m.previewTitle()
+	width, height := m.previewContentSize()
+	wantGeom := fmt.Sprintf("%dx%d fitted", width, height)
+	if !strings.Contains(got, wantGeom) {
+		t.Fatalf("interactive previewTitle %q does not contain the fitted geometry %q", got, wantGeom)
+	}
+	if strings.Contains(got, " of ") {
+		t.Fatalf("interactive previewTitle %q states fitted geometry in the crop's \"of\" form", got)
+	}
+	degenerate := fmt.Sprintf("%dx%d of %dx%d", width, height, width, height)
+	if strings.Contains(got, degenerate) {
+		t.Fatalf("interactive previewTitle %q contains the degenerate crop form %q", got, degenerate)
 	}
 }
 
