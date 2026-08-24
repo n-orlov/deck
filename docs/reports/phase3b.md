@@ -660,3 +660,90 @@ the ACTUAL shipped violation, not a synthetic one
 feeds it tmux.go's real pre-fix `SendKeys` line verbatim and confirms a
 match). The original `TestNoSendPathUsesSessionNameAsTarget` is kept
 alongside it (still true, just narrower) rather than removed.
+
+## II-31: carry the socket and a server-lifetime discriminator (task 053)
+
+`internal/tmux/dispatch_socket_test.go` proves PRD II-31's two named cases:
+pane ids collide across independent sockets, and a restarted server on the
+same socket path reissues the same id -- and that deck's `Identity`
+(already carrying `SocketPath`/`#{socket_path}` and `ServerPID`/`#{pid}`
+since task 050) is what tells these apart.
+
+### The raw hazard: cross-socket collision, measured directly
+
+Two independent `-L` sockets, each a freshly started tmux server, each
+started via `newBareGeometrySession` with no relationship to each other:
+their first pane is `%0` on BOTH -- confirmed directly
+(`TestCrossSocketPaneIDCollisionSilentlyHitsTheLocalPane` asserts this
+before doing anything else, failing the test outright if the collision
+this whole task rests on didn't actually happen). A bare
+`send-keys -t %0 -l -- <marker>` aimed at socket B -- naming only the pane
+id, exactly what a caller who tracked the id but not which server it came
+from would do -- succeeds with `exit=0` and empty stderr, and the marker
+lands in socket B's own unrelated `%0`. Socket A's `%0`, the pane the
+caller may have actually meant, never sees it. tmux gives no signal
+whatsoever that `%0` means something completely different depending on
+which socket you ask.
+
+### The discriminator: Identity's extra fields, not PaneID, break the tie
+
+`TestIdentityDistinguishesSameLooksLikePaneIDAcrossSockets` captures
+`Identity` via `Client.CaptureIdentity` on both sockets' `%0` and shows
+`PaneID` is identical (`"%0" == "%0"`) while `SocketPath` and `ServerPID`
+both differ, so the full `Identity` values are unequal despite the
+matching pane id -- exactly the property `Dispatcher.Send`'s `fresh !=
+d.identity` comparison (task 050) depends on to tell these apart.
+
+### The Dispatcher-level refusal: modelling the misdirection directly
+
+`TestDispatcherRefusesWhenTargetIdentityBelongsToTheWrongSocket`
+constructs a `Dispatcher` normally against socket A (identity captured
+there, exactly as `NewDispatcher` always does), then reassigns the
+Dispatcher's own `client` field to socket B's `Client` -- modelling, from
+inside the package, the misdirection a caller who tracked only a bare
+pane-id string could fall into. `Send` refuses, wrapping
+`ErrIdentityDrifted`; the marker is confirmed absent from both sockets'
+panes afterward, not merely reported as failed while still delivered.
+
+**Non-vacuous, demonstrated and reverted this task** (not left as an
+assumption): temporarily narrowing `verify`'s comparison from the full
+`fresh != d.identity` to `fresh.PaneID != d.identity.PaneID` made both
+this test and the restart test below fail exactly as expected (`got nil
+error, want a refusal for identity drift`), confirming the discriminator
+fields, not some other mechanism, are what the tests are actually
+exercising. Reverted before commit; `git diff` on `dispatch.go` is empty.
+
+### The second named case: a restarted server reissuing `%0`
+
+`TestRestartedServerReissuesPaneIDAndDispatcherRefuses` captures a
+`Dispatcher` on a fresh session's `%0`, kills that tmux server
+(`kill-server` on the same `-L` socket), starts a brand-new server on the
+exact SAME socket path with a session of the exact same name (`s0`,
+deliberately unchanged from before the restart, to rule it out as an
+accidental discriminator), and confirms directly: `PaneID` unchanged
+(`%0` both times -- a fresh server's first pane always is), `SessionName`
+unchanged (kept identical on purpose), `SocketPath` unchanged (it names a
+filesystem path, not a server instance -- a restart on the same `-L` name
+reuses the same path, measured directly:
+`/tmp/tmux-1000/deck-dispatch-socket-restart-<pid>-<ns>` before and after),
+and `ServerPID` **different** -- the only one of the four that moves.
+`Dispatcher.Send`, captured before the restart, refuses with
+`ErrIdentityDrifted` against the new server, and the marker never reaches
+the post-restart pane. This is the direct proof that `ServerPID`, not
+`SocketPath`, is the actual "server-lifetime discriminator" PRD II-31
+names -- a socket-path-only carry-along would have let this one straight
+through.
+
+### What this task did not need to change
+
+`Identity`'s `SocketPath`/`ServerPID` fields, `Dispatcher`'s capture-at-
+construction/re-resolve-before-every-send design, and the `==`-comparison
+drift check were all already in place from task 050 -- built to satisfy
+II-28's five-field identity, which happens to already be the II-31
+discriminator too. This task's contribution is the missing proof: that
+these fields actually distinguish the two hazards PRD II-31 names, with a
+raw/no-deck-code hazard demonstration for each, not new production code.
+`go build`/`go vet`/`gofmt` clean; `go test -race -count=1
+./internal/tmux/...` green; `go test -count=1 ./internal/... ./cmd/...`
+green (whole `./...` suite not re-run this task per the budget rule --
+change confined to one new test file plus this doc).
