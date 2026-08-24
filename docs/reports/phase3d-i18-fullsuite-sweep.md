@@ -54,7 +54,12 @@ scenarios), `launch_lease.feature`, and `permission_modes.feature`. It is a real
 product bug (any scenario that opens detail view with `i` then tries to exit with `q` hits it),
 not a load-correlated flake like I-1's keystroke drop.
 
-**Follow-up task 079** (added to `tasks.json`, not completed in this task) carves out fixing it.
+**Follow-up task 079** (added to `tasks.json` when this sweep was written) carved out fixing it,
+and is now DONE: fixed in commit `70a697b` (`internal/tui/rename.go`'s `updateDetailView` gained a
+`"q", "ctrl+c": return m, tea.Quit` case, matching `updateHelpView`'s identical case and helpText's
+own unconditional "q or Ctrl+C quit deck" line). `internal/tui/detail_view_quit_test.go`'s
+`TestBareQWhileDetailOpenQuitsInsteadOfNoOp` proves it red against the prior behaviour and green
+after. All 5 scenarios named above were re-run directly (feature:line) and confirmed green.
 
 ### #6: previously documented, load/timing flake
 
@@ -68,6 +73,6 @@ until whichever task next needs settings.feature green picks it up.
 This sweep is **not** the 10/10 stability citation (that is task 076, collected after Part I+II's
 final commit, per I-20/requirement 46). It is the one-time full-suite run this run's I-18 asks for.
 Exit status is 1 (FAIL), stated as measured, not re-run to manufacture a clean pass: 6/261
-scenarios failed, 5 sharing one already-diagnosed root cause (task 079 carved out to fix it), 1 a
-previously-documented timing flake. No scenario was skipped, retagged, or deleted to reach this
-number.
+scenarios failed, 5 sharing one already-diagnosed root cause (task 079 carved out to fix it, since
+fixed -- see the #1-#5 section above), 1 a previously-documented timing flake. No scenario was
+skipped, retagged, or deleted to reach this number.
