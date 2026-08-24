@@ -1156,6 +1156,45 @@ three scenarios pass again, run individually and together
 green; the three new scenarios in `features/interactive_refusals.feature`
 pass individually and together via `DECK_GODOG_TAGS`.
 
+### Discharging task 047's forward reference
+
+Task 047's own commit left an explicit promise to "re-verify at the
+Session/TUI boundary once 066 actually lands a refusal decision point":
+now that it has, the chain of custody is vacuously closed on the refusal
+paths themselves and non-vacuously closed on the paths after them. All
+three refusals above return before `ClaimWindowOwnership` is ever called,
+so there is no pipe armed yet to release on any refusal path; every path
+AFTER ownership is claimed that can still fail --
+`client.FitWindowToPane` erroring, `tmux.NewDispatcher` erroring, or
+`interactive.Start` erroring -- already calls `ownership.Release` and (for
+the latter two) `client.RestoreWindowGeometry` before returning, and the
+one case among those that has actually armed the pipe
+(`interactive.Start` failing after `tmux.NewDispatcher` succeeded) is
+exactly what task 047's own
+`TestSessionStartFailureAfterArmingReleasesThePipeOnErrorExit` already
+proves releases it on error exit.
+
+### Steer 012: the attached-client refusal now asserts the bystander's window, not just deck's own screen
+
+The `@requirement-47-refuse-attached-client` scenario asserted only
+deck's own rendered screen text -- true even if the refusal ran AFTER
+`FitWindowToPane` and then "changed its mind", since none of those three
+assertions look at the bystander's real tmux window at all. The scenario
+now additionally captures the private tmux window's geometry
+(`features/preview_test.go:31`'s existing step, task 022) right after the
+real second client attaches, and asserts it is byte-identical after the
+refusal (`features/preview_test.go:32`), plus that
+`@deck_isize_owner` is unset in the window scope
+(`features/tmux_option_scope_test.go:126`'s existing step) proving this
+refusal claimed no ownership either. Demonstrated non-vacuously: moving
+the attached-client check (temporarily, `git diff` confirmed empty after
+reverting) to run after `FitWindowToPane` makes the new geometry
+assertion fail (`captured "before-refusal" as "80x23", now "61x27"`)
+while the original three screen-text assertions still pass -- exactly the
+contrast the steering note asked for: the old assertions cannot tell
+"never touched the window" from "touched it and changed its mind", the
+new one can.
+
 ## II-51: the grid keeps its own bounded scrollback, scrolled by the wheel and Shift+PgUp/PgDn (task 068)
 
 `internal/interactive.Grid` (vendored `charmbracelet/x/vt`) already keeps a
