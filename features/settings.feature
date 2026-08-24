@@ -345,6 +345,7 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
+    And deck client "A" sends "j"
     Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"
     When deck client "A" sends ""
     Then deck client "A" screen contains "cleared recent directory history"

@@ -889,3 +889,32 @@ departure per the PRD's own "do not contradict them without recording why" claus
 `phase3c-residual-and-interactive-preview.md`:722) — not invent a citation to a file nobody can
 read.
 
+
+## `@requirement-17-clear-recent-cwds-history`'s navigation math went stale, causing a deterministic (not merely load-correlated) failure
+
+Discovered while verifying task 075's precondition (whole-suite green before the final commit).
+`features/settings.feature`'s `@requirement-17-clear-recent-cwds-history` scenario (task 013,
+commit `bb73b04`) navigates the settings takeover's `[ui]` field list with a fixed count of `j`
+presses (4, after the initial category `j` + tab) to land on the synthetic "Clear Recent Cwds"
+action and press Enter. At the time task 013 wrote it, `internal/config/schema.go`'s `[ui]`
+section held exactly 4 fields before that action (`theme`, `ascii`, `mouse`, `recent_cwd_limit`).
+Task 007 (commit `a94a0f6`, landed the day after) inserted a 5th field, `group_by_workspace`,
+between `recent_cwd_limit` and the append point — shifting the action's index by one without
+updating this scenario's `j` count. The result: the 4th `j` now lands on `group_by_workspace`
+instead of the action, so the scenario's subsequent Enter toggles `group_by_workspace` off instead
+of clearing the recent-cwd history, and the "cleared recent directory history" note never
+appears. This reproduced deterministically (3/3 isolated reruns at load ~2.3–3.3, no load
+correlation) — it had previously been miscategorised in `notes.md`'s standing "open pre-existing
+flakes" list as a load-correlated PTY timeout, which it is not.
+
+**Fix**: add the missing 5th `j` (`features/settings.feature`, one line). Verified 3/3 isolated
+green post-fix. `notes.md`'s flake list is corrected to drop this entry (it was never a flake).
+No production code changed; `internal/config/schema.go`'s field order is correct and unchanged.
+
+`docs/reports/phase3d-075-final-suite-run.log` (task 075's committed full-suite run, taken after
+this fix) shows every package green except one already-documented pre-existing flake unrelated to
+this fix: `internal/tmux`'s `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
+(sibling of the already-recorded `TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne`
+close-race family in `pipe_displacement_test.go`), confirmed non-reproducing 3/3 in isolation
+(`ci/run.sh go test -count=1 -run TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF ./internal/tmux/...`).
+Not re-run as a whole suite a second time to chase a clean streak, per the standing budget rule.
