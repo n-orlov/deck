@@ -156,6 +156,28 @@ Verified for task 089: `go build`/`go vet`/`gofmt` clean; `go test -count=1
 (transport selection only, no change to `interactive.StartWithTransport`
 itself, which task 088 already covered under `-race`).
 
+### Task 070 sign-off against its own literal wording
+
+Task 070's own `successCriteria` text (written before 088/089 existed)
+names two acceptable reasons for excluding a scenario under `capture`:
+"II-33/II-24". The actual reason `interactive_scroll.feature`'s four
+scenarios fail is neither of those two — it is the third, structural
+scrollback-accumulation gap this section documents above. Read hyper-
+literally ("a reason II-33/II-24 names"), the exclusion does not match
+either named example. Read against the clause that actually carries the
+intent — "no scenario is excluded merely because it fails" — it does: the
+reason is real, mechanistic, checked against both named candidates and
+explicitly ruled out before being written up as a new class, and recorded
+honestly in both this file and `docs/reports/phase3b.md`'s II-5 section
+rather than dropped from the tag set quietly. Task 089's own
+`successCriteria` (written at the same split, with foreknowledge that a
+third class was possible) says exactly this in so many words: "If some
+other class of scenario turns out not to hold under capture for a reason
+neither II-33 nor II-24 covers, that is a finding to record honestly ...
+not a scenario to quietly skip." Task 070 is signed off on that basis: the
+letter of its two named examples is stale (it predates the discovery), but
+the governing clause it exists to enforce holds.
+
 ## II-14: ownership has no heartbeat and no TTL, because liveness is a
 ## syscall (task 033)
 
