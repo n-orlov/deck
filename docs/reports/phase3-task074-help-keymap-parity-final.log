@@ -1,0 +1,12 @@
+=== RUN   TestHelpOverlayStaysWithinFrameBudgetAt80x24
+--- PASS: TestHelpOverlayStaysWithinFrameBudgetAt80x24 (0.00s)
+=== RUN   TestHelpOverlayScrollReachesEveryLine
+--- PASS: TestHelpOverlayScrollReachesEveryLine (0.04s)
+=== RUN   TestHelpOverlayKeymapMatchesBoundKeys
+--- PASS: TestHelpOverlayKeymapMatchesBoundKeys (0.00s)
+=== RUN   TestFooterKeyLegendNamesOnlyBoundKeys
+--- PASS: TestFooterKeyLegendNamesOnlyBoundKeys (0.00s)
+=== RUN   TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns
+--- PASS: TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.055s
