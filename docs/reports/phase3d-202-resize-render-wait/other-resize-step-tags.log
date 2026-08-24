@@ -1,0 +1,18 @@
+=== @requirement-21-preview-no-side-effects ===
+ok  	github.com/n-orlov/deck/features	1.349s
+exit=0
+=== @requirement-27-preview-suppressed-below-floor ===
+ok  	github.com/n-orlov/deck/features	0.781s
+exit=0
+=== @requirement-38-layout-modes ===
+ok  	github.com/n-orlov/deck/features	12.238s
+exit=0
+=== @requirement-14 ===
+ok  	github.com/n-orlov/deck/features	0.844s
+exit=0
+=== @requirement-1-resize ===
+ok  	github.com/n-orlov/deck/features	0.837s
+exit=0
+=== @multiclient ===
+ok  	github.com/n-orlov/deck/features	6.861s
+exit=0

@@ -1,0 +1,30 @@
+=== run 1 loadavg=6.49 4.91 4.59 4/5821 113082 ===
+ok  	github.com/n-orlov/deck/features	0.917s
+exit=0
+=== run 2 loadavg=8.69 5.40 4.75 18/5863 113130 ===
+ok  	github.com/n-orlov/deck/features	1.011s
+exit=0
+=== run 3 loadavg=8.69 5.40 4.75 16/5795 113179 ===
+ok  	github.com/n-orlov/deck/features	0.990s
+exit=0
+=== run 4 loadavg=10.32 5.79 4.88 26/5796 113227 ===
+ok  	github.com/n-orlov/deck/features	1.254s
+exit=0
+=== run 5 loadavg=10.32 5.79 4.88 42/5812 113273 ===
+ok  	github.com/n-orlov/deck/features	1.215s
+exit=0
+=== run 6 loadavg=12.38 6.29 5.05 27/5797 113318 ===
+ok  	github.com/n-orlov/deck/features	1.228s
+exit=0
+=== run 7 loadavg=14.43 6.82 5.23 29/5776 113363 ===
+ok  	github.com/n-orlov/deck/features	1.313s
+exit=0
+=== run 8 loadavg=14.43 6.82 5.23 29/5764 113406 ===
+ok  	github.com/n-orlov/deck/features	1.249s
+exit=0
+=== run 9 loadavg=15.28 7.12 5.33 21/5843 113452 ===
+ok  	github.com/n-orlov/deck/features	1.216s
+exit=0
+=== run 10 loadavg=17.02 7.62 5.50 25/5884 113495 ===
+ok  	github.com/n-orlov/deck/features	1.231s
+exit=0
