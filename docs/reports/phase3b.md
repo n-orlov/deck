@@ -1313,3 +1313,65 @@ the rest of `./features/...` (the suite's own pre-existing PTY-under-load
 flakiness in unrelated scenarios -- reproduced identically on a clean,
 unmodified checkout of this same commit -- is unrelated to this task and
 not introduced by it).
+
+## II-5: the interactive scenario surface run under both transports, and the exclusion list (task 089)
+
+Naming correction first: there is no literal `features/interactive_preview.feature`
+file. The surface II-5's contract covers is spread across seven files --
+`interactive_focus.feature`, `interactive_geometry.feature`,
+`interactive_option_tables.feature`, `interactive_refusals.feature`,
+`interactive_repaint_notice.feature`, `interactive_scroll.feature`,
+`interactive_sigwinch_budget.feature` -- 16 `Scenario:` lines, 187 steps,
+total.
+
+`internal/tui/interactive.go`'s `enterInteractive` now selects
+`interactive.TransportPipe` or `interactive.TransportCapture` (task 088's
+`StartWithTransport`) from `m.settings.InteractiveTransport`, in the exact
+place it used to always call the now-`Start`-wrapper unconditionally.
+
+Both runs (`DECK_GODOG_TAGS` unset, i.e. `defaultTags`, against just the
+seven files above; logs `docs/reports/phase3b-interactive-transport-pipe.log`
+and `docs/reports/phase3b-interactive-transport-capture.log`):
+
+| transport | scenarios | steps |
+| --- | --- | --- |
+| `pipe` (baseline) | 16 passed | 187 passed |
+| `capture` | 12 passed, **4 failed** | 157 passed, 4 failed, 26 skipped |
+
+### Exclusion list: all four scenarios in `interactive_scroll.feature`
+
+The four failures are exactly the four scenarios in
+`interactive_scroll.feature` (II-51/task 068), and every one fails for the
+SAME reason, which is neither II-33 (the trailing-`;` peel, meaningless
+with no `send-keys` on the output path) nor II-24 (the pipe
+displacement-vs-death distinction, meaningless with no pipe armed to
+displace) -- both were checked and ruled out; this is a third, previously
+undocumented class, recorded honestly here and in
+`docs/reports/phase3b-findings.md` rather than silently excluded:
+
+- `Shift+PgUp/PgDn scroll the interactive grid's own scrollback` (:14)
+- `the mouse wheel over the preview panel scrolls the interactive grid's own scrollback` (:33)
+- `typing while scrolled back snaps the view back to the live bottom` (:51)
+- `scrolling the interactive grid's own scrollback never flips the session's badge, and the probe reads the pane's live bottom, not the scrolled-back view` (:86)
+
+**The reason** (full mechanism in the findings report): `TransportCapture`'s
+`captureLoop` (task 088) calls `capture-pane -p` -- the visible pane only,
+no `-S` history flag -- and writes it into a brand-new `Grid` every poll
+tick, discarding whatever the previous tick's grid held. `TransportPipe`
+instead streams every byte the pane ever emits into one long-lived grid, so
+lines that scroll off the visible area still land in `vt`'s own bounded
+scrollback (II-51) on their way past. Under `capture`, anything that
+scrolls off-screen between two polls is gone before the next poll ever
+sees it -- there is no continuous stream for a scrollback to accumulate
+from. This is a structural property of the two transports (a poll-a-
+snapshot design has no history a stream-everything design gets for free),
+not a bug in either implementation, and not something a shorter poll
+interval fixes (it narrows the window, it does not close it).
+
+All 12 other scenarios across the other six files pass identically under
+both transports -- refusal cases, geometry fit, focus/border tokens, option
+restore, repaint-notice, and the SIGWINCH budget are all properties of the
+§11.9 contract, not the transport, exactly as II-5 states.
+
+`go build`/`go vet ./...`/`gofmt` clean; `go test -count=1 ./internal/...
+./cmd/...` green.

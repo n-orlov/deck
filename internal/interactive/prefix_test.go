@@ -58,7 +58,7 @@ func assertBareSessionPrefixIsCtrlB(t *testing.T, socket string) {
 // TestCtrlBReachesTheTargetProgramBypassingTmuxPrefixTable is PRD II-40's
 // core positive proof. The pane runs `cat -v`, which echoes any control
 // byte it receives back as a visible caret-notation sequence ("^B" for
-//0x02) rather than swallowing it invisibly -- so a capture-pane that
+// 0x02) rather than swallowing it invisibly -- so a capture-pane that
 // never shows "^B" is unambiguous evidence the byte never reached the
 // program at all (e.g. because tmux's prefix table consumed it as a
 // command-mode trigger instead, which is exactly the failure this test
