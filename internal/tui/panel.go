@@ -579,7 +579,22 @@ func (m Model) dialogWidth() int {
 // substring in favour of keeping one physical line.
 func (m Model) framedDialog(body string) string {
 	boxWidth := m.dialogWidth()
-	inner := boxWidth - 4
+	lines := m.wrapDialogLines(body)
+	out := make([]string, 0, len(lines)+2)
+	out = append(out, m.fullBoxTop(boxWidth, "", true))
+	for _, line := range lines {
+		out = append(out, m.fullBoxContentLine(boxWidth, line, true))
+	}
+	out = append(out, m.fullBoxBottom(boxWidth, true))
+	return strings.Join(out, "\n")
+}
+
+// wrapDialogLines is framedDialog/framedDialogScrollable's shared
+// body-to-lines step: split the raw body into physical lines, word-
+// wrapping (ANSI-aware, via stringWidth/wrapText) any line wider than the
+// box's own inner width instead of ever truncating it away.
+func (m Model) wrapDialogLines(body string) []string {
+	inner := m.dialogWidth() - 4
 	if inner < 1 {
 		inner = 1
 	}
@@ -592,9 +607,82 @@ func (m Model) framedDialog(body string) string {
 		}
 		lines = append(lines, wrapText(line, inner)...)
 	}
-	out := make([]string, 0, len(lines)+2)
+	return lines
+}
+
+// dialogContentBudget is framedDialogScrollable's own content-row budget:
+// the frame height minus the box's own top/bottom border -- the most rows
+// a scrollable overlay's body may ever render at once without pushing the
+// whole dialog past the frame budget (task 078, requirement 39 residual).
+func (m Model) dialogContentBudget() int {
+	_, frameHeight := m.frameSize()
+	budget := frameHeight - 2
+	if budget < 1 {
+		budget = 1
+	}
+	return budget
+}
+
+// dialogMaxScroll is the largest scroll offset framedDialogScrollable will
+// ever honour for this body: zero once the wrapped body already fits
+// inside dialogContentBudget, otherwise the number of lines hanging off
+// the bottom of one full page. Callers use this to clamp a stored scroll
+// offset without re-deriving framedDialogScrollable's own slicing.
+func (m Model) dialogMaxScroll(body string) int {
+	lines := m.wrapDialogLines(body)
+	budget := m.dialogContentBudget()
+	if len(lines) <= budget {
+		return 0
+	}
+	return len(lines) - budget
+}
+
+// dialogScrollBy is PgUp/PgDn's own step for a scrollable overlay (task
+// 078): one full dialogContentBudget page, dir<0 up/dir>0 down, clamped to
+// [0, dialogMaxScroll(body)] so repeated PgDown past the bottom (or PgUp
+// past the top) cannot inflate the stored offset past what the very next
+// render would ever show.
+func (m Model) dialogScrollBy(current int, body string, dir int) int {
+	next := current + dir*m.dialogContentBudget()
+	if next < 0 {
+		next = 0
+	}
+	if max := m.dialogMaxScroll(body); next > max {
+		next = max
+	}
+	return next
+}
+
+// framedDialogScrollable is framedDialog's height-bounded counterpart
+// (task 078, requirement 39 residual): the `?` help overlay, `E` event
+// log and `i` detail view are the only widgets on screen while open (no
+// footer, no sidebar underneath), so unlike every other §11.4 dialog --
+// bounded by its own field count -- their content can grow far past the
+// frame budget (helpText alone is 273 lines at 80x24). Rather than
+// truncate (SPEC requirement 39: pagination/scrolling, never silently
+// dropped content), the body is clipped to a scrollable window: scroll
+// (clamped here against the body's own dialogMaxScroll, so a caller need
+// not pre-clamp) selects which wrapped line is topmost. Below the frame
+// budget its output is byte-for-byte what framedDialog would have
+// produced -- clipping only ever engages once content actually overflows.
+func (m Model) framedDialogScrollable(body string, scroll int) string {
+	boxWidth := m.dialogWidth()
+	lines := m.wrapDialogLines(body)
+	budget := m.dialogContentBudget()
+	visible := lines
+	if len(lines) > budget {
+		max := len(lines) - budget
+		if scroll < 0 {
+			scroll = 0
+		}
+		if scroll > max {
+			scroll = max
+		}
+		visible = lines[scroll : scroll+budget]
+	}
+	out := make([]string, 0, len(visible)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
-	for _, line := range lines {
+	for _, line := range visible {
 		out = append(out, m.fullBoxContentLine(boxWidth, line, true))
 	}
 	out = append(out, m.fullBoxBottom(boxWidth, true))

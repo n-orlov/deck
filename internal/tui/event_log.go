@@ -23,22 +23,32 @@ const maxEventLogRows = 200
 // wrapping the dialog to fit it.
 const maxEventLogPayloadRunes = 96
 
-// eventLogView renders task 124's `E` event log: every store.Event this
-// store holds (across every session, newest first -- see
-// Store.ListEvents), each row's kind, reason and a bounded, masked payload.
-// There is nothing to submit or cycle here (like detailView/helpView);
-// Esc, handled by updateEventLog, is the only interaction.
+// eventLogView renders task 124's `E` event log inside
+// framedDialogScrollable (task 078, requirement 39 residual): every
+// store.Event this store holds (across every session, newest first --
+// see Store.ListEvents), each row's kind, reason and a bounded, masked
+// payload. m.eventLogScroll (PgUp/PgDn, updateEventLog) selects the
+// visible window once the log's up-to-200 rows push past the frame
+// budget; Esc, also handled by updateEventLog, is the log's only other
+// interaction.
 func (m Model) eventLogView() string {
+	return m.framedDialogScrollable(m.eventLogBody(), m.eventLogScroll)
+}
+
+// eventLogBody builds eventLogView's own content, split out (task 078) so
+// updateEventLog's PgUp/PgDn handling can measure the same content
+// dialogMaxScroll would, without duplicating the store read/format logic.
+func (m Model) eventLogBody() string {
 	var b strings.Builder
 	b.WriteString("Event log\n\n")
 	if m.store == nil {
 		b.WriteString("(event log is unavailable: no store is attached)\n")
-		return m.framedDialog(b.String())
+		return b.String()
 	}
 	events, err := m.store.ListEvents(context.Background(), maxEventLogRows)
 	if err != nil {
 		fmt.Fprintf(&b, "Cannot read events: %s\n", err)
-		return m.framedDialog(b.String())
+		return b.String()
 	}
 	if len(events) == 0 {
 		b.WriteString("(no events recorded yet)\n")
@@ -53,17 +63,26 @@ func (m Model) eventLogView() string {
 		}
 	}
 	fmt.Fprintf(&b, "\nNewest first, up to the most recent %d events. Secret-shaped payload\nvalues mask the same way the env editor's do. Esc closes.\n", maxEventLogRows)
-	return m.framedDialog(b.String())
+	return b.String()
 }
 
-// updateEventLog handles keys while the `E` event log is open. It has no
-// fields to submit or cycle (the log is read-only), so it defers entirely
-// to the shared \u00a711.4 contract, exactly like detailView/helpView's own
-// single Esc case in Model.Update.
+// updateEventLog handles keys while the `E` event log is open. Esc is the
+// only field-like interaction (the log is read-only), handled through the
+// shared §11.4 contract exactly like detailView/helpView's own single Esc
+// case; PgUp/PgDn (task 078, requirement 39 residual) scroll the log's own
+// window once its content pushes past the frame budget.
 func (m Model) updateEventLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
+	if cmd, handled := applyDialogContract(msg, dialogContract{Cancel: func() {
 		m.eventLogOpen = false
-	}})
+	}}); handled {
+		return m, cmd
+	}
+	switch msg.String() {
+	case "pgup":
+		m.eventLogScroll = m.dialogScrollBy(m.eventLogScroll, m.eventLogBody(), -1)
+	case "pgdown":
+		m.eventLogScroll = m.dialogScrollBy(m.eventLogScroll, m.eventLogBody(), 1)
+	}
 	return m, nil
 }
 
