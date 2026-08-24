@@ -122,9 +122,20 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
-	grid, err := interactive.Start(ctx, client, pane.ID, width, height, func(ctx context.Context) ([]byte, error) {
+	// PRD II-5 (task 089): DECK_INTERACTIVE_TRANSPORT/interactive_transport
+	// selects between the two implementations of the same §11.9 contract
+	// (internal/config.interactiveTransportEnv already rejects any value
+	// other than "pipe"/"capture" at load time, so "capture" is the only
+	// other case that can reach here). "pipe" -- the config default -- is
+	// interactive.TransportPipe, exactly the transport this call site used
+	// before task 070/088/089 existed.
+	transport := interactive.TransportPipe
+	if m.settings.InteractiveTransport == "capture" {
+		transport = interactive.TransportCapture
+	}
+	grid, err := interactive.StartWithTransport(ctx, client, pane.ID, width, height, func(ctx context.Context) ([]byte, error) {
 		return interactive.CaptureSeed(ctx, client, pane.ID)
-	})
+	}, transport)
 	if err != nil {
 		_ = client.RestoreWindowGeometry(ctx, windowTarget, geometry)
 		_ = ownership.Release(ctx)

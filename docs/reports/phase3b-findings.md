@@ -95,6 +95,67 @@ empty). Task 088 does **not** wire this into `internal/tui` or run any
 godog scenario under `capture` -- that is task 089's job, followed by 070's
 own sign-off against this exact PRD wording.
 
+### Task 089: wired into `internal/tui`, parity run, and a real gap the transport selector's own doc did not anticipate
+
+`internal/tui/interactive.go`'s `enterInteractive` now reads
+`m.settings.InteractiveTransport` (already fully wired end to end per this
+section's own earlier discovery -- config file, env override, settings UI --
+just never consulted here) and calls `interactive.StartWithTransport(...,
+interactive.TransportCapture)` when it is `"capture"`, `TransportPipe`
+otherwise. `internal/config`'s `interactiveTransportEnv` already rejects
+any value other than `"pipe"`/`"capture"` at load time, so no third case
+can reach this call site.
+
+The parity run (`docs/reports/phase3b-interactive-transport-pipe.log` /
+`-capture.log`, `DECK_INTERACTIVE_TRANSPORT=pipe|capture go test -v
+-count=1 -run <subset> ./features/`, restricted to the seven files II-5's
+own wording names -- there is no literal `interactive_preview.feature`)
+found genuine parity on 12 of 16 scenarios, and a genuine, structural gap
+on the other 4 -- all of `interactive_scroll.feature` (II-51/task 068).
+
+**The gap, precisely**: `TransportCapture`'s `captureLoop` (task 088) calls
+`CaptureSeed` -> `CapturePaneSeedAtomic` -> `capture-pane -p` (no `-S`) and
+writes the result into a **brand-new** `Grid` every `capturePollInterval`
+tick (`fresh := newGrid(...)`, `grid.go`), replacing whatever the previous
+tick held outright. `vt`'s own scrollback (II-51's `ScrollbackMaxLines`)
+only grows from a `Write` call being handed bytes that push existing rows
+up and off the visible grid -- under `TransportPipe` this happens
+continuously, every byte the pane emits, so anything that scrolls off the
+visible area on its way past still lands in scrollback first. Under
+`TransportCapture` there is no such stream: each tick sees only the pane's
+current visible rows, and anything that scrolled off-screen **between**
+two polls is gone -- never written anywhere, let alone into a scrollback
+buffer that no longer even exists once the tick's fresh grid replaces the
+old one. A capture Session therefore has no meaningful scrollback at all
+(what little it has is whatever the current tick's single `capture-pane`
+snapshot happened to include, discarded on the very next tick regardless
+of whether it was ever scrolled through), and every one of
+`interactive_scroll.feature`'s four scenarios -- Shift+PgUp/PgDn,
+mouse-wheel, typing-snaps-back, and the badge/probe-during-scroll check --
+depends on scrollback actually accumulating.
+
+This is neither II-33 (peeling a trailing `;` off a literal `send-keys`
+payload -- meaningless under `capture` because it never calls `send-keys`
+for output) nor II-24 (the pipe displacement-vs-death distinction --
+meaningless with no pipe armed to displace); it is a third class this
+section's own earlier text did not anticipate when it said "every other
+observable ... is a property of §11.9's contract, not of the transport" --
+scrollback depth turns out NOT to be one of those, because §11.9 never
+specifies HOW a transport keeps history, and `capture-pane`'s own default
+behaviour (visible-only, no `-S`) makes accumulating any is structurally
+impossible for a poll-and-replace design without a scrollback mechanism of
+its own. Recorded here as a genuine, permanent contract gap between the
+two transports, not something a faster poll or a bigger `-S` window closes
+fully (a `-S -2000` capture would recover SOME history per tick, but still
+not the byte-exact accumulation `TransportPipe` gets from streaming, and
+changing `CaptureSeed`'s own tmux invocation is out of this task's scope --
+it is shared with the seed-capture path task 041/II-19 already measured).
+
+Verified for task 089: `go build`/`go vet`/`gofmt` clean; `go test -count=1
+./internal/... ./cmd/...` green; the wiring change is the minimal one
+(transport selection only, no change to `interactive.StartWithTransport`
+itself, which task 088 already covered under `-race`).
+
 ## II-14: ownership has no heartbeat and no TTL, because liveness is a
 ## syscall (task 033)
 
