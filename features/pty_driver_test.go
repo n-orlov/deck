@@ -148,6 +148,63 @@ func (d *ScreenDriver) Resize(cols, rows uint16) error {
 	return nil
 }
 
+// resizeRenderMarker is the escape sequence bubbletea's alt-screen renderer
+// (cmd/deck/main.go's tea.WithAltScreen()) writes at the start of every
+// full-screen flush -- ansi.CursorHomePosition, unparameterised "\x1b[H" --
+// including the flush a WindowSizeMsg triggers. ResizeAndAwaitRender looks
+// for it appearing in deck's own output AFTER the resize to prove deck has
+// actually completed a render cycle at the new geometry, rather than
+// returning the instant the kernel geometry changed and letting whatever
+// step runs next race a frame still shaped for the old size (task 202/F3:
+// exactly this race let @requirement-48-refuse-preview-below-seven-rows'
+// Enter be judged against the pre-resize preview box, so the floor check
+// saw the wrong box and deck entered interactive mode squeezed instead of
+// refusing).
+const resizeRenderMarker = "\x1b[H"
+
+// resizeAwaitTimeout bounds ResizeAndAwaitRender's wait for that render.
+// 5s matches this package's other checkpoints (see e.g.
+// features/assertions_test.go, features/interactive_geometry_test.go) --
+// generous for a local re-render that normally completes in well under a
+// second, never a bare sleep.
+const resizeAwaitTimeout = 5 * time.Second
+
+// ResizeAndAwaitRender is Resize, plus a bounded poll on the driver's own
+// raw output for resizeRenderMarker appearing after the resize, so the call
+// does not return until deck has observably re-rendered at the new size.
+// Other Resize callers (features/sigwinch_count_test.go,
+// features/golden_frame_test.go, features/fake_agent_size_test.go) are
+// unaffected: only the `deck client "X" terminal is resized to WxH` step
+// (features/resize_test.go) needed this wait, since it is the only one
+// whose very next step routinely acts on the resized client immediately.
+func (d *ScreenDriver) ResizeAndAwaitRender(ctx context.Context, cols, rows uint16) error {
+	d.mu.Lock()
+	markLen := d.raw.Len()
+	d.mu.Unlock()
+
+	if err := d.Resize(cols, rows); err != nil {
+		return err
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, resizeAwaitTimeout)
+	defer cancel()
+	for {
+		d.mu.Lock()
+		rendered := strings.Contains(d.raw.String()[markLen:], resizeRenderMarker)
+		d.mu.Unlock()
+		if rendered {
+			return nil
+		}
+		select {
+		case <-d.done:
+			return fmt.Errorf("deck exited before re-rendering after resize to %dx%d: %v\nframe:\n%s\nraw: %q", cols, rows, d.processError(), d.Frame(false), d.Raw())
+		case <-d.updated:
+		case <-waitCtx.Done():
+			return fmt.Errorf("timed out waiting for deck to re-render after resize to %dx%d: %w\nframe:\n%s\nraw: %q", cols, rows, waitCtx.Err(), d.Frame(false), d.Raw())
+		}
+	}
+}
+
 // GridSize returns the emulator's current column and row count, letting a
 // step prove a resize actually changed the grid a frame is read from rather
 // than merely that the resize step ran without error.

@@ -30,6 +30,12 @@ func startNamedClientWithSize(ctx context.Context, name string, cols, rows int) 
 	return client.WaitForFrame(ctx, false, "deck - sessions")
 }
 
+// resizeNamedClient blocks until deck has observably re-rendered at the new
+// size (task 202/F3): ScreenDriver.ResizeAndAwaitRender changes the kernel
+// and emulator geometry exactly as Resize did, then polls the driver's own
+// raw output for the render marker a resize-triggered flush writes, so the
+// very next step (for example requirement 48's Enter into interactive mode)
+// never races a frame that is still shaped for the pre-resize size.
 func resizeNamedClient(ctx context.Context, name string, cols, rows int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -39,7 +45,7 @@ func resizeNamedClient(ctx context.Context, name string, cols, rows int) error {
 	if err != nil {
 		return err
 	}
-	return client.Resize(uint16(cols), uint16(rows))
+	return client.ResizeAndAwaitRender(ctx, uint16(cols), uint16(rows))
 }
 
 func clientFrameWidthIs(ctx context.Context, name string, want int) error {
