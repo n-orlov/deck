@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -55,6 +56,16 @@ const dispatchIdentityFormat = "#{socket_path}|#{pid}|#{pane_id}|#{pane_pid}|#{s
 
 // dispatchIdentityFieldCount is len(strings.Split(dispatchIdentityFormat, "|")).
 const dispatchIdentityFieldCount = 6
+
+// panePattern is what PRD II-30 ("never dispatch by session name") is
+// enforced against: tmux's own pane-id syntax is a bare "%" followed by
+// digits (e.g. "%3"), which is NEVER also valid syntax for a session
+// name (tmux itself rejects a session name starting with "%" -- it is
+// reserved). Requiring every Dispatcher target to match this, at
+// construction, is what makes "dispatch by session name" structurally
+// unreachable rather than merely undocumented: a caller cannot even
+// construct a Dispatcher pointed at a session name in the first place.
+var panePattern = regexp.MustCompile(`^%[0-9]+$`)
 
 // resolveIdentity reads target's current five-field Identity plus
 // #{pane_dead} in one tmux invocation. It is the ONLY place in this
@@ -149,11 +160,15 @@ type Dispatcher struct {
 
 // NewDispatcher captures target's identity NOW (PRD II-28: "at entry")
 // and returns a Dispatcher that only ever sends to that exact
-// socket+server+pane+session tuple for the rest of its life -- a later
-// Send never re-derives target from anything but the argv the caller
-// itself supplies for the dispatch command; the identity fields are used
-// solely to verify, never to build the send's own -t argument.
+// socket+server+pane+session tuple for the rest of its life. target must
+// already be a pane id (PRD II-30, enforced by panePattern below); Send
+// (task 052) then always builds the dispatch command's own -t argument
+// from this same target, so a caller's argv can never substitute a
+// session name -- or anything else -- for it.
 func NewDispatcher(ctx context.Context, client Client, target string) (*Dispatcher, error) {
+	if !panePattern.MatchString(target) {
+		return nil, fmt.Errorf("construct dispatcher for %q: target must be a tmux pane id (e.g. %%3), not a session name -- PRD II-30 forbids ever dispatching by session name", target)
+	}
 	identity, err := client.CaptureIdentity(ctx, target)
 	if err != nil {
 		return nil, fmt.Errorf("construct dispatcher for %q: %w", target, err)
@@ -201,21 +216,45 @@ func (d *Dispatcher) verify(ctx context.Context) (Identity, error) {
 	return fresh, nil
 }
 
-// Send re-resolves target's identity immediately before running args
-// against tmux (PRD II-28: "re-resolved immediately before EVERY send"),
-// refusing -- and saying why, via a wrapped ErrIdentityDrifted/ErrPaneDead
-// or the tmux command's own error -- instead of sending on any drift, a
-// dead pane, or the underlying tmux invocation's nonzero exit. args is
-// the complete tmux argv for the dispatch command (e.g.
-// []string{"send-keys", "-t", target, "-l", "--", payload}); Send runs it
-// unmodified through the same Client.run every other tmux invocation in
-// this package uses, so an ordinary nonzero exit is reported exactly as
-// Client.run already reports one everywhere else.
+// Send re-resolves target's identity immediately before running the
+// dispatch command against tmux (PRD II-28: "re-resolved immediately
+// before EVERY send"), refusing -- and saying why, via a wrapped
+// ErrIdentityDrifted/ErrPaneDead or the tmux command's own error --
+// instead of sending on any drift, a dead pane, or the underlying tmux
+// invocation's nonzero exit.
+//
+// args is the tmux command name followed by every argument EXCEPT the
+// target: []string{"send-keys", "-l", "--", payload}, never
+// []string{"send-keys", "-t", target, "-l", "--", payload}. Send itself
+// inserts "-t", d.target (the pane id captured and verified at
+// construction) immediately after the command name -- args must not
+// contain "-t" at all, and Send refuses before running anything if it
+// does. This is PRD II-30's actual enforcement point, not just
+// dispatch.go's own doc comment: no caller, however it built args, can
+// ever cause the underlying tmux command to target anything but the
+// exact pane id this Dispatcher verified a moment earlier -- in
+// particular never a session name, which is exactly what would let a
+// renamed-then-reused session's impostor silently receive the payload
+// (dispatch_impostor_test.go's TestNameDispatchedPayloadLandsInTheImpostorPane
+// demonstrates the raw tmux hazard this closes, and
+// TestDispatcherRefusesAfterSessionRenameEvenThoughPaneIDIsUnchanged
+// proves this Dispatcher refuses in the identical setup).
 func (d *Dispatcher) Send(ctx context.Context, args ...string) error {
+	if len(args) == 0 {
+		return errors.New("dispatch: args must include a tmux command name")
+	}
+	for _, arg := range args {
+		if arg == "-t" {
+			return fmt.Errorf("dispatch to %q: args must not include -t; Send always supplies the pane id captured at entry so no caller can dispatch by session name (PRD II-30)", d.target)
+		}
+	}
 	if _, err := d.verify(ctx); err != nil {
 		return fmt.Errorf("refuse dispatch to %q: %w", d.target, err)
 	}
-	if _, err := d.client.run(ctx, args...); err != nil {
+	full := make([]string, 0, len(args)+2)
+	full = append(full, args[0], "-t", d.target)
+	full = append(full, args[1:]...)
+	if _, err := d.client.run(ctx, full...); err != nil {
 		return fmt.Errorf("dispatch to %q: %w", d.target, err)
 	}
 	return nil
