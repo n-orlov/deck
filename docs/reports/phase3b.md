@@ -622,3 +622,41 @@ already pinned by `TestCaptureIdentityReadsAllFiveFieldsFromARealPane`)
 and their `Send` calls' `"-t", "s0"` pairs removed, to match the new
 pane-id-only/no-caller-`-t` contract -- no test assertion was loosened,
 only the argv shape callers must use.
+
+### Validation-failure round two: the grep proof was vacuous against a real production path
+
+The first landing of this task (later marked `validation-failed`) missed a
+real, live violation: `internal/tmux/tmux.go`'s pre-existing `Client.SendKeys`
+(task 023's inject-instead primitive, called from
+`internal/service/inject.go:70`) built
+`c.run(ctx, "send-keys", "-t", name, "-l", "--", literal)` where `name` is
+`sessionName(slug)` -- a tmux **session name**, not a pane id -- entirely
+outside `Dispatcher`. `TestNoSendPathUsesSessionNameAsTarget`'s regex
+(`"-t"[^\n]*SessionName|SessionName[^\n]*"-t"`) only matches the literal Go
+identifier `SessionName` (the `Identity` struct field) adjacent to `"-t"` --
+`name` is a local variable, never spelled `SessionName`, so the guard never
+saw it. The mechanism itself (`Dispatcher`/`NewDispatcher`) was correct and
+its own tests were genuine; the gap was that `SendKeys` was never migrated to
+use it, and the grep was scoped too narrowly to catch that class of bypass.
+
+**Fix**: `SendKeys` now resolves the session's live pane id via
+`PreviewPane` (the same read-only lookup the preview panel already uses),
+constructs a `Dispatcher` on that pane id, and sends both the literal
+payload and the following `Enter` through `Dispatcher.Send` -- so the real
+tmux command's `-t` is always the verified pane id, and a rename between
+resolution and send is caught as `ErrIdentityDrifted` rather than silently
+reaching an impostor. The real end-to-end scenario
+(`@requirement-023-inject-instead-exports-into-live-shell-without-restarting`)
+stays green against the fix, unmodified.
+
+**Broadened guard**: `TestNoProductionCodeBuildsADangerousCommandWithItsOwnExplicitTarget`
+replaces the narrow SessionName-identifier match with a general one -- any
+of the three input-dispatch commands (`send-keys`/`paste-buffer`/`load-buffer`)
+together with an explicit `"-t"` flag on the same line, in any production
+file other than `dispatch.go` itself (the one place allowed to build `"-t",
+d.target` for a caller-supplied command name). Confirmed non-vacuous against
+the ACTUAL shipped violation, not a synthetic one
+(`TestNoProductionCodeBuildsADangerousCommandWithItsOwnExplicitTargetIsNonVacuous`
+feeds it tmux.go's real pre-fix `SendKeys` line verbatim and confirms a
+match). The original `TestNoSendPathUsesSessionNameAsTarget` is kept
+alongside it (still true, just narrower) rather than removed.

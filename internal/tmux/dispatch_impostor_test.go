@@ -233,3 +233,82 @@ func TestNoSendPathUsesSessionNameAsTargetIsNonVacuous(t *testing.T) {
 		t.Fatalf("the guard's own pattern does not match a realistic session-name-as-target violation -- it would not have caught it")
 	}
 }
+
+// dangerousCommandWithExplicitTarget is the broader guard task 052's own
+// validation failure asked for: TestNoSendPathUsesSessionNameAsTarget
+// above only matches the literal Go identifier "SessionName" adjacent to
+// "-t" -- it never saw tmux.go's original SendKeys, which built "-t"
+// from a local variable named "name" (sessionName(slug)'s return value),
+// never spelled "SessionName". This pattern instead matches ANY of the
+// three input-dispatch commands (send-keys/paste-buffer/load-buffer)
+// together with an explicit "-t" flag on the same line, regardless of
+// what identifier supplies the target -- which is exactly the shape of a
+// caller building its own target instead of going through
+// Dispatcher.Send (dispatch.go's Send refuses "-t" in its args and always
+// supplies d.target itself, so a caller that still writes its own "-t"
+// next to a dangerous command name is, by construction, NOT going
+// through Send). dispatch.go is exempt: it is the one place in this
+// package allowed to build "-t", d.target for a dangerous command name
+// supplied dynamically by its own caller (the literal command name never
+// appears in dispatch.go itself, but the "-t" append line does sit next
+// to args[0] in source order in some formattings, so dispatch.go is
+// excluded by name rather than relying on that not happening).
+var dangerousCommandWithExplicitTarget = regexp.MustCompile(`"(send-keys|paste-buffer|load-buffer)"[^\n]*"-t"|"-t"[^\n]*"(send-keys|paste-buffer|load-buffer)"`)
+
+// TestNoProductionCodeBuildsADangerousCommandWithItsOwnExplicitTarget is
+// the non-vacuous-against-tmux.go's-real-bug version of the II-30 grep
+// guard: it would have caught the shipped violation validation found
+// (tmux.go's original SendKeys: `c.run(ctx, "send-keys", "-t", name, ...)`,
+// where name is a local variable, never the identifier "SessionName").
+// After this task's fix, SendKeys never builds its own "-t" for a
+// dangerous command at all -- it goes through Dispatcher.Send, which
+// supplies "-t" itself, in a different file (dispatch.go, exempted
+// below) and only ever adjacent to the caller-supplied command name, not
+// a literal dangerous-command string.
+func TestNoProductionCodeBuildsADangerousCommandWithItsOwnExplicitTarget(t *testing.T) {
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if name == "dispatch.go" {
+			// The one place allowed to build "-t", d.target for a
+			// dangerous command name -- and only because the command
+			// name there is always caller-supplied, never a literal
+			// dangerous-command string in this file.
+			continue
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", name, err)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			if dangerousCommandWithExplicitTarget.MatchString(line) {
+				t.Fatalf("%s:%d: dangerous tmux command built with its own explicit -t target: %q -- route it through Dispatcher.Send instead, which always supplies the verified pane id itself (PRD II-30)", name, i+1, trimmed)
+			}
+		}
+	}
+}
+
+// TestNoProductionCodeBuildsADangerousCommandWithItsOwnExplicitTargetIsNonVacuous
+// proves the broader guard above would have caught the ACTUAL shipped
+// violation (tmux.go's pre-fix SendKeys), not just a synthetic
+// SessionName-shaped one.
+func TestNoProductionCodeBuildsADangerousCommandWithItsOwnExplicitTargetIsNonVacuous(t *testing.T) {
+	violation := `	if _, err := c.run(ctx, "send-keys", "-t", name, "-l", "--", literal); err != nil {`
+	if !dangerousCommandWithExplicitTarget.MatchString(violation) {
+		t.Fatalf("the broader guard's own pattern does not match tmux.go's actual pre-fix SendKeys violation -- it would not have caught it")
+	}
+}
