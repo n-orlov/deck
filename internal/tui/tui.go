@@ -41,17 +41,31 @@ type Model struct {
 	// a scrollable window; these hold the window's top line, reset to 0
 	// every time the overlay opens (never sticking across a close/reopen,
 	// like envReveal). See eventLogScroll below for the event log's own.
-	helpScroll          int
-	detailScroll        int
-	createName          string
-	createCWD           string
-	createAgent         string
-	createProfile       string
-	createLaunchArgs    string
-	createEnv           string
-	createPreLaunch     string
-	createLoginShell    bool
-	createYoloConfirmed bool
+	helpScroll       int
+	detailScroll     int
+	createName       string
+	createCWD        string
+	createAgent      string
+	createProfile    string
+	createLaunchArgs string
+	createEnv        string
+	createPreLaunch  string
+	createLoginShell bool
+	// createProfileTouched is true once the user has cycled the Permission
+	// profile field (field 3) itself in the currently open create modal. It
+	// gates cycleCreateField's Agent case (field 2): while false, the value
+	// showing in createProfile is only ever "whatever defaultCreateProfile
+	// picked for the current agent" (steer 017 item 2 / yolo_default), so an
+	// agent change must re-run that default for the new agent; once true,
+	// the user's own explicit choice is preserved across an agent change
+	// (falling back to options[0] only if it becomes unavailable). Reset to
+	// false every time the modal opens fresh, alongside createProfile.
+	createProfileTouched bool
+	// createYoloConfirmed once tracked the explicit "y" confirm the yolo
+	// double-gate required before create could submit with profile=="yolo"
+	// (SPEC §5 pre-steer-017). Steer 017 item 2 removed that confirm --
+	// allow_yolo alone gates yolo's availability now -- so this field is
+	// gone; see docs/reports/phase3d-214-yolo-degate.md for the removal.
 	// createCWDPrefilled is true while m.createCWD still holds an untouched
 	// prefill deck itself chose (either the most recent §11.7 recent_cwds
 	// entry, or with no history the directory deck was started in) rather
@@ -246,11 +260,13 @@ type Model struct {
 	profileSwitching          bool
 	profileSwitchValue        string
 	profileSwitchNote         string
-	profileSwitchYoloOK       bool
-	resumeMode                func(context.Context, string, string) (store.Session, error)
-	pinning                   bool
-	pinValue                  string
-	pinNote                   string
+	// profileSwitchYoloOK once tracked P's own yolo confirm keystroke,
+	// mirroring createYoloConfirmed above; removed by the same steer 017
+	// item 2 change.
+	resumeMode func(context.Context, string, string) (store.Session, error)
+	pinning    bool
+	pinValue   string
+	pinNote    string
 	// renamer is task 013's `i`-dialog-only rename action (SPEC §11.4, PRD
 	// requirement 31, I-8): it persists a new display name for the
 	// selected session and never touches its live tmux session -- deck's
@@ -1772,9 +1788,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
 				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
 				m.closeCreateCWDCandidates()
-				m.createAgent, m.createProfile = defaultCreateAgent(m.registry().Kinds()), createProfileOptions[0]
+				m.createAgent = defaultCreateAgent(m.registry().Kinds())
+				m.createProfile = m.defaultCreateProfile(m.createAgent)
+				m.createProfileTouched = false
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
-				m.createYoloConfirmed = false
 			}
 		case "up", "k":
 			if next, ok := m.prevVisibleSelection(m.selected); ok {
@@ -2009,7 +2026,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.profileSwitching = true
 			m.profileSwitchValue = session.PermissionProfile
 			m.profileSwitchNote = ""
-			m.profileSwitchYoloOK = false
 			return m, nil
 		case "p":
 			if m.resumeMode == nil || len(m.sessions) == 0 {
@@ -3273,9 +3289,6 @@ func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session := m.sessions[m.selected]
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	cycle := func(delta int) {
-		if m.profileSwitchValue != "yolo" {
-			m.profileSwitchYoloOK = false
-		}
 		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, delta)
 	}
 	if cmd, handled := applyDialogContract(msg, dialogContract{
@@ -3289,10 +3302,6 @@ func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.profileSwitchNote = "changing the permission profile is unavailable"
 				return nil
 			}
-			if m.profileSwitchValue == "yolo" && !m.profileSwitchYoloOK {
-				m.profileSwitchNote = "yolo requires confirmation: press y, then Enter to switch"
-				return nil
-			}
 			sessionID, profile := session.ID, m.profileSwitchValue
 			return func() tea.Msg {
 				updated, err := m.profileSwitch(context.Background(), sessionID, profile)
@@ -3301,15 +3310,6 @@ func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		},
 	}); handled {
 		return m, cmd
-	}
-	// The yolo double-gate's explicit confirm keystroke, mirroring the
-	// create modal's "y" (SPEC §5: switching to yolo requires the same
-	// explicit confirm as creating with yolo). It is an additional
-	// load-bearing key the §11.4 contract does not itself define, stated
-	// inline in profileSwitchView.
-	if msg.String() == "y" && m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
-		m.profileSwitchYoloOK = true
-		m.profileSwitchNote = ""
 	}
 	return m, nil
 }
@@ -3325,9 +3325,6 @@ func (m Model) profileSwitchView() string {
 	fmt.Fprintf(&b, "%s\n", m.detailField("Current:   ", session.PermissionProfile))
 	fmt.Fprintf(&b, "%s\n", m.detailField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.profileSwitchValue, strings.Join(options, ", "))))
 	b.WriteString("\nThis applies on the session's next launch/restart; it does not change a\nrunning pane's mode.\n")
-	if m.profileSwitchValue == "yolo" && m.settings.AllowYolo && !m.profileSwitchYoloOK {
-		b.WriteString("\nyolo requires confirmation: press y, then Enter to switch\n")
-	}
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.profileSwitchNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.profileSwitchNote)
@@ -3799,19 +3796,41 @@ func (m Model) relativeAge(at int64) string {
 // createProfileOptions is the values the create modal's Permission profile
 // field cycles through. The Agent field instead cycles m.registry().Kinds(),
 // so adding an adapter to the registry never requires an internal/tui edit
-// (PRD requirement 1). createProfileOptions is the master ordering used
-// only as the initial default ("safe") when the modal opens; the actual
-// offered set while the modal is open is narrowed per selected agent and
-// per allow_yolo by createProfileOptionsFor (SPEC §5, task 017).
+// (PRD requirement 1). createProfileOptions is the master ordering used only
+// as defaultCreateProfile's own fallback ("safe") below; the actual offered
+// set while the modal is open is narrowed per selected agent and per
+// allow_yolo by createProfileOptionsFor (SPEC §5, task 017).
 var createProfileOptions = []string{"safe", "plan", "edits", "yolo"}
+
+// defaultCreateProfile is the Permission profile field's value when the
+// create modal opens fresh (steer 017 item 2 / SPEC §5's yolo_default): it
+// is "yolo" when config.toml's yolo_default is true AND yolo is actually
+// offered for kind (i.e. allow_yolo is true and the adapter declares yolo
+// support) -- yolo_default is inert otherwise, per the config key's own
+// documented "inert unless allow_yolo" contract, so a stale yolo_default=
+// true left over from a disabled deployment never surprises the operator
+// with a modal that opens on an unavailable profile. Every other case falls
+// back to createProfileOptionsFor's own narrowed list, options[0] ("safe"
+// for every adapter today, since every Caps.Profiles declaration starts
+// with "safe" -- internal/agent/claude.go, pi.go), exactly as the modal
+// opened before this task existed.
+func (m Model) defaultCreateProfile(kind string) string {
+	options := m.createProfileOptionsFor(kind, m.settings.AllowYolo)
+	if m.settings.YoloDefault && m.settings.AllowYolo && contains(options, "yolo") {
+		return "yolo"
+	}
+	if len(options) == 0 {
+		return createProfileOptions[0]
+	}
+	return options[0]
+}
 
 // createProfileOptionsFor returns exactly the permission profiles the
 // selected adapter declares (SPEC §5), narrowed further to exclude "yolo"
-// when allowYolo is false so the config gate is honoured before any
-// per-launch confirm gate is even reachable. shell has no notion of
-// permission profiles at all (agentCapabilities reports
-// !applicable): its field stays a single cosmetic "safe" value, per the
-// existing shell-is-inert-to-profiles rule.
+// when allowYolo is false so the config gate is honoured before yolo is
+// even offered. shell has no notion of permission profiles at all
+// (agentCapabilities reports !applicable): its field stays a single
+// cosmetic "safe" value, per the existing shell-is-inert-to-profiles rule.
 func (m Model) createProfileOptionsFor(kind string, allowYolo bool) []string {
 	caps, applicable := m.agentCapabilities(kind)
 	if !applicable {
@@ -3973,9 +3992,6 @@ func (m Model) validateCreateFields() string {
 	if m.createProfile == "yolo" {
 		if !m.settings.AllowYolo {
 			return "yolo permission profile is not available: enable allow_yolo in config.toml"
-		}
-		if !m.createYoloConfirmed {
-			return "yolo requires confirmation: press y on the Permission profile field, then Enter to create"
 		}
 	}
 	return ""
@@ -4200,16 +4216,6 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cycleCreateCWDRecent(-1)
 			return m, nil
 		}
-	case "y":
-		// The yolo double-gate's explicit confirm keystroke; everywhere
-		// else "y" is just a typed character and must fall through to the
-		// append logic below (e.g. typing a name starting with "y"). This is
-		// an additional load-bearing key the §11.4 contract does not itself
-		// define, stated inline in createView (SPEC §5).
-		if m.createField == 3 && m.createProfile == "yolo" && m.settings.AllowYolo && !m.createYoloConfirmed {
-			m.createYoloConfirmed = true
-			return m, nil
-		}
 	case "end":
 		// The ghost completion's other declared acceptance key (task 010),
 		// alongside right -- see cycleCreateField's case 1. Only field 1
@@ -4366,18 +4372,27 @@ func (m *Model) cycleCreateField(delta int) {
 	switch m.createField {
 	case 2:
 		m.createAgent = cycleOption(m.registry().Kinds(), m.createAgent, delta)
-		options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
-		if !contains(options, m.createProfile) {
+		// createProfileTouched (steer 017 item 2 / yolo_default): as long as
+		// the user has not yet cycled the Permission profile field itself
+		// (case 3 below), the value showing there is still "whatever the
+		// default would pick for the currently selected agent", not a
+		// deliberate choice -- so changing agent here must re-run
+		// defaultCreateProfile for the NEW agent (SPEC §5/§6.5: yolo_default
+		// should be visible once an agent that offers yolo is selected, not
+		// only when it happens to be the very first agent defaultCreateAgent
+		// picks, which is always "shell" and never offers yolo at all). Once
+		// touched, the user's own explicit selection is never overridden by
+		// an agent change; it only falls back to options[0] if the chosen
+		// value becomes unavailable for the new agent, exactly as before.
+		if !m.createProfileTouched {
+			m.createProfile = m.defaultCreateProfile(m.createAgent)
+		} else if options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo); !contains(options, m.createProfile) {
 			m.createProfile = options[0]
-			m.createYoloConfirmed = false
 		}
 	case 3:
 		options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
-		next := cycleOption(options, m.createProfile, delta)
-		if next != m.createProfile {
-			m.createYoloConfirmed = false
-		}
-		m.createProfile = next
+		m.createProfile = cycleOption(options, m.createProfile, delta)
+		m.createProfileTouched = true
 	case 1:
 		// Right (never left/space -- see updateCreate's SpaceTypesText gate
 		// and cycleCreateField's own delta<=0 no-op) accepts the ghost
@@ -4514,12 +4529,6 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	profileHelp := "how much the agent may do without asking; an unsupported profile degrades to safe"
 	if !m.settings.AllowYolo {
 		profileHelp += "; yolo is not offered because allow_yolo is not enabled in config.toml"
-	} else if m.createProfile == "yolo" {
-		if m.createYoloConfirmed {
-			profileHelp += "; yolo confirmed"
-		} else {
-			profileHelp += "; press y to confirm yolo before creating"
-		}
 	}
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
@@ -4741,10 +4750,13 @@ Create dialog fields
                       agent argv directly
   Tab or ↑/↓ changes field; ↵ advances or submits; Esc cancels
 
-Yolo is gated twice: allow_yolo must be enabled in config.toml, or yolo is
-not offered at all (the UI states why); and even when enabled, choosing
-yolo — at create time or when switching profile with P — requires an
-explicit y confirm keystroke before it takes effect.
+Yolo is gated by allow_yolo: it must be enabled in config.toml, or yolo is
+not offered at all (the UI states why). Once allow_yolo is enabled, choosing
+yolo -- at create time or when switching profile with P -- takes effect
+immediately, with no separate confirm keystroke. yolo_default (also
+config.toml, default false) opens the create modal already on yolo once
+allow_yolo is also enabled; with allow_yolo disabled it is inert, and
+settings says so on its own row rather than silently ignoring it.
 
 Settings takeover (opened with ,)
   Tab or Left/Right      switch focus between the category list and the

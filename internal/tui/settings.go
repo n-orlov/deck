@@ -360,6 +360,9 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	if m.settingsEdits.AllowYolo != previous.AllowYolo {
 		m.settings.AllowYolo = m.settingsEdits.AllowYolo
 	}
+	if m.settingsEdits.YoloDefault != previous.YoloDefault {
+		m.settings.YoloDefault = m.settingsEdits.YoloDefault
+	}
 	if _, overridden := m.settings.EnvOverrides["ui.ascii"]; !overridden && m.settingsEdits.ASCII != previous.ASCII {
 		m.settings.ASCII = m.settingsEdits.ASCII
 	}
@@ -719,6 +722,7 @@ func (m *Model) settingsAdjustField(delta int) {
 func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 	return config.FileConfig{
 		AllowYolo:            s.File.AllowYolo,
+		YoloDefault:          s.File.YoloDefault,
 		StaleAfter:           s.File.StaleAfter,
 		CaptureMinInterval:   s.File.CaptureMinInterval,
 		InteractiveMS:        s.File.InteractiveMS,
@@ -757,6 +761,8 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 	switch f.FullKey() {
 	case "allow_yolo":
 		return cfg.AllowYolo
+	case "yolo_default":
+		return cfg.YoloDefault
 	case "tmux_mouse":
 		return cfg.TmuxMouse
 	case "ui.ascii":
@@ -775,6 +781,8 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 	switch f.FullKey() {
 	case "allow_yolo":
 		cfg.AllowYolo = v
+	case "yolo_default":
+		cfg.YoloDefault = v
 	case "tmux_mouse":
 		cfg.TmuxMouse = v
 	case "ui.ascii":
@@ -934,10 +942,20 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 	switch f.Kind {
 	case config.KindToggle:
-		if settingsToggleValue(f, cfg) {
-			return "On"
+		v := settingsToggleValue(f, cfg)
+		text := "Off"
+		if v {
+			text = "On"
 		}
-		return "Off"
+		// steer 017 item 2: yolo_default=true with allow_yolo=false is a
+		// stated, visible inconsistency in THIS row's own text -- never a
+		// silent override of either key in either direction (allow_yolo
+		// does not flip on because of this, and this does not get silently
+		// cleared/ignored either).
+		if f.FullKey() == "yolo_default" && v && !cfg.AllowYolo {
+			text += " (inert: allow_yolo is off, so this has no effect yet)"
+		}
+		return text
 	case config.KindInteger:
 		v := settingsIntegerValue(f, cfg)
 		text := strconv.Itoa(v)

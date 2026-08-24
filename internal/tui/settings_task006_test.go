@@ -197,7 +197,7 @@ func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 	t.Run("stale_after", func(t *testing.T) {
 		m, _ := settingsLiveApplyTestModel(t)
 		runningBefore := m.settings.StaleAfter
-		m = settingsOpenAndSelect(t, m, 0, 1, "Stale After")
+		m = settingsOpenAndSelect(t, m, 0, 2, "Stale After")
 		updated, _ := m.Update(key("+"))
 		m = updated.(Model)
 		updated, _ = m.Update(key("ctrl+s"))
@@ -212,7 +212,7 @@ func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 
 	t.Run("capture_min_interval", func(t *testing.T) {
 		m, _ := settingsLiveApplyTestModel(t)
-		m = settingsOpenAndSelect(t, m, 0, 2, "Capture Min Interval")
+		m = settingsOpenAndSelect(t, m, 0, 3, "Capture Min Interval")
 		updated, _ := m.Update(key("+"))
 		m = updated.(Model)
 		updated, _ = m.Update(key("ctrl+s"))

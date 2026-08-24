@@ -20,6 +20,7 @@ import (
 // member names), so its members go straight into Env.
 type FileConfig struct {
 	AllowYolo            bool
+	YoloDefault          bool
 	StaleAfter           time.Duration
 	CaptureMinInterval   time.Duration
 	InteractiveMS        time.Duration
@@ -123,6 +124,8 @@ func defaultFileConfig() FileConfig {
 		switch field.FullKey() {
 		case "allow_yolo":
 			cfg.AllowYolo, _ = field.Default.(bool)
+		case "yolo_default":
+			cfg.YoloDefault, _ = field.Default.(bool)
 		case "stale_after":
 			seconds, _ := field.Default.(int)
 			cfg.StaleAfter = time.Duration(seconds) * time.Second
@@ -168,6 +171,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 		switch field.FullKey() {
 		case "allow_yolo":
 			cfg.AllowYolo = value
+		case "yolo_default":
+			cfg.YoloDefault = value
 		case "tmux_mouse":
 			cfg.TmuxMouse = value
 		case "ui.ascii":

@@ -11,8 +11,9 @@ import (
 )
 
 // newCreatingModelWithSettings is newCreatingModel with control over
-// config.Settings.AllowYolo, needed because the yolo double-gate (task 017)
-// reads that setting directly rather than a hard-coded default.
+// config.Settings.AllowYolo, needed because yolo's single-gate config check
+// (task 017, de-gated further by steer 017 item 2) reads that setting
+// directly rather than a hard-coded default.
 func newCreatingModelWithSettings(t *testing.T, settings config.Settings) Model {
 	t.Helper()
 	m := New(nil, settings, "")
@@ -75,37 +76,11 @@ func TestCreateModalNoYoloOfferedWithAllowYoloFalse(t *testing.T) {
 	}
 }
 
-// TestCreateModalYoloRequiresConfirmMessage proves that, even with
-// allow_yolo=true, selecting yolo and pressing Enter without the explicit
-// confirm keystroke is refused with a specific message and creates nothing.
-func TestCreateModalYoloRequiresConfirmMessage(t *testing.T) {
-	m := newCreatingModelWithSettings(t, config.Settings{AllowYolo: true})
-	var called bool
-	m.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
-		called = true
-		return store.Session{}, nil
-	}
-	m.createProfile = "yolo"
-
-	updated, _ := m.Update(key("enter"))
-	after := updated.(Model)
-	if !strings.Contains(after.createError, "yolo requires confirmation") {
-		t.Fatalf("createError = %q, want mention of yolo confirmation", after.createError)
-	}
-	if !after.creating {
-		t.Fatal("modal closed on missing yolo confirmation")
-	}
-	if after.createProfile != "yolo" {
-		t.Errorf("createProfile changed: %q", after.createProfile)
-	}
-	if called {
-		t.Fatal("create was invoked without the yolo confirm")
-	}
-}
-
-// TestCreateModalYoloConfirmThenCreateSucceeds proves the explicit confirm
-// keystroke ("y" on the Permission profile field) unblocks creation.
-func TestCreateModalYoloConfirmThenCreateSucceeds(t *testing.T) {
+// TestCreateModalYoloTakesEffectImmediatelyWithNoConfirm proves that, with
+// allow_yolo=true, selecting yolo and pressing Enter creates the session
+// directly -- no separate confirm keystroke is required (steer 017 item 2
+// removed the double-gate; allow_yolo alone still gates availability).
+func TestCreateModalYoloTakesEffectImmediatelyWithNoConfirm(t *testing.T) {
 	m := newCreatingModelWithSettings(t, config.Settings{AllowYolo: true})
 	var called bool
 	m.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
@@ -113,31 +88,24 @@ func TestCreateModalYoloConfirmThenCreateSucceeds(t *testing.T) {
 		return store.Session{Name: in.Name}, nil
 	}
 	m.createProfile = "yolo"
-	m.createField = 3
-
-	updated, _ := m.Update(key("y"))
-	m = updated.(Model)
-	if !m.createYoloConfirmed {
-		t.Fatal("y keystroke on the profile field did not set createYoloConfirmed")
-	}
 
 	updated, cmd := m.Update(key("enter"))
 	after := updated.(Model)
 	if after.createError != "" {
-		t.Fatalf("unexpected validation error after yolo confirm: %q", after.createError)
+		t.Fatalf("unexpected validation error creating yolo with no confirm: %q", after.createError)
 	}
 	if cmd == nil {
-		t.Fatal("expected a create command to be issued after the yolo confirm")
+		t.Fatal("expected a create command to be issued for yolo with no confirm")
 	}
 	_ = cmd()
 	if !called {
-		t.Fatal("create was not invoked after the yolo confirm")
+		t.Fatal("create was not invoked for yolo with no confirm")
 	}
 }
 
-// TestCreateModalYCharacterStillTypesIntoTextFields proves the yolo confirm
-// keystroke does not swallow ordinary "y" characters typed into text
-// fields (e.g. a name starting with "y").
+// TestCreateModalYCharacterStillTypesIntoTextFields proves plain "y"
+// characters still type normally into text fields (e.g. a name starting
+// with "y") now that field 3's "y" confirm keystroke is gone entirely.
 func TestCreateModalYCharacterStillTypesIntoTextFields(t *testing.T) {
 	m := newCreatingModelWithSettings(t, config.Settings{AllowYolo: true})
 	m.createField = 0
@@ -147,5 +115,48 @@ func TestCreateModalYCharacterStillTypesIntoTextFields(t *testing.T) {
 	after := updated.(Model)
 	if after.createName != "y" {
 		t.Fatalf("createName = %q, want %q", after.createName, "y")
+	}
+}
+
+// TestCreateModalDefaultsToSafeWhenYoloDefaultFalse proves the create
+// modal's Permission profile field still opens on "safe" (options[0]) when
+// yolo_default is false (the schema default), regardless of allow_yolo.
+func TestCreateModalDefaultsToSafeWhenYoloDefaultFalse(t *testing.T) {
+	m := New(nil, config.Settings{AllowYolo: true, YoloDefault: false}, "")
+	if got := m.defaultCreateProfile("claude"); got != "safe" {
+		t.Fatalf("defaultCreateProfile = %q, want %q", got, "safe")
+	}
+}
+
+// TestCreateModalDefaultsToYoloWhenYoloDefaultAndAllowYoloAreBothTrue proves
+// steer 017 item 2's yolo_default: the create modal's Permission profile
+// field opens already on "yolo" when BOTH yolo_default and allow_yolo are
+// true, for an adapter that declares yolo support.
+func TestCreateModalDefaultsToYoloWhenYoloDefaultAndAllowYoloAreBothTrue(t *testing.T) {
+	m := New(nil, config.Settings{AllowYolo: true, YoloDefault: true}, "")
+	if got := m.defaultCreateProfile("claude"); got != "yolo" {
+		t.Fatalf("defaultCreateProfile = %q, want %q", got, "yolo")
+	}
+}
+
+// TestCreateModalYoloDefaultIsInertWithoutAllowYolo proves yolo_default is
+// genuinely inert (never silently overrides allow_yolo) when allow_yolo is
+// false: the modal still opens on "safe", not "yolo".
+func TestCreateModalYoloDefaultIsInertWithoutAllowYolo(t *testing.T) {
+	m := New(nil, config.Settings{AllowYolo: false, YoloDefault: true}, "")
+	if got := m.defaultCreateProfile("claude"); got != "safe" {
+		t.Fatalf("defaultCreateProfile = %q, want %q (yolo_default must be inert with allow_yolo=false)", got, "safe")
+	}
+}
+
+// TestCreateModalYoloDefaultSkippedForAnAdapterThatDoesNotOfferYolo proves
+// yolo_default never picks a profile the adapter itself does not declare
+// (shell has no permission-profile notion at all): defaultCreateProfile
+// falls back to createProfileOptionsFor's own narrowed list instead of
+// forcing "yolo" onto an adapter that cannot offer it.
+func TestCreateModalYoloDefaultSkippedForAnAdapterThatDoesNotOfferYolo(t *testing.T) {
+	m := New(nil, config.Settings{AllowYolo: true, YoloDefault: true}, "")
+	if got := m.defaultCreateProfile("shell"); got != "safe" {
+		t.Fatalf("defaultCreateProfile(shell) = %q, want %q", got, "safe")
 	}
 }

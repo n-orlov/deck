@@ -139,6 +139,27 @@ var Schema = []Field{
 	},
 	{
 		Section: "",
+		Key:     "yolo_default",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "When true (and only once allow_yolo is also true), the create " +
+			"modal opens already on the yolo permission profile instead of safe " +
+			"(SPEC \u00a75). Off by default. Inert while allow_yolo is false -- " +
+			"turning this on with allow_yolo still off is a stated, visible " +
+			"inconsistency in this row's own text, never a silent override in " +
+			"either direction (allow_yolo does not flip on because of this, and " +
+			"this does not get silently ignored/cleared either).",
+		// requirement 19 (steer 017 item 2): the create modal's "n" key handler
+		// (internal/tui/tui.go) reads m.settings.YoloDefault fresh, at the exact
+		// moment the modal opens, against the running Model's own settings --
+		// the same live-read shape allow_yolo's createProfileOptionsFor call
+		// sites already have. Task 006 refreshing config.Settings on save is
+		// therefore sufficient to make a ctrl+s here take effect the very next
+		// time `n` is pressed, live, with no restart.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "",
 		Key:     "stale_after",
 		Kind:    KindInteger,
 		Default: int(DefaultStaleAfter.Seconds()),

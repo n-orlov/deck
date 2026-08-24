@@ -91,11 +91,11 @@ func TestProfileSwitchEscCancelsWithoutPersisting(t *testing.T) {
 	}
 }
 
-// TestProfileSwitchYoloRequiresConfirm proves switching an existing session
-// to yolo requires the explicit "y" confirm keystroke before enter persists
-// it, mirroring the create modal's double-gate (SPEC §5; operator steering
-// 002: task 020 only single-gated this path via allow_yolo).
-func TestProfileSwitchYoloRequiresConfirm(t *testing.T) {
+// TestProfileSwitchToYoloTakesEffectWithNoConfirm proves switching an
+// existing session to yolo persists immediately on enter, with no separate
+// confirm keystroke (steer 017 item 2 removed the double-gate task 020's
+// original P dialog had; allow_yolo alone still gates yolo's availability).
+func TestProfileSwitchToYoloTakesEffectWithNoConfirm(t *testing.T) {
 	called := false
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{AllowYolo: true}, "", nil, nil, nil, nil, nil,
@@ -118,37 +118,22 @@ func TestProfileSwitchYoloRequiresConfirm(t *testing.T) {
 		t.Fatalf("expected candidate value yolo, got %q", model.profileSwitchValue)
 	}
 
-	// Enter without confirming must state why and change nothing.
 	got, cmd := model.Update(key("enter"))
 	model = got.(Model)
-	if cmd != nil {
-		t.Fatal("enter without yolo confirm dispatched a command")
-	}
-	if called {
-		t.Fatal("enter without yolo confirm invoked profileSwitch")
-	}
-	if model.profileSwitchNote == "" {
-		t.Fatal("enter without yolo confirm did not state why nothing happened")
-	}
-	if !model.profileSwitching {
-		t.Fatal("enter without yolo confirm closed the dialog")
-	}
-	view := model.View()
-	if !strings.Contains(view, "requires confirmation") {
-		t.Fatalf("profile-switch dialog did not state the yolo confirm requirement:\n%s", view)
-	}
-
-	// Now confirm with "y" and enter: it must persist.
-	got, _ = model.Update(key("y"))
-	model = got.(Model)
-	got, cmd = model.Update(key("enter"))
-	model = got.(Model)
 	if cmd == nil {
-		t.Fatal("enter after yolo confirm did not dispatch a command")
+		t.Fatal("enter switching to yolo with no confirm did not dispatch a command")
 	}
-	cmd()
+	msg := cmd()
+	got, loadCmd := model.Update(msg)
+	model = got.(Model)
+	if loadCmd == nil {
+		t.Fatal("a successful yolo switch did not trigger a reload")
+	}
 	if !called {
-		t.Fatal("enter after yolo confirm did not invoke profileSwitch")
+		t.Fatal("enter switching to yolo with no confirm did not invoke profileSwitch")
+	}
+	if model.profileSwitching {
+		t.Fatal("profile-switch dialog remained open after a successful switch to yolo")
 	}
 }
 

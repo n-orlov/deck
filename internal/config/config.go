@@ -69,6 +69,13 @@ type Settings struct {
 	// false when the file, or the key within it, is absent: the yolo
 	// permission profile stays gated unless an operator opts in explicitly.
 	AllowYolo bool
+	// YoloDefault mirrors config.toml's top-level yolo_default key (default
+	// false, SPEC §5/§6.5, steer 017 item 2): when true (and only once
+	// AllowYolo is also true), the create modal opens already on the yolo
+	// permission profile. Inert while AllowYolo is false -- that combination
+	// is a stated, visible inconsistency in the settings row, never a silent
+	// override of AllowYolo in either direction.
+	YoloDefault bool
 	// CaptureMinInterval mirrors config.toml's top-level capture_min_interval
 	// key (SPEC §9.4): the minimum spacing between opportunistic scrollback
 	// captures triggered by hook traffic. Defaults per internal/config.Schema.
@@ -252,7 +259,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	return Settings{
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
-		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, Env: fileCfg.Env, Mouse: mouse,
+		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		GroupByWorkspace: groupByWorkspace,
 		TmuxMouse:        tmuxMouse,
 		RecentCwdLimit:   fileCfg.RecentCwdLimit,

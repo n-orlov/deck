@@ -28,11 +28,10 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
+	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
 	sc.Step(`^deck client "([^"]+)" opens the create modal for agent "([^"]+)"$`, clientOpensCreateModalForAgent)
 	sc.Step(`^deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContain)
 	sc.Step(`^deck client "([^"]+)" row "([^"]+)" does not contain "([^"]+)"$`, clientRowDoesNotContain)
-	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "yolo" confirming yolo$`, clientCreatesAgentSessionConfirmingYolo)
-	sc.Step(`^deck client "([^"]+)" attempts ([a-z]+) session "([^"]+)" with permission profile "yolo" without confirming$`, clientAttemptsAgentSessionWithYoloWithoutConfirming)
 	sc.Step(`^deck client "([^"]+)" opens detail for session "([^"]+)"$`, clientOpensDetailForSession)
 	sc.Step(`^the state database session "([^"]+)" is marked degraded from requesting permission profile "([^"]+)" on agent "([^"]+)"$`, sessionMarkedDegraded)
 	sc.Step(`^the state database session "([^"]+)" has permission profile "([^"]+)"$`, sessionHasPermissionProfile)
@@ -489,42 +488,6 @@ func cycleCreateFieldToValue(ctx context.Context, client *ScreenDriver, want str
 		time.Sleep(25 * time.Millisecond)
 	}
 	return client.WaitForFrame(ctx, false, want+" (left/right cycles")
-}
-
-// clientCreatesAgentSessionConfirmingYolo drives the create modal to the
-// yolo permission profile, presses the yolo double-gate's explicit confirm
-// keystroke ("y", only meaningful while focused on the Permission profile
-// field, see internal/tui.Model's "y" handling), then submits. It requires
-// allow_yolo=true in the scenario's config (SPEC §5); use
-// deckConfigAllowsYolo before starting the client.
-func clientCreatesAgentSessionConfirmingYolo(ctx context.Context, clientName, kind, name string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, "yolo")
-	if err != nil {
-		return err
-	}
-	if err := client.Send("y"); err != nil {
-		return err
-	}
-	if err := client.Send("\r"); err != nil {
-		return err
-	}
-	return client.WaitForFrame(ctx, false, "starting")
-}
-
-// clientAttemptsAgentSessionWithYoloWithoutConfirming drives the create
-// modal to the yolo permission profile and presses enter without the "y"
-// confirm keystroke, asserting the double-gate refuses to create anything
-// (SPEC §5, task 017/036): the modal states why and stays open rather than
-// silently creating a yolo session.
-func clientAttemptsAgentSessionWithYoloWithoutConfirming(ctx context.Context, clientName, kind, name string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, "yolo")
-	if err != nil {
-		return err
-	}
-	if err := client.Send("\r"); err != nil {
-		return err
-	}
-	return client.WaitForFrame(ctx, false, "yolo requires confirmation")
 }
 
 // clientOpensCreateModalForAgent opens the create modal and cycles only the
@@ -1201,6 +1164,23 @@ func deckConfigAllowsYolo(ctx context.Context) error {
 	}
 	path := filepath.Join(h.Home, "config.toml")
 	if err := os.WriteFile(path, []byte("allow_yolo = true\n"), 0o600); err != nil {
+		return fmt.Errorf("write scenario config.toml: %w", err)
+	}
+	return nil
+}
+
+// deckConfigAllowsYoloWithDefault is deckConfigAllowsYolo plus
+// yolo_default = true (steer 017 item 2), proving the create modal's
+// Permission profile field opens already on "yolo" once BOTH flat keys
+// are set, rather than the schema's own default (false) leaving it on
+// "safe".
+func deckConfigAllowsYoloWithDefault(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(h.Home, "config.toml")
+	if err := os.WriteFile(path, []byte("allow_yolo = true\nyolo_default = true\n"), 0o600); err != nil {
 		return fmt.Errorf("write scenario config.toml: %w", err)
 	}
 	return nil

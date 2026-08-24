@@ -224,6 +224,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 	switch field.FullKey() {
 	case "allow_yolo":
 		return strconv.FormatBool(cfg.AllowYolo)
+	case "yolo_default":
+		return strconv.FormatBool(cfg.YoloDefault)
 	case "tmux_mouse":
 		return strconv.FormatBool(cfg.TmuxMouse)
 	case "stale_after":
