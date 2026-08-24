@@ -108,7 +108,9 @@ func clientAttachesToSelectedSession(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\r"); err != nil {
+	// a is the full-attach key (task 061, PRD Part II §11.9: Enter now
+	// enters interactive mode instead).
+	if err := client.Send("a"); err != nil {
 		return err
 	}
 	// Bubble Tea must hand the terminal to tmux before pane input is

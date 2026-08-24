@@ -316,7 +316,7 @@ func generatedIDForSeed(ctx context.Context, binary, seed string) (string, error
 	// tmux can exist before Bubble Tea has consumed the modal submit. Wait for
 	// the list footer so q is unambiguously a quit key rather than text typed
 	// into a still-closing form field.
-	if err := client.WaitForFrame(ctx, false, "up/down - Enter attach"); err != nil {
+	if err := client.WaitForFrame(ctx, false, "up/down - Enter interactive"); err != nil {
 		return "", err
 	}
 	if err := client.Send("q"); err != nil {

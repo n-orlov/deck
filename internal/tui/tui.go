@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/interactive"
 	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
@@ -500,6 +501,52 @@ type Model struct {
 	// (select). Neither field is persisted or read anywhere else.
 	lastClickAt    time.Time
 	lastClickIndex int
+	// tmuxClient is the raw tmux.Client §11.9 interactive mode (task 061,
+	// PRD Part II) uses directly, unlike every dependency above, which
+	// wraps tmux behind a narrower func field instead (attach, kill,
+	// resume, ...): window geometry, ownership, dispatcher construction
+	// and the grid transport all take a live Client value as their own
+	// parameter, so there is no narrower shape to wrap it in. The zero
+	// Client (every constructor above, and every pre-task-061 unit test)
+	// has an empty Socket; enterInteractive checks that explicitly and
+	// degrades to "unavailable" before ever invoking tmux, exactly like
+	// every nil func-field dependency already does.
+	tmuxClient tmux.Client
+	// interactive is true while §11.9's interactive mode owns the
+	// keyboard (PRD II-41): the sidebar keeps rendering, but every
+	// keystroke forwards to the live pane instead of driving list
+	// navigation, until Ctrl+Q leaves (updateInteractive).
+	interactive bool
+	// interactiveWindowTarget is the deck_<slug> session name interactive
+	// mode claimed ownership of and fit -- every geometry/ownership call
+	// (CaptureWindowGeometry, FitWindowToPane, ClaimWindowOwnership,
+	// RestoreWindowGeometry) addresses this window target, never the pane
+	// id (which SendNamedKey/SendLiteral address instead, via
+	// interactiveDispatcher).
+	interactiveWindowTarget string
+	// interactiveGeometry is the window's own geometry captured before
+	// entering (PRD II-7), restored byte-exact on exit (PRD II-9/12).
+	interactiveGeometry tmux.WindowGeometry
+	// interactiveOwnership is the claimed @deck_isize_owner handle (PRD
+	// II-14), released on exit.
+	interactiveOwnership *tmux.WindowOwnership
+	// interactiveGrid is the live transport (task 042 onward): one
+	// long-lived x/vt emulator fed by pipe-pane, closed on exit.
+	interactiveGrid *interactive.Session
+	// interactiveDispatcher sends every forwarded keystroke (PRD II-28
+	// onward): built against the pane id, re-verifying identity before
+	// every send.
+	interactiveDispatcher *tmux.Dispatcher
+}
+
+// WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task
+// 061 onward) uses directly. A Model built without it (every constructor
+// above this method, and every pre-task-061 unit test) has the zero
+// Client, so Enter simply cannot enter interactive mode -- see
+// tmuxClient's own doc comment.
+func (m Model) WithTmuxClient(client tmux.Client) Model {
+	m.tmuxClient = client
+	return m
 }
 
 // doubleClickWindow is the maximum gap between two presses on the same
@@ -1529,6 +1576,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return next, tea.Batch(cmds...)
 		}
+		if m.interactive {
+			return m.updateInteractive(msg)
+		}
 		if m.creating {
 			return m.updateCreate(msg)
 		}
@@ -2002,6 +2052,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.persistSidebarWidth()
 			}
 		case "enter":
+			return m.enterInteractive()
+		case "a":
 			return m.attachSelected()
 		}
 	case tea.MouseMsg:
@@ -2023,7 +2075,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.eventLogOpen || m.filtering {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.eventLogOpen || m.filtering || m.interactive {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -2409,11 +2461,29 @@ func (m Model) footerLine() string {
 		width, _ := m.frameSize()
 		return truncateToWidth(belowMinimumNotice, width)
 	}
+	if m.interactive {
+		return m.interactiveFooterLine()
+	}
 	keys := m.footerKeyLegend()
 	if reason := m.selectedRowReason(); reason != "" {
 		return reason + "    " + keys
 	}
 	return keys
+}
+
+// interactiveFooterLine is PRD Part II requirement 43's other half: list
+// mode's own footer (footerKeyLegend, unchanged in shape) advertises `↵
+// interactive`/`a attach`; interactive mode's footer is a DIFFERENT line
+// entirely, since none of list mode's bindings are live here -- it states
+// plainly that keystrokes are forwarded rather than interpreted, then
+// names the one bound exit chord, never listing a key (like `a` or `Y`)
+// that interactive mode does not itself bind.
+func (m Model) interactiveFooterLine() string {
+	forwardNote := m.colorToken(theme.Hint, "keystrokes forward to the live pane")
+	sep := m.glyph(" · ", " - ")
+	key := m.colorToken(theme.Key, m.glyph("Ctrl+Q", "Ctrl+Q"))
+	hint := m.colorToken(theme.Hint, "leave interactive mode")
+	return forwardNote + sep + key + " " + hint
 }
 
 // belowMinimumNotice is SPEC requirement 14's exact below-minimum copy,
@@ -2436,20 +2506,24 @@ type footerKeyHint struct {
 // tracked separately so footerKeyLegend can colour them apart, while the
 // concatenated visible text (key legend and Unicode fallback) is byte-for-
 // byte what it always was, and pending tests that grep for a plain
-// substring like "up/down" or "Enter attach" never see the joins move.
+// substring like "up/down" or "Enter interactive" never see the joins move.
 var footerLegend = []footerKeyHint{
 	{"↑/↓", "up/down", ""},
-	{"↵", "Enter", "attach"},
+	{"↵", "Enter", "interactive"},
+	{"a", "a", "attach"},
 	{"Y", "Y", "acknowledge"},
 	{"n", "n", "new"},
 	{"x", "x", "kill"},
 	{"r", "r", "resume"},
-	// The footer's own hint word is "relaunch" rather than "restart"
-	// (the help text's own wording, matched word-for-word there) purely
-	// so this entry's length keeps the whole legend's 100-column wrap
-	// boundary landing on a space that NormalizeFrame's trailing-space
-	// trim removes -- exactly the coincidence every other entry here
-	// already depends on -- rather than on a border-breaking "-".
+	// The footer's own hint word was originally "relaunch" rather than
+	// "restart" purely so this entry's length kept the legend's 100-column
+	// wrap boundary (a real 100-column PTY, features/pty_driver_test.go's
+	// default) landing on a space that NormalizeFrame's trailing-space trim
+	// removes. Task 061 (§11.9, PRD Part II) shifted every entry from here
+	// on by inserting the new `a` entry above, moving that boundary; no
+	// test pins the exact landing column (only the legend's leading
+	// "up/down - Enter ..." text, which this insertion left alone), so the
+	// wording is kept as "relaunch" for its own sake now, not for the tuning.
 	{"R", "R", "relaunch"},
 	{"P", "P", "profile"},
 	{"p", "p", "pin"},
@@ -2886,6 +2960,9 @@ func (m Model) sidebarRowLines(index int, session store.Session) []string {
 // this returns "" until a design exists that cannot collide with a row
 // name.
 func (m Model) previewTitle() string {
+	if m.interactive {
+		return " interactive " + m.glyph("—", "-") + " Ctrl+Q to leave "
+	}
 	return ""
 }
 
@@ -2901,6 +2978,9 @@ func (m Model) previewTitle() string {
 // exactly contentWidth runes, so callers no longer need their own fitLines
 // pass for the preview panel.
 func (m Model) previewBodyLines(contentWidth, contentHeight int) []string {
+	if m.interactive && m.interactiveGrid != nil {
+		return m.interactiveBodyLines(contentWidth, contentHeight)
+	}
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		return fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
 	}
@@ -4343,7 +4423,11 @@ func helpText(ascii bool) string {
 Keys
   ↑/↓ or j/k select a session
   PgUp/PgDn page up/down through the list, one page at a time
-  ↵ attach the selected running session
+  ↵ enter interactive mode on the selected running session: keystrokes
+    forward to its live pane exactly as a real attached client's would,
+    until Ctrl+Q leaves and returns the terminal to this list
+  a attach the selected running session (full-screen, like Ctrl+Q never
+    happened -- ↵ enters interactive mode instead)
   Y acknowledge the selected waiting/error session, clear its unseen marker
   n create a session (shell, or an agent: claude or pi)
   x kill the selected running session; a toast naming undo stays visible
@@ -4501,7 +4585,7 @@ and copy pane text, or use tmux's own copy-mode.
 Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a sidebar row       select it (like ↑/↓); the preview follows on
                             its next tick
-  double-click a row        attach (like ↵)
+  double-click a row        attach (like a)
   click a group header      toggle that group's collapse (like g)
   wheel over the sidebar    scroll the list without changing selection
                             (like ↑/↓/PgUp/PgDn)

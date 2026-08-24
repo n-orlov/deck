@@ -165,6 +165,16 @@ func sessionName(slug string) (string, error) {
 	return "deck_" + slug, nil
 }
 
+// SessionName is sessionName exported: task 061 (PRD Part II §11.9 onward)
+// needs the WINDOW-scoped target -- the deck_<slug> session name -- for
+// every geometry/ownership call (CaptureWindowGeometry, FitWindowToPane,
+// ClaimWindowOwnership, RestoreWindowGeometry all address the window this
+// names, never the pane id PreviewPane returns), and internal/tui is
+// outside this package.
+func SessionName(slug string) (string, error) {
+	return sessionName(slug)
+}
+
 func environmentArgs(environment map[string]string) ([]string, error) {
 	keys := make([]string, 0, len(environment))
 	for key := range environment {

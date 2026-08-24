@@ -11,7 +11,7 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
-func TestEnterAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
+func TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
 	home := t.TempDir()
 	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
 	if err != nil {
@@ -38,10 +38,10 @@ func TestEnterAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
 		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
 	updated, _ := model.Update(model.loadSessions())
 	model = updated.(Model)
-	updated, command := model.Update(key("enter"))
+	updated, command := model.Update(key("a"))
 	model = updated.(Model)
 	if command == nil {
-		t.Fatal("Enter did not schedule attachment")
+		t.Fatal("a did not schedule attachment")
 	}
 	got, err := db.GetSession(ctx, "waiting")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestEnterAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
 	}
 }
 
-func TestEnterAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
+func TestAAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
 	home := t.TempDir()
 	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
 	if err != nil {
@@ -85,10 +85,10 @@ func TestEnterAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
 		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
 	updated, _ := model.Update(model.loadSessions())
 	model = updated.(Model)
-	updated, command := model.Update(key("enter"))
+	updated, command := model.Update(key("a"))
 	model = updated.(Model)
 	if command == nil {
-		t.Fatal("Enter on error row did not schedule attachment")
+		t.Fatal("a on error row did not schedule attachment")
 	}
 	got, err := db.GetSession(ctx, "error")
 	if err != nil {

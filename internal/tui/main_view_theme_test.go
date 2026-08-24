@@ -18,7 +18,7 @@ import (
 func mainViewColorTestModel(t *testing.T) Model {
 	t.Helper()
 	m := New(nil, config.Settings{Color: true}, "")
-	m.width, m.height = 120, 30
+	m.width, m.height = 160, 30
 	m.sessions = []store.Session{
 		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", CWD: "/repo/alpha"},
 		{ID: "s2", Name: "beta", Agent: "shell", Status: "running", CWD: "/repo/beta"},

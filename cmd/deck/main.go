@@ -87,6 +87,15 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		return sessions.ReconcileWithProbes(ctx, settings.StaleAfter)
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename)
+	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
+	// dependency that needs the raw tmux.Client itself rather than one more
+	// narrow func field: window geometry, ownership and dispatcher/transport
+	// construction all take a live Client value directly (see
+	// internal/tui/interactive.go). Wiring it through WithTmuxClient rather
+	// than growing the NewWith...And-chain above keeps that already-absurd
+	// parameter list from growing a 22nd entry for a dependency of a
+	// genuinely different shape.
+	model = model.WithTmuxClient(client)
 	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
 	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
 	// whole program lifetime; §11.8's hit-testing and gesture handling land in
