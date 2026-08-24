@@ -3,6 +3,7 @@ package features
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -395,9 +396,43 @@ func (d *ScreenDriver) processError() error {
 	return d.exitErr
 }
 
+// defaultWaitDeadline bounds a WaitForFrame/WaitForFrameGone call whose
+// caller passed a deadline-free ctx (task 205). Most call sites hand these
+// two methods the bare scenario ctx from godog's sc.Before, which carries
+// no deadline of its own -- registerScenarioLifecycle never wraps it, and
+// TestFeatures's own -timeout is the suite-wide 10m default, not a per-step
+// bound. Before this, a step whose expected text never arrived (or never
+// left) blocked until that hard 10m kill: run-2/run-5 of
+// docs/reports/phase3d-i20-stability-logs died exactly this way, goroutine
+// 259 blocked forever in clientExitsCopyModeOnAttachedPane's
+// WaitForFrameGone. This constant only ever applies when the caller's ctx
+// has no deadline; every existing context.WithTimeout(ctx, ...) checkpoint
+// in features/*.go (2s/3s/5s/20s/resizeAwaitTimeout) already carries its
+// own deadline and reaches withDefaultWaitDeadline's ok-branch unchanged --
+// no existing bound is widened or narrowed by this constant.
+//
+// A var, not a const, purely so
+// TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone can
+// shrink it for the duration of that one test instead of that test itself
+// having to block for the real production value.
+var defaultWaitDeadline = 45 * time.Second
+
+// withDefaultWaitDeadline returns ctx unchanged (with a no-op cancel) if it
+// already carries a deadline, otherwise a child bounded by
+// defaultWaitDeadline. Call sites that already impose their own bound (via
+// context.WithTimeout) are therefore untouched by this function.
+func withDefaultWaitDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, defaultWaitDeadline)
+}
+
 // WaitForFrame polls the emulator grid and includes raw and normalised screen
 // diagnostics if deck exits or times out.
 func (d *ScreenDriver) WaitForFrame(ctx context.Context, clockFrozen bool, want string) error {
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
 	for {
 		if frame := d.Frame(clockFrozen); strings.Contains(frame, want) {
 			return nil
@@ -419,6 +454,8 @@ func (d *ScreenDriver) WaitForFrame(ctx context.Context, clockFrozen bool, want 
 // really cleared by the next render, not merely "probably gone by the time
 // we happened to look".
 func (d *ScreenDriver) WaitForFrameGone(ctx context.Context, clockFrozen bool, unwanted string) error {
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
 	for {
 		if frame := d.Frame(clockFrozen); !strings.Contains(frame, unwanted) {
 			return nil
@@ -530,6 +567,59 @@ func TestScreenDriverLaunchesDeckAndAnswersTerminalProbes(t *testing.T) {
 	}
 	if err := driver.Stop(3 * time.Second); err != nil {
 		t.Fatalf("deck did not quit cleanly: %v", err)
+	}
+}
+
+// TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone proves
+// task 205's bound actually fires: a bare context.Background() (no
+// deadline, exactly what most features/*.go call sites hand WaitForFrame --
+// see the comment on defaultWaitDeadline) waiting for text that never
+// appears, against a driver whose done channel never closes (no real
+// process, so this cannot be mistaken for "deck exited"), returns promptly
+// instead of blocking forever. defaultWaitDeadline is shrunk for the
+// duration of this one test so it does not itself have to wait out the real
+// production bound.
+func TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone(t *testing.T) {
+	original := defaultWaitDeadline
+	defaultWaitDeadline = 200 * time.Millisecond
+	defer func() { defaultWaitDeadline = original }()
+
+	d := &ScreenDriver{done: make(chan struct{}), updated: make(chan struct{})}
+
+	start := time.Now()
+	err := d.WaitForFrame(context.Background(), false, "text that never appears")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("WaitForFrame returned nil, want a timeout error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitForFrame error = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+	if elapsed >= 2*defaultWaitDeadline {
+		t.Fatalf("WaitForFrame took %s, want it bounded near defaultWaitDeadline (%s)", elapsed, defaultWaitDeadline)
+	}
+	if !strings.Contains(err.Error(), "frame:") {
+		t.Fatalf("WaitForFrame error missing the frame diagnostic: %v", err)
+	}
+
+	// WaitForFrameGone gets the same bound from the same helper; prove it
+	// too. Every non-nil frame (and, per Frame's own doc, even a nil-screen
+	// driver's "" frame) contains the empty string, so waiting for "" to
+	// leave the frame can never legitimately return nil -- only the
+	// deadline can stop this call.
+	d2 := &ScreenDriver{done: make(chan struct{}), updated: make(chan struct{})}
+	start = time.Now()
+	err = d2.WaitForFrameGone(context.Background(), false, "")
+	elapsed = time.Since(start)
+	if err == nil {
+		t.Fatal("WaitForFrameGone returned nil, want a timeout error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitForFrameGone error = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+	if elapsed >= 2*defaultWaitDeadline {
+		t.Fatalf("WaitForFrameGone took %s, want it bounded near defaultWaitDeadline (%s)", elapsed, defaultWaitDeadline)
 	}
 }
 
