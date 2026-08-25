@@ -68,6 +68,8 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
 		"click over the preview", "scrolls the grid's own",
 		"bounded scrollback (like Shift+PgUp/PgDn)",
+		"drag over the preview", "copies it into deck's own tmux buffer",
+		"system clipboard via OSC 52",
 		"DECK_MOUSE=0", "[ui] mouse = false", "override modifier (usually shift)",
 		"DECK_COLOR_DEPTH", "force truecolor or 16-colour",
 		"u undo the most recent x", "DECK_UNDO_MS",

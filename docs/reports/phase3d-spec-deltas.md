@@ -48,5 +48,52 @@ the shipped behaviour.
 
 ## Items 3-4
 
-Not yet attempted this iteration. Will be appended here as each lands, per steer 018's cut order
-(preview-fit-on-navigation, then drag-to-copy selection).
+Item 4 not yet attempted this iteration. Will be appended here once it lands, per steer 018's
+cut order (preview-fit-on-navigation, then drag-to-copy selection).
+
+## Item 3 — tmux-like drag-to-copy selection in interactive preview mode (task 216)
+
+**Delta: SPEC's own "the preview" is broader than what task 216 asked for or what actually
+ships.** `SPEC.md` §11.8 (post-`395babf`) says, verbatim:
+
+> **a drag beginning inside the preview selects, and releasing copies.** ... The selection is
+> over the cells deck drew, which in §11.9's interactive mode includes the grid's own
+> scrollback.
+
+Read plainly, "the preview" names both of the panel's two states — the ordinary, PASSIVE
+preview (a `capture-pane` crop, shown whenever a session is merely selected, not entered) and
+the interactive one (task 061's live `vt` grid, entered with `↵`/double-click) — with the
+scrollback clause read as interactive mode ADDING something on top of a base capability the
+passive preview would also have. Task 216's own `successCriteria`, by contrast, asks only for
+"a mouse drag beginning inside the **interactive** preview region" (its own wording, not this
+file's paraphrase), and that is exactly what shipped: `Model.beginInteractiveSelection`
+(`internal/tui/interactive_select.go`) refuses (a no-op, same as any other click over the
+passive preview always was) unless `m.interactive` is true. A drag over the PASSIVE preview
+selects nothing and copies nothing, in either direction, at 80×24 or any other size.
+
+The narrower reading is deliberate, not an oversight: the passive preview is a `capture-pane -p`
+text crop with no cell-addressable structure of its own line-by-line the way `internal/
+interactive.Session`'s `vt.SafeEmulator` grid is (`RenderRows`/`SelectedText`/`AbsoluteRow`) --
+building a SECOND, independent extraction path against a periodically-recaptured string, one
+that would need to reconcile a drag's start/end cell against whichever capture happened to be
+current at release time (a capture-pane poll can land mid-drag), was judged not worth doing
+within task 216's own scope, especially since the passive preview's whole point (task 061's own
+doc) is a coarse, at-a-glance crop, not a surface a user is reading text off of character by
+character. `SPEC.md` is not modified (steer 018 §0's protected-path rule); if the operator wants
+the passive preview to gain the same gesture, that is this file's own apply-ready ask for a
+future task, not something this run attempts unasked.
+
+Everything else in §11.8/§11.9's "Selection and copy" section matches exactly: the copy lands in
+a **named tmux buffer** on deck's own server (`internal/tmux/buffer.go`'s
+`Client.SetSelectionBuffer`, `tmux.SelectionBufferName` == `deck-selection`, `load-buffer -b
+deck-selection -`, proven end to end against a real `tmux show-buffer` in
+`features/interactive_selection.feature`), a best-effort **OSC 52** write happens alongside it
+(`internal/tui/interactive_select.go`'s `writeOSCClipboardBestEffort`, `go-osc52`'s standard
+`ESC]52;c;<base64>BEL` envelope, deliberately untested by the harness -- there is no real outer
+terminal for it to land in), `[ui] mouse`/`DECK_MOUSE` stay the same opt-out they always were
+(this gesture is gated by the SAME `m.settings.Mouse` check every other mouse binding already
+was), and the help view (`internal/tui/tui.go`'s "Mouse" section) now states BOTH halves of
+§11.8's own closing sentence -- which of (the terminal's own shift-to-select) vs (deck's own
+drag-to-copy) applies, and under which condition (interactive vs not) -- rather than the single,
+unconditional caveat it stated before this task, which was already slightly wrong the moment
+any drag-to-copy existed at all.

@@ -213,7 +213,12 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case hitPanelPreview:
 		// "A click ... over the preview does nothing, and that is a
-		// binding too": it must not fall through to the sidebar.
+		// binding too": it must not fall through to the sidebar. Steer
+		// 017 item 3/task 216's drag-to-copy selection is scoped to
+		// interactive mode only (Update's own tea.MouseMsg case routes
+		// press/motion/release there directly whenever m.interactive is
+		// true, never reaching handleMouse at all), so this stays a plain
+		// no-op for every gesture over the PASSIVE preview.
 		return m, nil
 	case hitPanelSidebar:
 		switch hit.target {

@@ -599,6 +599,33 @@ type Model struct {
 	// (updateInteractive) -- scrolled-back history is read-only, so typing
 	// or leaving snaps straight back to the live view.
 	interactiveScrollOffset int
+	// interactiveSelecting/interactiveSelectDragged/interactiveSelectAnchor*/
+	// interactiveSelectCurrent* back the drag-to-copy selection SPEC §11.8
+	// describes ("a drag beginning inside the preview selects, and
+	// releasing copies") and steer 017 item 3/task 216 scope to §11.9's
+	// interactive mode: interactiveSelecting is true from the press that
+	// began inside the interactive preview's own content box (previewCellAt,
+	// resolved through the SAME layout/hit-test math every other mouse
+	// gesture in this package uses, never a second geometry computation)
+	// until the matching release; interactiveSelectDragged only becomes
+	// true once a MOTION event actually arrived while selecting, so a
+	// plain click (press+release, no motion) commits nothing -- "a click
+	// over the preview does nothing" (SPEC §11.8) stays true, and only an
+	// actual drag is the stated exception. The anchor/current pair is kept
+	// in previewCellAt's VIEW-relative (col, row) space (0 at the top-left
+	// of the content box as currently rendered) rather than the grid's own
+	// absolute row space, because that is the only space a hit-tested mouse
+	// cell can be expressed in; commitInteractiveSelection converts both
+	// through interactiveGrid.AbsoluteRow (keyed to the SAME
+	// interactiveScrollOffset the drag was performed against) right before
+	// extracting text, so a resize or a scroll racing the drag can never
+	// silently select the wrong cells.
+	interactiveSelecting        bool
+	interactiveSelectDragged    bool
+	interactiveSelectAnchorCol  int
+	interactiveSelectAnchorRow  int
+	interactiveSelectCurrentCol int
+	interactiveSelectCurrentRow int
 }
 
 // WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task
@@ -2298,6 +2325,32 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 						delta = -delta
 					}
 					return m.scrollInteractiveByLines(delta)
+				}
+				return m, nil
+			}
+			// Steer 017 item 3/task 216, SPEC §11.8: a left-button drag
+			// beginning inside the interactive preview's own content box
+			// selects text; releasing after a genuine drag copies it. Every
+			// OTHER gesture (a plain click, any button but left, anything
+			// outside the content box) stays the no-op interactive mode
+			// already made every non-wheel gesture before this.
+			if msg.Button == tea.MouseButtonLeft {
+				switch msg.Action {
+				case tea.MouseActionPress:
+					if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
+						return updated, nil
+					}
+					return m, nil
+				case tea.MouseActionMotion:
+					if m.interactiveSelecting {
+						return m.updateInteractiveSelection(msg.X, msg.Y), nil
+					}
+					return m, nil
+				case tea.MouseActionRelease:
+					if m.interactiveSelecting {
+						return m.commitInteractiveSelection(), nil
+					}
+					return m, nil
 				}
 			}
 			return m, nil
@@ -4959,6 +5012,12 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
   wheel over the preview     while interactive, scrolls the grid's own
                             bounded scrollback (like Shift+PgUp/PgDn);
                             otherwise does nothing
+  drag over the preview      while interactive, selects text; releasing
+                            copies it into deck's own tmux buffer and
+                            (best-effort) the system clipboard via OSC 52
+                            (like a, then tmux's own copy-mode); otherwise
+                            does nothing -- hold your terminal's override
+                            modifier (usually shift) for its own selection
   DECK_MOUSE=0 (or [ui] mouse = false) disables all mouse reporting and
   every mouse binding above; every keyboard path keeps working, only the
   shortcuts are lost
