@@ -30,6 +30,7 @@ type FileConfig struct {
 	Mouse                bool
 	PreviewFit           bool
 	GroupByWorkspace     bool
+	SortOrder            string
 	RecentCwdLimit       int
 	Theme                string
 	Env                  map[string]string
@@ -148,6 +149,8 @@ func defaultFileConfig() FileConfig {
 			cfg.PreviewFit, _ = field.Default.(bool)
 		case "ui.group_by_workspace":
 			cfg.GroupByWorkspace, _ = field.Default.(bool)
+		case "ui.sort_order":
+			cfg.SortOrder, _ = field.Default.(string)
 		case "ui.recent_cwd_limit":
 			cfg.RecentCwdLimit, _ = field.Default.(int)
 		case "ui.theme":
@@ -228,6 +231,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 		switch field.FullKey() {
 		case "ui.theme":
 			cfg.Theme = unquoted
+		case "ui.sort_order":
+			cfg.SortOrder = unquoted
 		case "interactive_transport":
 			cfg.InteractiveTransport = unquoted
 		}

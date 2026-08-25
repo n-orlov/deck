@@ -735,6 +735,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		Mouse:                s.File.Mouse,
 		PreviewFit:           s.File.PreviewFit,
 		GroupByWorkspace:     s.File.GroupByWorkspace,
+		SortOrder:            s.File.SortOrder,
 		RecentCwdLimit:       s.File.RecentCwdLimit,
 		Theme:                s.File.Theme,
 		Env:                  settingsCloneEnv(s.File.Env),
@@ -845,6 +846,8 @@ func settingsEnumValue(f config.Field, cfg config.FileConfig) string {
 	switch f.FullKey() {
 	case "ui.theme":
 		return cfg.Theme
+	case "ui.sort_order":
+		return cfg.SortOrder
 	case "interactive_transport":
 		return cfg.InteractiveTransport
 	default:
@@ -857,6 +860,8 @@ func settingsSetEnum(cfg *config.FileConfig, f config.Field, v string) {
 	switch f.FullKey() {
 	case "ui.theme":
 		cfg.Theme = v
+	case "ui.sort_order":
+		cfg.SortOrder = v
 	case "interactive_transport":
 		cfg.InteractiveTransport = v
 	}

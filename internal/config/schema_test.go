@@ -7,13 +7,14 @@ import (
 
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
 // flat config.toml keys (task 010, extended by task 030's interactive_ms,
-// task 031's interactive_transport, steer 017 item 2's yolo_default and
-// steer 018 item 4/task 215's preview_fit): allow_yolo, yolo_default,
-// stale_after, capture_min_interval, interactive_ms, interactive_transport,
-// tmux_mouse, [ui] theme, [ui] ascii, [ui] mouse, [ui] preview_fit,
-// [ui] group_by_workspace, [ui] recent_cwd_limit, and the [env] table.
-// Adding, removing or renaming a key must be a deliberate edit to this
-// test alongside the schema, never a silent drift.
+// task 031's interactive_transport, steer 017 item 2's yolo_default,
+// steer 018 item 4/task 215's preview_fit, and task 303's [ui] sort_order):
+// allow_yolo, yolo_default, stale_after, capture_min_interval,
+// interactive_ms, interactive_transport, tmux_mouse, [ui] theme,
+// [ui] ascii, [ui] mouse, [ui] preview_fit, [ui] group_by_workspace,
+// [ui] sort_order, [ui] recent_cwd_limit, and the [env] table. Adding,
+// removing or renaming a key must be a deliberate edit to this test
+// alongside the schema, never a silent drift.
 func TestSchemaPinsKeySet(t *testing.T) {
 	want := []string{
 		"allow_yolo",
@@ -28,6 +29,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.mouse",
 		"ui.preview_fit",
 		"ui.group_by_workspace",
+		"ui.sort_order",
 		"ui.recent_cwd_limit",
 		"[env]",
 	}
@@ -125,6 +127,11 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     the same reasoning as stale_after above.
 //   - [env]: unchanged, restart-to-apply per §6.2 (already correct, and
 //     already the subject of its own SPEC citation in schema.go).
+//   - ui.group_by_workspace, ui.sort_order: restart-to-apply, pending each
+//     one's own live-apply wiring in settingsApplyLiveFields -- task 303
+//     plumbs sort_order's schema/parse/write/settings mapping only, and
+//     task 306 flips it to ScopeGlobal once a save re-sorts the running
+//     model with the selection preserved by id.
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
 		"allow_yolo":            ScopeGlobal,
@@ -139,6 +146,7 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.mouse":              ScopeGlobal,
 		"ui.preview_fit":        ScopeGlobal,
 		"ui.group_by_workspace": ScopeRestartToApply,
+		"ui.sort_order":         ScopeRestartToApply,
 		"ui.recent_cwd_limit":   ScopeRestartToApply,
 		"[env]":                 ScopeRestartToApply,
 	}
