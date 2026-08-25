@@ -21,22 +21,42 @@ func pipeDisplacementSocket(name string) string {
 	return geometrySocket("pipedisp-" + name)
 }
 
-// readWithTimeout runs a single Read on a background goroutine so a test
-// can bound how long it waits for either bytes or an error -- a genuine
-// stall (the very bug this task's redesign of ArmPipePane's reader-open
-// order fixes) must be distinguishable from a slow but eventually
-// successful read.
-func readWithTimeout(t *testing.T, p *PanePipe, timeout time.Duration) (int, error, bool) {
+// readUntilErrorWithTimeout runs Read on a background goroutine, in a loop,
+// so a test can bound how long it waits for the read that actually carries
+// an error -- a genuine stall (nothing ever arrives, not even chatter) must
+// be distinguishable from a slow but eventually successful/erroring read.
+// The target here is a live shell, not a program that stays silent until
+// the event under test (displacement, disable, our own Close) fires, so it
+// can -- and, per task 210 (b)'s isolated repro at -count=100, sometimes
+// does -- emit its own bytes (a prompt, a motd line) on the very FIRST
+// Read, before the event under test ever lands. That is real pane chatter,
+// not the discriminator these tests exist to prove, and asserting on a
+// single bare Read (as an earlier version of this helper did) is exactly
+// the "widen the checkpoint" mistake this project forbids in the other
+// direction: the checkpoint was too NARROW (an arbitrary Read count of one)
+// rather than too wide. So this drains any number of n>0/err==nil reads --
+// each one unrelated chatter -- and only returns the read that actually
+// carries an error, bounded by an overall deadline. This mirrors the drain
+// loop TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF
+// already uses for the self-close case, below in this file.
+func readUntilErrorWithTimeout(t *testing.T, p *PanePipe, timeout time.Duration) (int, error, bool) {
 	t.Helper()
 	type result struct {
 		n   int
 		err error
 	}
 	ch := make(chan result, 1)
-	buf := make([]byte, 4096)
 	go func() {
-		n, err := p.Read(buf)
-		ch <- result{n, err}
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if err != nil {
+				ch <- result{n, err}
+				return
+			}
+			// n>0, err==nil: unrelated pane chatter -- keep waiting for
+			// the read that actually observes the event under test.
+		}
 	}()
 	select {
 	case r := <-ch:
@@ -71,7 +91,7 @@ func TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne(t *testing
 		t.Fatalf("arm the displacing pipe-pane: %v", err)
 	}
 
-	n, readErr, done := readWithTimeout(t, pipe, 5*time.Second)
+	n, readErr, done := readUntilErrorWithTimeout(t, pipe, 5*time.Second)
 	if !done {
 		t.Fatalf("displaced reader never returned from Read within 5s -- it should have observed a clean EOF, not stalled")
 	}
@@ -112,7 +132,7 @@ func TestPanePipeReceivesGenuineEOFOnDisableWithPanePipeZero(t *testing.T) {
 		t.Fatalf("bare pipe-pane (disable): %v", err)
 	}
 
-	n, readErr, done := readWithTimeout(t, pipe, 5*time.Second)
+	n, readErr, done := readUntilErrorWithTimeout(t, pipe, 5*time.Second)
 	if !done {
 		t.Fatalf("reader never returned from Read within 5s after disable -- it should have observed a clean EOF, not stalled")
 	}
