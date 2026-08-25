@@ -341,6 +341,16 @@ type Model struct {
 	// to 0 every time `E` opens the log.
 	eventLogOpen   bool
 	eventLogScroll int
+	// eventLogRows/eventLogErr are R61's (steer 3e-001 §6.3) in-memory copy
+	// of loadEventLog's ListEvents result: populated exactly once, by the
+	// tea.Cmd the "E" key handler dispatches when the dialog opens, and
+	// read by eventLogBody/View() -- never re-fetched from m.store while
+	// the dialog stays open, no matter how many reconcileTick/previewTick
+	// messages land in the meantime. Both reset to zero value the same
+	// place eventLogScroll resets, so a reopen never shows a stale error
+	// or a stale row set from a previous visit.
+	eventLogRows []store.Event
+	eventLogErr  error
 	// filtering is task 123's `/` list filter (SPEC §11.3/requirement 33,
 	// I-10): true while the filter's own text field has keyboard focus
 	// (see updateFilter). filterQuery is the live, incrementally-applied
@@ -1416,6 +1426,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selected >= len(m.sessions) {
 			m.selected = max(0, len(m.sessions)-1)
 		}
+	case eventLogLoaded:
+		// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
+		// consumed. m.eventLogRows/m.eventLogErr are what eventLogBody
+		// renders; a stale reply arriving after Esc already closed the
+		// dialog is harmless (the fields are simply unused until the next
+		// "E" reopens and resets them again).
+		m.eventLogRows = msg.events
+		m.eventLogErr = msg.err
 	case shellCreated:
 		if msg.err != nil {
 			m.createError = msg.err.Error()
@@ -2253,9 +2271,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// -- not gated on a selected session -- since the event log
 			// lists every session's events, not one row's own environment.
 			// eventLogScroll resets (task 078) so a reopen never starts
-			// scrolled from wherever a previous visit left off.
+			// scrolled from wherever a previous visit left off. R61 (steer
+			// 3e-001 §6.3): the store read itself is dispatched here, once,
+			// as a tea.Cmd (loadEventLog) rather than performed inline in
+			// View() -- eventLogRows/eventLogErr also reset so a reopen
+			// never renders the previous visit's rows before the fresh
+			// fetch lands.
 			m.eventLogOpen = true
 			m.eventLogScroll = 0
+			m.eventLogRows = nil
+			m.eventLogErr = nil
+			return m, m.loadEventLog
 		case "/":
 			// SPEC.md:984/requirement 33, task 123: global like `E` above --
 			// not gated on a selected session, since an empty list is still

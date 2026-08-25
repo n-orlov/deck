@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/n-orlov/deck/internal/config"
@@ -32,6 +33,14 @@ const (
 type Store struct {
 	db   *sql.DB
 	path string
+	// eventsListCalls is R61's (steer 3e-001 §6.3) own instrumentation: an
+	// atomic counter of every real ListEvents call this *Store instance has
+	// served, read back through ListEventsCallCount. It exists purely so
+	// internal/tui's render-path test can prove the event log genuinely
+	// reads the store once per open rather than once per frame, without
+	// introducing a separate mock/interface layer over the concrete *Store
+	// type every other tui code path already depends on directly.
+	eventsListCalls int64
 }
 
 // Open creates or migrates the state database addressed by paths. The database
@@ -1347,6 +1356,7 @@ const defaultEventLogLimit = 200
 // ties. limit caps how many rows come back; a non-positive limit falls
 // back to defaultEventLogLimit rather than returning the entire table.
 func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
+	atomic.AddInt64(&s.eventsListCalls, 1)
 	if limit <= 0 {
 		limit = defaultEventLogLimit
 	}
@@ -1372,6 +1382,14 @@ func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 		return nil, fmt.Errorf("iterate events: %w", err)
 	}
 	return events, nil
+}
+
+// ListEventsCallCount reports how many times ListEvents has actually run
+// against this store (R61, steer 3e-001 §6.3): test-only instrumentation
+// used to prove a caller (the `E` event log) reads the store once per
+// open rather than once per rendered frame.
+func (s *Store) ListEventsCallCount() int64 {
+	return atomic.LoadInt64(&s.eventsListCalls)
 }
 
 // ReapSession permanently removes a tombstoned session once its grace

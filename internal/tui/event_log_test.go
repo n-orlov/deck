@@ -45,9 +45,7 @@ func TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload(t *testing.
 		t.Fatal(err)
 	}
 
-	model := New(db, config.Settings{}, "")
-	model.width, model.height = 100, 40
-	model.eventLogOpen = true
+	model := eventLogTestModelWithRowsLoaded(t, db)
 	view := model.View()
 
 	posOldest := strings.Index(view, "alpha-oldest")
@@ -90,9 +88,7 @@ func TestEventLogViewMasksSecretShapedPayloadValueButNotOrdinaryOnes(t *testing.
 		t.Fatal(err)
 	}
 
-	model := New(db, config.Settings{}, "")
-	model.width, model.height = 100, 40
-	model.eventLogOpen = true
+	model := eventLogTestModelWithRowsLoaded(t, db)
 	view := model.View()
 
 	if strings.Contains(view, "leak-eventlog-secret-8f21ac") {
@@ -115,11 +111,21 @@ func TestEventLogOpensOnECapitalAndClosesOnEsc(t *testing.T) {
 	model := New(db, config.Settings{}, "")
 	model.width, model.height = 100, 40
 
-	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	// R61: `E` now dispatches a tea.Cmd (loadEventLog) instead of View()
+	// reading the store directly, so this test runs that Cmd and feeds
+	// its eventLogLoaded reply back into Update exactly the way the real
+	// bubbletea runtime would, rather than calling View() straight after
+	// the key handler returns.
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
 	got := next.(Model)
 	if !got.eventLogOpen {
 		t.Fatalf("E did not open the event log")
 	}
+	if cmd == nil {
+		t.Fatalf("E did not dispatch a load command")
+	}
+	next, _ = got.Update(cmd())
+	got = next.(Model)
 	view := got.View()
 	if !strings.Contains(view, "Event log") || !strings.Contains(view, "plain-value") {
 		t.Fatalf("event log view missing expected content:\n%s", view)
@@ -130,6 +136,24 @@ func TestEventLogOpensOnECapitalAndClosesOnEsc(t *testing.T) {
 	if got.eventLogOpen {
 		t.Fatalf("Esc did not close the event log")
 	}
+}
+
+// eventLogTestModelWithRowsLoaded is this file's shared helper (R61): the
+// real bubbletea runtime always populates m.eventLogRows through the "E"
+// key handler's tea.Cmd (loadEventLog) before View() ever runs, so every
+// test below that needs rows on screen replicates exactly that sequence
+// -- open, then run loadEventLog and apply its result -- instead of
+// setting eventLogOpen directly and expecting View() to fetch for itself
+// (it no longer does; that is the whole point of R61).
+func eventLogTestModelWithRowsLoaded(t *testing.T, db *store.Store) Model {
+	t.Helper()
+	model := New(db, config.Settings{}, "")
+	model.width, model.height = 100, 40
+	model.eventLogOpen = true
+	loaded := model.loadEventLog().(eventLogLoaded)
+	model.eventLogRows = loaded.events
+	model.eventLogErr = loaded.err
+	return model
 }
 
 // TestEventLogViewWithNoStoreStatesUnavailableRatherThanPanicking proves
