@@ -1,0 +1,45 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m A newly created session is selected as soon as it appears (requirement 52)
+  SPEC.md §11's requirement, added by 6584299: creating a session selects its
+  row the moment it appears, with no navigation keystroke needed to find it --
+  and the selection this produces is a one-shot intent, not a standing "always
+  select the newest" rule that would fight the user's own later navigation.
+=== RUN   TestFeatures/creating_a_new_session_selects_its_row_immediately,_without_any_navigation_keystroke,_even_though_it_does_not_land_at_index_0
+
+  [1;37mBackground:[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                      [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+
+  [1;37mScenario:[0m creating a new session selects its row immediately, without any navigation keystroke, even though it does not land at index 0 [1;30m# new_session_selection.feature:20[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "r52-anchor"[0m                                                                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "r52-anchor" has status "waiting" 5 seconds ago[0m                                                        [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "waiting"[0m                                               [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "r52-new"[0m                                                                                  [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen shows sessions in this order:[0m                                                                             [1;30m# attention_sort_test.go:26 -> github.com/n-orlov/deck/features.clientShowsSessionsInOrder[0m
+      | [36mr52-anchor[0m |
+      | [36mr52-new[0m    |
+    [32mAnd[0m [32mdeck client "A" has session "r52-new" selected[0m                                                                                    [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_just-created_row's_auto-selection_is_one-shot_--_moving_away_with_k_survives_a_later_reconcile_tick
+
+  [1;37mScenario:[0m the just-created row's auto-selection is one-shot -- moving away with k survives a later reconcile tick [1;30m# new_session_selection.feature:32[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "r52-oneshot-anchor"[0m                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "r52-oneshot-anchor" has status "waiting" 5 seconds ago[0m                          [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "waiting"[0m                         [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "r52-oneshot-new"[0m                                                    [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen shows sessions in this order:[0m                                                       [1;30m# attention_sort_test.go:26 -> github.com/n-orlov/deck/features.clientShowsSessionsInOrder[0m
+      | [36mr52-oneshot-anchor[0m |
+      | [36mr52-oneshot-new[0m    |
+    [32mAnd[0m [32mdeck client "A" has session "r52-oneshot-new" selected[0m                                                      [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" has session "r52-oneshot-anchor" selected[0m                                                  [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mafter one configured reconcile interval deck client "A" has session "r52-oneshot-anchor" selected[0m           [1;30m# new_session_selection_test.go:20 -> github.com/n-orlov/deck/features.clientStillHasSessionSelectedAfterReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+2 scenarios ([32m2 passed[0m)
+19 steps ([32m19 passed[0m)
+2.489009486s
+--- PASS: TestFeatures (2.50s)
+    --- PASS: TestFeatures/creating_a_new_session_selects_its_row_immediately,_without_any_navigation_keystroke,_even_though_it_does_not_land_at_index_0 (1.04s)
+    --- PASS: TestFeatures/the_just-created_row's_auto-selection_is_one-shot_--_moving_away_with_k_survives_a_later_reconcile_tick (1.42s)
+PASS
+ok  	github.com/n-orlov/deck/features	2.519s

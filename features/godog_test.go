@@ -85,6 +85,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerProbeStatusSteps(sc)
 	registerCrashStatusSteps(sc)
 	registerAttentionSortSteps(sc)
+	registerNewSessionSelectionSteps(sc)
 	registerStatusRecoverySteps(sc)
 	registerSettingsSteps(sc)
 	registerDialogsSteps(sc)
