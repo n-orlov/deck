@@ -472,9 +472,28 @@ func (m Model) sidebarBottomLine(width int) string {
 // real sidebar (width >= SidebarWidthFloor) reserves this trailing column;
 // collapsedStripContentLine below covers the 3-wide collapsed strip, which
 // has no spare column to give up.
-func (m Model) sidebarContentLine(width int, text string) string {
+//
+// bg (task 321, R58b) is the row's selection/selection_idle/surface-stripe
+// background token, or "" for lines that carry none (headers, the empty-
+// state message, the socket line). When non-empty it is opened ONCE right
+// after the border and closed ONCE at the very end, so it spans every
+// column from the first after the left border to the last before the seam
+// — the leading pad column, the text itself (or its pad-fill when the name
+// is short), AND the trailing pad column — rather than stopping the moment
+// sidebarRowLines' own text ends the way a per-segment reset used to. text
+// itself must therefore carry no background of its own and must not close
+// with a reset before this function's own closing one (sidebarRowLines
+// composes it via settingsRenderRowOpen for exactly this reason).
+func (m Model) sidebarContentLine(width int, text string, bg theme.Token) string {
 	bc := m.box()
-	return m.borderColor(m.sidebarBorderToken(), bc.vertical) + " " + m.padTrunc(text, width-3) + " "
+	border := m.borderColor(m.sidebarBorderToken(), bc.vertical)
+	padded := m.padTrunc(text, width-3)
+	if bg != "" {
+		if seq, ok := m.backgroundSGR(bg); ok {
+			return border + seq + " " + padded + " " + "\x1b[0m"
+		}
+	}
+	return border + " " + padded + " "
 }
 
 // collapsedStripContentLine draws one content row of the 3-column
