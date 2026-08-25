@@ -40,6 +40,13 @@ func registerCellAttributeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) does not have foreground token "([^"]+)"$`, cellDoesNotHaveForegroundToken)
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has background token "([^"]+)"$`, cellHasBackgroundToken)
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) does not have background token "([^"]+)"$`, cellDoesNotHaveBackgroundToken)
+	// Task 323/R58d: a RANGE form over a whole row of columns (every other
+	// per-cell step above checks exactly one column), for asserting a
+	// selection/stripe background fills a rectangle rather than sampling one
+	// column and hoping the rest agree, plus an explicit "no background at
+	// all" form for proving the seam column stays clear of a leaked span.
+	sc.Step(`^deck client "([^"]+)" cells at row (\d+) columns (\d+) to (\d+) have background token "([^"]+)"$`, cellsRangeHaveBackgroundToken)
+	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has no background set$`, cellHasNoBackgroundSet)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" has foreground token "([^"]+)"$`, textHasForegroundToken)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" does not have foreground token "([^"]+)"$`, textDoesNotHaveForegroundToken)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" has background token "([^"]+)"$`, textHasBackgroundToken)
@@ -399,6 +406,46 @@ func cellHasBackgroundToken(ctx context.Context, name string, row, col int, toke
 		return fmt.Errorf("client %q cell at row %d column %d: %w", name, row, col, err)
 	}
 	return cellHasBackground(ctx, name, row, col, want)
+}
+
+// cellsRangeHaveBackgroundToken (task 323/R58d) asserts that EVERY column
+// in [colStart, colEnd] on one row carries tokenName's background -- a
+// selection/stripe highlight that stops one column short (or leaves a gap)
+// anywhere in the rectangle fails here, not just at whichever single
+// column a spot-check happened to sample.
+func cellsRangeHaveBackgroundToken(ctx context.Context, name string, row, colStart, colEnd int, tokenName string) error {
+	want, err := resolveScenarioTokenHex(ctx, tokenName)
+	if err != nil {
+		return fmt.Errorf("client %q row %d columns %d-%d: %w", name, row, colStart, colEnd, err)
+	}
+	for col := colStart; col <= colEnd; col++ {
+		if err := cellHasBackground(ctx, name, row, col, want); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cellHasNoBackgroundSet (task 323/R58d) is the seam column's negative:
+// the terminal's own default, not merely "some colour other than the one
+// I expected" (cellDoesNotHaveBackground/Token would pass even if a wrong
+// but non-matching background leaked through). Read directly off
+// Style.Bg, exactly the way cellBackgroundHex/cellDoesNotHaveBackground do
+// it, so "no colour at all" is never confused with "some colour that
+// happens not to be the unwanted one".
+func cellHasNoBackgroundSet(ctx context.Context, name string, row, col int) error {
+	client, err := assertionClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	cell := client.CellAt(col, row)
+	if cell == nil {
+		return fmt.Errorf("client %q cell at row %d column %d could not be read from the grid", name, row, col)
+	}
+	if cell.Style.Bg != nil {
+		return fmt.Errorf("client %q cell at row %d column %d has background %s, want no background set", name, row, col, colorHex(cell.Style.Bg))
+	}
+	return nil
 }
 
 func cellDoesNotHaveBackgroundToken(ctx context.Context, name string, row, col int, tokenName string) error {

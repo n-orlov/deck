@@ -124,6 +124,61 @@ which fail identically on the unmodified 321 tree:
 Recorded as task 333 in `tasks.json` (fixed separately, see that task's
 evidence once it lands, cross-referenced here by task 326).
 
+## R58d: per-cell background rectangle/seam godog evidence (task 323)
+
+`features/panel_background_rectangle.feature` adds two scenarios read per-cell
+off a real running client (never text-scraping), over a fixture with
+`[ui] sort_order = "name"` and `group_by_workspace = false` so the row order
+is deterministic: `rec-aaa`, `rec-bbb-selected-session-with-a-name-far-too-
+long-to-fit-in-the-sidebar-at-all` (79 chars, truncates), `rec-ccc`,
+`rec-ddd-stripe`.
+
+Frame-row math (proved with a literal frame dump during authoring, quoted
+below): row 0 is the sidebar's own top border, row 1 is the socket-info
+header line, so the FIRST session's two lines start at row 2, not row 1 as
+an earlier draft of this file assumed. Position 0 (rec-aaa) -> rows 2-3,
+position 1 (rec-bbb, selected) -> rows 4-5, position 2 (rec-ccc) -> rows 6-7,
+position 3 (rec-ddd-stripe, odd stripe phase) -> rows 8-9. Sidebar content
+columns run 1-34, seam is column 35.
+
+Debug frame dump that found the off-by-one (temporary step, removed before
+the final commit):
+
+```
++ deck - sessions -----------------+---------------------------------------------------------------+
+| socket: deck_test_143_2          | /tmp/deck-scenario-476548515/walking-skeleton-cwd             |
+|   rec-aaa running                |                                                               |
+|   created <relative-time>               | No live preview captured for this row yet.                    |
+| > rec-bbb-selected-session-wi... |                                                               |
+|   created <relative-time>               |                                                               |
+|   rec-ccc running                |                                                               |
+|   created <relative-time>               |                                                               |
+|   rec-ddd-stripe running         |                                                               |
+|   created <relative-time>               |                                                               |
+```
+
+Two new cell-attribute steps were registered (`features/cell_attributes_test.go`):
+`cells at row R columns C1 to C2 have background token "T"` (a per-column
+loop, so a highlight that stops one column short anywhere in the rectangle
+fails, not just at a spot-checked column) and `cell at row R column C has no
+background set` (reads `Style.Bg == nil` directly, so "no colour" is never
+confused with "some non-matching colour").
+
+Green (`ci/run.sh sh -c 'DECK_GODOG_TAGS="@requirement-58-selection-background-fills-rectangle-and-seam-stays-clear,@requirement-58-surface-stripe-fills-rectangle" go test -count=1 ./features/ -run TestFeatures'`):
+2 scenarios, 2 passed, 26 steps passed, 2.69s.
+
+Red proof (`git revert --no-commit c86e422 f74ed7f 408a1b7`, i.e. tasks
+322/321/320 reverted, same tree, same tags): 2 scenarios, 2 failed --
+`client "A" cell at row 4 column 1: cell " " has no background colour set
+(terminal default)` (selection scenario) and `client "A" cell at row 8
+column 1: cell " " has no background colour set (terminal default)`
+(surface-stripe scenario). Workspace restored with `git reset --hard HEAD`
+immediately after (`git status --short` empty, `git diff --stat` empty).
+
+`TestGoldenMinimumFrame` remains green on the final tree; `git diff --stat`
+on `features/testdata/golden/side_by_side_80x24.golden` is empty (file
+untouched by this task).
+
 ## Per-requirement evidence table
 
 _To be completed by task 326: R52-R58, R59-R62, plus the whole-suite and
