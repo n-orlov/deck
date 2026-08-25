@@ -729,3 +729,47 @@ is strictly a display-budget gap, not a binding gap; task 021's own
 `TestFooterKeyLegendNamesOnlyBoundKeys` already proves every entry that
 *is* declared in `footerLegend` names a real bound key, independent of
 which of them fit on screen).
+
+## Task 211 addendum: tasks 201-207's fixes correct a mislabeled Part II close-out claim (II-47/II-48)
+
+Tasks 201-207 (this run's later repair-pass work, opened against `discovered.reviewFindings.F3`)
+root-caused and fixed defects in exactly the territory this file's own delivery document
+(`docs/reports/phase3b.md`) had already published a claim about, at its "II-47/II-48: refuse to
+enter in three named cases, and the 7-row floor behind them" section and its own "Final close-out
+(I-21 / task 077)" section (the latter shared verbatim with `docs/reports/phase3.md`'s close-out).
+That close-out section states the 7-row-floor scenario's failure is "the standing load-correlated
+PTY-timeout class documented in `docs/reports/phase3-findings.md`'s 'Standing pre-existing flake
+list'" and explicitly says the II-47 refusal logic itself "is unchanged by any commit in this
+run's Part II task range" — both now incorrect, corrected here rather than by silently editing
+`phase3b.md`'s own historical section:
+
+- **Not a load-correlated timeout.** Task 201 reproduced the failure on the first try at 1-min
+  loadavg 3.73 (below any load-correlation threshold this run ever used) — the failing frame's
+  title bar read `interactive 41x6 fitted`, i.e. deck ENTERED interactive mode at a 6-inner-row
+  box instead of refusing. The wait for "7-row floor" text timed out because that text is never
+  composed, not because of scheduling pressure. `docs/reports/phase3d-201-req48-degrade-rootcause.md`.
+- **The II-47/II-48 refusal logic (`internal/interactive`'s geometry floor) DID change** after
+  `phase3b.md`'s close-out was written: task 204 added a new code path — `internal/tui/tui.go`'s
+  `Update`, `tea.WindowSizeMsg` case now calls `exitInteractive()` when a shrink takes the preview
+  below `interactiveMinInnerRows` (or width ≤ 0), restoring pre-Enter geometry and surfacing a
+  floor message, matching this file's own II-47/II-48 section's "refuse to enter" contract but
+  extended to "leave if a live resize drops below the floor," which II-47/II-48 as originally
+  measured (task 066) did not cover. Backstopped by task 203's tmux-free unit test
+  (`TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall`,
+  `internal/tui/interactive_test.go`) so the floor refusal itself no longer needs a live tmux
+  server to verify deterministically — closing this file's own II-47/II-48 section's implicit gap
+  (its evidence log, `docs/reports/phase3d-ii47-48-floor-measurement.log`, is a `capture-pane`
+  measurement against a real tmux window, not a unit test).
+- The harness-level race behind `attach_scroll.feature:11`'s wheel-scroll scenario (also cited
+  from `phase3b.md`/`phase3.md`'s shared close-out sections as part of the same load-correlated
+  bucket, via `docs/reports/phase3-findings.md`) was fixed by task 206 — see that file's own
+  correction (Standing pre-existing flake list, item struck for `attach_scroll.feature:11`) for
+  the full writeup; not repeated here since it is Part I's own scenario, not Part II's.
+
+No code in `internal/interactive` itself needed a fix beyond what tasks 202-204 already describe
+(the floor computation, `previewContentSize`, measured by task 066/II-47/II-48, is unchanged and
+correct — the defect was in when the floor check ran, and in the harness's resize timing, not in
+the floor arithmetic). `phase3b.md`'s own close-out section is left as written (historical record
+of task 077's own close-out at the time) with this addendum recorded here per this file's own
+convention of not editing delivery-table prose after the fact; task 211/212's own close-out work
+in `docs/reports/phase3.md` supersedes the shared close-out claim for both files.
