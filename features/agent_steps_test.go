@@ -555,17 +555,7 @@ func clientPressesResumeOnNamedSession(ctx context.Context, clientName, want str
 	if err != nil {
 		return err
 	}
-	marker := "> " + want
-	for attempt := 0; attempt < 50; attempt++ {
-		if strings.Contains(client.Frame(false), marker) {
-			return client.Send("r")
-		}
-		if err := client.Send("\x1b[B"); err != nil { // down arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	return fmt.Errorf("deck client %q never selected session %q (marker %q not found):\n%s", clientName, want, marker, client.Frame(false))
+	return selectSessionByNameThenSend(client, want, "r")
 }
 
 // clientPressesRestartOnNamedSession is clientPressesResumeOnNamedSession's
@@ -581,17 +571,52 @@ func clientPressesRestartOnNamedSession(ctx context.Context, clientName, want st
 	if err != nil {
 		return err
 	}
+	return selectSessionByNameThenSend(client, want, "R")
+}
+
+// selectSessionByNameThenSend selects the sidebar row whose name is want,
+// then sends key.
+//
+// Requirement 52 (task 301) auto-selects whichever session was most
+// recently created, which can leave the cursor anywhere relative to want's
+// row -- and, while any session in the fixture is still "starting"/
+// "running", the ATTENTION order itself can still be shifting between
+// attempts (a session's urgency changes as it settles), so a plain
+// jump-to-top-then-walk-down-once is not enough: the walk from a previous
+// attempt can be invalidated by a reorder before the marker is ever seen.
+// Each attempt therefore resets to the top ("g", SPEC.md:952) and walks
+// exactly `attempt` rows down before checking, so every attempt performs
+// a full, independent, top-anchored search -- one that keeps succeeding
+// once the fixture's ordering finally stops changing, however many
+// attempts that takes, rather than depending on a single walk surviving
+// unchanged across the whole search.
+func selectSessionByNameThenSend(client *ScreenDriver, want, key string) error {
 	marker := "> " + want
 	for attempt := 0; attempt < 50; attempt++ {
-		if strings.Contains(client.Frame(false), marker) {
-			return client.Send("R")
-		}
-		if err := client.Send("\x1b[B"); err != nil { // down arrow
+		if err := client.Send("g"); err != nil {
 			return err
 		}
+		for step := 0; step < attempt; step++ {
+			if err := client.Send("\x1b[B"); err != nil { // down arrow
+				return err
+			}
+		}
+		// Send() only writes to the pty; it does not wait for the client to
+		// process and repaint. Checking Frame() immediately after sending this
+		// attempt's own burst of navigation keys races the client's own
+		// key-handling/render loop: a "match" seen here can reflect fewer
+		// keystrokes than were actually sent, so the still-in-flight remainder
+		// (e.g. the last down arrow) lands AFTER `key` is sent below, moving
+		// the selection off `want` a moment after the resume/restart keypress
+		// was fired at it. Settle here, before reading the frame, not only
+		// after a failed check (that was the bug: it let a race-won "pass"
+		// ship `key` to a row that was about to move again).
 		time.Sleep(25 * time.Millisecond)
+		if strings.Contains(client.Frame(false), marker) {
+			return client.Send(key)
+		}
 	}
-	return fmt.Errorf("deck client %q never selected session %q (marker %q not found):\n%s", clientName, want, marker, client.Frame(false))
+	return fmt.Errorf("never selected session %q (marker %q not found):\n%s", want, marker, client.Frame(false))
 }
 
 func sessionIDByName(h *ScenarioHarness, name string) (string, error) {

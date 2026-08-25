@@ -56,7 +56,10 @@ Feature: theme rendering end-to-end (requirement 49)
     And the state database session "grp-two" has workspace "req49-beta-workspace"
     Then within one configured reconcile interval deck client "chrome" screen contains "req49-beta-workspace"
     And deck client "chrome" text "req49-beta-workspace" has foreground token "group"
-    And deck client "chrome" text "grp-one" has background token "selection"
+    # Task 301 (requirement 52) auto-selects the just-created row, so after
+    # both creates the selection sits on "grp-two" (the second and last one
+    # created), not "grp-one".
+    And deck client "chrome" text "grp-two" has background token "selection"
     When deck client "chrome" sends ","
     Then deck client "chrome" text "General" has background token "selection"
     And deck client "chrome" text "Allow Yolo" has background token "selection_idle"

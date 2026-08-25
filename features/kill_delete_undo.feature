@@ -548,13 +548,18 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And 200 milliseconds pass
     And deck client "A" creates shell session "batch-esc-one"
     And deck client "A" creates shell session "batch-esc-two"
+    # Task 301 (requirement 52) auto-selects the just-created row, so after
+    # both creates the selection sits on "batch-esc-two" (the second and
+    # last one created), not "batch-esc-one" -- m below marks whichever row
+    # is selected, so the surviving/killed pair is the opposite of what an
+    # index-0-selects-first assumption would predict.
     When deck client "A" sends "m"
     And 100 milliseconds pass
     And deck client "A" closes the dialog with escape
     And 100 milliseconds pass
     And deck client "A" sends "x"
-    Then the private tmux session "deck_batch-esc-one" does not exist
-    And the private tmux session "deck_batch-esc-two" exists
-    And the state database contains session "batch-esc-two" with status "running"
+    Then the private tmux session "deck_batch-esc-two" does not exist
+    And the private tmux session "deck_batch-esc-one" exists
+    And the state database contains session "batch-esc-one" with status "running"
     When deck client "A" exits cleanly
 
