@@ -211,7 +211,14 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" sends "	"
     Then deck client "A" screen contains "Theme: empire"
     And deck client "A" cell at row 0 column 0 has foreground token "border"
-    When deck client "A" sends "+"
+    # settingsThemeOptions cycles the sorted built-in name list
+    # (theme.Builtins(), alphabetical): cobalt, daylight, empire, matrix,
+    # parchment. Tasks 315/316 added matrix/cobalt/parchment, so "empire"
+    # is now index 2 with "daylight" one step BACKWARD (index 1), not
+    # forward -- "+" from empire now lands on "matrix". A future built-in
+    # theme whose name sorts between "daylight" and "empire" would need
+    # this comment (and the "-" below) revisited again.
+    When deck client "A" sends "-"
     Then deck client "A" screen contains "Theme: daylight"
     When deck client "A" sends ""
     Then deck client "A" screen contains "saved "
@@ -378,8 +385,13 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     # task 215 inserted preview_fit between mouse and recent_cwd_limit in
-    # the ui section (internal/config/schema.go): a sixth "j" is needed to
-    # land on Clear Recent Cwds now.
+    # the ui section (internal/config/schema.go): a sixth "j" was needed to
+    # land on Clear Recent Cwds. Task 303 then inserted ui.sort_order
+    # between group_by_workspace and this synthetic Clear Recent Cwds
+    # entry (settingsCategories appends it last in the "ui" category), so
+    # a SEVENTH "j" is now needed. Grep this feature file before adding
+    # any future ui.* schema field or settings-only entry.
+    And deck client "A" sends "j"
     And deck client "A" sends "j"
     Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"
     When deck client "A" sends ""
