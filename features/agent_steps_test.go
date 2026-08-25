@@ -52,6 +52,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain session "([^"]+)"'s conversation id$`, launchArgvForSessionDoesNotContainOthersConversationID)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains session "([^"]+)"'s conversation id$`, launchArgvForSessionContainsOwnConversationID)
 	sc.Step(`^the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSession)
+	sc.Step(`^within one configured reconcile interval the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSessionWithinReconcileInterval)
 	sc.Step(`^exactly ([0-9]+) private tmux session(?:s)? match(?:es)? slug "([^"]+)"$`, exactlyNPrivateSessionsMatchSlug)
 	sc.Step(`^no private tmux session exists$`, noPrivateTMuxSessionExists)
 	sc.Step(`^session "([^"]+)" replays its own last message, not session "([^"]+)"'s$`, sessionReplaysOwnMessageNotAnothers)
@@ -892,6 +893,48 @@ func auditHasLaunchRecordCountForSession(ctx context.Context, want int, name str
 		return fmt.Errorf("audit log has %d launch records for session %q, want %d", len(records), name, want)
 	}
 	return nil
+}
+
+// auditHasLaunchRecordCountForSessionWithinReconcileInterval polls the audit
+// log rather than reading it once (task 210, steer 019 §2's dominant
+// restart-scenario failure, root-caused this iteration): the raw pane
+// content a preceding "screen contains 'fake-claude resume:'" step observes
+// comes from deck's passive preview attaching to the freshly recreated tmux
+// pane -- a channel entirely independent of, and never ordered against, the
+// Restart/Resume call's own subsequent in-process audit.Launch append. The
+// fake agent can print its resume banner to the pty microseconds after
+// tmux creates the pane, before deck's own goroutine even reaches the audit
+// write, especially under host CPU contention; nothing in SPEC promises the
+// audit record lands before the pane's own output becomes observable. This
+// mirrors the same reasoning and idiom as
+// deckSelectionBufferEventuallyContains (features/interactive_selection_test.go):
+// bounded polling for a fact that is only eventually, not lockstep,
+// consistent with an already-observed asynchronous side effect -- not a
+// sleep or widened checkpoint papering over a one-off miss. It still fails
+// outright, with no retry, if the count is never reached inside the bound.
+func auditHasLaunchRecordCountForSessionWithinReconcileInterval(ctx context.Context, want int, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(scenarioReconcileInterval + 250*time.Millisecond)
+	var lastLen int
+	var lastErr error
+	for {
+		records, err := launchArgvRecordsForSession(h, name)
+		lastLen, lastErr = len(records), err
+		if err == nil && lastLen == want {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("audit log never reached %d launch records for session %q within one reconcile interval: %w", want, name, lastErr)
+	}
+	return fmt.Errorf("audit log has %d launch records for session %q, want %d, even after waiting one reconcile interval", lastLen, name, want)
 }
 
 // launchRecordEnvKeysForSession returns the MOST RECENT launch record's
