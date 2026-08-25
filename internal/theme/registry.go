@@ -16,6 +16,7 @@ var builtinFS embed.FS
 var builtinFiles = []string{
 	"builtin/empire.toml",
 	"builtin/daylight.toml",
+	"builtin/matrix.toml",
 }
 
 var builtins map[string]*Theme
