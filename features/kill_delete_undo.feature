@@ -213,8 +213,10 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And the directory "fp-delete-undo" is fingerprinted as "before-delete-undo"
     When deck client "A" presses dd
     And deck client "A" submits the open dialog
-    And deck client "A" presses u
-    Then the state database session "fp-delete-undo-session" is not tombstoned
+    Then deck client "A" screen contains "press u to undo"
+    When deck client "A" presses u
+    Then deck client "A" screen contains "fp-delete-undo-session"
+    And the state database session "fp-delete-undo-session" is not tombstoned
     And the directory "fp-delete-undo" still matches fingerprint "before-delete-undo"
     When deck client "A" exits cleanly
 
