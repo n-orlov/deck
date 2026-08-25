@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -240,27 +238,20 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clickSidebarRow implements the single-click-selects/double-click-enters-
-// interactive pair (SPEC §11.8, duplicating ↑/↓ and ↵ respectively, per
-// task 061's rebind of ↵ to interactive mode / II-45): a second press on
-// the same row within doubleClickWindow of the first is the deliberate
-// second act §11.8 requires before entering hands the terminal away. `a`
-// (full attach) is unchanged and stays reachable only via the key or the
-// footer's own "a attach" hint, never via a mouse gesture.
+// clickSidebarRow implements SPEC §11.8's reversed decision (task
+// 311/R55): one press selects the row AND enters interactive mode on it,
+// duplicating ↵'s job (task 061's rebind of ↵ to interactive mode /
+// II-45) rather than gating entry behind a second, deliberate press. The
+// operator's own reasoning (SPEC §11.8) is that a stray click resizing a
+// live agent's window (§11.9's fit) is a smaller cost than a click that
+// selects but leaves the keyboard in the list; `Ctrl+Q` is the stated
+// mitigation, not a confirmation. `a` (full attach) is unchanged and stays
+// reachable only via the key or the footer's own "a attach" hint, never
+// via a mouse gesture -- unlike interactive entry, full attach hands over
+// the WHOLE terminal and Ctrl+Q cannot undo it.
 func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
-	now := time.Now()
-	isDouble := index == m.lastClickIndex && !m.lastClickAt.IsZero() && now.Sub(m.lastClickAt) <= doubleClickWindow
 	m.selected = index
-	if isDouble {
-		// Consumed: a third rapid press starts a fresh pair rather than
-		// re-firing entry immediately again.
-		m.lastClickAt = time.Time{}
-		m.lastClickIndex = -1
-		return m.enterInteractive()
-	}
-	m.lastClickAt = now
-	m.lastClickIndex = index
-	return m, nil
+	return m.enterInteractive()
 }
 
 // handleMouseDrag adjusts sidebar_width live while draggingSeam is true
