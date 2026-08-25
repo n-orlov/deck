@@ -3,11 +3,13 @@ package tui
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 func mouseTestModel(sessions []store.Session) Model {
@@ -125,10 +127,12 @@ func TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide(t *testing.T) {
 	}
 }
 
-// TestClickSidebarRowSelectsNeverAttaches proves a single click switches
-// the preview (selects) without ever invoking attach (SPEC §11.8's "a
-// single click never attaches").
-func TestClickSidebarRowSelectsNeverAttaches(t *testing.T) {
+// TestClickSidebarRowSelectsAndEntersInteractiveNeverCallsAttachSelected
+// proves a single click switches the preview (selects) without ever
+// invoking full attach (SPEC §11.8: `a`/attachSelected keeps no mouse
+// affordance at all, even though task 311/R55 now routes the click through
+// enterInteractive instead of leaving it a bare select).
+func TestClickSidebarRowSelectsAndEntersInteractiveNeverCallsAttachSelected(t *testing.T) {
 	m := mouseTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
@@ -143,55 +147,29 @@ func TestClickSidebarRowSelectsNeverAttaches(t *testing.T) {
 		t.Fatalf("selected = %d, want 1", got.selected)
 	}
 	if cmd != nil {
-		t.Fatalf("single click returned a command (must not attach)")
+		t.Fatalf("single click returned a command (attachSelected would have; must not attach)")
 	}
 }
 
-// TestDoubleClickSidebarRowEntersInteractiveNotAttach proves the deliberate
-// second act SPEC §11.8 requires before entering interactive mode (task
-// 064/II-45: double-click now duplicates `↵`'s new job, not `a`): two
-// presses on the same row within the double-click window route to
-// enterInteractive, never to attachSelected. m.attach is set (mouseTestModel)
-// so attachSelected would return a non-nil *exec.Cmd here if it were still
-// called by the double click; enterInteractive degrades silently (no cmd,
-// m.interactive stays false) because this hermetic model has a zero
-// tmux.Client, exactly like TestEnterKeyRoutesToEnterInteractiveNotAttachSelected
-// proves for the `↵` key itself.
-func TestDoubleClickSidebarRowEntersInteractiveNotAttach(t *testing.T) {
+// TestClickSidebarRowEntersInteractiveModeOnOnePress is task 311's own
+// success criterion: SPEC §11.8 was reversed so that ONE press selects the
+// row AND enters interactive mode on it -- the double-click gate task
+// 064/II-45 added is gone. Proving the attempt actually reached
+// enterInteractive (rather than merely selecting, which a zero
+// tmux.Client makes indistinguishable via cmd/interactive alone -- see the
+// previous test) needs a non-zero tmux.Client; this reuses
+// TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall's own
+// trick (interactive_test.go, task 203/PRD F3) of squeezing the preview
+// below interactiveMinInnerRows so the floor refusal fires from pure
+// arithmetic, with no live tmux call and no flake, and still sets
+// attachError -- something a mere select (the pre-311 single-click
+// behaviour) never did.
+func TestClickSidebarRowEntersInteractiveModeOnOnePress(t *testing.T) {
 	m := mouseTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+		{ID: "s1", Name: "squeezed", Agent: "shell", Status: "running", Slug: "squeezed"},
 	})
-	m.width, m.height = 100, 30
-	m.selected = -1
-
-	x, y := findRow(t, m, 0)
-	updated, cmd := m.Update(press(x, y))
-	got := updated.(Model)
-	if cmd != nil {
-		t.Fatalf("first click already returned a command")
-	}
-	updated, cmd = got.Update(press(x, y))
-	got = updated.(Model)
-	if got.selected != 0 {
-		t.Fatalf("selected = %d, want 0", got.selected)
-	}
-	if cmd != nil {
-		t.Fatalf("double click returned a non-nil cmd; attachSelected would have (m.attach is set), so this proves the double click did not call it")
-	}
-	if got.interactive {
-		t.Fatalf("double click entered interactive mode with a zero tmux.Client")
-	}
-}
-
-// TestSingleClickNeverEntersInteractiveMode is task 064's own success
-// criterion ("a test proves a single click never enters interactive
-// mode"): one press on a row, well outside any double-click pairing,
-// selects but never reaches enterInteractive/attachSelected.
-func TestSingleClickNeverEntersInteractiveMode(t *testing.T) {
-	m := mouseTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
-	})
-	m.width, m.height = 100, 30
+	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-311"})
+	m.width, m.height = 80, 9 // requirement 48's own godog fixture size (previewContentSize -> 41x6, below the 7-row floor)
 	m.selected = -1
 
 	x, y := findRow(t, m, 0)
@@ -201,10 +179,10 @@ func TestSingleClickNeverEntersInteractiveMode(t *testing.T) {
 		t.Fatalf("selected = %d, want 0", got.selected)
 	}
 	if cmd != nil {
-		t.Fatalf("single click returned a non-nil cmd (must not attach or enter interactive mode)")
+		t.Fatalf("enterInteractive returned a non-nil cmd on the floor refusal path, want nil")
 	}
-	if got.interactive {
-		t.Fatalf("single click entered interactive mode")
+	if !strings.Contains(got.attachError, "7-row floor") {
+		t.Fatalf("attachError %q does not name the 7-row floor -- the single click did not reach enterInteractive at all (task 311's own claim)", got.attachError)
 	}
 }
 

@@ -561,13 +561,6 @@ type Model struct {
 	// seam column and its matching release (SPEC §11.8): while true, a
 	// motion event live-adjusts sidebarWidth the same way `<`/`>` do.
 	draggingSeam bool
-	// lastClickAt/lastClickIndex track the previous sidebar-row press so
-	// a second press on the same row shortly after is resolved as a
-	// double-click (enter interactive mode, task 064/II-45) rather than
-	// two independent single clicks (select). Neither field is persisted
-	// or read anywhere else.
-	lastClickAt    time.Time
-	lastClickIndex int
 	// tmuxClient is the raw tmux.Client §11.9 interactive mode (task 061,
 	// PRD Part II) uses directly, unlike every dependency above, which
 	// wraps tmux behind a narrower func field instead (attach, kill,
@@ -652,10 +645,6 @@ func (m Model) WithTmuxClient(client tmux.Client) Model {
 	m.tmuxClient = client
 	return m
 }
-
-// doubleClickWindow is the maximum gap between two presses on the same
-// sidebar row that still counts as a double-click (SPEC §11.8).
-const doubleClickWindow = 500 * time.Millisecond
 
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
 // caller does not supply one, so every existing constructor keeps working
