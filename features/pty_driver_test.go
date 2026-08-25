@@ -172,12 +172,23 @@ const resizeAwaitTimeout = 5 * time.Second
 
 // ResizeAndAwaitRender is Resize, plus a bounded poll on the driver's own
 // raw output for resizeRenderMarker appearing after the resize, so the call
-// does not return until deck has observably re-rendered at the new size.
-// Other Resize callers (features/sigwinch_count_test.go,
-// features/golden_frame_test.go, features/fake_agent_size_test.go) are
-// unaffected: only the `deck client "X" terminal is resized to WxH` step
-// (features/resize_test.go) needed this wait, since it is the only one
-// whose very next step routinely acts on the resized client immediately.
+// does not return until deck has observably re-rendered AT LEAST ONCE after
+// the resize call. Other Resize callers (features/sigwinch_count_test.go,
+// features/fake_agent_size_test.go) are unaffected: their very next step
+// does not act on content whose settledness depends on the resize having
+// landed. features/golden_frame_test.go was ALSO believed unaffected here,
+// but task 210 (steer 019 §2) proved that wrong -- it now calls
+// ResizeAndAwaitRender too, but that alone did NOT fully close its race:
+// on a screen with its own periodic ticks (previewTick/reconcileTick),
+// resizeRenderMarker only proves SOME full-screen repaint happened after
+// the resize call in wall-clock time, not that THAT repaint is the one
+// that actually processed the resulting WindowSizeMsg -- an unrelated
+// tick-driven repaint that lands first, still using the pre-resize
+// geometry, satisfies the wait just as well. golden_frame_test.go's fix
+// layers a second, content-specific WaitForFrameGone check on top for
+// this reason; any new Resize call whose next step reads content shaped
+// by the new size should default to at least ResizeAndAwaitRender, and
+// add a content-specific gate too if the screen it targets also ticks.
 func (d *ScreenDriver) ResizeAndAwaitRender(ctx context.Context, cols, rows uint16) error {
 	d.mu.Lock()
 	markLen := d.raw.Len()
