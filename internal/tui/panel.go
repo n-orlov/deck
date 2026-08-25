@@ -708,14 +708,35 @@ func (m Model) fullBoxBottom(width int, focused bool) string {
 	return m.borderColor(tok, bc.bottomLeft) + m.borderColor(tok, strings.Repeat(bc.horizontal, width-2)) + m.borderColor(tok, bc.bottomRight)
 }
 
-func (m Model) fullBoxContentLine(width int, text string, focused bool) string {
+// bg (task 322/R58c) is the row's selection/selection_idle/surface-stripe
+// background token, or "" for a line that carries none -- every framedDialog/
+// framedDialogScrollable call passes "" (a dialog box has no per-row
+// highlight); renderStackedFrame's sidebar loop is the one caller that
+// passes a real token, threading through the SAME sidebarEntry.bg task 321
+// already computes for the side-by-side layout, so the stacked fallback
+// gets the identical full-width-highlight treatment rather than the
+// text-only span task 321 originally left it with. Geometry/opening
+// discipline mirrors sidebarContentLine exactly: open once right after the
+// left border, span the padding-fill and both flanking padding columns,
+// close once at the very end -- text itself must therefore carry no
+// background of its own (fullBoxContentLine's own two sidebar-loop caller
+// composes it via settingsRenderRowOpen for exactly this reason, same as
+// sidebarRowLines).
+func (m Model) fullBoxContentLine(width int, text string, focused bool, bg theme.Token) string {
 	bc := m.box()
 	inner := width - 4
 	tok := theme.Border
 	if focused {
 		tok = theme.BorderFocus
 	}
-	return m.borderColor(tok, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(tok, bc.vertical)
+	border := m.borderColor(tok, bc.vertical)
+	padded := m.padTrunc(text, inner)
+	if bg != "" {
+		if seq, ok := m.backgroundSGR(bg); ok {
+			return border + seq + " " + padded + " " + "\x1b[0m" + border
+		}
+	}
+	return border + " " + padded + " " + border
 }
 
 // dialogWidth is every §11.4 dialog/overlay's box width (SPEC.md:1070,
@@ -758,7 +779,7 @@ func (m Model) framedDialog(body string) string {
 	out := make([]string, 0, len(lines)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range lines {
-		out = append(out, m.fullBoxContentLine(boxWidth, line, true))
+		out = append(out, m.fullBoxContentLine(boxWidth, line, true, ""))
 	}
 	out = append(out, m.fullBoxBottom(boxWidth, true))
 	return strings.Join(out, "\n")
@@ -858,7 +879,7 @@ func (m Model) framedDialogScrollable(body string, scroll int) string {
 	out := make([]string, 0, len(visible)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range visible {
-		out = append(out, m.fullBoxContentLine(boxWidth, line, true))
+		out = append(out, m.fullBoxContentLine(boxWidth, line, true, ""))
 	}
 	out = append(out, m.fullBoxBottom(boxWidth, true))
 	return strings.Join(out, "\n")
@@ -866,15 +887,18 @@ func (m Model) framedDialogScrollable(body string, scroll int) string {
 
 // fitLines pads or truncates lines to exactly n entries so every panel's
 // content area is filled to its full height regardless of how much real
-// content there is.
-func fitLines(lines []string, n int) []string {
+// content there is. Generic (task 322/R58c) so settingsListLine -- text
+// paired with its own row background token -- pads out with the same
+// zero-value-is-safe rule as a plain string (an empty settingsListLine has
+// bg == "", i.e. no background, exactly like an empty string row).
+func fitLines[T any](lines []T, n int) []T {
 	if n < 0 {
 		n = 0
 	}
 	if len(lines) >= n {
 		return lines[:n]
 	}
-	out := make([]string, n)
+	out := make([]T, n)
 	copy(out, lines)
 	return out
 }
