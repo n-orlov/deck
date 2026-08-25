@@ -1,0 +1,27 @@
+name = "parchment"
+appearance = "light"           # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#f5ecd7"  # panel interiors — warm sepia paper
+surface           = "#ece0c4"  # elevated rows, footer, dialog interiors
+border            = "#c9b896"
+border_focus      = "#a15c2e"  # the focused panel (§11.3)
+selection         = "#d8c79f"  # selected row, focused panel
+selection_idle    = "#e2d5b3"  # selected row, unfocused panel
+title             = "#7a3b12"
+text              = "#3b2a1a"
+dimmed            = "#8a7a5c"  # starting rows, elided detail
+hint              = "#6b5a3c"  # footer descriptions
+key               = "#7a3b12"  # footer/help keycaps
+accent            = "#a15c2e"
+group             = "#3b2a1a"  # workspace headers
+search_match      = "#7a3b12"
+badge             = "#6b5a3c"  # live/sampled, env↻
+badge_warn        = "#a15c2e"  # non-safe permission profiles, yolo
+waiting           = "#7a3b12"  # the seven §7 statuses, one token each
+running           = "#2d6a2f"
+idle              = "#8a7a5c"
+starting          = "#a15c2e"
+stopped           = "#8a7a5c"
+error             = "#a12f2f"
+archived          = "#6f6248"
