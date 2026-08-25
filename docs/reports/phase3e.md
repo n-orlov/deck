@@ -229,6 +229,85 @@ No other production code references the `probe.miss` kind string;
 `internal/tui/badge_detail_test.go`'s probe-miss assertions read
 `LastProbeAt`/`StatusAt` directly and needed no change.
 
+## R60: index events (steer 3e-001, task 330)
+
+SPEC.md's amended events DDL (commit `6584299`) declares two indexes that a
+fresh v1-created `events` table never had:
+
+```
+CREATE INDEX events_at ON events(at DESC, seq DESC);         -- §12's newest-first reads are never a full scan
+CREATE INDEX events_session_kind ON events(session_id, kind); -- §6.4's env-apply reads likewise
+```
+
+`internal/store/store.go` gains `schemaV5` (both `CREATE INDEX IF NOT EXISTS`
+statements) and bumps `SchemaVersion` 4->5; `migrate`'s switch grows a
+`case 4: ... fallthrough`-terminated arm so a fresh database (falls through
+from case 0) and an existing v1-v4 database (opens directly into case
+1/2/3/4) both land on v5 through the same statements. The migration is
+index-only -- no `ALTER TABLE`, no row touched.
+
+**Migration correctness** (`internal/store/store_test.go`,
+`TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows`):
+builds a byte-for-byte v4 fixture (schemaV1-V4 statements, `schema_version =
+4`) with one `sessions` row and three `events` rows spanning both a real
+`session_id` and two orphaned (`NULL`) rows -- the two shapes
+`events_session_kind` covers. Opens it via `OpenPath` (migrates to v5 in
+place), then asserts: `schema_version = 5`; both `events_at` and
+`events_session_kind` exist in `sqlite_master`; the `events` row count is
+still exactly 3 and every column of every row (`session_id`, `at`, `kind`,
+`reason`, `payload`) reads back byte-identical to what the fixture wrote,
+in original `seq` order; the `sessions` row count is still 1 and its `name`
+is unchanged. Passes for a fresh database too (every other store test opens
+a fresh `OpenPath` and lands on `SchemaVersion = 5` with both indexes
+present, since schemaV5 always runs as part of the v1-created chain).
+
+**Query-plan correctness on a seeded LARGE table, never on elapsed time**
+(steer 3e-001 §6.1) (`TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable`):
+a plan assertion on a small table is vacuous -- SQLite's planner picks either
+a scan or an index on a handful of rows in microseconds either way -- so the
+test seeds 20,000 `events` rows via a single prepared-statement transaction,
+then runs `EXPLAIN QUERY PLAN` on ListEvents' own exact statement
+(`SELECT seq, session_id, at, kind, reason, payload FROM events ORDER BY at
+DESC, seq DESC LIMIT 200`). Assertion is on the plan TEXT: no row is the
+bare string `"SCAN events"` (a full-table scan; with the index the row
+reads `"SCAN events USING INDEX events_at"`, so the check is an exact-match
+on the bare string, not a substring check, since `"SCAN events"` is itself a
+prefix of the indexed form), and no row contains `"TEMP B-TREE"` (an
+unindexed `ORDER BY` sorts via a temp b-tree as its own separate plan row).
+A final `ListEvents(limit=1)` call over the seeded table proves the index
+changed the plan without changing the result (still returns the newest row,
+`at = 19999`).
+
+Green (`ci/run.sh go test -count=1 ./internal/store/`): `ok
+github.com/n-orlov/deck/internal/store 1.589s` (includes an update to
+`TestOpenRefusesNewerFixtureWithoutMutation`, which had hardcoded
+`schema_version = 5` as its "one newer than supported" fixture -- now
+`SchemaVersion + 1` computed at test time so this task's own 4->5 bump does
+not silently turn it into a same-version fixture that skips the refusal
+path; a comment records why).
+
+Red proof: `git diff internal/store/store.go > /tmp/task330.patch; git
+stash -- internal/store/store.go` (reverts only schemaV5/the migration
+switch arm/SchemaVersion, keeping both new tests), then
+`ci/run.sh go test -count=1 ./internal/store/ -run
+'TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows|TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable'
+-v`:
+
+```
+=== RUN   TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows
+    store_test.go:1718: index events_at after v4->v5 migration = 0, <nil>; want 1
+--- FAIL: TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows (0.12s)
+=== RUN   TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable
+    store_test.go:1847: query plan = [SCAN events USE TEMP B-TREE FOR ORDER BY], want no bare full-table scan of events (events_at index missing or unused)
+--- FAIL: TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable (0.09s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.213s
+```
+
+Workspace restored with `git stash pop` immediately after; re-run of
+`ci/run.sh go test -count=1 ./internal/store/` then passes
+(`ok  github.com/n-orlov/deck/internal/store 1.651s`).
+
 ## Per-requirement evidence table
 
 _To be completed by task 326: R52-R58, R59-R62, plus the whole-suite and

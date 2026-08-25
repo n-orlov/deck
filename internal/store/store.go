@@ -17,7 +17,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
@@ -1486,6 +1486,13 @@ func (s *Store) migrate(version int) error {
 				return fmt.Errorf("create schema v4: %w", err)
 			}
 		}
+		fallthrough
+	case 4:
+		for _, statement := range schemaV5 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v5: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -1547,6 +1554,16 @@ var schemaV3 = []string{
 // upgrade to v4 recreates no session row.
 var schemaV4 = []string{
 	`CREATE TABLE IF NOT EXISTS recent_cwds (path TEXT PRIMARY KEY, used_seq INTEGER NOT NULL)`,
+}
+
+// schemaV5 adds the two events indexes from SPEC.md's amended events DDL
+// (steer 3e-001 / task 330): events_at backs ListEvents' newest-first read
+// (§12), events_session_kind backs §6.4's env-apply reads. Index-only; it
+// touches no existing row and is applied on top of schemaV1-4 for a fresh
+// database and standalone for an existing v1-v4 database.
+var schemaV5 = []string{
+	`CREATE INDEX IF NOT EXISTS events_at ON events(at DESC, seq DESC)`,
+	`CREATE INDEX IF NOT EXISTS events_session_kind ON events(session_id, kind)`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists
