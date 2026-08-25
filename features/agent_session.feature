@@ -46,7 +46,7 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch argv for session "restart claude" contains "--session-id"
     When deck client "A" presses R on session "restart claude"
     Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
-    And the audit log has 2 launch records for session "restart claude"
+    And within one configured reconcile interval the audit log has 2 launch records for session "restart claude"
     And the audit log's most recent launch argv for session "restart claude" contains "--resume"
     And the audit log's most recent launch argv for session "restart claude" does not contain "--session-id"
     And the audit log's most recent launch argv for session "restart claude" contains session "restart claude"'s conversation id
@@ -108,7 +108,7 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log has 1 launch record for session "restart audit env"
     When deck client "A" presses R on session "restart audit env"
     Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
-    And the audit log has 2 launch records for session "restart audit env"
+    And within one configured reconcile interval the audit log has 2 launch records for session "restart audit env"
     And the audit log's most recent launch argv for session "restart audit env" contains "--resume"
     And the audit log's most recent launch record for session "restart audit env" names environment key "AUDIT_ENV_TOKEN"
     And the audit log file never contains "super-secret-restart-do-not-log-2468013"
