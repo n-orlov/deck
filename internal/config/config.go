@@ -108,6 +108,14 @@ type Settings struct {
 	// sessions by workspace. DECK_GROUP_BY_WORKSPACE overrides the file when
 	// set.
 	GroupByWorkspace bool
+	// SortOrder mirrors config.toml's [ui] sort_order key (default
+	// "attention", SPEC §11, amendment 6584299): which of the four total
+	// orders (attention/created/activity/name) the sidebar renders in.
+	// This task (303) only plumbs the raw configured string through;
+	// internal/tui resolves an unknown/malformed value to "attention"
+	// with a stated reason (task 305), the same shape ThemeReason already
+	// has for ui.theme.
+	SortOrder string
 	// PreviewFit mirrors config.toml's [ui] preview_fit key (default true,
 	// SPEC §11, steer 018 item 4): whether the passive preview fits the
 	// selected session's window to the preview panel as the list selection
@@ -275,6 +283,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		GroupByWorkspace: groupByWorkspace,
+		SortOrder:        fileCfg.SortOrder,
 		PreviewFit:       previewFit,
 		TmuxMouse:        tmuxMouse,
 		RecentCwdLimit:   fileCfg.RecentCwdLimit,

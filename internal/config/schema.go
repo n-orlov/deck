@@ -462,6 +462,37 @@ var Schema = []Field{
 		Scope: ScopeRestartToApply,
 	},
 	{
+		Section:    "ui",
+		Key:        "sort_order",
+		Kind:       KindEnum,
+		Default:    "attention",
+		EnumValues: []string{"attention", "created", "activity", "name"},
+		Description: "Orders the sidebar (SPEC §11, amendment 6584299). " +
+			"\"attention\" (default) is the unchanged waiting/error/running/" +
+			"starting/idle/stopped tier order -- the order every earlier phase " +
+			"shipped, kept default because it answers \"which session needs " +
+			"me\". \"created\" is sessions.created_at descending (newest " +
+			"first). \"activity\" is sessions.status_at descending -- a status " +
+			"CHANGE (§7's own timestamp), never last pane output, which deck " +
+			"does not record. \"name\" is case-insensitive ascending. Every " +
+			"order falls back to id ascending on a tie (a total order, so a " +
+			"re-sort can never swap two rows out from under an in-flight " +
+			"keyboard idiom), and a non-attention order never secretly re-ranks " +
+			"by status -- choosing one means the user, not deck, decides what " +
+			"\"first\" means. An unknown/malformed value falls back to " +
+			"attention and says so on the first painted frame, never silently.",
+		// requirement 19: this task (303) only declares the key and wires
+		// parse/write/settings plumbing -- sessionsLoaded does not yet read
+		// it (task 305) and settingsApplyLiveFields does not yet copy it
+		// into the running m.settings (task 306), so there is no consumer
+		// today that would make a save observable in the running client,
+		// the same honest reasoning ui.group_by_workspace's own comment
+		// above gives pending its own live-apply wiring. Task 306 flips
+		// this to ScopeGlobal once settingsApplyLiveFields re-sorts the
+		// running model with the selection preserved by id.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "env",
 		Key:         "",
 		Kind:        KindListOfStrings,
