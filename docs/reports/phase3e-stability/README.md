@@ -14,7 +14,7 @@ containers).
 
 | run | result | wall clock (start→end, unix) | 1-min loadavg @ start |
 |-----|--------|-------------------------------|------------------------|
-| 1   | FAIL   | 1787697857 → 1787698212 (355s) | 0.83 |
+| 1   | FAIL (`features` + `internal/interactive`) | 1787697857 → 1787698212 (355s) | 0.83 |
 | 2   | PASS   | 1787698212 → 1787698569 (357s) | 4.49 |
 | 3   | PASS   | 1787698569 → 1787698926 (357s) | ~2.2 |
 | 4   | FAIL   | 1787698926 → 1787699292 (366s) | 2.24 |
@@ -33,12 +33,28 @@ summary emitted by `ci/stability.sh`: [`summary.log`](./summary.log).
 
 ## Every failure, root-caused (not re-run for a streak)
 
-All three failed runs failed in `github.com/n-orlov/deck/features`
-(`FAIL	github.com/n-orlov/deck/features	<N>s`); every other package was
-`ok` or `[no test files]` in all ten runs, with no exceptions. The three
-failures are all instances of exactly two pre-existing, already-documented
-flaky scenarios in `features/mouse.feature` and `features/preview.feature`
-— both tagged `@mouse-bindings`-adjacent SIGWINCH-count assertions with a
+**Correction (this pass, after validation caught the gap below): the
+claim "all three failed runs failed in `github.com/n-orlov/deck/features`
+and every other package was ok in all ten runs" was FALSE as first
+published.** Run 1's raw log (`run-1.log`, line 4934) also has:
+
+```
+FAIL	github.com/n-orlov/deck/internal/interactive	7.150s
+```
+
+caused by a panic (`panic: Fail in goroutine after
+TestSessionResizeDuringLiveDrainIsRaceFree has completed`, `run-1.log`
+lines 4919-4933), which was left unmentioned and un-root-caused in the
+originally published version of this report. There are in fact **two**
+failure mechanisms across the ten runs, not one. Both are covered below;
+item 3 is the correction.
+
+Every other package was `ok` or `[no test files]` in all ten runs, with no
+exceptions, in every run other than run 1's `internal/interactive`
+failure. The `features` package failed in runs 1, 4 and 10; those three
+are all instances of exactly two pre-existing, already-documented flaky
+scenarios in `features/mouse.feature` and `features/preview.feature` —
+both tagged `@mouse-bindings`-adjacent SIGWINCH-count assertions with a
 deliberately tight settle window, and both already root-caused to host
 load (not a product bug) in task 324's report
 (`docs/reports/phase3e-fullsuite/README.md`, "What had to be fixed first"
@@ -83,15 +99,74 @@ raise the published rate — per the standing "no scenario deleted, skipped
 or tag-excluded to make a suite pass" rule, and per the task's own
 instruction to publish the honest rate.
 
+3. **`internal/interactive` — `TestSessionResizeDuringLiveDrainIsRaceFree`
+   panics with "Fail in goroutine after ... has completed"** — failed
+   once, in run 1 only (`run-1.log:4919-4934`). This is a genuine
+   synchronization bug in the *test*, not a product bug and not host-load
+   noise on an assertion's timing window like items 1-2: the test
+   (`internal/interactive/resize_test.go`, was lines 214-227 at commit
+   `5ee9094`) starts a background goroutine that repeatedly calls
+   `sendLiteralLine` (which calls `t.Fatalf`/`t.Helper` on failure) in a
+   loop gated by `select { case <-stop: return; default: ... }`, then
+   after its own 20-iteration foreground loop does `close(stop)` and
+   returns **without waiting for the goroutine to observe `stop` and
+   actually exit**. `close(stop)` only becomes visible to the goroutine at
+   the top of its next loop iteration — it does not interrupt an
+   in-flight `sendLiteralLine` call. Under CPU contention (slow `tmux`
+   `exec.Command` calls), that in-flight call can still be running, and
+   can still fail and call `t.Fatalf`, after `TestSessionResizeDuringLiveDrainIsRaceFree`
+   has already returned and the test framework has marked it complete —
+   `testing` detects a call into a completed test's `*T` from another
+   goroutine and panics the whole process instead of just failing the
+   test. This is exactly the "goroutine outlives the test" class, same
+   shape as the settle-race issues 7ebafce (task 324) and task 334 target
+   in the godog harness, but in a plain Go test in a different package,
+   with a different concrete cause (missing goroutine join, not a missing
+   frame-wait).
+
+   **Fix landed this task** (commit below): add a `sync.WaitGroup`, `Add(1)`
+   before starting the goroutine, `defer wg.Done()` inside it, and
+   `wg.Wait()` after `close(stop)` in the foreground before the test
+   function returns — a real join, not a signal-and-hope. This makes it
+   impossible for the goroutine's current iteration to still be running
+   (and thus able to call `t.Fatalf`) once the test function has returned.
+
+   **Discriminating experiment (this task, this iteration):** the panic
+   did not reproduce in low-load isolation (5/5 clean runs of the
+   pre-fix test alone, no competing load). It reproduced reliably under
+   induced contention: 8 sibling `ci/run.sh` containers launched
+   simultaneously, each running `go test -count=10 -run
+   TestSessionResizeDuringLiveDrainIsRaceFree ./internal/interactive/`
+   (80 total iterations) against the pre-fix code — **2 of the 8
+   processes panicked** with the identical stack shape (`sendLiteralLine`
+   -> `t.Fatalf` -> goroutine created by
+   `TestSessionResizeDuringLiveDrainIsRaceFree`), saved at
+   [`redproof-interactive-goroutine-leak/red-1.log`](./redproof-interactive-goroutine-leak/red-1.log)
+   and
+   [`redproof-interactive-goroutine-leak/red-2.log`](./redproof-interactive-goroutine-leak/red-2.log).
+   The same 8-parallel-container experiment repeated against the fixed
+   code produced 8/8 clean passes (80/80 iterations), one saved at
+   [`redproof-interactive-goroutine-leak/green-1.log`](./redproof-interactive-goroutine-leak/green-1.log).
+   So: real bug (not host-load noise on an assertion window), reproduced
+   and fixed, with contention as the amplifier that makes the race
+   observable rather than the cause of a false assertion.
+
 ## Honest published rate
 
-**7/10 (70%)**, at commit `5ee9094`, with all three failures independently
-root-caused to host load acting on two known-tight-settle-window SIGWINCH
-assertions in `features/mouse.feature` and `features/preview.feature` — not
-to a mechanism task 334 (the settle-race defect class in
-`selectRowByName`/`clientOpensDetailForSession`) would fix, since none of
-the failures involve resume, restart, detail-open, or `lease_race.feature`.
-No re-run was performed to manufacture a better streak.
+**7/10 (70%)**, at commit `5ee9094`, with all four instances of failure
+across the ten runs (`features` failing in runs 1, 4 and 10; `internal/interactive`
+failing in run 1 only, alongside that run's `features` failure)
+independently root-caused: items 1-2 to host load acting on two
+known-tight-settle-window SIGWINCH assertions in `features/mouse.feature`
+and `features/preview.feature`, and item 3 to a genuine
+test-synchronization bug (missing goroutine join), now fixed. None of the four are the task 334 (settle-race defect class in
+`selectRowByName`/`clientOpensDetailForSession`) mechanism — that class is
+specific to the godog navigation helpers in `features/agent_steps_test.go`
+and none of these four failures involve resume, restart, detail-open, or
+`lease_race.feature`. No re-run was performed to manufacture a better
+streak; the rate stands as published even though one of its four root
+causes is now fixed in the tree (the fix could only be validated after the
+fact, at a later commit than the run itself).
 
 ## Reproduction
 
