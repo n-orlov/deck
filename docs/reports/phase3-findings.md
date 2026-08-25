@@ -1160,3 +1160,38 @@ running scenarios sharing a temp directory and would need to be reconciled with 
 path (the binary itself can be shared read-only across concurrent scenario processes; only the
 per-scenario `DECK_HOME`/tmux socket need to stay unique, which they already are via a separate
 mechanism in `newScenarioHarness`).
+
+## Task 220 (steer 021 §2) resolution: the two `internal/interactive` failures are host-contention artifacts, not a task 216 regression
+
+Steer 021 §2 asked for a discriminating experiment rather than a guess: run `internal/interactive`
+alone at low load at `HEAD` (`c2db56b`), then at `ffa7a5b` (the commit immediately before task
+216's `e1bcc3a` in the branch's own history), under comparable conditions, and let the result
+decide whether task 216 (`SelectedText`/`AbsoluteRow` in `grid.go`) regressed
+`TestArmingPipeAfterSeedCaptureLosesInterstitialBytes` and
+`TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern`, or whether host load during task
+217's attempt 2 (1-min loadavg climbing to 143.50, per task 217's own notes) was the cause.
+
+**Method.** A `git worktree add /workspace/.scratch-ffa7a5b ffa7a5b` checked out the pre-216 tree
+without disturbing the main workspace (verified `git worktree remove --force` afterward and
+`git status --short` clean). Both commits were run against the two named tests via the same
+`deck-ci:local` sibling image and the same `deck-go-cache` volume, at host 1-min loadavg 12–17
+(5-min 40–50, 15-min 104–110 — declining from an earlier spike, not rising): `HEAD` got one `-v`
+run (both tests individually) plus a `-count=5` run (10 more invocations); `ffa7a5b` got a
+`-count=5` run (5 invocations). This is in addition to task 217 attempt 3's prior, independent
+`-count=10` isolated run of both tests together at `HEAD` (1-min loadavg ≈10), also 10/10 green.
+
+**Result: every run at both commits passed.** `HEAD`: 2/2 (individual `-v`) + 5/5 (`-count=5`) +
+10/10 (task 217 attempt 3's prior run) = 17/17 green. `ffa7a5b`: 5/5 green. Per steer 021 §2's own
+decision rule ("if it reproduces at `ffa7a5b` too, or neither reproduces at low load, → load"):
+neither commit reproduces the failure at low load, so this is the "load" branch — the two
+failures observed during task 217's attempt 2 (host loadavg spike to 143.50 1-min) are
+host-contention artifacts of a shared, non-dedicated host, not a regression introduced by task
+216's `grid.go` changes. `internal/interactive` is cleared to stand as part of task 210's
+stability population rather than requiring a code fix in task 216's territory.
+
+Evidence log: `/tmp/217work/ab-experiment.log` (this container's own scratch filesystem, not
+committed to the repo — matches this run's existing convention of citing scratch full-suite logs
+by path in notes.md rather than committing every intermediate diagnostic run; the load-average
+samples and pass/fail lines quoted above are transcribed from it verbatim). Task 217 may now
+proceed to its own remaining criterion (a clean whole-suite run) without steer 021 §2 as an open
+blocker.
