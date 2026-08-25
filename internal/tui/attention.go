@@ -128,20 +128,19 @@ func lessByAttention(a, b store.Session) bool {
 // still breaks the tie; two rows that share a real previous position never
 // reach the ID compare at all.
 func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.Session {
-	prevPos := make(map[string]int, len(previous))
-	for i, s := range previous {
-		prevPos[s.ID] = i
-	}
-	posKey := func(s store.Session) int {
-		if p, ok := prevPos[s.ID]; ok {
-			return p
-		}
-		return len(previous) // new this load: one shared key, ID breaks the rest
-	}
-	sorted := make([]store.Session, len(incoming))
-	copy(sorted, incoming)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		a, b := sorted[i], sorted[j]
+	return sortSessionsStable(previous, incoming, attentionLessStable(previous))
+}
+
+// attentionLessStable is sortSessionsByAttentionStable's own less function,
+// factored out (task 304) so the sort-order dispatch's other three
+// comparators can be tested against the exact same 3-element-tie-set shape
+// this one is -- see sort_order.go's lessByCreatedStable and friends, which
+// share this function's tie-break structure (primary key, then previous
+// position, then ID) precisely to avoid the 3-cycle hazard this function's
+// own doc comment above warns about.
+func attentionLessStable(previous []store.Session) func(a, b store.Session) bool {
+	posKey := previousPositionKey(previous)
+	return func(a, b store.Session) bool {
 		ra, rb := attentionRank(a.Status), attentionRank(b.Status)
 		if ra != rb {
 			return ra < rb
@@ -153,8 +152,7 @@ func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.S
 			return ka < kb
 		}
 		return a.ID < b.ID
-	})
-	return sorted
+	}
 }
 
 // indexOfSessionID returns the index of the session with the given ID in
