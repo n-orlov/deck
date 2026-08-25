@@ -17,6 +17,7 @@ var builtinFiles = []string{
 	"builtin/empire.toml",
 	"builtin/daylight.toml",
 	"builtin/matrix.toml",
+	"builtin/cobalt.toml",
 }
 
 var builtins map[string]*Theme
