@@ -390,6 +390,17 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 		m.settings.Theme = resolved
 		m.settings.ThemeReason = reason
 	}
+	// requirement R53/task 306: sort_order's schema.go comment names this
+	// exact code path as its live-apply consumer. Guarded by EnvOverrides
+	// the same way ui.mouse/ui.preview_fit are above -- config.LoadFrom
+	// today defines no DECK_SORT_ORDER override at all, so this branch is
+	// never actually skipped in practice, but the guard is kept for the
+	// same reason every other ScopeGlobal field carries it: an override
+	// path added later must not have to remember to add this check too.
+	if _, overridden := m.settings.EnvOverrides["ui.sort_order"]; !overridden && m.settingsEdits.SortOrder != previous.SortOrder {
+		m.settings.SortOrder = m.settingsEdits.SortOrder
+		m.resortSessionsLive()
+	}
 	return cmd
 }
 

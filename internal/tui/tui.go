@@ -3198,6 +3198,41 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	return entries
 }
 
+// resortSessionsLive re-sorts the exact session set already held in
+// m.baseSessions/m.sessions for the just-changed [ui] sort_order
+// (requirement R53/task 306's settingsApplyLiveFields consumer) -- unlike
+// sessionsLoaded's own resort above, which reacts to a fresh ListSessions
+// result, this reorders the SAME sessions already on screen, so previous
+// and incoming are deliberately the same slice for every
+// sortSessionsByOrder/sortSessionsByAttentionStable call below (a
+// same-set re-sort, not a reconcile). The selected SESSION is preserved by
+// id -- never by index, since that is exactly what a re-sort can change --
+// and scrollSessionIntoView keeps its row inside the sidebar's visible
+// window, mirroring requirement 52's own one-shot new-session path.
+func (m *Model) resortSessionsLive() {
+	var selectedID string
+	if m.selected >= 0 && m.selected < len(m.sessions) {
+		selectedID = m.sessions[m.selected].ID
+	}
+	order, _ := m.effectiveSortOrder()
+	attentionOrder := sortSessionsByAttentionStable(m.baseSessions, m.baseSessions)
+	switch {
+	case order == SortOrderAttention:
+		m.baseSessions = attentionOrder
+	case m.groupingEnabled():
+		m.baseSessions = reorderPreservingGrouping(attentionOrder, sortSessionsByOrder(m.baseSessions, m.baseSessions, order))
+	default:
+		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order)
+	}
+	m.sessions = m.filteredSessions()
+	if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+		m.selected = idx
+		m.scrollSessionIntoView(idx)
+	} else if m.selected >= len(m.sessions) {
+		m.selected = max(0, len(m.sessions)-1)
+	}
+}
+
 // scrollSessionIntoView adjusts m.sidebarScroll (SPEC requirement 52) so
 // that the session at m.sessions[sessionIndex]'s row is fully within the
 // sidebar's current content window, moving the offset the minimum amount

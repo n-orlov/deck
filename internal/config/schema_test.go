@@ -127,11 +127,14 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     the same reasoning as stale_after above.
 //   - [env]: unchanged, restart-to-apply per §6.2 (already correct, and
 //     already the subject of its own SPEC citation in schema.go).
-//   - ui.group_by_workspace, ui.sort_order: restart-to-apply, pending each
-//     one's own live-apply wiring in settingsApplyLiveFields -- task 303
-//     plumbs sort_order's schema/parse/write/settings mapping only, and
-//     task 306 flips it to ScopeGlobal once a save re-sorts the running
-//     model with the selection preserved by id.
+//   - ui.group_by_workspace: restart-to-apply, pending its own live-apply
+//     wiring in settingsApplyLiveFields.
+//   - ui.sort_order: ScopeGlobal as of task 306 -- sessionsLoaded (task
+//     305) already reads it live on every reload, and
+//     settingsApplyLiveFields now copies a changed value into the running
+//     m.settings on save and re-sorts the running model
+//     (Model.resortSessionsLive), preserving the selected session by id
+//     (never by index) and keeping its row visible.
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
 		"allow_yolo":            ScopeGlobal,
@@ -146,7 +149,7 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.mouse":              ScopeGlobal,
 		"ui.preview_fit":        ScopeGlobal,
 		"ui.group_by_workspace": ScopeRestartToApply,
-		"ui.sort_order":         ScopeRestartToApply,
+		"ui.sort_order":         ScopeGlobal,
 		"ui.recent_cwd_limit":   ScopeRestartToApply,
 		"[env]":                 ScopeRestartToApply,
 	}
