@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // I-5 / SPEC requirement 35: with `[ui] group_by_workspace` false the
@@ -175,7 +176,7 @@ func TestElisionMathAgreesInBothGroupingModesAt80x24(t *testing.T) {
 			// crops it to the panel's content width (task 019's doc on
 			// sidebarRowLines) -- so the ellipsis assertion is against the
 			// cropped line, not the raw entry.
-			cropped := m.sidebarContentLine(layout.Sidebar.Width, rowText)
+			cropped := m.sidebarContentLine(layout.Sidebar.Width, rowText, theme.Token(""))
 			if !strings.Contains(cropped, "\u2026") {
 				t.Fatalf("%s mode: long name row %q was not ellipsis-truncated at 80x24's sidebar width %d:\n%q", tc.name, rowText, layout.Sidebar.Width, cropped)
 			}

@@ -20,7 +20,8 @@ import (
 // bytes and never comparing matrix.toml's authored strings directly.
 func matrixSidebarStatusFg(t *testing.T, m Model, session store.Session, wantText string) string {
 	t.Helper()
-	line := m.sidebarRowLines(0, session, false)[0]
+	lines, _ := m.sidebarRowLines(0, session, false)
+	line := lines[0]
 	term := renderSettingsToEmulator(t, line, 200, 1)
 	col := findCol(t, term, 0, wantText)
 	hex, ok := cellFgHex(t, term, col, 0)

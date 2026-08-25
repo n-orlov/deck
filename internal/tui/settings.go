@@ -1303,6 +1303,35 @@ func (m Model) settingsRenderRow(segs []settingsRowSegment, bg theme.Token, sele
 	return b.String()
 }
 
+// settingsRenderRowOpen composes segs' own foreground colours exactly like
+// settingsRenderRow, but opens no background of its own and never emits a
+// closing reset -- it deliberately leaves any foreground SGR state open so
+// a caller that wants a background to span PAST this text (task 321/R58b:
+// the sidebar row highlight filling the whole panel width, pad-fill and
+// flanking padding columns included, not just the glyphs sidebarRowLines
+// happens to draw) can open that background before this text and close
+// everything with exactly one reset of its own, the same append-only-once
+// discipline settingsRenderRow's own doc comment already requires -- an
+// inner reset here would clear the outer caller's background the instant
+// this text's own last segment ended. Only sidebarRowLines uses this; every
+// other settingsRenderRow caller (the settings takeover) is unaffected.
+func (m Model) settingsRenderRowOpen(segs []settingsRowSegment) string {
+	var b strings.Builder
+	if !m.settings.Color {
+		for _, s := range segs {
+			b.WriteString(s.Text)
+		}
+		return b.String()
+	}
+	for _, s := range segs {
+		if seq, ok := m.foregroundSGR(s.Tok); ok {
+			b.WriteString(seq)
+		}
+		b.WriteString(s.Text)
+	}
+	return b.String()
+}
+
 // settingsSelectionToken resolves which of SPEC requirement 42's two
 // focus-cue tokens a list's currently-selected row renders in: `selection`
 // when that list is the one tab/left/right currently gives up/down to,
