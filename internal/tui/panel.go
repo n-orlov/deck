@@ -235,16 +235,45 @@ func stringWidth(s string) int {
 // entirety rather than truncated in half, so the returned prefix's visible
 // width is always <= budget and never lands mid-glyph (SPEC requirement
 // 24).
+//
+// SPEC §11.3 ("every truncated coloured run re-emits its own reset"):
+// dropping the visible runes that no longer fit must never also drop an
+// open BACKGROUND span's own closing reset that happened to sit past the
+// cut point in s — a highlighted row's background left open across the
+// truncation would otherwise bleed into whatever the caller concatenates
+// next (the ellipsis, padding, or the seam/border beyond the panel's own
+// width; see settingsRenderRow, which opens one background span and closes
+// it with a single trailing reset only at the very end of the composed
+// line, long after any mid-line truncation here would have cut it off).
+// backgroundSpanTracker below watches only background-setting/-clearing
+// SGR parameters as they pass through untouched; if a span is still open
+// once this function stops advancing — whether because the budget ran out
+// or because s simply ended without ever closing it — a synthetic
+// "\x1b[0m" is appended so the returned string always leaves the terminal
+// in a closed background state, at zero visible cost. Foreground-only runs
+// (no background ever opened) are untouched: escape_width_test.go's
+// TestTruncateToWidthKeepsEscapeBytesItPassesOver deliberately exercises a
+// foreground-only span truncated mid-run and asserts NO reset is
+// synthesised there — dropping a foreground colour's own trailing reset
+// changes only the colour of text that already stopped being emitted
+// (whatever comes next in the same coloured run resolves its own
+// foreground itself, panel.go's colorToken/bgColorToken and
+// settingsRenderRow always emit one attribute-scoped SGR before their
+// text), never the shape of another panel's surface the way an open
+// background does.
 func truncateToWidth(s string, budget int) string {
 	if budget <= 0 {
 		return ""
 	}
 	var out strings.Builder
+	var bg backgroundSpanTracker
 	width := 0
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
 			n := ansiEscapeLen(s, i)
-			out.WriteString(s[i : i+n])
+			esc := s[i : i+n]
+			bg.observe(esc)
+			out.WriteString(esc)
 			i += n
 			continue
 		}
@@ -257,7 +286,92 @@ func truncateToWidth(s string, budget int) string {
 		width += w
 		i += size
 	}
+	if bg.open {
+		out.WriteString("\x1b[0m")
+	}
 	return out.String()
+}
+
+// backgroundSpanTracker watches the SGR (CSI ... 'm') escape sequences
+// truncateToWidth passes through and reports whether the run currently
+// sits inside an open BACKGROUND span — a background colour set (ANSI
+// 40-47/100-107, or the extended "48;5;N"/"48;2;R;G;B" forms bgSgrForToken
+// emits, see theme_color.go) that has not since been cleared by either a
+// bare background reset (49) or a full reset (0, or an SGR escape with no
+// parameters at all, which the standard treats identically to 0). Only
+// background state is tracked (see truncateToWidth's doc comment for why
+// foreground is deliberately left alone); other SGR attributes (bold,
+// underline, foreground) are parsed only far enough to skip their own
+// extended parameters correctly so a background code sharing one escape
+// with them is not misread.
+type backgroundSpanTracker struct {
+	open bool
+}
+
+func (b *backgroundSpanTracker) observe(esc string) {
+	if len(esc) < 3 || esc[1] != '[' || esc[len(esc)-1] != 'm' {
+		return // not an SGR sequence (e.g. an OSC title, or a cursor move)
+	}
+	params := esc[2 : len(esc)-1]
+	fields := strings.Split(params, ";")
+	for i := 0; i < len(fields); i++ {
+		code := fields[i]
+		if code == "" || code == "0" {
+			b.open = false
+			continue
+		}
+		n, err := parseSGRCode(code)
+		if err != nil {
+			continue
+		}
+		switch {
+		case n == 49:
+			b.open = false
+		case n >= 40 && n <= 47:
+			b.open = true
+		case n >= 100 && n <= 107:
+			b.open = true
+		case n == 48:
+			b.open = true
+			// Extended colour: "48;5;N" (one more param) or
+			// "48;2;R;G;B" (three more) -- skip them so they are never
+			// mistaken for their own top-level SGR codes.
+			if i+1 < len(fields) {
+				switch fields[i+1] {
+				case "5":
+					i += 2
+				case "2":
+					i += 4
+				}
+			}
+		case n == 38:
+			// Extended foreground colour, same shape as 48 above; skip
+			// its params too so an accompanying 48 later in the same
+			// escape is not misaligned.
+			if i+1 < len(fields) {
+				switch fields[i+1] {
+				case "5":
+					i += 2
+				case "2":
+					i += 4
+				}
+			}
+		}
+	}
+}
+
+// parseSGRCode parses one semicolon-separated SGR parameter as a decimal
+// integer, without pulling in strconv's full surface for what is always a
+// short run of ASCII digits from an escape sequence deck itself generated.
+func parseSGRCode(s string) (int, error) {
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0, fmt.Errorf("not a digit: %q", s)
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n, nil
 }
 
 // padToWidth appends single-column space runes to s until its display
