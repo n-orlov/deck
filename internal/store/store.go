@@ -782,12 +782,34 @@ func truncateUTF8(value string, limit int) string {
 // or status_at — SPEC §7 precedence and every existing transition are
 // untouched by a miss. It exists solely so the `i` detail dialog can
 // distinguish "sampled, no rule matched" from "never sampled" (task 009).
+//
+// SPEC §7 amendment (steer 3e-001, R59): "a diagnostic sampling result is a
+// column, not an event" — a probe miss overwrites sessions.last_probe_at ONLY
+// and never appends to events. At the default reconcile cadence one
+// unmatched session alone would otherwise write two rows a second forever,
+// with no reader for the kind (the general rule: a kind is only written if
+// something reads it). This intentionally uses a plain UPDATE, not
+// mutateSessionWithEvent, because that helper always pairs its UPDATE with
+// an events INSERT in the same transaction.
 func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "last_probe_at", "probe.miss", "probe", "", at,
-		`UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at)
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at, sessionID)
+	if err != nil {
+		return fmt.Errorf("set last_probe_at: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check set last_probe_at: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	return nil
 }
 
 // SetConversationID records the conversation identity assigned to (or

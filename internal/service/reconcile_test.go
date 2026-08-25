@@ -337,7 +337,13 @@ func TestProbeReconcileNeverProbesShell(t *testing.T) {
 // diagnostic evidence — the row's status/status_source/status_at (SPEC §7)
 // are completely untouched — while last_probe_at still advances so the `i`
 // detail dialog can later tell "sampled, no rule matched" apart from "never
-// sampled" (task 009).
+// sampled" (task 009). SPEC §7 amendment (steer 3e-001, R59): "a diagnostic
+// sampling result is a column, not an event" — a probe miss must NOT append
+// to events at all, so this asserts both halves together: last_probe_at
+// advances AND the session's total events count is unchanged across the
+// miss (asserting only the count-unchanged half would also pass if
+// RecordProbeMiss were deleted outright, which would break the `i` dialog —
+// hence the last_probe_at assertion is required too).
 func TestProbeMissRecordsSampleAgeWithoutTouchingStatus(t *testing.T) {
 	cwd := t.TempDir()
 	svc, db, _, _ := newAgentTestService(t, nil, "probe-miss")
@@ -353,6 +359,10 @@ func TestProbeMissRecordsSampleAgeWithoutTouchingStatus(t *testing.T) {
 	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "echo 'nothing recognisable here'; sleep 30"}}); err != nil {
 		t.Fatal(err)
 	}
+	eventsBefore, err := countSessionEvents(db, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := svc.ReconcileWithProbes(context.Background(), 45*time.Second); err != nil {
 		t.Fatal(err)
 	}
@@ -366,10 +376,26 @@ func TestProbeMissRecordsSampleAgeWithoutTouchingStatus(t *testing.T) {
 	if got.LastProbeAt != now {
 		t.Fatalf("last_probe_at = %d, want %d", got.LastProbeAt, now)
 	}
-	var missEvents int
-	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'probe.miss'`, session.ID).Scan(&missEvents); err != nil || missEvents != 1 {
-		t.Fatalf("probe miss events = %d, %v; want 1", missEvents, err)
+	eventsAfter, err := countSessionEvents(db, session.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if eventsAfter != eventsBefore {
+		t.Fatalf("session events count = %d after probe miss, want unchanged from %d (a probe miss must never append to events, SPEC §7 amendment)", eventsAfter, eventsBefore)
+	}
+	var missEvents int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'probe.miss'`, session.ID).Scan(&missEvents); err != nil {
+		t.Fatal(err)
+	}
+	if missEvents != 0 {
+		t.Fatalf("probe.miss events = %d, want 0 (a diagnostic sampling result is a column, not an event)", missEvents)
+	}
+}
+
+func countSessionEvents(db *store.Store, sessionID string) (int, error) {
+	var n int
+	err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ?`, sessionID).Scan(&n)
+	return n, err
 }
 
 func TestReconcilerCapturesAndCollectsCrashFirstWriterOnly(t *testing.T) {
