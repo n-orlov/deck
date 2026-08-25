@@ -179,6 +179,56 @@ immediately after (`git status --short` empty, `git diff --stat` empty).
 on `features/testdata/golden/side_by_side_80x24.golden` is empty (file
 untouched by this task).
 
+## R59: stop writing `probe.miss` as an event (steer 3e-001, task 329)
+
+SPEC §7 amendment quoted in steer 3e-001 §3: "A diagnostic sampling result is
+a column, not an event." At the default reconcile cadence one session that
+samples but never matches a §7 probe rule was writing a fresh `probe.miss`
+row to `events` roughly twice a second, forever, with no reader for the kind
+(operator-reported hang; part of the 3e-001 root cause alongside the missing
+events indexes (R60) and the render-path store read (R61)).
+
+`internal/store/store.go`'s `RecordProbeMiss` no longer calls
+`mutateSessionWithEvent` (which always pairs its UPDATE with an events
+INSERT in the same transaction). It now runs a plain
+`UPDATE sessions SET last_probe_at = ? WHERE id = ?`, checks `RowsAffected`
+itself, and appends nothing to `events`. The `i` detail dialog's "sampled,
+no rule matched" line (`internal/tui/tui.go:4064-4067`) is untouched — it
+reads only `session.LastProbeAt > session.StatusAt`, never the events table.
+
+Test (`internal/service/reconcile_test.go`,
+`TestProbeMissRecordsSampleAgeWithoutTouchingStatus`) drives a session whose
+sampled pane provably matches no §7 probe rule (`echo 'nothing recognisable
+here'`) through `ReconcileWithProbes`, then asserts BOTH halves together per
+steer 3e-001 §6.2: `last_probe_at` advanced to the reconcile clock's `now`,
+AND the session's total `events` count is unchanged across the miss (a
+separate `SELECT count(*) FROM events WHERE session_id = ? AND kind =
+'probe.miss'` is also asserted `= 0`). Asserting only the count-unchanged
+half would also pass if `RecordProbeMiss` were deleted outright, which would
+break the `i` dialog — hence both halves are required in the same test.
+
+Green (`ci/run.sh go test -count=1 ./internal/store/ ./internal/service/ ./internal/tui/`):
+all three `ok` (store 1.835s, service 3.176s, tui 0.698s).
+
+Red proof: `git stash push -- internal/store/store.go` (reverting only the
+fix, keeping the new test), then
+`ci/run.sh go test -count=1 ./internal/service/ -run TestProbeMissRecordsSampleAgeWithoutTouchingStatus -v`:
+
+```
+=== RUN   TestProbeMissRecordsSampleAgeWithoutTouchingStatus
+    reconcile_test.go:384: session events count = 1 after probe miss, want unchanged from 0 (a probe miss must never append to events, SPEC §7 amendment)
+--- FAIL: TestProbeMissRecordsSampleAgeWithoutTouchingStatus (0.05s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.057s
+```
+
+Workspace restored with `git stash pop` immediately after; re-run of the
+same test then passes (`ok  	github.com/n-orlov/deck/internal/service	0.059s`).
+
+No other production code references the `probe.miss` kind string;
+`internal/tui/badge_detail_test.go`'s probe-miss assertions read
+`LastProbeAt`/`StatusAt` directly and needed no change.
+
 ## Per-requirement evidence table
 
 _To be completed by task 326: R52-R58, R59-R62, plus the whole-suite and
