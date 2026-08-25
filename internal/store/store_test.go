@@ -93,7 +93,10 @@ func TestOpenRefusesNewerFixtureWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 5)`); err != nil {
+	// Always exactly one newer than this binary's SchemaVersion, so bumping
+	// SchemaVersion (as task 330 did, 4->5) never silently turns this into a
+	// same-version fixture that no longer exercises the refusal path.
+	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', ?)`, SchemaVersion+1); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.Close(); err != nil {
@@ -1633,5 +1636,237 @@ func TestListEventsOrdersNewestFirstAndCapsAtLimit(t *testing.T) {
 	}
 	if len(limited) != 2 || limited[0].Payload != "fourth" || limited[1].Payload != "third" {
 		t.Fatalf("ListEvents(limit=2) = %v, want the two newest only", limited)
+	}
+}
+
+// TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows is
+// task 330's (R60, steer 3e-001 §6.1) migration proof: schemaV5 adds the
+// two events indexes from SPEC.md's amended events DDL (events_at,
+// events_session_kind) on top of an existing v1-v4 database, and must do
+// so without recreating or altering a single row already in sessions or
+// events -- an index-only migration touches no row content.
+func TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "deck")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, "state.db")
+	fixture, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range schemaV1 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV2 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV3 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV4 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fixture.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', 4)`); err != nil {
+		t.Fatal(err)
+	}
+	const fixtureID = "v4-fixture-session"
+	if _, err := fixture.Exec(`INSERT INTO sessions (
+		id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at
+	) VALUES (?, 'kept', 'kept', '/tmp', 'shell', '/bin/sh', 'stopped', 'test', 1, 1)`, fixtureID); err != nil {
+		t.Fatal(err)
+	}
+	// Three pre-existing events rows, one carrying a real session_id and two
+	// orphaned, so the migration's "touches no existing row" claim is
+	// checked against content that spans both events.session_id shapes the
+	// new events_session_kind index covers.
+	if _, err := fixture.Exec(`INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, 10, 'created', 'user', 'first')`, fixtureID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.Exec(`INSERT INTO events (session_id, at, kind, reason, payload) VALUES (NULL, 20, 'archived', 'reap', 'second')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.Exec(`INSERT INTO events (session_id, at, kind, reason, payload) VALUES (NULL, 30, 'set_resume_pin', NULL, 'third')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var version int
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
+		t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
+	}
+
+	for _, indexName := range []string{"events_at", "events_session_kind"} {
+		var count int
+		if err := store.DB().QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, indexName).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("index %s after v4->v5 migration = %d, %v; want 1", indexName, count, err)
+		}
+	}
+
+	// The events row count and content are byte-identical to what the
+	// fixture wrote -- an index-only migration recreates nothing.
+	var eventCount int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM events`).Scan(&eventCount); err != nil || eventCount != 3 {
+		t.Fatalf("event count after migration = %d, %v; want 3 (no row added or dropped)", eventCount, err)
+	}
+	rows, err := store.DB().Query(`SELECT session_id, at, kind, reason, payload FROM events ORDER BY seq ASC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	want := []struct {
+		sessionID, reason, payload string
+		at                         int64
+		kind                       string
+	}{
+		{fixtureID, "user", "first", 10, "created"},
+		{"", "reap", "second", 20, "archived"},
+		{"", "", "third", 30, "set_resume_pin"},
+	}
+	i := 0
+	for rows.Next() {
+		var sessionID, reason, payload sql.NullString
+		var at int64
+		var kind string
+		if err := rows.Scan(&sessionID, &at, &kind, &reason, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if i >= len(want) {
+			t.Fatalf("more event rows than expected after migration")
+		}
+		w := want[i]
+		if sessionID.String != w.sessionID || reason.String != w.reason || payload.String != w.payload || at != w.at || kind != w.kind {
+			t.Fatalf("event row %d after migration = (%q,%q,%q,%d,%q), want (%q,%q,%q,%d,%q)",
+				i, sessionID.String, reason.String, payload.String, at, kind, w.sessionID, w.reason, w.payload, w.at, w.kind)
+		}
+		i++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if i != len(want) {
+		t.Fatalf("scanned %d event rows after migration, want %d", i, len(want))
+	}
+
+	var name string
+	if err := store.DB().QueryRow(`SELECT name FROM sessions WHERE id = ?`, fixtureID).Scan(&name); err != nil || name != "kept" {
+		t.Fatalf("session row after v4->v5 migration = %q, %v; want the original row still at id %s", name, err, fixtureID)
+	}
+	var sessionCount int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM sessions`).Scan(&sessionCount); err != nil || sessionCount != 1 {
+		t.Fatalf("session count after v4->v5 migration = %d, %v; want 1 (no row recreated)", sessionCount, err)
+	}
+}
+
+// eventsQueryPlanLines runs EXPLAIN QUERY PLAN for the exact statement
+// ListEvents issues and returns each plan row's detail text.
+func eventsQueryPlanLines(t *testing.T, st *Store) []string {
+	t.Helper()
+	rows, err := st.db.Query(`EXPLAIN QUERY PLAN SELECT seq, session_id, at, kind, reason, payload
+		FROM events ORDER BY at DESC, seq DESC LIMIT 200`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var lines []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return lines
+}
+
+// TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable is task 330's
+// (R60, steer 3e-001 §6.1) plan proof. A plan assertion on a small table is
+// vacuous -- SQLite's own query planner can pick either a scan or an index
+// on a handful of rows in microseconds either way -- so this seeds 20,000
+// events rows (dwarfing SQLite's own auto-index/analyze heuristics) before
+// asserting on the EXPLAIN QUERY PLAN text of ListEvents' own statement,
+// never on elapsed time. A bare full-table scan appears as the exact plan
+// row "SCAN events" (with no "USING INDEX" suffix); an unindexed ORDER BY
+// additionally appears as its own plan row "USE TEMP B-TREE FOR ORDER BY".
+// Neither may appear once events_at exists and is used.
+func TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	tx, err := st.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt, err := tx.Prepare(`INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const seededRows = 20000
+	for i := 0; i < seededRows; i++ {
+		if _, err := stmt.Exec(nil, i, "heartbeat", "probe", "payload"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := stmt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := eventsQueryPlanLines(t, st)
+	if len(lines) == 0 {
+		t.Fatalf("EXPLAIN QUERY PLAN returned no rows")
+	}
+	for _, line := range lines {
+		if line == "SCAN events" {
+			t.Fatalf("query plan = %v, want no bare full-table scan of events (events_at index missing or unused)", lines)
+		}
+		if strings.Contains(line, "TEMP B-TREE") {
+			t.Fatalf("query plan = %v, want no temp b-tree sort (events_at index missing or unused)", lines)
+		}
+	}
+	var sawIndexedScan bool
+	for _, line := range lines {
+		if strings.Contains(line, "events") && strings.Contains(line, "USING INDEX events_at") {
+			sawIndexedScan = true
+		}
+	}
+	if !sawIndexedScan {
+		t.Fatalf("query plan = %v, want a row scanning events USING INDEX events_at", lines)
+	}
+
+	// ListEvents itself still returns the newest row first over the seeded
+	// table, proving the index changed the plan without changing the result.
+	events, err := st.ListEvents(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].At != seededRows-1 {
+		t.Fatalf("ListEvents(limit=1) over seeded table = %+v, want the newest row (at=%d)", events, seededRows-1)
 	}
 }
