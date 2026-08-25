@@ -308,7 +308,94 @@ Workspace restored with `git stash pop` immediately after; re-run of
 `ci/run.sh go test -count=1 ./internal/store/` then passes
 (`ok  github.com/n-orlov/deck/internal/store 1.651s`).
 
+## R61: get the event-log store read out of the render path (steer 3e-001, task 331)
+
+SPEC §11.4 amendment (steer 3e-001 §3/§6.3, commit `6584299`): "a dialog
+never reads the store from its render path." Before this task, `eventLogBody`
+-- called from `eventLogView`, which `View()` calls every frame while `E`'s
+dialog is open -- ran `m.store.ListEvents(...)` directly, so a live client
+left with the event log open re-queried `events` on every single rendered
+frame (previewTick alone fires every `DECK_PREVIEW_MS`; reconcileTick every
+`DECK_RECONCILE_MS`), part of the 3e-001 hang alongside R59/R60.
+
+`internal/tui/event_log.go`'s `eventLogBody`/`eventLogView` now read only
+two new `Model` fields, `eventLogRows []store.Event` and `eventLogErr
+error` -- never `m.store` directly. The one real read is `loadEventLog`, a
+`tea.Cmd` (mirroring `loadArchivedSessions`' own shape) that `internal/tui/
+tui.go`'s `"E"` key handler dispatches exactly once, the same keypress that
+sets `eventLogOpen = true` and resets `eventLogScroll`/`eventLogRows`/
+`eventLogErr`. Its reply is consumed by one new `Update` case,
+`eventLogLoaded`. `updateEventLog`'s PgUp/PgDn continue to measure
+`eventLogBody()`'s output for scroll bounds, but that now measures the
+in-memory rows too, not a fresh store call. Grep proof `eventLogView`/
+`eventLogBody` never call `m.store`:
+
+```
+$ grep -n 'm\.store\.' internal/tui/event_log.go
+97:	events, err := m.store.ListEvents(context.Background(), maxEventLogRows)
+```
+
+(the one hit is inside `loadEventLog`, never inside `eventLogView`/
+`eventLogBody`). `E` is not deleted (steer 3e-001 §7); `maxEventLogRows`
+(200) and `maxEventLogPayloadRunes` (96) are unchanged.
+
+**Test** (`internal/tui/event_log_render_path_test.go`,
+`TestEventLogViewNeverReReadsTheStoreOnceOpen`, per steer 3e-001 §6.3): uses
+an INSTRUMENTED real store -- `internal/store/store.go` gained an atomic
+`eventsListCalls` counter incremented inside `Store.ListEvents` itself (not
+a mock/interface substitute layered over the concrete `*Store` type every
+other `tui` code path depends on directly) and a `ListEventsCallCount()`
+reader. The test opens the event log (runs the real `"E"` Update, executes
+the returned `loadEventLog` Cmd, feeds its reply back through `Update`),
+asserts the call count is exactly 1, then runs FIVE more rounds of
+`View()` + `reconcileTick` + `previewTick` + `View()` while the dialog
+stays open, and asserts the count is STILL exactly 1 -- not merely small.
+A single-frame test could not distinguish load-once from load-every-frame;
+this one deliberately drives several ticks and renders first.
+
+Green (`ci/run.sh go test -count=1 ./internal/tui/ ./internal/store/`):
+both `ok` (tui 0.678s-0.822s across runs, store 1.780s-1.915s).
+
+Red proof: temporarily edited `eventLogBody` in place back to its
+pre-fix shape (direct `m.store.ListEvents` call inside the render path,
+keeping the new test and the store instrumentation untouched -- a
+signature-compatible change, so no patch/stash round-trip was needed), then
+`ci/run.sh go test -count=1 ./internal/tui/ -run
+TestEventLogViewNeverReReadsTheStoreOnceOpen -v`:
+
+```
+=== RUN   TestEventLogViewNeverReReadsTheStoreOnceOpen
+    event_log_render_path_test.go:66: after several ticks and renders, ListEvents was called 11 times, want exactly 1 (the render path must never re-read the store)
+--- FAIL: TestEventLogViewNeverReReadsTheStoreOnceOpen (0.03s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.031s
+```
+
+(1 call from the initial open + 10 more, one per `View()` in the five
+round-trips -- the two `reconcileTick`/`previewTick` `Update` calls
+themselves never call `View()`, so the count is `1 + 5*2 = 11`, exactly
+matching how many times `eventLogBody` actually ran.) `eventLogBody` was
+then restored to its post-fix shape and the suite re-run green.
+
+`features/event_log.feature` (unmodified) still passes end-to-end through
+the real bubbletea runtime, which DOES execute `Update`'s returned Cmd
+(unlike the unit test above, which does so explicitly): `ci/run.sh sh -c
+'DECK_GODOG_TAGS=@requirement-32 go test -count=1 ./features/'` -- both
+`@requirement-32` scenarios pass (2 scenarios, 29 steps, ~2.6s).
+
+**Pre-existing, unrelated failure noticed during this task's full
+`./features/` run** (not caused by this task's diff -- confirmed by
+`git stash`-ing this task's changes and re-running the same test against
+the unmodified task-330 tip, `faba630`, which fails identically):
+`TestBlackBoxAssertionsObserveRealSession`
+(`features/assertions_test.go:1068`) hardcodes `databaseSchemaVersion(...,
+4)`, which task 330's `SchemaVersion` 4->5 bump left stale (`schema version
+= 5, want 4`). Flagged for task 324 to root-cause/fix, not fixed here (out
+of this task's scope, and fixing a hardcoded schema-version assertion is
+unrelated to the render-path change this task makes).
+
 ## Per-requirement evidence table
 
 _To be completed by task 326: R52-R58, R59-R62, plus the whole-suite and
 stability evidence and every revert-red proof cited by sha and log path._
+

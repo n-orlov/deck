@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/store"
 )
 
 // maxEventLogRows is the `E` event log's own bound (SPEC \u00a712/requirement
@@ -30,14 +31,22 @@ const maxEventLogPayloadRunes = 96
 // payload. m.eventLogScroll (PgUp/PgDn, updateEventLog) selects the
 // visible window once the log's up-to-200 rows push past the frame
 // budget; Esc, also handled by updateEventLog, is the log's only other
-// interaction.
+// interaction. R61 (steer 3e-001 §6.3, SPEC §11.4's "a dialog never reads
+// the store from its render path"): View() must never touch m.store on
+// this path, so eventLogBody renders m.eventLogRows/m.eventLogErr, both
+// state loaded exactly once per open by loadEventLog's tea.Cmd (see the
+// "E" key handler in tui.go), never re-fetched here no matter how many
+// reconcileTick/previewTick messages land while the dialog stays open.
 func (m Model) eventLogView() string {
 	return m.framedDialogScrollable(m.eventLogBody(), m.eventLogScroll)
 }
 
 // eventLogBody builds eventLogView's own content, split out (task 078) so
 // updateEventLog's PgUp/PgDn handling can measure the same content
-// dialogMaxScroll would, without duplicating the store read/format logic.
+// dialogMaxScroll would, without duplicating the read/format logic. It
+// reads only m.eventLogRows/m.eventLogErr (state loadEventLog populated
+// when `E` opened the dialog) -- never m.store directly; see R61's comment
+// on eventLogView above.
 func (m Model) eventLogBody() string {
 	var b strings.Builder
 	b.WriteString("Event log\n\n")
@@ -45,15 +54,14 @@ func (m Model) eventLogBody() string {
 		b.WriteString("(event log is unavailable: no store is attached)\n")
 		return b.String()
 	}
-	events, err := m.store.ListEvents(context.Background(), maxEventLogRows)
-	if err != nil {
-		fmt.Fprintf(&b, "Cannot read events: %s\n", err)
+	if m.eventLogErr != nil {
+		fmt.Fprintf(&b, "Cannot read events: %s\n", m.eventLogErr)
 		return b.String()
 	}
-	if len(events) == 0 {
+	if len(m.eventLogRows) == 0 {
 		b.WriteString("(no events recorded yet)\n")
 	} else {
-		for _, event := range events {
+		for _, event := range m.eventLogRows {
 			reason := event.Reason
 			if reason == "" {
 				reason = "-"
@@ -64,6 +72,30 @@ func (m Model) eventLogBody() string {
 	}
 	fmt.Fprintf(&b, "\nNewest first, up to the most recent %d events. Secret-shaped payload\nvalues mask the same way the env editor's do. Esc closes.\n", maxEventLogRows)
 	return b.String()
+}
+
+// eventLogLoaded carries loadEventLog's ListEvents result back into
+// Update (R61, steer 3e-001 §6.3): dispatched exactly once by the `E` key
+// handler in tui.go when the dialog opens, never re-issued by any tick
+// while it stays open, so the store read genuinely happens outside the
+// render path rather than merely being framed to look that way.
+type eventLogLoaded struct {
+	events []store.Event
+	err    error
+}
+
+// loadEventLog is the `E` event log's one store read (SPEC §11.4/§12,
+// requirement 32, R61): issued once by the key handler that opens the
+// dialog, mirroring loadArchivedSessions' own no-store-attached degrade
+// (an empty result, never a panic). eventLogBody/View() never call the
+// store directly -- only this tea.Cmd does, and only when the dialog is
+// opening, not on every frame it stays open.
+func (m Model) loadEventLog() tea.Msg {
+	if m.store == nil {
+		return eventLogLoaded{}
+	}
+	events, err := m.store.ListEvents(context.Background(), maxEventLogRows)
+	return eventLogLoaded{events: events, err: err}
 }
 
 // updateEventLog handles keys while the `E` event log is open. Esc is the

@@ -88,6 +88,9 @@ func TestEventLogStaysWithinFrameBudgetAt80x24(t *testing.T) {
 	model := New(db, config.Settings{}, "")
 	model.width, model.height = 80, 24
 	model.eventLogOpen = true
+	loaded := model.loadEventLog().(eventLogLoaded)
+	model.eventLogRows = loaded.events
+	model.eventLogErr = loaded.err
 	view := model.View()
 	if n := countViewLines(view); n > 24 {
 		t.Fatalf("event log view is %d lines at 80x24, want <= 24:\n%s", n, view)
@@ -168,6 +171,9 @@ func TestEventLogScrollReachesEveryLine(t *testing.T) {
 	model := New(db, config.Settings{}, "")
 	model.width, model.height = 80, 24
 	model.eventLogOpen = true
+	loaded := model.loadEventLog().(eventLogLoaded)
+	model.eventLogRows = loaded.events
+	model.eventLogErr = loaded.err
 
 	first := model.View()
 	if strings.Contains(first, "event-number-00") {
