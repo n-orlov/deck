@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"sort"
+
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 )
@@ -47,6 +49,52 @@ type indexedSession struct {
 type sidebarGroup struct {
 	Workspace string
 	Sessions  []indexedSession
+}
+
+// reorderPreservingGrouping is task 305/309's (R53) answer to composing a
+// non-attention sort_order with SPEC requirement 30's workspace grouping:
+// which workspace group renders FIRST must keep following groupBasis's own
+// first-appearance order (in practice always the attention-sorted session
+// list -- "the group with the most urgent member leads", tui.go's
+// sessionsLoaded comment) regardless of which order the user picked, while
+// the ROWS within each workspace follow rowBasis (the chosen order) --
+// task 309's success criteria states this explicitly: "group order itself
+// unchanged from today's behavior". Both slices must hold exactly the same
+// set of sessions, only reordered differently; the result feeds
+// m.baseSessions so that groupSessions() itself (whose own
+// first-appearance rule is left untouched, per this file's package doc
+// comment) reproduces exactly this same bucket sequence and per-bucket row
+// order without needing to know anything about sort_order at all -- every
+// workspace's sessions land contiguously in the returned slice, in
+// rowBasis's relative order, and the contiguous blocks themselves are
+// ordered by groupBasis's first-appearance sequence.
+func reorderPreservingGrouping(groupBasis, rowBasis []store.Session) []store.Session {
+	workspacePriority := make(map[string]int)
+	for _, s := range groupBasis {
+		ws := sessionWorkspace(s)
+		if _, ok := workspacePriority[ws]; !ok {
+			workspacePriority[ws] = len(workspacePriority)
+		}
+	}
+	buckets := make(map[string][]store.Session, len(workspacePriority))
+	var order []string
+	seen := make(map[string]bool, len(workspacePriority))
+	for _, s := range rowBasis {
+		ws := sessionWorkspace(s)
+		if !seen[ws] {
+			seen[ws] = true
+			order = append(order, ws)
+		}
+		buckets[ws] = append(buckets[ws], s)
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return workspacePriority[order[i]] < workspacePriority[order[j]]
+	})
+	out := make([]store.Session, 0, len(rowBasis))
+	for _, ws := range order {
+		out = append(out, buckets[ws]...)
+	}
+	return out
 }
 
 // groupSessions splits m.sessions into workspace groups (SPEC requirement

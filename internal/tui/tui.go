@@ -1373,7 +1373,25 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// reconcile tick's own reload instead of being silently
 			// clobbered by it the moment ListSessions' own (archive-free)
 			// result lands.
-			m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
+			//
+			// Task 305 (R53): attentionOrder is computed unconditionally
+			// -- not only when the configured order IS attention -- because
+			// it also supplies workspace GROUP order for a non-attention
+			// render (see reorderPreservingGrouping's doc comment): SPEC
+			// requirement 30's "group order follows each group's most
+			// urgent member" holds regardless of which order the ROWS
+			// within a group render in (task 309's own success criteria:
+			// "group order itself unchanged from today's behavior").
+			order, _ := m.effectiveSortOrder()
+			attentionOrder := sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
+			switch {
+			case order == SortOrderAttention:
+				m.baseSessions = attentionOrder
+			case m.groupingEnabled():
+				m.baseSessions = reorderPreservingGrouping(attentionOrder, sortSessionsByOrder(m.baseSessions, msg.sessions, order))
+			default:
+				m.baseSessions = sortSessionsByOrder(m.baseSessions, msg.sessions, order)
+			}
 			m.sessions = m.filteredSessions()
 			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
 				m.selected = idx
@@ -2602,6 +2620,50 @@ func (m Model) themeBanner(width int) []string {
 	return lines
 }
 
+// effectiveSortOrder resolves requirement R53's `[ui] sort_order` for THIS
+// render: one of the four names sort_order.go declares (SortOrderAttention/
+// Created/Activity/Name), or an empty string (meaning "nothing configured",
+// which config.LoadFrom's own defaultFileConfig already fills in as
+// "attention" for a real load -- this only shows up as "" for a
+// config.Settings{} test builds directly, exactly the same zero-value
+// convention m.settings.Mouse/GroupByWorkspace already rely on), both
+// resolve to attention with no reason -- nothing was misconfigured. Any
+// OTHER value -- reachable only when something bypasses config.toml's own
+// parse-time enum rejection (internal/config/toml.go's KindEnum case),
+// e.g. a Settings built directly with a typo -- resolves to attention WITH
+// a stated reason, the same shape theme.Resolve's ThemeReason already has
+// for an unknown [ui] theme. sortOrderBanner (below) is the one caller
+// that reads the reason; sessionsLoaded (below) is the one caller that
+// reads the resolved order.
+func (m Model) effectiveSortOrder() (order string, reason string) {
+	switch m.settings.SortOrder {
+	case "", SortOrderAttention:
+		return SortOrderAttention, ""
+	case SortOrderCreated, SortOrderActivity, SortOrderName:
+		return m.settings.SortOrder, ""
+	default:
+		return SortOrderAttention, fmt.Sprintf("Unknown [ui] sort_order %q -- showing attention order instead.", m.settings.SortOrder)
+	}
+}
+
+// sortOrderBanner is requirement R53's fallback notice for an unknown/
+// malformed [ui] sort_order, on themeBanner's own footing (see its doc
+// comment just above): the first painted frame must say so rather than
+// silently rendering attention order as though the configured value had
+// applied. Returns no lines at all when effectiveSortOrder found nothing
+// to explain, matching themeBanner/startupBanner's shared
+// costs-nothing-in-the-common-case convention.
+func (m Model) sortOrderBanner(width int) []string {
+	_, reason := m.effectiveSortOrder()
+	if reason == "" {
+		return nil
+	}
+	var lines []string
+	lines = append(lines, wrapText(reason, width)...)
+	lines = append(lines, "")
+	return lines
+}
+
 // attachErrorLines is requirement 37's wrapped attachError line set, shared
 // between computeLayout's reservation and mainView's actual render so the
 // two never disagree about how many rows the message costs. It returns no
@@ -2701,7 +2763,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -2754,6 +2816,7 @@ func (m Model) mainView() string {
 	layout := m.computeLayout()
 	lines := m.startupBanner(width)
 	lines = append(lines, m.themeBanner(width)...)
+	lines = append(lines, m.sortOrderBanner(width)...)
 	lines = append(lines, m.themePickerLines(width)...)
 	if layout.Effective == LayoutStacked {
 		lines = append(lines, m.renderStackedFrame(layout)...)
