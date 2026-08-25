@@ -53,9 +53,14 @@ func TestSidebarTitleRendersInTitleToken(t *testing.T) {
 
 // TestSidebarBorderIsFocusPreviewBorderIsUnfocused proves SPEC requirements
 // 19/42: in the main view's side-by-side frame, the sidebar (the only
-// focusable region) draws its border in `border_focus`, and the preview
-// (never focusable there) draws its own in plain `border` -- never the
-// same colour, and never swapped.
+// focusable region) draws its OWN border in `border_focus`, and the
+// preview's OWN border (its right edge, never focusable there) draws in
+// plain `border` -- never the same colour, and never swapped. The seam
+// between them (task 318/R57) no longer follows previewBorderToken the way
+// the preview's own right edge still does -- see
+// TestSeamFollowsEitherPanelFocused in seam_border_test.go for that shared
+// rule, so this test's own seam assertion moved there rather than staying
+// here stale.
 func TestSidebarBorderIsFocusPreviewBorderIsUnfocused(t *testing.T) {
 	m := mainViewColorTestModel(t)
 	focusHex := tokenHex(t, m, theme.BorderFocus)
@@ -67,7 +72,6 @@ func TestSidebarBorderIsFocusPreviewBorderIsUnfocused(t *testing.T) {
 	if layout.Effective == LayoutStacked {
 		t.Fatalf("120x30 frame computed as stacked, want side-by-side (test assumes a shared seam)")
 	}
-	sw := layout.Sidebar.Width
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
@@ -78,12 +82,12 @@ func TestSidebarBorderIsFocusPreviewBorderIsUnfocused(t *testing.T) {
 	if leftFg != focusHex {
 		t.Fatalf("sidebar border corner = %s, want border_focus token %s", leftFg, focusHex)
 	}
-	seamFg, ok := cellFgHex(t, term, sw, 0)
+	rightFg, ok := cellFgHex(t, term, m.width-1, 0)
 	if !ok {
-		t.Fatalf("preview's seam corner has no foreground colour")
+		t.Fatalf("preview's own top-right corner has no foreground colour")
 	}
-	if seamFg != borderHex {
-		t.Fatalf("preview border seam = %s, want border token %s", seamFg, borderHex)
+	if rightFg != borderHex {
+		t.Fatalf("preview's own border corner = %s, want border token %s", rightFg, borderHex)
 	}
 }
 
