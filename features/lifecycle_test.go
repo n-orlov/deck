@@ -77,6 +77,13 @@ type ScenarioHarness struct {
 	windowGeometrySnapshots map[string]string
 	sizeLogSnapshots        map[string]string
 
+	// windowOwnershipSnapshots backs task 314's (R54) no-op discriminator:
+	// a tmux window user option value (internal/tmux/ownership.go's
+	// @deck_isize_owner, a fresh random tag per claim) captured under a
+	// label, proving a click that must be a no-op never re-claimed the
+	// window at all.
+	windowOwnershipSnapshots map[string]string
+
 	// layoutSeamSnapshots and configTOMLSnapshots back features/layout_modes.feature
 	// (task 030, requirement 38): the first captures the shared seam's own
 	// rendered column so `<`/`>` clamping can be proven idempotent past

@@ -106,6 +106,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveRefusalsSteps(sc)
 	registerInteractiveScrollSteps(sc)
 	registerInteractiveSelectionSteps(sc)
+	registerInteractiveRetargetSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
