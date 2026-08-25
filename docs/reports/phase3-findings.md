@@ -892,6 +892,16 @@ read.
 
 ## Standing pre-existing flake list (durable copy — this run's ralphd `notes.md` is not committed and does not survive the run)
 
+**Update (task 211, F1 close-out):** task 076's own `ci/stability.sh 10` measurement below (4/10)
+is superseded by task 210's `ci/stability.sh 10` measurement at the final code commit `f715a56`
+(docs commit `d59ba28`): **10/10**, zero `FAIL` lines across all 10 runs. See
+`docs/reports/phase3d-i20-stability.md`'s top section for the superseding declaration and
+`docs/reports/phase3d-210-stability-10of10/` for the full evidence. Every named cause below is now
+either fixed (item 1, the tmux pane-pipe family — see that item's own update) or was already
+corrected to not be a load-correlated flake at all (item 2's two struck sub-bullets, both real
+defects fixed by tasks 201-204/206, not host-load artifacts). This list is retained as history of
+what was believed at each point, not as a live claim that any of these are still open.
+
 Added per operator steer 015 item 2: the run's scratch `notes.md` (in the ralphd run directory,
 not this repository) had been carrying the authoritative "open pre-existing flakes" list and
 being cited from this very file three times. `notes.md` is deleted when the run ends, so this
@@ -936,8 +946,23 @@ through in spirit but not in text, as a record of what was previously believed.
    isolated-green for `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF`
    via `ci/run.sh go test -race -count=1 -run TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF ./internal/tmux/...`
    (see this file's requirement-17 section above); task 076's ten-run stability measurement
-   (`docs/reports/phase3d-i20-stability.md`) saw it once (run 8 of 10), consistent with genuine
-   intermittency rather than a regression.
+   (`docs/reports/phase3d-i20-stability.md`, now superseded — see below) saw it once (run 8 of
+   10), consistent with genuine intermittency rather than a regression. **Root-caused and fixed
+   by task 210, part (b)** (this run's own later work, commit `3a26ccb`): both this test and its
+   sibling `TestPanePipeReceivesGenuineEOFOnDisableWithPanePipeZero` raced a single bare `Read`
+   against a bare-shell target's own chatter (a prompt, a motd line) — the same class of race
+   `TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF` (task 207) already
+   drained for the self-close case, never applied to these two siblings. Fixed with a new
+   `readUntilErrorWithTimeout` helper that drains chatter reads and only returns the one carrying
+   an error, replacing the too-strict single-`Read` `readWithTimeout`. Evidence:
+   `docs/reports/phase3d-210-pipe-displacement-chatter-race.md` (pre-fix 4/100 isolated failures at
+   low load, post-fix 300/300 green, non-vacuousness proved by reverting and reproducing). This
+   entry is retained for its history; it is no longer an open flake.
+
+   **Superseding measurement (task 210/211):** the `d59ba28`/`f715a56` `ci/stability.sh 10` run
+   (`docs/reports/phase3d-210-stability-10of10/`) that superseded task 076's own measurement (see
+   `docs/reports/phase3d-i20-stability.md`'s top section) saw zero occurrences of this family
+   across all 10 runs, consistent with the fix above rather than a lucky streak.
 
 2. **Load-correlated PTY-under-load timeout class**, with two worked examples both fully
    documented in `docs/reports/phase3d-i20-stability.md`:
@@ -1103,6 +1128,19 @@ corrected entries before it is added to the "Standing pre-existing flake list" s
 confirmed-genuinely-intermittent (it currently looks deterministic, not intermittent, based on
 3/3 in-isolation reproduction — so it likely does not belong in that list as a "flake" at all,
 and should instead be treated as an open, real, unfixed bug).
+
+**Resolution (task 210, part 1):** root-caused and fixed. Not a double-launch/lost-record bug —
+the audit-log-record-count check right after the `screen contains fake-claude resume:` step raced
+the passive preview's independent pane-content stream against the Resume/Restart call's own
+`audit.Launch` append (two unordered channels; SPEC.md promises no ordering between them). Fixed
+with a new bounded-polling step, `auditHasLaunchRecordCountForSessionWithinReconcileInterval`
+(`features/agent_steps_test.go`), applied to both R-restart scenarios' post-pane-content count
+checks only. Pre-fix isolated repro was 6/10 fail; post-fix both scenarios are 10/10 over two
+independent isolated batches. Evidence: `docs/reports/phase3d-210-restart-audit-race.md`, commit
+`ebb4869`. This was the dominant failure (6/10) in task 209's own pre-213-220 baseline taxonomy
+and the residual named in task 217 attempt 5's interim declaration; it is fixed as of `ebb4869`,
+confirmed absent from task 210's final `d59ba28` 10/10 measurement
+(`docs/reports/phase3d-210-stability-10of10/`).
 
 ## Task 218 (steer 020 §2) deferred finding: `features/settings.feature`'s `j`-count idiom is now fragile on its second occurrence
 
