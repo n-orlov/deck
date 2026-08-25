@@ -448,8 +448,29 @@ func scenarioHarness(ctx context.Context) (*ScenarioHarness, error) {
 	return harness, nil
 }
 
+// scenarioBuildDeadline bounds the per-scenario `go build` in
+// registerScenarioLifecycle's Before hook (steer 021 §1/task 219). Before
+// this bound existed, that build ran via a bare exec.Command with no
+// context and no deadline: `cmd/go` blocks indefinitely on its own
+// build/module-cache locks by design, and that cache is a shared docker
+// volume across every container on the host, so a stale lock or ANY
+// concurrent `go` process sharing that volume converted into an unbounded
+// hang here -- upstream of every ScreenDriver wait task 205 already bounded,
+// and with no diagnostic at all: a real 45m-timeout run's goroutine dump
+// showed a goroutine blocked 42+ minutes inside exactly this call, attributed
+// by godog to whichever scenario's Before hook happened to draw the short
+// straw (a red herring -- the scenario name in the panic is not where the
+// bug is). Five minutes is roughly 60x the normal cost of this build
+// (measured ~1-5s) and still far cheaper than the failure mode it replaces.
+// A timeout here is an infra/environment fault, not a product bug -- callers
+// evaluating a features run for stability must classify it as such, never as
+// evidence about deck's own behaviour. This does NOT restructure the
+// once-per-scenario build into once-per-suite; that trade is recorded as a
+// deferred requirement in docs/reports/phase3-findings.md instead.
+var scenarioBuildDeadline = 5 * time.Minute
+
 func registerScenarioLifecycle(sc *godog.ScenarioContext) {
-	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+	sc.Before(func(ctx context.Context, sce *godog.Scenario) (context.Context, error) {
 		root, err := filepath.Abs("..")
 		if err != nil {
 			return ctx, fmt.Errorf("locate repository root: %w", err)
@@ -457,8 +478,17 @@ func registerScenarioLifecycle(sc *godog.ScenarioContext) {
 		// The normal feature suite may be invoked without the focused driver
 		// test, so build its own released binary once per scenario.
 		binary := filepath.Join(os.TempDir(), fmt.Sprintf("deck-godog-%d-%d", os.Getpid(), scenarioSequence.Add(1)))
-		if output, err := exec.Command("go", "build", "-o", binary, filepath.Join(root, "cmd", "deck")).CombinedOutput(); err != nil {
-			return ctx, fmt.Errorf("build deck for scenario lifecycle: %w\n%s", err, output)
+		buildCtx, cancel := context.WithTimeout(context.Background(), scenarioBuildDeadline)
+		start := time.Now()
+		output, buildErr := exec.CommandContext(buildCtx, "go", "build", "-o", binary, filepath.Join(root, "cmd", "deck")).CombinedOutput()
+		elapsed := time.Since(start)
+		timedOut := buildCtx.Err() != nil
+		cancel()
+		if timedOut {
+			return ctx, fmt.Errorf("INFRA FAULT (not a product bug): per-scenario `go build` for %q (binary %s) did not finish within its %s bound; elapsed %s; partial output:\n%s", sce.Name, binary, scenarioBuildDeadline, elapsed, output)
+		}
+		if buildErr != nil {
+			return ctx, fmt.Errorf("build deck for scenario lifecycle: %w\n%s", buildErr, output)
 		}
 		harness, err := newScenarioHarness(binary)
 		if err != nil {
