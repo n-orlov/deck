@@ -179,3 +179,56 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
       | ord-alpha   |
     And deck client "A" has session "ord-alpha" selected
     When deck client "A" exits cleanly
+
+  @requirement-53-sort-order-with-grouping
+  Scenario: group_by_workspace (on by default) composes with a non-attention sort_order -- group order stays attention-led, rows within each group follow the chosen order (requirement R53)
+    # `[ui] group_by_workspace` defaults to true (internal/config/schema.go)
+    # and is not touched by this scenario. Two workspaces, two sessions
+    # each:
+    #   gso-beta-ws:  gso-bb (waiting), gso-ba (running)
+    #   gso-alpha-ws: gso-ab (error),   gso-aa (idle)
+    # Attention full order (waiting > error > running > idle):
+    #   gso-bb, gso-ab, gso-ba, gso-aa
+    # so gso-beta-ws's most urgent member (gso-bb, waiting) outranks
+    # gso-alpha-ws's (gso-ab, error) -- gso-beta-ws leads the group order,
+    # even though "gso-alpha-ws" and its lead member "gso-aa"/"gso-ab" sort
+    # alphabetically first. A group-order rule that (wrongly) derives group
+    # leadership from the CHOSEN order's own first-appearance instead of
+    # from attention would put gso-alpha-ws first here -- this fixture
+    # catches that.
+    #
+    # Under sort_order = name, each group's ROWS reorder to
+    # case-insensitive-ascending, which disagrees with that group's own
+    # attention order in both groups:
+    #   gso-beta-ws:  attention gives bb, ba  -- name gives ba, bb
+    #   gso-alpha-ws: attention gives ab, aa  -- name gives aa, ab
+    # So the fully expected render (group order gso-beta-ws then
+    # gso-alpha-ws, name order within each) is:
+    #   gso-ba, gso-bb, gso-aa, gso-ab
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      sort_order = "name"
+      """
+    And deck client "A" is started
+    When deck client "A" creates shell session "gso-aa"
+    And deck client "A" creates shell session "gso-ab"
+    And deck client "A" creates shell session "gso-ba"
+    And deck client "A" creates shell session "gso-bb"
+    And the state database session "gso-aa" has workspace "gso-alpha-ws"
+    And the state database session "gso-ab" has workspace "gso-alpha-ws"
+    And the state database session "gso-ba" has workspace "gso-beta-ws"
+    And the state database session "gso-bb" has workspace "gso-beta-ws"
+    And the state database session "gso-bb" has status "waiting" 40 seconds ago
+    And the state database session "gso-ab" has status "error" 30 seconds ago
+    And the state database session "gso-ba" has status "running" 20 seconds ago
+    And the state database session "gso-aa" has status "idle" 10 seconds ago
+    Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And deck client "A" screen shows sessions in this order:
+      | gso-ba      |
+      | gso-bb      |
+      | gso-aa      |
+      | gso-ab      |
+    And deck client "A" screen contains "gso-beta-ws"
+    And deck client "A" screen contains "gso-alpha-ws"
+    When deck client "A" exits cleanly
