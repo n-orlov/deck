@@ -126,3 +126,56 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
       | ord-charlie |
       | ord-delta   |
     When deck client "A" exits cleanly
+
+  @requirement-53-sort-order-live-apply
+  Scenario: cycling sort_order in the settings takeover and saving with ctrl+s keeps the same session selected even though its row index moves (requirement R53)
+    # Same shared fixture as the four scenarios above: under attention
+    # ord-alpha sits at index 2 (delta, bravo, alpha, charlie); under
+    # created it moves to index 3 (bravo, delta, charlie, alpha). An
+    # index-preserving (rather than id-preserving) live-apply would leave
+    # the selection marker on row index 2, which under "created" is
+    # ord-charlie -- a different session -- so this fixture fails an
+    # index-preserving implementation instead of passing it by accident.
+    Given deck client "A" is started
+    When deck client "A" creates shell session "ord-alpha"
+    And deck client "A" creates shell session "ord-bravo"
+    And deck client "A" creates shell session "ord-charlie"
+    And deck client "A" creates shell session "ord-delta"
+    And the state database session "ord-alpha" has created_at 35 seconds ago
+    And the state database session "ord-bravo" has created_at 5 seconds ago
+    And the state database session "ord-charlie" has created_at 25 seconds ago
+    And the state database session "ord-delta" has created_at 15 seconds ago
+    And the state database session "ord-alpha" has status "running" 20 seconds ago
+    And the state database session "ord-bravo" has status "error" 40 seconds ago
+    And the state database session "ord-charlie" has status "idle" 10 seconds ago
+    And the state database session "ord-delta" has status "waiting" 30 seconds ago
+    Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And deck client "A" screen shows sessions in this order:
+      | ord-delta   |
+      | ord-bravo   |
+      | ord-alpha   |
+      | ord-charlie |
+    When deck client "A" selects session "ord-alpha"
+    And deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Sort Order: attention"
+    When deck client "A" sends "+"
+    Then deck client "A" screen contains "Sort Order: created"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" screen shows sessions in this order:
+      | ord-bravo   |
+      | ord-delta   |
+      | ord-charlie |
+      | ord-alpha   |
+    And deck client "A" has session "ord-alpha" selected
+    When deck client "A" exits cleanly
