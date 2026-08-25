@@ -1,0 +1,27 @@
+name = "cobalt"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#0a1a2e"  # panel interiors — deep cobalt blue
+surface           = "#12233d"  # elevated rows, footer, dialog interiors
+border            = "#2c4a6e"
+border_focus      = "#3fa9f5"  # the focused panel (§11.3)
+selection         = "#1c3a5e"  # selected row, focused panel
+selection_idle    = "#16304d"  # selected row, unfocused panel
+title             = "#ffd166"
+text              = "#d9e6f2"
+dimmed            = "#5c7a99"  # starting rows, elided detail
+hint              = "#8aa9c4"  # footer descriptions
+key               = "#ffd166"  # footer/help keycaps
+accent            = "#3fa9f5"
+group             = "#d9e6f2"  # workspace headers
+search_match      = "#ffd166"
+badge             = "#8aa9c4"  # live/sampled, env↻
+badge_warn        = "#ffb020"  # non-safe permission profiles, yolo
+waiting           = "#ffd166"  # the seven §7 statuses, one token each
+running           = "#2ecc71"
+idle              = "#5c7a99"
+starting          = "#3fa9f5"
+stopped           = "#5c7a99"
+error             = "#ff5c5c"
+archived          = "#7f9bb3"
