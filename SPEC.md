@@ -437,7 +437,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `group_by_workspace` (default true, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `group_by_workspace` (default true, §11), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -928,7 +928,41 @@ hold them side by side.
   absent rather than inert. Grouping is *preference*, not machine-local UI state: it is edited
   in settings (§11.5) with an explicit save, so §6.5's rule that a keypress never rewrites
   `config.toml` still holds, and it is not in `ui_state` alongside `layout_mode`.
-- Sort: `waiting` (oldest first) → `error` → `running` → `starting` → `idle` → `stopped`.
+- Sort: **configurable**, `[ui] sort_order` (§6.5), four values, `attention` the default:
+  - `attention` (default) — `waiting` (oldest first) → `error` → `running` → `starting` →
+    `idle` → `stopped`. This is the order every earlier phase shipped and the one the list
+    exists to provide; it stays the default precisely because it is the order that answers
+    "which session needs me".
+  - `created` — newest first, by `sessions.created_at` descending.
+  - `activity` — most recent first, by `sessions.status_at` descending. "Activity" is a
+    **status change** (§7's own timestamp), not last pane output: deck records no
+    per-session output clock, and inventing one is a schema change, not a sort option.
+  - `name` — `name` ascending, case-insensitively, so `Api` and `api` sort together.
+
+  Every order is total: each falls back to `id` ascending on a tie, so a re-sort can never
+  swap two rows out from under an in-flight keyboard idiom (§11's marked-set navigation
+  depends on this, and a coin-flip tie-break has already caused one defect — see the
+  stable-sort rule below). A non-`attention` order does **not** re-rank by status at all:
+  the whole point of choosing one is that the user, not deck, decides what "first" means, and
+  a hidden status tier would make the chosen order a suggestion. Attention itself remains
+  reachable in every order through §11's own attention-walk key and the collapsed strip's
+  count, which are what make a non-attention order safe to offer rather than a way to lose a
+  waiting prompt. Sort order is *preference*, not machine-local UI state: edited in settings
+  (§11.5) with an explicit save, like `group_by_workspace` above, so §6.5's rule that a
+  keypress never rewrites `config.toml` still holds, and it is not in `ui_state`.
+- **A re-sort never moves the selection.** Selection follows the session, not the row index —
+  whatever was selected before a reload, a re-group or a sort-order change is still selected
+  after it, and the viewport scrolls to keep it visible rather than the selection sliding to
+  whatever now occupies that index. This is stated here because the sort is now user-visible
+  and switchable at runtime: changing the order is a view operation, not a navigation one.
+- **A newly created session is selected as soon as it appears.** Creating a session is an
+  explicit act aimed at that session, so the list selects it on the load that first contains
+  it and scrolls it into view, in every sort order and whether or not grouping is on. This
+  matters most in `attention`, where a brand-new `starting` row sorts fifth of six and can
+  land off-screen: a create whose result the user then has to hunt for is a create that did
+  not finish. It is a one-shot intent tied to that session's id, not a standing rule — it is
+  satisfied once, by the first load that contains the row, and a later reload does not
+  re-steal a selection the user has since moved. If the session never appears, nothing moves.
 - Live/sampled badge per row (§3), permission badge for non-`safe`, `env↻` when dirty.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. One column, always in the same column, so the shape of the
@@ -1022,8 +1056,8 @@ R7 defect, and a key listed here with no binding is a §11.3 defect — the two 
 checked against each other, not maintained independently.
 
 The mouse is a **shortcut over that keymap and never an alternative to it** (§11.8): click a
-row to switch to it, double-click to attach, wheel to scroll, drag the seam to resize the
-sidebar. Every mouse action names the key it duplicates, so the keymap above stays the
+row to switch to it *and* enter its interactive preview, `Ctrl+Q` to come back out to the
+list, wheel to scroll, drag the seam to resize the sidebar. Every mouse action names the key it duplicates, so the keymap above stays the
 complete description of what deck can do.
 
 Constraints: **80×24 minimum**, resize-safe at every size above it, and the degradation
@@ -1124,7 +1158,24 @@ truncated-but-honest frame beats an unpredictable one.
   nothing. The focused surface's border uses the theme's `border_focus` token and the
   unfocused one uses `border`, so a dialog that opens takes focus and the sidebar's border
   reverts; the sidebar's selected row uses **`selection_idle`** while focus is elsewhere,
-  which is what that token has always meant. **Colour is not sufficient on its own.**
+  which is what that token has always meant. **The seam is shared, and takes `border_focus`
+  whenever *either* panel it divides is focused.** It is drawn by the preview (the single-seam
+  rule above) but it is also the sidebar's own right-hand edge, and colouring it from its
+  drawer alone produced a visibly wrong frame: a focused sidebar with three `border_focus`
+  edges and a `border` one, which reads as a panel that is half-focused rather than as the
+  focused surface. Ownership of the *glyph* and ownership of the *colour* are separate
+  questions here, and only the glyph belongs to one panel. The corner T-junctions (`┬`/`┴`)
+  where the seam meets the sidebar's top and bottom borders follow the seam.
+- **A row highlight is a rectangle.** The selected row's `selection`/`selection_idle`
+  background, and the alternating `surface` stripe, both fill the panel's **entire inner
+  width** for **every line of the row** — from the first column after the left border to the
+  last column before the seam, padding included — not merely the cells the row's text
+  happens to occupy. A highlight that ends where the text ends makes a two-line row look
+  like two ragged blocks of different widths, and makes the list's shape unreadable, which
+  is the one thing §11's glyph column exists to protect. It also must not extend *past* that
+  inner width: a background left open across the seam paints a column that belongs to another
+  panel, so **every truncated coloured run re-emits its own reset** — truncation that drops a
+  trailing SGR reset is a defect in the truncation, not a rendering trade-off. **Colour is not sufficient on its own.**
   `NO_COLOR` drops deck to monochrome, and deck's own golden frames are captured that way,
   so a focus indication carried only by a border colour is invisible to the user *and* to
   the tests. While interactive, the preview's top border therefore carries the target
@@ -1219,6 +1270,14 @@ Colour is a first-class, user-owned artifact rather than constants in the render
 - A theme is one TOML file. Built-ins are embedded in the binary; user themes live in
   `$XDG_CONFIG_HOME/deck/themes/*.toml` and are discovered at start-up. Adding a built-in
   is a one-file drop plus one registry entry — no per-theme code, no per-theme test.
+  **The built-in set is open-ended.** It is required to contain *at least* one `dark` and one
+  `light` appearance so `NO_COLOR`-adjacent and light-terminal users have a starting point;
+  it is not limited to one of each, and a test that pins the built-in count or asserts
+  "exactly one dark and one light" is asserting an implementation accident rather than this
+  rule. Every built-in, new ones included, owes the contrast floor and the quantisation
+  pinning below — those are the per-theme obligations, and they are data obligations, not
+  code. A built-in whose palette cannot meet the contrast floor is the wrong palette: the
+  floor is never the thing that gets relaxed to admit a theme.
 - Selection is `[ui] theme = "<name>"` in `config.toml`, editable in settings (§11.5) and
   from the `t` picker, which previews the theme live on the real list while you move
   through the options and reverts on `esc`.
@@ -1345,8 +1404,7 @@ scroll, no close button that is the only way to dismiss.
 
 | event | effect | key it duplicates |
 |---|---|---|
-| click a sidebar row | selects that row; the preview follows on its next tick | `↑`/`↓` |
-| **double**-click a sidebar row | enter §11.9's interactive preview | `↵` |
+| click a sidebar row | selects that row **and enters §11.9's interactive preview on it** | `↑`/`↓` then `↵` |
 | click a workspace group header | toggle collapse | the grouping key (§11) |
 | wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
@@ -1360,8 +1418,10 @@ instead. A mis-aimed click that quietly moved the selection would fire §7's sta
 effects from what the user experienced as a click on some text. **A drag is the exception**,
 because selecting text is reading rather than acting: it takes no focus, changes no status and
 moves no selection in the list. **While §11.9's interactive mode is active the wheel scrolls
-the grid's own scrollback**, which is the one viewport that does exist; a click still does
-nothing. A drag that begins on the seam adjusts the seam and a drag that begins in the preview
+the grid's own scrollback**, which is the one viewport that does exist; a click over the
+preview is the drag-to-copy gesture's press and never a navigation (a click over the
+*sidebar* does navigate and re-target, per the bullets below — the panel the gesture starts
+in is what decides). A drag that begins on the seam adjusts the seam and a drag that begins in the preview
 selects — the gesture is resolved by where it *started*, so a selection that runs off the edge
 does not turn into a resize halfway through. Full attach (`a`) has no mouse affordance at all,
 which this section's rule permits: no capability is mouse-*only*, not every key has a
@@ -1370,12 +1430,31 @@ gesture.
 Four decisions in that table are load-bearing, and each is the safer of two options rather
 than the obvious one:
 
-- **A single click never hands over the keyboard.** Entering interactive mode resizes a live
-  agent's window (§11.9) and full attach hands the whole terminal to another program; a stray
-  or mis-aimed click must not be able to do either. A double-click is the deliberate second
-  act that `↵` already is. This is also what makes the single click a
-  *switch* rather than a commitment: one click moves the preview to that session, which is
-  the fast path the sidebar exists to provide.
+- **A single click DOES hand over the keyboard, deliberately, and this is a reversal.** Every
+  earlier revision of this section said the opposite: a single click selected, a double-click
+  entered, and the reasoning was that entering interactive mode resizes a live agent's window
+  (§11.9) so a stray click must not be able to cause it. The operator overrode that after
+  living with it: in practice the click is nearly always aimed at "show me this session and
+  let me type", the double-click was a tax on the common case, and the failure it prevented —
+  clicking a row and *not* getting the keyboard — turned out to be the one that actually bit,
+  because a user who has clicked a session starts typing into a list that is still reading
+  those keys as navigation. So: one click selects the row **and** enters interactive mode on
+  it, and `Ctrl+Q` returns to the list. The cost is stated rather than discovered: **a
+  mis-aimed sidebar click now resizes that session's live window** (§11.9's fit), and the
+  mitigation is `Ctrl+Q`, not a confirmation — a confirm on a click would recreate the tax
+  the double-click was. **Full attach (`a`) keeps no mouse affordance at all** and is
+  deliberately still key-only: it hands over the *whole terminal*, which `Ctrl+Q` cannot undo,
+  so the argument this bullet just reversed still holds there and is the reason it is not
+  reversed everywhere.
+- **A sidebar click works while interactive mode is active, and re-targets it.** While the
+  preview owns the keyboard, a click on a sidebar row selects that row and moves interactive
+  mode to it — leaving the previous session's window (restoring its size per §11.9) and
+  entering the new one. Without this the sidebar becomes dead surface exactly when the user
+  most wants it, since single-click entry means the common state is "attached", and a click
+  that did nothing would be indistinguishable to the user from deck having hung. Clicking the
+  row that is *already* the interactive target changes nothing (no leave-and-re-enter, so no
+  gratuitous resize of a live window). A click over the **preview** while interactive is
+  unchanged from below: it is the drag-to-copy gesture's press, never a navigation.
 - **The wheel scrolls the list under the pointer and changes neither focus nor selection.**
   Scrolling to look at something is not selecting it. A wheel that moved the selection would
   fire status-changing side effects (§7's attach-clears-`waiting` is one keystroke away)
@@ -1421,8 +1500,9 @@ frame.
 
 **Deliberately not, on top of §1's non-goals:** no right-click and no context menus (deck has
 no menu concept to hang them on, and a menu would become the second place every action is
-declared); no drag-to-reorder (§11's sort order is defined by status and age, not arranged by
-hand — a hand-arranged list would stop answering "which session needs me"); no clickable
+declared); no drag-to-reorder (§11's sort order is *chosen* from a fixed set of four rules,
+never arranged by hand — a hand-arranged list has no rule to re-apply when a session's status
+or name changes, and it would stop answering "which session needs me"); no clickable
 footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is bound *now*).
 
 ### 11.9 Interactive preview
@@ -1654,7 +1734,7 @@ features/
                                 for error, placeholder with no pane
   attention_sort.feature        §7/§11 — attention order, the collapsed strip's count,
                                 workspace grouping and collapse, space walks what needs me
-  mouse.feature                 §11.8 — click selects, double-click attaches, wheel scrolls
+  mouse.feature                 §11.8 — click selects and enters interactive, wheel scrolls
                                 without selecting, seam drag resizes, preview drag selects and
                                 release copies, DECK_MOUSE=0 disables
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
