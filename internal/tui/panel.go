@@ -87,6 +87,43 @@ func (m Model) previewBorderToken() theme.Token {
 	return theme.Border
 }
 
+// mainViewOverlayActive reports whether some overlay currently owns the
+// keyboard while mainView keeps rendering underneath it (task 025's `t`
+// theme picker and task 123's `/` filter text field, per their own file
+// comments -- theme_picker.go: "the real sidebar/preview panels (mainView)
+// keep rendering throughout"; filter.go: "mainView keeps rendering ...
+// filtering never replaces View()"). Both intercept every keystroke before
+// it reaches either panel's own bindings (see the dispatch order in
+// tui.go's Update), so while either is active neither the sidebar nor the
+// preview panel is the one actually holding focus, even though both still
+// render on screen. Every other overlay (m.help, m.creating, m.settingsOpen,
+// m.eventLogOpen, ...) replaces View() outright (see View()'s early-return
+// chain), so mainView -- and this seam -- never renders under them at all.
+func (m Model) mainViewOverlayActive() bool {
+	return m.themePicking || m.filtering
+}
+
+// seamBorderToken resolves the single shared column between the sidebar
+// and the preview panel (SPEC requirement 57's amendment: the seam and its
+// ┬/┭ T-junctions read as focused whenever EITHER panel is -- unlike
+// sidebarBorderToken/previewBorderToken, which each report their own
+// panel's mutually-exclusive focus state, the seam sits on the boundary
+// between both and belongs to whichever side currently holds focus. The
+// one case neither side does -- some overlay atop mainView owns the
+// keyboard instead (mainViewOverlayActive) -- is the one case the seam
+// reads as plain border, matching a dialog's own unfocused border
+// elsewhere in this package. Only this one column and its T-junctions use
+// this rule; the rest of the preview's own border (and all of the
+// sidebar's) keeps using previewBorderToken/sidebarBorderToken exactly as
+// before -- glyph ownership (the preview draws every seam glyph) is
+// unchanged.
+func (m Model) seamBorderToken() theme.Token {
+	if m.mainViewOverlayActive() {
+		return theme.Border
+	}
+	return theme.BorderFocus
+}
+
 // sidebarSelectionToken is the sidebar's selected-row background token
 // (SPEC requirement 42/44): `selection` while the sidebar itself holds
 // focus, `selection_idle` — the existing token internal/theme/token.go:19
@@ -344,35 +381,40 @@ func (m Model) collapsedStripContentLine(width int, text string) string {
 func (m Model) previewTopLine(width int, title string, seam bool) string {
 	bc := m.box()
 	left := bc.topLeft
+	leftTok := m.previewBorderToken()
 	if seam {
 		left = bc.seamTop
+		leftTok = m.seamBorderToken()
 	}
 	inner := width - 2
 	label, remain := m.borderLabel(title, inner)
 	tok := m.previewBorderToken()
-	return m.borderColor(tok, left) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain)) + m.borderColor(tok, bc.topRight)
+	return m.borderColor(leftTok, left) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain)) + m.borderColor(tok, bc.topRight)
 }
 
 // previewBottomLine mirrors previewTopLine for the bottom edge.
 func (m Model) previewBottomLine(width int, seam bool) string {
 	bc := m.box()
 	left := bc.bottomLeft
+	leftTok := m.previewBorderToken()
 	if seam {
 		left = bc.seamBottom
+		leftTok = m.seamBorderToken()
 	}
 	inner := width - 2
 	tok := m.previewBorderToken()
-	return m.borderColor(tok, left) + m.borderColor(tok, strings.Repeat(bc.horizontal, inner)) + m.borderColor(tok, bc.bottomRight)
+	return m.borderColor(leftTok, left) + m.borderColor(tok, strings.Repeat(bc.horizontal, inner)) + m.borderColor(tok, bc.bottomRight)
 }
 
 // previewContentLine draws one content row inside the preview: left border
-// (the seam in side-by-side mode), one column of padding, text, one column
-// of padding, right border (SPEC requirement 17).
+// (the seam in side-by-side mode -- coloured by seamBorderToken, the
+// shared either-panel-focused rule, not previewBorderToken), one column of
+// padding, text, one column of padding, right border coloured by
+// previewBorderToken as always (SPEC requirement 17).
 func (m Model) previewContentLine(width int, text string) string {
 	bc := m.box()
 	inner := width - 4
-	tok := m.previewBorderToken()
-	return m.borderColor(tok, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(tok, bc.vertical)
+	return m.borderColor(m.seamBorderToken(), bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(m.previewBorderToken(), bc.vertical)
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
