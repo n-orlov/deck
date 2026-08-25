@@ -1588,3 +1588,19 @@ reason.
 `go build`, `go vet ./...`, `gofmt -l` on every tracked `.go` file: all clean at this commit.
 `SPEC.md`/`prds/`/`ci/Dockerfile`/`ci/SPIKE.md` unmodified across the whole run (verified in
 `docs/reports/phase3.md`'s close-out section, same `git diff 9cda5a8..HEAD --stat` command).
+
+## Final close-out (I-21, task 212) — superseded by the true final verification
+
+The section above is superseded, same as `docs/reports/phase3.md`'s own "Final close-out (I-21 /
+task 077)" section — it cites a RED run and a protected-path check formulation ("empty diff since
+`9cda5a8`") since broken by the operator's own legitimate `395babf` SPEC push. Task 212 is this
+run's true, final close-out; its full report (all checks, all raw command output, both mirrors of
+the protected-path check's three formulations) lives in `docs/reports/phase3d-212-closeout/`
+(referenced from `docs/reports/phase3.md`'s own "Final close-out (I-21, task 212)" section, which
+this section points at rather than duplicating). Summary: `git status --short` / `git log
+origin/main..HEAD` both empty; build/vet/gofmt clean; closing full-suite citation is task 210's
+ten green `ci/stability.sh 10` runs at the true final code commit `f715a56`
+(`docs/reports/phase3d-210-stability-10of10/`); protected-path check passes by sha allow-list
+(exactly one recognized commit, `395babf`, zero elsewhere); I-19 parity re-run green. Part II's
+own tasks (026-073, 085-091 plus the operator-steered additions) remain complete, unaffected by
+this close-out task.
