@@ -6,18 +6,47 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
   reporting off, every one of these gestures is a no-op and only the
   shortcut is lost; the keyboard path underneath keeps working.
 
-  @requirement-33-click-selects-not-attaches
-  Scenario: a single click on a sidebar row selects it without attaching
+  @requirement-33-click-selects-and-enters-interactive-mode
+  Scenario: a single click on a sidebar row selects it and enters interactive mode on the same press, and Ctrl+Q returns to the list
+    # task 311/312 (R55): the double-click gate is gone -- one press now
+    # does what task 061's Enter keybinding does, so this scenario asserts
+    # BOTH halves of that one press (selection moved AND interactive
+    # entered), not just one of them, on a row that was not already
+    # selected (click-enter-bravo, the second-created session, never the
+    # default selection).
     Given deck client "A" is started
-    When deck client "A" creates shell session "click-selects-alpha"
-    And deck client "A" creates shell session "click-selects-bravo"
-    And deck client "A" clicks on the row containing "click-selects-bravo"
-    Then deck client "A" has session "click-selects-bravo" selected
-    And deck client "A" screen contains "deck - sessions"
-    When deck client "A" exits cleanly
+    When deck client "A" creates shell session "click-enter-alpha"
+    And deck client "A" creates shell session "click-enter-bravo"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" clicks on the row containing "click-enter-bravo"
+    Then deck client "A" has session "click-enter-bravo" selected
+    And deck client "A" screen contains "click-enter-bravo"
+    And deck client "A" screen contains "interactive"
+    And deck client "A" screen contains "Ctrl+Q"
+    And deck client "A" captures its frame as "click-entered-bravo"
+    When deck client "A" leaves interactive mode
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" has session "click-enter-bravo" selected
+    When deck client "A" enters interactive mode
+    Then deck client "A" frame still matches the captured "click-entered-bravo" frame
+    When deck client "A" leaves interactive mode
+    And deck client "A" exits cleanly
 
   @requirement-33-double-click-enters-interactive-mode
-  Scenario: a double click on a sidebar row enters interactive mode
+  Scenario: a double click on a sidebar row also enters interactive mode, and its second press lands harmlessly on the now-interactive preview
+    # Rewritten for task 312: the first press of the double click already
+    # enters interactive mode (task 311), so the second press's coordinate
+    # -- unchanged, since DoubleClick reuses the row's original column/row
+    # -- now lands over the interactive preview, not the sidebar. Task 313
+    # (still pending) is what will re-target a sidebar click while
+    # interactive; until then this second press is exactly the "plain
+    # click, no drag, over the interactive preview" case
+    # features/interactive_selection.feature already covers -- it commits
+    # no selection and raises no error. This scenario is the harness's
+    # proof that a double click is not silently broken (no crash, no
+    # attachError, no double-attach) by task 311's change, keeping the
+    # double-click synthesis step (DoubleClick/clientDoubleClicksOnRowContaining)
+    # genuinely exercised rather than merely still compiling.
     Given deck client "A" is started
     When deck client "A" creates shell session "dbl-click-enter"
     And within one configured reconcile interval deck client "A" screen contains "running"
@@ -25,6 +54,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Then deck client "A" screen contains "dbl-click-enter"
     And deck client "A" screen contains "interactive"
     And deck client "A" screen contains "Ctrl+Q"
+    And deck client "A" screen does not contain "Cannot enter interactive mode"
     When deck client "A" leaves interactive mode
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
