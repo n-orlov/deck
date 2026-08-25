@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	vt "github.com/charmbracelet/x/vt"
 
 	"github.com/n-orlov/deck/internal/tmux"
@@ -619,6 +620,119 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 		}
 	}
 	return rows, offset
+}
+
+// AbsoluteRow converts a view-relative row -- 0 at the top of whatever
+// RenderRows(offset, height) most recently rendered onto the screen a
+// user's drag was actually resolved against, the only coordinate space a
+// mouse event's hit-tested cell can be expressed in -- into the SAME
+// absolute row space RenderRows/SelectedText both use. It re-derives the
+// identical start/end arithmetic RenderRows itself uses (clamping offset
+// against the CURRENT scrollback length exactly like RenderRows does),
+// rather than have a caller duplicate that math independently and risk
+// the two silently drifting apart the moment either changes.
+func (s *Session) AbsoluteRow(offset, height, viewRow int) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g := s.grid
+	sbLen := g.ScrollbackLen()
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > sbLen {
+		offset = sbLen
+	}
+	total := sbLen + g.Height()
+	end := total - offset
+	start := end - height
+	return start + viewRow
+}
+
+// SelectedText answers steer 017 item 3 / SPEC §11.8's drag-to-copy
+// selection (task 216): the PLAIN (unstyled) text of the linear,
+// reading-order run from (fromCol, fromRow) to (toCol, toRow), in the
+// exact SAME absolute row space RenderRows uses -- row 0 is the oldest
+// scrollback line, row sbLen+screenHeight-1 is the live bottom row -- so
+// a caller that resolved both endpoints against one RenderRows call (or
+// the same scroll offset) can hand them here unchanged. "Linear" (not
+// rectangular/block) selection is what an ordinary terminal's own
+// click-drag does and what tmux's own default copy-mode selection does
+// without a modifier: a multi-row run includes every column of every
+// row strictly between the two endpoints, only the first selected row's
+// tail (from fromCol onward) and the last selected row's head (up to
+// toCol) are partial. The two endpoints are swapped first if the drag
+// ran backwards (a release above its own press, or leftward on the same
+// row), so a drag performed in either direction over the same two cells
+// selects identical text -- exactly what a real terminal's own
+// click-drag selection guarantees. Trailing spaces (padding, never real
+// content -- newGrid's blank cells are always " ") are trimmed from
+// every selected row, matching what a user reading the screen actually
+// perceives as the row's content.
+//
+// This takes the SAME read lock RenderRows does, over the SAME
+// CellAt/ScrollbackCellAt pointer-after-return hazard RenderRows's own
+// doc comment already covers -- the whole extraction happens while s.mu
+// is held, so no concurrent Write can land mid-read.
+func (s *Session) SelectedText(fromCol, fromRow, toCol, toRow int) string {
+	if fromRow > toRow || (fromRow == toRow && fromCol > toCol) {
+		fromCol, fromRow, toCol, toRow = toCol, toRow, fromCol, fromRow
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g := s.grid
+	width := g.Width()
+	screenHeight := g.Height()
+	sbLen := g.ScrollbackLen()
+	total := sbLen + screenHeight
+	if total <= 0 || width <= 0 {
+		return ""
+	}
+	clampRow := func(r int) int {
+		if r < 0 {
+			return 0
+		}
+		if r >= total {
+			return total - 1
+		}
+		return r
+	}
+	clampCol := func(c int) int {
+		if c < 0 {
+			return 0
+		}
+		if c >= width {
+			return width - 1
+		}
+		return c
+	}
+	fromRow, toRow = clampRow(fromRow), clampRow(toRow)
+	fromCol, toCol = clampCol(fromCol), clampCol(toCol)
+
+	cellAt := func(x, i int) *uv.Cell {
+		if i < sbLen {
+			return g.ScrollbackCellAt(x, i)
+		}
+		return g.CellAt(x, i-sbLen)
+	}
+
+	lines := make([]string, 0, toRow-fromRow+1)
+	for i := fromRow; i <= toRow; i++ {
+		startCol, endCol := 0, width-1
+		if i == fromRow {
+			startCol = fromCol
+		}
+		if i == toRow {
+			endCol = toCol
+		}
+		var b strings.Builder
+		for x := startCol; x <= endCol; x++ {
+			if c := cellAt(x, i); c != nil {
+				b.WriteString(c.Content)
+			}
+		}
+		lines = append(lines, strings.TrimRight(b.String(), " "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Renders delivers one notification per coalesced render (PRD II-27), at

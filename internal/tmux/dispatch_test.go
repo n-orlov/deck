@@ -300,9 +300,10 @@ func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 	// send-keys it already had, in this same commit, per this test's own
 	// documented escape hatch above.
 	allowedCommands := map[string][]string{
-		"tmux.go": {`"send-keys"`},                                    // Client.SendKeys, pre-existing task 023 scope only.
-		"send.go": {`"send-keys"`, `"load-buffer"`, `"paste-buffer"`}, // Dispatcher.SendLiteral (task 054/II-32) + oversized-payload streaming (task 057/II-36).
-		"key.go":  {`"send-keys"`},                                    // Dispatcher.SendNamedKey, task 056/II-34/II-35's allowlisted named-key primitive.
+		"tmux.go":   {`"send-keys"`},                                    // Client.SendKeys, pre-existing task 023 scope only.
+		"send.go":   {`"send-keys"`, `"load-buffer"`, `"paste-buffer"`}, // Dispatcher.SendLiteral (task 054/II-32) + oversized-payload streaming (task 057/II-36).
+		"key.go":    {`"send-keys"`},                                    // Dispatcher.SendNamedKey, task 056/II-34/II-35's allowlisted named-key primitive.
+		"buffer.go": {`"load-buffer"`},                                  // Client.SetSelectionBuffer (steer 017 item 3/task 216): stages drag-to-copy text into a NAMED buffer, never a pane -- there is no pane identity for Dispatcher.Send to re-verify here at all, and it never touches paste-buffer/send-keys.
 	}
 	allowed := map[string]bool{}
 	for file := range allowedCommands {
