@@ -1249,72 +1249,40 @@ type settingsRowSegment struct {
 	Tok  theme.Token
 }
 
-// settingsRenderRow composes segs into one coloured line, opening bg
-// (SPEC requirement 42's selection/selection_idle focus cue) once at the
-// very start when selected is true, then each segment's own foreground
-// token, and closing with exactly ONE trailing full reset at the end --
-// never one reset per segment. An SGR \x1b[0m reset clears every
-// attribute, background included, so stacking colorToken's own
-// self-resetting calls here would silently cancel the outer row
-// background the moment the first inner foreground segment ended;
-// opening progressively and resetting once keeps the background live
-// under every segment's text.
-//
-// idleBg (task 084, steer 006 item 2's alternating sidebar stripe) is the
-// SAME mechanism applied to the UNSELECTED case: when selected is false
-// and idleBg is non-empty, its background opens instead of bg's, so a
-// caller with no stripe to paint (every settings-takeover call site) keeps
-// passing "" and gets exactly today's "no background unless selected"
-// behaviour, while sidebarRowLines can pass theme.Surface for the
-// alternate-phase session block and get a background that persists
-// whether or not that particular row happens to be selected -- selected
-// still always wins over any stripe, never the reverse.
-func (m Model) settingsRenderRow(segs []settingsRowSegment, bg theme.Token, selected bool, idleBg theme.Token) string {
-	if !m.settings.Color {
-		var b strings.Builder
-		for _, s := range segs {
-			b.WriteString(s.Text)
-		}
-		return b.String()
-	}
-	var b strings.Builder
-	opened := false
-	if selected {
-		if seq, ok := m.backgroundSGR(bg); ok {
-			b.WriteString(seq)
-			opened = true
-		}
-	} else if idleBg != "" {
-		if seq, ok := m.backgroundSGR(idleBg); ok {
-			b.WriteString(seq)
-			opened = true
-		}
-	}
-	for _, s := range segs {
-		if seq, ok := m.foregroundSGR(s.Tok); ok {
-			b.WriteString(seq)
-			opened = true
-		}
-		b.WriteString(s.Text)
-	}
-	if opened {
-		b.WriteString("\x1b[0m")
-	}
-	return b.String()
+// settingsListLine (task 322/R58c) pairs one row's already-composed text
+// (via settingsRenderRowOpen, so it carries no background of its own and
+// no closing reset) with the background token, if any, that row wants --
+// mirroring sidebarRowLines/sidebarContentLine's own split of concerns
+// (tui.go:3356/panel.go:487, task 321/R58b) exactly: this file used to open
+// a row's background inside settingsRenderRow and close it the moment that
+// row's own text ended, the same bug task 321 fixed for the sidebar, one
+// level removed. settingsLeftContentLine/settingsRightContentLine are now
+// the only two places that open bg (once) and close it (once), spanning
+// the row's pad-fill and flanking padding columns too. The zero value
+// (text "", bg "") is exactly what fitLines' generic zero-fill wants for
+// an unused trailing row -- no background, matching a truly empty string
+// row under the old []string shape.
+type settingsListLine struct {
+	text string
+	bg   theme.Token
 }
 
-// settingsRenderRowOpen composes segs' own foreground colours exactly like
-// settingsRenderRow, but opens no background of its own and never emits a
-// closing reset -- it deliberately leaves any foreground SGR state open so
-// a caller that wants a background to span PAST this text (task 321/R58b:
+// settingsRenderRowOpen composes segs' own foreground colours -- opening
+// no background of its own and never emitting a closing reset -- so a
+// caller that wants a background to span PAST this text (task 321/R58b:
 // the sidebar row highlight filling the whole panel width, pad-fill and
 // flanking padding columns included, not just the glyphs sidebarRowLines
-// happens to draw) can open that background before this text and close
-// everything with exactly one reset of its own, the same append-only-once
-// discipline settingsRenderRow's own doc comment already requires -- an
-// inner reset here would clear the outer caller's background the instant
-// this text's own last segment ended. Only sidebarRowLines uses this; every
-// other settingsRenderRow caller (the settings takeover) is unaffected.
+// happens to draw; task 322/R58c: every settings-takeover list row for
+// exactly the same reason, one level removed) can open that background
+// before this text and close everything with exactly one reset of its
+// own -- an inner reset here would clear the outer caller's background
+// the instant this text's own last segment ended. Every settingsListLine
+// (settings.go's category/field/env-entry/search-result rows) and
+// sidebarRowLines compose their text through this, never through a
+// self-closing per-row render, precisely because both always have an
+// outer bg-spanning wrapper (settingsLeftContentLine/
+// settingsRightContentLine/sidebarContentLine) that needs the trailing
+// reset left to it.
 func (m Model) settingsRenderRowOpen(segs []settingsRowSegment) string {
 	var b strings.Builder
 	if !m.settings.Color {
@@ -1381,9 +1349,16 @@ func (m Model) settingsLeftBottomLine(width int, focused bool) string {
 	return m.settingsBorderColor(focused, bc.bottomLeft) + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, width-1))
 }
 
-func (m Model) settingsLeftContentLine(width int, text string, focused bool) string {
+func (m Model) settingsLeftContentLine(width int, l settingsListLine, focused bool) string {
 	bc := m.box()
-	return m.settingsBorderColor(focused, bc.vertical) + " " + m.padTrunc(text, width-3) + " "
+	border := m.settingsBorderColor(focused, bc.vertical)
+	padded := m.padTrunc(l.text, width-3)
+	if l.bg != "" {
+		if seq, ok := m.backgroundSGR(l.bg); ok {
+			return border + seq + " " + padded + " " + "\x1b[0m"
+		}
+	}
+	return border + " " + padded + " "
 }
 
 // settingsRightTopLine/settingsRightBottomLine/settingsRightContentLine
@@ -1403,10 +1378,17 @@ func (m Model) settingsRightBottomLine(width int, focused bool) string {
 	return m.settingsBorderColor(focused, bc.seamBottom) + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, inner)) + m.settingsBorderColor(focused, bc.bottomRight)
 }
 
-func (m Model) settingsRightContentLine(width int, text string, focused bool) string {
+func (m Model) settingsRightContentLine(width int, l settingsListLine, focused bool) string {
 	bc := m.box()
+	border := m.settingsBorderColor(focused, bc.vertical)
 	inner := width - 4
-	return m.settingsBorderColor(focused, bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.settingsBorderColor(focused, bc.vertical)
+	padded := m.padTrunc(l.text, inner)
+	if l.bg != "" {
+		if seq, ok := m.backgroundSGR(l.bg); ok {
+			return border + seq + " " + padded + " " + "\x1b[0m" + border
+		}
+	}
+	return border + " " + padded + " " + border
 }
 
 // settingsView renders the full-screen takeover: a category list panel and
@@ -1443,19 +1425,23 @@ func (m Model) settingsView() string {
 	}
 
 	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
-	leftLines := make([]string, len(categories))
+	leftLines := make([]settingsListLine, len(categories))
 	for i, cat := range categories {
 		marker := "  "
 		selected := i == m.settingsCategoryIndex
 		if selected {
 			marker = "> "
 		}
-		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}, categorySelTok, selected, "")
+		bg := theme.Token("")
+		if selected {
+			bg = categorySelTok
+		}
+		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}), bg: bg}
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
 	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
-	var rightLines []string
+	var rightLines []settingsListLine
 	if m.settingsCategoryIndex >= 0 && m.settingsCategoryIndex < len(categories) {
 		fields := categories[m.settingsCategoryIndex].Fields
 		innerWidth := rightWidth - 4
@@ -1489,12 +1475,16 @@ func (m Model) settingsView() string {
 				{Text: ": ", Tok: theme.Text},
 				{Text: valueText, Tok: theme.Text},
 			}
-			rightLines = append(rightLines, m.settingsRenderRow(segs, fieldSelTok, selected, ""))
+			fieldBg := theme.Token("")
+			if selected {
+				fieldBg = fieldSelTok
+			}
+			rightLines = append(rightLines, settingsListLine{text: m.settingsRenderRowOpen(segs), bg: fieldBg})
 			if selected {
 				envVar, _ := settingsFieldEnvOverride(f, m.settings)
 				runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
 				for _, detail := range settingsFieldDetailLines(f, innerWidth-2, envVar, fileValue, runningValue) {
-					rightLines = append(rightLines, "    "+detail)
+					rightLines = append(rightLines, settingsListLine{text: "    " + detail})
 				}
 			}
 		}
@@ -1553,30 +1543,33 @@ func (m Model) settingsFooterLine() string {
 func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
 	const leftFocused, rightFocused = false, true
 
-	leftLines := make([]string, len(categories))
+	leftLines := make([]settingsListLine, len(categories))
 	for i, cat := range categories {
-		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false, "")
+		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}})}
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
-	var rightLines []string
+	var rightLines []settingsListLine
 	var title string
 	if m.settingsEnvEditing {
 		title = "Edit [env] entry"
 		keyMarker, valueMarker := "  ", "  "
+		keyBg, valueBg := theme.Token(""), theme.Token("")
 		if m.settingsEnvEditingKeyPart {
 			keyMarker = "> "
+			keyBg = theme.Selection
 		} else {
 			valueMarker = "> "
+			valueBg = theme.Selection
 		}
-		rightLines = []string{
-			m.settingsRenderRow([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}, theme.Selection, m.settingsEnvEditingKeyPart, ""),
-			m.settingsRenderRow([]settingsRowSegment{{Text: valueMarker + "Value: " + m.maskEnvValue(m.settingsEnvEditKey, m.settingsEnvEditValue, m.settingsEnvReveal), Tok: theme.Text}}, theme.Selection, !m.settingsEnvEditingKeyPart, ""),
+		rightLines = []settingsListLine{
+			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}), bg: keyBg},
+			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: valueMarker + "Value: " + m.maskEnvValue(m.settingsEnvEditKey, m.settingsEnvEditValue, m.settingsEnvReveal), Tok: theme.Text}}), bg: valueBg},
 		}
 	} else {
 		title = "[env]"
 		keys := settingsEnvKeys(m.settingsEdits)
-		rightLines = make([]string, 0, len(keys)+1)
+		rightLines = make([]settingsListLine, 0, len(keys)+1)
 		for i, k := range keys {
 			marker := "  "
 			selected := i == m.settingsEnvIndex
@@ -1589,14 +1582,20 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 				{Text: "=", Tok: theme.Text},
 				{Text: m.maskEnvValue(k, m.settingsEdits.Env[k], m.settingsEnvReveal), Tok: theme.Text},
 			}
-			rightLines = append(rightLines, m.settingsRenderRow(segs, theme.Selection, selected, ""))
+			bg := theme.Token("")
+			if selected {
+				bg = theme.Selection
+			}
+			rightLines = append(rightLines, settingsListLine{text: m.settingsRenderRowOpen(segs), bg: bg})
 		}
 		addMarker := "  "
 		addSelected := m.settingsEnvIndex == len(keys)
+		addBg := theme.Token("")
 		if addSelected {
 			addMarker = "> "
+			addBg = theme.Selection
 		}
-		rightLines = append(rightLines, m.settingsRenderRow([]settingsRowSegment{{Text: addMarker + "+ add entry", Tok: theme.Hint}}, theme.Selection, addSelected, ""))
+		rightLines = append(rightLines, settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: addMarker + "+ add entry", Tok: theme.Hint}}), bg: addBg})
 	}
 	rightLines = fitLines(rightLines, contentRows)
 
@@ -1625,14 +1624,14 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 	// up/down does move within, carries the focus cue (`border_focus`).
 	const leftFocused, rightFocused = false, true
 
-	leftLines := make([]string, len(categories))
+	leftLines := make([]settingsListLine, len(categories))
 	for i, cat := range categories {
-		leftLines[i] = m.settingsRenderRow([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}}, theme.SelectionIdle, false, "")
+		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}})}
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
 	results := settingsSearchMatches(m.settingsSearchQuery)
-	rightLines := make([]string, len(results))
+	rightLines := make([]settingsListLine, len(results))
 	for i, r := range results {
 		marker := "  "
 		selected := i == m.settingsSearchIndex
@@ -1643,7 +1642,11 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 			{Text: marker + categories[r.CategoryIndex].Name + ": ", Tok: theme.Text},
 			{Text: settingsFieldLabel(r.Field), Tok: theme.Hint},
 		}
-		rightLines[i] = m.settingsRenderRow(segs, theme.Selection, selected, "")
+		bg := theme.Token("")
+		if selected {
+			bg = theme.Selection
+		}
+		rightLines[i] = settingsListLine{text: m.settingsRenderRowOpen(segs), bg: bg}
 	}
 	rightLines = fitLines(rightLines, contentRows)
 

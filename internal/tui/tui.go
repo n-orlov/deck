@@ -3068,13 +3068,15 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		listRows := lh - 2
 		visible := m.sidebarVisibleEntries(max(lw-4, 0), listRows)
 		body := make([]string, len(visible))
+		bgs := make([]theme.Token, len(visible))
 		for i, e := range visible {
 			body[i] = e.text
+			bgs[i] = e.bg
 		}
 		sidebarFocused := !m.previewFocused()
 		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText(), sidebarFocused))
 		for i := 0; i < listRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(lw, body[i], sidebarFocused))
+			lines = append(lines, m.fullBoxContentLine(lw, body[i], sidebarFocused, bgs[i]))
 		}
 		lines = append(lines, m.fullBoxBottom(lw, sidebarFocused))
 	}
@@ -3084,7 +3086,7 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		previewFocused := m.previewFocused()
 		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), previewFocused))
 		for i := 0; i < previewRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(pw, body[i], previewFocused))
+			lines = append(lines, m.fullBoxContentLine(pw, body[i], previewFocused, ""))
 		}
 		lines = append(lines, m.fullBoxBottom(pw, previewFocused))
 	}
