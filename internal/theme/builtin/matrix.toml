@@ -1,0 +1,27 @@
+name = "matrix"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#001100"  # panel interiors — dark green phosphor tint, not pure black
+surface           = "#002200"  # elevated rows, footer, dialog interiors
+border            = "#145214"
+border_focus      = "#00ff41"  # the focused panel (§11.3) — the canonical "Matrix" green
+selection         = "#004400"  # selected row, focused panel
+selection_idle    = "#003300"  # selected row, unfocused panel
+title             = "#00ff88"
+text              = "#33ff66"
+dimmed            = "#22aa44"  # starting rows, elided detail
+hint              = "#55cc77"  # footer descriptions
+key               = "#00cc44"  # footer/help keycaps
+accent            = "#00ff88"
+group             = "#33ff66"  # workspace headers
+search_match      = "#ffff33"
+badge             = "#55cc77"  # live/sampled, env↻
+badge_warn        = "#ffaa00"  # non-safe permission profiles, yolo
+waiting           = "#ffff33"  # the seven §7 statuses, one token each
+running           = "#00ff66"
+idle              = "#33cc66"
+starting          = "#33aaff"
+stopped           = "#889988"
+error             = "#ff3333"
+archived          = "#66aa77"
