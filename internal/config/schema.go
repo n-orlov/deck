@@ -219,6 +219,35 @@ var Schema = []Field{
 	},
 	{
 		Section: "",
+		Key:     "event_retention_days",
+		Kind:    KindInteger,
+		Default: 30,
+		Unit:    "days",
+		IntBounds: Bounds{
+			Min: 1,
+		},
+		Description: "How many days of events (SPEC \u00a712) the store keeps before " +
+			"deleting them, oldest first, in bounded batches -- on store open and " +
+			"thereafter at most once an hour (SPEC \u00a76.5/\u00a712, steer 3e-001 \u00a76.4). " +
+			"A floor on history, not a cap on row count: a burst inside the window " +
+			"is kept whole. VACUUM never runs automatically. Lower values reclaim " +
+			"space sooner at the cost of less history for \u00a712 search and the " +
+			"event log; higher values keep more history at the cost of database " +
+			"size. Restart-to-apply: saving here writes config.toml immediately, " +
+			"but nothing in the already-running client reads it again until deck " +
+			"restarts.",
+		// requirement 19: the sole consumer is cmd/deck/main.go's tuiReconcile
+		// closure, which calls Store.EnforceEventRetention with a `settings`
+		// local captured once before the Model exists -- the same shape as
+		// stale_after/tmux_mouse above, and for the same reason: there is no
+		// path back into a refreshed config.Settings for that closure to read
+		// a saved value from, so a save changes config.toml immediately but
+		// the running client keeps purging on the old window until deck
+		// restarts.
+		Scope: ScopeRestartToApply,
+	},
+	{
+		Section: "",
 		Key:     "tmux_mouse",
 		Kind:    KindToggle,
 		Default: true,

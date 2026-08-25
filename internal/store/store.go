@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"github.com/n-orlov/deck/internal/config"
@@ -1390,6 +1391,83 @@ func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 // open rather than once per rendered frame.
 func (s *Store) ListEventsCallCount() int64 {
 	return atomic.LoadInt64(&s.eventsListCalls)
+}
+
+// eventRetentionMinInterval is how often EnforceEventRetention actually
+// performs a deletion pass, per SPEC §6.5/§12 and steer 3e-001 §6.4/§7: "on
+// store open and thereafter at most once an hour". The throttle itself is
+// persisted in ui_state (not held only in memory) so that deck's many
+// short-lived hook-command invocations of store.Open, each a fresh process,
+// do not each re-run a full deletion pass; only the first EnforceEventRetention
+// call after each real hour boundary does real work.
+const eventRetentionMinInterval = time.Hour
+
+// eventRetentionLastRunKey is the ui_state key EnforceEventRetention uses to
+// remember when it last actually ran a deletion pass (as opposed to being
+// called and throttled away). Absent key means "never run", so the very
+// first call --  on store open, per the contract above -- always runs.
+const eventRetentionLastRunKey = "event_retention_last_run_at"
+
+// eventRetentionBatchRows bounds how many rows a single EnforceEventRetention
+// batch deletes; eventRetentionMaxBatches bounds how many batches one call
+// performs. Together they cap the synchronous work one call can do (SPEC's
+// "bounded batches", never an unbounded DELETE nor an automatic VACUUM) even
+// if the retention window has been widened, or deck was not run for a long
+// time, leaving a very large backlog. Any remainder is left for the next
+// hourly pass rather than pushing the caller's latency past this bound.
+const (
+	eventRetentionBatchRows  = 500
+	eventRetentionMaxBatches = 200
+)
+
+// EnforceEventRetention deletes events older than retentionDays, oldest
+// first, in bounded batches, per SPEC §6.5/§12 and steer 3e-001 §6.4/§7 (R62).
+// now is the caller's current time in the same UnixMilli units as events.at
+// and sessions.last_probe_at elsewhere in this file. It is a floor on
+// history, not a cap on row count: a burst of events inside the retention
+// window is kept whole however large it is. This performs an actual deletion
+// pass only on the first call ever (store open, no prior ui_state row) and
+// thereafter at most once per eventRetentionMinInterval; every call in
+// between is a cheap no-op single SELECT against ui_state. No VACUUM is ever
+// run here or anywhere else in this file.
+func (s *Store) EnforceEventRetention(ctx context.Context, retentionDays int, now int64) error {
+	if retentionDays <= 0 {
+		return errors.New("event retention window must be positive")
+	}
+	if now <= 0 {
+		return errors.New("event retention timestamp is required")
+	}
+	lastRunRaw, err := s.getUIState(ctx, eventRetentionLastRunKey, "0")
+	if err != nil {
+		return fmt.Errorf("read event retention throttle: %w", err)
+	}
+	lastRun, err := strconv.ParseInt(lastRunRaw, 10, 64)
+	if err != nil {
+		lastRun = 0
+	}
+	if lastRun != 0 && now-lastRun < eventRetentionMinInterval.Milliseconds() {
+		return nil
+	}
+	cutoff := now - int64(retentionDays)*24*time.Hour.Milliseconds()
+	for batch := 0; batch < eventRetentionMaxBatches; batch++ {
+		result, err := s.db.ExecContext(ctx, `DELETE FROM events WHERE seq IN (
+			SELECT seq FROM events WHERE at < ? ORDER BY at ASC, seq ASC LIMIT ?)`,
+			cutoff, eventRetentionBatchRows)
+		if err != nil {
+			return fmt.Errorf("delete retired events: %w", err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("check retired events deletion: %w", err)
+		}
+		if affected < int64(eventRetentionBatchRows) {
+			break
+		}
+	}
+	if err := s.setUIState(ctx, eventRetentionLastRunKey, strconv.FormatInt(now, 10)); err != nil {
+		return fmt.Errorf("write event retention throttle: %w", err)
+	}
+	return nil
 }
 
 // ReapSession permanently removes a tombstoned session once its grace

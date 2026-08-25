@@ -54,6 +54,20 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 	defer db.Close()
 
+	// R62 (steer 3e-001 §6.4/§7): the first EnforceEventRetention call --
+	// right here, on store open -- always performs its deletion pass (no
+	// ui_state row yet records a last run); every later call, from
+	// tuiReconcile below, is throttled internally to at most once an hour.
+	// The hidden hook command's own store.Open (below, in runHook) does NOT
+	// call this: hooks share the same tight, measured budget that already
+	// keeps pane-text probing out of their critical path (see tuiReconcile's
+	// own comment), and the throttle above already guarantees this main
+	// process's own next reconcile tick will catch up within the hour.
+	if err := db.EnforceEventRetention(context.Background(), settings.EventRetentionDays, settings.Clock.Now().UnixMilli()); err != nil {
+		fmt.Fprintln(stderr, "deck event retention:", err)
+		return 0
+	}
+
 	logger, err := audit.New(settings.Paths, settings.Clock)
 	if err != nil {
 		fmt.Fprintln(stderr, "deck audit:", err)
@@ -82,9 +96,17 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 	// The TUI owns pane-text sampling. Its reconcile callback performs liveness
 	// first and then probes stale eligible agents; the hidden hook command below
-	// deliberately wires only ReconcileWithin and can therefore never probe.
+	// deliberately wires only ReconcileWithin and can therefore never probe. It
+	// also enforces R62's event retention window (steer 3e-001 §6.4/§7) on every
+	// tick, throttled internally by Store.EnforceEventRetention to at most once
+	// an hour -- settings is captured once here, so a sort_order-shaped
+	// restart-to-apply: a save changes config.toml immediately, but this already
+	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := func(ctx context.Context) error {
-		return sessions.ReconcileWithProbes(ctx, settings.StaleAfter)
+		if err := sessions.ReconcileWithProbes(ctx, settings.StaleAfter); err != nil {
+			return err
+		}
+		return db.EnforceEventRetention(ctx, settings.EventRetentionDays, settings.Clock.Now().UnixMilli())
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
