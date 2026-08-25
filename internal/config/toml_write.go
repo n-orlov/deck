@@ -248,6 +248,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.Quote(cfg.SortOrder)
 	case "ui.recent_cwd_limit":
 		return strconv.Itoa(cfg.RecentCwdLimit)
+	case "event_retention_days":
+		return strconv.Itoa(cfg.EventRetentionDays)
 	case "ui.theme":
 		return strconv.Quote(cfg.Theme)
 	default:

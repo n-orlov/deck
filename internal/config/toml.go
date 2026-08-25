@@ -32,6 +32,7 @@ type FileConfig struct {
 	GroupByWorkspace     bool
 	SortOrder            string
 	RecentCwdLimit       int
+	EventRetentionDays   int
 	Theme                string
 	Env                  map[string]string
 }
@@ -153,6 +154,8 @@ func defaultFileConfig() FileConfig {
 			cfg.SortOrder, _ = field.Default.(string)
 		case "ui.recent_cwd_limit":
 			cfg.RecentCwdLimit, _ = field.Default.(int)
+		case "event_retention_days":
+			cfg.EventRetentionDays, _ = field.Default.(int)
 		case "ui.theme":
 			cfg.Theme, _ = field.Default.(string)
 		}
@@ -204,6 +207,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.InteractiveMS = time.Duration(value) * time.Millisecond
 		case "ui.recent_cwd_limit":
 			cfg.RecentCwdLimit = value
+		case "event_retention_days":
+			cfg.EventRetentionDays = value
 		}
 	case KindEnum, KindString, KindPath:
 		unquoted, err := unquoteString(raw)

@@ -394,6 +394,116 @@ the unmodified task-330 tip, `faba630`, which fails identically):
 of this task's scope, and fixing a hardcoded schema-version assertion is
 unrelated to the render-path change this task makes).
 
+## R62: bounded events retention (steer 3e-001, task 332)
+
+SPEC §6.5/§12 amendment (steer 3e-001 §3/§6.4/§7, commit `6584299`):
+`event_retention_days` (default 30) bounds how long `events` rows are kept;
+deletion runs oldest first, in bounded batches, on store open and
+thereafter at most once an hour, with no automatic `VACUUM`.
+
+`event_retention_days` is a new top-level, schema-declared `KindInteger`
+field (`internal/config/schema.go`, `Default: 30`, `IntBounds.Min: 1`,
+`Scope: ScopeRestartToApply` -- the same restart-to-apply shape and reason
+as `stale_after`/`tmux_mouse`: the sole consumer is `cmd/deck/main.go`'s
+`tuiReconcile` closure, which has no path back into a refreshed
+`config.Settings`). `internal/config/toml.go`/`toml_write.go` parse and
+serialise it; `config.Settings`/`FileConfig` carry it;
+`internal/tui/settings.go`'s `settingsEditsFromSettings`,
+`settingsIntegerValue` and `settingsSetInteger` all include it. R7's
+generated settings view picks it up for free, confirmed via the existing
+schema-parity tests rather than any new settings-specific test:
+`TestSchemaPinsKeySet` and `TestSchemaScopes`
+(`internal/config/schema_test.go`) were updated by adding exactly this one
+key, and `TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce`
+(`internal/tui/settings_test.go`, unmodified) still passes because it
+walks `config.Schema` generically -- it needed no edit at all to pick up
+the new field.
+
+`Store.EnforceEventRetention(ctx, retentionDays, now)`
+(`internal/store/store.go`) is the deletion engine. `now` is UnixMilli, the
+same units `events.at`/`sessions.last_probe_at` already use elsewhere in
+this file. Its own throttle -- "on store open and thereafter at most once
+an hour" -- is persisted in `ui_state` (key `event_retention_last_run_at`),
+not held only in memory, because deck's own hook-command invocations of
+`store.Open` are each a fresh, short-lived process: an in-memory throttle
+would silently reset every time and never actually throttle across
+processes. A call is a real deletion pass whenever no `ui_state` row exists
+yet (first ever call) or at least `eventRetentionMinInterval` (1 hour) has
+passed since the last real pass; every call in between is a single cheap
+`ui_state` SELECT. Each real pass loops `DELETE FROM events WHERE seq IN
+(SELECT seq FROM events WHERE at < ? ORDER BY at ASC, seq ASC LIMIT
+?)` (oldest first) in batches of `eventRetentionBatchRows` (500), capped at
+`eventRetentionMaxBatches` (200) batches per call (100,000 rows), so one
+call's synchronous work stays bounded even against a very large backlog;
+any remainder is left for the next hourly pass. No `VACUUM` call exists
+anywhere in this file.
+
+`cmd/deck/main.go` wires it in exactly one place, per the schema comment's
+own claim: `run()` calls `db.EnforceEventRetention` once, unconditionally,
+right after `store.Open` (satisfying "on store open" literally, since the
+throttle above always lets the very first call through), and again inside
+the `tuiReconcile` closure on every reconcile tick thereafter (throttled to
+hourly by the same mechanism). `runHook`'s own separate `store.Open` call
+deliberately does NOT call it, for the same reason the hook path already
+wires only `ReconcileWithin` and never probes: hooks share a tight,
+measured latency budget, and the always-running main client's own next
+reconcile tick already guarantees catch-up within the hour.
+
+**Test** (`internal/store/event_retention_test.go`, per steer 3e-001
+§6.4): `TestEnforceEventRetentionDeletesOldOnesKeepingBoundaryAndRecentRows`
+seeds 1,200 rows strictly older than the cutoff (`kind='old'`, more than
+2x `eventRetentionBatchRows` so a single call must loop across at least
+three batches to finish), one row exactly AT the cutoff (`kind='boundary'`)
+and 50 rows strictly inside the window (`kind='recent'`), then asserts
+BOTH halves together after one `EnforceEventRetention` call: every `old`
+row is gone AND the `boundary` row AND all 50 `recent` rows survive -- a
+one-sided assertion ("old rows are gone") would also pass a retention pass
+that deleted everything, and the other one-sided assertion ("recent rows
+survive") would also pass a pass that deletes nothing. The boundary row's
+fate is explicit: the deletion query is `at < cutoff` (strict), so a row
+whose `at` EQUALS the cutoff falls INSIDE the retention window and is kept
+(asserted present, not absent).
+`TestEnforceEventRetentionThrottlesToAtMostOnceAnHour` separately proves
+the hourly throttle: a first call (simulating store-open) always deletes;
+a second call 10 minutes later, against a freshly-seeded row that is
+already due, is a no-op (row survives); a third call more than an hour
+after the first lets a real pass through again and the row is finally
+cleared. `TestEnforceEventRetentionRejectsNonPositiveWindow` covers the
+two invalid-input guards.
+
+Green (`ci/run.sh go test -count=1 ./internal/store/ -run
+EnforceEventRetention -v`): all three tests pass (0.19s-0.22s total across
+runs).
+
+Red proof: temporarily replaced the batch loop's condition with `false &&
+...` in place (keeping the cutoff computation, so the change compiles) to
+disable the deletion pass entirely while leaving the throttle bookkeeping
+intact, then re-ran the same three tests:
+
+```
+=== RUN   TestEnforceEventRetentionDeletesOldOnesKeepingBoundaryAndRecentRows
+    event_retention_test.go:78: old rows remaining after EnforceEventRetention = 1200, want 0 (all 1200 rows strictly older than the cutoff must be gone)
+    event_retention_test.go:102: events remaining after EnforceEventRetention = 1251, want 51 (boundary + recent only)
+--- FAIL: TestEnforceEventRetentionDeletesOldOnesKeepingBoundaryAndRecentRows (0.13s)
+=== RUN   TestEnforceEventRetentionThrottlesToAtMostOnceAnHour
+    event_retention_test.go:141: events after first (store-open) EnforceEventRetention call = 1, want 0
+--- FAIL: TestEnforceEventRetentionThrottlesToAtMostOnceAnHour (0.02s)
+=== RUN   TestEnforceEventRetentionRejectsNonPositiveWindow
+--- PASS: TestEnforceEventRetentionRejectsNonPositiveWindow (0.02s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.180s
+FAIL
+```
+
+(old rows survive with the deletion disabled -- exactly the failure mode
+a one-sided "old rows gone" assertion alone would have missed if the
+throttle bookkeeping had instead been the part removed.) The batch loop
+was then restored and the suite re-run green.
+
+`ci/run.sh go test -count=1 ./internal/config/ ./internal/tui/
+./internal/store/` all `ok`; `ci/run.sh go build ./...` and `ci/run.sh go
+vet ./...` both clean.
+
 ## Per-requirement evidence table
 
 _To be completed by task 326: R52-R58, R59-R62, plus the whole-suite and

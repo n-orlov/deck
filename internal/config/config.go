@@ -96,6 +96,11 @@ type Settings struct {
 	// §11.7): how many recently used working directories are kept/offered
 	// when creating a session. Defaults per internal/config.Schema.
 	RecentCwdLimit int
+	// EventRetentionDays mirrors config.toml's top-level event_retention_days
+	// key (SPEC §6.5/§12, steer 3e-001 §6.4/§7): how many days of events the
+	// store keeps before deleting the rest, oldest first, in bounded batches.
+	// Defaults per internal/config.Schema.
+	EventRetentionDays int
 	// Env mirrors config.toml's [env] table: additional environment variables
 	// layered under the session env per SPEC §6.1/§6.3. Absent file or absent
 	// section both yield a nil map, never an error.
@@ -282,12 +287,13 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
-		GroupByWorkspace: groupByWorkspace,
-		SortOrder:        fileCfg.SortOrder,
-		PreviewFit:       previewFit,
-		TmuxMouse:        tmuxMouse,
-		RecentCwdLimit:   fileCfg.RecentCwdLimit,
-		Theme:            resolvedTheme, ThemeReason: themeReason,
+		GroupByWorkspace:   groupByWorkspace,
+		SortOrder:          fileCfg.SortOrder,
+		PreviewFit:         previewFit,
+		TmuxMouse:          tmuxMouse,
+		RecentCwdLimit:     fileCfg.RecentCwdLimit,
+		EventRetentionDays: fileCfg.EventRetentionDays,
+		Theme:              resolvedTheme, ThemeReason: themeReason,
 		EnvOverrides: envOverrides,
 		File:         fileCfg,
 	}, nil

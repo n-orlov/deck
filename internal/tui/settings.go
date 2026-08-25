@@ -748,6 +748,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		GroupByWorkspace:     s.File.GroupByWorkspace,
 		SortOrder:            s.File.SortOrder,
 		RecentCwdLimit:       s.File.RecentCwdLimit,
+		EventRetentionDays:   s.File.EventRetentionDays,
 		Theme:                s.File.Theme,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
@@ -824,6 +825,8 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 		return int(cfg.InteractiveMS.Milliseconds())
 	case "ui.recent_cwd_limit":
 		return cfg.RecentCwdLimit
+	case "event_retention_days":
+		return cfg.EventRetentionDays
 	default:
 		v, _ := f.Default.(int)
 		return v
@@ -850,6 +853,8 @@ func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
 		cfg.InteractiveMS = time.Duration(v) * time.Millisecond
 	case "ui.recent_cwd_limit":
 		cfg.RecentCwdLimit = v
+	case "event_retention_days":
+		cfg.EventRetentionDays = v
 	}
 }
 
