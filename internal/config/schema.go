@@ -481,16 +481,16 @@ var Schema = []Field{
 			"by status -- choosing one means the user, not deck, decides what " +
 			"\"first\" means. An unknown/malformed value falls back to " +
 			"attention and says so on the first painted frame, never silently.",
-		// requirement 19: this task (303) only declares the key and wires
-		// parse/write/settings plumbing -- sessionsLoaded does not yet read
-		// it (task 305) and settingsApplyLiveFields does not yet copy it
-		// into the running m.settings (task 306), so there is no consumer
-		// today that would make a save observable in the running client,
-		// the same honest reasoning ui.group_by_workspace's own comment
-		// above gives pending its own live-apply wiring. Task 306 flips
-		// this to ScopeGlobal once settingsApplyLiveFields re-sorts the
-		// running model with the selection preserved by id.
-		Scope: ScopeRestartToApply,
+		// requirement 19/task 306: sessionsLoaded (task 305) already reads this
+		// live on every reload, and settingsApplyLiveFields
+		// (internal/tui/settings.go) now copies a changed value into the
+		// running m.settings on save and re-sorts m.baseSessions/m.sessions
+		// in place (Model.resortSessionsLive), preserving the selected
+		// SESSION by id (never by index) and keeping its row inside the
+		// sidebar's visible window via scrollSessionIntoView -- so a save
+		// takes effect in the already-running client, matching
+		// ui.mouse/ui.preview_fit's own ScopeGlobal reasoning above.
+		Scope: ScopeGlobal,
 	},
 	{
 		Section:     "env",
