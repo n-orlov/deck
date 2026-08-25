@@ -215,8 +215,13 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// 017 item 3/task 216's drag-to-copy selection is scoped to
 		// interactive mode only (Update's own tea.MouseMsg case routes
 		// press/motion/release there directly whenever m.interactive is
-		// true, never reaching handleMouse at all), so this stays a plain
-		// no-op for every gesture over the PASSIVE preview.
+		// true, never reaching handleMouse at all -- task 313/R54 hit-tests
+		// that same press FIRST, so a press over the sidebar re-targets
+		// interactive mode there instead of ever reaching drag-to-copy; a
+		// press landing here, over the preview, or over the seam still
+		// falls straight through to drag-to-copy exactly as before), so
+		// this stays a plain no-op for every gesture over the PASSIVE
+		// preview.
 		return m, nil
 	case hitPanelSidebar:
 		switch hit.target {
@@ -252,6 +257,36 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.selected = index
 	return m.enterInteractive()
+}
+
+// retargetInteractiveSidebarClick is task 313's (R54) job: while interactive
+// mode already owns the keyboard, a left press that hit-tests to a sidebar
+// row (Update's own tea.MouseMsg case resolves this BEFORE assuming the
+// press is task 216's drag-to-copy gesture) re-targets interactive mode
+// onto that row instead of being absorbed as a no-op click outside the
+// preview's content box -- the same reasoning as clickSidebarRow's own
+// list-mode job (task 311), just reachable from inside interactive mode
+// too. index is already the clicked row's session index (hitTest's own
+// sessionIndex), resolved against the SAME frame the renderer just drew,
+// so this never re-derives geometry independently.
+//
+// A press on the row that is ALREADY the interactive target is a no-op:
+// no leave, no re-enter, no resize -- m.selected never changes while
+// interactive except by this path or by a sessionsLoaded id-preserving
+// re-sort, so comparing it against index is exactly "is this the session
+// already showing". Otherwise it leaves the current session first
+// (exitInteractive: tear down the transport, restore the window's own
+// geometry byte-exact and release ownership -- byte-for-byte the same
+// sequence Ctrl+Q runs) before entering the newly clicked one, so a
+// concurrent claimant of the OLD window never observes it left resized.
+func (m Model) retargetInteractiveSidebarClick(index int) (tea.Model, tea.Cmd) {
+	if !m.interactive || index == m.selected {
+		return m, nil
+	}
+	left, _ := m.exitInteractive()
+	next := left.(Model)
+	next.selected = index
+	return next.enterInteractive()
 }
 
 // handleMouseDrag adjusts sidebar_width live while draggingSeam is true
