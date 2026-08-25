@@ -276,20 +276,25 @@ CREATE TABLE sessions (
   acknowledged       INTEGER NOT NULL DEFAULT 1,
   launch_lease_owner TEXT,                  -- pid@boot_id holding a start (§9.3)
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
+  last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
   deleted_at         INTEGER NOT NULL DEFAULT 0  -- tombstone; purged after grace (§9.2)
 );
 
-CREATE TABLE events (               -- append-only: audit trail, search corpus, notify source
+CREATE TABLE events (               -- append-only within a retention bound: audit trail, search corpus, notify source
   seq        INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   at         INTEGER NOT NULL,
   kind       TEXT NOT NULL,         -- started|prompt|waiting|idle|error|ended|resumed|killed|env|note
+                                    -- closed vocabulary: a kind absent from this list is a defect, not an extension
   reason     TEXT,
   payload    TEXT                   -- bounded JSON
 );
+
+CREATE INDEX events_at ON events(at DESC, seq DESC);         -- §12's newest-first reads are never a full scan
+CREATE INDEX events_session_kind ON events(session_id, kind); -- §6.4's env-apply reads likewise
 
 CREATE TABLE outbox (               -- notifications; dispatched inline, retried opportunistically
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -435,7 +440,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `group_by_workspace` (default true, §11), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
@@ -561,6 +566,14 @@ Rules:
   turn/API failures do notify unattended; process death does not.)
 - **Never auto-relaunch** (non-goal): a crash loop must not be able to burn tokens or retry
   a destructive action.
+
+**A diagnostic sampling result is a column, not an event.** A probe that matches no rule
+changes no status and is recorded only by overwriting `sessions.last_probe_at`, which is
+what the `i` detail dialog reads. It MUST NOT append to `events`: a per-tick row with no
+reader is unbounded write amplification, and at §6.5's default reconcile cadence one
+unmatched session alone produces two rows a second forever. The general rule the events
+table is held to: **a kind is only written if something reads that kind**, and the reader is
+named where the kind is introduced.
 
 ---
 
@@ -1219,6 +1232,13 @@ contract so learning any one of them teaches the rest:
   terminal, as best-effort behaviour to preserve the input area, and are not a supported
   size with test obligations.
 
+**A dialog never reads the store from its render path.** `View()` runs after every message,
+including §6.5's reconcile and preview ticks, so a store read inside a view function is a
+query per frame — several a second — and one slow enough to outlast the tick interval wedges
+the program unrecoverably, keystrokes included, because the queue grows faster than it
+drains. A dialog whose content comes from the store loads it into model state via a
+`tea.Cmd` when it opens, and renders that state.
+
 The inventory, all reachable from the list. **A dialog exists only once the behaviour behind
 it does**: §11.3's "never list a key that is not bound" applies here too, so a dialog for
 unbuilt behaviour is simply absent rather than a stub that opens onto nothing
@@ -1581,6 +1601,15 @@ slow; FTS5 is available in the pure-Go driver, so it costs no new dependency.
 
 Hits open the owning session; a hit in a `stopped` session offers resume directly from the
 results.
+
+**Retention.** `events` is append-only in the sense that nothing rewrites or reorders a row,
+not in the sense that it grows without limit. `event_retention_days` (default 30, §6.5)
+bounds it: rows older than the window are deleted on store open and thereafter at most once
+an hour, oldest first, in bounded batches so the delete never blocks a write for longer than
+one batch. Retention is a floor on history, not a cap on rows — a burst inside the window is
+kept whole rather than trimmed to a row count, because a row-count cap silently discards the
+newest evidence of exactly the incident that produced the burst. `VACUUM` is never automatic:
+freed pages are reused, and reclaiming file space is an explicit operator action.
 
 ---
 
