@@ -174,7 +174,23 @@ func renderGoldenMinimumFrame(t *testing.T) string {
 		t.Fatalf("create golden claude session: %v", err)
 	}
 
-	if err := client.Resize(80, 24); err != nil {
+	// ResizeAndAwaitRender (not the bare Resize this call used before task
+	// 210 / steer 019 §2) still matters as a first, cheap gate, but it turned
+	// out NOT to fully close task 210's TestGoldenMinimumFrame quiescence
+	// race by itself: its resizeRenderMarker proves *some* full-screen
+	// repaint happened after the resize call, but previewTick/reconcileTick
+	// (250ms/500ms) repaint on their own schedule regardless of any resize,
+	// emitting that identical marker -- so a tick-driven repaint that lands
+	// a moment after the resize call, but BEFORE deck's own SIGWINCH->
+	// WindowSizeMsg is actually processed, can satisfy the wait on stale
+	// geometry. Confirmed by direct reproduction: even with
+	// ResizeAndAwaitRender in place, an isolated 30x rerun still caught the
+	// exact same failure (panel height 41x37 captured as "settled", then the
+	// real reflow to 41x21 landing during the 150ms settle sleep). The
+	// actually-sufficient gate is below: wait for a piece of content whose
+	// presence/absence is a DIRECT function of the new panel height, not a
+	// proxy for "a render happened".
+	if err := client.ResizeAndAwaitRender(ctx, 80, 24); err != nil {
 		t.Fatalf("resize client down to the golden frame's own 80x24: %v", err)
 	}
 
@@ -192,6 +208,19 @@ func renderGoldenMinimumFrame(t *testing.T) string {
 	// capture landed at all.
 	if err := client.WaitForFrame(ctx, true, "of 80x24"); err != nil {
 		t.Fatalf("preview never captured the fixture's live pane: %v", err)
+	}
+	// The direct, non-proxy gate for the client's own resize having actually
+	// landed (task 210): at the pre-resize 80x40 terminal size, the preview
+	// panel is tall enough that the fixture's own FIRST line ("row 1 of
+	// 5") fits inside it alongside the last; at the golden's own 80x24 the
+	// panel is not, so bottom-anchoring (requirement 23) crops it out. "row
+	// 1 of 5" is on screen from the moment the fixture's own pane content is
+	// first captured (well before this point) until the resize's reflow
+	// actually shrinks the panel -- so waiting for it to be GONE is waiting
+	// for the resize itself, not for an unrelated tick's repaint that merely
+	// happens to land after the resize call in wall-clock time.
+	if err := client.WaitForFrameGone(ctx, true, "row 1 of 5"); err != nil {
+		t.Fatalf("preview panel never shrank to the golden frame's own 80x24 (still shows the fixture's first line): %v", err)
 	}
 	if err := client.WaitForFrame(ctx, true, "row 5 of 5"); err != nil {
 		t.Fatalf("preview never showed the fixture's own last line: %v", err)
