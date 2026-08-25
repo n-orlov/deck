@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -211,8 +212,22 @@ func TestSessionResizeDuringLiveDrainIsRaceFree(t *testing.T) {
 	}
 	defer session.Close()
 
+	// stop is only observed between iterations of the drain goroutine's
+	// loop, at the top of the select -- closing it does not interrupt an
+	// in-flight sendLiteralLine call. Without waiting for the goroutine to
+	// actually exit, the test function can return (running deferred
+	// cleanup, and then the *testing.T itself completing) while the
+	// goroutine is still mid-call into sendLiteralLine; under CPU
+	// contention that call's tmux exec can outlast the test, so a later
+	// t.Fatalf from that goroutine panics with "Fail in goroutine after
+	// ... has completed" instead of failing the test cleanly. wg makes
+	// close(stop)+Wait() a real join: the test function cannot return
+	// until the goroutine has observed stop and returned.
 	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		i := 0
 		for {
 			select {
@@ -235,4 +250,5 @@ func TestSessionResizeDuringLiveDrainIsRaceFree(t *testing.T) {
 		_ = session.Grid()
 	}
 	close(stop)
+	wg.Wait()
 }

@@ -1,0 +1,16 @@
+panic: Log in goroutine after TestSessionResizeDuringLiveDrainIsRaceFree has completed: send-keys Enter: exit status 1: server exited unexpectedly
+	
+
+goroutine 655 [running]:
+testing.(*common).log(0xc00048e700, {0xc000166000?, 0x3b?})
+	/usr/local/go/src/testing/testing.go:1030 +0x1ac
+testing.(*common).Fatalf(0xc00048e700, {0x62b2c7?, 0x400?}, {0xc00023ce20?, 0x0?, 0x8?})
+	/usr/local/go/src/testing/testing.go:1218 +0x4f
+github.com/n-orlov/deck/internal/interactive.sendLiteralLine(0xc00048e700, {0xc000072080, 0x33}, {0x6247e8, 0x2}, {0xc00011c848, 0x7})
+	/w/internal/interactive/grid_test.go:44 +0x3bd
+github.com/n-orlov/deck/internal/interactive.TestSessionResizeDuringLiveDrainIsRaceFree.func2()
+	/w/internal/interactive/resize_test.go:223 +0xab
+created by github.com/n-orlov/deck/internal/interactive.TestSessionResizeDuringLiveDrainIsRaceFree in goroutine 644
+	/w/internal/interactive/resize_test.go:215 +0x2a5
+FAIL	github.com/n-orlov/deck/internal/interactive	0.990s
+FAIL
