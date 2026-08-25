@@ -201,6 +201,21 @@ type Model struct {
 	deletePurgeOK    bool
 	profileSwitch    func(context.Context, string, string) (store.Session, error)
 	selected         int
+	// pendingSelectSessionID is requirement 52's one-shot "select the
+	// session I just created" intent: submitCreate's shellCreated success
+	// path (below) records the new session's id here rather than acting
+	// immediately, since the id does not exist in m.sessions until the
+	// sessionsLoaded that follows lands. The FIRST sessionsLoaded whose
+	// (filtered) m.sessions contains this id selects that row by id --
+	// never by index, since attention order can place a brand-new session
+	// anywhere -- scrolls it into view, and clears this field so a later
+	// sessionsLoaded never re-steals a selection the user has since moved
+	// (one-shot). A filter query that excludes the new session leaves both
+	// the selection and the query untouched and simply leaves this field
+	// set, waiting for a load where the id is visible; if the id never
+	// appears at all (session immediately gone), the field is harmlessly
+	// left set forever rather than panicking or forcing a selection.
+	pendingSelectSessionID string
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -1365,6 +1380,21 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.selected >= len(m.sessions) {
 				m.selected = max(0, len(m.sessions)-1)
 			}
+			// Requirement 52: the one-shot new-session intent (see
+			// pendingSelectSessionID's doc comment) overrides the
+			// preserved-selection result above whenever the id it is
+			// waiting for has actually arrived in the FILTERED list --
+			// never m.baseSessions -- so a live filter query that hides
+			// the new session leaves the selection (and the query)
+			// untouched instead of yanking the view to a row the filter
+			// itself is hiding.
+			if m.pendingSelectSessionID != "" {
+				if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
+					m.selected = idx
+					m.pendingSelectSessionID = ""
+					m.scrollSessionIntoView(idx)
+				}
+			}
 		}
 	case archivedSessionsLoaded:
 		// Task 123/I-10: refreshes the filter's archived-side search pool.
@@ -1385,6 +1415,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.creating, m.createError = false, ""
+		// Requirement 52: record the freshly created session's id as a
+		// one-shot select-this-row intent (see pendingSelectSessionID's
+		// doc comment) -- it does not exist in m.sessions yet, so the
+		// selection itself is applied once loadSessions' own
+		// sessionsLoaded actually contains it, never here.
+		m.pendingSelectSessionID = msg.session.ID
 		return m, m.loadSessions
 	case attachFinished:
 		if msg.err != nil {
@@ -3097,6 +3133,46 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		}
 	}
 	return entries
+}
+
+// scrollSessionIntoView adjusts m.sidebarScroll (SPEC requirement 52) so
+// that the session at m.sessions[sessionIndex]'s row is fully within the
+// sidebar's current content window, moving the offset the minimum amount
+// necessary -- up if the row starts above the window, down if any of its
+// lines fall below it -- and leaving it untouched if the row is already
+// fully visible. Ordinary selection moves (↑/↓, PgUp/PgDn) never auto-
+// scroll today; this one-shot path exists so landing on a freshly created
+// session is visible without an extra keystroke, without changing that
+// general behaviour. A sessionIndex not currently present as a row entry
+// (e.g. its group is collapsed) leaves the scroll offset untouched.
+func (m *Model) scrollSessionIntoView(sessionIndex int) {
+	layout := m.computeLayout()
+	contentWidth := max(layout.Sidebar.Width-2, 0)
+	contentHeight := layout.Sidebar.Height - 2
+	if contentHeight <= 0 {
+		return
+	}
+	entries := m.sidebarEntries(contentWidth)
+	start, end := -1, -1
+	for i, e := range entries {
+		if e.kind == sidebarLineRow && e.sessionIndex == sessionIndex {
+			if start == -1 {
+				start = i
+			}
+			end = i
+		}
+	}
+	if start == -1 {
+		return
+	}
+	offset := m.sidebarScroll
+	if start < offset {
+		offset = start
+	}
+	if end >= offset+contentHeight {
+		offset = end - contentHeight + 1
+	}
+	m.sidebarScroll = clampSidebarScroll(offset, len(entries), contentHeight)
 }
 
 // clampSidebarScroll bounds a raw scroll offset into [0, max(0,
