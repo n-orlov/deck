@@ -1124,3 +1124,39 @@ bounded, with a diagnostic on "never found") instead of by a keypress count that
 every time `schema.go`'s General category gains or reorders a flat key. The break is silent in the
 sense that it looks like a product failure (wrong value asserted) until someone counts keypresses
 against the schema by hand — exactly what this note is meant to save the next person from doing.
+
+## Task 219 (steer 021 §1) deferred finding: `features` builds one `deck` binary per scenario, not once per suite run
+
+`features/lifecycle_test.go`'s `registerScenarioLifecycle` `sc.Before` hook runs a fresh
+`go build -o <unique-path> ./cmd/deck` for EVERY scenario (284 scenarios in the untagged suite as
+of this run), rather than building the released binary once per test-binary invocation and
+sharing it across scenarios. Each build costs roughly 1–5s at low host load (measured this task,
+`ci/run.sh`), which is the dominant fixed cost of the whole `features` package (`features` alone
+runs 250–310s of the package's ~280–320s total per `docs/reports/phase3d-...` measurements) and is
+what makes even a small per-build stall (a stale `cmd/go` build-cache lock, host contention on the
+shared `deck-go-cache` docker volume) show up multiplied by scenario count.
+
+**Deliberately not restructured this task** (steer 021 §1's own instruction: build the binary
+once per test-binary invocation instead of once per scenario is a real requirement, but changing
+the per-scenario isolation architecture days before a stability measurement — `ci/stability.sh
+10`, task 210 — is the wrong trade to make now). What task 219 DID do instead: bound the existing
+per-scenario build with a finite deadline (`scenarioBuildDeadline`, 5 minutes,
+`context.WithTimeout` via `exec.CommandContext`) so a stuck build fails fast with a diagnostic
+(scenario name, elapsed time, binary path, partial output) worded as an infra/environment fault
+rather than hanging the whole `features` package to Go's outer `-timeout` with no diagnostic at
+all (confirmed cause of a real 45-minute hang: goroutine dump showed a goroutine blocked 42+
+minutes inside the unbounded `exec.Command(...).CombinedOutput()` this task replaced).
+
+Recorded here as a deferred requirement for whichever phase next has the wall-clock budget to
+restructure the harness: build the `deck` (and any other per-scenario fixture, e.g.
+`cmd/fake-claude`) binary ONCE at `TestMain`/package-init time (or the first scenario's `Before`
+hook, memoized) and have every scenario's `ScenarioHarness` reuse that same binary path, instead of
+one unique temp binary and one `go build` invocation per scenario. This should cut the fixed cost
+of a full `features` run by roughly the (scenario count − 1) × (single-build cost) that is
+currently paid on every run, and shrink the surface a single stuck build can affect down to one
+occurrence per suite run instead of once per scenario. The existing per-scenario unique-path
+naming (`scenarioSequence`, `deck-godog-<pid>-<seq>`) exists for isolation between concurrently
+running scenarios sharing a temp directory and would need to be reconciled with a shared binary
+path (the binary itself can be shared read-only across concurrent scenario processes; only the
+per-scenario `DECK_HOME`/tmux socket need to stay unique, which they already are via a separate
+mechanism in `newScenarioHarness`).
