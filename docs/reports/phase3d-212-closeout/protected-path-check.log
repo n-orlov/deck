@@ -1,0 +1,20 @@
+$ git log 9cda5a8..HEAD --format="%h %s" -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+395babf spec: deck is the primary view of a session — preview fits on navigation, drag-to-copy, modified keys forward, yolo de-gated
+
+--- per path, independently ---
+$ git log 9cda5a8..HEAD --format="%h %s" -- SPEC.md
+395babf spec: deck is the primary view of a session — preview fits on navigation, drag-to-copy, modified keys forward, yolo de-gated
+(end SPEC.md)
+$ git log 9cda5a8..HEAD --format="%h %s" -- prds/
+(end prds/, zero commits)
+$ git log 9cda5a8..HEAD --format="%h %s" -- ci/Dockerfile
+(end ci/Dockerfile, zero commits)
+$ git log 9cda5a8..HEAD --format="%h %s" -- ci/SPIKE.md
+(end ci/SPIKE.md, zero commits)
+
+--- byte-identical identity check, showing why "by authorship" cannot discriminate (steer 019 §1 / steer 022) ---
+$ git log 9cda5a8..HEAD --format="%h %an <%ae> | %cn <%ce> | %s" -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+395babf Nik <nikolaiorl@gmail.com> | Nik <nikolaiorl@gmail.com> | spec: deck is the primary view of a session — preview fits on navigation, drag-to-copy, modified keys forward, yolo de-gated
+
+--- this run own most recent commit identity, for comparison ---
+06379ee Nik <nikolaiorl@gmail.com> | Nik <nikolaiorl@gmail.com> | reports: rewrite I-20/I-21 evidence around task 210/217's clean measurements (211)
