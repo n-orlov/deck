@@ -59,6 +59,85 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
+  @requirement-54-sidebar-click-retargets-interactive-mode
+  Scenario: a sidebar click on a different row while interactive re-targets it, restoring the old session's window
+    # SPEC post-6584299: "a sidebar click works while interactive mode is
+    # active and re-targets it, leaving the old window and entering the
+    # new one" (task 313's product change). retarget-first's tmux window
+    # is captured BEFORE it is ever touched by interactive mode, so a
+    # match after the retarget proves exitInteractive's restore actually
+    # ran -- an implementation that fits the window on entry and never
+    # restores it on retarget would leave it at the fitted size, not the
+    # baseline, and fail this exact assertion. The preview's top border
+    # (not "screen contains", which the sidebar's own row list would
+    # satisfy regardless of which session is the interactive target) is
+    # SPEC's own named safeguard for "which pane is receiving your
+    # keystrokes".
+    Given deck client "A" is started
+    When deck client "A" creates shell session "retarget-first"
+    And deck client "A" creates shell session "retarget-second"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And the private tmux window for session "retarget-first" is captured as "retarget-first-baseline"
+    And deck client "A" selects session "retarget-first"
+    And deck client "A" enters interactive mode
+    Then deck client "A" preview top border contains "retarget-first"
+    When deck client "A" clicks on the row containing "retarget-second"
+    Then deck client "A" has session "retarget-second" selected
+    And deck client "A" preview top border contains "retarget-second"
+    And the private tmux window for session "retarget-first" still matches "retarget-first-baseline"
+    When deck client "A" leaves interactive mode
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" exits cleanly
+
+  @requirement-54-sidebar-click-on-interactive-row-is-a-no-op
+  Scenario: a sidebar click on the already-interactive row triggers no resize
+    # SPEC post-6584299: "Clicking the already-interactive row is a no-op
+    # rather than a leave-and-re-enter." A leave-then-re-enter that lands
+    # the pane back at the SAME final size, with no attached client to
+    # force a real reflow, produces no observable SIGWINCH or geometry
+    # change either -- so the discriminator here is not the window's size
+    # but its ownership claim (internal/tmux/ownership.go's own
+    # @deck_isize_owner window option): ClaimWindowOwnership writes a
+    # fresh, cryptographically random tag on every single claim, including
+    # a same-pid re-claim of a window it just released, so a real
+    # leave-then-re-enter always rewrites it and a genuine no-op never
+    # touches it at all.
+    #
+    # A single already-interactive session is not enough to discriminate
+    # task 313's absence on its own: pre-313 code forwards EVERY press while
+    # interactive straight to task 216's drag-to-copy switch, so a click
+    # anywhere over the sidebar (targeted row or not) is already a no-op by
+    # that unrelated, pre-existing mechanism -- an ownership-unchanged
+    # assertion taken in isolation would pass whether or not 313's retarget
+    # feature exists at all. So this scenario first retargets from session A
+    # onto session B with a click (a step that only succeeds because 313's
+    # hit-test-the-press-first code path exists, exactly like the scenario
+    # above), and only THEN clicks B's own row again to exercise the no-op
+    # branch: if 313 is reverted, the retarget click never moves the
+    # selection off A, so the very next assertion (B selected) already
+    # fails red before the no-op check is ever reached.
+    Given deck client "A" is started
+    When deck client "A" creates shell session "retarget-noop-a"
+    And deck client "A" creates shell session "retarget-noop-b"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" selects session "retarget-noop-a"
+    And deck client "A" enters interactive mode
+    And 200 milliseconds pass
+    Then deck client "A" preview top border contains "retarget-noop-a"
+    When deck client "A" clicks on the row containing "retarget-noop-b"
+    And 200 milliseconds pass
+    Then deck client "A" has session "retarget-noop-b" selected
+    And deck client "A" preview top border contains "retarget-noop-b"
+    And the private tmux window ownership claim for session "retarget-noop-b" is captured as "retarget-noop-b-after-retarget"
+    When deck client "A" clicks on the row containing "retarget-noop-b"
+    And 200 milliseconds pass
+    Then deck client "A" has session "retarget-noop-b" selected
+    And deck client "A" preview top border contains "retarget-noop-b"
+    And the private tmux window ownership claim for session "retarget-noop-b" still matches "retarget-noop-b-after-retarget"
+    When deck client "A" leaves interactive mode
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" exits cleanly
+
   @requirement-34-header-click-collapses
   Scenario: clicking a workspace group's header collapses only that group
     Given deck client "A" is started
