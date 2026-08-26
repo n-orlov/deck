@@ -110,9 +110,25 @@ func leaseOwnerAlive(owner string) bool {
 // AcquireLaunchLease implements the SPEC §9.3 launch lease: the transaction
 // that flips a stopped session to starting also CAS-acquires
 // launch_lease_owner/launch_lease_until and clears killed_by_user: an explicit
-// resume is the user action that releases the terminal kill guard. A lease is
-// breakable when it is unset, its TTL has elapsed, or its owning process is no
-// longer alive (dead
+// resume is the user action that releases the terminal kill guard. It clears
+// pane_exit_status and crash_tail on exactly the same rationale (SPEC.md:728,
+// issue #9): both describe a pane that resume is about to replace, and both
+// carry control-flow meaning rather than mere diagnostics -- the reconciler
+// takes no liveness verdict from a row whose pane_exit_status is set
+// (internal/service/reconcile.go), and UpdateSessionStatus drops a hook write
+// of `running` while it is set (store.go's crash-verdict guard). Left behind
+// across a resume they froze three of the operator's live sessions out of
+// reconciliation permanently, one for 30+ hours.
+//
+// crash_tail is cleared, not retained: it is the text of a pane that no longer
+// exists, so keeping it would caption a NEW pane with the last words of the old
+// one, and the column's mere presence has control-flow meaning. The crash
+// itself stays on the record where forensics belong -- the `tmux.pane_dead`
+// event names the exit status in its reason -- rather than in a session column
+// the reconciler reads.
+//
+// A lease is breakable when it is unset, its TTL has elapsed, or its owning
+// process is no longer alive (dead
 // pid, or a pid from a previous boot). Every outcome — including a lost
 // race — leaves the row in a state where a subsequent legitimate acquire can
 // still succeed; no case wedges it.
@@ -172,6 +188,7 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 	result, err := tx.ExecContext(ctx,
 		`UPDATE sessions
 		 SET status = 'starting', killed_by_user = 0,
+		     pane_exit_status = NULL, crash_tail = NULL,
 		     launch_lease_owner = ?, launch_lease_until = ?
 		 WHERE id = ? AND status = 'stopped'
 		   AND launch_lease_owner IS ?
