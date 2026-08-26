@@ -555,7 +555,7 @@ func clientPressesResumeOnNamedSession(ctx context.Context, clientName, want str
 	if err != nil {
 		return err
 	}
-	return selectSessionByNameThenSend(client, want, "r")
+	return selectSessionByNameThenSend(ctx, client, want, "r")
 }
 
 // clientPressesRestartOnNamedSession is clientPressesResumeOnNamedSession's
@@ -571,52 +571,7 @@ func clientPressesRestartOnNamedSession(ctx context.Context, clientName, want st
 	if err != nil {
 		return err
 	}
-	return selectSessionByNameThenSend(client, want, "R")
-}
-
-// selectSessionByNameThenSend selects the sidebar row whose name is want,
-// then sends key.
-//
-// Requirement 52 (task 301) auto-selects whichever session was most
-// recently created, which can leave the cursor anywhere relative to want's
-// row -- and, while any session in the fixture is still "starting"/
-// "running", the ATTENTION order itself can still be shifting between
-// attempts (a session's urgency changes as it settles), so a plain
-// jump-to-top-then-walk-down-once is not enough: the walk from a previous
-// attempt can be invalidated by a reorder before the marker is ever seen.
-// Each attempt therefore resets to the top ("g", SPEC.md:952) and walks
-// exactly `attempt` rows down before checking, so every attempt performs
-// a full, independent, top-anchored search -- one that keeps succeeding
-// once the fixture's ordering finally stops changing, however many
-// attempts that takes, rather than depending on a single walk surviving
-// unchanged across the whole search.
-func selectSessionByNameThenSend(client *ScreenDriver, want, key string) error {
-	marker := "> " + want
-	for attempt := 0; attempt < 50; attempt++ {
-		if err := client.Send("g"); err != nil {
-			return err
-		}
-		for step := 0; step < attempt; step++ {
-			if err := client.Send("\x1b[B"); err != nil { // down arrow
-				return err
-			}
-		}
-		// Send() only writes to the pty; it does not wait for the client to
-		// process and repaint. Checking Frame() immediately after sending this
-		// attempt's own burst of navigation keys races the client's own
-		// key-handling/render loop: a "match" seen here can reflect fewer
-		// keystrokes than were actually sent, so the still-in-flight remainder
-		// (e.g. the last down arrow) lands AFTER `key` is sent below, moving
-		// the selection off `want` a moment after the resume/restart keypress
-		// was fired at it. Settle here, before reading the frame, not only
-		// after a failed check (that was the bug: it let a race-won "pass"
-		// ship `key` to a row that was about to move again).
-		time.Sleep(25 * time.Millisecond)
-		if strings.Contains(client.Frame(false), marker) {
-			return client.Send(key)
-		}
-	}
-	return fmt.Errorf("never selected session %q (marker %q not found):\n%s", want, marker, client.Frame(false))
+	return selectSessionByNameThenSend(ctx, client, want, "R")
 }
 
 func sessionIDByName(h *ScenarioHarness, name string) (string, error) {
@@ -1317,57 +1272,6 @@ func clientRowDoesNotContain(ctx context.Context, clientName, sessionName, unwan
 	return fmt.Errorf("deck client %q has no rendered row %q:\n%s", clientName, sessionName, frame)
 }
 
-// clientOpensDetailForSession selects the named row (reusing
-// clientPressesResumeOnNamedSession's marker-matching down-arrow search) and
-// then presses "i" (internal/tui's detail-toggle key) instead of "r".
-//
-// It waits for the detail view's own header ("<name> detail", from
-// internal/tui's detailView) to actually render before returning, rather
-// than returning as soon as the "i" byte is written. Without that wait, a
-// caller that immediately sends another key (as clientExitsCleanly's "q"
-// does when no intervening assertion forces a genuinely fresh render, e.g.
-// features/crash.feature's SIGKILL scenario when "crash final line" is
-// already visible in the preview pane before "i" is even sent) can write
-// that key before deck's input loop has drained the "i" byte. bubbletea's
-// own reader coalesces same-buffer printable runes into a single KeyMsg
-// (key.go's detectOneMsg, "longest sequence of runes"), and deck's per-key
-// switch in internal/tui's Update silently ignores a msg whose String() is
-// "iq" -- matching neither the "i" nor the "q" case -- so tea.Quit never
-// fires and the client hangs at teardown (task 014's diagnosis; see
-// docs/reports/phase2b2-findings.md). Waiting for the real post-"i" render
-// here guarantees deck's reader has already drained and processed the "i"
-// byte by the time this step returns, so a following "q" cannot land in
-// the same read.
-func clientOpensDetailForSession(ctx context.Context, clientName, want string) error {
-	h, err := assertionHarness(ctx)
-	if err != nil {
-		return err
-	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	marker := "> " + want
-	for attempt := 0; attempt < 50; attempt++ {
-		if strings.Contains(client.Frame(false), marker) {
-			if err := client.Send("i"); err != nil {
-				return err
-			}
-			wait, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			if err := client.WaitForFrame(wait, false, want+" detail"); err != nil {
-				return fmt.Errorf("deck client %q detail view for %q never rendered after \"i\": %w", clientName, want, err)
-			}
-			return nil
-		}
-		if err := client.Send("\x1b[B"); err != nil { // down arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	return fmt.Errorf("deck client %q never selected session %q (marker %q not found):\n%s", clientName, want, marker, client.Frame(false))
-}
-
 // sessionMarkedDegraded writes the exact permission_profile_reason string
 // internal/service.CreateAgent would have stored had this session's agent
 // been asked to honour requested at create time (internal/agent.Caps's
@@ -1616,40 +1520,6 @@ func sessionConversationIDCleared(ctx context.Context, name string) error {
 	return nil
 }
 
-// selectRowByName moves client's selection to the row whose name is want,
-// matching the same "> name" marker clientPressesResumeOnNamedSession
-// relies on. There is no bound "go to top" key, and ↑/↓ never wrap
-// (nextVisibleSelection/prevVisibleSelection, group.go), so a search that
-// only walked downward from wherever the cursor happened to already be
-// could never reach a row ABOVE it (task 215's bounce-between-two-rows
-// scenarios need exactly that). Rewinding to the top with up-arrows first,
-// the same idiom status_probe_test.go already used ad hoc before this was
-// factored in, makes the search itself position-independent so callers
-// never need to reason about where a prior step left the cursor. It is
-// factored out so the launch-lease race step (task 027) can position every
-// racing client on the same row BEFORE firing `r` concurrently, since the
-// positioning itself must stay sequential (each keystroke is a real PTY
-// write) while only the final `r` needs to land within the race window.
-func selectRowByName(client *ScreenDriver, want string) error {
-	for i := 0; i < 20; i++ {
-		if err := client.Send("\x1b[A"); err != nil { // up arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	marker := "> " + want
-	for attempt := 0; attempt < 50; attempt++ {
-		if strings.Contains(client.Frame(false), marker) {
-			return nil
-		}
-		if err := client.Send("\x1b[B"); err != nil { // down arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	return fmt.Errorf("never selected session %q (marker %q not found):\n%s", want, marker, client.Frame(false))
-}
-
 // clientsRacePressingResumeOnNamedSession positions all three named clients
 // on the same stopped row and then fires `r` on all three concurrently, from
 // separate goroutines, so their real process-level keystrokes land within a
@@ -1669,7 +1539,7 @@ func clientsRacePressingResumeOnNamedSession(ctx context.Context, first, second,
 		if err != nil {
 			return err
 		}
-		if err := selectRowByName(client, sessionName); err != nil {
+		if err := selectRowByName(ctx, client, sessionName); err != nil {
 			return fmt.Errorf("deck client %q: %w", name, err)
 		}
 		clients[i] = client

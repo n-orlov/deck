@@ -288,17 +288,9 @@ func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) erro
 	// durable "probe shell" row first so the preview targets a pane the
 	// wrapper never arms, and the arm/release handshake below can only ever
 	// observe the reconciler's own probe-eligible capture of the victim.
-	// selectRowByName only searches downward from wherever the cursor
-	// currently sits, so rewind to the top first (there is no bound "go to
-	// top" key yet) rather than assume a starting position among the
-	// attention-sorted rows.
-	for i := 0; i < 10; i++ {
-		if err := client.Send("\x1b[A"); err != nil { // up arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	if err := selectRowByName(client, "probe shell"); err != nil {
+	// selectRowByName (features/navigation_settle_test.go) resets to the
+	// top itself before walking down, so no separate rewind is needed here.
+	if err := selectRowByName(ctx, client, "probe shell"); err != nil {
 		return fmt.Errorf("move selection off probe victim %q before arming: %w", victim, err)
 	}
 	arm := filepath.Join(h.Home, "probe-capture.arm")

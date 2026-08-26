@@ -142,7 +142,7 @@ only"; task 317's proving ground was true-colour distinctness only) — closing 
 widening `matrix`'s palette again, which is a real design change to a theme already shipped and
 reviewed, not a bug fix.
 
-### 4c. The settle-race defect class is confirmed present in two more test helpers, not yet fixed (task 334, pending)
+### 4c. The settle-race defect class was confirmed present in two more test helpers and fixed (task 334)
 
 Per operator steer `3e-002` (`/run/ralphd/steering/002-steer-3e-002-navigation-settle.md`): commit
 `7ebafce` (task 324) root-caused and fixed a settle race in `selectSessionByNameThenSend`
@@ -169,14 +169,56 @@ structurally present, unfixed, in two more helpers in the same file:
   mis-targeted client there would show up in `lease_race.feature`'s own launch-record count
   assertion, which is not vacuous — this is a flake, not a silently-passing bug).
 
-This has not been fixed as of the time this findings report is written: it is tracked as task 334
-in `tasks.json`, per the operator's explicit instruction not to fold it into tasks 325-328. Task
-325's stability run (`docs/reports/phase3e-stability/README.md`) confirms none of its ten runs'
-failures were resume/restart/detail-open/lease-race scenarios, so this mechanism is not implicated
-in the published 7/10 stability rate and 325 does not need a re-run once 334 lands. See `notes.md`'s
-"Steering: 3e-002" section for the durable copy of the full instruction (exact call sites, the
-`WaitForFrame`/`WaitForFrameGone`-based fix shape required, the guard-test requirement banning
-`time.Sleep` in the merged helper, and the two stale comments to fix alongside it).
+Task 325's stability run (`docs/reports/phase3e-stability/README.md`) confirms none of its ten
+runs' failures were resume/restart/detail-open/lease-race scenarios, so this mechanism was never
+implicated in the published 7/10 stability rate and 325 did not need a re-run once 334 landed.
+
+**Fix (task 334):** `selectSessionByNameThenSend`, `selectRowByName` and
+`clientOpensDetailForSession` were collapsed into one top-anchored helper
+(`navigateToRowByName`/`sendNavKeySettled`, `features/navigation_settle_test.go`) that sends one
+arrow key at a time and, before sending the next, polls (the same `d.updated`-channel idiom
+`ScreenDriver.WaitForFrame`/`WaitForFrameGone` use) for the sidebar's own selected (`"> "`-prefixed)
+row line to actually change, bounded by a short per-key ceiling (`navKeySettleWindow`, 300ms) that
+only matters for a genuine no-op keystroke (top/bottom edge). No `time.Sleep` remains in the merged
+path; `TestNavigationHelperNeverSleeps` (`features/navigation_settle_guard_test.go`) is a
+source-scan guard that fails the instant one returns, demonstrated red by temporarily adding one
+and restoring.
+
+A first version of the fix substituted "wait for ANY `"> "` anywhere in the whole frame" for the
+case where no row is currently selected in view (selection scrolled off-screen after a layout-mode
+cycle). That is unsound: earlier create-dialog renders leave `"> Name: ..."`/`"> Working
+directory: ..."` field-marker text on rows a later, shorter render never overwrites, and an
+unscoped `"> "` search can match that stale leftover before deck has processed the keystroke at
+all. This was caught, not theorised: `features/mouse.feature`'s
+`@requirement-34-wheel-scrolls-without-selecting` scenario (which cycles layout mode until the
+selected row scrolls off-screen, then calls `selectRowByName`) went flaky under it — 4 failures in
+5 isolated runs, each after 3-8s instead of the ~1.9s baseline. Comparing the sidebar-scoped
+selected line to its own prior value (never the whole frame) removed the false-positive surface;
+the same scenario then passed 15/15 in isolation.
+
+**Red-proof coverage per site**, per steer `3e-002`'s own escape clause ("if no deterministic red
+proof is achievable ... say so explicitly"):
+
+- **Guard test** (`time.Sleep` banned in the merged helper file): deterministic, demonstrated red
+  by temporarily adding `time.Sleep(time.Millisecond)` to `navigateToRowByName` and restoring.
+- **`selectRowByName`**: attempted a red proof by reverting to the pre-334 three-separate-helpers
+  shape (via `git worktree`/in-place revert, restored afterward) and running
+  `features/status_claude_hooks_test.go`'s two-session kill scenario (temporarily tagged
+  `@debug-tmp-334`, tag removed before this commit) under induced CPU contention — 16 parallel
+  sibling containers, 3 repeats each (48 total runs) — mirroring task 325's discriminating-load
+  method. All 48 passed; no repro. Every existing scenario that reaches this helper has too short
+  a walk distance (0-2 hops) to reliably expose the race even under contention. Not fixed by
+  manufacturing a new scenario for the sole purpose of the demo — relies on the guard test alone
+  for this site, as the escape clause allows.
+- **`clientOpensDetailForSession`**: every committed scenario that calls it creates exactly one
+  session before opening its detail view (checked across all 12 call sites:
+  `agent_session.feature`, `crash.feature`×2, `dialogs.feature`×6, `launch_lease.feature`,
+  `permission_modes.feature`, `status_claude_hooks.feature`), so the walk distance is always 0 —
+  the marker is already present on the first check, before any down-arrow is ever sent. No
+  existing scenario can expose a multi-keystroke settle race here at all, deterministically or
+  under load; relies on the guard test alone for this site.
+
+See `notes.md`'s "Steering: 3e-002" section for the durable copy of the original instruction.
 
 ### 4d. Two SIGWINCH-settle-window scenarios flake under host load — root-caused, explicitly not treated as a product defect
 

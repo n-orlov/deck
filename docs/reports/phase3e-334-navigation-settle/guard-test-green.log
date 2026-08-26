@@ -1,0 +1,4 @@
+=== RUN   TestNavigationHelperNeverSleeps
+--- PASS: TestNavigationHelperNeverSleeps (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.011s
