@@ -517,6 +517,48 @@ func (c Client) Exists(ctx context.Context, slug string) (bool, error) {
 	return true, nil
 }
 
+// HasLivePane reports whether a tmux session named deck_<slug> exists on
+// this client's private server AND still has at least one pane whose own
+// process has not exited. It is the liveness predicate a caller that wants
+// to LAUNCH must use, and it deliberately differs from Exists: deck's
+// server runs `remain-on-exit failed` (see Bootstrap), so a pane exiting
+// non-zero is RETAINED as a dead pane together with its session, and
+// `has-session` keeps succeeding for it forever. Reporting such a corpse as
+// "already running" is exactly issue #6: requirement 46's adoption fired on
+// a session with nothing left to adopt, so `r` became a silent no-op and the
+// row was unrecoverable from the UI. A session that is absent, has no panes
+// at all, or whose every pane is dead is therefore reported false — with an
+// absent target (never bootstrapped, killed, or removed between two commands)
+// a normal false rather than an error, as in Exists. Any other tmux failure is
+// returned so a genuine problem still surfaces.
+func (c Client) HasLivePane(ctx context.Context, slug string) (bool, error) {
+	if c.Socket == "" {
+		return false, errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
+	if err != nil {
+		return false, err
+	}
+	output, err := c.run(ctx, "list-panes", "-t", name, "-F", "#{pane_dead}")
+	if err != nil {
+		if IsTargetAbsent(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check live pane for session %q: %w", name, err)
+	}
+	for _, field := range strings.Fields(string(output)) {
+		switch field {
+		case "0":
+			return true, nil
+		case "1":
+			continue
+		default:
+			return false, fmt.Errorf("check live pane for session %q: unexpected pane_dead value %q", name, field)
+		}
+	}
+	return false, nil
+}
+
 // Kill removes a deck-owned tmux session without touching a similarly named
 // user session on the default tmux socket. A concurrently removed session (or
 // private server) is already in the desired state and therefore succeeds.
