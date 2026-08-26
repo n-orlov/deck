@@ -305,6 +305,7 @@ not claimed fixed anywhere in [`phase3f.md`](phase3f.md).
 | F8 | `phase2b2.md` cites `Task 034` by title; **five** headings in `phase2b2-findings.md` match (`:770`, `:801`, `:849`, `:870`, `:1048`) | `docs/reports/` | R67 scopes only the `Task 014` pair; the committed sweep prints it as a disclosed finding every run instead of letting it pass |
 | F9 | the PRD's `:467-479` pre-rename file list and `:480` pre-retitle quotation | `prds/…phase3f….md` | `prds/` is protected for this job — disclosed, not edited ([§1.3](#1-what-this-prd-got-wrong-with-the-corrected-reading)) |
 | F10 | `new_session_selection.feature:12-15`'s comment explains row placement via a `starting` attention rank the assertion no longer depends on | `features/new_session_selection.feature` | comment-only staleness; the assertion is sound either way (the anchor is forced to `waiting`), and R64 changes no line whose behaviour is sound |
+| F11 | the held-filter status line promises `Esc to clear`, but with the text field closed no `Esc` clears `filterQuery` | `internal/tui/filter.go:147` (wording) vs `filter.go:101-106` (the only clear) and `tui.go:2110` (top-level `esc`) | wording-vs-binding mismatch found while writing R71's filter round trip; fixing it is a binding or a copy change outside R71/R72's scope, and SPEC.md pins neither — see below |
 
 **F1 in full, because it cost the phase its 10/10.** `preview.feature:134` creates
 `beacon` while the client is still at its default 100x30, where a passive fit *is*
@@ -349,6 +350,42 @@ github.com/n-orlov/deck/features` lines), and the tenth run's **only** failure i
 recurrence*, not a fix: no code changed to address it, so it stays open. Whoever picks
 it up should expect a settle/quiescence gap in the fixture's render path, not a colour
 bug.
+
+**F11 in full, because it is the one defect this phase's own new scenarios walk around.**
+`filterStatusLine` renders, for a filter that is in force with the text field closed,
+`Filter "x" in force (n matching) — / to change, Esc to clear`
+([`internal/tui/filter.go:147`](../../internal/tui/filter.go)). The only assignment that
+clears `filterQuery` anywhere in the TUI is `updateFilter`'s `case "esc"`
+(`filter.go:101-106`; `grep -rn 'filterQuery = ""' internal/tui/` returns exactly that one
+line, `filter.go:106`), and `updateFilter` is only dispatched while `m.filtering == true`,
+i.e. while the text field is open. The top-level `esc` branch
+([`internal/tui/tui.go:2110`](../../internal/tui/tui.go)) clears `m.help`, `m.detail` and
+the mark set and nothing else. So with the field closed the advertised key does nothing:
+the operator must press `/` to reopen the field and *then* `Esc`. Task 011's round-trip
+scenario and the pre-existing `@requirement-33-unarchive-from-filter-results` scenario both
+do exactly that — they reopen `/` before `Esc` — which is why the whole suite is green over
+a line of untrue UI copy; recorded at the time in
+[`task011-r71-r72-round-trip.md:98-106`](phase3f-evidence/task011-r71-r72-round-trip.md)
+("## Finding (recorded, not fixed)").
+
+**Why it is not fixed here.** It is a defect in either direction, and choosing the direction
+is a product call this phase has no requirement for: bind a top-level `esc` to clear a held
+filter (making the copy true, but adding a fourth job to the key that already closes help,
+closes detail and clears marks), or change the copy to `/ then Esc to clear` (truthful, no
+new binding). R71 scopes unarchive reachability and R72 scopes `A`; neither licenses a
+keymap or copy change, and the standing rules forbid widening a requirement to absorb a
+finding. `SPEC.md` does not settle it: §11's keymap lists only `` `/` filter list ``
+(`SPEC.md:1084`) and its `esc` contract at `SPEC.md:1241` is the *dialog* contract ("`esc`
+cancels and changes nothing"), which is the open text field, not a held filter. Two notes
+for whoever takes it: (1) the three sites that cite `SPEC.md:318` for an "esc clearing"
+rule — `filter.go:102`, `internal/tui/filter_test.go:141`, `features/filter_test.go:66` —
+do **not** resolve today, because `SPEC.md:318` is inside the `recent_cwds` schema block
+(`git show c80a14c:SPEC.md | sed -n '318p'` gives the same line, so the drift predates this
+phase's two protected-path commits and is not something this phase introduced); the rule
+they mean to cite is not in `SPEC.md` at all, so the existing esc-clears-the-open-field
+behaviour is product convention, not a pinned requirement. (2) whichever direction is
+chosen, the scenario that proves it must stop reopening `/` first — the current scenarios
+pass under both the true and the untrue copy, so they are no regression net for it.
 
 ## 7. The five already-closed bug-log rows, re-verified against this tree
 
