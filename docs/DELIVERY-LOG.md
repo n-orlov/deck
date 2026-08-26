@@ -394,9 +394,14 @@ not evidence, and boolean assertions are especially prone to it.
 all, and list/dialog navigation switches on `msg.String()`, so two keystrokes arriving in one
 `read(2)` are both silently dropped while text fields (which read `msg.Runes`) are unaffected.
 The 2b-2 harness flake this diagnosed is fixed; the product exposure is Phase 3's requirement 51.
-Also carried: `internal/config/config_task017_test.go` is named after a task number, and
-`docs/reports/phase2b2-findings.md` has two different sections titled "Task 014" because task
-ids reset per approach — both are naming defects that make an artefact harder to find later.
+The two naming defects also carried out of here — a test file named after a task number, and two
+sections of `docs/reports/phase2b2-findings.md` that both opened `## Task 014 —`, because task ids
+reset per approach — are **done, not outstanding**: Phase 3f's R67 renamed all eleven task-numbered
+test files after their subjects (`b848d28`, evidence `300ee86`,
+`docs/reports/phase3f-019-r67-test-file-names.md`) and retitled the two report sections after what
+they found — `SIGKILL teardown hang …` (`:1249`) and `Requirement 19/21 correction …` (`:1511`) —
+with every citation in `docs/` repointed
+(`docs/reports/phase3f-020-r67-report-section-titles.md`).
 
 ## Other milestones
 

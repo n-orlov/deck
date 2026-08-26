@@ -1,0 +1,9 @@
+docs/reports/phase2b2-findings.md: 23 '##' headings
+citations checked: 17 by title, 1 by line number, over 96 md files
+finding (disclosed, not a failure): docs/reports/phase2b2.md: 'Task 034' ambiguous, matches lines [770, 801, 849, 870, 1048] -- four sections are labelled `Task 034`; R67 scopes only the `Task 014` pair, so this ambiguity is left for a later pass
+finding (disclosed, not a failure): docs/reports/phase2b2.md: 'Task 034' ambiguous, matches lines [770, 801, 849, 870, 1048] -- four sections are labelled `Task 034`; R67 scopes only the `Task 014` pair, so this ambiguity is left for a later pass
+finding (disclosed, not a failure): prds/phase3f-residuals-and-suite-determinism.md: 'Task 014' ambiguous, matches lines [1249, 1511] -- cites the pre-R67 title; prds/ is protected and must not be edited by this job
+PROBLEMS:
+  - docs/DELIVERY-LOG.md: section citation 'Task 014' is ambiguous, matches lines [1249, 1511]
+  - docs/reports/phase2b2.md: section citation 'Requirement 19/21 correction' is dangling
+  - docs/reports/phase2b2.md: section citation 'Requirement 19/21 correction' is dangling

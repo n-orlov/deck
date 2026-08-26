@@ -460,7 +460,7 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   but the running value is left exactly where the environment put it, per
   requirement 21's "the environment always outranks the file" (§6.5). See
   requirement 21's entry below and `docs/reports/phase2b2-findings.md`'s
-  "Requirement 19/21 correction" section for the full defect, why two
+  "Requirement 19/21 correction" section (`:1511`) for the full defect, why two
   existing tests did not catch it, and the re-aimed proof.
 - **R20** (ctrl+s atomic save, esc discard prompt, never-unparseable write):
   `61639b4`; the "a toggle and a bounded integer are edited..." and "esc
@@ -590,7 +590,7 @@ $ grep -E 'schema-declared_fields_are_reachable|edited_in_place_and_ctrl.s_write
   ```
 
   See `docs/reports/phase2b2-findings.md`'s "Requirement 19/21 correction"
-  section for the full defect analysis.
+  section (`:1511`) for the full defect analysis.
 - **R23** (unknown key ignored, unparseable value is a stated error naming
   file+line, unknown keys survive a settings save): `internal/config`'s
   `toml_write_test.go` round-trip-of-unknown-key test, part of the
