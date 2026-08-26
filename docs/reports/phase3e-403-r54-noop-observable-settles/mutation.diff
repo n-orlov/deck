@@ -1,0 +1,13 @@
+diff --git a/internal/tui/mouse.go b/internal/tui/mouse.go
+index c3cac75..770fecf 100644
+--- a/internal/tui/mouse.go
++++ b/internal/tui/mouse.go
+@@ -280,7 +280,7 @@ func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
+ // sequence Ctrl+Q runs) before entering the newly clicked one, so a
+ // concurrent claimant of the OLD window never observes it left resized.
+ func (m Model) retargetInteractiveSidebarClick(index int) (tea.Model, tea.Cmd) {
+-	if !m.interactive || index == m.selected {
++	if !m.interactive {
+ 		return m, nil
+ 	}
+ 	left, _ := m.exitInteractive()

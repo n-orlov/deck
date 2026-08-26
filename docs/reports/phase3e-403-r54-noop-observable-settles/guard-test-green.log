@@ -1,0 +1,4 @@
+=== RUN   TestMouseFeatureNeverRegainsMillisecondsPass
+--- PASS: TestMouseFeatureNeverRegainsMillisecondsPass (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.009s

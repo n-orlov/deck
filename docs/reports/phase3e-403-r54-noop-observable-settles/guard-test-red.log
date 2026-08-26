@@ -1,0 +1,6 @@
+=== RUN   TestMouseFeatureNeverRegainsMillisecondsPass
+    mouse_feature_no_sleep_guard_test.go:45: mouse.feature:126: a fixed-duration "milliseconds pass" step reappeared in mouse.feature -- settle on an observable consequence instead (see this test's own doc comment): And 200 milliseconds pass
+--- FAIL: TestMouseFeatureNeverRegainsMillisecondsPass (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	0.009s
+FAIL
