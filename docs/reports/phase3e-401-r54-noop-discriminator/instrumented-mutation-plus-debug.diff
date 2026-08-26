@@ -1,0 +1,52 @@
+diff --git a/internal/tui/mouse.go b/internal/tui/mouse.go
+index c3cac75..be52f4d 100644
+--- a/internal/tui/mouse.go
++++ b/internal/tui/mouse.go
+@@ -1,6 +1,9 @@
+ package tui
+ 
+ import (
++	"fmt"
++	"os"
++
+ 	tea "github.com/charmbracelet/bubbletea"
+ )
+ 
+@@ -279,10 +282,18 @@ func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
+ // geometry byte-exact and release ownership -- byte-for-byte the same
+ // sequence Ctrl+Q runs) before entering the newly clicked one, so a
+ // concurrent claimant of the OLD window never observes it left resized.
++func debugOpen401() (*os.File, error) {
++	return os.OpenFile("/w/401-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
++}
++
+ func (m Model) retargetInteractiveSidebarClick(index int) (tea.Model, tea.Cmd) {
+-	if !m.interactive || index == m.selected {
++	if !m.interactive {
+ 		return m, nil
+ 	}
++	if f, ferr := debugOpen401(); ferr == nil {
++		fmt.Fprintf(f, "retarget index=%d selected=%d\n", index, m.selected)
++		f.Close()
++	}
+ 	left, _ := m.exitInteractive()
+ 	next := left.(Model)
+ 	next.selected = index
+diff --git a/internal/tui/tui.go b/internal/tui/tui.go
+index 570ca88..ce56a88 100644
+--- a/internal/tui/tui.go
++++ b/internal/tui/tui.go
+@@ -2407,7 +2407,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+ 			// seam falls straight through, unchanged, to the drag-to-copy
+ 			// path below.
+ 			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+-				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelSidebar && hit.target == hitTargetRow {
++				hit := m.hitTest(msg.X, msg.Y)
++				if f, ferr := debugOpen401(); ferr == nil {
++					fmt.Fprintf(f, "press x=%d y=%d panel=%v target=%v idx=%d\n", msg.X, msg.Y, hit.panel, hit.target, hit.sessionIndex)
++					f.Close()
++				}
++				if hit.panel == hitPanelSidebar && hit.target == hitTargetRow {
+ 					return m.retargetInteractiveSidebarClick(hit.sessionIndex)
+ 				}
+ 			}
