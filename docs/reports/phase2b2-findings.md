@@ -1246,7 +1246,7 @@ example byte-for-byte does not ship a theme that would fail
 This finding does not change `SPEC.md` itself (read-only for this
 pass) — it records the tension for the operator to resolve.
 
-## Task 014 — the SIGKILL scenario's after-scenario teardown hang is a harness-side coalesced-keystroke race, not a product defect
+## SIGKILL teardown hang — a harness-side coalesced-keystroke race in the PTY driver, not a product defect (2b-2 task 014)
 
 **Symptom, reproduced.** `TestFeatures/SIGKILL_captures_and_sanitizes_the_agent_pane_without_relaunching`
 occasionally failed its `AfterScenario` hook with `deck client "A" did not
@@ -1508,7 +1508,7 @@ quoted in `docs/reports/phase2b2.md`'s R21 entry above; it is not
 repeated verbatim here to avoid the two documents drifting when one is
 edited and not the other.
 
-## Task 014 — requirement 19's live-apply fix (task 006) defeated requirement 21's env-over-file guarantee (operator steer `008-envoverride-applylive.md`, 22 Aug 2026 13:00 BST)
+## Requirement 19/21 correction — the live-apply fix (task 006) defeated requirement 21's env-over-file guarantee (operator steer `008-envoverride-applylive.md`, 22 Aug 2026 13:00 BST; 2b-2 task 014)
 
 **Provenance.** This finding is the operator's, not this pass's own
 discovery: `008-envoverride-applylive.md` (22 Aug 2026 13:00 BST) pointed
