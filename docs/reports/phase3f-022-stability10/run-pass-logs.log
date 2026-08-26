@@ -1,0 +1,162 @@
+=== RUN 1 (PASS) : /tmp/deck-stability.QRo6Ac/run-1.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.064s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.787s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.763s
+ok  	github.com/n-orlov/deck/features	315.883s
+ok  	github.com/n-orlov/deck/internal/agent	0.006s
+ok  	github.com/n-orlov/deck/internal/audit	0.019s
+ok  	github.com/n-orlov/deck/internal/config	0.027s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.786s
+ok  	github.com/n-orlov/deck/internal/interactive	11.376s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	4.027s
+ok  	github.com/n-orlov/deck/internal/store	2.481s
+ok  	github.com/n-orlov/deck/internal/theme	0.009s
+ok  	github.com/n-orlov/deck/internal/tmux	20.039s
+ok  	github.com/n-orlov/deck/internal/tui	0.784s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 2 (PASS) : /tmp/deck-stability.QRo6Ac/run-2.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.227s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.791s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.769s
+ok  	github.com/n-orlov/deck/features	328.729s
+ok  	github.com/n-orlov/deck/internal/agent	0.004s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.024s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.353s
+ok  	github.com/n-orlov/deck/internal/interactive	11.031s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.266s
+ok  	github.com/n-orlov/deck/internal/store	1.778s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/tmux	19.179s
+ok  	github.com/n-orlov/deck/internal/tui	0.676s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 3 (PASS) : /tmp/deck-stability.QRo6Ac/run-3.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.228s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.788s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.769s
+ok  	github.com/n-orlov/deck/features	323.589s
+ok  	github.com/n-orlov/deck/internal/agent	0.004s
+ok  	github.com/n-orlov/deck/internal/audit	0.017s
+ok  	github.com/n-orlov/deck/internal/config	0.022s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.421s
+ok  	github.com/n-orlov/deck/internal/interactive	10.957s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.341s
+ok  	github.com/n-orlov/deck/internal/store	1.867s
+ok  	github.com/n-orlov/deck/internal/theme	0.005s
+ok  	github.com/n-orlov/deck/internal/tmux	19.097s
+ok  	github.com/n-orlov/deck/internal/tui	0.670s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 4 (PASS) : /tmp/deck-stability.QRo6Ac/run-4.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.406s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.786s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.769s
+ok  	github.com/n-orlov/deck/features	297.657s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.025s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.470s
+ok  	github.com/n-orlov/deck/internal/interactive	10.974s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.264s
+ok  	github.com/n-orlov/deck/internal/store	1.779s
+ok  	github.com/n-orlov/deck/internal/theme	0.003s
+ok  	github.com/n-orlov/deck/internal/tmux	19.227s
+ok  	github.com/n-orlov/deck/internal/tui	0.665s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 5 (PASS) : /tmp/deck-stability.QRo6Ac/run-5.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.244s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.790s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.775s
+ok  	github.com/n-orlov/deck/features	297.318s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.023s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.414s
+ok  	github.com/n-orlov/deck/internal/interactive	11.030s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.227s
+ok  	github.com/n-orlov/deck/internal/store	1.792s
+ok  	github.com/n-orlov/deck/internal/theme	0.005s
+ok  	github.com/n-orlov/deck/internal/tmux	19.269s
+ok  	github.com/n-orlov/deck/internal/tui	0.665s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 6 (PASS) : /tmp/deck-stability.QRo6Ac/run-6.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.196s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.795s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.770s
+ok  	github.com/n-orlov/deck/features	297.352s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.026s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.371s
+ok  	github.com/n-orlov/deck/internal/interactive	11.085s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.368s
+ok  	github.com/n-orlov/deck/internal/store	1.771s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/tmux	19.230s
+ok  	github.com/n-orlov/deck/internal/tui	0.679s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 7 (PASS) : /tmp/deck-stability.QRo6Ac/run-7.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.214s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.782s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.774s
+ok  	github.com/n-orlov/deck/features	298.150s
+ok  	github.com/n-orlov/deck/internal/agent	0.004s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.026s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.327s
+ok  	github.com/n-orlov/deck/internal/interactive	11.075s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.226s
+ok  	github.com/n-orlov/deck/internal/store	1.761s
+ok  	github.com/n-orlov/deck/internal/theme	0.005s
+ok  	github.com/n-orlov/deck/internal/tmux	19.086s
+ok  	github.com/n-orlov/deck/internal/tui	0.662s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 8 (PASS) : /tmp/deck-stability.QRo6Ac/run-8.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.252s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.783s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.777s
+ok  	github.com/n-orlov/deck/features	300.268s
+ok  	github.com/n-orlov/deck/internal/agent	0.004s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.023s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.436s
+ok  	github.com/n-orlov/deck/internal/interactive	11.073s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.333s
+ok  	github.com/n-orlov/deck/internal/store	1.814s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/tmux	19.143s
+ok  	github.com/n-orlov/deck/internal/tui	0.670s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+=== RUN 10 (PASS) : /tmp/deck-stability.QRo6Ac/run-10.log ===
+ok  	github.com/n-orlov/deck/cmd/deck	5.236s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.799s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.772s
+ok  	github.com/n-orlov/deck/features	298.809s
+ok  	github.com/n-orlov/deck/internal/agent	0.004s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.026s
+ok  	github.com/n-orlov/deck/internal/hookrecv	3.670s
+ok  	github.com/n-orlov/deck/internal/interactive	11.001s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	3.279s
+ok  	github.com/n-orlov/deck/internal/store	1.756s
+ok  	github.com/n-orlov/deck/internal/theme	0.005s
+ok  	github.com/n-orlov/deck/internal/tmux	19.148s
+ok  	github.com/n-orlov/deck/internal/tui	0.685s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]

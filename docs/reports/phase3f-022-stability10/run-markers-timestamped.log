@@ -1,0 +1,22 @@
+1787772671 === RUN 1: PASS (exit 0) ===
+1787772671 === RUN 2 ===
+1787773049 === RUN 2: PASS (exit 0) ===
+1787773049 === RUN 3 ===
+1787773422 === RUN 3: PASS (exit 0) ===
+1787773422 === RUN 4 ===
+1787773770 === RUN 4: PASS (exit 0) ===
+1787773770 === RUN 5 ===
+1787774116 === RUN 5: PASS (exit 0) ===
+1787774116 === RUN 6 ===
+1787774464 === RUN 6: PASS (exit 0) ===
+1787774464 === RUN 7 ===
+1787774811 === RUN 7: PASS (exit 0) ===
+1787774811 === RUN 8 ===
+1787775160 === RUN 8: PASS (exit 0) ===
+1787775160 === RUN 9 ===
+1787775513 === RUN 9: FAIL (exit 1) ===
+1787775513 === RUN 10 ===
+1787775862 === RUN 10: PASS (exit 0) ===
+1787775862 full per-run logs and combined summary log kept in: /tmp/deck-stability.QRo6Ac
+1787775862 9/10 passed
+1787775862 SCRIPT-EXIT=1
