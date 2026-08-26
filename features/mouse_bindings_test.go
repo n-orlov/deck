@@ -121,6 +121,117 @@ func sidebarRegion(frame string) (rowStart, rowEnd, colEnd int, err error) {
 	return topIdx, bottomIdx, col, nil
 }
 
+// previewRegion is sidebarRegion's mirror image: it returns the row
+// bounds (0-based, inclusive) and column bound (0-based, inclusive lower
+// bound; -1 meaning "whole line") within which locatePreviewText must
+// search to be guaranteed to land inside the PREVIEW panel rather than
+// the sidebar -- the two panels' own row ranges are identical in
+// side-by-side/collapsed mode (they share one border per row), so only
+// the column split at the seam distinguishes them; in stacked mode they
+// are two independent boxes and the preview's is the second one.
+func previewRegion(frame string) (rowStart, rowEnd, colStart int, err error) {
+	lines := strings.Split(frame, "\n")
+	mode, err := detectLayoutMode(frame)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	topIdx := -1
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, " ")
+		if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "\u256d") {
+			topIdx = i
+			break
+		}
+	}
+	if topIdx < 0 {
+		return 0, 0, 0, fmt.Errorf("no panel top border found in frame:\n%s", frame)
+	}
+	if mode == "stacked" {
+		// The sidebar's own box ends at the first bordered line found below
+		// its top border (mirroring sidebarRegion's own stacked-mode scan);
+		// the preview box's top border is the very next line, and its own
+		// bottom border (or the frame's end) closes the range.
+		sidebarBottomIdx := len(lines) - 1
+		for i := topIdx + 1; i < len(lines); i++ {
+			trimmed := strings.TrimRight(lines[i], " ")
+			if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "\u256d") {
+				sidebarBottomIdx = i
+				break
+			}
+		}
+		previewTopIdx := sidebarBottomIdx + 1
+		if previewTopIdx >= len(lines) {
+			return 0, 0, 0, fmt.Errorf("no preview panel found below sidebar in stacked frame:\n%s", frame)
+		}
+		previewBottomIdx := len(lines) - 1
+		for i := previewTopIdx + 1; i < len(lines); i++ {
+			trimmed := strings.TrimRight(lines[i], " ")
+			if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "\u256d") {
+				previewBottomIdx = i
+				break
+			}
+		}
+		return previewTopIdx, previewBottomIdx, -1, nil
+	}
+	// side-by-side/collapsed: sidebar and preview share one border per row,
+	// so the preview's own column range starts just past the shared seam,
+	// and its row range is the whole box (shared top border down to the
+	// shared bottom border), exactly as sidebarRegion computes for the
+	// sidebar's own side.
+	col, err := seamColumn(frame)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	bottomIdx := topIdx
+	for i := len(lines) - 1; i > topIdx; i-- {
+		trimmed := strings.TrimRight(lines[i], " ")
+		if strings.HasPrefix(trimmed, "+") {
+			bottomIdx = i
+			break
+		}
+	}
+	return topIdx, bottomIdx, col + 1, nil
+}
+
+// locatePreviewText is locateText's mirror image for callers that must
+// locate text inside the PREVIEW/interactive pane rather than the
+// sidebar (features/interactive_scroll_test.go's
+// clientScrollsInteractiveWheelOverLineContaining,
+// features/interactive_selection_test.go's
+// clientDragsToSelectTextOverInteractivePane and
+// clientClicksOnceOnInteractivePaneLineContaining) -- these need the
+// SAME "find where this text actually landed" guarantee locateText gives
+// sidebar callers, but scoped to previewRegion's bounds instead of
+// sidebarRegion's, so a session name that also appears in the sidebar
+// (or the preview's own top border once a session is the interactive
+// target, task 401's root cause) can never steal a match meant for the
+// preview's own content grid.
+func locatePreviewText(client *ScreenDriver, text string) (col, row int, err error) {
+	frame := client.Frame(false)
+	lines := strings.Split(frame, "\n")
+	rowStart, rowEnd, colStart, regionErr := previewRegion(frame)
+	if regionErr != nil {
+		return 0, 0, fmt.Errorf("locate %q: %w", text, regionErr)
+	}
+	for i := rowStart; i <= rowEnd && i < len(lines); i++ {
+		line := lines[i]
+		runeOffset := 0
+		search := line
+		if colStart > 0 {
+			runeOffset = colStart
+			runes := []rune(line)
+			if runeOffset >= len(runes) {
+				continue
+			}
+			search = string(runes[runeOffset:])
+		}
+		if idx := strings.Index(search, text); idx >= 0 {
+			return idx + runeOffset + 1, i + 1, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("no preview row of the frame contains %q:\n%s", text, frame)
+}
+
 func clientClicksOnRowContaining(ctx context.Context, clientName, text string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
