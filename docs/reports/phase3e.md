@@ -1055,15 +1055,28 @@ mechanically, not by eye).
 
 ### Whole-suite and stability evidence
 
-**Green whole-suite run (task 324)**: `ci/run.sh go test -p=1 -count=1
-./...` at commit `7ebafce`, every package `ok` or `[no test files]`,
-`EXIT=0`. 1-min loadavg `1.73` → `2.72`. Full root-cause narrative for the
-three pre-existing failures found and fixed before this run (a settle-race
-in `selectSessionByNameThenSend`, a stale schema-version literal, two stale
-R52 auto-select fixture assumptions, and one isolated, host-load-only
-`mouse.feature` flake) is in
+**Green whole-suite run (task 324, superseded — see task 407 below)**:
+`ci/run.sh go test -p=1 -count=1 ./...` at commit `7ebafce`, every package
+`ok` or `[no test files]`, `EXIT=0`. 1-min loadavg `1.73` → `2.72`. Full
+root-cause narrative for the three pre-existing failures found and fixed
+before this run (a settle-race in `selectSessionByNameThenSend`, a stale
+schema-version literal, two stale R52 auto-select fixture assumptions, and
+one isolated, host-load-only `mouse.feature` flake) is in
 [`phase3e-fullsuite/README.md`](phase3e-fullsuite/README.md); raw log:
 [`phase3e-fullsuite/go-test-p1-count1-all.log`](phase3e-fullsuite/go-test-p1-count1-all.log).
+
+**Green whole-suite run at the final code commit (task 407, current)**:
+`ci/run.sh go test -p=1 -count=1 ./...` at commit
+`75861e0533bf6ea77bdfe4e72b25fa1566ab33e1` (`75861e0`) — the tree's tip
+after tasks 401-411's repair pass, and the last commit to touch non-docs
+code. Every package `ok` or `[no test files]`, `EXIT=0`, 17-line output.
+Loadavg samples `3.25` → `2.40` → `3.16` → `2.82` across the run. Full
+narrative and raw log:
+[`phase3e-407-whole-suite-at-75861e0/README.md`](phase3e-407-whole-suite-at-75861e0/README.md),
+[`phase3e-407-whole-suite-at-75861e0/go-test-p1-count1-all.log`](phase3e-407-whole-suite-at-75861e0/go-test-p1-count1-all.log).
+This citation replaces the stale `7ebafce` one above as the current
+whole-suite evidence; the `7ebafce` entry is kept for its own root-cause
+narrative, not as live evidence of the current tree's state.
 
 **10-run stability (task 325)**: `ci/stability.sh 10` at the same commit's
 descendant report sha `5ee9094` — **7/10 passed**, published honestly (not
