@@ -1,0 +1,36 @@
+# task 019 (R67 part 1) rename evidence, generated at commit b848d28
+
+$ git log --follow --oneline -- internal/tui/settings_color_cues_test.go
+b848d28 test: name the eleven task-numbered test files after what they test (task 019)
+6a90d94 settings: colour the takeover from hint/text/border_focus/border/selection tokens (task 019, req 34/42)
+
+$ git log --follow --oneline -- internal/config/env_overrides_test.go
+b848d28 test: name the eleven task-numbered test files after what they test (task 019)
+88d0c76 settings: label env-overridden keys and refuse to fake a running-value change (task 017, req 21)
+
+$ git show --stat --oneline b848d28 (rename lines only)
+ ...onfig_task017_test.go => env_overrides_test.go} |   0
+ ...task019_test.go => settings_color_cues_test.go} |   0
+ ...est.go => settings_edits_from_settings_test.go} |   2 +-
+ ...test.go => settings_env_entries_editor_test.go} |   0
+ ...test.go => settings_env_override_label_test.go} |   0
+ ...test.go => settings_env_override_write_test.go} |   0
+ ....go => settings_field_display_and_edit_test.go} |   0
+ ...7_test.go => settings_group_by_staging_test.go} |   0
+ ...task006_test.go => settings_live_apply_test.go} |   0
+ ...6_test.go => settings_save_and_discard_test.go} |   0
+ ...k018_test.go => settings_schema_parity_test.go} |   0
+
+$ git show --diff-filter=R --name-status --oneline b848d28
+b848d28 test: name the eleven task-numbered test files after what they test (task 019)
+R100	internal/config/config_task017_test.go	internal/config/env_overrides_test.go
+R100	internal/tui/settings_task019_test.go	internal/tui/settings_color_cues_test.go
+R098	internal/tui/settings_task310_test.go	internal/tui/settings_edits_from_settings_test.go
+R100	internal/tui/settings_task003_test.go	internal/tui/settings_env_entries_editor_test.go
+R100	internal/tui/settings_task017_test.go	internal/tui/settings_env_override_label_test.go
+R100	internal/tui/settings_task002_test.go	internal/tui/settings_env_override_write_test.go
+R100	internal/tui/settings_task015_test.go	internal/tui/settings_field_display_and_edit_test.go
+R100	internal/tui/settings_task007_test.go	internal/tui/settings_group_by_staging_test.go
+R100	internal/tui/settings_task006_test.go	internal/tui/settings_live_apply_test.go
+R100	internal/tui/settings_task016_test.go	internal/tui/settings_save_and_discard_test.go
+R100	internal/tui/settings_task018_test.go	internal/tui/settings_schema_parity_test.go
