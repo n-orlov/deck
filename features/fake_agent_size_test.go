@@ -259,6 +259,22 @@ func theFakeAgentRecordedSizesAre(ctx context.Context, kind, want string) error 
 // It is deliberately an exact-equality check, not "at least want": the whole
 // point of a count assertion is to catch an off-by-one, and a step that only
 // ever asserted a lower bound could not.
+//
+// It SETTLES BEFORE IT READS (R65). This step used to sample the counter
+// through waitForSigwinchCount, which returned the instant it first observed
+// want -- unsound in both directions, and observed failing both ways: a late
+// SIGWINCH from an earlier step arriving after an "exactly 0" was read
+// (preview.feature:147, "received 1 SIGWINCH signals, want exactly 0", in
+// docs/reports/phase3e-408-stability-10-at-75861e0/README.md item 2), and an
+// awaited one still in flight when an "exactly 1" was read. The fix is to
+// wait for the observable consequence of every render still in flight -- no
+// further PTY output for a quiet window, ScreenDriver.WaitForQuiescence,
+// which is what the passive fit's own resize-window convergence loop
+// (internal/tui/tui.go's previewFit -> tmux.Client.FitWindowToPane) shows up
+// as on a deck client's pty -- and only THEN read the counter ONCE and
+// compare for equality. Deliberately NOT a poll-until-want loop: that would
+// turn "exactly 1" into "at least 1" and "exactly 0" into no assertion at
+// all, and would pass a product that fires five SIGWINCH or none.
 func theFakeAgentReceivedExactlySigwinchSignals(ctx context.Context, kind string, want int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -268,13 +284,43 @@ func theFakeAgentReceivedExactlySigwinchSignals(ctx context.Context, kind string
 	if !ok {
 		return fmt.Errorf("unknown fake agent kind %q", kind)
 	}
+	if err := h.settleClients(ctx, captureSettledQuietWindow); err != nil {
+		return fmt.Errorf("settle before reading fake %q agent's SIGWINCH count: %w", kind, err)
+	}
 	path := filepath.Join(h.Home, "log", spec.sigwinchCountLog)
-	got, err := waitForSigwinchCount(path, want)
+	got, err := readSigwinchCount(path)
 	if err != nil {
 		return err
 	}
 	if got != want {
 		return fmt.Errorf("fake %q agent received %d SIGWINCH signals, want exactly %d", kind, got, want)
+	}
+	return nil
+}
+
+// settleClients waits until every still-running pty client this scenario
+// started has produced no new output for quietFor, reusing
+// ScreenDriver.WaitForQuiescence (features/pty_driver_test.go) rather than
+// writing a second waiter. A client that has already exited can produce no
+// further output, so it is skipped instead of reported as an error: the
+// scenarios that assert a SIGWINCH count are allowed to have closed a client
+// first, and "gone" is a stronger form of "quiet".
+//
+// Scenarios with no pty client at all (interactive_sigwinch_budget.feature
+// drives tmux directly and puts the fixture in a bare tmux pane) settle
+// nothing here and read the counter once, which is exactly what that
+// feature's own load-bearing inter-step pauses were written for -- see its
+// header comment. The read stays a single exact comparison either way.
+func (h *ScenarioHarness) settleClients(ctx context.Context, quietFor time.Duration) error {
+	for _, client := range h.clients {
+		select {
+		case <-client.done:
+			continue
+		default:
+		}
+		if _, err := client.WaitForQuiescence(ctx, false, quietFor); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -303,11 +349,16 @@ func readSigwinchCount(path string) (int, error) {
 
 // waitForSigwinchCount polls path until it reads want or a 2-second deadline
 // passes, returning whatever the last read was either way so the caller can
-// report the exact mismatch. It never returns early just because the count
-// reached or passed want-as-a-floor: SIGWINCH delivery and the fixture's own
-// file write are asynchronous with whatever step sent the signal, but once
-// the count is read as strictly greater than want the assertion is already
-// wrong and there is nothing more to wait for.
+// report the exact mismatch.
+//
+// It is NOT how the "received exactly N SIGWINCH signals" step reads the
+// counter -- that step settles and then compares once (see
+// theFakeAgentReceivedExactlySigwinchSignals, R65), because an arrival poll
+// standing in for an assertion silently weakens it. This remains the arrival
+// wait for sigwinch_count_test.go, whose own assertions are the separate,
+// explicit readSigwinchCount comparisons that follow it: there, reaching a
+// known number of real TIOCSWINSZ resizes is the precondition being waited
+// for, not the property being asserted.
 func waitForSigwinchCount(path string, want int) (int, error) {
 	deadline := time.Now().Add(2 * time.Second)
 	var last int

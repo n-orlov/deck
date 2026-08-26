@@ -18,11 +18,11 @@ Feature: Interactive mode's SIGWINCH budget (Part II, requirement 11)
   have failed, because the second signal was coalesced away before the
   fixture ever counted it. sigwinch_count_test.go's own 50ms inter-resize
   pacing exists for the identical reason. The pause before the final
-  assertion is separate and guards the read itself: task 027's own count
-  step (fake_agent_size_test.go's waitForSigwinchCount) returns as soon as
-  it first observes the exact expected value rather than waiting out its
-  full poll window, so a read taken too early could match "2" transiently
-  on the way to a buggy 3.
+  assertion is separate and guards the read itself: this scenario starts no
+  deck client, so the count step's own settle (R65: quiesce every pty
+  client, then read once and compare for equality) has nothing to wait on
+  here, and this pause is what gives the exit's SIGWINCH time to be counted
+  before that single read.
 
   Scenario: a full enter/exit cycle costs exactly two SIGWINCH with nobody attached
     Given a fake "claude" agent occupies a bare tmux session "winch-detached" at 80x24
