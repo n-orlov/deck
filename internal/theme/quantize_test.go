@@ -133,9 +133,14 @@ func TestBuiltinQuantizationPinned(t *testing.T) {
 			BadgeWarn:     "#cdcd00",
 			Waiting:       "#ffff00",
 			Running:       "#00ff00",
-			Idle:          "#7f7f7f",
+			// R66: idle #33cc66 -> #22cc55 moved off ANSI 8 onto ANSI 2,
+			// and stopped #889988 -> #aaccaa onto ANSI 7, so matrix's seven
+			// §7 statuses occupy seven distinct reference slots. archived's
+			// authored hex changed too (#66aa77 -> #778877) but keeps ANSI
+			// 8, which is now unshared among the statuses.
+			Idle:          "#00cd00",
 			Starting:      "#00cdcd",
-			Stopped:       "#7f7f7f",
+			Stopped:       "#e5e5e5",
 			Error:         "#ff0000",
 			Archived:      "#7f7f7f",
 		},
