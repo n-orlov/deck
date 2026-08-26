@@ -1078,10 +1078,11 @@ This citation replaces the stale `7ebafce` one above as the current
 whole-suite evidence; the `7ebafce` entry is kept for its own root-cause
 narrative, not as live evidence of the current tree's state.
 
-**10-run stability (task 325)**: `ci/stability.sh 10` at the same commit's
-descendant report sha `5ee9094` — **7/10 passed**, published honestly (not
-re-run for a streak). Every one of the four total failure instances across
-the ten runs is named and root-caused in
+**10-run stability (task 325, superseded — see task 408 below)**:
+`ci/stability.sh 10` at the same commit's descendant report sha `5ee9094`
+— **7/10 passed**, published honestly (not re-run for a streak). Every one
+of the four total failure instances across the ten runs is named and
+root-caused in
 [`phase3e-stability/README.md`](phase3e-stability/README.md): two instances
 of a pre-existing, already-documented SIGWINCH-settle-window flake shared by
 `mouse.feature`/`preview.feature` (host load, not a product bug — isolation-
@@ -1095,6 +1096,28 @@ concurrent `ci/run.sh` containers
 The published 7/10 rate at sha `5ee9094` is left unchanged (the fix landed
 on a later commit and was not re-run against the original ten, per the
 non-negotiable against re-running for a streak).
+
+**10-run stability at the final code commit (task 408, current)**:
+`ci/stability.sh 10` at commit `75861e0` — the same sha task 407 cited —
+**7/10 passed**, published honestly (not re-run for a streak; the numeric
+rate happens to match task 325's, but the commit and the failure instances
+differ and are not assumed to be the same event). Both failure mechanisms
+across the three failing runs (runs 4, 9, 10) are pre-existing and already
+documented elsewhere, not new defects: `create_cwd_ghost.feature`'s
+`shell`-agent `starting`→`running` fast-forward race (runs 4, 10; same
+mechanism as
+[`phase3d-210-ghost-completion-starting-race.md`](phase3d-210-ghost-completion-starting-race.md)'s
+sibling scenario) and the pre-existing SIGWINCH-settle-window flake in
+`preview.feature`'s `@steer-018-preview-fit-on-navigation` (run 9; same
+mechanism as `phase3e-stability/README.md` item 1 above). No task-401-411
+mechanism and no `internal/interactive` recurrence of task 325's own fixed
+bug appeared in any of the ten runs. No code change was forced, so task 407
+did not need to be redone. Full narrative and all ten per-run logs:
+[`phase3e-408-stability-10-at-75861e0/README.md`](phase3e-408-stability-10-at-75861e0/README.md).
+This citation replaces the `5ee9094` one above as the current stability
+evidence; the `5ee9094` entry is kept for its own root-cause narrative
+(the `fb9bd71` `internal/interactive` fix), not as live evidence of the
+current tree's state.
 
 ### Cross-references not yet written at the time this table was filled in
 
