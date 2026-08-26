@@ -189,3 +189,52 @@ Consequences worth stating:
   the counts, and the restructure belongs with the unsound-waypoint work, not with
   the assertion — so it is reported here, not fixed here. It also threatens the
   whole-suite and `ci/stability.sh 10` deliverables, so it wants a task of its own.
+
+## Targeted runs of the two feature files — three consecutive greens
+
+The three whole-suite runs above are the *broadest* evidence, not the targeted
+one R65's own criteria ask for: they also drag in every other feature file, which
+is where `preview.feature:134`'s pre-existing race (previous section) shows up.
+Running the two files that actually carry the seven assertion sites was
+previously impossible — `interactive_sigwinch_budget.feature`'s scenarios carry
+**no tags**, so `DECK_GODOG_TAGS` cannot name them and the entire ~5 minute suite
+was the only route to them. So this task added the missing selector, in the same
+shape as the existing tags override (`features/godog_test.go`, `godogPaths()`):
+
+    DECK_GODOG_PATHS='preview.feature,interactive_sigwinch_budget.feature'
+
+Unset — every ordinary `go test ./features/`, every CI job, every deliverable
+suite run — it is `[]string{"."}`, byte-for-byte the previous behaviour, so it
+cannot shrink what the suite covers. `defaultTags` is untouched and no scenario
+is excluded from anything; the knob narrows one diagnostic invocation, it does
+not narrow the suite.
+
+Three consecutive runs on the tree of this task's second commit ("features: let a
+targeted run select feature files by path"), `/proc/loadavg` per run
+(`artifacts/task017-r65-targeted-two-files-summary.txt`):
+
+| run | loadavg before | scenarios | steps | result | log |
+|---|---|---|---|---|---|
+| 1 | `3.62 2.48 2.32` | 15 passed | 150 passed | `ok ... 18.847s` | `artifacts/task017-r65-targeted-two-files-run1.log` |
+| 2 | `6.50 3.26 2.59` | 15 passed | 150 passed | `ok ... 18.628s` | `artifacts/task017-r65-targeted-two-files-run2.log` |
+| 3 | `7.13 3.67 2.74` | 15 passed | 150 passed | `ok ... 18.660s` | `artifacts/task017-r65-targeted-two-files-run3.log` |
+
+15 scenarios is the whole of both files (13 + 2), and each run's log contains all
+seven settled assertions passing, with their expected values unchanged and in
+order — `1 1 0 0 1` for `preview.feature:95,:107,:130,:147,:149` then `2 2` for
+`interactive_sigwinch_budget.feature:33,:46`:
+
+```
+$ for i in 1 2 3; do grep -ao 'received exactly [0-9]' run$i.log | grep -o '[0-9]$' | tr '\n' ' '; done
+1 1 0 0 1 2 2
+1 1 0 0 1 2 2
+1 1 0 0 1 2 2
+```
+
+Loadavg *rose* across the three runs (3.62 → 7.13, higher than any of the
+whole-suite runs' start load), so these greens are not a quiet-host artefact.
+They are also not a streak hunt: three runs were planned, three were run, and no
+further run was made. What they do **not** do is retire the `preview.feature:134`
+finding — that scenario is green here and red about one whole-suite run in four,
+and the deliverable whole-suite (task 021) and `ci/stability.sh 10` (task 022)
+runs must still face it.
