@@ -186,6 +186,59 @@ func TestClickSidebarRowEntersInteractiveModeOnOnePress(t *testing.T) {
 	}
 }
 
+// TestClickSidebarPaddingBelowLastRowIsANoOp proves task 405/R55's own gap:
+// hitTest resolving a sidebar press to hitTargetNone (the blank padding
+// rows below the last visible entry, or the header/row area once the list
+// is shorter than the panel's content height) must leave selection and
+// interactive mode completely untouched -- handleMousePress's switch on
+// hit.target has no case (and, critically, no `default`) for
+// hitTargetNone, so it falls straight through to the function's own
+// trailing `return m, nil`. The setup assertion below pins that the click
+// actually reaches hitTargetNone (not, say, hitTargetRow because the
+// padding row guess undershot) before the real claim is checked, so a
+// future layout change that shrinks the padding area fails loudly here
+// instead of silently asserting nothing. selected starts at 1 (not 0, the
+// zero value hitResult.sessionIndex would carry if a mutant let
+// hitTargetNone fall through to clickSidebarRow) so a regression that adds
+// a `default:` case calling clickSidebarRow is actually observable: it
+// would move selected from 1 back to 0.
+func TestClickSidebarPaddingBelowLastRowIsANoOp(t *testing.T) {
+	m := mouseTestModel([]store.Session{
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+	})
+	m.width, m.height = 100, 30
+	m.selected = 1
+
+	layout := m.computeLayout()
+	width, height := m.sidebarContentDims(layout)
+	// sidebarVisibleEntries always returns a contentHeight-length slice
+	// (zero-padded past the real entries, tui.go's own doc comment), so
+	// the padding row's index is len(sidebarEntries), not len(visible).
+	entries := m.sidebarEntries(width)
+	if len(entries) >= height {
+		t.Fatalf("test setup: no padding row available below the last entry (entries=%d, contentHeight=%d)", len(entries), height)
+	}
+	x := layout.Sidebar.Width / 2
+	y := contentRowY(m, layout, len(entries)) // one row past the last real entry, still inside the sidebar's own content box
+
+	if hit := m.hitTest(x, y); hit.panel != hitPanelSidebar || hit.target != hitTargetNone {
+		t.Fatalf("test setup: hitTest(%d,%d) = %+v, want sidebar/hitTargetNone (padding row)", x, y, hit)
+	}
+
+	updated, cmd := m.Update(press(x, y))
+	got := updated.(Model)
+	if got.selected != 1 {
+		t.Fatalf("selected changed after a click on sidebar padding: %d, want unchanged 1", got.selected)
+	}
+	if got.interactive {
+		t.Fatalf("interactive mode entered after a click on sidebar padding")
+	}
+	if cmd != nil {
+		t.Fatalf("click on sidebar padding returned a non-nil command")
+	}
+}
+
 // TestClickGroupHeaderTogglesOnlyThatGroup proves the mouse binding calls
 // the identical helper task 039's `g` key uses, and touches no other
 // group's collapse state.

@@ -1,0 +1,29 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirements 33-37, 41)
+  Every gesture below duplicates an existing key -- none is the only way to
+  perform its action -- and hit-testing resolves each click through the
+  same layout the renderer itself drew from (task 028). With mouse
+  reporting off, every one of these gestures is a no-op and only the
+  shortcut is lost; the keyboard path underneath keeps working.
+=== RUN   TestFeatures/a_click_on_the_sidebar's_empty_padding_below_the_last_row_selects_nothing_and_enters_nothing
+
+  [1;37mScenario:[0m a click on the sidebar's empty padding below the last row selects nothing and enters nothing [1;30m# mouse.feature:63[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "padding-noop-alpha"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "padding-noop-bravo"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m               [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" selects session "padding-noop-alpha"[0m                                             [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mdeck client "A" has session "padding-noop-alpha" selected[0m                                       [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "before-padding-click"[0m                                     [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mWhen[0m [32mdeck client "A" clicks at column 10 row 15[0m                                                      [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "before-padding-click" frame[0m                   [1;30m# mouse_synthesis_test.go:121 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mAnd[0m [32mdeck client "A" has session "padding-noop-alpha" selected[0m                                        [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+11 steps ([32m11 passed[0m)
+967.535066ms
+--- PASS: TestFeatures (0.98s)
+    --- PASS: TestFeatures/a_click_on_the_sidebar's_empty_padding_below_the_last_row_selects_nothing_and_enters_nothing (0.96s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.987s

@@ -1,0 +1,6 @@
+=== RUN   TestClickSidebarPaddingBelowLastRowIsANoOp
+    mouse_test.go:232: selected changed after a click on sidebar padding: 0, want unchanged 1
+--- FAIL: TestClickSidebarPaddingBelowLastRowIsANoOp (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.003s
+FAIL
