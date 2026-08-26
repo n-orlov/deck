@@ -16,8 +16,11 @@ var ErrUnresolved = errors.New("hook session could not be resolved")
 
 // Store is the deliberately small durable surface used by the hook receiver.
 // UpdateSessionStatus performs the status and event writes atomically.
+// Resolution reads ListSessionsIncludingArchived, NOT ListSessions: the
+// latter's `archived_at = 0` term is a display rule and resolving through it
+// orphaned every hook an archived row emitted (issue #8).
 type Store interface {
-	ListSessions(context.Context) ([]store.Session, error)
+	ListSessionsIncludingArchived(context.Context) ([]store.Session, error)
 	UpdateSessionStatus(context.Context, store.StatusUpdateInput) error
 	RecordOrphanEvent(context.Context, store.EventInput) error
 	// SetConversationID follows requirement 44: a SessionStart whose payload
@@ -192,7 +195,17 @@ func payloadField(p payload, name string) string {
 }
 
 func resolve(ctx context.Context, db Store, conversationID, injectedSessionID string) (store.Session, bool, error) {
-	sessions, err := db.ListSessions(ctx)
+	// Every row deck still retains, archived ones included: an archived row
+	// is hidden from the sidebar, not disowned, and SPEC §8.1's two keys both
+	// name a row that exists. Resolving against the sidebar's own query
+	// (ListSessions, which also requires archived_at = 0) meant a live agent
+	// behind the `/` filter had its every hook recorded as an orphan with
+	// session_id NULL while its status column froze -- issue #8, whose
+	// captured banner named a correct conversation id AND a correct injected
+	// row id. Tombstoned rows stay unresolvable (deleted_at = 0 is still in
+	// the accessor's WHERE clause): a row awaiting the reaper is deliberately
+	// no longer a hook target.
+	sessions, err := db.ListSessionsIncludingArchived(ctx)
 	if err != nil {
 		return store.Session{}, false, fmt.Errorf("list sessions for hook resolution: %w", err)
 	}

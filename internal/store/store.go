@@ -1287,6 +1287,42 @@ func (s *Store) ListArchivedSessions(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
+// ListSessionsIncludingArchived returns every row deck still retains --
+// archived rows (archived_at != 0) INCLUDED, tombstoned rows
+// (deleted_at != 0) excluded. It exists because ListSessions' extra
+// `archived_at = 0` term is a DISPLAY rule (requirement 27: the sidebar
+// hides archived rows), and a consumer that needs "every row deck still
+// owns" must not inherit it. Hook resolution (internal/hookrecv,
+// SPEC §8.1) is that consumer: both keys it resolves by -- the payload's
+// conversation id and the row id injected into the pane environment --
+// name a row that exists, so resolving them through the sidebar's query
+// turned every hook from an archived row into an orphan event with
+// session_id NULL (issue #8) while the agent's own transcript printed a
+// resolution failure the user could not act on. The tombstone half of
+// the WHERE clause stays: a reaped-pending row is deliberately
+// unresolvable, and a hook naming one is still an orphan. Ordered the
+// same way ListSessions is, for the same determinism reason.
+func (s *Store) ListSessionsIncludingArchived(ctx context.Context) ([]Session, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
+		FROM sessions WHERE deleted_at = 0 ORDER BY created_at, id`)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions including archived: %w", err)
+	}
+	defer rows.Close()
+	var sessions []Session
+	for rows.Next() {
+		session, err := scanSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan retained session: %w", err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate retained sessions: %w", err)
+	}
+	return sessions, nil
+}
+
 // SoftDeleteSession tombstones a session (task 104/105's `dd`): it records
 // deleted_at rather than removing the row, so RestoreSession can undo it
 // within the SPEC delete-grace window (task 106) and so a tombstoned row's
