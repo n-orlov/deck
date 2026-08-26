@@ -9,6 +9,20 @@ stability citations and the final per-requirement table (below) that ties
 every requirement to its commits, its non-vacuous test evidence and its
 revert-red proof.
 
+- **Tool versions**, resolved with `ci/run.sh sh -c 'go version; tmux -V'`
+  (same sibling image, `deck-ci:local`, used for every command cited in this
+  report): `go1.25.13 linux/amd64`, `tmux 3.5a`. Reproduced fresh while
+  closing out this task (validation-failed for missing tool versions) —
+  literal output below, and already on file at
+  [`docs/reports/toolchain-versions.md`](toolchain-versions.md).
+
+```
+$ ci/run.sh go version
+go version go1.25.13 linux/amd64
+$ ci/run.sh tmux -V
+tmux 3.5a
+```
+
 ## R52: one-shot select-this-new-session intent (tasks 301, 302)
 
 SPEC amendment 6584299 §11.1: creating a session selects its row immediately,
