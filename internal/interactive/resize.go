@@ -45,14 +45,20 @@ func (s *Session) Resize(ctx context.Context, width, height int, seed func(ctx c
 		return fmt.Errorf("reseed capture for resize to %dx%d: %w", width, height, err)
 	}
 
-	fresh := newGrid(width, height)
+	// newDrainedGrid, not newGrid: the fresh grid's reply drain has to be
+	// running before this goroutine writes the reseed capture into it, or a
+	// terminal query inside that capture parks Resize itself (R68 / issue
+	// #5 -- see startReplyDrain).
+	fresh := s.newDrainedGrid(width, height)
 	if _, err := fresh.Write(data); err != nil {
+		retireGrid(fresh)
 		return fmt.Errorf("write reseed capture into fresh grid for resize to %dx%d: %w", width, height, err)
 	}
 
-	s.mu.Lock()
-	s.grid = fresh
-	s.mu.Unlock()
+	// installGrid does the swap under the write lock (the ordering
+	// guarantee this function's doc promises) and retires the grid it
+	// displaces, so the old grid's reply drain returns instead of leaking.
+	s.installGrid(fresh)
 	// A resize replaces grid content wholesale (see this function's own
 	// doc); a consumer selecting on Renders() must be told a repaint is
 	// due for the same reason drain/fallbackLoop/writeNotice all do.
