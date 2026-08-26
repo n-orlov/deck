@@ -30,3 +30,10 @@ content -- previewFit's resize-window converged in the gap), plus the
 accompanying "surviving deck client: hung deck client killed after 1s" +
 goroutine dump (a consequence of the scenario aborting before its own
 "exits cleanly" step, not a second defect).
+
+**No per-run loadavg was captured in this original sweep** (only the
+aggregate "~55-60" range above, sampled a handful of times across the whole
+batch, not per row) -- corrected by `loadavg-redo/README.md` in this
+directory, which re-runs this same sweep with a real `uptime` sample before
+every invocation and states its own, real (not identical) reproduction
+count.

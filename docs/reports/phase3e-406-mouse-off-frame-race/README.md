@@ -128,8 +128,17 @@ moderate contention (loadavg ~3-24, close to the review's own reported 0.62->2.4
 `DECK_PREVIEW_MS` — traced to a related, lower-priority defect (§7), not the mechanism this task
 fixes, and far outside the review's own observed load range.
 
-Both loads recorded via `uptime` immediately before each run; see the individual `README.md`
-files under `pre-fix-repro/` and `post-fix-sweep-scoped/` for the full per-run table.
+**Correction (task 406 validation follow-up):** the sentence this replaces originally
+claimed a per-run `uptime` sample existed for every one of the 39 sweep rows above
+and under `pre-fix-repro/README.md`/`post-fix-sweep-scoped/README.md`. That was false
+as written — neither sub-directory's table, nor any `*.log` file in this report, ever
+contained a loadavg value; only a single aggregate range was sampled per whole batch.
+The sweep has since been re-run with a real `uptime` sample taken immediately before
+every invocation: see `pre-fix-repro/loadavg-redo/README.md` (18 runs, 4 reproduce the
+mechanism, all 4 failure logs attached with their loadavg) and
+`post-fix-sweep-scoped/loadavg-redo/README.md` (31 runs including 10 extra at the
+residual-risk delay value, 31/31 green). Every row in both redo tables carries its own
+`loadavg_before` (the 1/5/15-minute `uptime` triple sampled right before that row).
 
 ## 7. Residual risk (found, not fixed — named per this loop's own findings convention)
 
