@@ -1,0 +1,220 @@
+--- FAIL: TestWheelScrollsScrollableOverlaysByOneLine (0.04s)
+    --- FAIL: TestWheelScrollsScrollableOverlaysByOneLine/help_overlay (0.00s)
+        overlay_wheel_scroll_test.go:74: help overlay: after "wheel down" the first visible row is not any row of the previous view -- it moved by more than one page, want exactly 1 line
+            first row after: "│ this off                                                     │"
+            previous rows:
+            │ deck help                                                    │
+            │                                                              │
+            │ Keys                                                         │
+            │ ↑/↓ or j/k select a session; as the selection settles        │
+            │ (coalesced                                                   │
+            │ against DECK_PREVIEW_MS, not once per row while a key is     │
+            │ held),                                                       │
+            │ deck also fits the newly selected session's window to the    │
+            │ preview                                                      │
+            │ panel -- [ui] preview_fit, on by default -- the same cost ↵  │
+            │ below                                                        │
+            │ pays at entry: a SIGWINCH, and scrollback consumed faster    │
+            │ while the                                                    │
+            │ window is narrower than usual. Skipped below the interactive │
+            │ floor                                                        │
+            │ (never resizes into a box too small to be worth it, and      │
+            │ never                                                        │
+            │ enters interactive mode as a side effect); best-effort, so a │
+            │ session                                                      │
+            │ an attached client is also watching simply keeps that        │
+            │ client's own                                                 │
+            │ size the next time it redraws. preview_fit = false turns     │
+    --- FAIL: TestWheelScrollsScrollableOverlaysByOneLine/detail_view (0.00s)
+        overlay_wheel_scroll_test.go:74: detail view: after "wheel down" the first visible row is not any row of the previous view -- it moved by more than one page, want exactly 1 line
+            first row after: "│ files it touched and the tests it ran. The agent reported    │"
+            previous rows:
+            │ alpha detail                                                 │
+            │                                                              │
+            │ Agent:              claude                                   │
+            │ Working directory:  /repo/alpha                              │
+            │ Status:             waiting                                  │
+            │ Status reason:      needs input                              │
+            │ Verdict source:     hook (live)                              │
+            │ Verdict age:        20691d                                   │
+            │ Permission profile: safe                                     │
+            │ Conversation id:    conv-123                                 │
+            │                                                              │
+            │ Last message:                                                │
+            │ The agent reported progress on step chunk0000 of the         │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0001  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0002 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0003 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0004 of the requested change, describing the    │
+    --- FAIL: TestWheelScrollsScrollableOverlaysByOneLine/event_log (0.00s)
+        overlay_wheel_scroll_test.go:74: event log: after "wheel down" the first visible row advanced by 14 lines, want exactly 1
+            first row after: "│ 20691d note user {\"note\":\"event-number-17\"}                  │"
+            previous first two rows: "│ Event log                                                    │" / "│                                                              │"
+--- FAIL: TestWheelInOverlayAgreesWithArrowKeys (0.04s)
+    --- FAIL: TestWheelInOverlayAgreesWithArrowKeys/help_overlay (0.00s)
+        overlay_wheel_scroll_test.go:104: help overlay: one wheel notch and one `down` render differently -- the wheel is not using dialogScrollByLines
+            wheel:
+            ╭──────────────────────────────────────────────────────────────╮
+            │ this off                                                     │
+            │     and leaves a session cropped bottom-left instead.        │
+            │ PgUp/PgDn page up/down through the list, one page at a time; │
+            │ while ?                                                      │
+            │ help, E the event log or i the detail view covers the list,  │
+            │ the                                                          │
+            │ same keys instead page that overlay's own content once it    │
+            │ grows                                                        │
+            │     taller than the frame                                    │
+            │ ↵ enter interactive mode on the selected running session:    │
+            │ keystrokes                                                   │
+            │ forward to its live pane exactly as a real attached client's │
+            │ would,                                                       │
+            │ until Ctrl+Q leaves and returns the terminal to this list;   │
+            │ entering                                                     │
+            │ resizes the agent's window to fit the preview panel, and     │
+            │ output the                                                   │
+            │ agent produces while that window is narrower than its usual  │
+            │ size                                                         │
+            │ consumes its own scrollback faster than the same output      │
+            │ would at                                                     │
+            │ full width; while interactive, a wheel notch or              │
+            ╰──────────────────────────────────────────────────────────────╯
+            
+            down:
+            ╭──────────────────────────────────────────────────────────────╮
+            │                                                              │
+            │ Keys                                                         │
+            │ ↑/↓ or j/k select a session; as the selection settles        │
+            │ (coalesced                                                   │
+            │ against DECK_PREVIEW_MS, not once per row while a key is     │
+            │ held),                                                       │
+            │ deck also fits the newly selected session's window to the    │
+            │ preview                                                      │
+            │ panel -- [ui] preview_fit, on by default -- the same cost ↵  │
+            │ below                                                        │
+            │ pays at entry: a SIGWINCH, and scrollback consumed faster    │
+            │ while the                                                    │
+            │ window is narrower than usual. Skipped below the interactive │
+            │ floor                                                        │
+            │ (never resizes into a box too small to be worth it, and      │
+            │ never                                                        │
+            │ enters interactive mode as a side effect); best-effort, so a │
+            │ session                                                      │
+            │ an attached client is also watching simply keeps that        │
+            │ client's own                                                 │
+            │ size the next time it redraws. preview_fit = false turns     │
+            │ this off                                                     │
+            ╰──────────────────────────────────────────────────────────────╯
+    --- FAIL: TestWheelInOverlayAgreesWithArrowKeys/detail_view (0.00s)
+        overlay_wheel_scroll_test.go:104: detail view: one wheel notch and one `down` render differently -- the wheel is not using dialogScrollByLines
+            wheel:
+            ╭──────────────────────────────────────────────────────────────╮
+            │ files it touched and the tests it ran. The agent reported    │
+            │ progress on step chunk0005 of the requested change,          │
+            │ describing the files it touched and the tests it ran. The    │
+            │ agent reported progress on step chunk0006 of the requested   │
+            │ change, describing the files it touched and the tests it     │
+            │ ran. The agent reported progress on step chunk0007 of the    │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0008  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0009 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0010 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0011 of the requested change, describing the    │
+            │ files it touched and the tests it ran. The agent reported    │
+            │ progress on step chunk0012 of the requested change,          │
+            │ describing the files it touched and the tests it ran. The    │
+            │ agent reported progress on step chunk0013 of the requested   │
+            │ change, describing the files it touched and the tests it     │
+            │ ran. The agent reported progress on step chunk0014 of the    │
+            │ requested change, describing the files it touched and the    │
+            ╰──────────────────────────────────────────────────────────────╯
+            
+            down:
+            ╭──────────────────────────────────────────────────────────────╮
+            │                                                              │
+            │ Agent:              claude                                   │
+            │ Working directory:  /repo/alpha                              │
+            │ Status:             waiting                                  │
+            │ Status reason:      needs input                              │
+            │ Verdict source:     hook (live)                              │
+            │ Verdict age:        20691d                                   │
+            │ Permission profile: safe                                     │
+            │ Conversation id:    conv-123                                 │
+            │                                                              │
+            │ Last message:                                                │
+            │ The agent reported progress on step chunk0000 of the         │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0001  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0002 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0003 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0004 of the requested change, describing the    │
+            │ files it touched and the tests it ran. The agent reported    │
+            ╰──────────────────────────────────────────────────────────────╯
+    --- FAIL: TestWheelInOverlayAgreesWithArrowKeys/event_log (0.00s)
+        overlay_wheel_scroll_test.go:104: event log: one wheel notch and one `down` render differently -- the wheel is not using dialogScrollByLines
+            wheel:
+            ╭──────────────────────────────────────────────────────────────╮
+            │ 20691d note user {"note":"event-number-17"}                  │
+            │ 20691d note user {"note":"event-number-16"}                  │
+            │ 20691d note user {"note":"event-number-15"}                  │
+            │ 20691d note user {"note":"event-number-14"}                  │
+            │ 20691d note user {"note":"event-number-13"}                  │
+            │ 20691d note user {"note":"event-number-12"}                  │
+            │ 20691d note user {"note":"event-number-11"}                  │
+            │ 20691d note user {"note":"event-number-10"}                  │
+            │ 20691d note user {"note":"event-number-09"}                  │
+            │ 20691d note user {"note":"event-number-08"}                  │
+            │ 20691d note user {"note":"event-number-07"}                  │
+            │ 20691d note user {"note":"event-number-06"}                  │
+            │ 20691d note user {"note":"event-number-05"}                  │
+            │ 20691d note user {"note":"event-number-04"}                  │
+            │ 20691d note user {"note":"event-number-03"}                  │
+            │ 20691d note user {"note":"event-number-02"}                  │
+            │ 20691d note user {"note":"event-number-01"}                  │
+            │ 20691d note user {"note":"event-number-00"}                  │
+            │                                                              │
+            │ Newest first, up to the most recent 200 events.              │
+            │ Secret-shaped payload                                        │
+            │ values mask the same way the env editor's do. Esc closes.    │
+            ╰──────────────────────────────────────────────────────────────╯
+            
+            down:
+            ╭──────────────────────────────────────────────────────────────╮
+            │                                                              │
+            │ 20691d note user {"note":"event-number-29"}                  │
+            │ 20691d note user {"note":"event-number-28"}                  │
+            │ 20691d note user {"note":"event-number-27"}                  │
+            │ 20691d note user {"note":"event-number-26"}                  │
+            │ 20691d note user {"note":"event-number-25"}                  │
+            │ 20691d note user {"note":"event-number-24"}                  │
+            │ 20691d note user {"note":"event-number-23"}                  │
+            │ 20691d note user {"note":"event-number-22"}                  │
+            │ 20691d note user {"note":"event-number-21"}                  │
+            │ 20691d note user {"note":"event-number-20"}                  │
+            │ 20691d note user {"note":"event-number-19"}                  │
+            │ 20691d note user {"note":"event-number-18"}                  │
+            │ 20691d note user {"note":"event-number-17"}                  │
+            │ 20691d note user {"note":"event-number-16"}                  │
+            │ 20691d note user {"note":"event-number-15"}                  │
+            │ 20691d note user {"note":"event-number-14"}                  │
+            │ 20691d note user {"note":"event-number-13"}                  │
+            │ 20691d note user {"note":"event-number-12"}                  │
+            │ 20691d note user {"note":"event-number-11"}                  │
+            │ 20691d note user {"note":"event-number-10"}                  │
+            │ 20691d note user {"note":"event-number-09"}                  │
+            ╰──────────────────────────────────────────────────────────────╯
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.124s
+FAIL

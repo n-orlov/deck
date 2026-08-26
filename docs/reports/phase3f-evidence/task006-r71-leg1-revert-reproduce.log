@@ -1,0 +1,9 @@
+=== loadavg: 2.58 2.96 3.44 1/4127 6507
+=== revert-and-reproduce: leg 1 guard removed from internal/service/resume.go (git stash), new test file left in place
+--- FAIL: TestResumeRefusesAnArchivedRowBeforeAnythingIsCreated (0.10s)
+    resume_archived_refusal_test.go:53: resume of an archived row succeeded (SPEC.md:718: an archived session is not startable)
+--- FAIL: TestRestartInheritsTheArchivedRefusalFromResume (0.09s)
+    resume_archived_refusal_test.go:119: restart of an archived row succeeded (SPEC.md:718: R routes through resume, so one guard covers both)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.189s
+FAIL

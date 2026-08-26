@@ -1,0 +1,25 @@
+=== UNFIXED lease.go (pane_exit_status/crash_tail clear reverted) ===
+174:		 SET status = 'starting', killed_by_user = 0,
+175-		     launch_lease_owner = ?, launch_lease_until = ?
+176-		 WHERE id = ? AND status = 'stopped'
+=== RUN   TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict
+    lease_test.go:317: pane_exit_status = 137 after resume; want it cleared with the pane it described
+--- FAIL: TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict (0.04s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.042s
+=== RUN   TestResumedRowAcceptsTheNewPanesFirstHook
+=== RUN   TestResumedRowAcceptsTheNewPanesFirstHook/SessionStart
+    resumed_crash_verdict_test.go:94: the new pane's SessionStart was dropped by the replaced pane's crash verdict (#9): status="starting" source="tmux" status_at=13
+=== RUN   TestResumedRowAcceptsTheNewPanesFirstHook/UserPromptSubmit
+    resumed_crash_verdict_test.go:94: the new pane's UserPromptSubmit was dropped by the replaced pane's crash verdict (#9): status="starting" source="tmux" status_at=13
+--- FAIL: TestResumedRowAcceptsTheNewPanesFirstHook (0.06s)
+    --- FAIL: TestResumedRowAcceptsTheNewPanesFirstHook/SessionStart (0.04s)
+    --- FAIL: TestResumedRowAcceptsTheNewPanesFirstHook/UserPromptSubmit (0.02s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/hookrecv	0.067s
+=== RUN   TestResumeMakesACrashedRowReconcilableAgain
+    resume_crash_verdict_test.go:114: the resumed row was skipped by reconciliation rather than observed (#9): store.Session{ID:"00000000-0000-4000-8000-000000000694", Name:"crashed shell", Slug:"crashed-shell", CWD:"/tmp/TestResumeMakesACrashedRowReconcilableAgain2486246521/001", Agent:"shell", CapturedPath:"/usr/local/go/bin:/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", Status:"starting", StatusReason:"", StatusSource:"tmux", StatusAt:1735787045000, CreatedAt:1, Workspace:"001", KilledByUser:false, PaneExitStatus:(*int)(0xc000304950), CrashTail:"shell: killed by the OOM reaper\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nPane is dead (status 137, Wed Aug 26 15:00:40 2026)", NotifyEpoch:1, LastMessage:"", Acknowledged:false, LaunchArgs:[]string{}, Env:map[string]string{}, PreLaunch:"", LoginShell:false, PermissionProfile:"safe", PermissionProfileReason:"", ConversationID:"", ResumePin:"", ResumeState:"auto", LastProbeAt:0, EnvDirty:false, DeletedAt:0, ArchivedAt:0}
+--- FAIL: TestResumeMakesACrashedRowReconcilableAgain (0.12s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.122s
+FAIL

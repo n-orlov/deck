@@ -1,0 +1,268 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The preview capture engine and its visible behaviour
+  §11 requirement 21's capture-pane -e engine never attaches a client, never
+  spawns a control-mode client, uses no pipe-pane, and never resizes a pane
+  it reads; §23-27 govern what the panel shows once a capture lands.
+  
+  Steer 018 item 4 / task 215's amendment (SPEC.md §11, post-395babf "The
+  preview fits the selected session's window to the panel"): passive
+  preview now ALSO fits the selected session's tmux window to the panel's
+  content box as the list selection settles -- `[ui] preview_fit`, default
+  true. This is a deliberate, narrowly-scoped inversion of what this file's
+  own no-side-effect scenario used to assert for the selection axis alone
+  (composite-prd.md:747-748's "Do not weaken features/preview.feature's
+  passive guarantees ... If they conflict, the interactive design is
+  wrong" is about a DIFFERENT axis of conflict -- an interactive-mode
+  change reaching backward to weaken passive's own guarantee to make
+  itself pass -- and does not apply here either by its letter or in its
+  spirit: this change is SPEC's own text, authored by the operator's own
+  spec push, not code reaching back to relax a test it was failing, and
+  every OTHER passive-preview guarantee -- no attached client, no pipe, no
+  scroll, best-effort, floor-respecting, cost-stated, reversible via
+  `preview_fit = false` -- is left completely intact by it, proven by the
+  scenarios below). The capture engine itself (`capture-pane -e`, this
+  file's own title) is unchanged and still never resizes anything; the fit
+  is a separate, additional, coalesced `resize-window` issued alongside
+  the same 250ms tick.
+=== RUN   TestFeatures/capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,_across_selection,_mode,_sidebar-width_and_outer-terminal_changes
+
+  [1;37mScenario:[0m capturing the preview never attaches a tmux client, resizes a pane, or triggers a SIGWINCH, across selection, mode, sidebar-width and outer-terminal changes [1;30m# preview.feature:28[0m
+    [32mGiven[0m [32mthe deck config disables preview fit[0m                                                                                                                           [1;30m# preview_test.go:24 -> github.com/n-orlov/deck/features.deckConfigDisablesPreviewFit[0m
+    [32mAnd[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                                                           [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "solo" is started[0m                                                                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                                                                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "solo" creates claude session "beacon" with permission profile "safe"[0m                                                                                [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mthe private tmux window for session "beacon" is captured as "before"[0m                                                                                             [1;30m# preview_test.go:32 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mAnd[0m [32mthe fake claude agent's size log is captured as "before"[0m                                                                                                         [1;30m# preview_test.go:35 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "solo" selects the next session[0m                                                                                                                     [1;30m# preview_test.go:25 -> github.com/n-orlov/deck/features.clientSelectsNextSession[0m
+    [32mAnd[0m [32mdeck client "solo" selects the next session[0m                                                                                                                      [1;30m# preview_test.go:25 -> github.com/n-orlov/deck/features.clientSelectsNextSession[0m
+    [32mAnd[0m [32mdeck client "solo" sends "|"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends "|"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends ">"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends "<"[0m                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" terminal is resized to 120x40[0m                                                                                                                 [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" terminal is resized to 100x30[0m                                                                                                                 [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mthe private tmux server reports no attached clients[0m                                                                                                             [1;30m# preview_test.go:34 -> github.com/n-orlov/deck/features.privateTMuxServerReportsNoAttachedClients[0m
+    [32mAnd[0m [32mthe private tmux window for session "beacon" still matches "before"[0m                                                                                              [1;30m# preview_test.go:33 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mthe fake claude agent's size log still matches "before"[0m                                                                                                          [1;30m# preview_test.go:36 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogStillMatches[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/preview_fit_does_not_resize_on_a_mode_switch,_sidebar-width_change_or_outer-terminal_resize_--_only_on_a_settled_selection_change
+
+  [1;37mScenario:[0m preview_fit does not resize on a mode switch, sidebar-width change or outer-terminal resize -- only on a settled selection change [1;30m# preview.feature:56[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                              [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "solo" is started[0m                                                                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                                                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "solo" creates claude session "beacon" with permission profile "safe"[0m                                                     [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m                                                 [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "beacon"[0m                                                                                           [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                                                                 [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mthe private tmux window for session "beacon" is captured as "axis-before"[0m                                                             [1;30m# preview_test.go:32 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mAnd[0m [32mthe fake claude agent's size log is captured as "axis-before"[0m                                                                         [1;30m# preview_test.go:35 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "solo" sends "|"[0m                                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends "|"[0m                                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends ">"[0m                                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" sends "<"[0m                                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "solo" terminal is resized to 120x40[0m                                                                                      [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" terminal is resized to 100x30[0m                                                                                      [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mthe private tmux window for session "beacon" still matches "axis-before"[0m                                                             [1;30m# preview_test.go:33 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mthe fake claude agent's size log still matches "axis-before"[0m                                                                          [1;30m# preview_test.go:36 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogStillMatches[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_settled_selection_fits_the_session's_window_to_exactly_the_panel's_own_content_box,_coalesced_across_repeated_revisits
+
+  [1;37mScenario:[0m a settled selection fits the session's window to exactly the panel's own content box, coalesced across repeated revisits [1;30m# preview.feature:88[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                     [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "solo" is started[0m                                                                                                [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                                                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "solo" creates claude session "beacon" with permission profile "safe"[0m                                            [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m                                        [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "solo" selects session "beacon"[0m                                                                                 [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 1 SIGWINCH signals[0m                                                                 [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mWhen[0m [32mdeck client "solo" selects session "alpha"[0m                                                                                  [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "beacon"[0m                                                                                  [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "alpha"[0m                                                                                   [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "beacon"[0m                                                                                  [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 1 SIGWINCH signals[0m                                                                 [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mAnd[0m [32mthe private tmux window for session "beacon" is captured as "passively-fitted"[0m                                               [1;30m# preview_test.go:32 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "solo" enters interactive mode[0m                                                                                  [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mthe private tmux window for session "beacon" still matches "passively-fitted"[0m                                               [1;30m# preview_test.go:33 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mdeck client "solo" leaves interactive mode[0m                                                                                   [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/preview_fit_=_false_restores_the_wholly_passive_preview,_and_settling_never_resizes
+
+  [1;37mScenario:[0m preview_fit = false restores the wholly passive preview, and settling never resizes [1;30m# preview.feature:120[0m
+    [32mGiven[0m [32mthe deck config disables preview fit[0m                                                  [1;30m# preview_test.go:24 -> github.com/n-orlov/deck/features.deckConfigDisablesPreviewFit[0m
+    [32mAnd[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                  [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "solo" is started[0m                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                        [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "solo" creates claude session "beacon" with permission profile "safe"[0m       [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m   [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "solo" selects session "beacon"[0m                                            [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "alpha"[0m                                              [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "beacon"[0m                                             [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 0 SIGWINCH signals[0m                            [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_fit_is_skipped_below_the_7-inner-row_floor,_and_retried_once_the_panel_grows_back_above_it
+
+  [1;37mScenario:[0m a fit is skipped below the 7-inner-row floor, and retried once the panel grows back above it [1;30m# preview.feature:134[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                         [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "solo" is started[0m                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "solo" creates claude session "beacon" with permission profile "safe"[0m                [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m            [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "solo" terminal is resized to 100x9[0m                                                 [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "beacon"[0m                                                      [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 0 SIGWINCH signals[0m                                     [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mWhen[0m [32mdeck client "solo" terminal is resized to 100x30[0m                                                [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 1 SIGWINCH signals[0m                                     [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/in_passive_preview,_a_live_pane_larger_than_the_panel_is_cropped_with_its_real_geometry_stated
+
+  [1;37mScenario:[0m in passive preview, a live pane larger than the panel is cropped with its real geometry stated [1;30m# preview.feature:153[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                                   [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "solo" screen matches the pattern "\d+x\d+ of \d+x\d+"[0m                                [1;30m# preview_test.go:26 -> github.com/n-orlov/deck/features.clientScreenMatchesPattern[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/interactive_mode_states_the_fitted_geometry,_never_the_crop_form
+
+  [1;37mScenario:[0m interactive mode states the fitted geometry, never the crop form                  [1;30m# preview.feature:165[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "alpha"[0m                                            [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "solo" enters interactive mode[0m                                           [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "solo" screen matches the pattern "\d+x\d+ fitted"[0m                       [1;30m# preview_test.go:26 -> github.com/n-orlov/deck/features.clientScreenMatchesPattern[0m
+    [32mAnd[0m [32mdeck client "solo" screen does not contain " of "[0m                                     [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "solo" leaves interactive mode[0m                                            [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/wide_glyphs_in_a_cropped_pane_never_shear_the_preview's_border
+
+  [1;37mScenario:[0m wide glyphs in a cropped pane never shear the preview's border         [1;30m# preview.feature:183[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "widepane"[0m                        [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "solo" fills the selected session's pane with wide characters[0m [1;30m# preview_test.go:29 -> github.com/n-orlov/deck/features.clientFillsSelectedPaneWithWideCharacters[0m
+    [32mThen[0m [32mdeck client "solo" screen contains "界"[0m                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "solo" every full-width row is bordered on both edges[0m          [1;30m# preview_test.go:27 -> github.com/n-orlov/deck/features.clientEveryFullWidthRowIsBorderedOnBothEdges[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_coloured_pane's_SGR_escapes_never_shear_the_preview's_border
+
+  [1;37mScenario:[0m a coloured pane's SGR escapes never shear the preview's border                               [1;30m# preview.feature:192[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "colourpane"[0m                                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mthe private tmux pane for session "colourpane" prints red-coloured text "REDLINE"[0m               [1;30m# preview_test.go:31 -> github.com/n-orlov/deck/features.privateTMuxPaneForSessionPrintsRedColouredText[0m
+    [32mThen[0m [32mdeck client "solo" screen contains "REDLINE"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "solo" every full-width row is bordered on both edges[0m                                [1;30m# preview_test.go:27 -> github.com/n-orlov/deck/features.clientEveryFullWidthRowIsBorderedOnBothEdges[0m
+    [32mAnd[0m [32mdeck client "solo" the row containing "REDLINE" is bordered on both edges at the full grid width[0m [1;30m# preview_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainingIsBorderedAtFullGridWidth[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/clicking_or_scrolling_over_the_preview_panel_does_nothing
+
+  [1;37mScenario:[0m clicking or scrolling over the preview panel does nothing                         [1;30m# preview.feature:202[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "solo" captures its frame as "before-preview-gesture"[0m                     [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mWhen[0m [32mdeck client "solo" clicks at column 70 row 15[0m                                        [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mAnd[0m [32mdeck client "solo" double-clicks at column 70 row 15[0m                                  [1;30m# mouse_synthesis_test.go:116 -> github.com/n-orlov/deck/features.clientDoubleClicksAt[0m
+    [32mAnd[0m [32mdeck client "solo" scrolls the wheel up at column 70 row 15[0m                           [1;30m# mouse_synthesis_test.go:117 -> github.com/n-orlov/deck/features.clientScrollsWheelUpAt[0m
+    [32mAnd[0m [32mdeck client "solo" scrolls the wheel down at column 70 row 15[0m                         [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mThen[0m [32mdeck client "solo" frame still matches the captured "before-preview-gesture" frame[0m   [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_error_row's_preview_shows_the_durable_crash_tail,_headed_by_copy_stating_it_is_not_live
+
+  [1;37mScenario:[0m an error row's preview shows the durable crash tail, headed by copy stating it is not live    [1;30m# preview.feature:215[0m
+    [32mGiven[0m [32ma crash-tail fixture and long-running fake Claude are configured[0m                                [1;30m# crash_test.go:21 -> github.com/n-orlov/deck/features.configureCrashFixture[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "doomed" with permission profile "safe"[0m                   [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mfake Claude session "doomed" renders the colored crash-tail fixture[0m                               [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.renderColoredCrashFixture[0m
+    [32mAnd[0m [32mthe agent process "fake-claude-real" in private tmux session "deck_doomed" is killed with SIGKILL[0m [1;30m# assertions_test.go:63 -> github.com/n-orlov/deck/features.agentProcessInPrivateSessionIsKilledWithSIGKILL[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "error"[0m                 [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Last output before exit - not live:"[0m                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "crash final line"[0m                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_stopped_session's_preview_names_its_own_state_instead_of_showing_stale_bytes
+
+  [1;37mScenario:[0m a stopped session's preview names its own state instead of showing stale bytes    [1;30m# preview.feature:227[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "retiring"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mshell session "retiring" exits with status zero[0m                                       [1;30m# crash_test.go:22 -> github.com/n-orlov/deck/features.shellSessionExitsZero[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "resumable"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Session is stopped. No live preview to show."[0m        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_preview_is_suppressed_below_its_floor_and_the_sidebar_takes_the_space
+
+  [1;37mScenario:[0m the preview is suppressed below its floor and the sidebar takes the space [1;30m# preview.feature:236[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe private tmux pane for session "alpha" prints "PREVIEWMARKERXYZ"[0m           [1;30m# preview_test.go:30 -> github.com/n-orlov/deck/features.privateTMuxPaneForSessionPrints[0m
+    [32mThen[0m [32mdeck client "solo" screen contains "PREVIEWMARKERXYZ"[0m                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "solo" terminal is resized to 60x12[0m                              [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mdeck client "solo" screen stops containing "PREVIEWMARKERXYZ"[0m                [1;30m# preview_test.go:37 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mWhen[0m [32mdeck client "solo" terminal is resized to 100x30[0m                             [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mThen[0m [32mdeck client "solo" screen contains "PREVIEWMARKERXYZ"[0m                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Interactive mode's SIGWINCH budget (Part II, requirement 11)
+  A full enter/exit cycle -- capture the window's own geometry, fit the
+  window (never the pane) to the interactive size, then restore it on
+  exit -- must cost the target exactly two SIGWINCH: one to enter, one to
+  leave. Not three. This holds whether or not a real client stays attached
+  to the session throughout the whole cycle.
+  
+  Both settle pauses below are load-bearing, not decorative: the fake
+  fixture's own SIGWINCH counter (cmd/fake-claude/main.go) notifies on a
+  channel with a buffer of exactly 1 (Go's os/signal contract: a signal
+  arriving while the channel is already full is silently dropped, never
+  queued). Back-to-back resizes with no pause between them can therefore
+  undercount even when tmux really delivered two real kernel SIGWINCH --
+  measured here: without a pause between enter and exit, this scenario's
+  own "exactly 1" red control (enter fires, exit's SIGWINCH lands before
+  the fixture's goroutine has drained the first) passed when it should
+  have failed, because the second signal was coalesced away before the
+  fixture ever counted it. sigwinch_count_test.go's own 50ms inter-resize
+  pacing exists for the identical reason. The pause before the final
+  assertion is separate and guards the read itself: this scenario starts no
+  deck client, so the count step's own settle (R65: quiesce every pty
+  client, then read once and compare for equality) has nothing to wait on
+  here, and this pause is what gives the exit's SIGWINCH time to be counted
+  before that single read.
+=== RUN   TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_nobody_attached
+
+  [1;37mScenario:[0m a full enter/exit cycle costs exactly two SIGWINCH with nobody attached     [1;30m# interactive_sigwinch_budget.feature:27[0m
+    [32mGiven[0m [32ma fake "claude" agent occupies a bare tmux session "winch-detached" at 80x24[0m  [1;30m# interactive_sigwinch_budget_test.go:30 -> github.com/n-orlov/deck/features.aFakeAgentOccupiesABareTmuxSessionAt[0m
+    [32mWhen[0m [32mdeck enters interactive mode on tmux session "winch-detached" fitting to 45x15[0m [1;30m# interactive_sigwinch_budget_test.go:31 -> github.com/n-orlov/deck/features.deckEntersInteractiveModeFittingTo[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                           [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck exits interactive mode on tmux session "winch-detached"[0m                    [1;30m# interactive_sigwinch_budget_test.go:32 -> github.com/n-orlov/deck/features.deckExitsInteractiveModeOnTmuxSession[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                           [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 2 SIGWINCH signals[0m                    [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+=== RUN   TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_a_client_attached_throughout
+
+  [1;37mScenario:[0m a full enter/exit cycle costs exactly two SIGWINCH with a client attached throughout [1;30m# interactive_sigwinch_budget.feature:35[0m
+    [32mGiven[0m [32ma fake "claude" agent occupies a bare tmux session "winch-attached" at 80x24[0m           [1;30m# interactive_sigwinch_budget_test.go:30 -> github.com/n-orlov/deck/features.aFakeAgentOccupiesABareTmuxSessionAt[0m
+    [32mAnd[0m [32ma real tmux client attaches to session "winch-attached" at 80x25[0m                         [1;30m# interactive_sigwinch_budget_test.go:33 -> github.com/n-orlov/deck/features.aRealTmuxClientAttachesToSessionAt[0m
+    [32mWhen[0m [32mdeck enters interactive mode on tmux session "winch-attached" fitting to 45x15[0m          [1;30m# interactive_sigwinch_budget_test.go:31 -> github.com/n-orlov/deck/features.deckEntersInteractiveModeFittingTo[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                    [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck exits interactive mode on tmux session "winch-attached"[0m                             [1;30m# interactive_sigwinch_budget_test.go:32 -> github.com/n-orlov/deck/features.deckExitsInteractiveModeOnTmuxSession[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                    [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe fake "claude" agent received exactly 2 SIGWINCH signals[0m                             [1;30m# fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals[0m
+    [32mAnd[0m [32mthe real tmux client attached to session "winch-attached" detaches[0m                       [1;30m# interactive_sigwinch_budget_test.go:34 -> github.com/n-orlov/deck/features.theRealTmuxClientAttachedToSessionDetaches[0m
+
+15 scenarios ([32m15 passed[0m)
+150 steps ([32m150 passed[0m)
+18.633923959s
+--- PASS: TestFeatures (18.63s)
+    --- PASS: TestFeatures/capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,_across_selection,_mode,_sidebar-width_and_outer-terminal_changes (1.40s)
+    --- PASS: TestFeatures/preview_fit_does_not_resize_on_a_mode_switch,_sidebar-width_change_or_outer-terminal_resize_--_only_on_a_settled_selection_change (1.65s)
+    --- PASS: TestFeatures/a_settled_selection_fits_the_session's_window_to_exactly_the_panel's_own_content_box,_coalesced_across_repeated_revisits (3.49s)
+    --- PASS: TestFeatures/preview_fit_=_false_restores_the_wholly_passive_preview,_and_settling_never_resizes (2.35s)
+    --- PASS: TestFeatures/a_fit_is_skipped_below_the_7-inner-row_floor,_and_retried_once_the_panel_grows_back_above_it (2.01s)
+    --- PASS: TestFeatures/in_passive_preview,_a_live_pane_larger_than_the_panel_is_cropped_with_its_real_geometry_stated (0.54s)
+    --- PASS: TestFeatures/interactive_mode_states_the_fitted_geometry,_never_the_crop_form (1.22s)
+    --- PASS: TestFeatures/wide_glyphs_in_a_cropped_pane_never_shear_the_preview's_border (0.52s)
+    --- PASS: TestFeatures/a_coloured_pane's_SGR_escapes_never_shear_the_preview's_border (0.55s)
+    --- PASS: TestFeatures/clicking_or_scrolling_over_the_preview_panel_does_nothing (0.76s)
+    --- PASS: TestFeatures/an_error_row's_preview_shows_the_durable_crash_tail,_headed_by_copy_stating_it_is_not_live (1.06s)
+    --- PASS: TestFeatures/a_stopped_session's_preview_names_its_own_state_instead_of_showing_stale_bytes (0.61s)
+    --- PASS: TestFeatures/the_preview_is_suppressed_below_its_floor_and_the_sidebar_takes_the_space (0.54s)
+    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_nobody_attached (0.92s)
+    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_a_client_attached_throughout (0.93s)
+PASS
+ok  	github.com/n-orlov/deck/features	18.660s

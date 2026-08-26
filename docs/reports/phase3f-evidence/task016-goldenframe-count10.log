@@ -1,0 +1,57 @@
+--- FAIL: TestGoldenMinimumFrame (1.96s)
+    --- FAIL: TestGoldenMinimumFrame/run-1 (0.98s)
+        golden_frame_test.go:74: frame kept changing after the fixture rendered; not settled
+            before:
+            + deck - sessions -----------------+-------------------------------------------+
+            | socket: deck_golden_frame_test   | 41x21 of 80x24                            |
+            | v agent-session-cwd  /tmp/dec... | row 4 of 5..................              |
+            | > golden starting                | row 5 of 5..................              |
+            |   [safe] created just now        |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            +----------------------------------+-------------------------------------------+
+            starting - awaiting signal    up/down - Enter interactive - a attach - Y acknowl
+            after:
+            + deck - sessions -----------------+-------------------------------------------+
+            | socket: deck_golden_frame_test   | 41x21 of 80x24                            |
+            | v agent-session-cwd  /tmp/dec... | row 4 of 5..................              |
+            | > golden starting                | row 5 of 5..................              |
+            |   [safe] created just now        |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            |                                  |                                           |
+            +----------------------------------+-------------------------------------------+
+            starting - awaiting signal    up/down - Enter interactive - a attach - Y acknow
+        golden_frame_test.go:114: scenario harness teardown: surviving deck client: signal: killed
+FAIL
+FAIL	github.com/n-orlov/deck/features	20.457s
+FAIL

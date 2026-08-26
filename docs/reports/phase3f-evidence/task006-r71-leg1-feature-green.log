@@ -1,0 +1,6 @@
+=== loadavg before: 2.22 2.79 3.36 2/4191 6665
+=== archive scenarios (R71's neighbours: archive still sets the flag, kill-and-archive still one action)
+ok  	github.com/n-orlov/deck/features	2.813s
+=== resume/restart scenarios (the guard's own code path: launch lease, R applies env edit, inject-instead restart)
+ok  	github.com/n-orlov/deck/features	6.705s
+=== loadavg after: 2.32 2.79 3.36 23/4134 6765

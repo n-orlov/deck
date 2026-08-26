@@ -1,0 +1,13 @@
+run1 loadavg-before: 1.71 1.84 2.07 2/4182 19626
+run1 exit=0 loadavg-after: 3.10 2.15 2.10 7/4178 19682
+ok  	github.com/n-orlov/deck/features	282.527s
+run2 loadavg-before: 3.10 2.15 2.10 26/4177 19685
+run2 exit=0 loadavg-after: 2.56 2.83 2.48 26/4164 19736
+ok  	github.com/n-orlov/deck/features	282.982s
+run3 loadavg-before: 2.56 2.83 2.48 33/4164 19739
+run3 exit=1 loadavg-after: 2.95 2.83 2.57 28/4201 19791
+FAIL	github.com/n-orlov/deck/features	282.169s
+FAIL
+sigwinch-count-test loadavg-before: 2.95 2.83 2.57 18/4201 19794
+sigwinch-count-test exit=0
+DONE

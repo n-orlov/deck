@@ -1,0 +1,176 @@
+--- FAIL: TestWheelScrollsScrollableOverlaysByOneLine (0.03s)
+    --- FAIL: TestWheelScrollsScrollableOverlaysByOneLine/help_overlay (0.00s)
+        overlay_wheel_scroll_test.go:74: help overlay: after "wheel down" the first visible row advanced by 0 lines, want exactly 1
+            first row after: "│ deck help                                                    │"
+            previous first two rows: "│ deck help                                                    │" / "│                                                              │"
+    --- FAIL: TestWheelScrollsScrollableOverlaysByOneLine/detail_view (0.00s)
+        overlay_wheel_scroll_test.go:74: detail view: after "wheel down" the first visible row advanced by 0 lines, want exactly 1
+            first row after: "│ alpha detail                                                 │"
+            previous first two rows: "│ alpha detail                                                 │" / "│                                                              │"
+    --- FAIL: TestWheelScrollsScrollableOverlaysByOneLine/event_log (0.00s)
+        overlay_wheel_scroll_test.go:74: event log: after "wheel down" the first visible row advanced by 0 lines, want exactly 1
+            first row after: "│ Event log                                                    │"
+            previous first two rows: "│ Event log                                                    │" / "│                                                              │"
+--- FAIL: TestWheelInOverlayAgreesWithArrowKeys (0.03s)
+    --- FAIL: TestWheelInOverlayAgreesWithArrowKeys/help_overlay (0.00s)
+        overlay_wheel_scroll_test.go:104: help overlay: one wheel notch and one `down` render differently -- the wheel is not using dialogScrollByLines
+            wheel:
+            ╭──────────────────────────────────────────────────────────────╮
+            │ deck help                                                    │
+            │                                                              │
+            │ Keys                                                         │
+            │ ↑/↓ or j/k select a session; as the selection settles        │
+            │ (coalesced                                                   │
+            │ against DECK_PREVIEW_MS, not once per row while a key is     │
+            │ held),                                                       │
+            │ deck also fits the newly selected session's window to the    │
+            │ preview                                                      │
+            │ panel -- [ui] preview_fit, on by default -- the same cost ↵  │
+            │ below                                                        │
+            │ pays at entry: a SIGWINCH, and scrollback consumed faster    │
+            │ while the                                                    │
+            │ window is narrower than usual. Skipped below the interactive │
+            │ floor                                                        │
+            │ (never resizes into a box too small to be worth it, and      │
+            │ never                                                        │
+            │ enters interactive mode as a side effect); best-effort, so a │
+            │ session                                                      │
+            │ an attached client is also watching simply keeps that        │
+            │ client's own                                                 │
+            │ size the next time it redraws. preview_fit = false turns     │
+            ╰──────────────────────────────────────────────────────────────╯
+            
+            down:
+            ╭──────────────────────────────────────────────────────────────╮
+            │                                                              │
+            │ Keys                                                         │
+            │ ↑/↓ or j/k select a session; as the selection settles        │
+            │ (coalesced                                                   │
+            │ against DECK_PREVIEW_MS, not once per row while a key is     │
+            │ held),                                                       │
+            │ deck also fits the newly selected session's window to the    │
+            │ preview                                                      │
+            │ panel -- [ui] preview_fit, on by default -- the same cost ↵  │
+            │ below                                                        │
+            │ pays at entry: a SIGWINCH, and scrollback consumed faster    │
+            │ while the                                                    │
+            │ window is narrower than usual. Skipped below the interactive │
+            │ floor                                                        │
+            │ (never resizes into a box too small to be worth it, and      │
+            │ never                                                        │
+            │ enters interactive mode as a side effect); best-effort, so a │
+            │ session                                                      │
+            │ an attached client is also watching simply keeps that        │
+            │ client's own                                                 │
+            │ size the next time it redraws. preview_fit = false turns     │
+            │ this off                                                     │
+            ╰──────────────────────────────────────────────────────────────╯
+    --- FAIL: TestWheelInOverlayAgreesWithArrowKeys/detail_view (0.00s)
+        overlay_wheel_scroll_test.go:104: detail view: one wheel notch and one `down` render differently -- the wheel is not using dialogScrollByLines
+            wheel:
+            ╭──────────────────────────────────────────────────────────────╮
+            │ alpha detail                                                 │
+            │                                                              │
+            │ Agent:              claude                                   │
+            │ Working directory:  /repo/alpha                              │
+            │ Status:             waiting                                  │
+            │ Status reason:      needs input                              │
+            │ Verdict source:     hook (live)                              │
+            │ Verdict age:        20691d                                   │
+            │ Permission profile: safe                                     │
+            │ Conversation id:    conv-123                                 │
+            │                                                              │
+            │ Last message:                                                │
+            │ The agent reported progress on step chunk0000 of the         │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0001  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0002 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0003 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0004 of the requested change, describing the    │
+            ╰──────────────────────────────────────────────────────────────╯
+            
+            down:
+            ╭──────────────────────────────────────────────────────────────╮
+            │                                                              │
+            │ Agent:              claude                                   │
+            │ Working directory:  /repo/alpha                              │
+            │ Status:             waiting                                  │
+            │ Status reason:      needs input                              │
+            │ Verdict source:     hook (live)                              │
+            │ Verdict age:        20691d                                   │
+            │ Permission profile: safe                                     │
+            │ Conversation id:    conv-123                                 │
+            │                                                              │
+            │ Last message:                                                │
+            │ The agent reported progress on step chunk0000 of the         │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0001  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0002 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0003 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0004 of the requested change, describing the    │
+            │ files it touched and the tests it ran. The agent reported    │
+            ╰──────────────────────────────────────────────────────────────╯
+    --- FAIL: TestWheelInOverlayAgreesWithArrowKeys/event_log (0.00s)
+        overlay_wheel_scroll_test.go:104: event log: one wheel notch and one `down` render differently -- the wheel is not using dialogScrollByLines
+            wheel:
+            ╭──────────────────────────────────────────────────────────────╮
+            │ Event log                                                    │
+            │                                                              │
+            │ 20691d note user {"note":"event-number-29"}                  │
+            │ 20691d note user {"note":"event-number-28"}                  │
+            │ 20691d note user {"note":"event-number-27"}                  │
+            │ 20691d note user {"note":"event-number-26"}                  │
+            │ 20691d note user {"note":"event-number-25"}                  │
+            │ 20691d note user {"note":"event-number-24"}                  │
+            │ 20691d note user {"note":"event-number-23"}                  │
+            │ 20691d note user {"note":"event-number-22"}                  │
+            │ 20691d note user {"note":"event-number-21"}                  │
+            │ 20691d note user {"note":"event-number-20"}                  │
+            │ 20691d note user {"note":"event-number-19"}                  │
+            │ 20691d note user {"note":"event-number-18"}                  │
+            │ 20691d note user {"note":"event-number-17"}                  │
+            │ 20691d note user {"note":"event-number-16"}                  │
+            │ 20691d note user {"note":"event-number-15"}                  │
+            │ 20691d note user {"note":"event-number-14"}                  │
+            │ 20691d note user {"note":"event-number-13"}                  │
+            │ 20691d note user {"note":"event-number-12"}                  │
+            │ 20691d note user {"note":"event-number-11"}                  │
+            │ 20691d note user {"note":"event-number-10"}                  │
+            ╰──────────────────────────────────────────────────────────────╯
+            
+            down:
+            ╭──────────────────────────────────────────────────────────────╮
+            │                                                              │
+            │ 20691d note user {"note":"event-number-29"}                  │
+            │ 20691d note user {"note":"event-number-28"}                  │
+            │ 20691d note user {"note":"event-number-27"}                  │
+            │ 20691d note user {"note":"event-number-26"}                  │
+            │ 20691d note user {"note":"event-number-25"}                  │
+            │ 20691d note user {"note":"event-number-24"}                  │
+            │ 20691d note user {"note":"event-number-23"}                  │
+            │ 20691d note user {"note":"event-number-22"}                  │
+            │ 20691d note user {"note":"event-number-21"}                  │
+            │ 20691d note user {"note":"event-number-20"}                  │
+            │ 20691d note user {"note":"event-number-19"}                  │
+            │ 20691d note user {"note":"event-number-18"}                  │
+            │ 20691d note user {"note":"event-number-17"}                  │
+            │ 20691d note user {"note":"event-number-16"}                  │
+            │ 20691d note user {"note":"event-number-15"}                  │
+            │ 20691d note user {"note":"event-number-14"}                  │
+            │ 20691d note user {"note":"event-number-13"}                  │
+            │ 20691d note user {"note":"event-number-12"}                  │
+            │ 20691d note user {"note":"event-number-11"}                  │
+            │ 20691d note user {"note":"event-number-10"}                  │
+            │ 20691d note user {"note":"event-number-09"}                  │
+            ╰──────────────────────────────────────────────────────────────╯
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.107s
+FAIL

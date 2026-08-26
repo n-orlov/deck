@@ -1,0 +1,5 @@
+--- FAIL: TestPreviewFitDoesNotOverlapItself (0.00s)
+    preview_fit_overlap_test.go:96: second previewTick with the first fit still in flight returned 2 commands, want 1 (the reschedule alone): a second overlapping fit resizes the same window again and costs an extra SIGWINCH
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.003s
+FAIL

@@ -1,0 +1,3 @@
+=== loadavg: 3.10 2.95 3.40 1/4134 6767
+=== ci/run.sh go test -count=1 ./internal/service/ at the leg-1 tree
+ok  	github.com/n-orlov/deck/internal/service	3.267s

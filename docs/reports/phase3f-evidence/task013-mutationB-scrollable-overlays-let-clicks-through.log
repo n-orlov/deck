@@ -1,0 +1,8 @@
+--- FAIL: TestClickInsideOverlayStillDoesNothing (0.00s)
+    --- FAIL: TestClickInsideOverlayStillDoesNothing/detail_view_(scrollable) (0.00s)
+        overlay_wheel_scroll_test.go:225: detail view (scrollable): press over the hidden sidebar row underneath moved the selection from 0 to 1
+    --- FAIL: TestClickInsideOverlayStillDoesNothing/help_overlay_(scrollable) (0.00s)
+        overlay_wheel_scroll_test.go:225: help overlay (scrollable): press over the hidden sidebar row underneath moved the selection from 0 to 1
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.085s
+FAIL

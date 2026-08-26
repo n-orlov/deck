@@ -1,0 +1,21 @@
+2.69 3.31 3.53 3/4152 15336
+--- ci/run.sh go test -count=1 -run TestProbeFramedDialogHeightsAt80x24 -v ./internal/tui/ (probe file internal/tui/zz_framed_overflow_probe_test.go, deleted after this run) ---
+=== RUN   TestProbeFramedDialogHeightsAt80x24
+    zz_framed_overflow_probe_test.go:156: env editor, 3 variables                    rendered  12 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: env editor, 15 variables                   rendered  24 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: env editor, 16 variables                   rendered  25 lines, frame height 24, viewport height 24 -> OVERFLOWS
+    zz_framed_overflow_probe_test.go:156: env editor, 24 variables                   rendered  33 lines, frame height 24, viewport height 24 -> OVERFLOWS
+    zz_framed_overflow_probe_test.go:156: env editor, 60 variables                   rendered  69 lines, frame height 24, viewport height 24 -> OVERFLOWS
+    zz_framed_overflow_probe_test.go:156: rename                                     rendered  14 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: create, untouched defaults                 rendered  29 lines, frame height 24, viewport height 24 -> OVERFLOWS
+    zz_framed_overflow_probe_test.go:156: create, every field filled plus an error   rendered  31 lines, frame height 24, viewport height 24 -> OVERFLOWS
+    zz_framed_overflow_probe_test.go:156: restart choice                             rendered  18 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: delete confirm, purge chosen with a path   rendered  17 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: bulk delete confirm, 20 marked             rendered  32 lines, frame height 24, viewport height 24 -> OVERFLOWS
+    zz_framed_overflow_probe_test.go:156: archive confirm, not stopped               rendered  21 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: profile switch                             rendered  12 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: pin                                        rendered  14 lines, frame height 24, viewport height 24 -> fits
+    zz_framed_overflow_probe_test.go:156: settings takeover                          rendered  24 lines, frame height 24, viewport height 24 -> fits
+--- PASS: TestProbeFramedDialogHeightsAt80x24 (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.005s

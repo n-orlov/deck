@@ -1,0 +1,13 @@
+--- FAIL: TestMatrixStatusTokensQuantiseToSevenDistinctReferenceEntries (0.00s)
+    matrix_status_quantization_test.go:71: matrix: 1 ReferencePalette entries carry more than one of the seven §7 status tokens (not pairwise-distinct under 16-colour quantisation): #7f7f7f: archived, idle, stopped
+    matrix_status_quantization_test.go:75: matrix: the seven §7 status tokens quantise onto 5 distinct ReferencePalette entries, want 7 -- quantised map: map[archived:#7f7f7f error:#ff0000 idle:#7f7f7f running:#00ff00 starting:#00cdcd stopped:#7f7f7f waiting:#ffff00]
+    matrix_status_quantization_test.go:86: starting  authored #33aaff -> quantised #00cdcd
+    matrix_status_quantization_test.go:86: running   authored #00ff66 -> quantised #00ff00
+    matrix_status_quantization_test.go:86: waiting   authored #ffff33 -> quantised #ffff00
+    matrix_status_quantization_test.go:86: idle      authored #33cc66 -> quantised #7f7f7f
+    matrix_status_quantization_test.go:86: error     authored #ff3333 -> quantised #ff0000
+    matrix_status_quantization_test.go:86: stopped   authored #889988 -> quantised #7f7f7f
+    matrix_status_quantization_test.go:86: archived  authored #66aa77 -> quantised #7f7f7f
+FAIL
+FAIL	github.com/n-orlov/deck/internal/theme	0.004s
+FAIL

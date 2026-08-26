@@ -1,0 +1,29 @@
+1.78 2.58 3.21 2/4224 15693
+=== MUTATION: R73's help-text lines removed from helpText (everything else at HEAD) ===
+--- FAIL: TestEmptyAndHelpViewsAreDiscoverable (0.00s)
+    tui_test.go:89: help view missing "by exactly one line per"
+    tui_test.go:89: help view missing "a whole page per press, so consecutive"
+    tui_test.go:89: help view missing "pages share no line"
+    tui_test.go:89: help view missing "with mouse reporting on a wheel notch over the overlay does the same"
+    tui_test.go:89: help view missing "wheel over an overlay"
+    tui_test.go:89: help view missing "detail view by one line"
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.003s
+FAIL
+--- cmd/deck PTY ---
+--- FAIL: TestDeckBinaryEmptyHelpAndQuitThroughPTY (0.85s)
+    main_test.go:484: released help missing "by exactly one line per" through the real PTY:
+        |     signal" until a hook or sampled probe reports ready, while live shells   |[K
+    main_test.go:484: released help missing "a whole page per press, so consecutive" through the real PTY:
+        |     signal" until a hook or sampled probe reports ready, while live shells   |[K
+    main_test.go:484: released help missing "pages share no line" through the real PTY:
+        |     signal" until a hook or sampled probe reports ready, while live shells   |[K
+    main_test.go:484: released help missing "with mouse reporting on a wheel notch over the overlay does the same" through the real PTY:
+        |     signal" until a hook or sampled probe reports ready, while live shells   |[K
+    main_test.go:484: released help missing "wheel over an overlay" through the real PTY:
+        |     signal" until a hook or sampled probe reports ready, while live shells   |[K
+    main_test.go:484: released help missing "detail view by one line" through the real PTY:
+        |     signal" until a hook or sampled probe reports ready, while live shells   |[K
+FAIL
+FAIL	github.com/n-orlov/deck/cmd/deck	0.856s
+FAIL

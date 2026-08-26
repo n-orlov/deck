@@ -1,0 +1,32 @@
+# @steer-018-preview-fit-on-navigation A/B: is the SIGWINCH failure caused by fix 2?
+# command: ci/run.sh env DECK_GODOG_TAGS='@steer-018-preview-fit-on-navigation' go test -count=1 ./features/
+# 'fixed' = internal/interactive/grid.go with R68 fix 2; 'head' = f3c25d5's grid.go (fix 1 only).
+
+== fixed round1
+ok  	github.com/n-orlov/deck/features	23.275s
+
+== fixed round2
+ok  	github.com/n-orlov/deck/features	26.811s
+
+== fixed round3
+ok  	github.com/n-orlov/deck/features	23.977s
+
+== head round1
+ok  	github.com/n-orlov/deck/features	23.353s
+
+== head round2
+FAIL	github.com/n-orlov/deck/features	24.055s
+
+== head round3
+FAIL	github.com/n-orlov/deck/features	24.757s
+    [1;31mafter scenario hook failed: fake "claude" agent received 1 SIGWINCH signals, want exactly 0
+[31mScenario: a fit is skipped below the 7-inner-row floor, and retried once the panel grows back above it[0m [1;30m#
+
+== earlier runs on the same host, load 3.5-5.5 (logs task002-godog-tagsubset.log)
+fixed: pass,fail,fail,fail(-v),fail,fail,pass  head: pass,pass
+
+== required tag subset, load ~1.5
+run1:
+ok  	github.com/n-orlov/deck/features	23.100s
+run2:
+ok  	github.com/n-orlov/deck/features	23.464s

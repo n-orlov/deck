@@ -1,0 +1,159 @@
+package tui
+
+// TEMPORARY probe for task 014 (R73 report obligation): does any dialog
+// rendered through framedDialog (which, unlike framedDialogScrollable,
+// neither clips nor scrolls) produce a body taller than the frame at
+// 80x24? This file is deleted before the commit; its output is recorded in
+// artifacts/task014-r73-help-text-and-decisions.md.
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/store"
+)
+
+func probeBase(t *testing.T) Model {
+	t.Helper()
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 80, 24
+	return m
+}
+
+func probeSession() store.Session {
+	return store.Session{
+		ID: "s1", Name: "alpha", Agent: "claude", CWD: "/repo/alpha",
+		Status: "waiting", StatusReason: "needs input", StatusSource: "hook",
+		StatusAt: 1, PermissionProfile: "safe", ConversationID: "conv-123",
+	}
+}
+
+func TestProbeFramedDialogHeightsAt80x24(t *testing.T) {
+	manyEnv := func(n int) map[string]string {
+		env := make(map[string]string, n)
+		for i := 0; i < n; i++ {
+			env[fmt.Sprintf("VAR_%02d", i)] = fmt.Sprintf("value-%02d", i)
+		}
+		return env
+	}
+
+	cases := []struct {
+		name  string
+		setup func(m *Model)
+	}{
+		{"env editor, 3 variables", func(m *Model) {
+			s := probeSession()
+			s.Env = manyEnv(3)
+			m.sessions = []store.Session{s}
+			m.envEditing = true
+		}},
+		{"env editor, 15 variables", func(m *Model) {
+			s := probeSession()
+			s.Env = manyEnv(15)
+			m.sessions = []store.Session{s}
+			m.envEditing = true
+		}},
+		{"env editor, 16 variables", func(m *Model) {
+			s := probeSession()
+			s.Env = manyEnv(16)
+			m.sessions = []store.Session{s}
+			m.envEditing = true
+		}},
+		{"env editor, 24 variables", func(m *Model) {
+			s := probeSession()
+			s.Env = manyEnv(24)
+			m.sessions = []store.Session{s}
+			m.envEditing = true
+		}},
+		{"env editor, 60 variables", func(m *Model) {
+			s := probeSession()
+			s.Env = manyEnv(60)
+			m.sessions = []store.Session{s}
+			m.envEditing = true
+		}},
+		{"rename", func(m *Model) {
+			m.sessions = []store.Session{probeSession()}
+			m.detail, m.renaming = true, true
+			m.renameValue = strings.Repeat("long-name-", 12)
+		}},
+		{"create, untouched defaults", func(m *Model) {
+			m.creating = true
+			m.createAgent = "shell"
+		}},
+		{"create, every field filled plus an error", func(m *Model) {
+			m.creating = true
+			m.createName = "my session"
+			m.createCWD = "/work/infra/some/deeply/nested/path"
+			m.createAgent = "claude"
+			m.createLaunchArgs = "--flag one --flag two"
+			m.createEnv = "A=1 B=2 C=3"
+			m.createPreLaunch = "source ./secrets.env"
+			m.createLoginShell = true
+			m.createError = "cwd does not exist"
+		}},
+		{"restart choice", func(m *Model) {
+			s := probeSession()
+			s.Agent = "shell"
+			m.sessions = []store.Session{s}
+			m.restartChoosing = true
+			m.restartChoiceValue = "restart"
+			m.restartChoiceNote = "a note"
+		}},
+		{"delete confirm, purge chosen with a path", func(m *Model) {
+			m.sessions = []store.Session{probeSession()}
+			m.deleteConfirming = true
+			m.deletePurgeValue = "purge"
+			m.deletePurgeOK = true
+			m.deletePurgePath = "/home/user/.claude/projects/repo-alpha/conv-123.jsonl"
+			m.deleteNote = "a note"
+		}},
+		{"bulk delete confirm, 20 marked", func(m *Model) {
+			sessions := make([]store.Session, 0, 20)
+			marked := map[string]bool{}
+			for i := 0; i < 20; i++ {
+				s := probeSession()
+				s.ID = fmt.Sprintf("s%02d", i)
+				s.Name = fmt.Sprintf("row-%02d", i)
+				sessions = append(sessions, s)
+				marked[s.ID] = true
+			}
+			m.sessions = sessions
+			m.marked = marked
+			m.deleteConfirming = true
+		}},
+		{"archive confirm, not stopped", func(m *Model) {
+			m.sessions = []store.Session{probeSession()}
+			m.archiveConfirming = true
+			m.archiveNote = "a note"
+		}},
+		{"profile switch", func(m *Model) {
+			m.sessions = []store.Session{probeSession()}
+			m.profileSwitching = true
+			m.profileSwitchValue = "safe"
+		}},
+		{"pin", func(m *Model) {
+			m.sessions = []store.Session{probeSession()}
+			m.pinning = true
+			m.pinValue = "auto"
+		}},
+		{"settings takeover", func(m *Model) {
+			m.settingsOpen = true
+		}},
+	}
+
+	for _, c := range cases {
+		m := probeBase(t)
+		c.setup(&m)
+		_, frameHeight := m.frameSize()
+		view := m.View()
+		n := len(strings.Split(view, "\n"))
+		verdict := "fits"
+		if n > frameHeight {
+			verdict = "OVERFLOWS"
+		}
+		t.Logf("%-42s rendered %3d lines, frame height %2d, viewport height %2d -> %s",
+			c.name, n, frameHeight, m.height, verdict)
+	}
+}

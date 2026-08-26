@@ -1,0 +1,9 @@
+run1 exit=0 loadavg=1.35 1.85 2.21 1/4146 19865 msg=
+run2 exit=0 loadavg=1.22 1.81 2.19 37/4135 19918 msg=
+run3 exit=0 loadavg=2.73 2.12 2.29 15/4186 19972 msg=
+run4 exit=0 loadavg=3.23 2.28 2.34 15/4159 20026 msg=
+run5 exit=0 loadavg=2.89 2.23 2.33 12/4139 20077 msg=
+run6 exit=0 loadavg=2.61 2.19 2.31 23/4208 20126 msg=
+run7 exit=0 loadavg=2.60 2.20 2.31 27/4160 20177 msg=
+run8 exit=0 loadavg=3.10 2.33 2.35 18/4171 20228 msg=
+DONE
