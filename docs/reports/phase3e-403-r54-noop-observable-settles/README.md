@@ -49,9 +49,11 @@ None of these three files were touched by this task.
   leave-then-re-enter than a value mismatch would have been.
 - `mutant-reverted-clean-tag-alone-green.log`: mutation reverted (`git checkout -- internal/tui/mouse.go`,
   `git diff` empty), same tag-alone run — green again.
-- `r54-retarget-scenario-green.log`: the sibling `@requirement-54-sidebar-click-retargets-interactive-mode`
-  scenario (no waits, never had any) still green — confirms the new `clientPreviewTopBorderContains`
-  poll didn't regress it.
+- `retarget-tag-alone-3x/r54-retarget-run-{1,2,3}.log`: the sibling
+  `@requirement-54-sidebar-click-retargets-interactive-mode` scenario (no waits, never had any) run tag-alone
+  3 consecutive times — confirms the new `clientPreviewTopBorderContains` poll (site 1's fix, which this
+  scenario also exercises) didn't regress it and isn't flaky either. Both `@requirement-54-*` tags now each
+  have 3-consecutive-green tag-alone evidence, per the criterion.
 - `internal-tui-package.log`: `ci/run.sh go test -count=1 ./internal/tui/` — `ok`.
 
 ## Verification
