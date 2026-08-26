@@ -7,7 +7,7 @@ import (
 )
 
 // Task 310 (R53 follow-up): settingsAssertFieldRoundTrips (task 018,
-// settings_task018_test.go) proves every schema field's kind-specific
+// settings_schema_parity_test.go) proves every schema field's kind-specific
 // get/set pair round-trips through a bare config.FileConfig. That is a
 // different code path from settingsEditsFromSettings (settings.go), the
 // function settingsSave() actually calls to turn the *running* Model's
