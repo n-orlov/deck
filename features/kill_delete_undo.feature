@@ -475,6 +475,44 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And the state database contains session "archive-running" with status "stopped"
     When deck client "A" exits cleanly
 
+  @requirement-27-archive-confirm-writes-nothing
+  Scenario: A on a running session opens a confirm that names the kill and writes nothing until it is confirmed
+    # R72 (issue #10, SPEC.md:752): the keypress that lost the operator a
+    # working session. `A` is Shift+a and `a` is attach, so the press itself
+    # must write NOTHING -- the agent stays alive and archived_at stays 0 --
+    # and the dialog must say in as many words that confirming kills it.
+    # A second `A` inside the dialog is not a keymap key: the confirm
+    # suppresses the bare-letter keymap, so it changes nothing either.
+    Given deck client "A" is started
+    And deck client "A" creates shell session "archive-confirm-live"
+    When deck client "A" presses A on its selected session "archive-confirm-live"
+    Then deck client "A" screen contains "kills the live agent"
+    And the private tmux session "deck_archive-confirm-live" exists
+    And the state database session "archive-confirm-live" is not archived
+    When deck client "A" presses "A" again inside the archive confirm for "archive-confirm-live"
+    Then the private tmux session "deck_archive-confirm-live" exists
+    And the state database session "archive-confirm-live" is not archived
+    When deck client "A" closes the dialog with escape
+    Then deck client "A" screen contains "archive-confirm-live"
+    And the private tmux session "deck_archive-confirm-live" exists
+    And the state database session "archive-confirm-live" is not archived
+    When deck client "A" exits cleanly
+
+  @requirement-27-archive-confirm-kills-and-archives
+  Scenario: confirming the archive dialog lands both the kill and the archived flag
+    # The other half of R72: the confirm is not a dead end -- Enter performs
+    # exactly the kill-and-archive the dialog described, and the row leaves
+    # the default list.
+    Given deck client "A" is started
+    And deck client "A" creates shell session "archive-confirm-submit"
+    When deck client "A" presses A on its selected session "archive-confirm-submit"
+    Then the state database session "archive-confirm-submit" is not archived
+    When deck client "A" submits the open dialog
+    Then the private tmux session "deck_archive-confirm-submit" does not exist
+    And the state database session "archive-confirm-submit" is archived
+    And deck client "A" screen does not contain "archive-confirm-submit"
+    When deck client "A" exits cleanly
+
   @requirement-28-mark-bulk-actions
   Scenario: m marks a batch by session id, x kills every marked non-stopped session, and one u undoes the whole batch
     Given deck client "A" is started with a short undo window

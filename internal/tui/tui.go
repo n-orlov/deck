@@ -207,7 +207,19 @@ type Model struct {
 	deletePurgeValue string
 	deletePurgePath  string
 	deletePurgeOK    bool
-	profileSwitch    func(context.Context, string, string) (store.Session, error)
+	// archiveConfirming is R72's `A` confirm dialog (issue #10,
+	// SPEC.md:752): `A` writes NOTHING on the keypress -- it only opens
+	// this dialog, and the dialog's own Enter is the first thing that ever
+	// reaches archiveSvc, so the kill a live row's archive performs is
+	// never a single unconfirmed keystroke (`a`, attach, is one Shift
+	// away). archiveNote surfaces a failed submit without closing the
+	// dialog, exactly as deleteNote does above. Modelled on
+	// deleteConfirming throughout: same dialog contract
+	// (applyDialogContract), same suppression of the bare-letter keymap and
+	// of the mouse while it is open.
+	archiveConfirming bool
+	archiveNote       string
+	profileSwitch     func(context.Context, string, string) (store.Session, error)
 	selected         int
 	// pendingSelectSessionID is requirement 52's one-shot "select the
 	// session I just created" intent: submitCreate's shellCreated success
@@ -1523,9 +1535,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadSessions
 	case sessionArchived:
 		if msg.err != nil {
+			// R72: a failed submit stays in the dialog and says why, exactly as
+			// sessionDeleted's own failure does with deleteNote -- closing the
+			// dialog on failure would leave the operator with a vanished dialog
+			// and an unarchived row.
+			m.archiveNote = "Cannot archive: " + msg.err.Error()
 			m.attachError = "Cannot archive: " + msg.err.Error()
 			return m, nil
 		}
+		m.archiveConfirming = false
+		m.archiveNote = ""
 		m.attachError = ""
 		return m, m.loadSessions
 	case sessionDeleted:
@@ -1927,6 +1946,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.deleteConfirming {
 			return m.updateDeleteConfirm(msg)
 		}
+		// R72 (issue #10): the archive confirm intercepts every key while it
+		// is open, exactly as deleteConfirming above does -- which is what
+		// makes a second `A` inside the dialog a no-op rather than a
+		// re-entrant archive, and what keeps `x`/`dd`/`r` from acting on the
+		// row the dialog is asking about.
+		if m.archiveConfirming {
+			return m.updateArchiveConfirm(msg)
+		}
 		if m.settingsOpen {
 			return m.updateSettings(msg)
 		}
@@ -2135,22 +2162,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "A":
-			// SPEC requirement 27: on a stopped row this only sets archived_at;
-			// on any other row it kills the live pane first and archives in the
-			// same action ("kill and archive", §4's invariant) rather than
-			// refusing the keypress the way x refuses an already-stopped row --
-			// archiveSvc (internal/service.Service.Archive) makes that decision,
-			// never this switch.
+			// R72 (issue #10), SPEC.md:752: `A` writes NOTHING on the keypress.
+			// It only opens the confirm dialog below, whose Enter then performs
+			// SPEC requirement 27's archive: on a stopped row that only sets
+			// archived_at; on any other row archiveSvc
+			// (internal/service.Service.Archive) kills the live pane first and
+			// archives in the same action ("kill and archive", §4's invariant)
+			// rather than refusing the keypress the way x refuses an
+			// already-stopped row -- that decision stays archiveSvc's, never
+			// this switch's, and the dialog says so in as many words before
+			// anything is written. `A` is deliberately NOT rebound and grows no
+			// chord here (the operator declined both): the confirm alone is what
+			// stops `A` -- one Shift away from `a`, attach -- from killing a live
+			// agent on a single keystroke.
 			if m.archiveSvc == nil || len(m.sessions) == 0 {
 				if len(m.sessions) > 0 {
 					m.attachError = "Archiving is unavailable"
 				}
 				return m, nil
 			}
-			session := m.sessions[m.selected]
-			return m, func() tea.Msg {
-				return sessionArchived{session: session, err: m.archiveSvc(context.Background(), session)}
-			}
+			m.archiveConfirming = true
+			m.archiveNote = ""
+			return m, nil
 		case "U":
 			// R71 (issue #8), SPEC.md:323-332: `A` is reversible, so `U`
 			// clears archived_at on the selected row. It acts on m.sessions --
@@ -2519,7 +2552,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.eventLogOpen || m.filtering || m.interactive {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -2653,6 +2686,9 @@ func (m Model) View() string {
 	}
 	if m.deleteConfirming && len(m.sessions) > 0 {
 		return m.deleteConfirmView()
+	}
+	if m.archiveConfirming && len(m.sessions) > 0 {
+		return m.archiveConfirmView()
 	}
 	if m.settingsOpen {
 		return m.settingsView()
@@ -4055,6 +4091,82 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateArchiveConfirm handles keys while R72's `A` confirm dialog is open
+// (issue #10, SPEC.md:752). It is deliberately deleteConfirming's shape with
+// one field fewer: no navigable fields at all (archiving offers no purge
+// choice and no options -- SPEC.md:751 keeps purge to the delete confirm
+// alone), so only Esc (cancel, writes nothing) and Enter (submit: kill the
+// live pane if any, then set archived_at) are contract keys, exactly as
+// updateBulkDeleteConfirm's own nil Cycle already handles. Every other key
+// -- including a second `A`, `x`, `dd` or `r` -- is swallowed here rather
+// than reaching the bare-letter keymap, which is what "the dialog suppresses
+// the keymap" means in this codebase and why nothing surprising happens
+// inside it.
+func (m Model) updateArchiveConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if len(m.sessions) == 0 {
+		m.archiveConfirming = false
+		m.archiveNote = ""
+		return m, nil
+	}
+	session := m.sessions[m.selected]
+	cmd, handled := applyDialogContract(msg, dialogContract{
+		Cancel: func() {
+			m.archiveConfirming = false
+			m.archiveNote = ""
+		},
+		Submit: func() tea.Cmd {
+			if m.archiveSvc == nil {
+				m.archiveNote = "archiving is unavailable"
+				return nil
+			}
+			archiveSvc := m.archiveSvc
+			return func() tea.Msg {
+				return sessionArchived{session: session, err: archiveSvc(context.Background(), session)}
+			}
+		},
+	})
+	if handled {
+		return m, cmd
+	}
+	return m, nil
+}
+
+// archiveConfirmView renders R72's `A` confirm (issue #10). Per SPEC.md:752
+// and §11.4's pre-existing dialog rule at :1248 ("the confirmation names the
+// target and what will survive it") it names the session, says what survives
+// -- the whole record, reachable again through `/` and reversible with `U` --
+// and, when the row is not stopped, states in as many words that confirming
+// kills the live agent first. Nothing is written until Enter.
+func (m Model) archiveConfirmView() string {
+	return m.framedDialog(m.archiveConfirmBody())
+}
+
+// archiveConfirmBody builds archiveConfirmView's text before framedDialog's
+// box-width padTrunc touches it, split out for the same reason
+// deleteConfirmBody is: a test can assert the exact wording (above all the
+// live-agent sentence, which is the whole point of this dialog) without a
+// terminal-rendering concern in between. The live-agent sentence is keyed on
+// the row's own Status, never on a cached flag: `A` on a stopped row writes
+// only archived_at, so promising a kill there would be a lie in the other
+// direction.
+func (m Model) archiveConfirmBody() string {
+	session := m.sessions[m.selected]
+	var b strings.Builder
+	fmt.Fprintf(&b, "Archive %s\n\n", session.Name)
+	if session.Status != "stopped" {
+		fmt.Fprintf(&b, "This session is %s, not stopped: confirming kills the live agent\nfirst and archives it in the same action.\n\n", session.Status)
+	}
+	b.WriteString("Archiving keeps the record and hides the row from the default list.\nIt survives, untouched:\n")
+	fmt.Fprintf(&b, "%s\n", m.detailField("Conversation:       ", session.ConversationID))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+	b.WriteString("\nThe / filter is where an archived row is found again, and U there\nunarchives it. Nothing is written until you confirm.\n")
+	b.WriteString("\nEnter archives · Esc cancels\n")
+	if m.archiveNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.archiveNote)
+	}
+	return b.String()
+}
+
 // deleteConfirmView renders task 105's second-`d` confirm dialog. It states
 // plainly what dd does NOT destroy -- the conversation id and the working
 // directory both survive -- and, since task 110, offers "purge" as an
@@ -5167,11 +5279,12 @@ Keys
     cleared, back in the list); once the window expires the row is reaped
     and u does nothing
   A archive the selected session, hidden from the default list from then
-    on: on a stopped row this only sets archived_at; on any other row it
-    offers "kill and archive" as a single action rather than refusing the
-    keypress the way x refuses an already-stopped row; archived_at is a flag,
-    never a status, so the row keeps whatever status it had; U below is the
-    way back
+    on: a confirm dialog opens first, naming the session -- and, on a row
+    that is not stopped, saying that confirming does "kill and archive" as
+    a single action rather than refusing the keypress the way x refuses an
+    already-stopped row; nothing is written until you confirm;
+    archived_at is a flag, never a status, so the row keeps whatever status
+    it had; U below is the way back
   U unarchive the selected archived row: clears archived_at so the row
     returns to the default list, keeping whatever status it had (a session
     killed on its way into the archive comes back stopped -- r resumes it

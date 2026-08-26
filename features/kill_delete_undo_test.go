@@ -41,6 +41,8 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the transcript captured as "([^"]+)" still exists byte-identical$`, transcriptCapturedStillExistsByteIdentical)
 	sc.Step(`^the transcript captured as "([^"]+)" no longer exists$`, transcriptCapturedNoLongerExists)
 	sc.Step(`^deck client "([^"]+)" archives its selected session "([^"]+)"$`, clientArchivesSelectedSession)
+	sc.Step(`^deck client "([^"]+)" presses A on its selected session "([^"]+)"$`, clientPressesArchiveOnSelectedSession)
+	sc.Step(`^deck client "([^"]+)" presses "([^"]+)" again inside the archive confirm for "([^"]+)"$`, clientPressesKeyAgainInsideArchiveConfirm)
 	sc.Step(`^the state database session "([^"]+)" is archived$`, stateDatabaseSessionIsArchived)
 	sc.Step(`^the state database session "([^"]+)" is not archived$`, stateDatabaseSessionIsNotArchived)
 }
@@ -453,13 +455,46 @@ func stateDatabaseSessionIsNotTombstoned(ctx context.Context, name string) error
 	return nil
 }
 
-// clientArchivesSelectedSession sends `A` -- SPEC requirement 27's archive
-// key (task 111) -- and waits until the now-archived row's name is gone
-// from the screen: whether it was already stopped (archived_at set alone)
-// or not (kill-and-archive as one action), an archived row is hidden from
-// ListSessions' default view, so the render this waits for is exactly the
-// one requirement 27 requires.
+// clientArchivesSelectedSession drives R72's REAL confirm dialog (issue #10,
+// SPEC.md:752) end to end through the keymap: a real `A` keypress, an
+// assertion that the confirm naming this session is actually up (so the
+// keypress genuinely went through the keymap and opened the dialog rather
+// than being swallowed), the real confirm key, and only then the wait for the
+// row to leave the frame. It deliberately does NOT call the archive service
+// directly and does NOT auto-confirm behind the scenes: either shortcut would
+// leave the confirm untested by every scenario except its own, which is the
+// repair the PRD calls out as failing review.
+//
+// Whether the row was already stopped (archived_at set alone) or not
+// (kill-and-archive as one action), an archived row is hidden from
+// ListSessions' default view, so the render this ends on is exactly the one
+// requirement 27 requires -- and it also proves the dialog itself closed,
+// since the dialog names the session too.
 func clientArchivesSelectedSession(ctx context.Context, name, sessionName string) error {
+	if err := clientPressesArchiveOnSelectedSession(ctx, name, sessionName); err != nil {
+		return err
+	}
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return client.WaitForFrameGone(wait, false, sessionName)
+}
+
+// clientPressesArchiveOnSelectedSession is the first half alone: press `A`
+// and wait for the confirm that names the session, writing nothing. It is its
+// own step so a scenario can assert what the unconfirmed keypress did NOT do
+// -- the whole point of R72.
+func clientPressesArchiveOnSelectedSession(ctx context.Context, name, sessionName string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -473,7 +508,40 @@ func clientArchivesSelectedSession(ctx context.Context, name, sessionName string
 	}
 	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	return client.WaitForFrameGone(wait, false, sessionName)
+	return client.WaitForFrame(wait, false, "Archive "+sessionName)
+}
+
+// clientPressesKeyAgainInsideArchiveConfirm proves the dialog suppresses the
+// bare-letter keymap while open: the key is sent for real, then the harness
+// waits for the pty to go quiet (the same quiescence wait
+// clientCapturesSettledFrameAs uses -- a key the TUI deliberately ignores
+// produces no render to wait ON, so "nothing happened" can only be asserted
+// once any in-flight render has landed) and the confirm must still be up,
+// naming the same session. The scenario pairs this with a database assertion
+// that nothing was written.
+func clientPressesKeyAgainInsideArchiveConfirm(ctx context.Context, name, key, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send(key); err != nil {
+		return err
+	}
+	frame, err := client.WaitForQuiescence(ctx, false, captureSettledQuietWindow)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(frame, "Archive "+sessionName) {
+		return fmt.Errorf("%q inside the archive confirm left the dialog for %q:\n%s", key, sessionName, frame)
+	}
+	if !strings.Contains(frame, "Enter archives") {
+		return fmt.Errorf("%q inside the archive confirm dropped the confirm's own keys:\n%s", key, frame)
+	}
+	return nil
 }
 
 // sessionArchivedAt/stateDatabaseSessionIsArchived/
