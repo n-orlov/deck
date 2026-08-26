@@ -4,6 +4,16 @@ Per `prds/phase3e-list-ergonomics-and-chrome.md`'s deliverables list and task 32
 criteria: every PRD claim found wrong, every SPEC ambiguity hit, and every defect found but not
 fixed (with the reason), so none of it is left only in a commit message.
 
+**Correction (task 409, this section)**: §4a below previously described a gap in task 314's no-op
+scenario as an open, unfixed defect. That description went stale the moment tasks 401-403/411 (a
+later repair pass, `/run/ralphd/tasks.json` ids 401-411) landed a real fix — leaving it as written
+would have made this document assert something `docs/reports/phase3e.md`'s own R54 section now
+contradicts. §4a is rewritten below to describe the current, post-fix state; the stale claim is
+quoted verbatim first so the correction is traceable. A further finding from that same repair pass
+(task 406's residual `previewFit` re-entrancy hazard) is added as new §4e; task 401's own refuted
+mutant hypothesis is folded into the §4a rewrite itself, since it is part of that same
+investigation's narrative.
+
 ## 1. PRD claim found wrong
 
 ### R56's named "exactly one dark and one light" trap does not exist
@@ -93,31 +103,78 @@ looked most likely to need one turned out not to.
 
 ## 4. Defects found but not fixed, with reasons
 
-### 4a. Task 314's no-op scenario does not independently discriminate task 313's absence
+### 4a. Task 314's no-op scenario's tag-alone discrimination gap — found (401), fixed (402/403), no longer an open defect
 
-`features/mouse.feature`'s `@requirement-54-sidebar-click-on-interactive-row-is-a-no-op` scenario
-(commit `d55f174`) is structured as two sessions: it first retargets interactive mode from session
-A to session B (exercising task 313's retarget path as a precondition), then clicks B's own
-already-interactive row to exercise the true no-op branch. This makes the scenario's own red proof
-against a reverted task 313 (`git revert --no-commit e6e1af3`) depend on running in the **same**
-suite invocation as its sibling retargeting scenario (`@requirement-54-sidebar-click-retargets-
-interactive-mode`) — the retargeting precondition itself fails first and loudly
-(`timed out waiting for frame "> retarget-noop-b"`), which is a real, deterministic red proof, but
-only in that combined run. Run alone, with only the no-op scenario's own tag, against reverted code:
-the scenario passes, because pre-313 code treats *every* sidebar click while interactive as a
-passive no-op regardless of whether the row is the current target, so a scenario that never gets
-past B's own already-passing precondition trivially satisfies the no-op assertion too.
+**Stale claim, quoted verbatim** (this is what this section said before task 409's correction, and
+is no longer true of the current tree):
 
-This is recorded in task 314's own `validationNotes` in `tasks.json` (two independent validation
-passes reproduced it identically) and is not being re-litigated here: task 314's validation
-attempts (2) are exhausted, and per this loop's own rule a task standing `completed` despite a
-recorded validation gap is left as history rather than reopened without new information. A
-follow-up task shape was proposed twice in `tasks.json` (restructure the no-op scenario's
-assertion to key off behaviour pre-313 code visibly and differently lacks, rather than a
-claim/geometry channel pre-313's blanket no-op leaves untouched either way) but was never picked
-up as a numbered task in this plan. `internal/tui`'s three unit tests for the same retarget/no-op
-logic (`internal/tui/mouse_interactive_retarget_test.go`) are unaffected by this gap — they test
-the production code path directly, not through the two-scenario coupling.
+> `features/mouse.feature`'s `@requirement-54-sidebar-click-on-interactive-row-is-a-no-op` scenario
+> (commit `d55f174`) is structured as two sessions: it first retargets interactive mode from
+> session A to session B (exercising task 313's retarget path as a precondition), then clicks B's
+> own already-interactive row to exercise the true no-op branch. [...] Run alone, with only the
+> no-op scenario's own tag, against reverted code: the scenario passes, because pre-313 code treats
+> *every* sidebar click while interactive as a passive no-op regardless of whether the row is the
+> current target, so a scenario that never gets past B's own already-passing precondition trivially
+> satisfies the no-op assertion too. [...] task 314's validation attempts (2) are exhausted [...]
+> left as history rather than reopened without new information.
+
+**What was wrong about it, and why:** the claim was an accurate description of the tree as it stood
+after task 314 (approach 01), but it described a symptom, not a durable fact about the scenario's
+wording — the wording (`mouse.feature`'s existing `@deck_isize_owner` ownership-claim assertions,
+lines 131/136) already asserted the right thing. The actual defect was one call site away: the test
+helper `features/mouse_bindings_test.go`'s `locateText`, used to find "the row containing session
+X" for the click's target coordinates, scanned the **entire rendered frame**, and once session B
+became the interactive target, its name also appeared in the preview panel's own top border (frame
+row 0) — which the whole-frame scan matched *before* reaching the sidebar's own row. So the
+scenario's second, supposedly-no-op click never actually landed on the sidebar at all: it resolved
+to `hitPanelPreview`, and the guard the scenario meant to discriminate
+(`Model.retargetInteractiveSidebarClick`'s own-row check, `internal/tui/mouse.go`) was unreachable
+dead code from that click, tag-alone or not. This is why the claim's own review evidence (the
+reverted-task-313 run, tag alone) genuinely *did* pass under a deleted guard — the click machinery
+feeding the scenario was broken, independent of what the assertion said.
+
+This was root-caused by direct observation, not reasoning: task 401
+(`docs/reports/phase3e-401-r54-noop-discriminator/`, commit `b358361`) added file-based
+instrumentation (stderr is swallowed on a passing godog run) to trace which `hitPanel*` target the
+second click actually resolved to, and confirmed the frame-row-0 preview-border collision directly.
+The same investigation checked, and refuted, the planner's own working hypothesis recorded in
+`tasks.json`'s `discovered.r54MutantHypothesis` (that a tmux window-ownership claim silently stands
+down across a mutant leave-and-re-enter, making both the option value and the frame indistinguishable
+from a true no-op): direct `tmux show-options` observation under the mutant showed the ownership
+option is simply never touched a second time, because the click that would have touched it never
+arrives — the hypothesised channel was never the mechanism.
+
+**Fix (task 402, `docs/reports/phase3e-402-r54-noop-sidebar-scoped-click/`, commit `bc6bc84`):**
+added a `sidebarRegion()` helper (reusing the existing `detectLayoutMode`/`seamColumn` layout
+probes) that bounds `locateText`'s search to the sidebar panel's own rows/columns, so the second
+click can no longer be stolen by text that happens to appear in the preview's border once the
+target session becomes the interactive one. `mouse.feature` itself was **not** changed — its
+existing ownership-claim assertions already said exactly what was required; only the click's own
+aim was broken. Task 403 (`docs/reports/phase3e-403-r54-noop-observable-settles/`, commit
+`748bc80`, follow-up `517bf57`) separately replaced the scenario's three `milliseconds pass`
+fixed-duration waits with observable-consequence polls, and both `@requirement-54-*` tags are now
+proven green 3 consecutive times each, tag-alone. Task 411
+(`docs/reports/phase3e-411-locatetext-preview-region/`, commit `75861e0`) then fixed a regression
+task 402's `sidebarRegion` narrowing introduced in two unrelated files that called the same shared
+`locateText` needing the *preview* pane instead (`features/interactive_scroll_test.go`,
+`features/interactive_selection_test.go`) — added a mirror-image `previewRegion`/
+`locatePreviewText`, leaving `sidebarRegion`/`locateText` themselves untouched.
+
+**Current state, no longer a gap:** the no-op scenario now discriminates task 313's absence on its
+own, run tag-alone, with no pairing needed. Proof: `git revert --no-commit e6e1af3` (task 313's
+whole feature), then `ci/run.sh sh -c 'DECK_GODOG_TAGS=@requirement-54-sidebar-click-on-interactive-
+row-is-a-no-op go test -count=1 -v -run TestFeatures ./features/'` exits **1** — red at the retarget
+precondition step (`mouse.feature:129`, `deck client "A" does not have session "retarget-noop-b"
+selected: timed out waiting for frame "> retarget-noop-b": context deadline exceeded`), exactly as
+the scenario's own comment predicts, not at a coincidental later step
+(`docs/reports/phase3e-402-r54-noop-sidebar-scoped-click/revert-e6e1af3-tag-alone.log`). Task 314
+still stands `completed` in `tasks.json`, unchanged — the gap its own `validationNotes` recorded is
+what 401/402 above closed, tracked as new tasks in their own right rather than by reopening 314.
+`internal/tui`'s three unit tests for the same retarget/no-op logic
+(`internal/tui/mouse_interactive_retarget_test.go`) were never affected by this gap either way —
+they test the production code path directly, not through the godog scenario's click machinery.
+`docs/reports/phase3e.md`'s R54 section (task 409, same correction) carries the mirrored,
+non-duplicated version of this narrative.
 
 ### 4b. Matrix's 16-colour quantised idle/stopped/archived tokens are legible but not pairwise-distinct
 
@@ -232,6 +289,28 @@ root-caused to host CPU contention slipping the settle window, not a product bug
 items 1-2). Listed here for completeness, not as an unfixed defect in the product: no code change
 was warranted or made, and neither scenario was weakened, skipped, or tag-excluded.
 
+### 4e. `Model.previewFit` can re-fire for the same session before the previous invocation lands (found in task 406, not fixed)
+
+Found while root-causing the whole-suite-only `DECK_MOUSE=0` frame-race (task 406,
+`docs/reports/phase3e-406-mouse-off-frame-race/README.md` §7, commit `668a94c`): at an artificially
+large single `resize-window` delay (0.5s, double the 250ms reconcile interval), `Model.previewFit`
+can re-fire for the same still-selected session on the very next `previewTick` before the
+*previous* invocation's `previewFitDone` has arrived and updated `previewFitSessionID`
+(`internal/tui/tui.go:1804-1810` — the guard at `tui.go:1280` compares against that field, but
+nothing prevents a second `previewFit()` `tea.Cmd` from being scheduled while the first is still in
+flight), producing overlapping `FitWindowToPane` invocations for the same session. This is a
+genuine, if narrow, timing hazard in the product code itself, not just the test harness — but at
+production's real default cadence (`DefaultPreviewMS` = 250ms, `DefaultReconcileMS` = 500ms,
+`internal/config/config.go:23-24`, five and two times the reproduction scenario's aggressive
+50ms/250ms test cadence) and `resize-window`'s normal sub-millisecond local-tmux latency, the window
+for this to matter in practice is far narrower than what task 406's delay sweep needed to hit it
+twice in 21 runs. Not fixed: task 406's scope was the reported test flake (fixed with a
+scenario-scoped `WaitForQuiescence`, not a product change), not a speculative product hardening
+pass, and no task in 401-411's plan was shaped to cover it. Left as a residual, narrow re-entrancy
+hazard for a future task to pick up (guard `previewFit` scheduling itself against a still-in-flight
+invocation for the same session, e.g. a boolean/generation counter alongside `previewFitSessionID`),
+not addressed here.
+
 ## Cross-references
 
 - `docs/reports/phase3e.md` — the full per-requirement evidence table (R52-R62), including every
@@ -242,6 +321,13 @@ was warranted or made, and neither scenario was weakened, skipped, or tag-exclud
   same iteration that closed task 325's validation gap — not listed under §4 above because it was
   fixed, with a real `sync.WaitGroup` join, commit `fb9bd71`, reproduced deliberately under induced
   contention).
+- `docs/reports/phase3e-401-r54-noop-discriminator/README.md`,
+  `docs/reports/phase3e-402-r54-noop-sidebar-scoped-click/README.md`,
+  `docs/reports/phase3e-403-r54-noop-observable-settles/README.md`,
+  `docs/reports/phase3e-406-mouse-off-frame-race/README.md`,
+  `docs/reports/phase3e-411-locatetext-preview-region/README.md` — the repair-pass reports §4a and
+  §4e above draw on (tasks 401-403, 406, 411; approach 02's repair pass over the tree these findings
+  otherwise describe).
 - `/run/ralphd/steering/001-steer-3e-001-event-log.md`, `/run/ralphd/steering/002-steer-3e-002-
   navigation-settle.md` — the two operator steers this phase actioned/queued; `notes.md`'s
   "Steering" sections carry the durable summaries.

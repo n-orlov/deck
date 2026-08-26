@@ -270,17 +270,53 @@ With task 313 present: `ci/run.sh sh -c 'DECK_GODOG_TAGS="@requirement-54-sideba
 (25.4s). `features/interactive_selection.feature` untouched (`git diff
 --stat` empty).
 
-**Known anomaly, left untouched, out of scope for 326**: this task carries a
-recorded validation finding (`tasks.json`'s `validationNotes` on task 314)
-that the no-op scenario, run in isolation with only itself
-(`@requirement-54-sidebar-click-on-interactive-row-is-a-no-op` alone, not
-paired with the retargeting scenario in the same suite run), does not go red
-against a reverted task 313 — the two-session restructuring in `d55f174`
-makes the no-op scenario's own red proof depend on the retargeting scenario
-having already been shown capable of detecting 313's absence in the same
-run, per that scenario's `validationNotes`. Recorded here rather than
-re-litigated; task 314 stands `completed` in `tasks.json` per prior worker
-decisions, unchanged by this report task.
+**Anomaly above, root-caused and fixed (tasks 401, 402, 403, 411 — current
+state, supersedes the paragraph above)**: task 401 (`b358361`) root-caused
+the tag-alone gap by direct observation rather than reasoning: it was never
+the scenario's own assertions (the `@deck_isize_owner` ownership-claim check
+at `mouse.feature:131`/`136` already said what was required) — the second,
+supposedly-no-op click never reached `retargetInteractiveSidebarClick` at
+all, because `features/mouse_bindings_test.go`'s `locateText` scanned the
+**whole frame** for the target session's name, and once that session was
+the interactive target its name also appeared in the preview panel's own
+top border (frame row 0), which the whole-frame scan matched *before* the
+sidebar's own row — so the click landed on `hitPanelPreview`, not
+`hitPanelSidebar`/`hitTargetRow`, and the guard under test was dead code
+from this scenario's second click regardless of tag-alone or paired. (The
+planner's alternative hypothesis in `tasks.json`'s `discovered.
+r54MutantHypothesis` — a window-ownership claim standing down across a
+leave-and-re-enter — was checked directly against `tmux show-options` output
+and refuted; it played no part in the real mechanism.) Task 402 (`bc6bc84`)
+fixed it by adding a `sidebarRegion()` helper (reusing `detectLayoutMode`/
+`seamColumn`) that bounds `locateText`'s search to the sidebar panel's own
+rows/columns, so the second click can no longer be stolen by the preview
+border; `mouse.feature`'s own assertions were not touched, since they
+already said the right thing. Task 403 (`748bc80`, follow-up `517bf57`)
+separately replaced the scenario's three `milliseconds pass` waits with
+observable-consequence polls and proved both `@requirement-54-*` tags green
+3 consecutive times each, tag-alone. Task 411 (`75861e0`) then fixed a
+regression 402's `sidebarRegion` narrowing introduced in two *other* files
+that called the same `locateText` needing the preview pane instead (added a
+mirror-image `previewRegion`/`locatePreviewText`; `sidebarRegion`/
+`locateText` themselves untouched). **Current proof, tag alone, no pairing
+required**: `git revert --no-commit e6e1af3` (task 313's whole feature),
+then `ci/run.sh sh -c 'DECK_GODOG_TAGS=@requirement-54-sidebar-click-on-
+interactive-row-is-a-no-op go test -count=1 -v -run TestFeatures ./features/'`
+exits 1 — red at the retarget precondition step (`mouse.feature:129`,
+`deck client "A" does not have session "retarget-noop-b" selected: timed
+out waiting for frame "> retarget-noop-b": context deadline exceeded`), as
+the scenario's own comment predicts — not a coincidental later step, and not
+dependent on the sibling retargeting scenario running in the same suite
+invocation. Full narrative and logs:
+[`phase3e-401-r54-noop-discriminator/README.md`](phase3e-401-r54-noop-discriminator/README.md),
+[`phase3e-402-r54-noop-sidebar-scoped-click/README.md`](phase3e-402-r54-noop-sidebar-scoped-click/README.md),
+[`phase3e-403-r54-noop-observable-settles/README.md`](phase3e-403-r54-noop-observable-settles/README.md),
+[`phase3e-411-locatetext-preview-region/README.md`](phase3e-411-locatetext-preview-region/README.md).
+Task 314 still stands `completed` in `tasks.json`, unchanged; the gap its
+own `validationNotes` recorded is what 401/402 above closed, tracked as
+tasks in their own right rather than by reopening 314.
+[`docs/reports/phase3e-findings.md`](phase3e-findings.md) §4a is the
+findings-doc side of this same correction (task 409).
 
 ## R55: single sidebar click selects and enters interactive mode (tasks 311, 312)
 
@@ -1029,17 +1065,20 @@ vet ./...` both clean.
 
 ## Per-requirement evidence table
 
-Every commit sha cited anywhere in this report (34 distinct shas, including
-the two protected-path shas `6584299`/`791e089`) resolves in this repository
-(`git cat-file -e <sha>`, checked while writing this table); every cited log
-path exists under `docs/reports/` at the paths given (both checked
-mechanically, not by eye).
+Every commit sha cited anywhere in this report (40 distinct shas as of task
+409's citation sweep, including the two protected-path shas `6584299`/
+`791e089`) resolves in this repository (`git cat-file -e <sha>`, checked
+mechanically via `docs/reports/phase3e-409-findings-4a-correction/
+citation-sweep.log`, not by eye); every cited log/report path exists under
+`docs/reports/` at the paths given, checked the same way. The count grows as
+later tasks add citations (401-411 alone added 7 new ones) — re-run the
+sweep rather than trusting this number after further edits.
 
 | Req | Short description | Tasks | Key commits | Non-vacuous test evidence | Revert-red proof |
 |---|---|---|---|---|---|
 | R52 | New session auto-selects its row by id, one-shot | 301, 302 | `d7f304d`, `b34ea92` | `internal/tui/new_session_select_test.go` (5 tests); `features/new_session_selection.feature` (2 scenarios, tag `@new-session-selection`) | Build fails with 301's tui.go reverted (field undefined); both scenarios fail red with 301 reverted — [`phase3e-302-r52-godog/red-task301-reverted.log`](phase3e-302-r52-godog/red-task301-reverted.log) |
 | R53 | `[ui] sort_order`: attention/created/activity/name, schema+comparators+render+live-apply+grouping | 303-310 | `cbf4eb5`,`893ff6e`,`bb18d5b`,`6a7e7ac`,`300bfb5`,`8f37a36`,`ae25f2a`,`9da97fe` | `internal/tui/sort_order_test.go`, `sort_order_render_test.go`, `sort_order_live_apply_test.go`; `features/sort_order.feature` (6 scenarios, tag `@sort-order`); the four differing sequences quoted in the R53 section above | Wrong-comparator stub red — [`phase3e-307-r53-orders/red-wrong-comparator-reverted.log`](phase3e-307-r53-orders/red-wrong-comparator-reverted.log); live-apply branch removed red (in commit message, `6a7e7ac`); grouping-preservation branch removed red (in commit message, `ae25f2a`) |
-| R54 | Sidebar click re-targets interactive mode; already-target row is a true no-op | 313, 314 | `e6e1af3`, `d55f174` | `internal/tui/mouse_interactive_retarget_test.go` (3 tests); `features/mouse.feature` `@requirement-54-*` (2 scenarios) | `git stash` of 313 red — in `e6e1af3`'s commit message; both scenarios red with 313 reverted — in `d55f174`'s commit message (see also the R54 section's "known anomaly" paragraph above: the no-op scenario's red proof is coupled to running alongside the retargeting scenario in the same suite invocation, per task 314's `validationNotes`) |
+| R54 | Sidebar click re-targets interactive mode; already-target row is a true no-op | 313, 314, 401, 402, 403, 411 | `e6e1af3`, `d55f174`, `b358361`, `bc6bc84`, `748bc80`, `517bf57`, `75861e0` | `internal/tui/mouse_interactive_retarget_test.go` (3 tests); `features/mouse.feature` `@requirement-54-*` (2 scenarios) | `git stash` of 313 red — in `e6e1af3`'s commit message; both scenarios red with 313 reverted — in `d55f174`'s commit message; the no-op tag run **alone** against `git revert --no-commit e6e1af3` red at the retarget precondition (`mouse.feature:129`) — `phase3e-402-r54-noop-sidebar-scoped-click/revert-e6e1af3-tag-alone.log` (see the R54 section's superseding paragraph above for the tag-alone coupling gap this closes) |
 | R55 | Single sidebar click both selects and enters interactive mode | 311, 312 | `8eba4d4`, `02a02cd` | `internal/tui/mouse_test.go` (rewritten); `features/mouse.feature` `@requirement-33-*` (2 rewritten scenarios) | `mouse.go`/`tui.go` reverted to `9da97fe` red — in `8eba4d4`'s commit message; reverted to `8eba4d4~1` red — in `02a02cd`'s commit message |
 | R56 | Three further built-in themes (matrix, cobalt, parchment), one-file-drop contract | 315, 316, 317 | `a02168a`, `7559666`, `bb6afec`, `78043ee` | `internal/theme/quantize_test.go` `TestBuiltinQuantizationPinned` (3 new entries); `internal/tui/matrix_status_tokens_test.go` `TestMatrixStatusTokensRenderAsSevenDistinctColours`; `features/theme_geometry_test.go` still green (2.02s, 5 themes) | idle/starting hex-collision in `matrix.toml` red — in `78043ee`'s commit message |
 | R57 | Seam + T-junctions follow either-panel-focused, not `previewBorderToken` alone | 318, 319 | `9c13b47`, `63c9e60` | `internal/tui/seam_border_test.go` (5 cases); `features/seam_focus.feature` (1 scenario, per-cell foreground token) | Old previewBorderToken-only logic red — in `9c13b47`'s commit message; feature-level red with `9c13b47` reverted — in `63c9e60`'s commit message |
