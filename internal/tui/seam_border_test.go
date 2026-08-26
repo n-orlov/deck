@@ -48,6 +48,126 @@ func frameTopRow(t *testing.T, m Model, view string) int {
 	return -1
 }
 
+// frameBottomRow is frameTopRow's mirror: it locates the row the frame's
+// own bottom border (and thus the seam's bottom T-junction) renders on.
+func frameBottomRow(t *testing.T, m Model, view string) int {
+	t.Helper()
+	left := m.box().bottomLeft
+	lines := strings.Split(stripANSI(view), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.HasPrefix(lines[i], left) {
+			return i
+		}
+	}
+	t.Fatalf("no frame bottom border (%q) found in view", left)
+	return -1
+}
+
+// frameBodyRow returns a row strictly between the frame's top and bottom
+// border rows -- a BODY row, as opposed to either T-junction -- so tests
+// can assert the seam's plain content-line colour (previewContentLine's
+// seamBorderToken call, panel.go:544-550) rather than only the corner
+// glyphs previewTopLine/previewBottomLine draw. The row immediately below
+// the top border is always a content row for any box at least 3 rows
+// tall (top border + >=1 content row + bottom border), which every
+// scenario this helper is used from satisfies.
+func frameBodyRow(t *testing.T, m Model, view string) int {
+	t.Helper()
+	top := frameTopRow(t, m, view)
+	bottom := frameBottomRow(t, m, view)
+	body := top + 1
+	if body >= bottom {
+		t.Fatalf("frame too short to have a body row: top=%d bottom=%d", top, bottom)
+	}
+	return body
+}
+
+// TestSeamBodyRowIsFocusedWhenSidebarHasFocus, TestSeamBodyRowStaysFocusedInInteractiveMode
+// and TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused are task 404's own
+// tests (R57 coverage gap): the three T-junction tests above only sample
+// the seam's TOP corner glyph, which previewTopLine draws via its own
+// leftTok := m.seamBorderToken() branch (panel.go:514-524) -- a body row's
+// plain vertical bar comes from a SEPARATE call site, previewContentLine
+// (panel.go:544-550), that could regress independently (e.g. reverted to
+// the hard-coded m.previewBorderToken() task 318's own comment says the
+// seam used before that task) while every T-junction test above kept
+// passing. These three mirror the T-junction tests' three focus states
+// but read column sw at a BODY row instead of row 0.
+func TestSeamBodyRowIsFocusedWhenSidebarHasFocus(t *testing.T) {
+	m := mainViewColorTestModel(t)
+	focusHex := tokenHex(t, m, theme.BorderFocus)
+	borderHex := tokenHex(t, m, theme.Border)
+	if focusHex == borderHex {
+		t.Skip("this theme's border_focus and border tokens happen to share a colour; the distinctness assertion below would be vacuous")
+	}
+	sw := seamColumnFor(t, m)
+
+	view := m.View()
+	body := frameBodyRow(t, m, view)
+	term := renderSettingsToEmulator(t, view, m.width, m.height)
+	seamFg, ok := cellFgHex(t, term, sw, body)
+	if !ok {
+		t.Fatalf("seam body cell has no foreground colour")
+	}
+	if seamFg != focusHex {
+		t.Fatalf("sidebar focused: seam body row %d = %s, want border_focus token %s (either-panel-focused rule)", body, seamFg, focusHex)
+	}
+}
+
+func TestSeamBodyRowStaysFocusedInInteractiveMode(t *testing.T) {
+	m := mainViewColorTestModel(t)
+	focusHex := tokenHex(t, m, theme.BorderFocus)
+	borderHex := tokenHex(t, m, theme.Border)
+	if focusHex == borderHex {
+		t.Skip("this theme's border_focus and border tokens happen to share a colour; the distinctness assertion below would be vacuous")
+	}
+	m.interactive = true
+	sw := seamColumnFor(t, m)
+
+	view := m.View()
+	body := frameBodyRow(t, m, view)
+	term := renderSettingsToEmulator(t, view, m.width, m.height)
+	seamFg, ok := cellFgHex(t, term, sw, body)
+	if !ok {
+		t.Fatalf("seam body cell has no foreground colour")
+	}
+	if seamFg != focusHex {
+		t.Fatalf("interactive (preview focused): seam body row %d = %s, want border_focus token %s", body, seamFg, focusHex)
+	}
+}
+
+func TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(*Model)
+	}{
+		{"theme picker open", func(m *Model) { m.themePicking = true }},
+		{"filter input focused", func(m *Model) { m.filtering = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mainViewColorTestModel(t)
+			focusHex := tokenHex(t, m, theme.BorderFocus)
+			borderHex := tokenHex(t, m, theme.Border)
+			if focusHex == borderHex {
+				t.Skip("this theme's border_focus and border tokens happen to share a colour; the distinctness assertion below would be vacuous")
+			}
+			sw := seamColumnFor(t, m)
+			tc.set(&m)
+
+			view := m.View()
+			body := frameBodyRow(t, m, view)
+			term := renderSettingsToEmulator(t, view, m.width, m.height)
+			seamFg, ok := cellFgHex(t, term, sw, body)
+			if !ok {
+				t.Fatalf("seam body cell has no foreground colour")
+			}
+			if seamFg != borderHex {
+				t.Fatalf("%s: seam body row %d = %s, want plain border token %s (neither panel focused)", tc.name, body, seamFg, focusHex)
+			}
+		})
+	}
+}
+
 func TestSeamIsFocusedWhenSidebarHasFocus(t *testing.T) {
 	m := mainViewColorTestModel(t)
 	focusHex := tokenHex(t, m, theme.BorderFocus)

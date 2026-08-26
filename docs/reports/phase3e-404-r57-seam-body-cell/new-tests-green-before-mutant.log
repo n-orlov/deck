@@ -1,0 +1,12 @@
+=== RUN   TestSeamBodyRowIsFocusedWhenSidebarHasFocus
+--- PASS: TestSeamBodyRowIsFocusedWhenSidebarHasFocus (0.00s)
+=== RUN   TestSeamBodyRowStaysFocusedInInteractiveMode
+--- PASS: TestSeamBodyRowStaysFocusedInInteractiveMode (0.00s)
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/theme_picker_open
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/filter_input_focused
+--- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused (0.00s)
+    --- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/theme_picker_open (0.00s)
+    --- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/filter_input_focused (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.010s
