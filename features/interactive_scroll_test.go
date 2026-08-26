@@ -117,7 +117,7 @@ func clientSendsRawSequenceNTimes(ctx context.Context, name, seq string, times i
 }
 
 // clientScrollsInteractiveWheelUpOverLineContaining/...Down... locate text
-// in the client's OWN current frame (locateText, features/mouse_bindings_
+// in the client's OWN current frame (locatePreviewText, features/mouse_bindings_
 // test.go) -- deck's own preview panel content, while m.interactive is
 // true, not a hand-computed column/row that would silently drift the
 // moment layout shifts -- and send that many synthesized SGR wheel reports
@@ -139,7 +139,7 @@ func clientScrollsInteractiveWheelOverLineContaining(ctx context.Context, name s
 	if err != nil {
 		return err
 	}
-	col, row, err := locateText(client, text)
+	col, row, err := locatePreviewText(client, text)
 	if err != nil {
 		return err
 	}

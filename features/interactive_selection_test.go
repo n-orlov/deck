@@ -29,7 +29,7 @@ func registerInteractiveSelectionSteps(sc *godog.ScenarioContext) {
 }
 
 // clientDragsToSelectTextOverInteractivePane locates text in the client's
-// OWN current frame (locateText, features/mouse_bindings_test.go -- the
+// OWN current frame (locatePreviewText, features/mouse_bindings_test.go -- the
 // SAME preview panel content deck itself just rendered while
 // m.interactive is true), then synthesizes an SGR drag (Drag,
 // features/mouse_synthesis_test.go) from the text's first cell to its
@@ -42,7 +42,7 @@ func clientDragsToSelectTextOverInteractivePane(ctx context.Context, name, text 
 	if err != nil {
 		return err
 	}
-	col, row, err := locateText(client, text)
+	col, row, err := locatePreviewText(client, text)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func clientClicksOnceOnInteractivePaneLineContaining(ctx context.Context, name, 
 	if err != nil {
 		return err
 	}
-	col, row, err := locateText(client, text)
+	col, row, err := locatePreviewText(client, text)
 	if err != nil {
 		return err
 	}

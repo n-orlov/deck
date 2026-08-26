@@ -1,0 +1,53 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m Steer 017 item 3 (task 216) -- tmux-like drag-to-copy selection in interactive preview mode
+  SPEC §11.8/§11.9's "Selection and copy" (post-395babf): a mouse drag
+  beginning inside the interactive preview's own content box selects
+  text over the cells deck itself drew (the same grid RenderRows
+  renders, including its own scrollback), and releasing writes the
+  selected text to a tmux buffer on deck's OWN private server -- the
+  load-bearing, tested half of the copy, proven here with a real `tmux
+  show-buffer` against the scenario's own socket. A best-effort OSC 52
+  write also happens alongside it, but that half is deliberately
+  untested by this harness (there is no real outer terminal to observe
+  it land in). A plain click, with no motion event in between press and
+  release, is a different gesture and commits nothing at all -- SPEC
+  §11.8's stated non-exception.
+=== RUN   TestFeatures/dragging_over_the_interactive_preview_copies_the_selected_text_to_deck's_own_tmux_buffer
+
+  [1;37mScenario:[0m dragging over the interactive preview copies the selected text to deck's own tmux buffer         [1;30m# interactive_selection.feature:17[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "drag-copy-target"[0m                                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "drag-copy-target"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" selects session "drag-copy-target"[0m                                                   [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                             [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "A" types "echo DRAGCOPYTOKEN" and Enter into the interactive pane[0m                       [1;30m# interactive_scroll_test.go:18 -> github.com/n-orlov/deck/features.clientTypesTextAndEnterIntoInteractivePane[0m
+    [32mThen[0m [32mdeck client "A" screen contains "DRAGCOPYTOKEN"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" drags to select "DRAGCOPYTOKEN" over the line containing it in the interactive pane[0m [1;30m# interactive_selection_test.go:25 -> github.com/n-orlov/deck/features.clientDragsToSelectTextOverInteractivePane[0m
+    [32mThen[0m [32mdeck's own selection buffer eventually contains "DRAGCOPYTOKEN"[0m                                     [1;30m# interactive_selection_test.go:26 -> github.com/n-orlov/deck/features.deckSelectionBufferEventuallyContains[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                             [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_plain_click_(no_drag)_over_the_interactive_preview_commits_no_selection_at_all
+
+  [1;37mScenario:[0m a plain click (no drag) over the interactive preview commits no selection at all                     [1;30m# interactive_selection.feature:32[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "click-nocopy-target"[0m                                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "click-nocopy-target"[0m                                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" selects session "click-nocopy-target"[0m                                                    [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                                 [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "A" types "echo CLICKNOCOPYTOKEN" and Enter into the interactive pane[0m                        [1;30m# interactive_scroll_test.go:18 -> github.com/n-orlov/deck/features.clientTypesTextAndEnterIntoInteractivePane[0m
+    [32mThen[0m [32mdeck client "A" screen contains "CLICKNOCOPYTOKEN"[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" clicks once (no drag) on the line containing "CLICKNOCOPYTOKEN" in the interactive pane[0m [1;30m# interactive_selection_test.go:28 -> github.com/n-orlov/deck/features.clientClicksOnceOnInteractivePaneLineContaining[0m
+    [32mThen[0m [32mdeck's own selection buffer is empty[0m                                                                    [1;30m# interactive_selection_test.go:27 -> github.com/n-orlov/deck/features.deckSelectionBufferIsEmpty[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                 [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+2 scenarios ([32m2 passed[0m)
+24 steps ([32m24 passed[0m)
+2.783981771s
+--- PASS: TestFeatures (2.79s)
+    --- PASS: TestFeatures/dragging_over_the_interactive_preview_copies_the_selected_text_to_deck's_own_tmux_buffer (1.51s)
+    --- PASS: TestFeatures/a_plain_click_(no_drag)_over_the_interactive_preview_commits_no_selection_at_all (1.25s)
+PASS
+ok  	github.com/n-orlov/deck/features	2.807s
