@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -256,6 +257,77 @@ func TestAcquireLaunchLeaseNeverWedgesTheRow(t *testing.T) {
 	}
 	if got.Status != "starting" {
 		t.Fatalf("status = %q; want starting", got.Status)
+	}
+}
+
+// TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict pins the column
+// write itself (#9): a resume that is about to create a NEW pane must not carry
+// the PREVIOUS pane's exit status and crash tail forward, on the same rationale
+// as the killed_by_user clear beside it. Both columns have control-flow
+// meaning, so a stale value is not a harmless leftover: it removes the row from
+// reconciliation and drops the new pane's hooks.
+func TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	const id = "00000000-0000-4000-8000-000000000107"
+	newLeaseTestSession(t, store, id, "running")
+
+	exit := 137
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "error", Reason: "tmux pane exited with status 137",
+		Source: "tmux", At: leaseTestNow - 2, EventKind: "tmux.pane_dead",
+		PaneExitStatus: &exit, CrashTail: "agent: killed",
+	}); err != nil {
+		t.Fatalf("store the crash verdict: %v", err)
+	}
+	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: id, Status: "stopped", Reason: "killed by user",
+		Source: "user", At: leaseTestNow - 1, EventKind: "killed", KilledByUser: true,
+	}); err != nil {
+		t.Fatalf("kill the crashed row: %v", err)
+	}
+	before, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Status != "stopped" || !before.KilledByUser || before.PaneExitStatus == nil || before.CrashTail == "" {
+		t.Fatalf("fixture is not discriminating: %#v", before)
+	}
+
+	result, err := store.AcquireLaunchLease(ctx, id, "12345@boot-a", 30*time.Second, leaseTestNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome != LaunchLeaseAcquired {
+		t.Fatalf("outcome = %v; want acquired", result.Outcome)
+	}
+	got, err := store.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "starting" || got.KilledByUser {
+		t.Fatalf("resumed row = status %q killed_by_user %v; want starting/false", got.Status, got.KilledByUser)
+	}
+	if got.PaneExitStatus != nil {
+		t.Fatalf("pane_exit_status = %d after resume; want it cleared with the pane it described", *got.PaneExitStatus)
+	}
+	if got.CrashTail != "" {
+		t.Fatalf("crash_tail = %q after resume; want it cleared with the pane it described", got.CrashTail)
+	}
+	// Read the raw columns too: GetSession maps SQL NULL to nil/"", so this
+	// distinguishes "cleared" from "scanned as empty".
+	var rawExit sql.NullInt64
+	var rawTail sql.NullString
+	if err := store.DB().QueryRow(`SELECT pane_exit_status, crash_tail FROM sessions WHERE id = ?`, id).Scan(&rawExit, &rawTail); err != nil {
+		t.Fatal(err)
+	}
+	if rawExit.Valid || rawTail.Valid {
+		t.Fatalf("raw columns after resume: pane_exit_status valid=%v crash_tail valid=%v; want both NULL", rawExit.Valid, rawTail.Valid)
 	}
 }
 
