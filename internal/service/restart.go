@@ -24,7 +24,9 @@ import (
 //
 // A row already "stopped" has no live pane to kill and is refused here
 // (the caller should use Resume/`r` instead) so Restart never masquerades
-// as a first launch.
+// as a first launch. An archived row is refused too, but by Resume's own
+// up-front guard rather than a second copy of it here (SPEC.md:718, #8:
+// "`R` routes through resume, so one guard covers both").
 func (s Service) Restart(ctx context.Context, sessionID string) (store.Session, ResumeOutcome, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.Agents == nil {
 		return store.Session{}, ResumeStartingElsewhere, errors.New("restart requires store, audit logger, clock, and adapter registry")
