@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cucumber/godog"
@@ -28,7 +29,7 @@ func TestFeatures(t *testing.T) {
 		ScenarioInitializer: initializeScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
-			Paths:    []string{"."},
+			Paths:    godogPaths(),
 			Tags:     tags,
 			Strict:   true,
 			TestingT: t,
@@ -37,6 +38,36 @@ func TestFeatures(t *testing.T) {
 	if suite.Run() != 0 {
 		t.Fatal("godog feature suite failed")
 	}
+}
+
+// godogPaths returns the feature paths the suite runs. It is the whole
+// package directory unless DECK_GODOG_PATHS names specific feature files
+// (comma separated, relative to this package), which is a diagnostic knob for
+// running one feature targeted -- notably
+// interactive_sigwinch_budget.feature, whose scenarios carry NO tags and so
+// cannot be selected with DECK_GODOG_TAGS at all, which used to leave the
+// entire ~5 minute suite as the only way to exercise them.
+//
+// It never shrinks what the ordinary run covers: unset -- the case for
+// `go test ./features/`, for CI and for every deliverable suite run -- means
+// []string{"."}, exactly as before. defaultTags remains the one authority for
+// which scenarios the ordinary invocation runs, and a targeted path list is
+// evidence about those files only, never a substitute for a whole-suite run.
+func godogPaths() []string {
+	override := strings.TrimSpace(os.Getenv("DECK_GODOG_PATHS"))
+	if override == "" {
+		return []string{"."}
+	}
+	var paths []string
+	for _, candidate := range strings.Split(override, ",") {
+		if candidate = strings.TrimSpace(candidate); candidate != "" {
+			paths = append(paths, candidate)
+		}
+	}
+	if len(paths) == 0 {
+		return []string{"."}
+	}
+	return paths
 }
 
 // initializeScenario wires black-box harness steps. Godog rejects any feature
