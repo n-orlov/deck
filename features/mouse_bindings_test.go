@@ -22,18 +22,103 @@ func registerMouseBindingSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" detaches$`, clientDetaches)
 }
 
-// locateText finds text's first occurrence in client's current frame,
-// returning the 1-based column/row an SGR mouse report must name to land
-// on that exact cell (matching ScreenDriver.Click/DoubleClick/Drag's own
-// 1-based convention, features/mouse_synthesis_test.go).
+// locateText finds text's first occurrence WITHIN THE SIDEBAR PANEL of
+// client's current frame, returning the 1-based column/row an SGR mouse
+// report must name to land on that exact cell (matching
+// ScreenDriver.Click/DoubleClick/Drag's own 1-based convention,
+// features/mouse_synthesis_test.go). Every existing caller
+// (clientClicksOnRowContaining/clientDoubleClicksOnRowContaining) means a
+// sidebar row -- a session name or a workspace-group header -- never the
+// preview. A frame-wide, row-order-first search used to be safe because a
+// session's name only ever appeared once, in its own sidebar row; task
+// 313/R54 broke that assumption on purpose (SPEC's own safeguard: "the
+// preview's top border therefore carries the target session's name as
+// text", clientPreviewTopBorderContains's doc comment), so once a name is
+// the interactive target it also appears in the preview's top border,
+// which sorts before the sidebar's own row in a plain row-order scan and
+// silently steals the click (root-caused in
+// docs/reports/phase3e-401-r54-noop-discriminator/README.md §3).
+// Restricting the search to sidebarRegion's bounds removes the ambiguity
+// at the source instead of merely reducing it.
 func locateText(client *ScreenDriver, text string) (col, row int, err error) {
 	frame := client.Frame(false)
-	for i, line := range strings.Split(frame, "\n") {
-		if idx := strings.Index(line, text); idx >= 0 {
+	lines := strings.Split(frame, "\n")
+	rowStart, rowEnd, colEnd, regionErr := sidebarRegion(frame)
+	if regionErr != nil {
+		return 0, 0, fmt.Errorf("locate %q: %w", text, regionErr)
+	}
+	for i := rowStart; i <= rowEnd && i < len(lines); i++ {
+		line := lines[i]
+		search := line
+		if colEnd >= 0 {
+			runes := []rune(line)
+			if colEnd < len(runes) {
+				search = string(runes[:colEnd])
+			}
+		}
+		if idx := strings.Index(search, text); idx >= 0 {
 			return idx + 1, i + 1, nil
 		}
 	}
-	return 0, 0, fmt.Errorf("no line of the frame contains %q:\n%s", text, frame)
+	return 0, 0, fmt.Errorf("no sidebar row of the frame contains %q:\n%s", text, frame)
+}
+
+// sidebarRegion returns the row bounds (0-based, inclusive) and column
+// bound (0-based, exclusive; -1 meaning "whole line") within which
+// locateText must search to be guaranteed to land inside the panel
+// internal/tui/mouse.go's hitTest itself calls hitPanelSidebar, reusing
+// layout_modes_test.go's own shape detection (detectLayoutMode/seamColumn)
+// rather than importing internal/tui, exactly as previewTopBorderText does
+// for the mirror-image problem on the preview side.
+func sidebarRegion(frame string) (rowStart, rowEnd, colEnd int, err error) {
+	lines := strings.Split(frame, "\n")
+	mode, err := detectLayoutMode(frame)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	topIdx := -1
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, " ")
+		if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "\u256d") {
+			topIdx = i
+			break
+		}
+	}
+	if topIdx < 0 {
+		return 0, 0, 0, fmt.Errorf("no panel top border found in frame:\n%s", frame)
+	}
+	if mode == "stacked" {
+		// Stacked mode draws the sidebar and preview as two independent,
+		// fully-bordered boxes; the sidebar's own bottom border is the
+		// first bordered line found below its top border, and the
+		// preview's box (whatever it contains) starts only after that.
+		bottomIdx := len(lines) - 1
+		for i := topIdx + 1; i < len(lines); i++ {
+			trimmed := strings.TrimRight(lines[i], " ")
+			if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "\u256d") {
+				bottomIdx = i
+				break
+			}
+		}
+		return topIdx, bottomIdx, -1, nil
+	}
+	// side-by-side/collapsed: sidebar and preview share one border per row,
+	// so the sidebar's own column range is bounded by the shared seam, and
+	// its row range is the whole box (shared top border down to the shared
+	// bottom border).
+	col, err := seamColumn(frame)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	bottomIdx := topIdx
+	for i := len(lines) - 1; i > topIdx; i-- {
+		trimmed := strings.TrimRight(lines[i], " ")
+		if strings.HasPrefix(trimmed, "+") {
+			bottomIdx = i
+			break
+		}
+	}
+	return topIdx, bottomIdx, col, nil
 }
 
 func clientClicksOnRowContaining(ctx context.Context, clientName, text string) error {
