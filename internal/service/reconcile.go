@@ -58,17 +58,34 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		liveByName[session.Name] = session
 	}
 	for _, session := range rows {
-		if session.Status == "stopped" || session.PaneExitStatus != nil || (session.Status == "starting" && session.StatusSource == "user") {
-			// A user-sourced row is between the durable create and tmux launch.
-			// Once launch observes tmux it changes the source to tmux. A stored
-			// crash is also terminal: collection deliberately removes its tmux
-			// session, but that must not turn the error into a clean stop.
-			continue
-		}
+		// terminal marks the rows this pass takes no *liveness verdict* from. A
+		// user-sourced starting row is between the durable create and tmux
+		// launch; once launch observes tmux it changes the source to tmux. A
+		// stopped row has no return edge here, and a stored crash is terminal:
+		// collection deliberately removes its tmux session, but that absence
+		// must not turn the error into a clean stop.
+		//
+		// It deliberately no longer suppresses crashed-pane COLLECTION (#6).
+		// deck's server runs `remain-on-exit failed`, so a non-zero exit RETAINS
+		// the pane and its session; when a SessionEnd hook writes `stopped` in
+		// the same millisecond, a status-first short-circuit skipped the row
+		// before tmux was ever consulted, so the corpse was never captured,
+		// never killed, and held the session name against every later resume --
+		// exactly the retention SPEC.md:547 forbids. A dead pane is therefore
+		// collected on sight whatever the row says. Only the *status write*
+		// stays guarded, and it is guarded where it always was, inside
+		// UpdateSessionStatus: first-writer-wins on pane_exit_status keeps an
+		// already-stored crash verdict and tail intact, so collecting a corpse
+		// for an already-terminal row tears tmux down without rewriting history.
+		terminal := session.Status == "stopped" || session.PaneExitStatus != nil ||
+			(session.Status == "starting" && session.StatusSource == "user")
 		observed, present := liveByName["deck_"+session.Slug]
 		if present {
 			pane, crashed := crashedPane(observed)
 			if !crashed {
+				if terminal {
+					continue
+				}
 				// Shells have no higher-quality signal or probe, so a live pane is
 				// their sound starting → running transition. For agents it remains
 				// liveness evidence only and must never fabricate working state.
@@ -155,6 +172,9 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 			if err := s.TMux.Kill(ctx, session.Slug); err != nil {
 				return fmt.Errorf("collect crashed tmux session %q: %w", session.ID, err)
 			}
+			continue
+		}
+		if terminal {
 			continue
 		}
 		if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
