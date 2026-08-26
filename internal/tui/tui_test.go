@@ -66,6 +66,10 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"select the previewed theme and save it", "revert to the theme active before the picker opened",
 		"click a sidebar row", "double-click a row", "click a group header",
 		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
+		// R73 (issue #7): the overlay scroll bindings the help must name.
+		"by exactly one line per", "a whole page per press, so consecutive",
+		"pages share no line", "with mouse reporting on a wheel notch over the overlay does the same",
+		"wheel over an overlay", "detail view by one line",
 		"click over the preview", "scrolls the grid's own",
 		"bounded scrollback (like Shift+PgUp/PgDn)",
 		"drag over the preview", "copies it into deck's own tmux buffer",

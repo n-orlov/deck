@@ -394,7 +394,11 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// help line silently cropped the mouse section this test asserts on --
 	// R71's own `U` entry, task 007, did): raised to 260 against a measured
 	// 229 lines, re-measurable by rendering helpText at this width and
-	// height in internal/tui and counting the View()'s lines.
+	// height in internal/tui and counting the View()'s lines. R73 (task 014)
+	// added six help lines for the overlay scroll bindings and re-measured:
+	// 239 rendered lines at Cols: 100, so the 260-row window still has 21
+	// rows of headroom and stays as it is
+	// (artifacts/task014-help-height-probe.log).
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 260, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
@@ -449,6 +453,10 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"select the previewed theme and save it", "revert to the theme active before the picker opened",
 		"click a sidebar row", "double-click a row", "click a group header",
 		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
+		// R73 (issue #7): the overlay scroll bindings, through the real PTY.
+		"by exactly one line per", "a whole page per press, so consecutive",
+		"pages share no line", "with mouse reporting on a wheel notch over the overlay does the same",
+		"wheel over an overlay", "detail view by one line",
 		"click over the preview", "scrolls the grid's own",
 		"bounded scrollback (like Shift+PgUp/PgDn)",
 		"drag over the preview", "copies it into deck's own tmux buffer",

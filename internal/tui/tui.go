@@ -5322,8 +5322,10 @@ func (m Model) createView() string {
 // free function so it can reuse framedDialog's box-drawing without
 // duplicating boxGlyphs/ASCII-fallback logic here. Task 078 (requirement
 // 39 residual): the overlay is height-bounded via framedDialogScrollable
-// rather than framedDialog -- helpText alone is 273 lines at 80x24, far
-// past the frame budget -- with m.helpScroll (PgUp/PgDn, updateHelpView)
+// rather than framedDialog -- helpText alone wraps to 379 lines at 80x24
+// (task 014's re-measurement after R73's added lines), far
+// past the frame budget -- with m.helpScroll (PgUp/PgDn a page,
+// up/down/j/k and the wheel a line; updateHelpView, R73)
 // selecting the visible window instead of ever truncating content away.
 // Task 082 (steer 005 item 2): the rendered body is styledHelpText, not
 // the bare helpText -- see help_style.go's own doc comment for why the
@@ -5385,11 +5387,16 @@ Keys
     enters interactive mode as a side effect); best-effort, so a session
     an attached client is also watching simply keeps that client's own
     size the next time it redraws. preview_fit = false turns this off
-    and leaves a session cropped bottom-left instead.
+    and leaves a session cropped bottom-left instead. While ? help, E the
+    event log or i the detail view covers the list, these same keys
+    instead scroll that overlay's own content by exactly one line per
+    press, leaving the session selection where it was
   PgUp/PgDn page up/down through the list, one page at a time; while ?
     help, E the event log or i the detail view covers the list, the
     same keys instead page that overlay's own content once it grows
-    taller than the frame
+    taller than the frame -- a whole page per press, so consecutive
+    pages share no line; ↑/↓ or j/k there move one line at a time, and
+    with mouse reporting on a wheel notch over the overlay does the same
   ↵ enter interactive mode on the selected running session: keystrokes
     forward to its live pane exactly as a real attached client's would,
     until Ctrl+Q leaves and returns the terminal to this list; entering
@@ -5579,6 +5586,10 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a group header      toggle that group's collapse (like g)
   wheel over the sidebar    scroll the list without changing selection
                             (like ↑/↓/PgUp/PgDn)
+  wheel over an overlay     scroll ? help, E the event log or i the
+                            detail view by one line (like ↑/↓ or j/k);
+                            no other overlay scrolls, and a click or a
+                            drag over any overlay still does nothing
   drag the seam             adjust sidebar_width live (like </>)
   click the collapsed strip restore the previous layout mode (like |)
   click over the preview     does nothing; a click outside a dialog does

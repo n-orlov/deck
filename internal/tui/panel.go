@@ -947,9 +947,16 @@ func (m Model) scrollWheelOverlay(dir int) (Model, bool) {
 // framedDialogScrollable is framedDialog's height-bounded counterpart
 // (task 078, requirement 39 residual): the `?` help overlay, `E` event
 // log and `i` detail view are the only widgets on screen while open (no
-// footer, no sidebar underneath), so unlike every other §11.4 dialog --
-// bounded by its own field count -- their content can grow far past the
-// frame budget (helpText alone is 273 lines at 80x24). Rather than
+// footer, no sidebar underneath), so unlike most other §11.4 dialogs --
+// bounded by their own field count -- their content can grow far past the
+// frame budget (helpText alone wraps to 379 lines at 80x24, re-measured in
+// task 014 after R73's added help lines; 273 before task 007's own
+// additions). "Most", not "every": task 014's own framedDialog height
+// probe found the `e` env editor (from 16 resolved keys up), the `n` create
+// dialog (29 lines even untouched) and a bulk `dd` confirm over ~13+ marks
+// already overflow 24 rows through the unbounded framedDialog path, with no
+// way to reach what hangs off the bottom -- recorded as a finding
+// (docs/reports/phase3f-findings.md), deliberately not fixed here. Rather than
 // truncate (SPEC requirement 39: pagination/scrolling, never silently
 // dropped content), the body is clipped to a scrollable window: scroll
 // (clamped here against the body's own dialogMaxScroll, so a caller need
