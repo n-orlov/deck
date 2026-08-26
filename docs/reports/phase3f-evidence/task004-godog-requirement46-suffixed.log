@@ -1,0 +1,46 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The preview capture engine and its visible behaviour
+  §11 requirement 21's capture-pane -e engine never attaches a client, never
+  spawns a control-mode client, uses no pipe-pane, and never resizes a pane
+  it reads; §23-27 govern what the panel shows once a capture lands.
+  
+  Steer 018 item 4 / task 215's amendment (SPEC.md §11, post-395babf "The
+  preview fits the selected session's window to the panel"): passive
+  preview now ALSO fits the selected session's tmux window to the panel's
+  content box as the list selection settles -- `[ui] preview_fit`, default
+  true. This is a deliberate, narrowly-scoped inversion of what this file's
+  own no-side-effect scenario used to assert for the selection axis alone
+  (composite-prd.md:747-748's "Do not weaken features/preview.feature's
+  passive guarantees ... If they conflict, the interactive design is
+  wrong" is about a DIFFERENT axis of conflict -- an interactive-mode
+  change reaching backward to weaken passive's own guarantee to make
+  itself pass -- and does not apply here either by its letter or in its
+  spirit: this change is SPEC's own text, authored by the operator's own
+  spec push, not code reaching back to relax a test it was failing, and
+  every OTHER passive-preview guarantee -- no attached client, no pipe, no
+  scroll, best-effort, floor-respecting, cost-stated, reversible via
+  `preview_fit = false` -- is left completely intact by it, proven by the
+  scenarios below). The capture engine itself (`capture-pane -e`, this
+  file's own title) is unchanged and still never resizes anything; the fit
+  is a separate, additional, coalesced `resize-window` issued alongside
+  the same 250ms tick.
+=== RUN   TestFeatures/interactive_mode_states_the_fitted_geometry,_never_the_crop_form
+
+  [1;37mScenario:[0m interactive mode states the fitted geometry, never the crop form                  [1;30m# preview.feature:165[0m
+    [32mGiven[0m [32mdeck client "solo" is started[0m                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "solo" creates shell session "alpha"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "solo" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "solo" selects session "alpha"[0m                                            [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "solo" enters interactive mode[0m                                           [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "solo" screen matches the pattern "\d+x\d+ fitted"[0m                       [1;30m# preview_test.go:26 -> github.com/n-orlov/deck/features.clientScreenMatchesPattern[0m
+    [32mAnd[0m [32mdeck client "solo" screen does not contain " of "[0m                                     [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "solo" leaves interactive mode[0m                                            [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "solo" exits cleanly[0m                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+9 steps ([32m9 passed[0m)
+1.423495157s
+--- PASS: TestFeatures (1.43s)
+    --- PASS: TestFeatures/interactive_mode_states_the_fitted_geometry,_never_the_crop_form (1.41s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.443s

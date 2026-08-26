@@ -1,0 +1,117 @@
+--- FAIL: TestScrollableOverlaysScrollOneLineWithArrows (0.03s)
+    --- FAIL: TestScrollableOverlaysScrollOneLineWithArrows/help_overlay (0.00s)
+        overlay_line_scroll_test.go:164: help overlay: after "down" the first visible row is not any row of the previous view -- it moved by more than one page, want exactly 1 line
+            first row after: "│ this off                                                     │"
+            previous rows:
+            │ deck help                                                    │
+            │                                                              │
+            │ Keys                                                         │
+            │ ↑/↓ or j/k select a session; as the selection settles        │
+            │ (coalesced                                                   │
+            │ against DECK_PREVIEW_MS, not once per row while a key is     │
+            │ held),                                                       │
+            │ deck also fits the newly selected session's window to the    │
+            │ preview                                                      │
+            │ panel -- [ui] preview_fit, on by default -- the same cost ↵  │
+            │ below                                                        │
+            │ pays at entry: a SIGWINCH, and scrollback consumed faster    │
+            │ while the                                                    │
+            │ window is narrower than usual. Skipped below the interactive │
+            │ floor                                                        │
+            │ (never resizes into a box too small to be worth it, and      │
+            │ never                                                        │
+            │ enters interactive mode as a side effect); best-effort, so a │
+            │ session                                                      │
+            │ an attached client is also watching simply keeps that        │
+            │ client's own                                                 │
+            │ size the next time it redraws. preview_fit = false turns     │
+    --- FAIL: TestScrollableOverlaysScrollOneLineWithArrows/detail_view (0.00s)
+        overlay_line_scroll_test.go:164: detail view: after "down" the first visible row is not any row of the previous view -- it moved by more than one page, want exactly 1 line
+            first row after: "│ files it touched and the tests it ran. The agent reported    │"
+            previous rows:
+            │ alpha detail                                                 │
+            │                                                              │
+            │ Agent:              claude                                   │
+            │ Working directory:  /repo/alpha                              │
+            │ Status:             waiting                                  │
+            │ Status reason:      needs input                              │
+            │ Verdict source:     hook (live)                              │
+            │ Verdict age:        20691d                                   │
+            │ Permission profile: safe                                     │
+            │ Conversation id:    conv-123                                 │
+            │                                                              │
+            │ Last message:                                                │
+            │ The agent reported progress on step chunk0000 of the         │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0001  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0002 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0003 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0004 of the requested change, describing the    │
+    --- FAIL: TestScrollableOverlaysScrollOneLineWithArrows/event_log (0.00s)
+        overlay_line_scroll_test.go:164: event log: after "down" the first visible row advanced by 14 lines, want exactly 1
+            first row after: "│ 20691d note user {\"note\":\"event-number-17\"}                  │"
+            previous first two rows: "│ Event log                                                    │" / "│                                                              │"
+--- FAIL: TestScrollableOverlaysScrollOneLineWithJK (0.02s)
+    --- FAIL: TestScrollableOverlaysScrollOneLineWithJK/help_overlay (0.00s)
+        overlay_line_scroll_test.go:192: help overlay: after "j" the first visible row is not any row of the previous view -- it moved by more than one page, want exactly 1 line
+            first row after: "│ this off                                                     │"
+            previous rows:
+            │ deck help                                                    │
+            │                                                              │
+            │ Keys                                                         │
+            │ ↑/↓ or j/k select a session; as the selection settles        │
+            │ (coalesced                                                   │
+            │ against DECK_PREVIEW_MS, not once per row while a key is     │
+            │ held),                                                       │
+            │ deck also fits the newly selected session's window to the    │
+            │ preview                                                      │
+            │ panel -- [ui] preview_fit, on by default -- the same cost ↵  │
+            │ below                                                        │
+            │ pays at entry: a SIGWINCH, and scrollback consumed faster    │
+            │ while the                                                    │
+            │ window is narrower than usual. Skipped below the interactive │
+            │ floor                                                        │
+            │ (never resizes into a box too small to be worth it, and      │
+            │ never                                                        │
+            │ enters interactive mode as a side effect); best-effort, so a │
+            │ session                                                      │
+            │ an attached client is also watching simply keeps that        │
+            │ client's own                                                 │
+            │ size the next time it redraws. preview_fit = false turns     │
+    --- FAIL: TestScrollableOverlaysScrollOneLineWithJK/detail_view (0.00s)
+        overlay_line_scroll_test.go:192: detail view: after "j" the first visible row is not any row of the previous view -- it moved by more than one page, want exactly 1 line
+            first row after: "│ files it touched and the tests it ran. The agent reported    │"
+            previous rows:
+            │ alpha detail                                                 │
+            │                                                              │
+            │ Agent:              claude                                   │
+            │ Working directory:  /repo/alpha                              │
+            │ Status:             waiting                                  │
+            │ Status reason:      needs input                              │
+            │ Verdict source:     hook (live)                              │
+            │ Verdict age:        20691d                                   │
+            │ Permission profile: safe                                     │
+            │ Conversation id:    conv-123                                 │
+            │                                                              │
+            │ Last message:                                                │
+            │ The agent reported progress on step chunk0000 of the         │
+            │ requested change, describing the files it touched and the    │
+            │ tests it ran. The agent reported progress on step chunk0001  │
+            │ of the requested change, describing the files it touched and │
+            │ the tests it ran. The agent reported progress on step        │
+            │ chunk0002 of the requested change, describing the files it   │
+            │ touched and the tests it ran. The agent reported progress on │
+            │ step chunk0003 of the requested change, describing the files │
+            │ it touched and the tests it ran. The agent reported progress │
+            │ on step chunk0004 of the requested change, describing the    │
+    --- FAIL: TestScrollableOverlaysScrollOneLineWithJK/event_log (0.00s)
+        overlay_line_scroll_test.go:192: event log: after "j" the first visible row advanced by 14 lines, want exactly 1
+            first row after: "│ 20691d note user {\"note\":\"event-number-17\"}                  │"
+            previous first two rows: "│ Event log                                                    │" / "│                                                              │"
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.078s
+FAIL

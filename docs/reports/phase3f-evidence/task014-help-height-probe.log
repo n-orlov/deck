@@ -1,0 +1,9 @@
+1.72 2.83 3.34 3/4151 15440
+--- ci/run.sh go test -count=1 -run TestProbeHelpViewRenderedHeight -v ./internal/tui/ (probe deleted after this run) ---
+=== RUN   TestProbeHelpViewRenderedHeight
+    zz_help_height_probe_test.go:19: ascii=false: helpView at 100x260 renders 239 lines (PTY window is 260 rows)
+    zz_help_height_probe_test.go:19: ascii=true: helpView at 100x260 renders 239 lines (PTY window is 260 rows)
+    zz_help_height_probe_test.go:24: helpText is 238 raw lines; wrapped at 80x24 it is 379 lines (content budget 22, max scroll 357)
+--- PASS: TestProbeHelpViewRenderedHeight (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.006s

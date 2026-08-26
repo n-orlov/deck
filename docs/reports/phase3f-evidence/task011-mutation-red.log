@@ -1,0 +1,407 @@
+token-form assertions discriminate: accent=#00ff00
+Feature: The / list filter: by name, workspace and cwd, and the route back to an archived row (I-10, task 123)
+  SPEC.md:984/\u00a711.3, requirement 33: `/` filters the sidebar by name,
+  workspace and cwd, incrementally as the query is typed, clearing on Esc.
+  Archived rows (requirement 27) are hidden from store.ListSessions' own
+  default view entirely, so the filter is the only way one is FOUND again
+  (phase3-sessions-and-lifecycle.md item 33: "a stated filter term for
+  archived, not a separate mode"). It is not the whole way back: SPEC.md
+  :323-332 makes archived_at as reversible as deleted_at, so `U` on a row
+  surfaced this way clears the flag (R71, issue #8) and returns it to the
+  default list -- find it here, then unarchive it.
+
+  Scenario: the whole round trip: A plus its confirm hides the row, / finds it, U and r bring it back live to the default list # filter.feature:59
+    Given deck client "A" is started                                                                                           # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "A" creates shell session "trip-bystander"                                                                 # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "trip-target"                                                                    # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    Then the private tmux session "deck_trip-target" exists                                                                    # assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists
+    And the state database contains session "trip-target" with status "running"                                                # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" presses A on its selected session "trip-target"                                                       # kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.clientPressesArchiveOnSelectedSession
+    after scenario hook failed: timed out waiting for frame "Archive trip-target": context deadline exceeded
+frame:
++ deck - sessions -----------------+---------------------------------------------------------------+
+| socket: deck_test_99_4           | $                                                             |
+| v walking-skeleton-cwd  /tmp/... |                                                               |
+| > trip-bystander running         |                                                               |
+|   created <relative-time>               |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
++----------------------------------+---------------------------------------------------------------+
+Killed and archived — press u to unarchive (agent stays stopped)
+up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P
+            <raw pty frame dump elided, 16304 bytes>
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [16:15:37.224] +0 "n"
+  [16:15:37.240] +16.051395ms "trip-bystander"
+  [16:15:37.315] +75.067022ms "\t/tmp/deck-scenario-1171373707/walking-skeleton-cwd\r"
+  [16:15:37.340] +25.391228ms "n"
+  [16:15:37.356] +16.208266ms "trip-target"
+  [16:15:37.432] +75.656337ms "\t/tmp/deck-scenario-1171373707/walking-skeleton-cwd\r"
+  [16:15:37.486] +53.587809ms "A"
+frame:
+                /usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc0005b3f38 sp=0xc0005b3f18 pc=0x476
+58e
+   runtime.gcBgMarkWorker(0xc0003b51f0)
+                                        /usr/local/go/src/runtime/mgc.go:1463 +0xeb fp=0xc0005b3fc8
+sp=0xc0005b3f38 pc=0x423e2b
+                           runtime.gcBgMarkStartWorkers.gowrap1()
+                                                                        /usr/local/go/src/runtime/mg
+c.go:1373 +0x25 fp=0xc0005b3fe0 sp=0xc0005b3fc8 pc=0x423d05
+                                                           runtime.goexit({})
+                                                                                /usr/local/go/src/ru
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0005b3fe8 sp=0xc0005b3fe0 pc=0x47e0c1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+                                /usr/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                                                            goroutine 147 gp=0xc0005
+ab500 m=nil [GC worker (idle)]:
+                               runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+                                                                                /usr/local/go/src/ru
+ntime/proc.go:460 +0xce fp=0xc0005ac738 sp=0xc0005ac718 pc=0x47658e
+                                                                   runtime.gcBgMarkWorker(0xc0003b51
+f0)
+        /usr/local/go/src/runtime/mgc.go:1463 +0xeb fp=0xc0005ac7c8 sp=0xc0005ac738 pc=0x423e2b
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+                                        /usr/local/go/src/runtime/mgc.go:1373 +0x25 fp=0xc0005ac7e0
+sp=0xc0005ac7c8 pc=0x423d05
+                           runtime.goexit({})
+                                                /usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0
+xc0005ac7e8 sp=0x
+            <raw pty frame dump elided, 44670 bytes>
+frame:
++ deck - sessions -----------------+---------------------------------------------------------------+
+| socket: deck_test_99_4           | $                                                             |
+| v walking-skeleton-cwd  /tmp/... |                                                               |
+| > trip-bystander running         |                                                               |
+|   created <relative-time>               |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
++----------------------------------+---------------------------------------------------------------+
+Killed and archived — press u to unarchive (agent stays stopped)
+up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P
+            <raw pty frame dump elided, 16304 bytes>
+    Then deck client "A" screen contains "kills the live agent"                                                                # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And the state database session "trip-target" is not archived                                                               # kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived
+    When deck client "A" submits the open dialog                                                                               # dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog
+    Then the state database session "trip-target" is archived                                                                  # kill_delete_undo_test.go:47 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived
+    And the private tmux session "deck_trip-target" does not exist                                                             # assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist
+    And deck client "A" screen does not contain "trip-target"                                                                  # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    And deck client "A" screen contains "trip-bystander"                                                                       # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "A" opens the list filter                                                                                 # filter_test.go:16 -> github.com/n-orlov/deck/features.clientOpensListFilter
+    And deck client "A" types "trip-target" into the filter field                                                              # filter_test.go:17 -> github.com/n-orlov/deck/features.clientTypesIntoFilterField
+    And deck client "A" keeps the filter in force with enter                                                                   # filter_test.go:18 -> github.com/n-orlov/deck/features.clientKeepsFilterInForceWithEnter
+    Then deck client "A" screen contains "trip-target"                                                                         # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen does not contain "trip-bystander"                                                               # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    When deck client "A" unarchives its selected session "trip-target"                                                         # filter_test.go:19 -> github.com/n-orlov/deck/features.clientUnarchivesSelectedSession
+    Then the state database session "trip-target" is not archived                                                              # kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived
+    When deck client "A" presses r on session "trip-target"                                                                    # agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession
+    Then the state database contains session "trip-target" with status "running"                                               # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And the private tmux session "deck_trip-target" exists                                                                     # assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists
+    When deck client "A" opens the list filter                                                                                 # filter_test.go:16 -> github.com/n-orlov/deck/features.clientOpensListFilter
+    And deck client "A" clears the list filter with escape                                                                     # filter_test.go:20 -> github.com/n-orlov/deck/features.clientClearsListFilterWithEscape
+    Then deck client "A" screen does not contain "Filter:"                                                                     # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    And deck client "A" screen does not contain "in force"                                                                     # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    And deck client "A" screen contains "trip-target running"                                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen contains "trip-bystander"                                                                       # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" exits cleanly                                                                                          # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+--- Failed steps:
+
+  Scenario: the whole round trip: A plus its confirm hides the row, / finds it, U and r bring it back live to the default list # filter.feature:59
+    When deck client "A" presses A on its selected session "trip-target" # filter.feature:80
+      Error: after scenario hook failed: timed out waiting for frame "Archive trip-target": context deadline exceeded
+frame:
++ deck - sessions -----------------+---------------------------------------------------------------+
+| socket: deck_test_99_4           | $                                                             |
+| v walking-skeleton-cwd  /tmp/... |                                                               |
+| > trip-bystander running         |                                                               |
+|   created <relative-time>               |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
++----------------------------------+---------------------------------------------------------------+
+Killed and archived — press u to unarchive (agent stays stopped)
+up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P
+            <raw pty frame dump elided, 16304 bytes>
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [16:15:37.224] +0 "n"
+  [16:15:37.240] +16.051395ms "trip-bystander"
+  [16:15:37.315] +75.067022ms "\t/tmp/deck-scenario-1171373707/walking-skeleton-cwd\r"
+  [16:15:37.340] +25.391228ms "n"
+  [16:15:37.356] +16.208266ms "trip-target"
+  [16:15:37.432] +75.656337ms "\t/tmp/deck-scenario-1171373707/walking-skeleton-cwd\r"
+  [16:15:37.486] +53.587809ms "A"
+frame:
+                /usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc0005b3f38 sp=0xc0005b3f18 pc=0x476
+58e
+   runtime.gcBgMarkWorker(0xc0003b51f0)
+                                        /usr/local/go/src/runtime/mgc.go:1463 +0xeb fp=0xc0005b3fc8
+sp=0xc0005b3f38 pc=0x423e2b
+                           runtime.gcBgMarkStartWorkers.gowrap1()
+                                                                        /usr/local/go/src/runtime/mg
+c.go:1373 +0x25 fp=0xc0005b3fe0 sp=0xc0005b3fc8 pc=0x423d05
+                                                           runtime.goexit({})
+                                                                                /usr/local/go/src/ru
+ntime/asm_amd64.s:1693 +0x1 fp=0xc0005b3fe8 sp=0xc0005b3fe0 pc=0x47e0c1
+                                                                       created by runtime.gcBgMarkSt
+artWorkers in goroutine 1
+                                /usr/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                                                            goroutine 147 gp=0xc0005
+ab500 m=nil [GC worker (idle)]:
+                               runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+                                                                                /usr/local/go/src/ru
+ntime/proc.go:460 +0xce fp=0xc0005ac738 sp=0xc0005ac718 pc=0x47658e
+                                                                   runtime.gcBgMarkWorker(0xc0003b51
+f0)
+        /usr/local/go/src/runtime/mgc.go:1463 +0xeb fp=0xc0005ac7c8 sp=0xc0005ac738 pc=0x423e2b
+                                                                                               runti
+me.gcBgMarkStartWorkers.gowrap1()
+                                        /usr/local/go/src/runtime/mgc.go:1373 +0x25 fp=0xc0005ac7e0
+sp=0xc0005ac7c8 pc=0x423d05
+                           runtime.goexit({})
+                                                /usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0
+xc0005ac7e8 sp=0x
+            <raw pty frame dump elided, 44670 bytes>
+frame:
++ deck - sessions -----------------+---------------------------------------------------------------+
+| socket: deck_test_99_4           | $                                                             |
+| v walking-skeleton-cwd  /tmp/... |                                                               |
+| > trip-bystander running         |                                                               |
+|   created <relative-time>               |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
++----------------------------------+---------------------------------------------------------------+
+Killed and archived — press u to unarchive (agent stays stopped)
+up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P
+            <raw pty frame dump elided, 16304 bytes>
+
+
+1 scenarios (1 failed)
+30 steps (5 passed, 1 failed, 24 skipped)
+6.773441538s
+--- FAIL: TestFeatures (6.78s)
+    --- FAIL: TestFeatures/the_whole_round_trip:_A_plus_its_confirm_hides_the_row,_/_finds_it,_U_and_r_bring_it_back_live_to_the_default_list (6.77s)
+        suite.go:640: after scenario hook failed: timed out waiting for frame "Archive trip-target": context deadline exceeded
+            frame:
+            + deck - sessions -----------------+---------------------------------------------------------------+
+            | socket: deck_test_99_4           | $                                                             |
+            | v walking-skeleton-cwd  /tmp/... |                                                               |
+            | > trip-bystander running         |                                                               |
+            |   created <relative-time>               |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            +----------------------------------+---------------------------------------------------------------+
+            Killed and archived — press u to unarchive (agent stays stopped)
+            up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P
+            <raw pty frame dump elided, 16316 bytes>
+            surviving deck client: hung deck client killed after 1s
+            sent (input timeline):
+              [16:15:37.224] +0 "n"
+              [16:15:37.240] +16.051395ms "trip-bystander"
+              [16:15:37.315] +75.067022ms "\t/tmp/deck-scenario-1171373707/walking-skeleton-cwd\r"
+              [16:15:37.340] +25.391228ms "n"
+              [16:15:37.356] +16.208266ms "trip-target"
+              [16:15:37.432] +75.656337ms "\t/tmp/deck-scenario-1171373707/walking-skeleton-cwd\r"
+              [16:15:37.486] +53.587809ms "A"
+            frame:
+                            /usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc0005b3f38 sp=0xc0005b3f18 pc=0x476
+            58e
+               runtime.gcBgMarkWorker(0xc0003b51f0)
+                                                    /usr/local/go/src/runtime/mgc.go:1463 +0xeb fp=0xc0005b3fc8
+            sp=0xc0005b3f38 pc=0x423e2b
+                                       runtime.gcBgMarkStartWorkers.gowrap1()
+                                                                                    /usr/local/go/src/runtime/mg
+            c.go:1373 +0x25 fp=0xc0005b3fe0 sp=0xc0005b3fc8 pc=0x423d05
+                                                                       runtime.goexit({})
+                                                                                            /usr/local/go/src/ru
+            ntime/asm_amd64.s:1693 +0x1 fp=0xc0005b3fe8 sp=0xc0005b3fe0 pc=0x47e0c1
+                                                                                   created by runtime.gcBgMarkSt
+            artWorkers in goroutine 1
+                                            /usr/local/go/src/runtime/mgc.go:1373 +0x105
+            
+                                                                                        goroutine 147 gp=0xc0005
+            ab500 m=nil [GC worker (idle)]:
+                                           runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+                                                                                            /usr/local/go/src/ru
+            ntime/proc.go:460 +0xce fp=0xc0005ac738 sp=0xc0005ac718 pc=0x47658e
+                                                                               runtime.gcBgMarkWorker(0xc0003b51
+            f0)
+                    /usr/local/go/src/runtime/mgc.go:1463 +0xeb fp=0xc0005ac7c8 sp=0xc0005ac738 pc=0x423e2b
+                                                                                                           runti
+            me.gcBgMarkStartWorkers.gowrap1()
+                                                    /usr/local/go/src/runtime/mgc.go:1373 +0x25 fp=0xc0005ac7e0
+            sp=0xc0005ac7c8 pc=0x423d05
+                                       runtime.goexit({})
+                                                            /usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0
+            xc0005ac7e8 sp=0x
+            <raw pty frame dump elided, 44682 bytes>
+            frame:
+            + deck - sessions -----------------+---------------------------------------------------------------+
+            | socket: deck_test_99_4           | $                                                             |
+            | v walking-skeleton-cwd  /tmp/... |                                                               |
+            | > trip-bystander running         |                                                               |
+            |   created <relative-time>               |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            |                                  |                                                               |
+            +----------------------------------+---------------------------------------------------------------+
+            Killed and archived — press u to unarchive (agent stays stopped)
+            up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P
+            <raw pty frame dump elided, 16316 bytes>
+    godog_test.go:38: godog feature suite failed
+U 1
+
+
+1 scenarios (1 undefined)
+1 steps (1 undefined)
+35.743µs
+
+You can implement step definitions for undefined steps with these snippets:
+
+func anUnregisteredStep() error {
+	return godog.ErrPending
+}
+
+func InitializeScenario(ctx *godog.ScenarioContext) {
+	ctx.Step(`^an unregistered step$`, anUnregisteredStep)
+}
+
+F 1
+
+
+--- Failed steps:
+
+  Scenario: error binding # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed333077768/001/failure.feature:2
+    Given a failing step # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed333077768/001/failure.feature:3
+      Error: deliberate step failure
+
+
+1 scenarios (1 failed)
+1 steps (1 failed)
+99.713µs
+FAIL
+FAIL	github.com/n-orlov/deck/features	22.721s
+FAIL

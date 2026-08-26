@@ -1,0 +1,18 @@
+run1 loadavg-before: 3.62 2.48 2.32 29/4246 20603
+run1 exit=0 loadavg-after: 6.50 3.26 2.59 31/4168 20652
+run1: 15 scenarios ([32m15 passed[0m)
+run1: 150 steps ([32m150 passed[0m)
+run1: --- PASS: TestFeatures (18.82s)
+run1: ok  	github.com/n-orlov/deck/features	18.847s
+run2 loadavg-before: 6.50 3.26 2.59 25/4168 20656
+run2 exit=0 loadavg-after: 7.13 3.67 2.74 13/4159 20702
+run2: 15 scenarios ([32m15 passed[0m)
+run2: 150 steps ([32m150 passed[0m)
+run2: --- PASS: TestFeatures (18.60s)
+run2: ok  	github.com/n-orlov/deck/features	18.628s
+run3 loadavg-before: 7.13 3.67 2.74 8/4160 20706
+run3 exit=0 loadavg-after: 6.14 3.67 2.76 24/4209 20750
+run3: 15 scenarios ([32m15 passed[0m)
+run3: 150 steps ([32m150 passed[0m)
+run3: --- PASS: TestFeatures (18.63s)
+run3: ok  	github.com/n-orlov/deck/features	18.660s

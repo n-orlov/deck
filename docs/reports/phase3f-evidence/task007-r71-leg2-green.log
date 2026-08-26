@@ -1,0 +1,9 @@
+5.24 3.61 3.04 4/4215 8163
+=== ci/run.sh go test -count=1 ./internal/tui/ ./internal/store/ ./internal/service/ ./cmd/deck/
+ok  	github.com/n-orlov/deck/internal/tui	0.726s
+ok  	github.com/n-orlov/deck/internal/store	2.405s
+ok  	github.com/n-orlov/deck/internal/service	3.634s
+ok  	github.com/n-orlov/deck/cmd/deck	5.091s
+=== scenarios: @requirement-33-* (four, including the unmodified filter-reaches-archived-row)
+ok  	github.com/n-orlov/deck/features	2.877s
+=== loadavg after: 5.30 3.68 3.06 16/4178 8256

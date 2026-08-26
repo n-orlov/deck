@@ -1,0 +1,27 @@
+package tui
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/n-orlov/deck/internal/config"
+)
+
+// TEMPORARY probe for task 014: re-measure cmd/deck/main_test.go's help
+// PTY window (Rows: 260, Cols: 100) against the rendered helpView height
+// after R73's added help lines. Deleted before the commit.
+func TestProbeHelpViewRenderedHeight(t *testing.T) {
+	for _, ascii := range []bool{false, true} {
+		m := New(nil, config.Settings{ASCII: ascii}, "")
+		m.help = true
+		m.width, m.height = 100, 260
+		n := len(strings.Split(m.View(), "\n"))
+		t.Logf("ascii=%v: helpView at 100x260 renders %d lines (PTY window is 260 rows)", ascii, n)
+	}
+	m := New(nil, config.Settings{}, "")
+	m.help = true
+	m.width, m.height = 80, 24
+	t.Logf("helpText is %d raw lines; wrapped at 80x24 it is %d lines (content budget %d, max scroll %d)",
+		len(strings.Split(helpText(false), "\n")), len(m.wrapDialogLines(helpText(false))),
+		m.dialogContentBudget(), m.dialogMaxScroll(helpText(false)))
+}
