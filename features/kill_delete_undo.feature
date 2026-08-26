@@ -513,6 +513,32 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And deck client "A" screen does not contain "archive-confirm-submit"
     When deck client "A" exits cleanly
 
+  @requirement-27-archive-undo-toast
+  Scenario: a confirmed archive says what happened and u puts the row back in the default list
+    # R72's second half (issue #10, SPEC.md:752 "On success a toast says what
+    # happened, with `u` to undo"). The confirm stops an ACCIDENTAL archive;
+    # this is the way back out of a deliberate one aimed at the wrong row,
+    # without the operator having to know that the row is now only reachable
+    # inside the `/` filter. The toast reports the kill too, because on a live
+    # row that is what confirming did -- and it offers `u` to unarchive, which
+    # is the only part that is reversible (the agent stays stopped).
+    #
+    # No filter is ever opened here: the row must come back to the DEFAULT
+    # list, which is exactly what `A` took it out of.
+    Given deck client "A" is started
+    And deck client "A" creates shell session "archive-undo"
+    When deck client "A" presses A on its selected session "archive-undo"
+    And deck client "A" submits the open dialog
+    Then the state database session "archive-undo" is archived
+    And deck client "A" screen contains "Killed and archived"
+    And deck client "A" screen contains "press u to unarchive"
+    When deck client "A" undoes the archive with u for "archive-undo"
+    Then the state database session "archive-undo" is not archived
+    And deck client "A" screen contains "archive-undo stopped"
+    And deck client "A" screen does not contain "press u to unarchive"
+    And deck client "A" screen does not contain "Filter:"
+    When deck client "A" exits cleanly
+
   @requirement-28-mark-bulk-actions
   Scenario: m marks a batch by session id, x kills every marked non-stopped session, and one u undoes the whole batch
     Given deck client "A" is started with a short undo window

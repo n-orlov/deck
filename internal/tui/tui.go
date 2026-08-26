@@ -220,7 +220,7 @@ type Model struct {
 	archiveConfirming bool
 	archiveNote       string
 	profileSwitch     func(context.Context, string, string) (store.Session, error)
-	selected         int
+	selected          int
 	// pendingSelectSessionID is requirement 52's one-shot "select the
 	// session I just created" intent: submitCreate's shellCreated success
 	// path (below) records the new session's id here rather than acting
@@ -292,9 +292,31 @@ type Model struct {
 	// dd's bulk submit tombstoned in one shared window rather than N.
 	batchDeleteUndoSessionIDs []string
 	batchDeleteUndoGeneration int
-	profileSwitching          bool
-	profileSwitchValue        string
-	profileSwitchNote         string
+	// archiveUndoSessionID/archiveUndoSessionName/archiveUndoGeneration are
+	// R72's THIRD undo trio (issue #10, SPEC.md:752 "On success a toast says
+	// what happened, with `u` to undo"), mirroring the kill trio
+	// (undoSessionID, above) and the delete trio (deleteUndoSessionID, above)
+	// field for field and generation-tie for generation-tie. Kept a separate
+	// tracker rather than merged into either: an archive's undo is
+	// UnarchiveSession (R71's `U` service, clearing archived_at), not a
+	// resume and not a tombstone restore, so a merged trio would have to
+	// guess which reversal a given id wants. It runs on DECK_UNDO_MS, x's
+	// window rather than dd's grace window, because nothing is reaped when it
+	// expires -- expiry only takes the toast away, exactly as x's does.
+	// archiveUndoSessionName is recorded for symmetry with its two siblings
+	// and is deliberately NOT rendered in the toast (see
+	// archiveUndoNoteLines).
+	archiveUndoSessionID   string
+	archiveUndoSessionName string
+	archiveUndoGeneration  int
+	// archiveUndoKilled records whether the archive this window undoes also
+	// killed a live pane (the row's status was not "stopped" when the confirm
+	// was submitted), so the toast can say what actually happened without
+	// re-reading a row that has since left the default list.
+	archiveUndoKilled  bool
+	profileSwitching   bool
+	profileSwitchValue string
+	profileSwitchNote  string
 	// profileSwitchYoloOK once tracked P's own yolo confirm keystroke,
 	// mirroring createYoloConfirmed above; removed by the same steer 017
 	// item 2 change.
@@ -777,12 +799,24 @@ type sessionDeleted struct {
 // "kill and archive" as one action rather than refusing), then set
 // archived_at. A successful archive reloads the session list so the
 // now-archived row disappears from the sidebar immediately, exactly as
-// sessionDeleted already does for dd -- there is no undo toast for this
-// one (unlike dd, requirement 27 names no grace window).
+// sessionDeleted already does for dd. session is the row as the confirm
+// dialog named it -- i.e. BEFORE the archive's own kill step -- which is
+// what lets the success branch start R72's undo window (SPEC.md:752's
+// "a toast says what happened, with `u` to undo") and say whether a live
+// agent was killed, without a second store round-trip.
 type sessionArchived struct {
 	session store.Session
 	err     error
 }
+
+// archiveUndoExpired fires DECK_UNDO_MS after a successful `A` submit,
+// mirroring undoExpired's generation-tying shape exactly (R72): a stale
+// tick left over from an earlier archive/undo cycle that a newer archive or
+// an intervening u has already superseded is ignored rather than clearing a
+// newer toast. Nothing is reaped when it fires -- unlike
+// deleteGraceExpired, an expired archive window leaves the archived row
+// exactly where it is and only takes the toast away.
+type archiveUndoExpired int
 
 // deleteGraceExpired fires DECK_DELETE_GRACE_MS after a successful dd
 // delete, mirroring undoExpired's generation-tying shape exactly (task
@@ -1546,7 +1580,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.archiveConfirming = false
 		m.archiveNote = ""
 		m.attachError = ""
-		return m, m.loadSessions
+		// R72 (SPEC.md:752): a successful archive says what happened and offers
+		// `u`, on its own DECK_UNDO_MS window. msg.session is the row the dialog
+		// named, captured before the archive's kill step, so its status here is
+		// the pre-archive one -- "not stopped" is exactly the case where the
+		// archive also killed a live agent, which is what the toast reports.
+		m.archiveUndoSessionID = msg.session.ID
+		m.archiveUndoSessionName = msg.session.Name
+		m.archiveUndoKilled = msg.session.Status != "stopped"
+		m.archiveUndoGeneration++
+		archiveGeneration := m.archiveUndoGeneration
+		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) }))
+	case archiveUndoExpired:
+		if int(msg) == m.archiveUndoGeneration {
+			m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
+			m.archiveUndoKilled = false
+		}
+		return m, nil
 	case sessionDeleted:
 		if msg.err != nil {
 			m.deleteNote = "Cannot delete: " + msg.err.Error()
@@ -2295,6 +2345,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return result
 				}
 			}
+			// R72 (issue #10, SPEC.md:752): the archive window is checked LAST,
+			// behind all four kill/delete trios above, so adding it cannot change
+			// what `u` does for any pre-existing window -- an archive undo only
+			// ever runs when no kill and no delete undo is outstanding. Its
+			// reversal is unarchiveSvc (R71's store.UnarchiveSession), the same
+			// service `U` uses, so the row returns to the default list reading
+			// stopped/resumable; `A`'s kill is deliberately NOT resumed here (the
+			// toast says so in as many words), since undoing a hide must never
+			// silently relaunch an agent.
+			if m.archiveUndoSessionID != "" {
+				if m.unarchiveSvc == nil {
+					return m, nil
+				}
+				sessionID := m.archiveUndoSessionID
+				m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
+				m.archiveUndoKilled = false
+				m.archiveUndoGeneration++
+				return m, func() tea.Msg {
+					unarchived, err := m.unarchiveSvc(context.Background(), sessionID)
+					return sessionUnarchived{session: unarchived, err: err}
+				}
+			}
 			return m, nil
 		case "r":
 			if m.resume == nil || len(m.sessions) == 0 {
@@ -2870,6 +2942,34 @@ func (m Model) deleteUndoNoteLines(width int) []string {
 	return wrapText("Deleted \u2014 press u to undo", width)
 }
 
+// archiveUndoNoteLines is R72's success toast (issue #10, SPEC.md:752 "On
+// success a toast says what happened, with `u` to undo"): visible for
+// DECK_UNDO_MS after a successful `A` submit, then gone once
+// archiveUndoSessionID is cleared (by u itself or by the archiveUndoExpired
+// tick). Wrapped and reserved exactly like undoNoteLines and
+// deleteUndoNoteLines above, so it never pushes the frame off-screen.
+//
+// Two deliberate wording decisions:
+//   - It never names the archived session, for deleteUndoNoteLines' own
+//     reason: `A` hides the row from the default list, and
+//     features/kill_delete_undo.feature's archive-submit scenario asserts the
+//     name is gone from the WHOLE screen, which a toast quoting it back would
+//     violate the instant it rendered.
+//   - It states the kill when there was one (archiveUndoKilled, i.e. the row
+//     was not already stopped), mirroring archiveConfirmBody's own two
+//     wordings, and then says `u` unarchives rather than "undoes": the
+//     reversal is UnarchiveSession alone, so the agent stays stopped and a
+//     bare "press u to undo" would promise the live agent back.
+func (m Model) archiveUndoNoteLines(width int) []string {
+	if m.archiveUndoSessionID == "" {
+		return nil
+	}
+	if m.archiveUndoKilled {
+		return wrapText("Killed and archived \u2014 press u to unarchive (agent stays stopped)", width)
+	}
+	return wrapText("Archived \u2014 press u to unarchive", width)
+}
+
 // pendingDeleteLines is task 105's first-`d` visible indicator: gone the
 // instant any key resolves it (the second `d`, opening the confirm dialog,
 // or anything else, clearing it with no destructive action), so it is
@@ -2905,7 +3005,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -2969,6 +3069,7 @@ func (m Model) mainView() string {
 	lines = append(lines, m.resumeNoteLines(width)...)
 	lines = append(lines, m.undoNoteLines(width)...)
 	lines = append(lines, m.deleteUndoNoteLines(width)...)
+	lines = append(lines, m.archiveUndoNoteLines(width)...)
 	lines = append(lines, m.pendingDeleteLines(width)...)
 	lines = append(lines, m.filterStatusLine(width)...)
 	lines = append(lines, m.footerLine())

@@ -43,6 +43,7 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" archives its selected session "([^"]+)"$`, clientArchivesSelectedSession)
 	sc.Step(`^deck client "([^"]+)" presses A on its selected session "([^"]+)"$`, clientPressesArchiveOnSelectedSession)
 	sc.Step(`^deck client "([^"]+)" presses "([^"]+)" again inside the archive confirm for "([^"]+)"$`, clientPressesKeyAgainInsideArchiveConfirm)
+	sc.Step(`^deck client "([^"]+)" undoes the archive with u for "([^"]+)"$`, clientUndoesArchiveWithU)
 	sc.Step(`^the state database session "([^"]+)" is archived$`, stateDatabaseSessionIsArchived)
 	sc.Step(`^the state database session "([^"]+)" is not archived$`, stateDatabaseSessionIsNotArchived)
 }
@@ -542,6 +543,42 @@ func clientPressesKeyAgainInsideArchiveConfirm(ctx context.Context, name, key, s
 		return fmt.Errorf("%q inside the archive confirm dropped the confirm's own keys:\n%s", key, frame)
 	}
 	return nil
+}
+
+// clientUndoesArchiveWithU drives R72's success toast's own offer (issue #10,
+// SPEC.md:752): a real `u` keypress on the real keymap -- no service call, no
+// `U` on a row the operator cannot even see any more -- bounded on the
+// observable consequence, archived_at going back to 0, exactly as
+// clientUnarchivesSelectedSession bounds `U`. The row is absent from the
+// default list at the moment `u` is pressed, which is the point: the undo
+// window remembers what to unarchive, so the operator does not have to find it
+// inside the `/` filter first.
+func clientUndoesArchiveWithU(ctx context.Context, name, sessionName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("u"); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		archivedAt, err := sessionArchivedAt(ctx, sessionName)
+		if err != nil {
+			return err
+		}
+		if archivedAt == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q still has archived_at=%d after the archive toast's own u\nframe:\n%s", sessionName, archivedAt, client.Frame(false))
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 // sessionArchivedAt/stateDatabaseSessionIsArchived/
