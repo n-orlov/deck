@@ -36,3 +36,10 @@ SAME still-selected session is still in flight (previewFitSessionID is
 only updated once previewFitDone arrives, tui.go:1804-1810), so an
 external command slower than one tick interval can overlap with a second,
 concurrent invocation for the same session.
+
+**No per-run loadavg was captured in this original sweep** (only the
+aggregate "~3-24" range above, sampled a handful of times across the whole
+batch, not per row) -- corrected by `loadavg-redo/README.md` in this
+directory, which re-runs this sweep (plus 10 extra delay=0.5s trials) with a
+real `uptime` sample before every invocation and states its own, real (not
+identical) result.
