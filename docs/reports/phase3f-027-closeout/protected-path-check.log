@@ -1,0 +1,43 @@
+=== task 027 protected-path audit, BY SHA (never by author/committer identity) ===
+date: 2026-08-26T23:03:47Z
+HEAD: b0f756f6fadee31173bf80a206ea0ed1f9ecfcd7  (b0f756f docs: record the fixing shas posted to issues #5-#10 (task 026))
+phase base: bce80ea (last phase-3e commit, docs: fix citation-sweep false positive ... (410))
+
+--- $ git log --format=%H bce80ea..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+60c2c56af9b7456df81c7408e7ca812a9434701a
+c80a14cd13110d884bc7a79cb1c8de0619f58610
+
+--- same, with abbreviated sha + subject
+60c2c56 prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+c80a14c spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+
+--- per path
+path: SPEC.md
+    c80a14c spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+  count: 1
+path: prds/
+    60c2c56 prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+  count: 1
+path: ci/Dockerfile
+  count: 0
+path: ci/SPIKE.md
+  count: 0
+
+--- files touched by each recognised sha
+c80a14c:
+  c80a14c spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+
+ SPEC.md | 57 ++++++++++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 42 insertions(+), 15 deletions(-)
+60c2c56:
+  60c2c56 prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+
+ prds/phase3f-residuals-and-suite-determinism.md | 1110 +++++++++++++++++++++++
+ 1 file changed, 1110 insertions(+)
+
+--- hard pass/fail evaluation
+shas found: 2
+found       : ['60c2c56af9b7456df81c7408e7ca812a9434701a', 'c80a14cd13110d884bc7a79cb1c8de0619f58610']
+recognised  : ['c80a14cd13110d884bc7a79cb1c8de0619f58610', '60c2c56af9b7456df81c7408e7ca812a9434701a']
+unrecognised: (none)
+VERDICT: PASS - exactly the two recognised shas

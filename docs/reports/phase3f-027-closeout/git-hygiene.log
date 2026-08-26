@@ -1,0 +1,104 @@
+=== task 027 git hygiene, at HEAD b0f756f ===
+date: 2026-08-26T23:04:39Z
+
+--- $ git status --short
+?? docs/reports/phase3f-027-closeout/
+(lines: 1)
+
+--- $ git log origin/main..HEAD  (BEFORE this task's own commit)
+(lines: 0)
+
+--- operator commits reachable from origin/main?
+  c80a14c: YES (published)
+  60c2c56: YES (published)
+
+--- $ git reflog: rewrite-indicating entries in the phase-3f window (from 5071389 onwards)
+202e1ba HEAD@{2026-08-26 18:20:27 +0000}: commit (amend): features: let a targeted run select feature files by path (task 017)
+4f5cfce HEAD@{2026-08-26 18:20:21 +0000}: commit (amend): features: let a targeted run select feature files by path (task 017)
+
+--- the three reflog entries around the task-017 amend (raw, oldest last)
+202e1ba HEAD@{2026-08-26 18:20:27 +0000}: commit (amend): features: let a targeted run select feature files by path (task 017)
+4f5cfce HEAD@{2026-08-26 18:20:21 +0000}: commit (amend): features: let a targeted run select feature files by path (task 017)
+f860944 HEAD@{2026-08-26 18:20:15 +0000}: commit: features: let a targeted run select feature files by path (task 017)
+
+--- was the amended-away commit 4f5cfce ever published?
+  NO - 4f5cfce is unreachable from origin/main; it was never pushed
+--- 4f5cfce..202e1ba delta (what the amend added)
+ docs/reports/phase3f-017-r65-settled-sigwinch-count.md | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- $ git reflog show origin/main : any forced update, ever?
+  (no forced-update entry in any of the 436 origin/main reflog entries)
+  action-word tally over all origin/main reflog entries:
+        432 update by push
+          1 fetch origin: fast-forward
+          1 fetch https://github.com/n-orlov/deck.git main:refs/remotes/origin/main: fast-forward
+          1 fetch -q origin: fast-forward
+          1 fetch -q https://github.com/n-orlov/deck.git main:refs/remotes/origin/main: fast-forward
+
+--- one commit per completed task: subject-derived mapping over bce80ea..HEAD
+  c80a14c|spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+  60c2c56|prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+  f3c25d5|interactive: drain the vt emulator's reply stream so a terminal query cannot stall a Session (001)
+  7d060cd|interactive: stop holding the session lock across a grid write (task 002)
+  b8f2513|service: collect a retained dead pane on sight, whatever the row says (task 003)
+  366dd78|service: make the resume decision mean 'has a live pane' and let kill remove a corpse (task 004)
+  0745ced|store: clear the replaced pane's crash verdict when a resume relaunches (task 005)
+  88742b2|service: refuse to resume an archived row before the launch lease (task 006)
+  63d4189|tui: unarchive an archived row with U from the filter results (task 007)
+  9d43a32|hookrecv: resolve hooks against every retained row, not the sidebar query (task 008)
+  10f3970|tui: confirm before A archives, so a live agent is never killed by one keystroke (task 009)
+  4822484|tui: offer u to unarchive right after a confirmed A (task 010)
+  eb2089e|features: prove the whole A/U/r round trip in one scenario (task 011)
+  2714d1b|tui: scroll the three overlays by one line with the arrows and j/k (task 012)
+  4edbfc2|tui: let the wheel scroll the three scrollable overlays (task 013)
+  9c2e66a|tui: name the overlay scroll bindings in the help overlay (task 014)
+  f7b97fe|tui: never let a passive preview fit overlap itself for the same session (task 015)
+  677f5a0|features: stop waiting on a shell status the spec lets the product skip (task 016)
+  5071389|features: settle before reading the SIGWINCH counter, and keep it exact (task 017)
+  202e1ba|features: let a targeted run select feature files by path (task 017)
+  ce8ef91|theme: give matrix's seven statuses seven distinct 16-colour slots (task 018)
+  b848d28|test: name the eleven task-numbered test files after what they test (task 019)
+  300ee86|docs: record the git-rename evidence task 019's report cites (task 019)
+  e47cb35|docs: title the two duplicate report sections after what they found (task 020)
+  c12c30e|docs: publish the green whole-suite run at the phase's final code commit (task 021)
+  1fe37de|docs: publish the real 9/10 stability rate at the final code commit (task 022)
+  a9ff496|docs: publish the phase 3f report with per-requirement evidence (task 023)
+  497ac24|docs: record what phase 3f found and did not fix (task 024)
+  d642aaa|docs: make the citation checker catch a wrong-package source path (task 024)
+  e0c39f5|docs: record the held-filter 'Esc to clear' defect as F11 (task 024)
+  e9dad62|docs: reconcile the operator's bug log in the delivery log (task 025)
+  b0f756f|docs: record the fixing shas posted to issues #5-#10 (task 026)
+
+  tasks in tasks.json: 27
+  status tally: {'validated': 26, 'in-progress': 1}
+  commits in range: 32
+  task 001: 1
+  task 002: 1
+  task 003: 1
+  task 004: 1
+  task 005: 1
+  task 006: 1
+  task 007: 1
+  task 008: 1
+  task 009: 1
+  task 010: 1
+  task 011: 1
+  task 012: 1
+  task 013: 1
+  task 014: 1
+  task 015: 1
+  task 016: 1
+  task 017: 2  <-- 2 commits
+  task 018: 1
+  task 019: 2  <-- 2 commits
+  task 020: 1
+  task 021: 1
+  task 022: 1
+  task 023: 1
+  task 024: 3  <-- 3 commits
+  task 025: 1
+  task 026: 1
+  task operator/other: 2  <-- 2 commits
+  tasks with >1 commit: {'017': ['5071389', '202e1ba'], '019': ['b848d28', '300ee86'], '024': ['497ac24', 'd642aaa', 'e0c39f5']}
+  completed tasks with no commit: (none)
