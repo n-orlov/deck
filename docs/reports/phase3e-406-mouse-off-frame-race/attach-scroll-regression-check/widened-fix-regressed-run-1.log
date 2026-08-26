@@ -1,0 +1,628 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m §3.2/§11.8 a wheel notch in an attached session scrolls the pane, not the shell (requirement 48)
+  deck's private tmux server is bootstrapped with `mouse on` (task 115) so that
+  a wheel notch delivered to an attached pane scrolls its scrollback via
+  tmux's own copy-mode, instead of the outer terminal's alternate-scroll
+  translating it into an Up/Down arrow that a shell reads as history recall.
+  This proves the behaviour against real tmux -- the observable is pane
+  content, never the `mouse` option's own value.
+=== RUN   TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched
+
+  [1;37mScenario:[0m a wheel notch scrolls an attached pane's scrollback and leaves the shell's input line untouched [1;30m# attach_scroll.feature:11[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "attach-scroll-target"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" attaches to the selected session[0m                                                    [1;30m# attach_scroll_test.go:24 -> github.com/n-orlov/deck/features.clientAttachesToSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" fills the attached pane with more than one screen of scrollback[0m                     [1;30m# attach_scroll_test.go:25 -> github.com/n-orlov/deck/features.clientFillsAttachedPaneWithScrollback[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "before-wheel-scroll"[0m                                         [1;30m# mouse_synthesis_test.go:108 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up 30 times over the attached pane at column 20 row 15[0m            [1;30m# attach_scroll_test.go:26 -> github.com/n-orlov/deck/features.clientScrollsWheelUpNTimesAt[0m
+    [32mThen[0m [32mdeck client "A" attached pane shows the top of the scrollback[0m                                      [1;30m# attach_scroll_test.go:27 -> github.com/n-orlov/deck/features.clientAttachedPaneShowsTopOfScrollback[0m
+    [32mWhen[0m [32mdeck client "A" exits copy-mode on the attached pane[0m                                               [1;30m# attach_scroll_test.go:28 -> github.com/n-orlov/deck/features.clientExitsCopyModeOnAttachedPane[0m
+    [31mThen[0m [31mdeck client "A" frame still matches the captured "before-wheel-scroll" frame[0m                       [1;30m# mouse_synthesis_test.go:109 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [1;31mafter scenario hook failed: client "A" frame changed after gesture, want unchanged from captured "before-wheel-scroll":
+want:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:tmux*                                                     "285f277669dd" 03:59 26-Aug-26
+got:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:sh*                                                       "285f277669dd" 03:59 26-Aug-26
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [03:59:17.206] +0 "n"
+  [03:59:17.222] +16.557335ms "attach-scroll-target"
+  [03:59:17.298] +76.018031ms "\t/tmp/deck-scenario-584453551/walking-skeleton-cwd\r"
+  [03:59:17.323] +24.290739ms "a"
+  [03:59:17.574] +250.950714ms "echo ATTACH_SCROLL_TOP_MARKER\r"
+  [03:59:17.574] +253.683µs "for i in $(seq 1 120); do echo SCROLL_LINE_$i; done\r"
+  [03:59:18.079] +504.887181ms "\x1b[<64;20;15M"
+  [03:59:18.079] +5.593µs "\x1b[<64;20;15M"
+  [03:59:18.079] +772ns "\x1b[<64;20;15M"
+  [03:59:18.079] +3.372µs "\x1b[<64;20;15M"
+  [03:59:18.079] +947ns "\x1b[<64;20;15M"
+  [03:59:18.079] +2.27µs "\x1b[<64;20;15M"
+  [03:59:18.079] +1.114µs "\x1b[<64;20;15M"
+  [03:59:18.079] +1.336µs "\x1b[<64;20;15M"
+  [03:59:18.079] +5.527µs "\x1b[<64;20;15M"
+  [03:59:18.079] +832ns "\x1b[<64;20;15M"
+  [03:59:18.079] +894ns "\x1b[<64;20;15M"
+  [03:59:18.079] +26.253µs "\x1b[<64;20;15M"
+  [03:59:18.079] +8.799µs "\x1b[<64;20;15M"
+  [03:59:18.079] +2.253µs "\x1b[<64;20;15M"
+  [03:59:18.079] +4.256µs "\x1b[<64;20;15M"
+  [03:59:18.079] +822ns "\x1b[<64;20;15M"
+  [03:59:18.079] +78.929µs "\x1b[<64;20;15M"
+  [03:59:18.079] +6.841µs "\x1b[<64;20;15M"
+  [03:59:18.079] +655ns "\x1b[<64;20;15M"
+  [03:59:18.079] +2.925µs "\x1b[<64;20;15M"
+  [03:59:18.079] +1.787µs "\x1b[<64;20;15M"
+  [03:59:18.079] +546ns "\x1b[<64;20;15M"
+  [03:59:18.079] +570ns "\x1b[<64;20;15M"
+  [03:59:18.079] +532ns "\x1b[<64;20;15M"
+  [03:59:18.079] +578ns "\x1b[<64;20;15M"
+  [03:59:18.079] +593ns "\x1b[<64;20;15M"
+  [03:59:18.079] +649ns "\x1b[<64;20;15M"
+  [03:59:18.079] +694ns "\x1b[<64;20;15M"
+  [03:59:18.079] +2.26µs "\x1b[<64;20;15M"
+  [03:59:18.079] +509ns "\x1b[<64;20;15M"
+  [03:59:18.093] +14.174238ms "q"
+frame:
+                                                                /usr/local/go/src/runtime/proc.go:46
+6
+ runtime.updateMaxProcsGoroutine()
+                                        /usr/local/go/src/runtime/proc.go:6720 +0xe7 fp=0xc0000767e0
+ sp=0xc000076788 pc=0x450f87
+                            runtime.goexit({})
+                                                /usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0
+xc0000767e8 sp=0xc0000767e0 pc=0x47e0c1
+                                       created by runtime.defaultGOMAXPROCSUpdateEnable in goroutine
+ 1
+        /usr/local/go/src/runtime/proc.go:6708 +0x37
+
+                                                    goroutine 19 gp=0xc0001028c0 m=nil [finalizer wa
+it]:
+    runtime.gopark(0x451f55?, 0x4191c5?, 0xb8?, 0x1?, 0xc000002380?)
+                                                                        /usr/local/go/src/runtime/pr
+oc.go:460 +0xce fp=0xc00007a620 sp=0xc00007a600 pc=0x47658e
+                                                           runtime.runFinalizers()
+                                                                                        /usr/local/g
+o/src/runtime/mfinal.go:210 +0x107 fp=0xc00007a7e0 sp=0xc00007a620 pc=0x420827
+                                                                              runtime.goexit({})
+                                                                                                   /
+usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007a7e8 sp=0xc00007a7e0 pc=0x47e0c1
+                                                                                          created by
+ runtime.createfing in goroutine 1
+                                        /usr/local/go/src/runtime/mfinal.go:172 +0x3d
+
+                                                                                     goroutine 20 gp
+=0xc000102e00 m=nil [cleanup wait]:
+                                   runtime.gopa
+raw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[H\r+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_104_2          | Select or create a session to preview it here.                |\r\n| No sessions yet. Press n to      |                                                               |\r\n| create a session.                |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n+----------------------------------+---------------------------------------------------------------+\r\nup/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P \x1b[30;H\x1b[H+------------------------------------------------------------------------------+\x1b[K\r\n| Create shell session                                                         |\x1b[K\r\n| > Name:                                                                      |\x1b[K\r\n|     the display name; also the source of the session's tmux slug             |\x1b[K\r\n|   Working directory: /w/features                                             |\x1b[K\r\n| the session's cwd; must exist and be a directory; ↑/↓ cycles recent history; |\x1b[K\r\n| right/end completes a shown directory match                                  |\x1b[K\r\n|   Agent: shell (left/right cycles: claude, pi, shell)                        |\x1b[K\r\n|     which coding agent adapter launches this session                         |\x1b[K\r\n|   Permission profile: safe (left/right cycles: safe)                         |\x1b[K\r\n| how much the agent may do without asking; an unsupported profile degrades to |\x1b[K\r\n| safe; yolo is not offered because allow_yolo is not enabled in config.toml   |\x1b[K\r\n|   Launch args (JSON array):                                                  |\x1b[K\r\n|     extra arguments appended verbatim after the adapter's own argv           |\x1b[K\r\n|   Env (key=value, comma-separated):                                          |\x1b[K\r\n|     session-level environment variables, highest priority in PATH resolution |\x1b[K\r\n|   Pre-launch command:                                                        |\x1b[K\r\n|     a command run in the pane before the agent starts, e.g. to load secrets  |\x1b[K\r\n|   Login shell: off (space toggles)                                           |\x1b[K\r\n| makes captured_path advisory only (not applied): runs via $SHELL -lc instead |\x1b[K\r\n| of the agent argv, so the login shell sets PATH                              |\x1b[K\r\n| Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels  |\x1b[K\r\n+------------------------------------------------------------------------------+\x1b[K\x1b[J\x1b[23;H\x1b[H\n\n| > Name: attach-scroll-target                                                 |\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[23;H\x1b[H\n\n|   Name: attach-scroll-target                                                 |\x1b[K\r\n\n| > Working directory: /tmp/deck-scenario-584453551/walking-skeleton-cwd/      |\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[23;H\x1b[H+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_104_2          | Session is starting; no pane yet.                             |\r\n| v walking-skeleton-cwd  /tmp/... |                                                               |\r\n| > attach-scroll-target starting  |                                                               |\r\n|   created just now               |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n+----------------------------------+---------------------------------------------------------------+\r\nup/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P \x1b[30;H\x1b[2K\r\x1b[?2004l\x1b[?25h\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l\x1b[?25h\x1b[?1049h\x1b[22;0;0t\x1b[?1h\x1b=\x1b[H\x1b[2J\x1b[?12l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1005l\x1b[?2004h\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[1;1H\x1b[1;30r\x1b[c\x1b[>c\x1b[>q\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b[1;3H\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h\x1b[?1000h\x1b[?1002h\x1b[?25l\x1b[H$ \x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\x1b[30m\x1b[42m\r\n[deck_atta0:tmux*                                                     \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[1;3H\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[1;1H\x1b[1;30r\x1b[1;3H\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h\x1b[?1000h\x1b[?1002h\x1b[?25l\x1b[H$ \x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\x1b[30m\x1b[42m\r\n[deck_atta0:tmux*                                                     \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[1;3Hecho ATTACH_SCROLL_TOP_MARKER\r\nfor i in $(seq 1 120); do echo SCROLL_LINE_$i; done\r\nATTACH_SCROLL_TOP_MARKER\r\n$ \x1b[1;29r\x1b[1;1H\x1b[29SSCROLL_LINE_79\x1b[K\r\nSCROLL_LINE_80\x1b[K\r\nSCROLL_LINE_81\x1b[K\r\nSCROLL_LINE_82\x1b[K\r\nSCROLL_LINE_83\x1b[K\r\nSCROLL_LINE_84\x1b[K\r\nSCROLL_LINE_85\x1b[K\r\nSCROLL_LINE_86\x1b[K\r\nSCROLL_LINE_87\x1b[K\r\nSCROLL_LINE_88\x1b[K\r\nSCROLL_LINE_89\x1b[K\r\nSCROLL_LINE_90\x1b[K\r\nSCROLL_LINE_91\x1b[K\r\nSCROLL_LINE_92\x1b[K\r\nSCROLL_LINE_93\x1b[K\r\nSCROLL_LINE_94\x1b[K\r\nSCROLL_LINE_95\x1b[K\r\nSCROLL_LINE_96\x1b[K\r\nSCROLL_LINE_97\x1b[K\r\nSCROLL_LINE_98\x1b[K\r\nSCROLL_LINE_99\x1b[K\r\nSCROLL_LINE_100\x1b[K\r\nSCROLL_LINE_101\x1b[K\r\nSCROLL_LINE_102\x1b[K\r\nSCROLL_LINE_103\x1b[K\r\nSCROLL_LINE_104\x1b[K\r\nSCROLL_LINE_105\x1b[K\r\nSCROLL_LINE_106\x1b[K\r\n\x1b[K\x1b[1;30r\x1b[29;1H\x1b[1;29r\x1b[1;1H\x1b[14S\x1b[14BSCROLL_LINE_107\r\nSCROLL_LINE_108\x1b[K\r\nSCROLL_LINE_109\x1b[K\r\nSCROLL_LINE_110\x1b[K\r\nSCROLL_LINE_111\x1b[K\r\nSCROLL_LINE_112\x1b[K\r\nSCROLL_LINE_113\x1b[K\r\nSCROLL_LINE_114\x1b[K\r\nSCROLL_LINE_115\x1b[K\r\nSCROLL_LINE_116\x1b[K\r\nSCROLL_LINE_117\x1b[K\r\nSCROLL_LINE_118\x1b[K\r\nSCROLL_LINE_119\x1b[K\r\nSCROLL_LINE_120\x1b[K\r\n$ \x1b[K\x1b[1;30r\x1b[29;3H\x1b[?25l\x1b[HSCROLL_LINE_38\x1b[11X\x1b[11C                                                           \x1b[30m\x1b[43m03:59:17 [55/95]\x1b[39m\x1b[49m\x1b[2;1HSCROLL_LINE_39\x1b[11X\x1b[11C                                                                           \x1b[3;1HSCROLL_LINE_40\x1b[11X\x1b[11C                                                                           \x1b[4;1HSCROLL_LINE_41\x1b[11X\x1b[11C                                                                           \x1b[5;1HSCROLL_LINE_42\x1b[11X\x1b[11C                                                                           \x1b[6;1HSCROLL_LINE_43\x1b[11X\x1b[11C                                                                           \x1b[7;1HSCROLL_LINE_44\x1b[11X\x1b[11C                                                                           \x1b[8;1HSCROLL_LINE_45\x1b[11X\x1b[11C                                                                           \x1b[9;1HSCROLL_LINE_46\x1b[11X\x1b[11C                                                                           \x1b[10;1HSCROLL_LINE_47\x1b[11X\x1b[11C                                                                           \x1b[11;1HSCROLL_LINE_48\x1b[11X\x1b[11C                                                                           \x1b[12;1HSCROLL_LINE_49\x1b[11X\x1b[11C                                                                           \x1b[13;1HSCROLL_LINE_50\x1b[11X\x1b[11C                                                                           \x1b[14;1HSCROLL_LINE_51\x1b[11X\x1b[11C                                                                           \x1b[15;1HSCROLL_LINE_52\x1b[11X\x1b[11C                                                                           \x1b[16;1HSCROLL_LINE_53\x1b[11X\x1b[11C                                                                           \x1b[17;1HSCROLL_LINE_54\x1b[11X\x1b[11C                                                                           \x1b[18;1HSCROLL_LINE_55\x1b[11X\x1b[11C                                                                           \x1b[19;1HSCROLL_LINE_56\x1b[11X\x1b[11C                                                                           \x1b[20;1HSCROLL_LINE_57\x1b[11X\x1b[11C                                                                           \x1b[21;1HSCROLL_LINE_58\x1b[11X\x1b[11C                                                                           \x1b[22;1HSCROLL_LINE_59\x1b[11X\x1b[11C                                                                           \x1b[23;1HSCROLL_LINE_60\x1b[11X\x1b[11C                                                                           \x1b[24;1HSCROLL_LINE_61\x1b[11X\x1b[11C                                                                           \x1b[25;1HSCROLL_LINE_62\x1b[11X\x1b[11C                                                                           \x1b[26;1HSCROLL_LINE_63\x1b[11X\x1b[11C                                                                           \x1b[27;1HSCROLL_LINE_64\x1b[11X\x1b[11C                                                                           \x1b[28;1HSCROLL_LINE_65\x1b[11X\x1b[11C                                                                           \x1b[29;1HSCROLL_LINE_66\x1b[11X\x1b[11C                                                                           \x1b[30m\x1b[42m\x1b[30;1H[deck_atta0:sh*                                                       \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[29;15H\x1b[1;29r\x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [56/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_37\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [57/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_36\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [58/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_35\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [59/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_34\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [60/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_33\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [61/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_32\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [62/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_31\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [63/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_30\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [64/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_29\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [65/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_28\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [66/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_27\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [67/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_26\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [68/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_25\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [69/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_24\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [70/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_23\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [71/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_22\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [72/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_21\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [73/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_20\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [74/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_19\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [75/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_18\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [76/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_17\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [77/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_16\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [78/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_15\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [79/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_14\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [80/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_13\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [81/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_12\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [82/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_11\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [83/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_10\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [84/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_9\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [85/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_8\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [86/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_7\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [87/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_6\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [88/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_5\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [89/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_4\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [90/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_3\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [91/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_2\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [92/95]\x1b[1;1H\x1b[39m\x1b[49m$ SCROLL_LINE_1\x1b[10C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [93/95]\x1b[1;1H\x1b[39m\x1b[49mATTACH_SCROLL_TOP_MARKER\x1b[C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [94/95]\x1b[1;1H\x1b[39m\x1b[49mfor i in $(seq 1 120); do echo SCROLL_LINE_$i; done\x1b[2;85H                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [95/95]\x1b[1;1H\x1b[39m\x1b[49m$ echo ATTACH_SCROLL_TOP_MARKER\x1b[19C                                  \n                \x1b[2;1H\x1b[1;30r\x1b[29;15H\x1b[?25l\x1b[HSCROLL_LINE_93\x1b[K\r\nSCROLL_LINE_94\x1b[K\r\nSCROLL_LINE_95\x1b[K\r\nSCROLL_LINE_96\x1b[K\r\nSCROLL_LINE_97\x1b[K\r\nSCROLL_LINE_98\x1b[K\r\nSCROLL_LINE_99\x1b[K\r\nSCROLL_LINE_100\x1b[K\r\nSCROLL_LINE_101\x1b[K\r\nSCROLL_LINE_102\x1b[K\r\nSCROLL_LINE_103\x1b[K\r\nSCROLL_LINE_104\x1b[K\r\nSCROLL_LINE_105\x1b[K\r\nSCROLL_LINE_106\x1b[K\r\nSCROLL_LINE_107\x1b[K\r\nSCROLL_LINE_108\x1b[K\r\nSCROLL_LINE_109\x1b[K\r\nSCROLL_LINE_110\x1b[K\r\nSCROLL_LINE_111\x1b[K\r\nSCROLL_LINE_112\x1b[K\r\nSCROLL_LINE_113\x1b[K\r\nSCROLL_LINE_114\x1b[K\r\nSCROLL_LINE_115\x1b[K\r\nSCROLL_LINE_116\x1b[K\r\nSCROLL_LINE_117\x1b[K\r\nSCROLL_LINE_118\x1b[K\r\nSCROLL_LINE_119\x1b[K\r\nSCROLL_LINE_120\x1b[K\r\n$ \x1b[K\x1b[?12l\x1b[?25hSIGQUIT: quit\nPC=0x47fee1 m=0 sigcode=0\n\ngoroutine 0 gp=0xc7bf40 m=0 mp=0xc7d4a0 [idle]:\nruntime.futex(0xc7d5f0, 0x80, 0x0, 0x0, 0x0, 0x0)\n\t/usr/local/go/src/runtime/sys_linux_amd64.s:557 +0x21 fp=0x7ffe3c4237e8 sp=0x7ffe3c4237e0 pc=0x47fee1\nruntime.futexsleep(0x7ffe3c423860?, 0xc7bf40?, 0x7ffe3c423860?)\n\t/usr/local/go/src/runtime/os_linux.go:76 +0x30 fp=0x7ffe3c423838 sp=0x7ffe3c4237e8 pc=0x43c630\nruntime.notesleep(0xc7d5f0)\n\t/usr/local/go/src/runtime/lock_futex.go:47 +0x87 fp=0x7ffe3c423870 sp=0x7ffe3c423838 pc=0x416327\nruntime.mPark(...)\n\t/usr/local/go/src/runtime/proc.go:1974\nruntime.stoplockedm()\n\t/usr/local/go/src/runtime/proc.go:3268 +0x73 fp=0x7ffe3c4238c8 sp=0x7ffe3c423870 pc=0x448373\nruntime.schedule()\n\t/usr/local/go/src/runtime/proc.go:4131 +0x3a fp=0x7ffe3c423900 sp=0x7ffe3c4238c8 pc=0x44a9ba\nruntime.park_m(0xc000103a40)\n\t/usr/local/go/src/runtime/proc.go:4280 +0x285 fp=0x7ffe3c423960 sp=0x7ffe3c423900 pc=0x44aea5\nruntime.mcall()\n\t/usr/local/go/src/runtime/asm_amd64.s:458 +0x55 fp=0x7ffe3c423978 sp=0x7ffe3c423960 pc=0x47c095\n\ngoroutine 1 gp=0xc000002380 m=8 mp=0xc000204808 [syscall]:\nsyscall.Syscall6(0xf7, 0x3, 0xe, 0xc00031d7d8, 0x4, 0xc0001562d0, 0x0)\n\t/usr/local/go/src/syscall/syscall_linux.go:96 +0x39 fp=0xc00031d750 sp=0xc00031d6f0 pc=0x490919\ninternal/syscall/unix.Waitid(0xc00031d928?, 0x4d9fd5?, 0xc000014b60?, 0xd?, 0xc0000aa480?)\n\t/usr/local/go/src/internal/syscall/unix/waitid_linux.go:18 +0x39 fp=0xc00031d7a8 sp=0xc00031d750 pc=0x4aa6d9\nos.(*Process).pidfdWait.func1(...)\n\t/usr/local/go/src/os/pidfd_linux.go:109\nos.ignoringEINTR(...)\n\t/usr/local/go/src/os/file_posix.go:263\nos.(*Process).pidfdWait(0xc0001324c0)\n\t/usr/local/go/src/os/pidfd_linux.go:108 +0x1a9 fp=0xc00031d8b8 sp=0xc00031d7a8 pc=0x4b50a9\nos.(*Process).wait(0xc00031d940?)\n\t/usr/local/go/src/os/exec_unix.go:25 +0x1a fp=0xc00031d8d0 sp=0xc00031d8b8 pc=0x4b107a\nos.(*Process).Wait(...)\n\t/usr/local/go/src/os/exec.go:340\nos/exec.(*Cmd).Wait(0xc0000bad80)\n\t/usr/local/go/src/os/exec/exec.go:922 +0x45 fp=0xc00031d938 sp=0xc00031d8d0 pc=0x4da9e5\nos/exec.(*Cmd).Run(0xc0000bad80)\n\t/usr/local/go/src/os/exec/exec.go:626 +0x2d fp=0xc00031d950 sp=0xc00031d938 pc=0x4d968d\ngithub.com/charmbracelet/bubbletea.(*Program).exec(0xc000186c80, {0x975fa0, 0xc00007e048}, 0x8f4ef8)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/exec.go:116 +0x11f fp=0xc00031d998 sp=0xc00031d950 pc=0x55197f\ngithub.com/charmbracelet/bubbletea.(*Program).eventLoop(0xc000186c80, {0x975a88?, 0xc0001e6008?}, 0xc0001102a0)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:471 +0x212 fp=0xc00031dac0 sp=0xc00031d998 pc=0x558bd2\ngithub.com/charmbracelet/bubbletea.(*Program).Run(0xc000186c80)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:716 +0xae7 fp=0xc00031dd40 sp=0xc00031dac0 pc=0x55a787\nmain.run({0xc000128030?, 0x474085?, 0x401240?}, {0x974880, 0xc00011e010}, {0x9748a0, 0xc00011e020})\n\t/w/cmd/deck/main.go:129 +0x1691 fp=0xc00031ff08 sp=0xc00031dd40 pc=0x834271\nmain.main()\n\t/w/cmd/deck/main.go:27 +0x45 fp=0xc00031ff50 sp=0xc00031ff08 pc=0x832bc5\nruntime.main()\n\t/usr/local/go/src/runtime/proc.go:285 +0x29d fp=0xc00031ffe0 sp=0xc00031ff50 pc=0x442c7d\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00031ffe8 sp=0xc00031ffe0 pc=0x47e0c1\n\ngoroutine 2 gp=0xc000002e00 m=nil [force gc (idle)]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007afa8 sp=0xc00007af88 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.forcegchelper()\n\t/usr/local/go/src/runtime/proc.go:373 +0xb3 fp=0xc00007afe0 sp=0xc00007afa8 pc=0x442fb3\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007afe8 sp=0xc00007afe0 pc=0x47e0c1\ncreated by runtime.init.7 in goroutine 1\n\t/usr/local/go/src/runtime/proc.go:361 +0x1a\n\ngoroutine 3 gp=0xc000003340 m=nil [GC sweep wait]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007b780 sp=0xc00007b760 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.bgsweep(0xc0000a6000)\n\t/usr/local/go/src/runtime/mgcsweep.go:279 +0x94 fp=0xc00007b7c8 sp=0xc00007b780 pc=0x42d6f4\nruntime.gcenable.gowrap1()\n\t/usr/local/go/src/runtime/mgc.go:212 +0x25 fp=0xc00007b7e0 sp=0xc00007b7c8 pc=0x421925\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007b7e8 sp=0xc00007b7e0 pc=0x47e0c1\ncreated by runtime.gcenable in goroutine 1\n\t/usr/local/go/src/runtime/mgc.go:212 +0x66\n\ngoroutine 4 gp=0xc000003500 m=nil [GC scavenge wait]:\nruntime.gopark(0xc0000a6000?, 0x971c60?, 0x1?, 0x0?, 0xc000003500?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007bf78 sp=0xc00007bf58 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.(*scavengerState).park(0xc7bb60)\n\t/usr/local/go/src/runtime/mgcscavenge.go:425 +0x49 fp=0xc00007bfa8 sp=0xc00007bf78 pc=0x42b1c9\nruntime.bgscavenge(0xc0000a6000)\n\t/usr/local/go/src/runtime/mgcscavenge.go:653 +0x3c fp=0xc00007bfc8 sp=0xc00007bfa8 pc=0x42b75c\nruntime.gcenable.gowrap2()\n\t/usr/local/go/src/runtime/mgc.go:213 +0x25 fp=0xc00007bfe0 sp=0xc00007bfc8 pc=0x4218c5\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007bfe8 sp=0xc00007bfe0 pc=0x47e0c1\ncreated by runtime.gcenable in goroutine 1\n\t/usr/local/go/src/runtime/mgc.go:213 +0xa5\n\ngoroutine 18 gp=0xc000102380 m=nil [GOMAXPROCS updater (idle)]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc000076788 sp=0xc000076768 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.updateMaxProcsGoroutine()\n\t/usr/local/go/src/runtime/proc.go:6720 +0xe7 fp=0xc0000767e0 sp=0xc000076788 pc=0x450f87\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc0000767e8 sp=0xc0000767e0 pc=0x47e0c1\ncreated by runtime.defaultGOMAXPROCSUpdateEnable in goroutine 1\n\t/usr/local/go/src/runtime/proc.go:6708 +0x37\n\ngoroutine 19 gp=0xc0001028c0 m=nil [finalizer wait]:\nruntime.gopark(0x451f55?, 0x4191c5?, 0xb8?, 0x1?, 0xc000002380?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007a620 sp=0xc00007a600 pc=0x47658e\nruntime.runFinalizers()\n\t/usr/local/go/src/runtime/mfinal.go:210 +0x107 fp=0xc00007a7e0 sp=0xc00007a620 pc=0x420827\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007a7e8 sp=0xc00007a7e0 pc=0x47e0c1\ncreated by runtime.createfing in goroutine 1\n\t/usr/local/go/src/runtime/mfinal.go:172 +0x3d\n\ngoroutine 20 gp=0xc000102e00 m=nil [cleanup wait]:\nruntime.gopa", step error: client "A" frame changed after gesture, want unchanged from captured "before-wheel-scroll":
+want:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:tmux*                                                     "285f277669dd" 03:59 26-Aug-26
+got:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:sh*                                                       "285f277669dd" 03:59 26-Aug-26[0m
+    [36mWhen[0m [36mdeck client "A" detaches[0m                                                                           [1;30m# mouse_bindings_test.go:22 -> github.com/n-orlov/deck/features.clientDetaches[0m
+    [36mThen[0m [36mdeck client "A" screen contains "deck - sessions"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    suite.go:640: after scenario hook failed: client "A" frame changed after gesture, want unchanged from captured "before-wheel-scroll":
+        want:
+        SCROLL_LINE_93
+        SCROLL_LINE_94
+        SCROLL_LINE_95
+        SCROLL_LINE_96
+        SCROLL_LINE_97
+        SCROLL_LINE_98
+        SCROLL_LINE_99
+        SCROLL_LINE_100
+        SCROLL_LINE_101
+        SCROLL_LINE_102
+        SCROLL_LINE_103
+        SCROLL_LINE_104
+        SCROLL_LINE_105
+        SCROLL_LINE_106
+        SCROLL_LINE_107
+        SCROLL_LINE_108
+        SCROLL_LINE_109
+        SCROLL_LINE_110
+        SCROLL_LINE_111
+        SCROLL_LINE_112
+        SCROLL_LINE_113
+        SCROLL_LINE_114
+        SCROLL_LINE_115
+        SCROLL_LINE_116
+        SCROLL_LINE_117
+        SCROLL_LINE_118
+        SCROLL_LINE_119
+        SCROLL_LINE_120
+        $
+        [deck_atta0:tmux*                                                     "285f277669dd" 03:59 26-Aug-26
+        got:
+        SCROLL_LINE_93
+        SCROLL_LINE_94
+        SCROLL_LINE_95
+        SCROLL_LINE_96
+        SCROLL_LINE_97
+        SCROLL_LINE_98
+        SCROLL_LINE_99
+        SCROLL_LINE_100
+        SCROLL_LINE_101
+        SCROLL_LINE_102
+        SCROLL_LINE_103
+        SCROLL_LINE_104
+        SCROLL_LINE_105
+        SCROLL_LINE_106
+        SCROLL_LINE_107
+        SCROLL_LINE_108
+        SCROLL_LINE_109
+        SCROLL_LINE_110
+        SCROLL_LINE_111
+        SCROLL_LINE_112
+        SCROLL_LINE_113
+        SCROLL_LINE_114
+        SCROLL_LINE_115
+        SCROLL_LINE_116
+        SCROLL_LINE_117
+        SCROLL_LINE_118
+        SCROLL_LINE_119
+        SCROLL_LINE_120
+        $
+        [deck_atta0:sh*                                                       "285f277669dd" 03:59 26-Aug-26
+        surviving deck client: hung deck client killed after 1s
+        sent (input timeline):
+          [03:59:17.206] +0 "n"
+          [03:59:17.222] +16.557335ms "attach-scroll-target"
+          [03:59:17.298] +76.018031ms "\t/tmp/deck-scenario-584453551/walking-skeleton-cwd\r"
+          [03:59:17.323] +24.290739ms "a"
+          [03:59:17.574] +250.950714ms "echo ATTACH_SCROLL_TOP_MARKER\r"
+          [03:59:17.574] +253.683µs "for i in $(seq 1 120); do echo SCROLL_LINE_$i; done\r"
+          [03:59:18.079] +504.887181ms "\x1b[<64;20;15M"
+          [03:59:18.079] +5.593µs "\x1b[<64;20;15M"
+          [03:59:18.079] +772ns "\x1b[<64;20;15M"
+          [03:59:18.079] +3.372µs "\x1b[<64;20;15M"
+          [03:59:18.079] +947ns "\x1b[<64;20;15M"
+          [03:59:18.079] +2.27µs "\x1b[<64;20;15M"
+          [03:59:18.079] +1.114µs "\x1b[<64;20;15M"
+          [03:59:18.079] +1.336µs "\x1b[<64;20;15M"
+          [03:59:18.079] +5.527µs "\x1b[<64;20;15M"
+          [03:59:18.079] +832ns "\x1b[<64;20;15M"
+          [03:59:18.079] +894ns "\x1b[<64;20;15M"
+          [03:59:18.079] +26.253µs "\x1b[<64;20;15M"
+          [03:59:18.079] +8.799µs "\x1b[<64;20;15M"
+          [03:59:18.079] +2.253µs "\x1b[<64;20;15M"
+          [03:59:18.079] +4.256µs "\x1b[<64;20;15M"
+          [03:59:18.079] +822ns "\x1b[<64;20;15M"
+          [03:59:18.079] +78.929µs "\x1b[<64;20;15M"
+          [03:59:18.079] +6.841µs "\x1b[<64;20;15M"
+          [03:59:18.079] +655ns "\x1b[<64;20;15M"
+          [03:59:18.079] +2.925µs "\x1b[<64;20;15M"
+          [03:59:18.079] +1.787µs "\x1b[<64;20;15M"
+          [03:59:18.079] +546ns "\x1b[<64;20;15M"
+          [03:59:18.079] +570ns "\x1b[<64;20;15M"
+          [03:59:18.079] +532ns "\x1b[<64;20;15M"
+          [03:59:18.079] +578ns "\x1b[<64;20;15M"
+          [03:59:18.079] +593ns "\x1b[<64;20;15M"
+          [03:59:18.079] +649ns "\x1b[<64;20;15M"
+          [03:59:18.079] +694ns "\x1b[<64;20;15M"
+          [03:59:18.079] +2.26µs "\x1b[<64;20;15M"
+          [03:59:18.079] +509ns "\x1b[<64;20;15M"
+          [03:59:18.093] +14.174238ms "q"
+        frame:
+                                                                        /usr/local/go/src/runtime/proc.go:46
+        6
+         runtime.updateMaxProcsGoroutine()
+                                                /usr/local/go/src/runtime/proc.go:6720 +0xe7 fp=0xc0000767e0
+         sp=0xc000076788 pc=0x450f87
+                                    runtime.goexit({})
+                                                        /usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0
+        xc0000767e8 sp=0xc0000767e0 pc=0x47e0c1
+                                               created by runtime.defaultGOMAXPROCSUpdateEnable in goroutine
+         1
+                /usr/local/go/src/runtime/proc.go:6708 +0x37
+        
+                                                            goroutine 19 gp=0xc0001028c0 m=nil [finalizer wa
+        it]:
+            runtime.gopark(0x451f55?, 0x4191c5?, 0xb8?, 0x1?, 0xc000002380?)
+                                                                                /usr/local/go/src/runtime/pr
+        oc.go:460 +0xce fp=0xc00007a620 sp=0xc00007a600 pc=0x47658e
+                                                                   runtime.runFinalizers()
+                                                                                                /usr/local/g
+        o/src/runtime/mfinal.go:210 +0x107 fp=0xc00007a7e0 sp=0xc00007a620 pc=0x420827
+                                                                                      runtime.goexit({})
+                                                                                                           /
+        usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007a7e8 sp=0xc00007a7e0 pc=0x47e0c1
+                                                                                                  created by
+         runtime.createfing in goroutine 1
+                                                /usr/local/go/src/runtime/mfinal.go:172 +0x3d
+        
+                                                                                             goroutine 20 gp
+        =0xc000102e00 m=nil [cleanup wait]:
+                                           runtime.gopa
+        raw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[H\r+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_104_2          | Select or create a session to preview it here.                |\r\n| No sessions yet. Press n to      |                                                               |\r\n| create a session.                |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n+----------------------------------+---------------------------------------------------------------+\r\nup/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P \x1b[30;H\x1b[H+------------------------------------------------------------------------------+\x1b[K\r\n| Create shell session                                                         |\x1b[K\r\n| > Name:                                                                      |\x1b[K\r\n|     the display name; also the source of the session's tmux slug             |\x1b[K\r\n|   Working directory: /w/features                                             |\x1b[K\r\n| the session's cwd; must exist and be a directory; ↑/↓ cycles recent history; |\x1b[K\r\n| right/end completes a shown directory match                                  |\x1b[K\r\n|   Agent: shell (left/right cycles: claude, pi, shell)                        |\x1b[K\r\n|     which coding agent adapter launches this session                         |\x1b[K\r\n|   Permission profile: safe (left/right cycles: safe)                         |\x1b[K\r\n| how much the agent may do without asking; an unsupported profile degrades to |\x1b[K\r\n| safe; yolo is not offered because allow_yolo is not enabled in config.toml   |\x1b[K\r\n|   Launch args (JSON array):                                                  |\x1b[K\r\n|     extra arguments appended verbatim after the adapter's own argv           |\x1b[K\r\n|   Env (key=value, comma-separated):                                          |\x1b[K\r\n|     session-level environment variables, highest priority in PATH resolution |\x1b[K\r\n|   Pre-launch command:                                                        |\x1b[K\r\n|     a command run in the pane before the agent starts, e.g. to load secrets  |\x1b[K\r\n|   Login shell: off (space toggles)                                           |\x1b[K\r\n| makes captured_path advisory only (not applied): runs via $SHELL -lc instead |\x1b[K\r\n| of the agent argv, so the login shell sets PATH                              |\x1b[K\r\n| Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels  |\x1b[K\r\n+------------------------------------------------------------------------------+\x1b[K\x1b[J\x1b[23;H\x1b[H\n\n| > Name: attach-scroll-target                                                 |\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[23;H\x1b[H\n\n|   Name: attach-scroll-target                                                 |\x1b[K\r\n\n| > Working directory: /tmp/deck-scenario-584453551/walking-skeleton-cwd/      |\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[23;H\x1b[H+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_104_2          | Session is starting; no pane yet.                             |\r\n| v walking-skeleton-cwd  /tmp/... |                                                               |\r\n| > attach-scroll-target starting  |                                                               |\r\n|   created just now               |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n+----------------------------------+---------------------------------------------------------------+\r\nup/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P \x1b[30;H\x1b[2K\r\x1b[?2004l\x1b[?25h\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l\x1b[?25h\x1b[?1049h\x1b[22;0;0t\x1b[?1h\x1b=\x1b[H\x1b[2J\x1b[?12l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1005l\x1b[?2004h\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[1;1H\x1b[1;30r\x1b[c\x1b[>c\x1b[>q\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b[1;3H\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h\x1b[?1000h\x1b[?1002h\x1b[?25l\x1b[H$ \x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\x1b[30m\x1b[42m\r\n[deck_atta0:tmux*                                                     \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[1;3H\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[1;1H\x1b[1;30r\x1b[1;3H\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h\x1b[?1000h\x1b[?1002h\x1b[?25l\x1b[H$ \x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\x1b[30m\x1b[42m\r\n[deck_atta0:tmux*                                                     \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[1;3Hecho ATTACH_SCROLL_TOP_MARKER\r\nfor i in $(seq 1 120); do echo SCROLL_LINE_$i; done\r\nATTACH_SCROLL_TOP_MARKER\r\n$ \x1b[1;29r\x1b[1;1H\x1b[29SSCROLL_LINE_79\x1b[K\r\nSCROLL_LINE_80\x1b[K\r\nSCROLL_LINE_81\x1b[K\r\nSCROLL_LINE_82\x1b[K\r\nSCROLL_LINE_83\x1b[K\r\nSCROLL_LINE_84\x1b[K\r\nSCROLL_LINE_85\x1b[K\r\nSCROLL_LINE_86\x1b[K\r\nSCROLL_LINE_87\x1b[K\r\nSCROLL_LINE_88\x1b[K\r\nSCROLL_LINE_89\x1b[K\r\nSCROLL_LINE_90\x1b[K\r\nSCROLL_LINE_91\x1b[K\r\nSCROLL_LINE_92\x1b[K\r\nSCROLL_LINE_93\x1b[K\r\nSCROLL_LINE_94\x1b[K\r\nSCROLL_LINE_95\x1b[K\r\nSCROLL_LINE_96\x1b[K\r\nSCROLL_LINE_97\x1b[K\r\nSCROLL_LINE_98\x1b[K\r\nSCROLL_LINE_99\x1b[K\r\nSCROLL_LINE_100\x1b[K\r\nSCROLL_LINE_101\x1b[K\r\nSCROLL_LINE_102\x1b[K\r\nSCROLL_LINE_103\x1b[K\r\nSCROLL_LINE_104\x1b[K\r\nSCROLL_LINE_105\x1b[K\r\nSCROLL_LINE_106\x1b[K\r\n\x1b[K\x1b[1;30r\x1b[29;1H\x1b[1;29r\x1b[1;1H\x1b[14S\x1b[14BSCROLL_LINE_107\r\nSCROLL_LINE_108\x1b[K\r\nSCROLL_LINE_109\x1b[K\r\nSCROLL_LINE_110\x1b[K\r\nSCROLL_LINE_111\x1b[K\r\nSCROLL_LINE_112\x1b[K\r\nSCROLL_LINE_113\x1b[K\r\nSCROLL_LINE_114\x1b[K\r\nSCROLL_LINE_115\x1b[K\r\nSCROLL_LINE_116\x1b[K\r\nSCROLL_LINE_117\x1b[K\r\nSCROLL_LINE_118\x1b[K\r\nSCROLL_LINE_119\x1b[K\r\nSCROLL_LINE_120\x1b[K\r\n$ \x1b[K\x1b[1;30r\x1b[29;3H\x1b[?25l\x1b[HSCROLL_LINE_38\x1b[11X\x1b[11C                                                           \x1b[30m\x1b[43m03:59:17 [55/95]\x1b[39m\x1b[49m\x1b[2;1HSCROLL_LINE_39\x1b[11X\x1b[11C                                                                           \x1b[3;1HSCROLL_LINE_40\x1b[11X\x1b[11C                                                                           \x1b[4;1HSCROLL_LINE_41\x1b[11X\x1b[11C                                                                           \x1b[5;1HSCROLL_LINE_42\x1b[11X\x1b[11C                                                                           \x1b[6;1HSCROLL_LINE_43\x1b[11X\x1b[11C                                                                           \x1b[7;1HSCROLL_LINE_44\x1b[11X\x1b[11C                                                                           \x1b[8;1HSCROLL_LINE_45\x1b[11X\x1b[11C                                                                           \x1b[9;1HSCROLL_LINE_46\x1b[11X\x1b[11C                                                                           \x1b[10;1HSCROLL_LINE_47\x1b[11X\x1b[11C                                                                           \x1b[11;1HSCROLL_LINE_48\x1b[11X\x1b[11C                                                                           \x1b[12;1HSCROLL_LINE_49\x1b[11X\x1b[11C                                                                           \x1b[13;1HSCROLL_LINE_50\x1b[11X\x1b[11C                                                                           \x1b[14;1HSCROLL_LINE_51\x1b[11X\x1b[11C                                                                           \x1b[15;1HSCROLL_LINE_52\x1b[11X\x1b[11C                                                                           \x1b[16;1HSCROLL_LINE_53\x1b[11X\x1b[11C                                                                           \x1b[17;1HSCROLL_LINE_54\x1b[11X\x1b[11C                                                                           \x1b[18;1HSCROLL_LINE_55\x1b[11X\x1b[11C                                                                           \x1b[19;1HSCROLL_LINE_56\x1b[11X\x1b[11C                                                                           \x1b[20;1HSCROLL_LINE_57\x1b[11X\x1b[11C                                                                           \x1b[21;1HSCROLL_LINE_58\x1b[11X\x1b[11C                                                                           \x1b[22;1HSCROLL_LINE_59\x1b[11X\x1b[11C                                                                           \x1b[23;1HSCROLL_LINE_60\x1b[11X\x1b[11C                                                                           \x1b[24;1HSCROLL_LINE_61\x1b[11X\x1b[11C                                                                           \x1b[25;1HSCROLL_LINE_62\x1b[11X\x1b[11C                                                                           \x1b[26;1HSCROLL_LINE_63\x1b[11X\x1b[11C                                                                           \x1b[27;1HSCROLL_LINE_64\x1b[11X\x1b[11C                                                                           \x1b[28;1HSCROLL_LINE_65\x1b[11X\x1b[11C                                                                           \x1b[29;1HSCROLL_LINE_66\x1b[11X\x1b[11C                                                                           \x1b[30m\x1b[42m\x1b[30;1H[deck_atta0:sh*                                                       \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[29;15H\x1b[1;29r\x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [56/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_37\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [57/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_36\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [58/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_35\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [59/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_34\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [60/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_33\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [61/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_32\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [62/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_31\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [63/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_30\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [64/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_29\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [65/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_28\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [66/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_27\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [67/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_26\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [68/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_25\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [69/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_24\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [70/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_23\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [71/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_22\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [72/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_21\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [73/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_20\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [74/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_19\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [75/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_18\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [76/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_17\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [77/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_16\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [78/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_15\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [79/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_14\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [80/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_13\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [81/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_12\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [82/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_11\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [83/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_10\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [84/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_9\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [85/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_8\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [86/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_7\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [87/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_6\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [88/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_5\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [89/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_4\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [90/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_3\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [91/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_2\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [92/95]\x1b[1;1H\x1b[39m\x1b[49m$ SCROLL_LINE_1\x1b[10C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [93/95]\x1b[1;1H\x1b[39m\x1b[49mATTACH_SCROLL_TOP_MARKER\x1b[C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [94/95]\x1b[1;1H\x1b[39m\x1b[49mfor i in $(seq 1 120); do echo SCROLL_LINE_$i; done\x1b[2;85H                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [95/95]\x1b[1;1H\x1b[39m\x1b[49m$ echo ATTACH_SCROLL_TOP_MARKER\x1b[19C                                  \n                \x1b[2;1H\x1b[1;30r\x1b[29;15H\x1b[?25l\x1b[HSCROLL_LINE_93\x1b[K\r\nSCROLL_LINE_94\x1b[K\r\nSCROLL_LINE_95\x1b[K\r\nSCROLL_LINE_96\x1b[K\r\nSCROLL_LINE_97\x1b[K\r\nSCROLL_LINE_98\x1b[K\r\nSCROLL_LINE_99\x1b[K\r\nSCROLL_LINE_100\x1b[K\r\nSCROLL_LINE_101\x1b[K\r\nSCROLL_LINE_102\x1b[K\r\nSCROLL_LINE_103\x1b[K\r\nSCROLL_LINE_104\x1b[K\r\nSCROLL_LINE_105\x1b[K\r\nSCROLL_LINE_106\x1b[K\r\nSCROLL_LINE_107\x1b[K\r\nSCROLL_LINE_108\x1b[K\r\nSCROLL_LINE_109\x1b[K\r\nSCROLL_LINE_110\x1b[K\r\nSCROLL_LINE_111\x1b[K\r\nSCROLL_LINE_112\x1b[K\r\nSCROLL_LINE_113\x1b[K\r\nSCROLL_LINE_114\x1b[K\r\nSCROLL_LINE_115\x1b[K\r\nSCROLL_LINE_116\x1b[K\r\nSCROLL_LINE_117\x1b[K\r\nSCROLL_LINE_118\x1b[K\r\nSCROLL_LINE_119\x1b[K\r\nSCROLL_LINE_120\x1b[K\r\n$ \x1b[K\x1b[?12l\x1b[?25hSIGQUIT: quit\nPC=0x47fee1 m=0 sigcode=0\n\ngoroutine 0 gp=0xc7bf40 m=0 mp=0xc7d4a0 [idle]:\nruntime.futex(0xc7d5f0, 0x80, 0x0, 0x0, 0x0, 0x0)\n\t/usr/local/go/src/runtime/sys_linux_amd64.s:557 +0x21 fp=0x7ffe3c4237e8 sp=0x7ffe3c4237e0 pc=0x47fee1\nruntime.futexsleep(0x7ffe3c423860?, 0xc7bf40?, 0x7ffe3c423860?)\n\t/usr/local/go/src/runtime/os_linux.go:76 +0x30 fp=0x7ffe3c423838 sp=0x7ffe3c4237e8 pc=0x43c630\nruntime.notesleep(0xc7d5f0)\n\t/usr/local/go/src/runtime/lock_futex.go:47 +0x87 fp=0x7ffe3c423870 sp=0x7ffe3c423838 pc=0x416327\nruntime.mPark(...)\n\t/usr/local/go/src/runtime/proc.go:1974\nruntime.stoplockedm()\n\t/usr/local/go/src/runtime/proc.go:3268 +0x73 fp=0x7ffe3c4238c8 sp=0x7ffe3c423870 pc=0x448373\nruntime.schedule()\n\t/usr/local/go/src/runtime/proc.go:4131 +0x3a fp=0x7ffe3c423900 sp=0x7ffe3c4238c8 pc=0x44a9ba\nruntime.park_m(0xc000103a40)\n\t/usr/local/go/src/runtime/proc.go:4280 +0x285 fp=0x7ffe3c423960 sp=0x7ffe3c423900 pc=0x44aea5\nruntime.mcall()\n\t/usr/local/go/src/runtime/asm_amd64.s:458 +0x55 fp=0x7ffe3c423978 sp=0x7ffe3c423960 pc=0x47c095\n\ngoroutine 1 gp=0xc000002380 m=8 mp=0xc000204808 [syscall]:\nsyscall.Syscall6(0xf7, 0x3, 0xe, 0xc00031d7d8, 0x4, 0xc0001562d0, 0x0)\n\t/usr/local/go/src/syscall/syscall_linux.go:96 +0x39 fp=0xc00031d750 sp=0xc00031d6f0 pc=0x490919\ninternal/syscall/unix.Waitid(0xc00031d928?, 0x4d9fd5?, 0xc000014b60?, 0xd?, 0xc0000aa480?)\n\t/usr/local/go/src/internal/syscall/unix/waitid_linux.go:18 +0x39 fp=0xc00031d7a8 sp=0xc00031d750 pc=0x4aa6d9\nos.(*Process).pidfdWait.func1(...)\n\t/usr/local/go/src/os/pidfd_linux.go:109\nos.ignoringEINTR(...)\n\t/usr/local/go/src/os/file_posix.go:263\nos.(*Process).pidfdWait(0xc0001324c0)\n\t/usr/local/go/src/os/pidfd_linux.go:108 +0x1a9 fp=0xc00031d8b8 sp=0xc00031d7a8 pc=0x4b50a9\nos.(*Process).wait(0xc00031d940?)\n\t/usr/local/go/src/os/exec_unix.go:25 +0x1a fp=0xc00031d8d0 sp=0xc00031d8b8 pc=0x4b107a\nos.(*Process).Wait(...)\n\t/usr/local/go/src/os/exec.go:340\nos/exec.(*Cmd).Wait(0xc0000bad80)\n\t/usr/local/go/src/os/exec/exec.go:922 +0x45 fp=0xc00031d938 sp=0xc00031d8d0 pc=0x4da9e5\nos/exec.(*Cmd).Run(0xc0000bad80)\n\t/usr/local/go/src/os/exec/exec.go:626 +0x2d fp=0xc00031d950 sp=0xc00031d938 pc=0x4d968d\ngithub.com/charmbracelet/bubbletea.(*Program).exec(0xc000186c80, {0x975fa0, 0xc00007e048}, 0x8f4ef8)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/exec.go:116 +0x11f fp=0xc00031d998 sp=0xc00031d950 pc=0x55197f\ngithub.com/charmbracelet/bubbletea.(*Program).eventLoop(0xc000186c80, {0x975a88?, 0xc0001e6008?}, 0xc0001102a0)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:471 +0x212 fp=0xc00031dac0 sp=0xc00031d998 pc=0x558bd2\ngithub.com/charmbracelet/bubbletea.(*Program).Run(0xc000186c80)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:716 +0xae7 fp=0xc00031dd40 sp=0xc00031dac0 pc=0x55a787\nmain.run({0xc000128030?, 0x474085?, 0x401240?}, {0x974880, 0xc00011e010}, {0x9748a0, 0xc00011e020})\n\t/w/cmd/deck/main.go:129 +0x1691 fp=0xc00031ff08 sp=0xc00031dd40 pc=0x834271\nmain.main()\n\t/w/cmd/deck/main.go:27 +0x45 fp=0xc00031ff50 sp=0xc00031ff08 pc=0x832bc5\nruntime.main()\n\t/usr/local/go/src/runtime/proc.go:285 +0x29d fp=0xc00031ffe0 sp=0xc00031ff50 pc=0x442c7d\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00031ffe8 sp=0xc00031ffe0 pc=0x47e0c1\n\ngoroutine 2 gp=0xc000002e00 m=nil [force gc (idle)]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007afa8 sp=0xc00007af88 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.forcegchelper()\n\t/usr/local/go/src/runtime/proc.go:373 +0xb3 fp=0xc00007afe0 sp=0xc00007afa8 pc=0x442fb3\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007afe8 sp=0xc00007afe0 pc=0x47e0c1\ncreated by runtime.init.7 in goroutine 1\n\t/usr/local/go/src/runtime/proc.go:361 +0x1a\n\ngoroutine 3 gp=0xc000003340 m=nil [GC sweep wait]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007b780 sp=0xc00007b760 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.bgsweep(0xc0000a6000)\n\t/usr/local/go/src/runtime/mgcsweep.go:279 +0x94 fp=0xc00007b7c8 sp=0xc00007b780 pc=0x42d6f4\nruntime.gcenable.gowrap1()\n\t/usr/local/go/src/runtime/mgc.go:212 +0x25 fp=0xc00007b7e0 sp=0xc00007b7c8 pc=0x421925\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007b7e8 sp=0xc00007b7e0 pc=0x47e0c1\ncreated by runtime.gcenable in goroutine 1\n\t/usr/local/go/src/runtime/mgc.go:212 +0x66\n\ngoroutine 4 gp=0xc000003500 m=nil [GC scavenge wait]:\nruntime.gopark(0xc0000a6000?, 0x971c60?, 0x1?, 0x0?, 0xc000003500?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007bf78 sp=0xc00007bf58 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.(*scavengerState).park(0xc7bb60)\n\t/usr/local/go/src/runtime/mgcscavenge.go:425 +0x49 fp=0xc00007bfa8 sp=0xc00007bf78 pc=0x42b1c9\nruntime.bgscavenge(0xc0000a6000)\n\t/usr/local/go/src/runtime/mgcscavenge.go:653 +0x3c fp=0xc00007bfc8 sp=0xc00007bfa8 pc=0x42b75c\nruntime.gcenable.gowrap2()\n\t/usr/local/go/src/runtime/mgc.go:213 +0x25 fp=0xc00007bfe0 sp=0xc00007bfc8 pc=0x4218c5\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007bfe8 sp=0xc00007bfe0 pc=0x47e0c1\ncreated by runtime.gcenable in goroutine 1\n\t/usr/local/go/src/runtime/mgc.go:213 +0xa5\n\ngoroutine 18 gp=0xc000102380 m=nil [GOMAXPROCS updater (idle)]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc000076788 sp=0xc000076768 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.updateMaxProcsGoroutine()\n\t/usr/local/go/src/runtime/proc.go:6720 +0xe7 fp=0xc0000767e0 sp=0xc000076788 pc=0x450f87\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc0000767e8 sp=0xc0000767e0 pc=0x47e0c1\ncreated by runtime.defaultGOMAXPROCSUpdateEnable in goroutine 1\n\t/usr/local/go/src/runtime/proc.go:6708 +0x37\n\ngoroutine 19 gp=0xc0001028c0 m=nil [finalizer wait]:\nruntime.gopark(0x451f55?, 0x4191c5?, 0xb8?, 0x1?, 0xc000002380?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007a620 sp=0xc00007a600 pc=0x47658e\nruntime.runFinalizers()\n\t/usr/local/go/src/runtime/mfinal.go:210 +0x107 fp=0xc00007a7e0 sp=0xc00007a620 pc=0x420827\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007a7e8 sp=0xc00007a7e0 pc=0x47e0c1\ncreated by runtime.createfing in goroutine 1\n\t/usr/local/go/src/runtime/mfinal.go:172 +0x3d\n\ngoroutine 20 gp=0xc000102e00 m=nil [cleanup wait]:\nruntime.gopa", step error: client "A" frame changed after gesture, want unchanged from captured "before-wheel-scroll":
+        want:
+        SCROLL_LINE_93
+        SCROLL_LINE_94
+        SCROLL_LINE_95
+        SCROLL_LINE_96
+        SCROLL_LINE_97
+        SCROLL_LINE_98
+        SCROLL_LINE_99
+        SCROLL_LINE_100
+        SCROLL_LINE_101
+        SCROLL_LINE_102
+        SCROLL_LINE_103
+        SCROLL_LINE_104
+        SCROLL_LINE_105
+        SCROLL_LINE_106
+        SCROLL_LINE_107
+        SCROLL_LINE_108
+        SCROLL_LINE_109
+        SCROLL_LINE_110
+        SCROLL_LINE_111
+        SCROLL_LINE_112
+        SCROLL_LINE_113
+        SCROLL_LINE_114
+        SCROLL_LINE_115
+        SCROLL_LINE_116
+        SCROLL_LINE_117
+        SCROLL_LINE_118
+        SCROLL_LINE_119
+        SCROLL_LINE_120
+        $
+        [deck_atta0:tmux*                                                     "285f277669dd" 03:59 26-Aug-26
+        got:
+        SCROLL_LINE_93
+        SCROLL_LINE_94
+        SCROLL_LINE_95
+        SCROLL_LINE_96
+        SCROLL_LINE_97
+        SCROLL_LINE_98
+        SCROLL_LINE_99
+        SCROLL_LINE_100
+        SCROLL_LINE_101
+        SCROLL_LINE_102
+        SCROLL_LINE_103
+        SCROLL_LINE_104
+        SCROLL_LINE_105
+        SCROLL_LINE_106
+        SCROLL_LINE_107
+        SCROLL_LINE_108
+        SCROLL_LINE_109
+        SCROLL_LINE_110
+        SCROLL_LINE_111
+        SCROLL_LINE_112
+        SCROLL_LINE_113
+        SCROLL_LINE_114
+        SCROLL_LINE_115
+        SCROLL_LINE_116
+        SCROLL_LINE_117
+        SCROLL_LINE_118
+        SCROLL_LINE_119
+        SCROLL_LINE_120
+        $
+        [deck_atta0:sh*                                                       "285f277669dd" 03:59 26-Aug-26
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: a wheel notch scrolls an attached pane's scrollback and leaves the shell's input line untouched[0m [1;30m# attach_scroll.feature:11[0m
+    [31mThen deck client "A" frame still matches the captured "before-wheel-scroll" frame[0m [1;30m# attach_scroll.feature:20[0m
+      [31mError: [0m[1;31mafter scenario hook failed: client "A" frame changed after gesture, want unchanged from captured "before-wheel-scroll":
+want:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:tmux*                                                     "285f277669dd" 03:59 26-Aug-26
+got:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:sh*                                                       "285f277669dd" 03:59 26-Aug-26
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [03:59:17.206] +0 "n"
+  [03:59:17.222] +16.557335ms "attach-scroll-target"
+  [03:59:17.298] +76.018031ms "\t/tmp/deck-scenario-584453551/walking-skeleton-cwd\r"
+  [03:59:17.323] +24.290739ms "a"
+  [03:59:17.574] +250.950714ms "echo ATTACH_SCROLL_TOP_MARKER\r"
+  [03:59:17.574] +253.683µs "for i in $(seq 1 120); do echo SCROLL_LINE_$i; done\r"
+  [03:59:18.079] +504.887181ms "\x1b[<64;20;15M"
+  [03:59:18.079] +5.593µs "\x1b[<64;20;15M"
+  [03:59:18.079] +772ns "\x1b[<64;20;15M"
+  [03:59:18.079] +3.372µs "\x1b[<64;20;15M"
+  [03:59:18.079] +947ns "\x1b[<64;20;15M"
+  [03:59:18.079] +2.27µs "\x1b[<64;20;15M"
+  [03:59:18.079] +1.114µs "\x1b[<64;20;15M"
+  [03:59:18.079] +1.336µs "\x1b[<64;20;15M"
+  [03:59:18.079] +5.527µs "\x1b[<64;20;15M"
+  [03:59:18.079] +832ns "\x1b[<64;20;15M"
+  [03:59:18.079] +894ns "\x1b[<64;20;15M"
+  [03:59:18.079] +26.253µs "\x1b[<64;20;15M"
+  [03:59:18.079] +8.799µs "\x1b[<64;20;15M"
+  [03:59:18.079] +2.253µs "\x1b[<64;20;15M"
+  [03:59:18.079] +4.256µs "\x1b[<64;20;15M"
+  [03:59:18.079] +822ns "\x1b[<64;20;15M"
+  [03:59:18.079] +78.929µs "\x1b[<64;20;15M"
+  [03:59:18.079] +6.841µs "\x1b[<64;20;15M"
+  [03:59:18.079] +655ns "\x1b[<64;20;15M"
+  [03:59:18.079] +2.925µs "\x1b[<64;20;15M"
+  [03:59:18.079] +1.787µs "\x1b[<64;20;15M"
+  [03:59:18.079] +546ns "\x1b[<64;20;15M"
+  [03:59:18.079] +570ns "\x1b[<64;20;15M"
+  [03:59:18.079] +532ns "\x1b[<64;20;15M"
+  [03:59:18.079] +578ns "\x1b[<64;20;15M"
+  [03:59:18.079] +593ns "\x1b[<64;20;15M"
+  [03:59:18.079] +649ns "\x1b[<64;20;15M"
+  [03:59:18.079] +694ns "\x1b[<64;20;15M"
+  [03:59:18.079] +2.26µs "\x1b[<64;20;15M"
+  [03:59:18.079] +509ns "\x1b[<64;20;15M"
+  [03:59:18.093] +14.174238ms "q"
+frame:
+                                                                /usr/local/go/src/runtime/proc.go:46
+6
+ runtime.updateMaxProcsGoroutine()
+                                        /usr/local/go/src/runtime/proc.go:6720 +0xe7 fp=0xc0000767e0
+ sp=0xc000076788 pc=0x450f87
+                            runtime.goexit({})
+                                                /usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0
+xc0000767e8 sp=0xc0000767e0 pc=0x47e0c1
+                                       created by runtime.defaultGOMAXPROCSUpdateEnable in goroutine
+ 1
+        /usr/local/go/src/runtime/proc.go:6708 +0x37
+
+                                                    goroutine 19 gp=0xc0001028c0 m=nil [finalizer wa
+it]:
+    runtime.gopark(0x451f55?, 0x4191c5?, 0xb8?, 0x1?, 0xc000002380?)
+                                                                        /usr/local/go/src/runtime/pr
+oc.go:460 +0xce fp=0xc00007a620 sp=0xc00007a600 pc=0x47658e
+                                                           runtime.runFinalizers()
+                                                                                        /usr/local/g
+o/src/runtime/mfinal.go:210 +0x107 fp=0xc00007a7e0 sp=0xc00007a620 pc=0x420827
+                                                                              runtime.goexit({})
+                                                                                                   /
+usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007a7e8 sp=0xc00007a7e0 pc=0x47e0c1
+                                                                                          created by
+ runtime.createfing in goroutine 1
+                                        /usr/local/go/src/runtime/mfinal.go:172 +0x3d
+
+                                                                                     goroutine 20 gp
+=0xc000102e00 m=nil [cleanup wait]:
+                                   runtime.gopa
+raw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[H\r+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_104_2          | Select or create a session to preview it here.                |\r\n| No sessions yet. Press n to      |                                                               |\r\n| create a session.                |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n+----------------------------------+---------------------------------------------------------------+\r\nup/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P \x1b[30;H\x1b[H+------------------------------------------------------------------------------+\x1b[K\r\n| Create shell session                                                         |\x1b[K\r\n| > Name:                                                                      |\x1b[K\r\n|     the display name; also the source of the session's tmux slug             |\x1b[K\r\n|   Working directory: /w/features                                             |\x1b[K\r\n| the session's cwd; must exist and be a directory; ↑/↓ cycles recent history; |\x1b[K\r\n| right/end completes a shown directory match                                  |\x1b[K\r\n|   Agent: shell (left/right cycles: claude, pi, shell)                        |\x1b[K\r\n|     which coding agent adapter launches this session                         |\x1b[K\r\n|   Permission profile: safe (left/right cycles: safe)                         |\x1b[K\r\n| how much the agent may do without asking; an unsupported profile degrades to |\x1b[K\r\n| safe; yolo is not offered because allow_yolo is not enabled in config.toml   |\x1b[K\r\n|   Launch args (JSON array):                                                  |\x1b[K\r\n|     extra arguments appended verbatim after the adapter's own argv           |\x1b[K\r\n|   Env (key=value, comma-separated):                                          |\x1b[K\r\n|     session-level environment variables, highest priority in PATH resolution |\x1b[K\r\n|   Pre-launch command:                                                        |\x1b[K\r\n|     a command run in the pane before the agent starts, e.g. to load secrets  |\x1b[K\r\n|   Login shell: off (space toggles)                                           |\x1b[K\r\n| makes captured_path advisory only (not applied): runs via $SHELL -lc instead |\x1b[K\r\n| of the agent argv, so the login shell sets PATH                              |\x1b[K\r\n| Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels  |\x1b[K\r\n+------------------------------------------------------------------------------+\x1b[K\x1b[J\x1b[23;H\x1b[H\n\n| > Name: attach-scroll-target                                                 |\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[23;H\x1b[H\n\n|   Name: attach-scroll-target                                                 |\x1b[K\r\n\n| > Working directory: /tmp/deck-scenario-584453551/walking-skeleton-cwd/      |\x1b[K\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\x1b[23;H\x1b[H+ deck - sessions -----------------+---------------------------------------------------------------+\r\n| socket: deck_test_104_2          | Session is starting; no pane yet.                             |\r\n| v walking-skeleton-cwd  /tmp/... |                                                               |\r\n| > attach-scroll-target starting  |                                                               |\r\n|   created just now               |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n|                                  |                                                               |\r\n+----------------------------------+---------------------------------------------------------------+\r\nup/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume - R relaunch - P \x1b[30;H\x1b[2K\r\x1b[?2004l\x1b[?25h\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l\x1b[?25h\x1b[?1049h\x1b[22;0;0t\x1b[?1h\x1b=\x1b[H\x1b[2J\x1b[?12l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1005l\x1b[?2004h\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[1;1H\x1b[1;30r\x1b[c\x1b[>c\x1b[>q\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b[1;3H\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h\x1b[?1000h\x1b[?1002h\x1b[?25l\x1b[H$ \x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\x1b[30m\x1b[42m\r\n[deck_atta0:tmux*                                                     \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[1;3H\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[1;1H\x1b[1;30r\x1b[1;3H\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h\x1b[?1000h\x1b[?1002h\x1b[?25l\x1b[H$ \x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\r\n\x1b[K\x1b[30m\x1b[42m\r\n[deck_atta0:tmux*                                                     \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[1;3Hecho ATTACH_SCROLL_TOP_MARKER\r\nfor i in $(seq 1 120); do echo SCROLL_LINE_$i; done\r\nATTACH_SCROLL_TOP_MARKER\r\n$ \x1b[1;29r\x1b[1;1H\x1b[29SSCROLL_LINE_79\x1b[K\r\nSCROLL_LINE_80\x1b[K\r\nSCROLL_LINE_81\x1b[K\r\nSCROLL_LINE_82\x1b[K\r\nSCROLL_LINE_83\x1b[K\r\nSCROLL_LINE_84\x1b[K\r\nSCROLL_LINE_85\x1b[K\r\nSCROLL_LINE_86\x1b[K\r\nSCROLL_LINE_87\x1b[K\r\nSCROLL_LINE_88\x1b[K\r\nSCROLL_LINE_89\x1b[K\r\nSCROLL_LINE_90\x1b[K\r\nSCROLL_LINE_91\x1b[K\r\nSCROLL_LINE_92\x1b[K\r\nSCROLL_LINE_93\x1b[K\r\nSCROLL_LINE_94\x1b[K\r\nSCROLL_LINE_95\x1b[K\r\nSCROLL_LINE_96\x1b[K\r\nSCROLL_LINE_97\x1b[K\r\nSCROLL_LINE_98\x1b[K\r\nSCROLL_LINE_99\x1b[K\r\nSCROLL_LINE_100\x1b[K\r\nSCROLL_LINE_101\x1b[K\r\nSCROLL_LINE_102\x1b[K\r\nSCROLL_LINE_103\x1b[K\r\nSCROLL_LINE_104\x1b[K\r\nSCROLL_LINE_105\x1b[K\r\nSCROLL_LINE_106\x1b[K\r\n\x1b[K\x1b[1;30r\x1b[29;1H\x1b[1;29r\x1b[1;1H\x1b[14S\x1b[14BSCROLL_LINE_107\r\nSCROLL_LINE_108\x1b[K\r\nSCROLL_LINE_109\x1b[K\r\nSCROLL_LINE_110\x1b[K\r\nSCROLL_LINE_111\x1b[K\r\nSCROLL_LINE_112\x1b[K\r\nSCROLL_LINE_113\x1b[K\r\nSCROLL_LINE_114\x1b[K\r\nSCROLL_LINE_115\x1b[K\r\nSCROLL_LINE_116\x1b[K\r\nSCROLL_LINE_117\x1b[K\r\nSCROLL_LINE_118\x1b[K\r\nSCROLL_LINE_119\x1b[K\r\nSCROLL_LINE_120\x1b[K\r\n$ \x1b[K\x1b[1;30r\x1b[29;3H\x1b[?25l\x1b[HSCROLL_LINE_38\x1b[11X\x1b[11C                                                           \x1b[30m\x1b[43m03:59:17 [55/95]\x1b[39m\x1b[49m\x1b[2;1HSCROLL_LINE_39\x1b[11X\x1b[11C                                                                           \x1b[3;1HSCROLL_LINE_40\x1b[11X\x1b[11C                                                                           \x1b[4;1HSCROLL_LINE_41\x1b[11X\x1b[11C                                                                           \x1b[5;1HSCROLL_LINE_42\x1b[11X\x1b[11C                                                                           \x1b[6;1HSCROLL_LINE_43\x1b[11X\x1b[11C                                                                           \x1b[7;1HSCROLL_LINE_44\x1b[11X\x1b[11C                                                                           \x1b[8;1HSCROLL_LINE_45\x1b[11X\x1b[11C                                                                           \x1b[9;1HSCROLL_LINE_46\x1b[11X\x1b[11C                                                                           \x1b[10;1HSCROLL_LINE_47\x1b[11X\x1b[11C                                                                           \x1b[11;1HSCROLL_LINE_48\x1b[11X\x1b[11C                                                                           \x1b[12;1HSCROLL_LINE_49\x1b[11X\x1b[11C                                                                           \x1b[13;1HSCROLL_LINE_50\x1b[11X\x1b[11C                                                                           \x1b[14;1HSCROLL_LINE_51\x1b[11X\x1b[11C                                                                           \x1b[15;1HSCROLL_LINE_52\x1b[11X\x1b[11C                                                                           \x1b[16;1HSCROLL_LINE_53\x1b[11X\x1b[11C                                                                           \x1b[17;1HSCROLL_LINE_54\x1b[11X\x1b[11C                                                                           \x1b[18;1HSCROLL_LINE_55\x1b[11X\x1b[11C                                                                           \x1b[19;1HSCROLL_LINE_56\x1b[11X\x1b[11C                                                                           \x1b[20;1HSCROLL_LINE_57\x1b[11X\x1b[11C                                                                           \x1b[21;1HSCROLL_LINE_58\x1b[11X\x1b[11C                                                                           \x1b[22;1HSCROLL_LINE_59\x1b[11X\x1b[11C                                                                           \x1b[23;1HSCROLL_LINE_60\x1b[11X\x1b[11C                                                                           \x1b[24;1HSCROLL_LINE_61\x1b[11X\x1b[11C                                                                           \x1b[25;1HSCROLL_LINE_62\x1b[11X\x1b[11C                                                                           \x1b[26;1HSCROLL_LINE_63\x1b[11X\x1b[11C                                                                           \x1b[27;1HSCROLL_LINE_64\x1b[11X\x1b[11C                                                                           \x1b[28;1HSCROLL_LINE_65\x1b[11X\x1b[11C                                                                           \x1b[29;1HSCROLL_LINE_66\x1b[11X\x1b[11C                                                                           \x1b[30m\x1b[42m\x1b[30;1H[deck_atta0:sh*                                                       \"285f277669dd\" 03:59 26-Aug-26\x1b(B\x1b[m\x1b[?12l\x1b[?25h\x1b[29;15H\x1b[1;29r\x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [56/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_37\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [57/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_36\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [58/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_35\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [59/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_34\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [60/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_33\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [61/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_32\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [62/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_31\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [63/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_30\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [64/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_29\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [65/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_28\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [66/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_27\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [67/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_26\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [68/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_25\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [69/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_24\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [70/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_23\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [71/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_22\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [72/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_21\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [73/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_20\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [74/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_19\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [75/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_18\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [76/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_17\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [77/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_16\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [78/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_15\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [79/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_14\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [80/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_13\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [81/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_12\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [82/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_11\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [83/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_10\x1b[11C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [84/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_9\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [85/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_8\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [86/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_7\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [87/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_6\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [88/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_5\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [89/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_4\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [90/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_3\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [91/95]\x1b[1;1H\x1b[39m\x1b[49mSCROLL_LINE_2\x1b[12C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [92/95]\x1b[1;1H\x1b[39m\x1b[49m$ SCROLL_LINE_1\x1b[10C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [93/95]\x1b[1;1H\x1b[39m\x1b[49mATTACH_SCROLL_TOP_MARKER\x1b[C                                                           \n                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [94/95]\x1b[1;1H\x1b[39m\x1b[49mfor i in $(seq 1 120); do echo SCROLL_LINE_$i; done\x1b[2;85H                \x1b[1;1H\x1b[1L\x1b[1;85H\x1b[30m\x1b[43m03:59:17 [95/95]\x1b[1;1H\x1b[39m\x1b[49m$ echo ATTACH_SCROLL_TOP_MARKER\x1b[19C                                  \n                \x1b[2;1H\x1b[1;30r\x1b[29;15H\x1b[?25l\x1b[HSCROLL_LINE_93\x1b[K\r\nSCROLL_LINE_94\x1b[K\r\nSCROLL_LINE_95\x1b[K\r\nSCROLL_LINE_96\x1b[K\r\nSCROLL_LINE_97\x1b[K\r\nSCROLL_LINE_98\x1b[K\r\nSCROLL_LINE_99\x1b[K\r\nSCROLL_LINE_100\x1b[K\r\nSCROLL_LINE_101\x1b[K\r\nSCROLL_LINE_102\x1b[K\r\nSCROLL_LINE_103\x1b[K\r\nSCROLL_LINE_104\x1b[K\r\nSCROLL_LINE_105\x1b[K\r\nSCROLL_LINE_106\x1b[K\r\nSCROLL_LINE_107\x1b[K\r\nSCROLL_LINE_108\x1b[K\r\nSCROLL_LINE_109\x1b[K\r\nSCROLL_LINE_110\x1b[K\r\nSCROLL_LINE_111\x1b[K\r\nSCROLL_LINE_112\x1b[K\r\nSCROLL_LINE_113\x1b[K\r\nSCROLL_LINE_114\x1b[K\r\nSCROLL_LINE_115\x1b[K\r\nSCROLL_LINE_116\x1b[K\r\nSCROLL_LINE_117\x1b[K\r\nSCROLL_LINE_118\x1b[K\r\nSCROLL_LINE_119\x1b[K\r\nSCROLL_LINE_120\x1b[K\r\n$ \x1b[K\x1b[?12l\x1b[?25hSIGQUIT: quit\nPC=0x47fee1 m=0 sigcode=0\n\ngoroutine 0 gp=0xc7bf40 m=0 mp=0xc7d4a0 [idle]:\nruntime.futex(0xc7d5f0, 0x80, 0x0, 0x0, 0x0, 0x0)\n\t/usr/local/go/src/runtime/sys_linux_amd64.s:557 +0x21 fp=0x7ffe3c4237e8 sp=0x7ffe3c4237e0 pc=0x47fee1\nruntime.futexsleep(0x7ffe3c423860?, 0xc7bf40?, 0x7ffe3c423860?)\n\t/usr/local/go/src/runtime/os_linux.go:76 +0x30 fp=0x7ffe3c423838 sp=0x7ffe3c4237e8 pc=0x43c630\nruntime.notesleep(0xc7d5f0)\n\t/usr/local/go/src/runtime/lock_futex.go:47 +0x87 fp=0x7ffe3c423870 sp=0x7ffe3c423838 pc=0x416327\nruntime.mPark(...)\n\t/usr/local/go/src/runtime/proc.go:1974\nruntime.stoplockedm()\n\t/usr/local/go/src/runtime/proc.go:3268 +0x73 fp=0x7ffe3c4238c8 sp=0x7ffe3c423870 pc=0x448373\nruntime.schedule()\n\t/usr/local/go/src/runtime/proc.go:4131 +0x3a fp=0x7ffe3c423900 sp=0x7ffe3c4238c8 pc=0x44a9ba\nruntime.park_m(0xc000103a40)\n\t/usr/local/go/src/runtime/proc.go:4280 +0x285 fp=0x7ffe3c423960 sp=0x7ffe3c423900 pc=0x44aea5\nruntime.mcall()\n\t/usr/local/go/src/runtime/asm_amd64.s:458 +0x55 fp=0x7ffe3c423978 sp=0x7ffe3c423960 pc=0x47c095\n\ngoroutine 1 gp=0xc000002380 m=8 mp=0xc000204808 [syscall]:\nsyscall.Syscall6(0xf7, 0x3, 0xe, 0xc00031d7d8, 0x4, 0xc0001562d0, 0x0)\n\t/usr/local/go/src/syscall/syscall_linux.go:96 +0x39 fp=0xc00031d750 sp=0xc00031d6f0 pc=0x490919\ninternal/syscall/unix.Waitid(0xc00031d928?, 0x4d9fd5?, 0xc000014b60?, 0xd?, 0xc0000aa480?)\n\t/usr/local/go/src/internal/syscall/unix/waitid_linux.go:18 +0x39 fp=0xc00031d7a8 sp=0xc00031d750 pc=0x4aa6d9\nos.(*Process).pidfdWait.func1(...)\n\t/usr/local/go/src/os/pidfd_linux.go:109\nos.ignoringEINTR(...)\n\t/usr/local/go/src/os/file_posix.go:263\nos.(*Process).pidfdWait(0xc0001324c0)\n\t/usr/local/go/src/os/pidfd_linux.go:108 +0x1a9 fp=0xc00031d8b8 sp=0xc00031d7a8 pc=0x4b50a9\nos.(*Process).wait(0xc00031d940?)\n\t/usr/local/go/src/os/exec_unix.go:25 +0x1a fp=0xc00031d8d0 sp=0xc00031d8b8 pc=0x4b107a\nos.(*Process).Wait(...)\n\t/usr/local/go/src/os/exec.go:340\nos/exec.(*Cmd).Wait(0xc0000bad80)\n\t/usr/local/go/src/os/exec/exec.go:922 +0x45 fp=0xc00031d938 sp=0xc00031d8d0 pc=0x4da9e5\nos/exec.(*Cmd).Run(0xc0000bad80)\n\t/usr/local/go/src/os/exec/exec.go:626 +0x2d fp=0xc00031d950 sp=0xc00031d938 pc=0x4d968d\ngithub.com/charmbracelet/bubbletea.(*Program).exec(0xc000186c80, {0x975fa0, 0xc00007e048}, 0x8f4ef8)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/exec.go:116 +0x11f fp=0xc00031d998 sp=0xc00031d950 pc=0x55197f\ngithub.com/charmbracelet/bubbletea.(*Program).eventLoop(0xc000186c80, {0x975a88?, 0xc0001e6008?}, 0xc0001102a0)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:471 +0x212 fp=0xc00031dac0 sp=0xc00031d998 pc=0x558bd2\ngithub.com/charmbracelet/bubbletea.(*Program).Run(0xc000186c80)\n\t/go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:716 +0xae7 fp=0xc00031dd40 sp=0xc00031dac0 pc=0x55a787\nmain.run({0xc000128030?, 0x474085?, 0x401240?}, {0x974880, 0xc00011e010}, {0x9748a0, 0xc00011e020})\n\t/w/cmd/deck/main.go:129 +0x1691 fp=0xc00031ff08 sp=0xc00031dd40 pc=0x834271\nmain.main()\n\t/w/cmd/deck/main.go:27 +0x45 fp=0xc00031ff50 sp=0xc00031ff08 pc=0x832bc5\nruntime.main()\n\t/usr/local/go/src/runtime/proc.go:285 +0x29d fp=0xc00031ffe0 sp=0xc00031ff50 pc=0x442c7d\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00031ffe8 sp=0xc00031ffe0 pc=0x47e0c1\n\ngoroutine 2 gp=0xc000002e00 m=nil [force gc (idle)]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007afa8 sp=0xc00007af88 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.forcegchelper()\n\t/usr/local/go/src/runtime/proc.go:373 +0xb3 fp=0xc00007afe0 sp=0xc00007afa8 pc=0x442fb3\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007afe8 sp=0xc00007afe0 pc=0x47e0c1\ncreated by runtime.init.7 in goroutine 1\n\t/usr/local/go/src/runtime/proc.go:361 +0x1a\n\ngoroutine 3 gp=0xc000003340 m=nil [GC sweep wait]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007b780 sp=0xc00007b760 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.bgsweep(0xc0000a6000)\n\t/usr/local/go/src/runtime/mgcsweep.go:279 +0x94 fp=0xc00007b7c8 sp=0xc00007b780 pc=0x42d6f4\nruntime.gcenable.gowrap1()\n\t/usr/local/go/src/runtime/mgc.go:212 +0x25 fp=0xc00007b7e0 sp=0xc00007b7c8 pc=0x421925\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007b7e8 sp=0xc00007b7e0 pc=0x47e0c1\ncreated by runtime.gcenable in goroutine 1\n\t/usr/local/go/src/runtime/mgc.go:212 +0x66\n\ngoroutine 4 gp=0xc000003500 m=nil [GC scavenge wait]:\nruntime.gopark(0xc0000a6000?, 0x971c60?, 0x1?, 0x0?, 0xc000003500?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007bf78 sp=0xc00007bf58 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.(*scavengerState).park(0xc7bb60)\n\t/usr/local/go/src/runtime/mgcscavenge.go:425 +0x49 fp=0xc00007bfa8 sp=0xc00007bf78 pc=0x42b1c9\nruntime.bgscavenge(0xc0000a6000)\n\t/usr/local/go/src/runtime/mgcscavenge.go:653 +0x3c fp=0xc00007bfc8 sp=0xc00007bfa8 pc=0x42b75c\nruntime.gcenable.gowrap2()\n\t/usr/local/go/src/runtime/mgc.go:213 +0x25 fp=0xc00007bfe0 sp=0xc00007bfc8 pc=0x4218c5\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007bfe8 sp=0xc00007bfe0 pc=0x47e0c1\ncreated by runtime.gcenable in goroutine 1\n\t/usr/local/go/src/runtime/mgc.go:213 +0xa5\n\ngoroutine 18 gp=0xc000102380 m=nil [GOMAXPROCS updater (idle)]:\nruntime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc000076788 sp=0xc000076768 pc=0x47658e\nruntime.goparkunlock(...)\n\t/usr/local/go/src/runtime/proc.go:466\nruntime.updateMaxProcsGoroutine()\n\t/usr/local/go/src/runtime/proc.go:6720 +0xe7 fp=0xc0000767e0 sp=0xc000076788 pc=0x450f87\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc0000767e8 sp=0xc0000767e0 pc=0x47e0c1\ncreated by runtime.defaultGOMAXPROCSUpdateEnable in goroutine 1\n\t/usr/local/go/src/runtime/proc.go:6708 +0x37\n\ngoroutine 19 gp=0xc0001028c0 m=nil [finalizer wait]:\nruntime.gopark(0x451f55?, 0x4191c5?, 0xb8?, 0x1?, 0xc000002380?)\n\t/usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc00007a620 sp=0xc00007a600 pc=0x47658e\nruntime.runFinalizers()\n\t/usr/local/go/src/runtime/mfinal.go:210 +0x107 fp=0xc00007a7e0 sp=0xc00007a620 pc=0x420827\nruntime.goexit({})\n\t/usr/local/go/src/runtime/asm_amd64.s:1693 +0x1 fp=0xc00007a7e8 sp=0xc00007a7e0 pc=0x47e0c1\ncreated by runtime.createfing in goroutine 1\n\t/usr/local/go/src/runtime/mfinal.go:172 +0x3d\n\ngoroutine 20 gp=0xc000102e00 m=nil [cleanup wait]:\nruntime.gopa", step error: client "A" frame changed after gesture, want unchanged from captured "before-wheel-scroll":
+want:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:tmux*                                                     "285f277669dd" 03:59 26-Aug-26
+got:
+SCROLL_LINE_93
+SCROLL_LINE_94
+SCROLL_LINE_95
+SCROLL_LINE_96
+SCROLL_LINE_97
+SCROLL_LINE_98
+SCROLL_LINE_99
+SCROLL_LINE_100
+SCROLL_LINE_101
+SCROLL_LINE_102
+SCROLL_LINE_103
+SCROLL_LINE_104
+SCROLL_LINE_105
+SCROLL_LINE_106
+SCROLL_LINE_107
+SCROLL_LINE_108
+SCROLL_LINE_109
+SCROLL_LINE_110
+SCROLL_LINE_111
+SCROLL_LINE_112
+SCROLL_LINE_113
+SCROLL_LINE_114
+SCROLL_LINE_115
+SCROLL_LINE_116
+SCROLL_LINE_117
+SCROLL_LINE_118
+SCROLL_LINE_119
+SCROLL_LINE_120
+$
+[deck_atta0:sh*                                                       "285f277669dd" 03:59 26-Aug-26[0m
+
+
+1 scenarios ([31m1 failed[0m)
+12 steps ([32m8 passed[0m, [31m1 failed[0m, [36m3 skipped[0m)
+2.567710679s
+=== NAME  TestFeatures
+    godog_test.go:38: godog feature suite failed
+--- FAIL: TestFeatures (2.58s)
+    --- FAIL: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (2.56s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	2.588s
+FAIL

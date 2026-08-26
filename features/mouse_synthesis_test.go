@@ -118,6 +118,7 @@ func registerMouseSynthesisSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" scrolls the wheel down at column (\d+) row (\d+)$`, clientScrollsWheelDownAt)
 	sc.Step(`^deck client "([^"]+)" drags from column (\d+) row (\d+) to column (\d+) row (\d+)$`, clientDragsFromTo)
 	sc.Step(`^deck client "([^"]+)" captures its frame as "([^"]+)"$`, clientCapturesFrameAs)
+	sc.Step(`^deck client "([^"]+)" captures its settled frame as "([^"]+)"$`, clientCapturesSettledFrameAs)
 	sc.Step(`^deck client "([^"]+)" frame still matches the captured "([^"]+)" frame$`, clientFrameStillMatchesCaptured)
 }
 
@@ -179,6 +180,59 @@ func clientCapturesFrameAs(ctx context.Context, name, label string) error {
 	// change from the gesture rather than an unrelated late frame.
 	time.Sleep(50 * time.Millisecond)
 	client.CaptureSnapshot(label, false)
+	return nil
+}
+
+// captureSettledQuietWindow bounds clientCapturesSettledFrameAs's
+// quiescence wait (task 406): must exceed BOTH DECK_PREVIEW_MS (50ms in
+// every scenario's Environment()) AND scenarioReconcileInterval (250ms,
+// features/lifecycle_test.go) with margin, not just the smaller of the two
+// -- a window shorter than the reconcile cadence can land in the ordinary
+// gap BETWEEN two reconcile ticks and mistake "nothing has rendered in the
+// last 200ms because the next tick is not due yet" for "settled", which is
+// exactly what let a still-"running" (not yet reconciled to "idle") session,
+// or a not-yet-issued previewFit, slip through as a false baseline in this
+// task's own reproduction sweep (docs/reports/phase3e-406-mouse-off-frame-
+// race/README.md). 400ms clears one full reconcile interval with room to
+// spare while staying well inside a scenario's overall step budget.
+const captureSettledQuietWindow = 400 * time.Millisecond
+
+// clientCapturesSettledFrameAs is clientCapturesFrameAs's quiescence-based
+// sibling (task 406), deliberately kept as a SEPARATE step rather than a
+// change to clientCapturesFrameAs itself: attach_scroll.feature's own
+// "before-wheel-scroll" baseline (registerMouseSynthesisSteps' other user of
+// "captures its frame as") depends on capturing EARLY, before a real
+// attached tmux client's own status-line redraw (driven by tmux's
+// automatic-rename noticing the foreground command settle from the shell
+// script to an idle shell, which does not itself push new bytes down the
+// pty until something else forces tmux to redraw the status line -- the
+// scroll gesture's own SIGWINCH-free wheel report can be that something)
+// lazily reveals an already-silent rename. A blanket quiescence wait there
+// only waits LONGER without the rename ever becoming observable first,
+// which does not fix that race and was proven, not assumed, to regress it:
+// baseline (this task's own sha) run 3/3 green in isolation,
+// clientCapturesFrameAs widened to quiesce first ran 5/5 RED on the exact
+// same scenario (docs/reports/phase3e-406-mouse-off-frame-race/regression-
+// attach-scroll-3x and -5x). Callers that know their baseline can race an
+// async background render with NO externally visible pending signal before
+// the gesture (previewFit's resize-window convergence, tui.go:1269, is the
+// one task 406 found) opt into the wait explicitly via this separate step
+// instead; every other "captures its frame as" call site is unchanged.
+func clientCapturesSettledFrameAs(ctx context.Context, name, label string) error {
+	client, err := mouseSynthesisClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	frame, err := client.WaitForQuiescence(ctx, false, captureSettledQuietWindow)
+	if err != nil {
+		return err
+	}
+	client.mu.Lock()
+	if client.snapshots == nil {
+		client.snapshots = make(map[string]string)
+	}
+	client.snapshots[label] = frame
+	client.mu.Unlock()
 	return nil
 }
 
