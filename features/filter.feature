@@ -1,12 +1,15 @@
 @requirement-33
-Feature: The / list filter: by name, workspace and cwd, and the only route back to an archived row (I-10, task 123)
+Feature: The / list filter: by name, workspace and cwd, and the route back to an archived row (I-10, task 123)
 
   SPEC.md:984/\u00a711.3, requirement 33: `/` filters the sidebar by name,
   workspace and cwd, incrementally as the query is typed, clearing on Esc.
   Archived rows (requirement 27) are hidden from store.ListSessions' own
-  default view entirely and have no restore, unlike a tombstoned row -- the
-  filter is their only route back (phase3-sessions-and-lifecycle.md item 33:
-  "a stated filter term for archived, not a separate mode").
+  default view entirely, so the filter is the only way one is FOUND again
+  (phase3-sessions-and-lifecycle.md item 33: "a stated filter term for
+  archived, not a separate mode"). It is not the whole way back: SPEC.md
+  :323-332 makes archived_at as reversible as deleted_at, so `U` on a row
+  surfaced this way clears the flag (R71, issue #8) and returns it to the
+  default list -- find it here, then unarchive it.
 
   @requirement-33-filter-by-name
   Scenario: / filters the list down to the one row whose name matches
@@ -51,3 +54,28 @@ Feature: The / list filter: by name, workspace and cwd, and the only route back 
     And deck client "A" screen contains "Filter"
     When deck client "A" clears the list filter with escape
     Then deck client "A" exits cleanly
+
+  @requirement-33-unarchive-from-filter-results
+  Scenario: U inside the filter's results returns the archived row to the default list
+    # R71 (issue #8): the way back out of `A` that resume's own refusal
+    # names. The row is reachable ONLY through the filter, so this presses
+    # a real U on the real narrowed list -- Enter first, since while the
+    # text field has focus U is filter text, not a keymap key.
+    Given deck client "A" is started
+    And deck client "A" creates shell session "unarchive-bystander"
+    And deck client "A" creates shell session "unarchive-target"
+    And deck client "A" archives its selected session "unarchive-target"
+    Then the state database session "unarchive-target" is archived
+    And deck client "A" screen contains "unarchive-bystander"
+    When deck client "A" opens the list filter
+    And deck client "A" types "unarchive-target" into the filter field
+    And deck client "A" keeps the filter in force with enter
+    Then deck client "A" screen contains "unarchive-target"
+    And deck client "A" screen does not contain "unarchive-bystander"
+    When deck client "A" unarchives its selected session "unarchive-target"
+    Then the state database session "unarchive-target" is not archived
+    When deck client "A" opens the list filter
+    And deck client "A" clears the list filter with escape
+    Then deck client "A" screen contains "unarchive-target"
+    And deck client "A" screen contains "unarchive-bystander"
+    And deck client "A" exits cleanly

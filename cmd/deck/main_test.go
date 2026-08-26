@@ -389,8 +389,13 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// bubbletea's standardRenderer crops from the TOP once rendered lines
 	// exceed the window's height (charmbracelet/bubbletea@v1.3.10/
 	// standard_renderer.go:186-187), so this must stay comfortably above
-	// helpView()'s current height, not merely above 24.
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 220, Cols: 100})
+	// helpView()'s current height, not merely above 24. It had drifted to
+	// EXACTLY that height (220 rendered lines at Cols: 100, so any added
+	// help line silently cropped the mouse section this test asserts on --
+	// R71's own `U` entry, task 007, did): raised to 260 against a measured
+	// 229 lines, re-measurable by rendering helpText at this width and
+	// height in internal/tui and counting the View()'s lines.
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 260, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}

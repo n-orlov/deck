@@ -109,6 +109,7 @@ var helpKeyTokenToBoundKeys = map[string][]string{
 	"u":         {"u"},
 	"dd":        {"d"},
 	"A":         {"A"},
+	"U":         {"U"},
 	"m":         {"m"},
 	"r":         {"r"},
 	"R":         {"R"},

@@ -54,7 +54,7 @@ var helpStyleHeaders = map[string]bool{
 // touched by this file.
 var helpKeycapTokens = map[string]bool{
 	"↑/↓": true, "j/k": true, "↵": true, "a": true, "Y": true, "n": true,
-	"x": true, "u": true, "dd": true, "A": true, "m": true, "r": true,
+	"x": true, "u": true, "dd": true, "A": true, "U": true, "m": true, "r": true,
 	"R": true, "P": true, "p": true, "i": true, "e": true, "E": true,
 	"/": true, "space": true, "c": true, "g": true, "G": true, ",": true,
 	"t": true, "|": true, "<": true, ">": true, "?": true, "q": true,
