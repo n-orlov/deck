@@ -8,6 +8,7 @@ Raw evidence in this directory:
 [git-hygiene.log](git-hygiene.log),
 [citation-sweep.log](citation-sweep.log),
 [check-citations-all-reports.log](check-citations-all-reports.log),
+[push.log](push.log),
 [citation_sweep.py](citation_sweep.py).
 
 ## 0. Scope and dependency check
@@ -164,7 +165,7 @@ $ python3 docs/reports/phase3f-027-closeout/citation_sweep.py
 reports scanned: 27
 distinct shas cited: 35
 sha resolution failures: 0
-distinct (citing dir, link target) pairs: 89
+distinct (citing dir, link target) pairs: 90
 link resolution failures: 0
 CITATION SWEEP: PASS - every cited sha resolves and every cited path exists
 (exit 0)
@@ -193,8 +194,45 @@ stops at B: B's own push output cannot be inside B either, so it is captured out
 the run's artifacts directory (`artifacts/task027-closeout/push-commit-B.log`), together with the
 final `git status --short` and `git log origin/main..HEAD` that were run after it.
 
-(Filled in by commit B: push output of commit A, the post-commit protected-path re-audit, and the
-final empty `git status --short` / `git log origin/main..HEAD`.)
+**Commit A's push, verbatim.** Full record: [push.log](push.log).
+
+```
+$ git push origin main
+To https://github.com/n-orlov/deck.git
+   b0f756f..225b43c  main -> main
+(exit 0)
+$ git log origin/main..HEAD --oneline
+(empty)
+$ git rev-parse HEAD origin/main
+225b43ccdebbd0f1e5555972425821ee46958f17
+225b43ccdebbd0f1e5555972425821ee46958f17
+```
+
+`git status --short` in that same capture shows one entry — `?? docs/reports/phase3f-027-closeout/push.log`,
+the file being written at that moment. That is the only thing standing between the tree and clean, and
+commit B is what tracks it; the clean `git status --short` and empty `git log origin/main..HEAD` after
+commit B's push are in `artifacts/task027-closeout/push-commit-B.log` in the run's artifacts directory
+(they cannot be inside commit B itself, per the regress above).
+
+**Both operator commits are published**, checked by ancestry rather than by reading a log:
+
+```
+$ git merge-base --is-ancestor c80a14c origin/main   -> c80a14c: PUBLISHED
+$ git merge-base --is-ancestor 60c2c56 origin/main   -> 60c2c56: PUBLISHED
+```
+
+**The protected-path audit re-run after commit A landed is unchanged** — still exactly the two
+recognised shas, because commit A adds files only under `docs/reports/`:
+
+```
+$ git log --format=%H bce80ea..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+60c2c56af9b7456df81c7408e7ca812a9434701a
+c80a14cd13110d884bc7a79cb1c8de0619f58610
+```
+
+**And the push itself rewrote nothing**: all 437 `refs/remotes/origin/main` reflog entries (436 before
+this task, plus commit A's) are `update by push`, `forced-update` count **0**; commit A's entry is
+`225b43c refs/remotes/origin/main@{2026-08-26 23:10:25 +0000}: update by push`.
 
 ## 6. Result, and the two truths this close-out carries forward
 
