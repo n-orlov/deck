@@ -15,7 +15,7 @@ import (
 // theme.Theme.Color, exactly what a running client paints) into a
 // vt.Emulator, then reads the ACTUAL painted foreground colour off the
 // cell carrying wantText, the same per-cell extraction
-// settings_task019_test.go's cellFgHex/findCol use for every other
+// settings_color_cues_test.go's cellFgHex/findCol use for every other
 // colour-token proof in this package -- never grepping the raw escape
 // bytes and never comparing matrix.toml's authored strings directly.
 func matrixSidebarStatusFg(t *testing.T, m Model, session store.Session, wantText string) string {
