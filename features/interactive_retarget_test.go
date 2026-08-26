@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -81,6 +82,28 @@ func privateTMuxWindowOwnershipClaimForSessionIsCapturedAs(ctx context.Context, 
 	return nil
 }
 
+// ownershipStillMatchesSettleWindow bounds
+// privateTMuxWindowOwnershipClaimForSessionStillMatches's poll (task 403):
+// a genuinely no-op click (this function's only caller,
+// mouse.feature's @requirement-54-sidebar-click-on-interactive-row-is-a-no-op
+// scenario) produces no deck output at all -- bubbletea's own
+// standardRenderer.flush (charmbracelet/bubbletea@v1.3.10/standard_renderer.go:165)
+// returns before writing anything when the rendered buffer is byte-identical
+// to the last one, so there is no render event, and therefore no
+// content-based observable, to poll for "the click has been processed" the
+// way clientHasSessionSelected/clientPreviewTopBorderContains do for the
+// scenario's other two waits. This mirrors mouse_synthesis_test.go's own
+// clientFrameStillMatchesCaptured, whose doc comment states the identical
+// reasoning for the same defect class ("success is the absence of a new
+// frame"): the fix is not to wait blindly and sample once, but to keep
+// SAMPLING tmux's own ownership option across the whole window and fail the
+// instant it ever changes, rather than only at one arbitrarily-timed point
+// -- so a real leave-and-re-enter that lands late in the window is still
+// caught, which a single check after a fixed sleep would miss.
+const ownershipStillMatchesSettleWindow = 200 * time.Millisecond
+
+const ownershipStillMatchesPollInterval = 20 * time.Millisecond
+
 func privateTMuxWindowOwnershipClaimForSessionStillMatches(ctx context.Context, name, label string) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -90,14 +113,20 @@ func privateTMuxWindowOwnershipClaimForSessionStillMatches(ctx context.Context, 
 	if !ok {
 		return fmt.Errorf("no private tmux window ownership claim was captured as %q", label)
 	}
-	got, err := privateWindowOwnershipClaim(ctx, h, name)
-	if err != nil {
-		return err
+	deadline := time.Now().Add(ownershipStillMatchesSettleWindow)
+	for {
+		got, err := privateWindowOwnershipClaim(ctx, h, name)
+		if err != nil {
+			return err
+		}
+		if got != want {
+			return fmt.Errorf("private tmux window ownership claim for session %q changed (a leave+re-enter re-claimed it): captured %q as %q, now %q", name, label, want, got)
+		}
+		if !time.Now().Before(deadline) {
+			return nil
+		}
+		time.Sleep(ownershipStillMatchesPollInterval)
 	}
-	if got != want {
-		return fmt.Errorf("private tmux window ownership claim for session %q changed (a leave+re-enter re-claimed it): captured %q as %q, now %q", name, label, want, got)
-	}
-	return nil
 }
 
 // clientPreviewTopBorderContains asserts that the substring named by the
@@ -118,13 +147,20 @@ func clientPreviewTopBorderContains(ctx context.Context, name, text string) erro
 	if err != nil {
 		return err
 	}
-	frame := client.Frame(false)
-	border, err := previewTopBorderText(frame)
+	// Poll (task 403) rather than read the frame exactly once: the render
+	// that makes the top border carry text is triggered by a prior step
+	// (entering interactive mode, or a sidebar retarget click) sending bytes
+	// through a real pty asynchronously, so reading immediately races that
+	// render landing under load the same way a fixed sleep would guess wrong
+	// under load -- WaitForFrameFunc waits for the SPECIFIC derived view
+	// (previewTopBorderText) this assertion actually cares about, exactly
+	// like WaitForFrame already does for a plain substring.
+	frame, err := client.WaitForFrameFunc(ctx, false, func(frame string) bool {
+		border, borderErr := previewTopBorderText(frame)
+		return borderErr == nil && strings.Contains(border, text)
+	})
 	if err != nil {
-		return fmt.Errorf("client %q: %w", name, err)
-	}
-	if !strings.Contains(border, text) {
-		return fmt.Errorf("client %q preview top border %q does not contain %q\nfull frame:\n%s", name, border, text, frame)
+		return fmt.Errorf("client %q preview top border never contained %q: %w\nlast frame:\n%s", name, text, err, frame)
 	}
 	return nil
 }

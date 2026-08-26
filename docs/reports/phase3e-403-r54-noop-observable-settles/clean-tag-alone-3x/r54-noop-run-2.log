@@ -1,0 +1,37 @@
+Wed Aug 26 02:26:13 UTC 2026
+=== RUN   TestFeatures
+[1;37mFeature:[0m §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirements 33-37, 41)
+  Every gesture below duplicates an existing key -- none is the only way to
+  perform its action -- and hit-testing resolves each click through the
+  same layout the renderer itself drew from (task 028). With mouse
+  reporting off, every one of these gestures is a no-op and only the
+  shortcut is lost; the keyboard path underneath keeps working.
+=== RUN   TestFeatures/a_sidebar_click_on_the_already-interactive_row_triggers_no_resize
+
+  [1;37mScenario:[0m a sidebar click on the already-interactive row triggers no resize                                                 [1;30m# mouse.feature:93[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "retarget-noop-a"[0m                                                              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "retarget-noop-b"[0m                                                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m                                    [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" selects session "retarget-noop-a"[0m                                                                     [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" enters interactive mode[0m                                                                               [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" preview top border contains "retarget-noop-a"[0m                                                        [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "retarget-noop-b"[0m                                                       [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" has session "retarget-noop-b" selected[0m                                                               [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" preview top border contains "retarget-noop-b"[0m                                                         [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mAnd[0m [32mthe private tmux window ownership claim for session "retarget-noop-b" is captured as "retarget-noop-b-after-retarget"[0m [1;30m# interactive_retarget_test.go:27 -> github.com/n-orlov/deck/features.privateTMuxWindowOwnershipClaimForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "retarget-noop-b"[0m                                                       [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" has session "retarget-noop-b" selected[0m                                                               [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" preview top border contains "retarget-noop-b"[0m                                                         [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mAnd[0m [32mthe private tmux window ownership claim for session "retarget-noop-b" still matches "retarget-noop-b-after-retarget"[0m  [1;30m# interactive_retarget_test.go:28 -> github.com/n-orlov/deck/features.privateTMuxWindowOwnershipClaimForSessionStillMatches[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                              [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+18 steps ([32m18 passed[0m)
+1.397579104s
+--- PASS: TestFeatures (1.41s)
+    --- PASS: TestFeatures/a_sidebar_click_on_the_already-interactive_row_triggers_no_resize (1.39s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.417s

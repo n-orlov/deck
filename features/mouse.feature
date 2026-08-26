@@ -122,15 +122,12 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" selects session "retarget-noop-a"
     And deck client "A" enters interactive mode
-    And 200 milliseconds pass
     Then deck client "A" preview top border contains "retarget-noop-a"
     When deck client "A" clicks on the row containing "retarget-noop-b"
-    And 200 milliseconds pass
     Then deck client "A" has session "retarget-noop-b" selected
     And deck client "A" preview top border contains "retarget-noop-b"
     And the private tmux window ownership claim for session "retarget-noop-b" is captured as "retarget-noop-b-after-retarget"
     When deck client "A" clicks on the row containing "retarget-noop-b"
-    And 200 milliseconds pass
     Then deck client "A" has session "retarget-noop-b" selected
     And deck client "A" preview top border contains "retarget-noop-b"
     And the private tmux window ownership claim for session "retarget-noop-b" still matches "retarget-noop-b-after-retarget"

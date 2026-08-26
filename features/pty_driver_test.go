@@ -458,6 +458,32 @@ func (d *ScreenDriver) WaitForFrame(ctx context.Context, clockFrozen bool, want 
 	}
 }
 
+// WaitForFrameFunc is WaitForFrame generalised to an arbitrary predicate
+// over the current frame, polling the same d.updated-channel idiom (task
+// 403/mouse.feature's R54 no-op scenario): a caller that needs to assert
+// something about a DERIVED view of the frame -- e.g. previewTopBorderText's
+// own slice of it -- rather than a plain substring of the whole grid can't
+// express that as WaitForFrame's want string, and reading the frame exactly
+// once races the render the same way a fixed sleep does. Returns the last
+// frame observed either way, so a timeout error can still show it.
+func (d *ScreenDriver) WaitForFrameFunc(ctx context.Context, clockFrozen bool, pred func(frame string) bool) (frame string, err error) {
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
+	for {
+		frame = d.Frame(clockFrozen)
+		if pred(frame) {
+			return frame, nil
+		}
+		select {
+		case <-d.done:
+			return frame, fmt.Errorf("deck exited before frame predicate matched: %v\nraw: %q", d.processError(), d.Raw())
+		case <-d.updated:
+		case <-ctx.Done():
+			return frame, fmt.Errorf("timed out waiting for frame predicate: %w", ctx.Err())
+		}
+	}
+}
+
 // WaitForFrameGone is WaitForFrame's negation: it waits until a substring
 // that IS currently on screen has left it, polling the same d.updated
 // signal WaitForFrame does rather than sleeping a fixed guess. Task 105
