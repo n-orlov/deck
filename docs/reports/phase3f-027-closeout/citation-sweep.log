@@ -30,7 +30,7 @@ reports scanned: 27
 distinct shas cited: 35
 sha resolution failures: 0
 
-distinct (citing dir, link target) pairs: 89
+distinct (citing dir, link target) pairs: 90
 link resolution failures: 0
 
 CITATION SWEEP: PASS - every cited sha resolves and every cited path exists

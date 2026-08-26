@@ -1,0 +1,39 @@
+=== task 027 close-out push record ===
+date: 2026-08-26T23:10:40Z
+
+--- $ git push origin main   (commit A: 225b43c, the close-out report)
+To https://github.com/n-orlov/deck.git
+   b0f756f..225b43c  main -> main
+exit: 0
+
+--- $ git status --short   (immediately after commit A's push)
+?? docs/reports/phase3f-027-closeout/push.log
+(end; empty above means clean)
+
+--- $ git log origin/main..HEAD --oneline   (immediately after commit A's push)
+(end; empty above means fully pushed)
+
+--- $ git rev-parse HEAD origin/main
+225b43ccdebbd0f1e5555972425821ee46958f17
+225b43ccdebbd0f1e5555972425821ee46958f17
+
+--- both operator commits published
+c80a14c: ancestor of origin/main -> PUBLISHED
+60c2c56: ancestor of origin/main -> PUBLISHED
+
+--- protected-path audit re-run AFTER commit A landed (must be unchanged: exactly two shas)
+$ git log --format=%H bce80ea..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+60c2c56af9b7456df81c7408e7ca812a9434701a
+c80a14cd13110d884bc7a79cb1c8de0619f58610
+
+--- no forced update in origin/main's push history (whole reflog)
+$ git reflog show refs/remotes/origin/main | wc -l
+437
+$ git reflog show refs/remotes/origin/main | grep -c 'forced-update' (0 expected)
+0
+0
+
+--- last three origin/main reflog entries
+225b43c refs/remotes/origin/main@{2026-08-26 23:10:25 +0000}: update by push
+b0f756f refs/remotes/origin/main@{2026-08-26 23:00:47 +0000}: update by push
+e9dad62 refs/remotes/origin/main@{2026-08-26 22:53:51 +0000}: update by push
