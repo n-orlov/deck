@@ -76,7 +76,7 @@ Both confirmed empty again immediately after this task's own docs-only commit la
 Task 409's own sweep covered only `docs/reports/phase3e.md` and `docs/reports/phase3e-findings.md`.
 This task's criterion asks for the same method re-run across **all** Phase 3e reports, so the
 script (committed here as [`citation_sweep.py`](citation_sweep.py)) walks every `*.md` file under
-`docs/reports/` whose path contains `phase3e` (24 files, including every per-task report directory
+`docs/reports/` whose path contains `phase3e` (25 files, including every per-task report directory
 and its nested sub-reports, e.g. task 406's `pre-fix-repro/`, `post-fix-sweep-scoped/`,
 `tmuxwrap-experiment/`), not just the two aggregator documents:
 
@@ -88,22 +88,39 @@ and its nested sub-reports, e.g. task 406's `pre-fix-repro/`, `post-fix-sweep-sc
   non-digit hex character, since no real sha cited anywhere in this run's reports is purely
   numeric);
 - resolves every surviving sha with `git cat-file -e`;
-- extracts every markdown `[text](target)` link (skipping `http(s)://` and same-page `#anchor`
-  links), resolves each target relative to the citing file's own directory, and checks it exists
-  on disk.
+- extracts every markdown link (square-bracketed link text immediately followed by a
+  parenthesized target — skipping `http(s)://` and same-page `#anchor` links), resolves each
+  target relative to the citing file's own directory, and checks it exists on disk.
 
 Result ([`citation-sweep.log`](citation-sweep.log)):
 
 ```
-Total distinct shas cited: 43
+Total distinct shas cited: 44
 Sha resolution failures: 0
 
-Total distinct link targets cited (excluding external): 42
+Total distinct link targets cited (excluding external): 44
 Link resolution failures: 0
 ```
 
-**Zero failures** across all 24 files, sha and link targets both. Full per-file list and any
+**Zero failures** across all 25 files, sha and link targets both. Full per-file list and any
 failure detail (none) is in the committed log.
+
+**Correction (this revision):** an earlier draft of this section was captured with the script's
+self-referential file list still at 24 files, one short — the sweep had been run *before*
+`docs/reports/phase3e-410-closeout/README.md` itself reached its final wording, so this task's own
+report was never actually swept despite matching the same `phase3e` glob every other per-task
+report does. A validation pass re-ran the committed `citation_sweep.py` fresh against the final,
+pushed tree and it failed with one link-resolution error: this section's own methodology prose
+used to spell out a literal example of the markdown link shape (square-bracket text immediately
+followed by a parenthesized target, using the placeholder words "text" and "target") — the example
+was structurally indistinguishable from a real markdown link to the regex that finds real ones, so
+it was extracted as a link to the literal path `target`, which does not exist. Fixed by describing
+the shape in prose above instead of spelling out the placeholder example verbatim (no
+square-bracket-immediately-followed-by-parenthesis sequence remains anywhere in this file), rather
+than special-casing the script, since any other report could independently introduce the same
+shape by prose accident and a script-side skip-list would only chase the next one. Re-run fresh
+from repo root after the fix: 25 files, 44 shas, 44 link targets, zero failures
+(`citation-sweep.log`, replacing the earlier 24-file/43-sha/42-link capture).
 
 ## 5. Result
 
@@ -115,8 +132,8 @@ All of task 410's success criteria are met:
   every prior task's own established method) all clean — PASS.
 - `git status --short` and `git log origin/main..HEAD` both empty once this task's own docs-only
   commit is pushed — PASS (verify after commit, not just before).
-- Citation sweep across all Phase 3e reports (not just the two aggregator docs): 43 distinct shas,
-  42 distinct link targets, zero failures — PASS.
+- Citation sweep across all Phase 3e reports (not just the two aggregator docs, and including this
+  task's own report directory): 44 distinct shas, 44 distinct link targets, zero failures — PASS.
 
 **Approach 02's repair pass over the Phase 3e tree (tasks 401-411) is complete.** R52-R58 stand as
 verified by the prior review; the five blocking findings and two coverage gaps that review raised

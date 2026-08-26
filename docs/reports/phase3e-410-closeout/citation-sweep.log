@@ -1,4 +1,4 @@
-Files scanned: 24
+Files scanned: 25
   docs/reports/phase3e-302-r52-godog/README.md
   docs/reports/phase3e-307-r53-orders/README.md
   docs/reports/phase3e-328-closeout/README.md
@@ -18,14 +18,15 @@ Files scanned: 24
   docs/reports/phase3e-407-whole-suite-at-75861e0/README.md
   docs/reports/phase3e-408-stability-10-at-75861e0/README.md
   docs/reports/phase3e-409-findings-4a-correction/README.md
+  docs/reports/phase3e-410-closeout/README.md
   docs/reports/phase3e-411-locatetext-preview-region/README.md
   docs/reports/phase3e-findings.md
   docs/reports/phase3e-fullsuite/README.md
   docs/reports/phase3e-stability/README.md
   docs/reports/phase3e.md
 
-Total distinct shas cited: 43
+Total distinct shas cited: 44
 Sha resolution failures: 0
 
-Total distinct link targets cited (excluding external): 42
+Total distinct link targets cited (excluding external): 44
 Link resolution failures: 0
