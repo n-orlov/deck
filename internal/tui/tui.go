@@ -2620,6 +2620,39 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		// R73 (issue #7): a wheel notch over one of the three scrollable
+		// overlays scrolls THAT overlay's own viewport, by the same one-line
+		// step up/down and j/k bind. This is tested BEFORE the blanket
+		// suppression below -- "scrollable overlay AND wheel event" and
+		// nothing else -- so the action-suppressing rule underneath stays
+		// exactly as strict as it was for every other gesture: a click, a
+		// drag, a release or any other button still returns early for all
+		// fifteen overlay flags, and a wheel notch over one of the twelve
+		// unscrollable overlays still does nothing either (scrollWheelOverlay
+		// reports false and this falls through to that same return).
+		//
+		// Why no hit test on msg.X/msg.Y: an overlay is modal -- it owns the
+		// keyboard outright and nothing underneath it is reachable while it is
+		// up -- so there is no second thing a wheel notch could have been
+		// meant for, exactly as PgUp/PgDn need no pointer to decide what they
+		// page. (Interactive mode's wheel, handled above, DOES hit-test,
+		// because there the sidebar next to the pane is genuinely live.)
+		//
+		// SPEC.md:1250 is not violated: it forbids the mouse *cancelling or
+		// confirming* a dialog and forbids reaching a dialog action by mouse
+		// alone. Moving a read-only viewport cancels nothing, confirms
+		// nothing, takes no focus and moves no selection -- the same test
+		// §11.8 already applies to drag-to-select over the preview ("selecting
+		// text is reading rather than acting").
+		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+			dir := 1
+			if msg.Button == tea.MouseButtonWheelUp {
+				dir = -1
+			}
+			if scrolled, ok := m.scrollWheelOverlay(dir); ok {
+				return scrolled, nil
+			}
+		}
 		// SPEC §11.4/§11.8: the mouse can neither cancel nor confirm a dialog,
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse

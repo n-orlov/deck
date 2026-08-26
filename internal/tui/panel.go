@@ -864,11 +864,84 @@ func (m Model) dialogScrollByPage(current int, body string, dir int) int {
 	return m.dialogScrollBy(current, body, dir, m.dialogContentBudget())
 }
 
-// dialogScrollByLines is up/down and their j/k aliases' own step (R73,
-// issue #7): exactly one wrapped body line, so the first visible line
-// advances or retreats by one and no more.
+// dialogScrollByLines is up/down, their j/k aliases and the wheel's own
+// step (R73, issue #7): exactly one wrapped body line, so the first
+// visible line advances or retreats by one and no more.
 func (m Model) dialogScrollByLines(current int, body string, dir int) int {
 	return m.dialogScrollBy(current, body, dir, 1)
+}
+
+// scrollableOverlayKind names the three overlays that render through
+// framedDialogScrollable and therefore have a viewport a wheel notch can
+// move: `?` help, `i` detail and `E` event log (R73, issue #7).
+type scrollableOverlayKind int
+
+const (
+	overlayScrollNone scrollableOverlayKind = iota
+	overlayScrollHelp
+	overlayScrollDetail
+	overlayScrollEventLog
+)
+
+// wheelScrollableOverlay answers which scrollable overlay a wheel event
+// belongs to, mirroring Update's own KeyMsg dispatch order EXACTLY (its
+// chain of `if m.creating { return m.updateCreate(msg) }` clauses):
+// whichever overlay would receive a `down` keypress right now is the one
+// the wheel scrolls, and if that overlay is not scrollable the wheel does
+// nothing. Two flags can be set at once (a rename dialog opened over the
+// detail view, say), so "is m.detail set?" is not the question -- "does
+// m.detail own the keyboard?" is, and answering it any other way would let
+// the wheel scroll an overlay the arrows cannot reach.
+func (m Model) wheelScrollableOverlay() scrollableOverlayKind {
+	// Every overlay that intercepts keys AHEAD of the three scrollable
+	// ones; none of them scrolls, so the wheel stays the no-op the
+	// blanket action guard already made it.
+	if m.interactive || m.creating || m.profileSwitching || m.pinning || m.envEditing ||
+		m.restartChoosing || m.deleteConfirming || m.archiveConfirming ||
+		m.settingsOpen || m.settingsDiscardConfirm || m.themePicking {
+		return overlayScrollNone
+	}
+	switch {
+	case m.help:
+		return overlayScrollHelp
+	case m.renaming:
+		// Rename sits between help and detail in the key dispatch, and
+		// framedDialog gives it no viewport to scroll.
+		return overlayScrollNone
+	case m.detail:
+		return overlayScrollDetail
+	case m.eventLogOpen:
+		return overlayScrollEventLog
+	}
+	// m.filtering falls through to here: it is dispatched after the three
+	// above and renders no scrollable viewport either.
+	return overlayScrollNone
+}
+
+// scrollWheelOverlay applies one wheel notch (dir<0 up, dir>0 down) to
+// whichever scrollable overlay owns the keyboard, and reports whether it
+// scrolled anything at all (R73, issue #7). It is the wheel's single point
+// of agreement with up/down/j/k: the same dialogScrollByLines step over the
+// same body each key handler passes, so the wheel can never drift into a
+// second, page-sized scroller.
+//
+// A false return means "no scrollable overlay owns the keyboard here" --
+// either no overlay is open at all, or the open one is one of the twelve
+// unscrollable ones -- and leaves the caller's own mouse handling (tui.go's
+// fifteen-flag action guard, then handleMouse) to deal with the event
+// exactly as it did before R73.
+func (m Model) scrollWheelOverlay(dir int) (Model, bool) {
+	switch m.wheelScrollableOverlay() {
+	case overlayScrollHelp:
+		m.helpScroll = m.dialogScrollByLines(m.helpScroll, helpText(m.settings.ASCII), dir)
+	case overlayScrollDetail:
+		m.detailScroll = m.dialogScrollByLines(m.detailScroll, m.detailBody(), dir)
+	case overlayScrollEventLog:
+		m.eventLogScroll = m.dialogScrollByLines(m.eventLogScroll, m.eventLogBody(), dir)
+	default:
+		return m, false
+	}
+	return m, true
 }
 
 // framedDialogScrollable is framedDialog's height-bounded counterpart
