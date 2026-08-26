@@ -64,9 +64,15 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.
-		m.detailScroll = m.dialogScrollBy(m.detailScroll, m.detailBody(), -1)
+		m.detailScroll = m.dialogScrollByPage(m.detailScroll, m.detailBody(), -1)
 	case "pgdown":
-		m.detailScroll = m.dialogScrollBy(m.detailScroll, m.detailBody(), 1)
+		m.detailScroll = m.dialogScrollByPage(m.detailScroll, m.detailBody(), 1)
+	case "up", "k":
+		// R73 (issue #7): one line per press, so the arrows are not a
+		// second PgUp/PgDn.
+		m.detailScroll = m.dialogScrollByLines(m.detailScroll, m.detailBody(), -1)
+	case "down", "j":
+		m.detailScroll = m.dialogScrollByLines(m.detailScroll, m.detailBody(), 1)
 	}
 	return m, nil
 }

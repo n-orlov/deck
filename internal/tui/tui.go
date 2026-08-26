@@ -5303,7 +5303,9 @@ func (m Model) helpView() string {
 // (task 078). It is dispatched ahead of the list-mode switch exactly like
 // updateDetailView/updateEventLog, which is why those two, and every
 // `!m.help` guard still scattered through that switch, now only ever see
-// m.help == false: PgUp/PgDn scroll the overlay's own window; q/Ctrl+C
+// m.help == false: PgUp/PgDn scroll the overlay's own window by a page
+// and up/down (with their j/k sidebar aliases) by a single line (R73,
+// issue #7); q/Ctrl+C
 // still quit (matching the help text's own unconditional "q or Ctrl+C
 // quit deck", not "while help is closed"); esc and a second ? both close
 // it, esc also clearing the mark set exactly like the top-level esc case
@@ -5323,9 +5325,15 @@ func (m Model) updateHelpView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.help = false
 	case "pgup":
-		m.helpScroll = m.dialogScrollBy(m.helpScroll, helpText(m.settings.ASCII), -1)
+		m.helpScroll = m.dialogScrollByPage(m.helpScroll, helpText(m.settings.ASCII), -1)
 	case "pgdown":
-		m.helpScroll = m.dialogScrollBy(m.helpScroll, helpText(m.settings.ASCII), 1)
+		m.helpScroll = m.dialogScrollByPage(m.helpScroll, helpText(m.settings.ASCII), 1)
+	case "up", "k":
+		// R73 (issue #7): the arrows and their sidebar aliases scroll by
+		// ONE line, never a second PgUp/PgDn.
+		m.helpScroll = m.dialogScrollByLines(m.helpScroll, helpText(m.settings.ASCII), -1)
+	case "down", "j":
+		m.helpScroll = m.dialogScrollByLines(m.helpScroll, helpText(m.settings.ASCII), 1)
 	}
 	return m, nil
 }
