@@ -296,7 +296,7 @@ not claimed fixed anywhere in [`phase3f.md`](phase3f.md).
 | # | defect | where | why not fixed here |
 |---|---|---|---|
 | F1 | pre-resize passive preview fit spends the row's one coalesced fit → `preview.feature:134`/`:147` fails `received 1 SIGWINCH signals, want exactly 0` | `internal/tui` `previewFit` no-live-pane early return | product change outside R65's scope (R65 was forbidden to paper it over); needs a task — see below |
-| F2 | `TestGoldenMinimumFrame` "frame kept changing after the fixture rendered; not settled" | `internal/tui/golden_frame_test.go:74` | not reproduced at the final tree; open and **unproven fixed**, not retired |
+| F2 | `TestGoldenMinimumFrame` "frame kept changing after the fixture rendered; not settled" | `features/golden_frame_test.go:236`, reported at the `:74` call site because the helper calls `t.Helper()` | not reproduced at the final tree; open and **unproven fixed**, not retired |
 | F3 | `inject.go:51` decides "can this shell pane receive `send-keys`?" with `Exists`, which a **retained dead pane passes** | `internal/service/inject.go:51` | a different defect from #6/R69 (injection into a corpse, not reconciliation); changing it needs its own test and requirement |
 | F4 | abnormal exit leaks `/tmp/deck-interactive-pipe-*`, the FIFO, an armed `pipe-pane` and window ownership | `internal/tmux/pipe.go:94`/`:280`, `cmd/deck/main.go` | `internal/tmux` + `cmd/deck` lifecycle work — [§3.1](#3-r68-the-two-leaks-issue-5-also-noticed-plus-two-library-findings) |
 | F5 | `vt`'s `Emulator.closed` is unsynchronised | upstream `vt` | upstream; worked around by never calling `Emulator.Close()` — [§3.3](#3-r68-the-two-leaks-issue-5-also-noticed-plus-two-library-findings) |
@@ -334,8 +334,18 @@ field-symptom claim is not.
 **F2 in full.** Seen once during task 016 at a `-count=10` run of the golden-frame test
 ([`task016-goldenframe-count10.log`](phase3f-evidence/task016-goldenframe-count10.log));
 the same command at the phase's own HEAD did not reproduce it
-([`task016-goldenframe-count10-at-HEAD.log`](phase3f-evidence/task016-goldenframe-count10-at-HEAD.log))
-and `internal/tui` is `ok` in all ten stability runs at `c12c30e`. That is *absence of
+([`task016-goldenframe-count10-at-HEAD.log`](phase3f-evidence/task016-goldenframe-count10-at-HEAD.log)).
+**The test lives in the `features` package, not `internal/tui`** — `features/golden_frame_test.go`,
+which is why task 016's own failing log ends `FAIL github.com/n-orlov/deck/features` — so
+`internal/tui`'s stability record says nothing about it and is not cited here. The
+non-recurrence evidence is the `features` package's own: `features` is `ok` in nine of
+the ten stability runs at `c12c30e`
+([`run-pass-logs.log`](phase3f-022-stability10/run-pass-logs.log), nine `ok
+github.com/n-orlov/deck/features` lines), and the tenth run's **only** failure is F1's
+`preview.feature` fit assertion, not this test
+([`run-9-FAIL-trimmed.log`](phase3f-022-stability10/run-9-FAIL-trimmed.log): the single
+`--- FAIL: TestFeatures/…7-inner-row_floor…` at `:4905`, package verdict at `:4964`; no
+`TestGoldenMinimumFrame` failure appears in any of the ten). That is *absence of
 recurrence*, not a fix: no code changed to address it, so it stays open. Whoever picks
 it up should expect a settle/quiescence gap in the fixture's render path, not a colour
 bug.
@@ -410,8 +420,16 @@ still open.
 ## 9. How to re-check every citation in this report
 
 The committed checker verifies both this file and
-[`phase3f.md`](phase3f.md): every backticked sha resolves under `git cat-file -e` and
-every relative markdown link target exists under `docs/reports/`.
+[`phase3f.md`](phase3f.md): every backticked sha resolves under `git cat-file -e`, every
+relative markdown link target exists under `docs/reports/`, and every backticked
+repo-relative *source* path (a directory-qualified `.go`, `.toml`, `.feature`, `.sh`,
+`.sql` or `.md` file, with an optional `:line` suffix) names a file that exists now or
+existed at some commit in history — the third check was added because F2 was first
+written up against the `internal/tui` package, which has never held
+`golden_frame_test.go` (it lives in `features`), and a sha-and-link checker had nothing
+to say about it. Its history escape is why the pre-rename names R67 retired still pass
+while that miscitation does not; the checker's own comment records the probe that
+confirms it still fails on the wrong package.
 
 ```
 $ docs/reports/phase3f-evidence/check-citations.sh          # run from the repo root
