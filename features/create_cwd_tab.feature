@@ -39,7 +39,7 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
     And deck client "A" presses "enter" in the cwd field
     Then deck client "A" screen contains the scratch directory labelled "tablist" plus "/prefixbbb/"
     When deck client "A" submits the create modal
-    Then deck client "A" screen contains "starting"
+    Then deck client "A" has session "tab-list-session" selected
     And the state database session "tab-list-session" has cwd exactly the scratch directory labelled "tablist" plus "/prefixbbb/"
     When deck client "A" exits cleanly
 
