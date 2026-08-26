@@ -833,13 +833,19 @@ func (m Model) dialogMaxScroll(body string) int {
 	return len(lines) - budget
 }
 
-// dialogScrollBy is PgUp/PgDn's own step for a scrollable overlay (task
-// 078): one full dialogContentBudget page, dir<0 up/dir>0 down, clamped to
-// [0, dialogMaxScroll(body)] so repeated PgDown past the bottom (or PgUp
-// past the top) cannot inflate the stored offset past what the very next
-// render would ever show.
-func (m Model) dialogScrollBy(current int, body string, dir int) int {
-	next := current + dir*m.dialogContentBudget()
+// dialogScrollBy is the one scroll step every scrollable overlay uses
+// (task 078; step size made a parameter for R73/issue #7, which needed a
+// line-granular scroll and must not grow a second scroller): move current
+// by step lines in direction dir (dir<0 up, dir>0 down), clamped to
+// [0, dialogMaxScroll(body)] so repeated presses past the bottom (or past
+// the top) cannot inflate the stored offset past what the very next render
+// would ever show. A step below 1 would make a keypress a silent no-op, so
+// it is treated as 1.
+func (m Model) dialogScrollBy(current int, body string, dir, step int) int {
+	if step < 1 {
+		step = 1
+	}
+	next := current + dir*step
 	if next < 0 {
 		next = 0
 	}
@@ -847,6 +853,22 @@ func (m Model) dialogScrollBy(current int, body string, dir int) int {
 		next = max
 	}
 	return next
+}
+
+// dialogScrollByPage is PgUp/PgDn's own step: one full dialogContentBudget
+// page. Consecutive pages deliberately share no line (the step is the
+// whole content budget, not budget-1): that is the behaviour task 078
+// shipped and R73 keeps it unchanged on purpose, because the arrows now
+// cover the "read across the seam" case a one-line overlap existed for.
+func (m Model) dialogScrollByPage(current int, body string, dir int) int {
+	return m.dialogScrollBy(current, body, dir, m.dialogContentBudget())
+}
+
+// dialogScrollByLines is up/down and their j/k aliases' own step (R73,
+// issue #7): exactly one wrapped body line, so the first visible line
+// advances or retreats by one and no more.
+func (m Model) dialogScrollByLines(current int, body string, dir int) int {
+	return m.dialogScrollBy(current, body, dir, 1)
 }
 
 // framedDialogScrollable is framedDialog's height-bounded counterpart

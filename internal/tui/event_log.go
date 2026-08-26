@@ -102,7 +102,8 @@ func (m Model) loadEventLog() tea.Msg {
 // only field-like interaction (the log is read-only), handled through the
 // shared §11.4 contract exactly like detailView/helpView's own single Esc
 // case; PgUp/PgDn (task 078, requirement 39 residual) scroll the log's own
-// window once its content pushes past the frame budget.
+// window by a page, and up/down plus their j/k aliases by one line (R73,
+// issue #7), once its content pushes past the frame budget.
 func (m Model) updateEventLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if cmd, handled := applyDialogContract(msg, dialogContract{Cancel: func() {
 		m.eventLogOpen = false
@@ -111,9 +112,15 @@ func (m Model) updateEventLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "pgup":
-		m.eventLogScroll = m.dialogScrollBy(m.eventLogScroll, m.eventLogBody(), -1)
+		m.eventLogScroll = m.dialogScrollByPage(m.eventLogScroll, m.eventLogBody(), -1)
 	case "pgdown":
-		m.eventLogScroll = m.dialogScrollBy(m.eventLogScroll, m.eventLogBody(), 1)
+		m.eventLogScroll = m.dialogScrollByPage(m.eventLogScroll, m.eventLogBody(), 1)
+	case "up", "k":
+		// R73 (issue #7): one line per press, the arrows and their j/k
+		// aliases both.
+		m.eventLogScroll = m.dialogScrollByLines(m.eventLogScroll, m.eventLogBody(), -1)
+	case "down", "j":
+		m.eventLogScroll = m.dialogScrollByLines(m.eventLogScroll, m.eventLogBody(), 1)
 	}
 	return m, nil
 }
