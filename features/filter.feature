@@ -55,6 +55,54 @@ Feature: The / list filter: by name, workspace and cwd, and the route back to an
     When deck client "A" clears the list filter with escape
     Then deck client "A" exits cleanly
 
+  @requirement-33-archive-round-trip
+  Scenario: the whole round trip: A plus its confirm hides the row, / finds it, U and r bring it back live to the default list
+    # R71 (issue #8) + R72 (issue #10) end to end, in the order an operator
+    # meets them: the confirm that stops an accidental `A`, the archive that
+    # takes the row out of the default list, the `/` filter that is the only
+    # way to FIND it again, `U` to clear archived_at, and `r` to put a live
+    # pane back under it -- finishing with no filter in force at all, so the
+    # row is proven back in the plain default list rather than merely visible
+    # inside a query that is still narrowing the sidebar. Every leg goes
+    # through real keystrokes on the real pty: `A` opens the real dialog and
+    # Enter submits it, and nothing here calls the archive/unarchive/resume
+    # service directly.
+    #
+    # The target is created last because it is the auto-selected row
+    # (requirement 52) that `A` then acts on; the bystander exists to prove
+    # the filter really narrowed (it must vanish) and that clearing the
+    # filter really restored the whole list (it must come back).
+    Given deck client "A" is started
+    And deck client "A" creates shell session "trip-bystander"
+    And deck client "A" creates shell session "trip-target"
+    Then the private tmux session "deck_trip-target" exists
+    And the state database contains session "trip-target" with status "running"
+    When deck client "A" presses A on its selected session "trip-target"
+    Then deck client "A" screen contains "kills the live agent"
+    And the state database session "trip-target" is not archived
+    When deck client "A" submits the open dialog
+    Then the state database session "trip-target" is archived
+    And the private tmux session "deck_trip-target" does not exist
+    And deck client "A" screen does not contain "trip-target"
+    And deck client "A" screen contains "trip-bystander"
+    When deck client "A" opens the list filter
+    And deck client "A" types "trip-target" into the filter field
+    And deck client "A" keeps the filter in force with enter
+    Then deck client "A" screen contains "trip-target"
+    And deck client "A" screen does not contain "trip-bystander"
+    When deck client "A" unarchives its selected session "trip-target"
+    Then the state database session "trip-target" is not archived
+    When deck client "A" presses r on session "trip-target"
+    Then the state database contains session "trip-target" with status "running"
+    And the private tmux session "deck_trip-target" exists
+    When deck client "A" opens the list filter
+    And deck client "A" clears the list filter with escape
+    Then deck client "A" screen does not contain "Filter:"
+    And deck client "A" screen does not contain "in force"
+    And deck client "A" screen contains "trip-target running"
+    And deck client "A" screen contains "trip-bystander"
+    And deck client "A" exits cleanly
+
   @requirement-33-unarchive-from-filter-results
   Scenario: U inside the filter's results returns the archived row to the default list
     # R71 (issue #8): the way back out of `A` that resume's own refusal
