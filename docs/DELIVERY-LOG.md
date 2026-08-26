@@ -403,6 +403,76 @@ they found — `SIGKILL teardown hang …` (`:1249`) and `Requirement 19/21 corr
 with every citation in `docs/` repointed
 (`docs/reports/phase3f-020-r67-report-section-titles.md`).
 
+**Phase 3f** — `prds/phase3f-residuals-and-suite-determinism.md`, run `deck-phase3f`, 2026-08-26.
+Eleven requirements in two halves: the *residual* half (R63–R67, suite determinism and report
+hygiene) and the *field* half (R68–R73, the operator's GitHub bug log, issues #5–#10). Evidence:
+[`docs/reports/phase3f.md`](reports/phase3f.md) (per-requirement, with revert-and-reproduce proofs
+for the nine requirements the PRD named a naive test for) and
+[`docs/reports/phase3f-findings.md`](reports/phase3f-findings.md) (what it found and did not fix).
+Commits run from `f3c25d5` to the final code commit `e47cb35`, whose code tree is identical to
+`c12c30e` (the suite and stability runs were made there).
+
+**The bug log this phase inherited was two different lists, and they must not be read as one.**
+One is Phase 3e's residual bug log, whose items were already fixed *before* Phase 3f started and
+for which the PRD forbade writing requirements at all; the other is the six field defects the
+operator hit on their daily driver on 26 Aug 2026 and filed as issues #5–#10, which is what the
+field half of this phase actually built. Both are reconciled below, separately.
+
+*(a) Already fixed before Phase 3f — five items, no Phase 3f work and no Phase 3f credit.*
+Re-verified against the tree at `a9ff496` by task 024, and no row of the PRD's claim turned out
+wrong ([`phase3f-findings.md` §7](reports/phase3f-findings.md)):
+
+| Bug-log item | Fixed before this phase by |
+|---|---|
+| `probe.miss` grows unboundedly and wedges the `E` event log | `9f73996` (Phase 3e task 329, requirement R59) — `probe.miss` is no longer written as an event |
+| A coalesced `KeyMsg` drops **both** runes (`"jm"` matches no case) | `465a7d9` (Phase 3 task 118, requirement 51) — a multi-rune `KeyRunes` is split into one single-rune message per character |
+| `crash.feature`'s SIGKILL scenario hangs in its after-scenario hook, ~1 run in 10–30 | the same `465a7d9`; root-caused to the coalesced-keystroke mechanism (a coalesced `"iq"` reaching neither `case`) in `docs/reports/phase2b2-findings.md` |
+| `harness.feature`'s "a fake agent renders a preview fixture once and then falls silent#01" | `17e91ce` (Phase 3 task 114, read-buffer race under host load) |
+| `internal/interactive`'s `TestSessionResizeDuringLiveDrainIsRaceFree` goroutine-outlives-test panic | `fb9bd71` (Phase 3e task 325) — a real `sync.WaitGroup` join |
+
+Phase 3f's contribution to these five was **re-verification, not repair**: each was re-checked
+against today's tree, which matters most for the last row, since R68 rewrote the very drain and
+grid machinery that test drives and the join plus a green `-race` package run still hold. Two of
+the five now cite different lines than the PRD did (the `KeyMsg` split is at `tui.go:1990-2021` at
+the tip), and the `crash.feature` row's confidence rests on thirty clean whole-suite runs rather
+than twenty. The PRD's "seven items, five already fixed" is not a miscount: the other two rows of
+its seven-row table are not fixes — the pasted-`"dd"`-as-a-delete-chord row is dispositioned
+**never exposed** (bracketed paste sets `Paste: true`, and the split is guarded by `!msg.Paste`),
+and the `phase3e-findings.md` §4a/§4c row points at report items rather than a field defect.
+
+*(b) Fixed BY Phase 3f — the six field defects, issues #5–#10.* Each was filed with a live
+reproduction before the phase was cut; each has its own regression test with the revert-and-
+reproduce proof in [`phase3f.md`](reports/phase3f.md):
+
+| Issue | What it did | Requirement | Fixing sha(s) |
+|---|---|---|---|
+| #5 — interactive preview deadlocks on a terminal query | whole TUI wedged, `q`/`Ctrl+C` dead, `SIGTERM` ignored; recovery was `SIGKILL` from another terminal | R68 | `f3c25d5` (drain the vt emulator's reply stream) + `7d060cd` (stop holding `s.mu` across `grid.Write`) |
+| #6 — a retained dead pane wedges kill, resume and restart | session permanently unrecoverable from the UI, against `SPEC.md:547` verbatim | R69 | `b8f2513` (collect on sight whatever the row says) + `366dd78` (resume means "has a live pane"; kill removes a corpse) |
+| #9 — `pane_exit_status` is never cleared | one crash removed a session from reconciliation forever | R70 | `0745ced` (a resume clears the replaced pane's crash verdict) |
+| #8 — an archived session is startable | a live agent hidden behind `/`, hooks orphaned, status frozen, no in-app way back | R71 | `88742b2` (refuse before the launch lease) + `63d4189` (`U` unarchives from the filter results) + `9d43a32` (resolve hooks against every retained row) |
+| #10 — `A` kills a live agent on one unconfirmed keystroke | how the operator lost a working session (`A` is `Shift`+`a`, and `a` is attach) | R72 | `10f3970` (confirm dialog) + `4822484` (`u` undo toast), end-to-end round trip `eb2089e` |
+| #7 — scrollable overlays only page, via `PgUp`/`PgDn` | ergonomics only | R73 | `2714d1b` (line scroll on arrows and `j`/`k`) + `4edbfc2` (wheel) + `9c2e66a` (help overlay) |
+
+The load-bearing orderings the PRD demanded were honoured and are visible in the log: R68 first
+overall, R69 before R70 (same line, `internal/service/reconcile.go:61`), R71 before R72, R63 before
+R65 and before the stability run.
+
+*What the phase closed overall, and what it did not.* All six field defects are closed, and the
+residual half landed too: R63 (a passive preview fit can never overlap itself, `f7b97fe`), R64 (the
+two unsound shell-`starting` waypoints, `677f5a0`), R66 (matrix's seven status tokens quantise to
+seven distinct 16-colour slots, `ce8ef91`) and R67 (eleven task-numbered test files and two
+duplicate report section titles renamed after what they are, `b848d28` + `300ee86` + `e47cb35`).
+**R65 is published as a FAILED requirement**: its assertion criteria were met (`5071389` removed the
+poll-shaped unsoundness and both red directions were demonstrated) but its field symptom recurred,
+so the claim it was meant to support does not hold and nothing was widened, tagged out or retried to
+hide that. **The published stability rate is 9/10, not 10/10** — `ci/stability.sh 10` at `c12c30e`,
+exit status 1, 59m21s, no re-run and no eleventh run; the single failure (run 9,
+`preview.feature:147`, `received 1 SIGWINCH signals, want exactly 0`) is root-caused to a named
+product-side mechanism, an unbounded race in `previewFit`'s no-live-pane early return that spends
+the row's one coalesced fit, and host load is ruled out rather than blamed (run 9 started at the
+*lowest* 1-minute loadavg of the ten). The whole suite is green at the same tree:
+`ci/run.sh go test -p=1 -count=1 ./...`, 360s, 306 scenarios, `defaultTags` untouched.
+
 ## Other milestones
 
 | Date | What |
