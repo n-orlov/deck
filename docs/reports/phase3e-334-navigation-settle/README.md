@@ -93,6 +93,8 @@ alone for this site.
   `features-green.log`. (An earlier full run at the intermediate, unscoped-fallback state failed
   exactly the wheel-scroll scenario above and nothing else — not saved to a file, reproduced
   interactively during triage; superseded by the clean run cited here.)
+- `ci/run.sh go test -p=1 -count=1 ./...` (whole repo, per this task's own success criteria): all
+  15 packages `ok` (or `[no test files]`) — `full-suite-green.log`.
 
 ## Findings
 
