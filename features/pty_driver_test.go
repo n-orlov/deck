@@ -507,6 +507,50 @@ func (d *ScreenDriver) WaitForFrameGone(ctx context.Context, clockFrozen bool, u
 	}
 }
 
+// WaitForQuiescence blocks until quietFor has elapsed with no new PTY
+// output landing, then returns the frame observed at that point (task 406).
+//
+// clientCapturesFrameAs used to treat "read the frame once, after a fixed
+// sleep" as the baseline for a later "still matches" comparison. That is
+// unsound whenever an unrelated, already-in-flight async render can still
+// complete after the fixed sleep: the passive preview's fit-on-selection
+// (Model.previewFit, internal/tui/tui.go:1269, wired from the previewTick
+// case at tui.go:1804) issues a `resize-window` convergence loop
+// (tmux.Client.FitWindowToPane, internal/tmux/geometry.go:266) the moment a
+// session is newly selected, and that external command's completion is not
+// bounded by the harness's own fixed sleep -- under host load it can land
+// squarely between the baseline capture and the later compare, producing a
+// real frame change (the crop/geometry notice line, internal/tui/panel.go
+// :594-624, disappearing once the window catches up to the panel's content
+// size) that has nothing to do with the gesture under test. Waiting for a
+// quiet window before treating a frame as "the baseline" ensures any
+// already-in-flight background render has finished landing first, without
+// touching what the later comparison itself checks -- the comparison keeps
+// its full discriminating power; only the baseline's own soundness changes.
+func (d *ScreenDriver) WaitForQuiescence(ctx context.Context, clockFrozen bool, quietFor time.Duration) (string, error) {
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
+	timer := time.NewTimer(quietFor)
+	defer timer.Stop()
+	frame := d.Frame(clockFrozen)
+	for {
+		select {
+		case <-d.done:
+			return frame, fmt.Errorf("deck exited while waiting for a quiet frame: %v\nframe:\n%s\nraw: %q", d.processError(), d.Frame(clockFrozen), d.Raw())
+		case <-d.updated:
+			frame = d.Frame(clockFrozen)
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timer.Reset(quietFor)
+		case <-timer.C:
+			return frame, nil
+		case <-ctx.Done():
+			return frame, fmt.Errorf("timed out waiting for a quiet frame: %w\nframe:\n%s\nraw: %q", ctx.Err(), d.Frame(clockFrozen), d.Raw())
+		}
+	}
+}
+
 // Stop terminates a hung client and returns a useful transcript diagnostic.
 //
 // On timeout it signals SIGQUIT before the final SIGKILL: Go's runtime

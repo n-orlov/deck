@@ -1,0 +1,31 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m §3.2/§11.8 a wheel notch in an attached session scrolls the pane, not the shell (requirement 48)
+  deck's private tmux server is bootstrapped with `mouse on` (task 115) so that
+  a wheel notch delivered to an attached pane scrolls its scrollback via
+  tmux's own copy-mode, instead of the outer terminal's alternate-scroll
+  translating it into an Up/Down arrow that a shell reads as history recall.
+  This proves the behaviour against real tmux -- the observable is pane
+  content, never the `mouse` option's own value.
+=== RUN   TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched
+
+  [1;37mScenario:[0m a wheel notch scrolls an attached pane's scrollback and leaves the shell's input line untouched [1;30m# attach_scroll.feature:11[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "attach-scroll-target"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" attaches to the selected session[0m                                                    [1;30m# attach_scroll_test.go:24 -> github.com/n-orlov/deck/features.clientAttachesToSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" fills the attached pane with more than one screen of scrollback[0m                     [1;30m# attach_scroll_test.go:25 -> github.com/n-orlov/deck/features.clientFillsAttachedPaneWithScrollback[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "before-wheel-scroll"[0m                                         [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up 30 times over the attached pane at column 20 row 15[0m            [1;30m# attach_scroll_test.go:26 -> github.com/n-orlov/deck/features.clientScrollsWheelUpNTimesAt[0m
+    [32mThen[0m [32mdeck client "A" attached pane shows the top of the scrollback[0m                                      [1;30m# attach_scroll_test.go:27 -> github.com/n-orlov/deck/features.clientAttachedPaneShowsTopOfScrollback[0m
+    [32mWhen[0m [32mdeck client "A" exits copy-mode on the attached pane[0m                                               [1;30m# attach_scroll_test.go:28 -> github.com/n-orlov/deck/features.clientExitsCopyModeOnAttachedPane[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "before-wheel-scroll" frame[0m                       [1;30m# mouse_synthesis_test.go:121 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" detaches[0m                                                                           [1;30m# mouse_bindings_test.go:22 -> github.com/n-orlov/deck/features.clientDetaches[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+12 steps ([32m12 passed[0m)
+1.432210105s
+--- PASS: TestFeatures (1.44s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.42s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.451s

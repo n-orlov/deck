@@ -248,7 +248,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And the state database session "mouse-off-alpha" has status "idle" 20 seconds ago
     And the state database session "mouse-off-bravo" has status "idle" 10 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "idle"
-    And deck client "A" captures its frame as "before-mouse-off-click"
+    And deck client "A" captures its settled frame as "before-mouse-off-click"
     And deck client "A" clicks on the row containing "mouse-off-bravo"
     Then deck client "A" frame still matches the captured "before-mouse-off-click" frame
     When deck client "A" selects session "mouse-off-bravo"
