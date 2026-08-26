@@ -1,0 +1,18 @@
+$ git log 4b21dea..HEAD --format='%h %s' -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+2c56309 SPEC: probe.miss is a column not an event, events index+retention, dialogs load via tea.Cmd (operator)
+791e089 prds: cut Phase 3e — list ergonomics and chrome (operator)
+6584299 spec: configurable sort order, single-click interactive entry, shared seam focus, open built-in theme set (operator)
+
+Per-path breakdown:
+== SPEC.md ==
+2c56309 SPEC: probe.miss is a column not an event, events index+retention, dialogs load via tea.Cmd (operator)
+6584299 spec: configurable sort order, single-click interactive entry, shared seam focus, open built-in theme set (operator)
+== prds/ ==
+791e089 prds: cut Phase 3e — list ergonomics and chrome (operator)
+== ci/Dockerfile ==
+== ci/SPIKE.md ==
+
+Sha resolution (git cat-file -e):
+6584299: resolves
+791e089: resolves
+2c56309: resolves

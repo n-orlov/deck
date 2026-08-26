@@ -1,0 +1,6 @@
+$ git status --short
+?? docs/reports/phase3e-410-closeout/
+(exit 0, expect empty above this commit's own new files, captured before adding this report dir)
+
+$ git log origin/main..HEAD
+(exit 0)
