@@ -1,0 +1,14 @@
+=== RUN   TestSeamBodyRowIsFocusedWhenSidebarHasFocus
+    seam_border_test.go:113: sidebar focused: seam body row 1 = #334155, want border_focus token #0d9488 (either-panel-focused rule)
+--- FAIL: TestSeamBodyRowIsFocusedWhenSidebarHasFocus (0.00s)
+=== RUN   TestSeamBodyRowStaysFocusedInInteractiveMode
+--- PASS: TestSeamBodyRowStaysFocusedInInteractiveMode (0.00s)
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/theme_picker_open
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/filter_input_focused
+--- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused (0.01s)
+    --- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/theme_picker_open (0.00s)
+    --- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/filter_input_focused (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.011s
+FAIL
