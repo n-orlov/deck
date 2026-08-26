@@ -59,6 +59,34 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
+  @requirement-33-sidebar-padding-click-is-a-no-op
+  Scenario: a click on the sidebar's empty padding below the last row selects nothing and enters nothing
+    # Task 405/R55 coverage gap: hitTest resolves a press below the last
+    # real row (still inside the sidebar panel, but on none of its
+    # header/session rows) to hitTargetNone (mouse.go's own hitTest,
+    # internal/tui/mouse.go), and handleMousePress's switch on hit.target
+    # has no case at all for it -- it falls straight through to the
+    # function's trailing no-op return. This was only ever exercised by a
+    # unit test (mouse_test.go's TestClickSidebarPaddingBelowLastRowIsANoOp);
+    # this scenario is the godog half of the same claim, clicking a fixed
+    # cell well below the two rows this scenario creates, at the terminal
+    # size every other scenario in this file already starts at (100x30,
+    # features/pty_driver_test.go's terminalColumns/terminalRows) -- with
+    # only two sessions the sidebar's content box (around 27 rows) is
+    # almost entirely blank padding, so column 10 row 15 is deep inside it
+    # and nowhere near either session's two-line row (rows 3-6).
+    Given deck client "A" is started
+    When deck client "A" creates shell session "padding-noop-alpha"
+    And deck client "A" creates shell session "padding-noop-bravo"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" selects session "padding-noop-alpha"
+    Then deck client "A" has session "padding-noop-alpha" selected
+    And deck client "A" captures its frame as "before-padding-click"
+    When deck client "A" clicks at column 10 row 15
+    Then deck client "A" frame still matches the captured "before-padding-click" frame
+    And deck client "A" has session "padding-noop-alpha" selected
+    When deck client "A" exits cleanly
+
   @requirement-54-sidebar-click-retargets-interactive-mode
   Scenario: a sidebar click on a different row while interactive re-targets it, restoring the old session's window
     # SPEC post-6584299: "a sidebar click works while interactive mode is
