@@ -200,6 +200,11 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	// and fit it back to the panel, exactly as if the selection had just
 	// settled on it.
 	m.previewFitSessionID = ""
+	// previewFitInFlight is deliberately NOT cleared here: if an attempt for
+	// this session was already outstanding when interactive mode was
+	// entered/left, it still owes its previewFitDone, and clearing the
+	// marker early would let the next tick issue a second, overlapping fit
+	// against the same window (task R63).
 	return m, nil
 }
 

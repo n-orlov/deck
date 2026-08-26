@@ -603,6 +603,26 @@ type Model struct {
 	// re-evaluated on the very next tick even though its ID has not
 	// changed.
 	previewFitSessionID string
+	// previewFitInFlight names the session ID of the ONE passive fit
+	// currently outstanding -- set when previewFit SCHEDULES its command
+	// (not when that command runs), cleared when the matching
+	// previewFitDone lands (task R63). previewFitSessionID alone cannot
+	// coalesce overlapping attempts: it is only written once an attempt
+	// COMPLETES, so two previewTicks closer together than one
+	// PreviewPane+FitWindowToPane round trip (DECK_PREVIEW_MS is 300ms by
+	// default, and a tmux round trip on a loaded host can exceed that)
+	// both saw the selection as unsettled and both issued a fit for the
+	// SAME session -- two resize-window calls, hence a second SIGWINCH the
+	// scenarios that count them (features/preview.feature's "exactly 1")
+	// never asked for. While this is non-empty previewFit issues nothing
+	// at all, for any session: at most one passive fit is ever in flight,
+	// so a later selection simply waits for the next tick after the
+	// outstanding one reports. Safe against wedging because every return
+	// path inside previewFit's closure owes -- and delivers -- a
+	// previewFitDone; deliberately NOT cleared by exitInteractive, whose
+	// clearing of previewFitSessionID must not license a second concurrent
+	// fit for a session whose first attempt is still outstanding.
+	previewFitInFlight string
 	// sidebarScroll is the wheel-scroll offset into the sidebar's own
 	// content lines (SPEC §11.8, task 028): it moves which lines the
 	// panel shows without ever touching m.selected, and is clamped at
@@ -1322,6 +1342,11 @@ func (m Model) capturePreview() tea.Cmd {
 //     FitWindowToPane at entry -- passive fit must never race that, or fit
 //     a window a moment before/after ClaimWindowOwnership/
 //     RestoreWindowGeometry touches the very same target;
+//   - a passive fit is already in flight (m.previewFitInFlight non-empty):
+//     previewFitSessionID is only written when an attempt COMPLETES, so
+//     without this second half of the guard two ticks inside one tmux
+//     round trip both issue a fit for the same still-unsettled selection
+//     and the window is resized twice (task R63);
 //   - the selected session's ID already matches m.previewFitSessionID:
 //     this selection has already settled and been fit (or found not
 //     applicable), so nothing re-issues a fit merely because the panel's
@@ -1344,7 +1369,11 @@ func (m Model) capturePreview() tea.Cmd {
 // best-effort, and "any attaching client re-expresses its own size under
 // window-size latest and simply wins" is the stated, accepted outcome, not
 // a case to refuse.
-func (m Model) previewFit() tea.Cmd {
+//
+// The receiver is a POINTER because scheduling a fit is itself a state
+// change: previewFitInFlight has to be marked before the command is handed
+// to the event loop, or the very next tick can slip past the guard.
+func (m *Model) previewFit() tea.Cmd {
 	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
 		return nil
 	}
@@ -1355,7 +1384,7 @@ func (m Model) previewFit() tea.Cmd {
 		return nil
 	}
 	session := m.sessions[m.selected]
-	if session.ID == m.previewFitSessionID {
+	if session.ID == m.previewFitSessionID || m.previewFitInFlight != "" {
 		return nil
 	}
 	width, height := m.previewContentSize()
@@ -1365,6 +1394,13 @@ func (m Model) previewFit() tea.Cmd {
 	client := m.tmuxClient
 	slug := session.Slug
 	sessionID := session.ID
+	// Marked here, at SCHEDULING time, so a tick that fires while this
+	// command is still running finds the guard closed. EVERY early return
+	// inside the closure below therefore OWES a previewFitDone for this
+	// same sessionID -- that message is the only thing that clears the
+	// marker, and a path that returns anything else (or nil) wedges passive
+	// fit for the rest of the session's lifetime.
+	m.previewFitInFlight = sessionID
 	return func() tea.Msg {
 		ctx := context.Background()
 		pane, ok, err := client.PreviewPane(ctx, slug)
@@ -1921,6 +1957,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	case previewFitDone:
 		m.previewFitSessionID = msg.sessionID
+		// Cleared unconditionally, not only when it matches the session
+		// reported: at most one fit is ever outstanding (previewFit refuses
+		// to schedule a second while previewFitInFlight is set), and an
+		// unconditional clear cannot wedge the mechanism even if some future
+		// path ever delivered a previewFitDone the marker did not name. The
+		// reported session may well no longer be selected (the user kept
+		// navigating while the fit ran) -- that is exactly the case the next
+		// tick must be free to fit.
+		m.previewFitInFlight = ""
 		return m, nil
 	case previewCaptured:
 		// A session with no live pane reports capture.Live == false and a nil
