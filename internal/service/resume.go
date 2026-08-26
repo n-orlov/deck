@@ -66,9 +66,17 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	// case, which is not a race at all). Reported as an honest no-op, never
 	// as `duplicate session: deck_<name>` reaching the user disguised as an
 	// agent failure, and never written to the row as an error status.
-	if exists, existsErr := s.TMux.Exists(ctx, session.Slug); existsErr != nil {
-		return session, ResumeStartingElsewhere, fmt.Errorf("check for an already-running tmux session for %q: %w", session.Name, existsErr)
-	} else if exists {
+	//
+	// "Already running" means the session still HAS A LIVE PANE, which is why
+	// this consults HasLivePane and not Exists (#6, leg 2). Under deck's
+	// server-wide `remain-on-exit failed`, a non-zero exit retains the dead
+	// pane and its session, so `has-session` succeeded on a corpse and every
+	// `r` adopted a pane with nothing left in it — a silent no-op with no way
+	// out of the UI. A corpse is not the pane requirement 46 is about
+	// adopting; it is collected below so the launch can proceed.
+	if live, liveErr := s.TMux.HasLivePane(ctx, session.Slug); liveErr != nil {
+		return session, ResumeStartingElsewhere, fmt.Errorf("check for an already-running tmux session for %q: %w", session.Name, liveErr)
+	} else if live {
 		return session, ResumeAlreadyRunning, nil
 	}
 
@@ -186,6 +194,24 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if !session.LoginShell {
 		if lookErr := lookPathIn(argv[0], launchEnv["PATH"]); lookErr != nil {
 			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("resume session %q: agent binary %q not found on PATH: %w", session.Name, argv[0], lookErr))
+			return session, ResumeStarted, failErr
+		}
+	}
+	// This call holds the launch lease and the check above proved the session
+	// has no live pane, so anything still on the socket under this name is a
+	// retained corpse (`remain-on-exit failed`) holding the name against
+	// `new-session` — tmux would refuse the launch as `duplicate session:
+	// deck_<name>`, the very report requirement 46 exists to prevent. Collect
+	// it here rather than waiting for a reconcile pass that resume cannot
+	// order: SPEC.md:547 is "a dead pane is collected on sight, never
+	// retained", and the crash verdict a pass already stored is untouched by
+	// killing what it describes.
+	if retained, existsErr := s.TMux.Exists(ctx, session.Slug); existsErr != nil {
+		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("check for a retained dead pane for session %q: %w", session.Name, existsErr))
+		return session, ResumeStarted, failErr
+	} else if retained {
+		if killErr := s.TMux.Kill(ctx, session.Slug); killErr != nil {
+			session, failErr := s.launchFailed(ctx, session, fmt.Errorf("collect the retained dead pane of session %q before resuming it: %w", session.Name, killErr))
 			return session, ResumeStarted, failErr
 		}
 	}

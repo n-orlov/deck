@@ -2060,10 +2060,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			session := m.sessions[m.selected]
-			if session.Status == "stopped" {
-				m.attachError = "Cannot kill: session is already stopped"
-				return m, nil
-			}
+			// The already-stopped refusal is the SERVICE's verdict, not a
+			// status read here: under `remain-on-exit failed` a row can read
+			// stopped while tmux still retains its dead pane, and refusing
+			// on status alone left that session's name held with no in-app
+			// way to free it (#6). service.Kill refuses only when the row is
+			// stopped AND no tmux session exists, and its error message is
+			// the same wording this key used to render locally, so a
+			// genuinely stopped row still shows "Cannot kill: session is
+			// already stopped" (via the sessionKilled branch).
 			return m, func() tea.Msg {
 				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
 			}
