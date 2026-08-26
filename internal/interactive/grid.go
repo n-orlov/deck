@@ -11,8 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -193,6 +195,27 @@ func retireGrid(g *Grid) {
 	}
 }
 
+// renderedFrame is one composed RenderRows result, kept so that a
+// render arriving while a grid MUTATION is in flight can be served
+// without touching the emulator at all -- see RenderRows, which is the
+// only producer and the only consumer. Every field is treated as
+// immutable once stored (rows is a private copy nobody mutates
+// afterwards), so publishing it through an atomic pointer needs no lock
+// of its own and can never make a reader wait on a writer.
+type renderedFrame struct {
+	rows []string
+	// usedOffset/scrollbackLen are what RenderRows returned and clamped
+	// against when this frame was composed, so a stale hit can still
+	// answer the usedOffset half of RenderRows' contract instead of
+	// silently resetting a caller's scroll position.
+	usedOffset    int
+	scrollbackLen int
+	// width is the grid width this frame was composed at, so padding a
+	// stale frame out to a taller request uses the same blank row
+	// RenderRows itself would have produced.
+	width int
+}
+
 // installGrid publishes fresh as the session's current grid and retires
 // the one it replaces, so that exactly one reply drain is live per
 // Session in steady state. The swap itself keeps Resize's own contract
@@ -218,9 +241,34 @@ func (s *Session) installGrid(fresh *Grid) {
 // drain goroutine could write live bytes into the about-to-be-discarded
 // old grid, or Grid() could hand a caller a pointer that Resize swaps
 // out from under it mid-read.
+//
+// mu guards the grid POINTER only, and is deliberately never held across
+// a grid.Write (R68 / issue #5 fix 2): grid MUTATION is serialised by
+// the separate `writes` lock below. The one lock-ordering rule that
+// keeps the two safe together: a goroutine may take writes while holding
+// nothing, and may take mu and then writes, but must NEVER acquire mu
+// while holding writes -- which is why writeGrid resolves the grid
+// pointer (currentGrid, i.e. mu) BEFORE it takes writes, and why nothing
+// that holds writes ever installs a grid.
 type Session struct {
 	mu   sync.RWMutex
 	grid *Grid
+
+	// writes serialises every MUTATION of whatever grid is currently
+	// installed (drain's per-read Write and writeNotice, both via
+	// writeGrid) against the readers that need several emulator calls to
+	// agree with one another (RenderRows, AbsoluteRow, SelectedText).
+	// This is the lock that used to be s.mu itself; splitting it out is
+	// R68's second fix, and RenderRows' own doc states exactly what the
+	// split does and does not guarantee.
+	writes sync.RWMutex
+
+	// lastFrame is the most recent successful RenderRows composition, the
+	// value RenderRows serves when a write is in flight rather than
+	// waiting for it (see RenderRows). atomic, not mutex-guarded, because
+	// the whole point of that path is that a repaint never blocks on
+	// anything the transport is doing.
+	lastFrame atomic.Pointer[renderedFrame]
 	// transport records which mechanism Start (or StartWithTransport) was
 	// asked to use; informational only today (no method branches on it),
 	// but kept so a caller/test can confirm which path a Session is
@@ -392,6 +440,12 @@ func StartWithTransport(ctx context.Context, client tmux.Client, target string, 
 	// coalesced render (once a consumer starts selecting on Renders())
 	// reflects the seed, not an empty grid.
 	s.renders.MarkDirty()
+	// Compose one frame here, before any goroutine that could be writing
+	// exists, purely to prime lastFrame: RenderRows serves the previous
+	// frame while a write is in flight, and priming means "the previous
+	// frame" is the seed rather than nothing at all even if the very
+	// first repaint happens to coincide with the first pipe read.
+	s.RenderRows(0, height)
 	switch transport {
 	case TransportCapture:
 		// There is no pipe to displace under this transport, so the
@@ -541,23 +595,14 @@ func (s *Session) drain(client tmux.Client, target string) {
 	for {
 		n, err := s.pipe.Read(buf)
 		if n > 0 {
-			// Takes s.mu (not merely to fetch the grid pointer the way
-			// currentGrid does, but held across the Write itself) so that
-			// RenderRows -- which composes a scrolled view out of several
-			// separate SafeEmulator calls and therefore needs the WHOLE
-			// composition to see a consistent grid -- can never observe a
-			// Write landing partway through its own read of scrollback/
-			// screen state. See RenderRows' own doc for the gotcha this
-			// avoids (task 085's CellAt-after-return race, at its first
-			// production call site rather than a test helper).
-			s.mu.Lock()
-			_, _ = s.grid.Write(buf[:n])
-			s.mu.Unlock()
-			// One MarkDirty per READ, never per byte and never a
-			// render itself -- this is exactly the point II-27 makes:
-			// a consumer rendering directly here, once per read, is
-			// the expensive baseline the coalescer exists to replace.
-			s.renders.MarkDirty()
+			// writeGrid, never a bare s.grid.Write under s.mu: the
+			// session lock must not be held for the duration of a Write
+			// (R68 / issue #5 fix 2 -- see writeGrid and RenderRows).
+			// It marks the grid dirty itself, once per READ, never per
+			// byte and never a render -- exactly the point II-27 makes:
+			// a consumer rendering directly here, once per read, is the
+			// expensive baseline the coalescer exists to replace.
+			s.writeGrid(buf[:n])
 		}
 		if err != nil {
 			if !s.pipe.WasClosed() && errors.Is(err, io.EOF) {
@@ -659,13 +704,43 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 }
 
 // writeNotice writes plain text (no escape sequences of its own) into the
-// session's current grid. Takes s.mu around the Write itself, the same as
-// drain's own per-read Write (see drain's doc for why): a caller of
-// RenderRows must never observe this write half-applied.
+// session's current grid, through the same writeGrid path drain's
+// per-read Write uses -- so a caller of RenderRows never observes this
+// write half-applied, and so this write can never hold s.mu.
 func (s *Session) writeNotice(notice string) {
-	s.mu.Lock()
-	_, _ = s.grid.Write([]byte(notice))
-	s.mu.Unlock()
+	s.writeGrid([]byte(notice))
+}
+
+// writeGrid is the ONE place this package mutates a grid that is already
+// installed (drain's per-read Write and writeNotice; a reseed's writes go
+// into a private grid nobody can render yet, which is why they need none
+// of this). It is R68 / issue #5's second fix in three lines:
+//
+//  1. the grid POINTER is resolved first, under s.mu, and s.mu is
+//     released again before a single byte is written -- so no Write,
+//     however long it takes, can stall Grid()/currentGrid()/installGrid,
+//     or a Resize, or (crucially) RenderRows' fallback path. Before this
+//     fix s.mu was held for the whole Write, which is what turned one
+//     parked writer into a wedged bubbletea event loop.
+//  2. the Write itself happens under s.writes, so a reader that needs
+//     several emulator calls to agree with each other still sees a grid
+//     no write is landing in the middle of (see RenderRows' doc).
+//  3. this order -- s.mu, released, THEN s.writes -- is the lock
+//     ordering the Session struct's own doc pins: a holder of s.writes
+//     must never go on to acquire s.mu, or a Resize waiting for s.mu
+//     could deadlock against a reader waiting for s.writes.
+//
+// The write is deliberately made against the pointer captured in step 1
+// even if a reseed installs a different grid meanwhile: bytes that were
+// already in flight belong to the state the reseed superseded, and a
+// reseed replaces the whole content anyway (Resize's doc). drain
+// re-resolves the pointer on its very next read, which is the behaviour
+// its own doc has always promised.
+func (s *Session) writeGrid(data []byte) {
+	g := s.currentGrid()
+	s.writes.Lock()
+	_, _ = g.Write(data)
+	s.writes.Unlock()
 	s.renders.MarkDirty()
 }
 
@@ -695,25 +770,50 @@ func (s *Session) Grid() *Grid { return s.currentGrid() }
 // this single call rather than a second, separately-locked one racing
 // this one.
 //
-// This takes the session's OWN lock (s.mu) for the WHOLE composition,
-// not merely to fetch the grid pointer the way currentGrid does.
-// Composing a scrolled view needs MORE than one SafeEmulator call
-// (Scrollback(), then that Scrollback's own Len()/Line() methods, plus
-// Render() for the current screen), and unlike a single self-contained
-// call such as Render() -- whose own brief internal lock covers the
-// ENTIRE encode and hands back a plain string with no live pointers --
-// a value obtained from Scrollback() is a pointer to the SAME live
-// object a concurrent Write can still be mutating (Push-ing a new line,
-// evicting the oldest) after Scrollback()'s own lock has already
-// released on return. That is the exact CellAt/Scrollback-pointer-
-// after-return gotcha task 085 fixed in test code (grid_test.go's
-// gridContains); it is fixed here, at its first PRODUCTION call site,
-// by making every content-mutating call this package makes (drain's
-// per-read Write, writeNotice) take the SAME s.mu this does, so no
-// Write can land while a RenderRows call is in progress.
+// This composition needs MORE than one SafeEmulator call (Scrollback(),
+// then that Scrollback's own Len()/Line() methods, plus Render() for the
+// current screen), and unlike a single self-contained call such as
+// Render() -- whose own brief internal lock covers the ENTIRE encode and
+// hands back a plain string with no live pointers -- a value obtained
+// from Scrollback() is a pointer to the SAME live object a concurrent
+// Write can still be mutating (Push-ing a new line, evicting the oldest)
+// after Scrollback()'s own lock has already released on return. That is
+// the exact CellAt/Scrollback-pointer-after-return gotcha task 085 fixed
+// in test code (grid_test.go's gridContains); at this, its first
+// PRODUCTION call site, THREE things -- and no lock held across a Write
+// anywhere in the package -- are what keep the composition consistent:
+//
+//  1. s.mu (read) is held for the whole composition, so every call below
+//     runs against ONE grid instance: a reseed's swap (installGrid, which
+//     takes s.mu for writing) happens either entirely before this call or
+//     entirely after it. Since R68 fix 2 nothing holds s.mu across a
+//     Write, so holding it here costs a repaint nothing.
+//  2. s.writes (read) excludes grid MUTATION for that same span, and THAT
+//     is what actually makes the multi-call read atomic: every mutation
+//     of an installed grid goes through writeGrid, which takes s.writes
+//     for writing.
+//  3. that second lock is taken with TryRLock, NOT RLock -- the
+//     behavioural difference R68's second fix delivers. If a write is in
+//     flight this call does not wait for it and does not touch the
+//     emulator at all (a parked writer also holds vt's own se.mu, so even
+//     g.Width() would block behind it): it returns the previously
+//     composed frame, immediately. A repaint is therefore never coupled
+//     to the transport's progress, which is exactly how issue #5
+//     escalated one stalled Write into a wedged bubbletea event loop.
+//
+// Serving the previous frame can only ever be ONE frame stale, never a
+// permanently stale panel: writeGrid marks the grid dirty AFTER it
+// releases s.writes, so the coalesced render that write triggers (PRD
+// II-27) finds the lock free unless yet another write is already in
+// flight -- and that write will mark it dirty in turn. The last write
+// always ends in a fresh composition.
 func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if !s.writes.TryRLock() {
+		return s.staleRows(offset, height)
+	}
+	defer s.writes.RUnlock()
 	g := s.grid
 	width := g.Width()
 	screenHeight := g.Height()
@@ -749,7 +849,56 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 			}
 		}
 	}
+	s.lastFrame.Store(&renderedFrame{
+		// A private copy: the caller owns what it is handed (internal/tui
+		// prepends the II-49 notice to it), and a cached frame a caller
+		// could mutate would corrupt every later stale hit.
+		rows:          slices.Clone(rows),
+		usedOffset:    offset,
+		scrollbackLen: sbLen,
+		width:         width,
+	})
 	return rows, offset
+}
+
+// staleRows is RenderRows' answer while a grid mutation is in flight: the
+// previously composed frame, adapted to the requested height, with no
+// emulator call of any kind (RenderRows' point 3 says why touching the
+// emulator would defeat the purpose). Padding goes at the TOP and
+// cropping keeps the LAST rows, both matching what RenderRows itself does
+// when the view is taller than the content -- the live bottom edge is the
+// part a viewer is looking at.
+func (s *Session) staleRows(offset, height int) (rows []string, usedOffset int) {
+	if height < 0 {
+		height = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	last := s.lastFrame.Load()
+	if last == nil {
+		// No frame has ever been composed for this Session. Start primes
+		// one (see its seed handling), so in production this is only
+		// reachable on a directly-constructed Session in a test: empty
+		// rows, and the caller's own offset back unchanged, since there
+		// is no scrollback length to clamp it against and inventing 0
+		// would silently reset a scroll position.
+		return make([]string, height), offset
+	}
+	if offset > last.scrollbackLen {
+		offset = last.scrollbackLen
+	}
+	out := make([]string, 0, height)
+	blank := strings.Repeat(" ", last.width)
+	for i := len(last.rows); i < height; i++ {
+		out = append(out, blank)
+	}
+	start := 0
+	if len(last.rows) > height {
+		start = len(last.rows) - height
+	}
+	out = append(out, last.rows[start:]...)
+	return out, offset
 }
 
 // AbsoluteRow converts a view-relative row -- 0 at the top of whatever
@@ -764,6 +913,14 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 func (s *Session) AbsoluteRow(offset, height, viewRow int) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// Blocking RLock, not RenderRows' TryRLock: this resolves ONE mouse
+	// gesture rather than a per-frame repaint, and a wrong row number is a
+	// wrong selection (not a one-frame-stale picture), so exactness is
+	// worth waiting out an in-flight write. That wait is bounded by the
+	// Write itself, which R68's FIRST fix (the reply drain -- see
+	// startReplyDrain) is what keeps finite.
+	s.writes.RLock()
+	defer s.writes.RUnlock()
 	g := s.grid
 	sbLen := g.ScrollbackLen()
 	if offset < 0 {
@@ -799,16 +956,21 @@ func (s *Session) AbsoluteRow(offset, height, viewRow int) int {
 // every selected row, matching what a user reading the screen actually
 // perceives as the row's content.
 //
-// This takes the SAME read lock RenderRows does, over the SAME
-// CellAt/ScrollbackCellAt pointer-after-return hazard RenderRows's own
-// doc comment already covers -- the whole extraction happens while s.mu
-// is held, so no concurrent Write can land mid-read.
+// This takes the SAME two locks AbsoluteRow does, in the same order,
+// over the SAME CellAt/ScrollbackCellAt pointer-after-return hazard
+// RenderRows's own doc comment covers: s.mu (read) pins one grid instance
+// for the whole extraction, s.writes (read) excludes grid mutation for
+// it, so no concurrent Write can land mid-read. The s.writes acquisition
+// blocks here for exactly AbsoluteRow's reason -- a gesture needs the
+// real cells, not a stale approximation of them.
 func (s *Session) SelectedText(fromCol, fromRow, toCol, toRow int) string {
 	if fromRow > toRow || (fromRow == toRow && fromCol > toCol) {
 		fromCol, fromRow, toCol, toRow = toCol, toRow, fromCol, fromRow
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	s.writes.RLock()
+	defer s.writes.RUnlock()
 	g := s.grid
 	width := g.Width()
 	screenHeight := g.Height()
