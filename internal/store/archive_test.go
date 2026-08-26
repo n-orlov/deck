@@ -211,3 +211,54 @@ func TestUnarchiveSessionRejectsMissingSession(t *testing.T) {
 		t.Fatal("UnarchiveSession on an unknown id must fail, got nil error")
 	}
 }
+
+// TestListSessionsIncludingArchivedKeepsArchivedAndDropsTombstoned pins the
+// accessor R71 leg 3 added for hook resolution: exactly one term of
+// ListSessions' WHERE clause is dropped. Archived rows come back (they are
+// hidden from the sidebar, not disowned, so SPEC §8.1's hook keys must still
+// find them -- issue #8); tombstoned rows do not (a row awaiting the reaper
+// is deliberately no longer a hook target).
+func TestListSessionsIncludingArchivedKeepsArchivedAndDropsTombstoned(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	plain := createTombstoneTestSession(t, st, ctx, "plain")
+	archived := createTombstoneTestSession(t, st, ctx, "archived")
+	tombstoned := createTombstoneTestSession(t, st, ctx, "tombstoned")
+	both := createTombstoneTestSession(t, st, ctx, "archived-then-deleted")
+	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SoftDeleteSession(ctx, tombstoned.ID, 210); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ArchiveSession(ctx, both.ID, 220); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SoftDeleteSession(ctx, both.ID, 230); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := st.ListSessionsIncludingArchived(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, row := range rows {
+		got = append(got, row.ID)
+	}
+	// Same created_at on every fixture row, so the tie-break is id order.
+	want := []string{archived.ID, plain.ID}
+	if len(got) != len(want) {
+		t.Fatalf("ListSessionsIncludingArchived = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ListSessionsIncludingArchived = %v, want %v (created_at, id order)", got, want)
+		}
+	}
+	for _, row := range rows {
+		if row.ID == archived.ID && row.ArchivedAt == 0 {
+			t.Fatal("archived row returned with ArchivedAt cleared; the flag must be reported as-is")
+		}
+	}
+}
