@@ -1,0 +1,6 @@
+=== RUN   TestNavigationHelperNeverSleeps
+    navigation_settle_guard_test.go:41: navigation_settle_test.go:38: time.Sleep found in the merged navigation helper -- settle on an observable consequence (WaitForFrame/WaitForFrameGone) instead: time.Sleep(time.Millisecond)
+--- FAIL: TestNavigationHelperNeverSleeps (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	0.007s
+FAIL

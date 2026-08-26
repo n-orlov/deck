@@ -283,7 +283,7 @@ func clientKillsNamedSession(ctx context.Context, clientName, sessionName string
 	if err != nil {
 		return err
 	}
-	if err := selectRowByName(client, sessionName); err != nil {
+	if err := selectRowByName(ctx, client, sessionName); err != nil {
 		return err
 	}
 	if err := client.Send("x"); err != nil {

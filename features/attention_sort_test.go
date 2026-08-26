@@ -115,7 +115,7 @@ func clientSelectsSessionByName(ctx context.Context, clientName, sessionName str
 	if err != nil {
 		return err
 	}
-	return selectRowByName(client, sessionName)
+	return selectRowByName(ctx, client, sessionName)
 }
 
 // clientHasSessionSelected asserts the selected-row marker
