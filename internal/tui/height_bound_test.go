@@ -56,8 +56,9 @@ func countViewLines(view string) int {
 }
 
 // TestHelpOverlayStaysWithinFrameBudgetAt80x24 proves the `?` help
-// overlay -- 273 lines unbounded at this width (per help_keymap_parity_
-// test.go's own measurement) -- never exceeds 24 rendered lines at deck's
+// overlay -- 379 wrapped lines unbounded at this width (task 014's
+// re-measurement; 273 when help_keymap_parity_test.go first measured it)
+// -- never exceeds 24 rendered lines at deck's
 // documented 80x24 minimum once framedDialogScrollable clips it.
 func TestHelpOverlayStaysWithinFrameBudgetAt80x24(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
