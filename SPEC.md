@@ -321,8 +321,15 @@ CREATE TABLE recent_cwds (          -- the create modal's directory history (§1
 Invariants:
 - `cwd` is not unique and carries no git columns — R1 and R2 enforced by schema.
 - `archived_at` and `deleted_at` are **flags, not statuses**: an archived session keeps
-  whatever `status` it had. Archiving requires `stopped` (the UI offers "kill and archive"
-  as one action) so an archived row can never hide a live agent.
+  whatever `status` it had. Archiving requires `stopped`, and on a live session `A` confirms
+  first and then kills and archives as one action (§9.2, §11.4) — so an archived row can
+  never hide a live agent.
+- **Both flags are reversible, and an archived row is not startable.** `archived_at` has an
+  unarchive (`U`, §11) exactly as `deleted_at` has a restore, and `r`/`R` refuse an archived
+  row and name that key rather than launching it. Neither half stands alone: a one-way
+  archive flag *plus* a resumable archived row is precisely the combination that puts a live
+  agent behind the filter with no way back, so the invariant above is upheld in both
+  directions — `Archive` guards live → archived, resume guards archived → live (§9.1).
 - Every mutation is a targeted `UPDATE … WHERE id = ?` in a transaction. Never rewrite a
   table from in-memory state (R4).
 - `events` retained 30 days by default, pruned on TUI start.
@@ -485,7 +492,8 @@ other section restates a transition, they only refer here:
 The return edges are load-bearing, not decoration: answering a prompt (`waiting → running`),
 sending a new prompt after a turn (`idle → running`), and recovering from a transient
 failure (`error → running`) are the product's core loop. `archived` is absent from the table
-on purpose — it is a flag (§4), orthogonal to status, settable only on a `stopped` session.
+on purpose — it is a flag (§4), orthogonal to status, settable only on a `stopped` session and
+clearable by unarchiving (§9.2).
 
 | status | meaning | UI |
 |---|---|---|
@@ -495,7 +503,7 @@ on purpose — it is a flag (§4), orthogonal to status, settable only on a `sto
 | `idle` | turn finished cleanly | check, `last_message` in the detail pane |
 | `error` | turn or process died | red, unseen marker sticks, crash tail captured |
 | `stopped` | record alive, no tmux session (post-reboot, killed) | grey, labelled *resumable* |
-| `archived` | hidden from the default list, retained | hidden behind a filter |
+| `archived` | hidden from the default list, retained; **not startable** — unarchive (`U`) to resume | hidden behind a filter |
 
 Rules:
 - **Precedence:** `user-terminal` > `hook` > `probe` > `tmux`. A user kill sets
@@ -707,10 +715,22 @@ every session reads `stopped · resumable`, and `r` brings one back:
 - Resume failure (unknown id, missing directory, agent binary gone) → `error` with the
   reason, row retained. Never delete, and never silently start a *fresh* conversation in
   place of a failed resume.
+- **Resume and restart refuse an archived session** (`R` routes through resume, so one guard
+  covers both). The check happens **before the launch lease is taken** (§9.3), so an archived
+  row never even briefly reads `starting`, and nothing is created: no tmux session, no pane.
+  The row is retained and the message names `U` (unarchive, §9.2) as the way forward. This is
+  the archived → live half of §4's invariant; without it, `stopped + archived` → `r` yields a
+  live agent hidden behind the filter, with its hooks unroutable and its status frozen.
 - **Resume clears `killed_by_user`.** The flag exists so an in-flight hook cannot undo an
   explicit kill (§7); once the user explicitly resumes, that verdict is spent — if it
   survived, every future hook for the session would be outranked forever and the row could
   never leave `stopped` by automation again.
+- **Resume likewise clears `pane_exit_status` and the crash tail**, on the same reasoning and
+  for the same class of failure. They are a verdict about a pane that no longer exists; once
+  resume has created its replacement, a stored crash must not be read as a statement about
+  the live pane. A crash verdict that outlives its pane silently removes the row from
+  reconciliation and blocks the hook transitions that would correct it, which is the same
+  "spent verdict outranks everything forever" bug as the one above.
 - Pinning, for forcing a specific conversation: pin sets `resume_state = pinned` and is
   sticky across restarts; a one-shot "start fresh" reverts to `auto` afterwards.
 - `shell` sessions "resume" by recreating the shell with their history file, replayed
@@ -720,14 +740,17 @@ every session reads `stopped · resumable`, and `r` brings one back:
 ### 9.2 Kill and delete
 
 Teardown is cheap because R1 means no session owns anything on disk. That earns a
-no-confirm UI:
+low-friction UI — but the friction scales with how hard the action is to undo and how
+obvious its effect is, which is why `x` needs no confirmation while the two actions that
+also *remove the row from view* do:
 
 | action | key | effect |
 |---|---|---|
 | kill | `x` | `tmux kill-session` immediately. Row → `stopped`. Conversation untouched, resumable. 10 s undo toast (`u` = resume). |
 | delete | `dd` | kill + tombstone the row (`deleted_at`). Hidden immediately, undoable for 60 s, **reaped** after — see below. |
 | purge conversation | in the delete confirm only | additionally deletes the agent's transcript. Never implicit, never default, always a separate explicit choice. |
-| archive | `A` | keep the record, hide from the default list. |
+| archive | `A` | **confirms first** (§11.4), then keeps the record and hides the row from the default list. On a live session the same confirm covers the kill, and says so in as many words — the dialog names the session and states that a live agent will be killed. Nothing is written until it is confirmed. On success a toast says what happened, with `u` to undo. An archived row is **not startable** (§9.1). |
+| unarchive | `U` | clear `archived_at`. The row returns to the default list reading `stopped · resumable`, and `r` works on it again. Reachable wherever an archived row is — inside the `/` filter's results — and it is what `deleted_at`'s restore already is: the reversal without which archiving is a one-way door. |
 | bulk | `m` marks | `x` / `dd` act on the mark set. |
 
 deck never writes to or deletes anything inside a session's `cwd`.
@@ -1058,10 +1081,10 @@ Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename is an action inside it**,
 not a top-level key) · `e` env editor · `P` permission profile · `p` pin conversation ·
-`E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze · `A` archive ·
-`u` undo · `g`/`G` top/bottom · `,` settings (§11.5) · `t` theme picker (§11.6) · `|` cycle
-layout mode, `<`/`>` sidebar width (§11.2) · `?` help ·
-`q` quit.
+`E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze · `A` archive
+(confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `,` settings
+(§11.5) · `t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) ·
+`?` help · `q` quit.
 
 **Every capability in this section has a key or a documented entry point here, and every
 key here has a scenario (§13.5).** A capability listed above with nowhere to reach it is an
@@ -1244,10 +1267,10 @@ it does**: §11.3's "never list a key that is not bound" applies here too, so a 
 unbuilt behaviour is simply absent rather than a stub that opens onto nothing
 (`docs/PLAN.md` is where each one is assigned to a phase). Create session · session detail
 `i` — which is where §5's degradation reason and §7's `last_message` live, and from which
-**rename** is reached · confirm (kill, delete, purge) · delete options (tombstone vs purge) ·
-permission profile picker · pin conversation · send message (§11.1) · env editor · snooze
-duration · notification rules · theme picker (§11.6) · event log · health view · find
-(§12) · help overlay. Settings is deliberately *not* a dialog — see below.
+**rename** is reached · confirm (kill, delete, purge, archive) · delete options (tombstone
+vs purge) · permission profile picker · pin conversation · send message (§11.1) · env editor
+· snooze duration · notification rules · theme picker (§11.6) · event log · health view ·
+find (§12) · help overlay. Settings is deliberately *not* a dialog — see below.
 
 ### 11.5 Settings
 
@@ -1861,7 +1884,11 @@ env edit shows `env↻` and applies **only** after restart, with the conversatio
 redact secret-shaped keys, respect a per-session rule set replacing the global one, and
 record a channel error rather than silently no-op'ing when a channel is unreachable;
 outbox retry on the next hook or tick; `s` refused from every status except `idle`;
-archiving refused for a live session; a user kill not resurrected by a late-arriving hook;
+`A` on a live session opening a confirm that names the kill and **writing nothing until it is
+confirmed**; resume and restart refused for an archived session, asserted by the *absence of a
+tmux session* rather than by the returned outcome; unarchive returning a row to the default
+list without a filter; a user kill not resurrected by a late-arriving hook; a crash verdict
+not outliving the pane it describes, so a resumed session reconciles and its hooks apply;
 every keybinding in §11 has at least one scenario; health view on a box with no tmux, tmux
 older than the minimum, a missing agent binary, an agent unresolvable from the unit's
 `PATH`, no session bus, and linger disabled.
