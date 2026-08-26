@@ -25,8 +25,10 @@ const (
 	// holds the launch lease for this session; this call created no tmux
 	// session and left the row untouched.
 	ResumeStartingElsewhere
-	// ResumeNotLeasable means the durable row is no longer stopped. The
-	// returned session contains its current status and reason for display.
+	// ResumeNotLeasable means the durable row is not startable: it is no
+	// longer stopped, or it is archived (SPEC.md:718, issue #8). The
+	// returned session contains its current status and reason for display,
+	// and for the archived case the accompanying error names `U`.
 	ResumeNotLeasable
 	// ResumeAlreadyRunning means a tmux session for this row already exists
 	// on deck's private server (requirement 46): deck already owns that
@@ -47,7 +49,9 @@ const (
 // profile. It never re-sends a prompt or previous message — the resume argv
 // only ever carries the conversation id, profile and the session's own
 // launch_args. A caller that loses the lease race gets
-// ResumeStartingElsewhere and no tmux session is created for it.
+// ResumeStartingElsewhere and no tmux session is created for it. An
+// archived row is refused up front (SPEC.md:718, #8) with a message naming
+// `U`, before the lease and before tmux is touched at all.
 func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, ResumeOutcome, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.Agents == nil {
 		return store.Session{}, ResumeStartingElsewhere, errors.New("resume requires store, audit logger, clock, and adapter registry")
@@ -58,6 +62,21 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	session, err := s.Store.GetSession(ctx, sessionID)
 	if err != nil {
 		return store.Session{}, ResumeStartingElsewhere, fmt.Errorf("get session %q: %w", sessionID, err)
+	}
+
+	// SPEC.md:718 (#8): an archived session is not startable, and `R` routes
+	// through Resume, so this single guard covers restart too. It is checked
+	// FIRST -- before the launch lease (which would flip the row to
+	// `starting`), before any tmux command, and before every other rejection
+	// -- so an archived row never even briefly reads `starting` and nothing
+	// at all is created: no tmux session, no pane, no audit launch record.
+	// The row is retained untouched (archived_at included) and the message
+	// names `U` as the way forward, because the archived -> live half of
+	// §4's invariant is the whole point: without this, `stopped + archived`
+	// + `r` yields a live agent hidden behind the archived filter, with its
+	// hooks unroutable and its status frozen.
+	if session.ArchivedAt != 0 {
+		return session, ResumeNotLeasable, fmt.Errorf("resume session %q: it is archived (press U to unarchive it first)", session.Name)
 	}
 
 	// Requirement 46: check for an already-running tmux session BEFORE the
