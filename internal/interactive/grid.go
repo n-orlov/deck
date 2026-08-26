@@ -95,6 +95,120 @@ func newGrid(width, height int) *Grid {
 	return g
 }
 
+// replyDrainBufSize bounds one reply-drain read (see startReplyDrain).
+// A capability reply is a handful of bytes; this is simply comfortably
+// more than the longest one vt can emit, so a reply is always taken in
+// a single read.
+const replyDrainBufSize = 4096
+
+// startReplyDrain starts g's reply drain: the per-Session (strictly,
+// per-*Grid) reader of Grid.Read() that R68 / issue #5 requires, and
+// without which ANY terminal query arriving in a previewed pane's
+// output stalls the goroutine that wrote it, forever.
+//
+// The mechanism, read off charmbracelet/x/vt
+// v0.0.0-20260816001655-68d539dca504: an Emulator answers a capability
+// query by writing the reply into an UNBUFFERED io.Pipe (emulator.go:102,
+// `t.pr, t.pw = io.Pipe()`), whose only reader is Emulator.Read
+// (emulator.go:251). An io.Pipe write completes only once a reader takes
+// the bytes, so with nobody reading, the very first reply byte parks its
+// writer permanently -- and that writer is deck's own drain goroutine,
+// inside grid.Write, holding s.mu, which is what escalated one parked
+// write into a wedged event loop (RenderRows -> View -> bubbletea's
+// eventLoop). Every replying handler is its own trigger: DA1
+// (handlers.go:695), DA2 (:712), DSR (:806, :809, :826), DECRQM
+// (csi.go:30), the OSC 10/11/12 colour queries (osc.go:87, :92, :97) and
+// in-band resize (csi_mode.go:95) -- which is why the fix is a reader,
+// not a per-sequence special case.
+//
+// The reply is DISCARDED, deliberately. deck is a viewer: the pane's
+// program already has a real terminal on the other side of tmux, and a
+// reply vt synthesised here is not what that terminal would have
+// answered. The pipe is armed -IO, so forwarding these bytes into the
+// pane IS possible -- but it would feed a live agent a fabricated DA1 it
+// never asked deck for, a behaviour change with its own blast radius.
+// Dropping them restores exactly the pre-preview situation: the program
+// gets no answer from deck's copy of the terminal, the same as when no
+// preview is open at all.
+//
+// SafeEmulator.Read (safe_emulator.go:33) deliberately does NOT take
+// se.mu -- it calls straight through to the embedded Emulator -- so a
+// reader parked in Read blocks no Write, and this goroutine can sit on a
+// quiet grid for the whole life of a Session at zero cost.
+func (s *Session) startReplyDrain(g *Grid) {
+	s.replyDrains.Add(1)
+	go func() {
+		defer s.replyDrains.Done()
+		buf := make([]byte, replyDrainBufSize)
+		for {
+			// The bytes are read purely to unpark whoever wrote them;
+			// see this function's own doc for why they are dropped.
+			if _, err := g.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+}
+
+// newDrainedGrid is newGrid plus its reply drain, started BEFORE the
+// caller writes a single byte into the returned grid -- which is the
+// whole point: a query sitting in whatever is about to be written (a
+// seed capture taken with -e, a live stream's next read) would otherwise
+// park that very first write. Every grid this constructor hands out must
+// end up either passed to installGrid (which retires the grid it
+// displaces) or retired directly by retireGrid, or its drain goroutine
+// outlives the grid it was reading.
+func (s *Session) newDrainedGrid(width, height int) *Grid {
+	g := newGrid(width, height)
+	s.startReplyDrain(g)
+	return g
+}
+
+// retireGrid releases a grid this package is finished with (a reseed has
+// replaced it, or the Session is closing) and, by doing so, makes its
+// reply drain return.
+//
+// It closes the emulator's reply-pipe WRITE end rather than calling
+// Emulator.Close, and the difference matters twice. Closing the write end
+// hands the parked reader an io.EOF, so the drain goroutine exits
+// deterministically instead of leaking -- captureLoop reseeds five times
+// a second, so a drain that could not be retired would be a goroutine
+// leak at that rate, not a curiosity. And it leaves vt's own
+// Emulator.closed flag alone: that field is written by Close and read
+// (unsynchronised) by every Read and Write, so calling Close while a
+// reader is live is a data race inside the library -- recorded as a
+// finding, not worked around by giving up the reader. After retirement
+// the grid still renders exactly as before (only its reply pipe is
+// gone), which is what makes it safe for a caller still holding a
+// pointer handed out by Grid(); any further reply write now fails
+// immediately with io.ErrClosedPipe instead of blocking, which is the
+// same non-stalling outcome the drain provides.
+func retireGrid(g *Grid) {
+	// vt's InputPipe() is the io.Pipe write end the replying handlers
+	// write to (emulator.go:297). The type assertion is pinned by
+	// TestEmulatorInputPipeIsAPipeWriter, so a go.mod bump that changes
+	// it fails loudly here rather than silently leaking drains.
+	if pw, ok := g.InputPipe().(*io.PipeWriter); ok {
+		_ = pw.CloseWithError(io.EOF)
+	}
+}
+
+// installGrid publishes fresh as the session's current grid and retires
+// the one it replaces, so that exactly one reply drain is live per
+// Session in steady state. The swap itself keeps Resize's own contract
+// (see Resize's doc): it happens under the write lock, so a concurrent
+// RenderRows/Grid() sees the old grid in full or the new one in full,
+// never a grid mid-swap.
+func (s *Session) installGrid(fresh *Grid) {
+	s.mu.Lock()
+	old := s.grid
+	s.grid = fresh
+	s.mu.Unlock()
+	if old != nil && old != fresh {
+		retireGrid(old)
+	}
+}
+
 // Session streams one selected tmux pane's output into its own Grid via a
 // pipe-pane -IO connection armed before any seed capture (PRD II-16).
 //
@@ -145,6 +259,13 @@ type Session struct {
 	// fallbackDone regardless of whether displacement was ever detected.
 	fallbackCh   chan struct{}
 	fallbackDone chan struct{}
+
+	// replyDrains joins every reply-drain goroutine this Session has
+	// started (one per *Grid instance -- see startReplyDrain), so Close
+	// never returns while one is still reading an emulator this Session
+	// created. Retiring a grid (retireGrid) is what makes each of them
+	// return.
+	replyDrains sync.WaitGroup
 
 	// renders is II-27's render coalescer: every write that changes grid
 	// content (drain's per-read Write, the seed write in Start, the
@@ -223,25 +344,6 @@ func StartWithTransport(ctx context.Context, client tmux.Client, target string, 
 			return nil, fmt.Errorf("arm pipe-pane before seed capture: %w", err)
 		}
 	}
-	failed := true
-	defer func() {
-		if failed && pipe != nil {
-			_ = pipe.Close()
-		}
-	}()
-
-	grid := newGrid(width, height)
-
-	if seed != nil {
-		data, err := seed(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("seed capture: %w", err)
-		}
-		if _, err := grid.Write(data); err != nil {
-			return nil, fmt.Errorf("write seed capture into grid: %w", err)
-		}
-	}
-
 	pollCtx, pollCancel := context.WithCancel(context.Background())
 	s := &Session{
 		transport:    transport,
@@ -254,9 +356,39 @@ func StartWithTransport(ctx context.Context, client tmux.Client, target string, 
 		fallbackDone: make(chan struct{}),
 		renders:      NewRenderCoalescer(renderCoalesceInterval),
 	}
-	s.grid = grid
-	// The seed write above already changed grid content before renders
-	// existed to be told about it; mark it dirty now so the very first
+	// The grid's reply drain starts before the seed is written into it
+	// (see newDrainedGrid): a seed capture is written by THIS goroutine,
+	// so a query inside it would park Start itself.
+	s.grid = s.newDrainedGrid(width, height)
+
+	failed := true
+	defer func() {
+		if !failed {
+			return
+		}
+		if pipe != nil {
+			_ = pipe.Close()
+		}
+		// No update goroutine has started yet on this path, so retiring
+		// the grid here cannot race an install.
+		pollCancel()
+		retireGrid(s.currentGrid())
+		s.replyDrains.Wait()
+	}()
+
+	if seed != nil {
+		data, err := seed(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("seed capture: %w", err)
+		}
+		if _, err := s.currentGrid().Write(data); err != nil {
+			return nil, fmt.Errorf("write seed capture into grid: %w", err)
+		}
+	}
+
+	// The seed write above changed grid content without going through any
+	// of the paths that mark the grid dirty themselves (drain's per-read
+	// Write, writeNotice, a reseed); mark it dirty now so the very first
 	// coalesced render (once a consumer starts selecting on Renders())
 	// reflects the seed, not an empty grid.
 	s.renders.MarkDirty()
@@ -310,13 +442,12 @@ func (s *Session) captureLoop(ctx context.Context, client tmux.Client, target st
 			continue
 		}
 		g := s.currentGrid()
-		fresh := newGrid(g.Width(), g.Height())
+		fresh := s.newDrainedGrid(g.Width(), g.Height())
 		if _, err := fresh.Write(data); err != nil {
+			retireGrid(fresh)
 			continue
 		}
-		s.mu.Lock()
-		s.grid = fresh
-		s.mu.Unlock()
+		s.installGrid(fresh)
 		s.renders.MarkDirty()
 	}
 }
@@ -516,13 +647,12 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 			continue
 		}
 		g := s.currentGrid()
-		fresh := newGrid(g.Width(), g.Height())
+		fresh := s.newDrainedGrid(g.Width(), g.Height())
 		if _, err := fresh.Write(data); err != nil {
+			retireGrid(fresh)
 			continue
 		}
-		s.mu.Lock()
-		s.grid = fresh
-		s.mu.Unlock()
+		s.installGrid(fresh)
 		s.renders.MarkDirty()
 		s.writeNotice(pipeDisplacedNotice)
 	}
@@ -760,6 +890,13 @@ func (s *Session) Close() error {
 	<-s.done
 	<-s.pollDone
 	<-s.fallbackDone
+	// Every goroutine that could install a grid has returned by now, so
+	// the current grid is the last one: retire it and join its reply
+	// drain (every earlier grid's drain was already joined when
+	// installGrid retired it), so no goroutine this Session started is
+	// still reading an emulator after Close returns.
+	retireGrid(s.currentGrid())
+	s.replyDrains.Wait()
 	s.renders.Close()
 	return err
 }
