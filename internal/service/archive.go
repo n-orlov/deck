@@ -56,3 +56,33 @@ func (s Service) Archive(ctx context.Context, session store.Session) error {
 	}
 	return nil
 }
+
+// Unarchive is R71's other half of `A` (SPEC.md:323-332, issue #8): the `U`
+// key clears archived_at (store.UnarchiveSession) so the row returns to
+// ListSessions' default view, and records the transition in the audit trail
+// exactly as Archive records its own. It is deliberately Restore's shape,
+// not Archive's: there is no pane work to do and no status to write --
+// unarchiving only ever un-hides the row, so a session that was killed on
+// its way into the archive comes back stopped and is resumed by `r` as a
+// separate, explicit step (which is precisely what Resume's archived-row
+// refusal points the operator at).
+func (s Service) Unarchive(ctx context.Context, sessionID string) (store.Session, error) {
+	if s.Store == nil || s.Audit == nil || s.Clock == nil {
+		return store.Session{}, errors.New("session unarchive requires store, audit logger, and clock")
+	}
+	if sessionID == "" {
+		return store.Session{}, errors.New("session unarchive requires a durable session id")
+	}
+	at := s.Clock.Now().UnixMilli()
+	if err := s.Store.UnarchiveSession(ctx, sessionID, at); err != nil {
+		return store.Session{}, fmt.Errorf("unarchive session %q: %w", sessionID, err)
+	}
+	if err := s.Audit.Transition(sessionID, "unarchived"); err != nil {
+		return store.Session{}, fmt.Errorf("audit unarchived session %q: %w", sessionID, err)
+	}
+	session, err := s.Store.GetSession(ctx, sessionID)
+	if err != nil {
+		return store.Session{}, fmt.Errorf("read unarchived session %q: %w", sessionID, err)
+	}
+	return session, nil
+}

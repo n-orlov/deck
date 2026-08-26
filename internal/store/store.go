@@ -1200,10 +1200,13 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 // excluding tombstoned rows (deleted_at != 0, task 104) and archived rows
 // (archived_at != 0, task 111, requirement 27) -- a soft-deleted session is
 // never resurrected into the default view by ListSessions itself; only
-// RestoreSession (clearing deleted_at) does that, and an archived row has
-// no restore at all -- requirement 33's `/` filter (task 123) is how it is
-// reached again. The stable order avoids hiding resumable sessions and
-// keeps independently connected clients' views deterministic.
+// RestoreSession (clearing deleted_at) does that, and an archived row
+// likewise only returns through UnarchiveSession (clearing archived_at:
+// SPEC.md:323-332 makes BOTH flags reversible, `U` for archived_at
+// exactly as `u` undoes a delete), which requirement 33's `/` filter
+// (task 123) is how the row is reached in order to press. The stable
+// order avoids hiding resumable sessions and keeps independently
+// connected clients' views deterministic.
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
 		FROM sessions WHERE deleted_at = 0 AND archived_at = 0 ORDER BY created_at, id`)
@@ -1256,10 +1259,13 @@ func (s *Store) ListDeletedSessions(ctx context.Context) ([]Session, error) {
 // (archived_at != 0, deleted_at == 0) that ListSessions itself never
 // returns (requirement 27/33, task 123). Unlike ListDeletedSessions there
 // is no reaper polling this list: the `/` filter's "archived" term
-// (internal/tui) is its only intended caller, and it is the ONLY route
-// back to an archived row -- there is no restore for archived_at the way
-// RestoreSession undoes deleted_at. Ordered the same way ListSessions is,
-// for the same determinism-under-a-frozen-clock reason.
+// (internal/tui) is its only intended caller, and it is the only way an
+// archived row is FOUND again -- not the only way it comes back.
+// SPEC.md:323-332 makes archived_at as reversible as deleted_at is:
+// UnarchiveSession clears it (the `U` key) exactly as RestoreSession
+// undoes deleted_at, so the route back is find-it-through-this-list and
+// then unarchive it. Ordered the same way ListSessions is, for the same
+// determinism-under-a-frozen-clock reason.
 func (s *Store) ListArchivedSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
 		FROM sessions WHERE deleted_at = 0 AND archived_at != 0 ORDER BY created_at, id`)
@@ -1323,6 +1329,26 @@ func (s *Store) ArchiveSession(ctx context.Context, sessionID string, at int64) 
 	}
 	return s.mutateSessionWithEvent(ctx, sessionID, "archived_at", "archived", "user", "", at,
 		`UPDATE sessions SET archived_at = ? WHERE id = ?`, at)
+}
+
+// UnarchiveSession clears requirement 27's `A` retention flag again (the
+// `U` key, SPEC.md:323-332): archived_at goes back to 0, so the row
+// returns to ListSessions' default view and leaves ListArchivedSessions.
+// It is the exact mirror of RestoreSession -- same mutateSessionWithEvent
+// shape, one targeted UPDATE plus its own "unarchived" event in one
+// transaction -- and, like RestoreSession, it never touches a live pane or
+// the Status column: unarchiving only ever un-hides the row, and a row
+// that was killed on its way into the archive stays stopped until `r`
+// resumes it. SPEC's invariant needs both halves: a one-way archive flag
+// plus a resumable archived row is what would put a live agent behind the
+// filter with no way out, so resume refuses an archived row
+// (service.Resume) and this is the key that clears the flag.
+func (s *Store) UnarchiveSession(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "archived_at", "unarchived", "user", "", at,
+		`UPDATE sessions SET archived_at = 0 WHERE id = ?`)
 }
 
 // Event is one row of the append-only events table (SPEC's schema listing:

@@ -138,3 +138,76 @@ func TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow(t *testing.T) {
 		t.Fatalf("ListSessions = %+v, want only the active row %q", defaultView, active.ID)
 	}
 }
+
+// TestUnarchiveSessionClearsArchivedAtAndReturnsToListSessions is R71's
+// store half (SPEC.md:323-332, issue #8): `A` must not be a one-way door.
+// UnarchiveSession mirrors RestoreSession exactly -- archived_at back to
+// 0, its own durable "unarchived" event recorded in the same transaction,
+// the row back in ListSessions' default view and out of
+// ListArchivedSessions -- while leaving Status (and deleted_at) completely
+// alone, because archived_at is a flag and unarchiving is not a resume.
+func TestUnarchiveSessionClearsArchivedAtAndReturnsToListSessions(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	session := createTombstoneTestSession(t, st, ctx, "archived-then-back")
+	if err := st.UpdateSessionStatus(ctx, StatusUpdateInput{
+		SessionID: session.ID, Status: "stopped", Reason: "killed by user", Source: "user", At: 150, EventKind: "killed",
+	}); err != nil {
+		t.Fatalf("stop the session first: %v", err)
+	}
+	if err := st.ArchiveSession(ctx, session.ID, 200); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	if err := st.UnarchiveSession(ctx, session.ID, 300); err != nil {
+		t.Fatalf("unarchive: %v", err)
+	}
+
+	got, err := st.GetSession(ctx, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ArchivedAt != 0 {
+		t.Fatalf("ArchivedAt after unarchive = %d, want 0", got.ArchivedAt)
+	}
+	if got.DeletedAt != 0 {
+		t.Fatalf("DeletedAt = %d, want 0 -- unarchiving must never touch the tombstone", got.DeletedAt)
+	}
+	if got.Status != "stopped" {
+		t.Fatalf("Status after unarchive = %q, want unchanged %q -- unarchiving is not a resume", got.Status, "stopped")
+	}
+
+	visible, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(visible) != 1 || visible[0].ID != session.ID {
+		t.Fatalf("ListSessions after unarchive = %+v, want the row back in the default view", visible)
+	}
+	stillArchived, err := st.ListArchivedSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stillArchived) != 0 {
+		t.Fatalf("ListArchivedSessions after unarchive = %+v, want empty", stillArchived)
+	}
+
+	var at int64
+	if err := st.DB().QueryRowContext(ctx, `SELECT at FROM events WHERE session_id = ? AND kind = 'unarchived'`, session.ID).Scan(&at); err != nil {
+		t.Fatalf("expected a durable 'unarchived' event recorded exactly as 'restored' is: %v", err)
+	}
+	if at != 300 {
+		t.Fatalf("unarchived event at = %d, want the 300 passed to UnarchiveSession", at)
+	}
+}
+
+// TestUnarchiveSessionRejectsMissingSession covers the not-found path
+// shared with every other mutateSessionWithEvent-backed method, exactly as
+// TestArchiveSessionRejectsMissingSession does for the other direction.
+func TestUnarchiveSessionRejectsMissingSession(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	if err := st.UnarchiveSession(ctx, "does-not-exist", 100); err == nil {
+		t.Fatal("UnarchiveSession on an unknown id must fail, got nil error")
+	}
+}

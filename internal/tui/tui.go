@@ -178,6 +178,14 @@ type Model struct {
 	// unavailable and submitting states so rather than silently doing
 	// nothing.
 	archiveSvc func(context.Context, store.Session) error
+	// unarchiveSvc is R71's `U` (SPEC.md:323-332, issue #8): the reverse of
+	// archiveSvc above, clearing archived_at (store.UnarchiveSession via
+	// service.Unarchive) so the row returns to ListSessions' default view.
+	// It never resumes or relaunches anything -- a row killed on its way
+	// into the archive comes back stopped, exactly as restoreSvc's undo of
+	// a dd never un-kills the pane it killed. nil means unarchiving is
+	// unavailable and `U` says so rather than silently doing nothing.
+	unarchiveSvc func(context.Context, string) (store.Session, error)
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -829,6 +837,16 @@ type sessionRestored struct {
 	err     error
 }
 
+// sessionUnarchived carries R71's `U` result back (SPEC.md:323-332, issue
+// #8): store.UnarchiveSession cleared archived_at, and a successful
+// unarchive reloads BOTH lists -- the default one the row has just
+// rejoined and the `/` filter's archived-side pool it has just left -- so
+// neither view keeps claiming the row is archived.
+type sessionUnarchived struct {
+	session store.Session
+	err     error
+}
+
 // sessionReaped carries task 106's grace-window expiry result back: a
 // failure is surfaced (the row was already gone from the default view, so
 // there is nothing to reload) but is not silently swallowed.
@@ -1163,6 +1181,20 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error, purger func(context.Context, string) error, archiver func(context.Context, store.Session) error, renamer func(context.Context, string, string) (store.Session, error)) Model {
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter, restorer, reaper, purger, archiver)
 	m.renamer = renamer
+	return m
+}
+
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver
+// adds R71's `U` (SPEC.md:323-332, issue #8): unarchiver clears archived_at
+// (service.Unarchive/store.UnarchiveSession) so a row hidden by `A`
+// returns to the default list. It is the promised way out that resume's
+// own archived-row refusal names, and it is reached through requirement
+// 33's `/` filter, the only place an archived row is displayed at all.
+// Until unarchiver is wired, `U` reports "unarchiving is unavailable"
+// rather than silently doing nothing.
+func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db *store.Store, settings config.Settings, tmuxNote string, creator func(context.Context, service.ShellCreateInput) (store.Session, error), attacher func(context.Context, string) (*exec.Cmd, error), killer func(context.Context, store.Session) error, reconciler func(context.Context) error, resumer func(context.Context, string) (store.Session, service.ResumeOutcome, error), profileSwitcher func(context.Context, string, string) (store.Session, error), resumeModer func(context.Context, string, string) (store.Session, error), agentCreator func(context.Context, service.AgentCreateInput) (store.Session, error), registry *agent.Registry, previewCapturer func(context.Context, string) (tmux.PreviewCapture, error), envSetter func(context.Context, string, string, string) (store.Session, error), restarter func(context.Context, string) (store.Session, service.ResumeOutcome, error), injector func(context.Context, string) (store.Session, []string, error), deleter func(context.Context, store.Session) error, restorer func(context.Context, string) (store.Session, error), reaper func(context.Context, string) error, purger func(context.Context, string) error, archiver func(context.Context, store.Session) error, renamer func(context.Context, string, string) (store.Session, error), unarchiver func(context.Context, string) (store.Session, error)) Model {
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, agentCreator, registry, previewCapturer, envSetter, restarter, injector, deleter, restorer, reaper, purger, archiver, renamer)
+	m.unarchiveSvc = unarchiver
 	return m
 }
 
@@ -1535,6 +1567,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.attachError = ""
 		return m, m.loadSessions
+	case sessionUnarchived:
+		if msg.err != nil {
+			m.attachError = "Cannot unarchive: " + msg.err.Error()
+			return m, nil
+		}
+		m.attachError = ""
+		// Both loads, not just loadSessions: the row is in m.sessions only
+		// because m.archivedSessions still holds it (requirement 33's
+		// filter pool), so refreshing the default list alone would leave a
+		// stale archived copy behind it -- filteredSessions de-duplicates
+		// by id, keeping the fresh baseSessions row, and the archived pool
+		// drops it on its own reload.
+		return m, tea.Batch(m.loadSessions, m.loadArchivedSessions)
 	case sessionReaped:
 		if msg.err != nil {
 			m.attachError = "Cannot reap: " + msg.err.Error()
@@ -2105,6 +2150,33 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			session := m.sessions[m.selected]
 			return m, func() tea.Msg {
 				return sessionArchived{session: session, err: m.archiveSvc(context.Background(), session)}
+			}
+		case "U":
+			// R71 (issue #8), SPEC.md:323-332: `A` is reversible, so `U`
+			// clears archived_at on the selected row. It acts on m.sessions --
+			// the DISPLAYED list -- which is exactly what makes it reachable
+			// from inside requirement 33's `/` filter results: an archived row
+			// is absent from the default list entirely and only ever appears
+			// while a query is in force (filteredSessions widens the pool to
+			// m.archivedSessions), and after Enter closes the text field the
+			// freed keymap -- this switch -- acts on that narrowed list. A row
+			// that is not archived is refused here rather than being handed to
+			// the store, so `U` can never record an "unarchived" event for a
+			// row that was never archived.
+			if m.unarchiveSvc == nil || len(m.sessions) == 0 {
+				if len(m.sessions) > 0 {
+					m.attachError = "Unarchiving is unavailable"
+				}
+				return m, nil
+			}
+			session := m.sessions[m.selected]
+			if session.ArchivedAt == 0 {
+				m.attachError = "Cannot unarchive: session is not archived"
+				return m, nil
+			}
+			return m, func() tea.Msg {
+				unarchived, err := m.unarchiveSvc(context.Background(), session.ID)
+				return sessionUnarchived{session: unarchived, err: err}
 			}
 		case "d":
 			// First half of task 105's dd chord: a visible pending indicator,
@@ -5098,7 +5170,14 @@ Keys
     on: on a stopped row this only sets archived_at; on any other row it
     offers "kill and archive" as a single action rather than refusing the
     keypress the way x refuses an already-stopped row; archived_at is a flag,
-    never a status, so the row keeps whatever status it had
+    never a status, so the row keeps whatever status it had; U below is the
+    way back
+  U unarchive the selected archived row: clears archived_at so the row
+    returns to the default list, keeping whatever status it had (a session
+    killed on its way into the archive comes back stopped -- r resumes it
+    as a separate step). Reachable from inside the / filter's results,
+    which is where an archived row is found in the first place: type enough
+    of its name to surface it, Enter to keep the filter applied, then U
   m toggle a mark on the selected session (kept by session id, so it
     survives a re-sort or re-group); with the mark set non-empty, x and dd
     act on the whole batch instead of just the selected row, and ONE u
@@ -5140,7 +5219,7 @@ Keys
     narrowed) list, Esc clears it back to the full list; this is also the
     only route to an archived session (A), which is hidden from the
     default list entirely -- type enough of its name, workspace or cwd to
-    match it and it appears like any other row
+    match it and it appears like any other row, and U there unarchives it
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status

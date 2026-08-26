@@ -17,14 +17,15 @@ import (
 // mistaken for a deleted one, exactly as SPEC.md:319-320 requires.
 //
 // Archived rows (archived_at != 0) are excluded from store.ListSessions'
-// own default view entirely -- SPEC requirement 27 -- and, unlike a
-// tombstoned row, have no restore. The filter is their ONLY route back:
-// while a query is in force, archivedSessions (fetched by
-// loadArchivedSessions every time `/` opens) is searched by the same
-// name/workspace/cwd match as every other row, so typing enough of an
+// own default view entirely -- SPEC requirement 27 -- so the filter is the
+// only way one is found again: while a query is in force, archivedSessions
+// (fetched by loadArchivedSessions every time `/` opens) is searched by the
+// same name/workspace/cwd match as every other row, so typing enough of an
 // archived session's own name, workspace or cwd surfaces it exactly the
 // way it would surface a live one -- there is no separate "show archived"
-// mode or keyword.
+// mode or keyword. Finding it is not the whole way back: SPEC.md:323-332
+// makes archived_at reversible, so `U` on a row surfaced here clears the
+// flag (R71, issue #8) and returns it to the default list.
 
 // filterMatches reports whether session matches query (SPEC requirement
 // 33) against its name, workspace or cwd -- the three fields the
