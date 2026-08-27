@@ -133,18 +133,42 @@ Feature: The preview capture engine and its visible behaviour
   @steer-018-preview-fit-on-navigation
   Scenario: a fit is skipped below the 7-inner-row floor, and retried once the panel grows back above it
     Given a long-running fake "claude" binary is on PATH for future deck clients
-    And deck client "solo" is started
-    And deck client "solo" creates shell session "alpha"
-    And deck client "solo" creates claude session "beacon" with permission profile "safe"
-    And within one configured reconcile interval deck client "solo" screen contains "running"
-    When deck client "solo" terminal is resized to 100x9
-    And deck client "solo" selects session "beacon"
+    # The creating client and the observing client are deliberately
+    # separate, and this shape is load-bearing rather than cosmetic (task
+    # 028, finding F1). Requirement 52 auto-selects a freshly created row,
+    # so a claude session created by a client at the default 100x30 is the
+    # selected row with a 61x27 content box -- well above
+    # interactiveMinInnerRows -- and the very next previewTick
+    # (DECK_PREVIEW_MS=50) licenses the one passive fit this scenario
+    # asserts never happens. Shrinking afterwards does not retract it:
+    # "terminal is resized to" waits for a render marker
+    # (ScreenDriver.ResizeAndAwaitRender), which proves only that SOME
+    # repaint happened after the resize, never that Update has already
+    # taken m.width/m.height to the smaller size, and the window between
+    # the create and that WindowSizeMsg is tens to hundreds of
+    # milliseconds wide -- several previewTicks. That race cost this
+    # assertion roughly one run in ten with `received 1 SIGWINCH signals,
+    # want exactly 0`. Here "maker" runs with DECK_PREVIEW_FIT=0, so it
+    # can never fit anything, and "solo" -- the only client with fit
+    # enabled -- is born at 100x9 and so has no frame above the floor in
+    # its whole life before the assertion. No fit is licensed at a larger
+    # size by construction, not by winning a race.
+    # features/preview_test.go's clientHasNeverBeenTallerThan pins that
+    # shape deterministically, on every run.
+    And deck client "maker" is started with preview fit disabled
+    And deck client "maker" creates shell session "alpha"
+    And deck client "maker" creates claude session "beacon" with permission profile "safe"
+    And within one configured reconcile interval deck client "maker" screen contains "running"
+    And deck client "maker" exits cleanly
+    And deck client "solo" is started with terminal size 100x9
+    When deck client "solo" selects session "beacon"
     # 100 columns keeps auto layout side-by-side (>= 80), whose preview is
     # always shown (LayoutResult.PreviewShown, layout.go) regardless of
     # rows, so this is the interactive floor biting on its own -- a
     # content box below interactiveMinInnerRows -- never requirement 27's
     # separate stacked-mode suppression floor.
-    Then the fake "claude" agent received exactly 0 SIGWINCH signals
+    Then deck client "solo" has never been taller than 9 rows
+    And the fake "claude" agent received exactly 0 SIGWINCH signals
     When deck client "solo" terminal is resized to 100x30
     Then the fake "claude" agent received exactly 1 SIGWINCH signals
     And deck client "solo" exits cleanly

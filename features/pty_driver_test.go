@@ -52,6 +52,18 @@ type ScreenDriver struct {
 	// hang's error message can show the exact input timeline leading up to
 	// it. Guarded by mu.
 	sent []sentRecord
+	// tallestRows is the largest row count this client's terminal has EVER
+	// had, counting the size it was started at and every Resize since.
+	// Guarded by mu.
+	//
+	// It exists so a scenario can assert a client was never tall enough for
+	// a size-gated behaviour to have been licensed at all (task 028: see
+	// clientWasNeverTallerThan and preview.feature's
+	// @steer-018-preview-fit-on-navigation scenario), which the current
+	// geometry alone cannot show -- a client shrunk a moment ago reads the
+	// same as one born small, and the whole difference between them is
+	// whether deck had a frame above the floor to act on.
+	tallestRows int
 }
 
 // sentRecord is one entry in ScreenDriver.sent.
@@ -113,6 +125,8 @@ func startScreenDriver(ctx context.Context, binary string, env []string, dir str
 		updated:  make(chan struct{}, 1),
 		done:     make(chan struct{}),
 		readDone: make(chan struct{}),
+
+		tallestRows: int(rows),
 	}
 	go d.read()
 	go d.drainScreenInput()
@@ -141,6 +155,9 @@ func (d *ScreenDriver) Resize(cols, rows uint16) error {
 	d.mu.Lock()
 	d.screen.Resize(int(cols), int(rows))
 	d.budget.Resize(int(cols)+frameBudgetMargin, int(rows)+frameBudgetMargin)
+	if int(rows) > d.tallestRows {
+		d.tallestRows = int(rows)
+	}
 	d.mu.Unlock()
 	select {
 	case d.updated <- struct{}{}:
@@ -215,6 +232,15 @@ func (d *ScreenDriver) ResizeAndAwaitRender(ctx context.Context, cols, rows uint
 			return fmt.Errorf("timed out waiting for deck to re-render after resize to %dx%d: %w\nframe:\n%s\nraw: %q", cols, rows, waitCtx.Err(), d.Frame(false), d.Raw())
 		}
 	}
+}
+
+// TallestRows returns the largest row count this client's terminal has ever
+// had (its start size, or the tallest Resize since). See the field's own
+// comment for why a scenario needs the history rather than the current size.
+func (d *ScreenDriver) TallestRows() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.tallestRows
 }
 
 // GridSize returns the emulator's current column and row count, letting a

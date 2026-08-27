@@ -1,0 +1,183 @@
+1787788850142 pid=334 windowSize 100x30 (was 0x0)
+1787788850193 pid=334 skip no-selection
+1787788850244 pid=334 skip no-selection
+1787788850294 pid=334 schedule sel=alpha box=61x27 term=100x30
+1787788850299 pid=334 previewPane slug=alpha ok=true err=<nil>
+1787788850307 pid=334 fitWindowToPane slug=alpha want=61x27 calls=1 err=<nil>
+1787788850307 pid=334 previewFitDone id=e1ac85d5-8907-4faa-abab-03418993f6f7
+1787788850345 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850396 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850446 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850497 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850547 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850598 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850648 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850699 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850749 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850800 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850851 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850902 pid=334 skip coalesced sel=alpha fitSession=e1ac85d5-8907-4faa-abab-03418993f6f7 inFlight= term=100x30
+1787788850953 pid=334 schedule sel=beacon box=61x27 term=100x30
+1787788850961 pid=334 previewPane slug=beacon ok=true err=<nil>
+1787788850969 pid=334 fitWindowToPane slug=beacon want=61x27 calls=1 err=<nil>
+1787788850969 pid=334 previewFitDone id=cd68dbf8-dd5c-40a8-8b33-2924321cd66c
+1787788851003 pid=334 skip coalesced sel=beacon fitSession=cd68dbf8-dd5c-40a8-8b33-2924321cd66c inFlight= term=100x30
+1787788851054 pid=334 skip coalesced sel=beacon fitSession=cd68dbf8-dd5c-40a8-8b33-2924321cd66c inFlight= term=100x30
+1787788851104 pid=334 skip coalesced sel=beacon fitSession=cd68dbf8-dd5c-40a8-8b33-2924321cd66c inFlight= term=100x30
+1787788851155 pid=334 skip coalesced sel=beacon fitSession=cd68dbf8-dd5c-40a8-8b33-2924321cd66c inFlight= term=100x30
+1787788851205 pid=334 skip coalesced sel=beacon fitSession=cd68dbf8-dd5c-40a8-8b33-2924321cd66c inFlight= term=100x30
+1787788851233 pid=334 windowSize 120x40 (was 100x30)
+1787788851244 pid=334 windowSize 100x30 (was 120x40)
+1787788851256 pid=334 skip coalesced sel=beacon fitSession=cd68dbf8-dd5c-40a8-8b33-2924321cd66c inFlight= term=100x30
+1787788851786 pid=620 windowSize 100x30 (was 0x0)
+1787788851837 pid=620 skip no-selection
+1787788851887 pid=620 skip no-selection
+1787788851938 pid=620 schedule sel=alpha box=61x27 term=100x30
+1787788851944 pid=620 previewPane slug=alpha ok=true err=<nil>
+1787788851951 pid=620 fitWindowToPane slug=alpha want=61x27 calls=1 err=<nil>
+1787788851951 pid=620 previewFitDone id=d6a12df7-a7c7-495b-a496-e0af0d2ee16a
+1787788851989 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852040 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852090 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852141 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852191 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852241 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852292 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852342 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852393 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852444 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852495 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852545 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788852596 pid=620 schedule sel=beacon box=61x27 term=100x30
+1787788852605 pid=620 previewPane slug=beacon ok=true err=<nil>
+1787788852612 pid=620 fitWindowToPane slug=beacon want=61x27 calls=1 err=<nil>
+1787788852612 pid=620 previewFitDone id=83b6a23f-3241-43fd-8435-bedadd2c36d2
+1787788852647 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788852697 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788852748 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788852799 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788852849 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788852900 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788852951 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788853001 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788853051 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788853102 pid=620 schedule sel=alpha box=61x27 term=100x30
+1787788853112 pid=620 previewPane slug=alpha ok=true err=<nil>
+1787788853115 pid=620 fitWindowToPane slug=alpha want=61x27 calls=0 err=<nil>
+1787788853115 pid=620 previewFitDone id=d6a12df7-a7c7-495b-a496-e0af0d2ee16a
+1787788853152 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853202 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853253 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853304 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853354 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853405 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853456 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853506 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853557 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853607 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853658 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853708 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853759 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853810 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853861 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853911 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788853962 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788854012 pid=620 skip coalesced sel=alpha fitSession=d6a12df7-a7c7-495b-a496-e0af0d2ee16a inFlight= term=100x30
+1787788854063 pid=620 schedule sel=beacon box=61x27 term=100x30
+1787788854072 pid=620 previewPane slug=beacon ok=true err=<nil>
+1787788854074 pid=620 fitWindowToPane slug=beacon want=61x27 calls=0 err=<nil>
+1787788854074 pid=620 previewFitDone id=83b6a23f-3241-43fd-8435-bedadd2c36d2
+1787788854114 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854165 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854216 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854267 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854317 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854368 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854418 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854469 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854535 pid=620 skip settings/interactive/socket
+1787788854585 pid=620 skip settings/interactive/socket
+1787788854636 pid=620 skip settings/interactive/socket
+1787788854687 pid=620 schedule sel=beacon box=61x27 term=100x30
+1787788854697 pid=620 previewPane slug=beacon ok=true err=<nil>
+1787788854700 pid=620 fitWindowToPane slug=beacon want=61x27 calls=0 err=<nil>
+1787788854700 pid=620 previewFitDone id=83b6a23f-3241-43fd-8435-bedadd2c36d2
+1787788854738 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788854789 pid=620 skip coalesced sel=beacon fitSession=83b6a23f-3241-43fd-8435-bedadd2c36d2 inFlight= term=100x30
+1787788855318 pid=1114 windowSize 100x30 (was 0x0)
+1787788855369 pid=1114 skip settings/interactive/socket
+1787788855420 pid=1114 skip settings/interactive/socket
+1787788855470 pid=1114 skip settings/interactive/socket
+1787788855521 pid=1114 skip settings/interactive/socket
+1787788855572 pid=1114 skip settings/interactive/socket
+1787788855622 pid=1114 skip settings/interactive/socket
+1787788855673 pid=1114 skip settings/interactive/socket
+1787788855723 pid=1114 skip settings/interactive/socket
+1787788855773 pid=1114 skip settings/interactive/socket
+1787788855824 pid=1114 skip settings/interactive/socket
+1787788855874 pid=1114 skip settings/interactive/socket
+1787788855925 pid=1114 skip settings/interactive/socket
+1787788855976 pid=1114 skip settings/interactive/socket
+1787788856026 pid=1114 skip settings/interactive/socket
+1787788856077 pid=1114 skip settings/interactive/socket
+1787788856127 pid=1114 skip settings/interactive/socket
+1787788856178 pid=1114 skip settings/interactive/socket
+1787788856229 pid=1114 skip settings/interactive/socket
+1787788856280 pid=1114 skip settings/interactive/socket
+1787788856330 pid=1114 skip settings/interactive/socket
+1787788856381 pid=1114 skip settings/interactive/socket
+1787788856431 pid=1114 skip settings/interactive/socket
+1787788856482 pid=1114 skip settings/interactive/socket
+1787788856533 pid=1114 skip settings/interactive/socket
+1787788856583 pid=1114 skip settings/interactive/socket
+1787788856633 pid=1114 skip settings/interactive/socket
+1787788856683 pid=1114 skip settings/interactive/socket
+1787788856734 pid=1114 skip settings/interactive/socket
+1787788856784 pid=1114 skip settings/interactive/socket
+1787788856835 pid=1114 skip settings/interactive/socket
+1787788856885 pid=1114 skip settings/interactive/socket
+1787788856936 pid=1114 skip settings/interactive/socket
+1787788856986 pid=1114 skip settings/interactive/socket
+1787788857037 pid=1114 skip settings/interactive/socket
+1787788857087 pid=1114 skip settings/interactive/socket
+1787788857138 pid=1114 skip settings/interactive/socket
+1787788857672 pid=1459 windowSize 100x30 (was 0x0)
+1787788857723 pid=1459 skip settings/interactive/socket
+1787788857773 pid=1459 skip settings/interactive/socket
+1787788857823 pid=1459 skip settings/interactive/socket
+1787788857874 pid=1459 skip settings/interactive/socket
+1787788857924 pid=1459 skip settings/interactive/socket
+1787788857975 pid=1459 skip settings/interactive/socket
+1787788858025 pid=1459 skip settings/interactive/socket
+1787788858076 pid=1459 skip settings/interactive/socket
+1787788858149 pid=1512 windowSize 100x9 (was 0x0)
+1787788858200 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858250 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858301 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858352 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858403 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858454 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858504 pid=1512 skip floor sel=alpha box=61x6 term=100x9
+1787788858554 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858604 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858654 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858705 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858755 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858806 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858857 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858907 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858958 pid=1512 skip floor sel=beacon box=61x6 term=100x9
+1787788858984 pid=1512 windowSize 100x30 (was 100x9)
+1787788859008 pid=1512 schedule sel=beacon box=61x27 term=100x30
+1787788859018 pid=1512 previewPane slug=beacon ok=true err=<nil>
+1787788859026 pid=1512 fitWindowToPane slug=beacon want=61x27 calls=1 err=<nil>
+1787788859026 pid=1512 previewFitDone id=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca
+1787788859059 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859110 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859160 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859210 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859260 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859311 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859362 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859412 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30
+1787788859463 pid=1512 skip coalesced sel=beacon fitSession=3f7c71d3-1ad6-4d40-ab94-e206ed8781ca inFlight= term=100x30

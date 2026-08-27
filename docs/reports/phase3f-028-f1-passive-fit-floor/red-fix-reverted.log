@@ -1,0 +1,185 @@
+Feature: The preview capture engine and its visible behaviour
+  §11 requirement 21's capture-pane -e engine never attaches a client, never
+  spawns a control-mode client, uses no pipe-pane, and never resizes a pane
+  it reads; §23-27 govern what the panel shows once a capture lands.
+  
+  Steer 018 item 4 / task 215's amendment (SPEC.md §11, post-395babf "The
+  preview fits the selected session's window to the panel"): passive
+  preview now ALSO fits the selected session's tmux window to the panel's
+  content box as the list selection settles -- `[ui] preview_fit`, default
+  true. This is a deliberate, narrowly-scoped inversion of what this file's
+  own no-side-effect scenario used to assert for the selection axis alone
+  (composite-prd.md:747-748's "Do not weaken features/preview.feature's
+  passive guarantees ... If they conflict, the interactive design is
+  wrong" is about a DIFFERENT axis of conflict -- an interactive-mode
+  change reaching backward to weaken passive's own guarantee to make
+  itself pass -- and does not apply here either by its letter or in its
+  spirit: this change is SPEC's own text, authored by the operator's own
+  spec push, not code reaching back to relax a test it was failing, and
+  every OTHER passive-preview guarantee -- no attached client, no pipe, no
+  scroll, best-effort, floor-respecting, cost-stated, reversible via
+  `preview_fit = false` -- is left completely intact by it, proven by the
+  scenarios below). The capture engine itself (`capture-pane -e`, this
+  file's own title) is unchanged and still never resizes anything; the fit
+  is a separate, additional, coalesced `resize-window` issued alongside
+  the same 250ms tick.
+
+  Scenario: preview_fit does not resize on a mode switch, sidebar-width change or outer-terminal resize -- only on a settled selection change # preview.feature:56
+    Given a long-running fake "claude" binary is on PATH for future deck clients                                                              # agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients
+    And deck client "solo" is started                                                                                                         # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "solo" creates shell session "alpha"                                                                                      # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "solo" creates claude session "beacon" with permission profile "safe"                                                     # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    And within one configured reconcile interval deck client "solo" screen contains "running"                                                 # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    And deck client "solo" selects session "beacon"                                                                                           # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And 200 milliseconds pass                                                                                                                 # kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass
+    And the private tmux window for session "beacon" is captured as "axis-before"                                                             # preview_test.go:34 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs
+    And the fake claude agent's size log is captured as "axis-before"                                                                         # preview_test.go:37 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogIsCapturedAs
+    When deck client "solo" sends "|"                                                                                                         # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "solo" sends "|"                                                                                                          # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "solo" sends ">"                                                                                                          # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "solo" sends "<"                                                                                                          # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "solo" terminal is resized to 120x40                                                                                      # resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient
+    And deck client "solo" terminal is resized to 100x30                                                                                      # resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient
+    Then the private tmux window for session "beacon" still matches "axis-before"                                                             # preview_test.go:35 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches
+    And the fake claude agent's size log still matches "axis-before"                                                                          # preview_test.go:38 -> github.com/n-orlov/deck/features.fakeClaudeAgentSizeLogStillMatches
+    And deck client "solo" exits cleanly                                                                                                      # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+  Scenario: a settled selection fits the session's window to exactly the panel's own content box, coalesced across repeated revisits # preview.feature:88
+    Given a long-running fake "claude" binary is on PATH for future deck clients                                                     # agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients
+    And deck client "solo" is started                                                                                                # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "solo" creates shell session "alpha"                                                                             # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "solo" creates claude session "beacon" with permission profile "safe"                                            # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    And within one configured reconcile interval deck client "solo" screen contains "running"                                        # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    When deck client "solo" selects session "beacon"                                                                                 # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    Then the fake "claude" agent received exactly 1 SIGWINCH signals                                                                 # fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals
+    When deck client "solo" selects session "alpha"                                                                                  # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "solo" selects session "beacon"                                                                                  # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "solo" selects session "alpha"                                                                                   # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "solo" selects session "beacon"                                                                                  # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    Then the fake "claude" agent received exactly 1 SIGWINCH signals                                                                 # fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals
+    And the private tmux window for session "beacon" is captured as "passively-fitted"                                               # preview_test.go:34 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs
+    When deck client "solo" enters interactive mode                                                                                  # interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode
+    Then the private tmux window for session "beacon" still matches "passively-fitted"                                               # preview_test.go:35 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches
+    And deck client "solo" leaves interactive mode                                                                                   # interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode
+    And deck client "solo" exits cleanly                                                                                             # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+  Scenario: preview_fit = false restores the wholly passive preview, and settling never resizes # preview.feature:120
+    Given the deck config disables preview fit                                                  # preview_test.go:24 -> github.com/n-orlov/deck/features.deckConfigDisablesPreviewFit
+    And a long-running fake "claude" binary is on PATH for future deck clients                  # agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients
+    And deck client "solo" is started                                                           # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "solo" creates shell session "alpha"                                        # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "solo" creates claude session "beacon" with permission profile "safe"       # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    And within one configured reconcile interval deck client "solo" screen contains "running"   # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    When deck client "solo" selects session "beacon"                                            # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "solo" selects session "alpha"                                              # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "solo" selects session "beacon"                                             # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    Then the fake "claude" agent received exactly 0 SIGWINCH signals                            # fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals
+    And deck client "solo" exits cleanly                                                        # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+  Scenario: a fit is skipped below the 7-inner-row floor, and retried once the panel grows back above it # preview.feature:134
+    Given a long-running fake "claude" binary is on PATH for future deck clients                         # agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients
+    And deck client "solo" is started                                                                    # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "solo" creates shell session "alpha"                                                 # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "solo" creates claude session "beacon" with permission profile "safe"                # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    And within one configured reconcile interval deck client "solo" screen contains "running"            # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    When deck client "solo" terminal is resized to 100x9                                                 # resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient
+    And deck client "solo" selects session "beacon"                                                      # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    Then deck client "solo" has never been taller than 9 rows                                            # preview_test.go:26 -> github.com/n-orlov/deck/features.clientHasNeverBeenTallerThan
+    after scenario hook failed: deck client "solo" has been 30 rows tall at some point, want never more than 9: a taller frame licenses the very passive fit this scenario asserts never happened, so the assertion below would be racing that fit rather than observing its absence (task 028, finding F1)
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [23:47:55.094] +0 "n"
+  [23:47:55.111] +16.571583ms "alpha"
+  [23:47:55.186] +75.397889ms "\t/tmp/deck-scenario-172352376/walking-skeleton-cwd\r"
+  [23:47:55.211] +25.036941ms "n"
+  [23:47:55.227] +16.043249ms "beacon"
+  [23:47:55.303] +75.163529ms "\t/tmp/deck-scenario-172352376/walking-skeleton-cwd"
+  [23:47:55.378] +75.599569ms "\t"
+  [23:47:55.429] +50.339168ms "\x1b[C"
+  [23:47:55.454] +25.544257ms "\t"
+  [23:47:55.506] +51.460826ms "\r"
+  [23:47:55.544] +38.700415ms "g"
+  [23:47:55.560] +16.20625ms "g"
+  [23:47:55.594] +33.248348ms "\x1b[B"
+frame:
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                        goroutine 133 gp=0xc000535500 m=nil [GC worker (idle)]:
+                                                                                               runti
+me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+                                        /usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc0003f2f38
+sp=0xc0003f2f18 pc=0x47658e
+                           runtime.gcBgMarkWorker(0xc0005164
+    And the fake "claude" agent received exactly 0 SIGWINCH signals                                      # fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals
+    When deck client "solo" terminal is resized to 100x30                                                # resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient
+    Then the fake "claude" agent received exactly 1 SIGWINCH signals                                     # fake_agent_size_test.go:44 -> github.com/n-orlov/deck/features.theFakeAgentReceivedExactlySigwinchSignals
+    And deck client "solo" exits cleanly                                                                 # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+--- Failed steps:
+
+  Scenario: a fit is skipped below the 7-inner-row floor, and retried once the panel grows back above it # preview.feature:134
+    Then deck client "solo" has never been taller than 9 rows # preview.feature:169
+      Error: after scenario hook failed: deck client "solo" has been 30 rows tall at some point, want never more than 9: a taller frame licenses the very passive fit this scenario asserts never happened, so the assertion below would be racing that fit rather than observing its absence (task 028, finding F1)
+surviving deck client: hung deck client killed after 1s
+sent (input timeline):
+  [23:47:55.094] +0 "n"
+  [23:47:55.111] +16.571583ms "alpha"
+  [23:47:55.186] +75.397889ms "\t/tmp/deck-scenario-172352376/walking-skeleton-cwd\r"
+  [23:47:55.211] +25.036941ms "n"
+  [23:47:55.227] +16.043249ms "beacon"
+  [23:47:55.303] +75.163529ms "\t/tmp/deck-scenario-172352376/walking-skeleton-cwd"
+  [23:47:55.378] +75.599569ms "\t"
+  [23:47:55.429] +50.339168ms "\x1b[C"
+  [23:47:55.454] +25.544257ms "\t"
+  [23:47:55.506] +51.460826ms "\r"
+  [23:47:55.544] +38.700415ms "g"
+  [23:47:55.560] +16.20625ms "g"
+  [23:47:55.594] +33.248348ms "\x1b[B"
+frame:
+                                                                                                /usr
+/local/go/src/runtime/mgc.go:1373 +0x105
+
+                                        goroutine 133 gp=0xc000535500 m=nil [GC worker (idle)]:
+                                                                                               runti
+me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+                                        /usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc0003f2f38
+sp=0xc0003f2f18 pc=0x47658e
+                           runtime.gcBgMarkWorker(0xc0005164
+
+
+4 scenarios (3 passed, 1 failed)
+58 steps (53 passed, 1 failed, 4 skipped)
+9.681721276s
+--- FAIL: TestFeatures (9.69s)
+    --- FAIL: TestFeatures/a_fit_is_skipped_below_the_7-inner-row_floor,_and_retried_once_the_panel_grows_back_above_it (2.10s)
+        suite.go:640: after scenario hook failed: deck client "solo" has been 30 rows tall at some point, want never more than 9: a taller frame licenses the very passive fit this scenario asserts never happened, so the assertion below would be racing that fit rather than observing its absence (task 028, finding F1)
+            surviving deck client: hung deck client killed after 1s
+            sent (input timeline):
+              [23:47:55.094] +0 "n"
+              [23:47:55.111] +16.571583ms "alpha"
+              [23:47:55.186] +75.397889ms "\t/tmp/deck-scenario-172352376/walking-skeleton-cwd\r"
+              [23:47:55.211] +25.036941ms "n"
+              [23:47:55.227] +16.043249ms "beacon"
+              [23:47:55.303] +75.163529ms "\t/tmp/deck-scenario-172352376/walking-skeleton-cwd"
+              [23:47:55.378] +75.599569ms "\t"
+              [23:47:55.429] +50.339168ms "\x1b[C"
+              [23:47:55.454] +25.544257ms "\t"
+              [23:47:55.506] +51.460826ms "\r"
+              [23:47:55.544] +38.700415ms "g"
+              [23:47:55.560] +16.20625ms "g"
+              [23:47:55.594] +33.248348ms "\x1b[B"
+            frame:
+                                                                                                            /usr
+            /local/go/src/runtime/mgc.go:1373 +0x105
+            
+                                                    goroutine 133 gp=0xc000535500 m=nil [GC worker (idle)]:
+                                                                                                           runti
+            me.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+                                                    /usr/local/go/src/runtime/proc.go:460 +0xce fp=0xc0003f2f38
+            sp=0xc0003f2f18 pc=0x47658e
+                                       runtime.gcBgMarkWorker(0xc0005164
+    godog_test.go:39: godog feature suite failed
+FAIL
+FAIL	github.com/n-orlov/deck/features	9.700s
+FAIL

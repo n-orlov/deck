@@ -1,0 +1,4 @@
+$ cat /proc/loadavg
+4.60 4.00 3.14 2/4158 72482
+$ ci/run.sh go test -count=1 ./features/
+ok  	github.com/n-orlov/deck/features	303.780s
