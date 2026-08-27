@@ -119,6 +119,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerSortOrderSteps(sc)
 	registerNewSessionSelectionSteps(sc)
 	registerStatusRecoverySteps(sc)
+	registerTerminalRepairFieldRouteSteps(sc)
 	registerSettingsSteps(sc)
 	registerDialogsSteps(sc)
 	registerEnvEditorSteps(sc)
