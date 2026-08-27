@@ -121,7 +121,8 @@ Feature: The / list filter: by name, workspace and cwd, and the route back to an
     And deck client "A" keeps the filter in force with enter
     Then deck client "A" screen contains "filter-dd-archived"
     When deck client "A" presses dd
-    And deck client "A" submits the open dialog
+    Then deck client "A" screen contains "archived record itself"
+    When deck client "A" submits the open dialog
     Then deck client "A" screen contains "press u to undo"
     And the state database session "filter-dd-archived" is tombstoned
     When deck client "A" presses u
