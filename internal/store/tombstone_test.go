@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -213,6 +214,51 @@ func TestSoftDeleteAndRestoreRejectMissingSession(t *testing.T) {
 	}
 	if err := st.RestoreSession(ctx, "does-not-exist", 100); err == nil {
 		t.Fatal("RestoreSession on an unknown id must fail, got nil error")
+	}
+}
+
+// TestRestoreSessionAfterReuseReapReportsHonestly covers R77's "`u` must
+// fail honestly" clause (SPEC.md §9.2): a tombstoned row's name is reused
+// by a real CreateSession call -- the exact same reapTombstonedHolderTx/
+// reapSessionTx path TestCreateSessionReapsTombstonedNameHolder proves --
+// so the old row is gone from the table by the time RestoreSession (the
+// store half of `u`, task 106) is called against its id, exactly as if
+// the undo toast were still on screen. The error must name the real
+// cause, never the bare "not found" mutateSessionWithEvent would
+// otherwise report and never a raw SQLite constraint/driver error.
+func TestRestoreSessionAfterReuseReapReportsHonestly(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	old := createTombstoneTestSession(t, st, ctx, "reused-old-holder")
+	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
+		t.Fatalf("soft delete %q: %v", old.ID, err)
+	}
+
+	// The reuse: a real create, taking the tombstoned row's own name, which
+	// reaps it inside CreateSession's own transaction -- not a hand-crafted
+	// DELETE standing in for one.
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "reused-new-holder", Name: old.Name, CWD: "/work/reused-new-holder",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
+	}); err != nil {
+		t.Fatalf("create session reusing tombstoned name %q: %v", old.Name, err)
+	}
+
+	// The undo toast's own action: `u` against the now-reaped row's id.
+	err := st.RestoreSession(ctx, old.ID, 400)
+	if err == nil {
+		t.Fatal("RestoreSession after a reuse-driven reap must fail, got nil error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "reaped") || !strings.Contains(msg, "reused") {
+		t.Fatalf("RestoreSession error = %q, want it to name the reap and the name reuse", msg)
+	}
+	if strings.Contains(msg, "not found") {
+		t.Fatalf("RestoreSession error = %q, must not fall back to the bare \"not found\" message once the reap cause is known", msg)
+	}
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "unique") || strings.Contains(lower, "constraint") || strings.Contains(lower, "sql") {
+		t.Fatalf("RestoreSession error = %q, must not surface a raw SQLite constraint/driver error", msg)
 	}
 }
 

@@ -1409,12 +1409,38 @@ func (s *Store) SoftDeleteSession(ctx context.Context, sessionID string, at int6
 // row to ListSessions' default view. It is the store half of the grace-window
 // `u` undo (task 106); it never touches a live pane (SPEC's undo relaunches
 // or resumes the session through the normal launch path, a separate step).
+//
+// R77's honesty requirement (SPEC §9.2): if the row is gone because a
+// CreateSession/RenameSession reused its name while the undo toast was
+// still up (reapTombstonedHolderTx/reapSessionTx, above), a bare
+// mutateSessionWithEvent "not found" would be true but misleading -- the
+// operator pressed `u` on what looked like a live undo, not a session
+// that had never existed. reapSessionTx always leaves a surviving orphan
+// 'reaped' event (session_id NULL, payload = the reaped id) *before* the
+// row itself is gone, so this checks for that event on the not-found path
+// and reports the real cause instead. It is a read, never a second
+// mutation, so it cannot itself race the same write lock R77 already
+// had to avoid.
 func (s *Store) RestoreSession(ctx context.Context, sessionID string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "deleted_at", "restored", "user", "", at,
+	err := s.mutateSessionWithEvent(ctx, sessionID, "deleted_at", "restored", "user", "", at,
 		`UPDATE sessions SET deleted_at = 0 WHERE id = ?`)
+	if err == nil {
+		return nil
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		return err
+	}
+	var reaped int
+	if checkErr := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE session_id IS NULL AND kind = 'reaped' AND payload = ?`, sessionID).Scan(&reaped); checkErr != nil {
+		return fmt.Errorf("%w (also failed to check reap history: %v)", err, checkErr)
+	}
+	if reaped > 0 {
+		return fmt.Errorf("session %q was reaped because its name was reused", sessionID)
+	}
+	return err
 }
 
 // ArchiveSession sets SPEC requirement 27's `A` retention flag (task 111):
