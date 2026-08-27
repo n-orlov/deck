@@ -59,9 +59,19 @@ func filterMatches(session store.Session, query string) bool {
 // ListSessions' own default view), so a filter that only ever narrowed
 // baseSessions could never surface one -- this widens the search pool to
 // archivedSessions too, exactly while, and only while, a query is in
-// force. A session present in both (impossible today -- archived_at and
-// deleted_at are mutually exclusive of ListSessions' own WHERE clause, but
-// checked anyway) is de-duplicated by id, keeping the baseSessions copy.
+// force. A session present in both IS reachable, not merely a defensive
+// checked-anyway case: `dd` on an archived row (archived_at != 0) only
+// ever calls store.SoftDeleteSession, which sets deleted_at without
+// touching archived_at (and store.RestoreSession's `u` undo is the exact
+// mirror, clearing deleted_at alone) -- so deleted_at != 0 AND archived_at
+// != 0 is a real, reachable row state. It never actually collides here,
+// though: baseSessions never held it (ListSessions' own WHERE excludes
+// any deleted_at != 0 row), and archivedSessions' own ListArchivedSessions
+// query excludes it too (deleted_at = 0 AND archived_at != 0 -- `dd`
+// setting deleted_at drops the row out of THAT list the same moment it
+// leaves ListSessions', without ever clearing archived_at itself). The
+// de-duplication below is kept anyway, favouring the baseSessions copy on
+// an id collision, in case a future accessor ever loosens either query.
 func (m Model) filteredSessions() []store.Session {
 	if m.filterQuery == "" {
 		return m.baseSessions
