@@ -1476,6 +1476,19 @@ func canUnarchive(session store.Session) bool {
 	return session.ArchivedAt != 0
 }
 
+// footerArchiveEligible reports whether the footer's curated A/U slot
+// (task 014, SPEC §11.3: "the eligible one of A/U") should show A for
+// session: only a row that is not already archived, mirroring
+// canUnarchive's complement so the two never both show for the same row.
+// It is footer-only -- canArchive above answers a different question (may
+// the A key act on this row at all, which it always does) and stays
+// unconditionally true for the key handler; §11.3's "A on a row that is
+// already archived" refusal is a footer-display rule, not a change to
+// what pressing A itself does.
+func footerArchiveEligible(session store.Session) bool {
+	return session.ArchivedAt == 0
+}
+
 // canResume reports whether r may act on session: only a stopped row.
 func canResume(session store.Session) bool {
 	return session.Status == "stopped"
@@ -3419,8 +3432,20 @@ var footerLegend = []footerKeyHint{
 	// "up/down - Enter ..." text, which this insertion left alone), so the
 	// wording is kept as "relaunch" for its own sake now, not for the tuning.
 	{"R", "R", "relaunch", func(m Model) bool { return footerRowEligible(m, false, canRestart) }},
-	{"P", "P", "profile", func(m Model) bool { return footerRowEligible(m, false, m.canSwitchProfile) }},
-	{"p", "p", "pin", func(m Model) bool { return footerRowEligible(m, false, m.canPinResume) }},
+	// dd and the eligible one of A/U (task 014, SPEC §11.3's curated fixed
+	// set) land here, between R and , -- exactly the order that paragraph
+	// lists them in. dd shares x's batch treatment (the mark set, when
+	// non-empty, acts on the whole batch for both), while A and U stay on
+	// the selected row alone, like Y/r/R above -- their own key handlers
+	// (case "A"/case "U") never consult m.marked either. P (profile) and p
+	// (pin) are deliberately NOT here: SPEC §11.3 keeps them bound, in the
+	// `?` overlay and in §11's keymap, but out of the footer -- one line is
+	// a budget, and a rarely-pressed per-row action loses it to dd, the
+	// A/U reversal and , (settings has no other visible entry point).
+	{"dd", "dd", "delete", func(m Model) bool { return footerRowEligible(m, true, canDelete) }},
+	{"A", "A", "archive", func(m Model) bool { return footerRowEligible(m, false, footerArchiveEligible) }},
+	{"U", "U", "unarchive", func(m Model) bool { return footerRowEligible(m, false, canUnarchive) }},
+	{",", ",", "settings", nil},
 	{"i", "i", "detail", func(m Model) bool { return footerRowEligible(m, false, canShowDetail) }},
 	{"?", "?", "help", nil},
 	{"q", "q", "quit", nil},
