@@ -206,6 +206,19 @@ type Model struct {
 	// profileSwitchNote's existing shape) without closing the dialog.
 	deleteConfirming bool
 	deleteNote       string
+	// deleteScroll is task 018's own instance of the same createScroll/
+	// envScroll pattern: framedDialogScrollable's viewport offset for the
+	// bulk `dd` confirm (bulkDeleteConfirmBody), whose marked-session list
+	// can push the dialog past the frame budget the same way the create
+	// modal and env editor already can (framedDialogScrollable's own doc
+	// comment names "a bulk dd confirm over ~13+ marks" explicitly).
+	// PgUp/PgDn (updateBulkDeleteConfirm) move it; every dd that opens the
+	// confirm dialog resets it to 0, single-session or marked-set alike, so
+	// a reopen never starts scrolled from wherever a previous visit left
+	// off. The single-session delete/purge confirm does not yet render
+	// through framedDialogScrollable (task 019), but resetting this here
+	// unconditionally costs nothing and leaves it ready for that pass.
+	deleteScroll int
 	// deletePurgeValue is task 110's non-default "purge conversation"
 	// choice inside the dd confirm dialog (never offered anywhere else,
 	// never default): left/right cycles deletePurgeOptions, reset to
@@ -2211,6 +2224,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "d" && len(m.sessions) > 0 && canDelete(m.sessions[m.selected]) {
 				m.deleteConfirming = true
 				m.deleteNote = ""
+				m.deleteScroll = 0
 				if len(m.marked) > 0 {
 					// Task 112: purge resolves one session's one declared
 					// transcript path at a time (task 109/110) -- not
@@ -4556,7 +4570,10 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // applyDialogContract already handles via a nil Cycle). Submit clears the
 // mark set THE MOMENT it fires ("the marks clear on the action"), before
 // the async delete loop even runs, using the session list resolved right
-// now rather than re-reading m.marked after it is gone.
+// now rather than re-reading m.marked after it is gone. Task 018: PgUp/PgDn
+// scroll m.deleteScroll, measured off the plain bulkDeleteConfirmBody (never
+// the coloured one, so a theme change can never move where a page boundary
+// falls), mirroring createView/envView's own framedDialogScrollable pairing.
 func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	sessions := m.markedSessions()
 	cmd, handled := applyDialogContract(msg, dialogContract{
@@ -4584,6 +4601,12 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	})
 	if handled {
 		return m, cmd
+	}
+	switch msg.String() {
+	case "pgup":
+		m.deleteScroll = m.dialogScrollByPage(m.deleteScroll, m.bulkDeleteConfirmBody(), -1)
+	case "pgdown":
+		m.deleteScroll = m.dialogScrollByPage(m.deleteScroll, m.bulkDeleteConfirmBody(), 1)
 	}
 	return m, nil
 }
@@ -4676,8 +4699,16 @@ func (m Model) archiveConfirmBody() string {
 // is archived (ArchivedAt != 0), the body says so in as many words alongside
 // §11.4's existing target/survives text -- reaching it through / (the only
 // route to an archived row, task 008) must not read like an ordinary
-// live-row delete.
+// live-row delete. Task 018: a non-empty mark set renders through
+// framedDialogScrollable (styledBulkDeleteConfirmBody, m.deleteScroll)
+// instead -- framedDialogScrollable's own doc comment names "a bulk dd
+// confirm over ~13+ marks" as one of the dialogs that already overflows an
+// 80x24 frame through the unbounded framedDialog path this keeps for the
+// single-session case below (its own theming/bounding is task 019).
 func (m Model) deleteConfirmView() string {
+	if len(m.marked) > 0 {
+		return m.framedDialogScrollable(m.styledBulkDeleteConfirmBody(), m.deleteScroll)
+	}
 	return m.framedDialog(m.deleteConfirmBody())
 }
 
@@ -4739,6 +4770,70 @@ func (m Model) bulkDeleteConfirmBody() string {
 		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
 	}
 	return b.String()
+}
+
+// bulkDeleteFooterKeyTokens is styledBulkDeleteConfirmBody's own footer
+// vocabulary (task 018), the same shape as createFooterKeyTokens one
+// section up in this file: the leading token of each word in
+// bulkDeleteConfirmBody's own submit line ("Enter deletes all · Esc
+// cancels"), used to decide which already-wrapped word gets theme.Key
+// instead of theme.Hint.
+var bulkDeleteFooterKeyTokens = map[string]bool{
+	"Enter": true,
+	"Esc":   true,
+}
+
+// styledBulkDeleteConfirmBody re-derives bulkDeleteConfirmBody's exact
+// structure -- same title/explanation/session-list/footer/note order --
+// but colours each finished PHYSICAL line rather than the logical one,
+// exactly like styledCreateBody/styledEnvBody: every string below is
+// wrapped via m.wrapDialogLines FIRST, and only the strings that call
+// already returned are ever coloured, so a colour token can never straddle
+// a word-wrap boundary wrapDialogLines has not drawn yet. Token mapping is
+// SPEC.md:1355 verbatim for this dialog: the title in `title`, the
+// explanatory survives-text in `dimmed`, each marked session's own name in
+// `text` (the dialog's one list of values, mirroring a field's value
+// colour), the footer legend's keys in `key` and the rest of it in `hint`,
+// and a failed-submit note in `error`. This dialog has no field to focus
+// (updateBulkDeleteConfirm's own doc: no Fields.Cycle at all), so
+// `selection` never applies here.
+func (m Model) styledBulkDeleteConfirmBody() string {
+	wrap := m.wrapDialogLines
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if bulkDeleteFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	sessions := m.markedSessions()
+	colorWhole(theme.Title, fmt.Sprintf("Delete %d marked sessions", len(sessions)))
+	out = append(out, "")
+	colorWhole(theme.Dimmed, "This kills each live pane (if any) and removes each session from the\nlist. Every marked session's own conversation and working directory\nsurvive, untouched. Purge is not offered for a bulk delete.")
+	out = append(out, "")
+	for _, s := range sessions {
+		colorWhole(theme.Text, "  "+s.Name)
+	}
+	out = append(out, "")
+	colorFooterLine("Enter deletes all · Esc cancels")
+	if m.deleteNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.deleteNote)
+	}
+	return strings.Join(out, "\n")
 }
 
 // detailBody builds the selected session's full detail text (detailView's
