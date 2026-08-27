@@ -418,11 +418,11 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	// against the shared *sql.DB (that would block on SQLite's single
 	// writer lock behind this very tx). A live or archived holder still
 	// refuses, unchanged.
-	if err := reapTombstonedHolderTx(ctx, tx, "name", input.Name,
+	if err := reapTombstonedHolderTx(ctx, tx, "name", input.Name, "",
 		fmt.Sprintf("session name %q already exists", input.Name), input.CreatedAt); err != nil {
 		return Session{}, err
 	}
-	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug,
+	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug, "",
 		fmt.Sprintf("session name %q collides with existing slug %q", input.Name, slug), input.CreatedAt); err != nil {
 		return Session{}, err
 	}
@@ -1186,17 +1186,21 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 	// reasoning (see the comment there): checking name equality first,
 	// inside this same transaction, makes "already exists" deterministic
 	// rather than an accident of SQLite's own UNIQUE-constraint-check order.
-	var nameExists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE name = ? AND id != ?`, newName, sessionID).Scan(&nameExists); err == nil {
-		return fmt.Errorf("session name %q already exists", newName)
-	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("check session name %q: %w", newName, err)
+	//
+	// SPEC.md §9.2 (R77): a name or slug held ONLY by a tombstoned row is
+	// available again, and renaming onto it reaps that row -- in this same
+	// transaction, via reapTombstonedHolderTx, never a second BeginTx
+	// against the shared *sql.DB. sessionID is excluded from both lookups
+	// so renaming a session onto its own current name/slug never finds
+	// itself as a "holder", exactly as the two `AND id != ?` checks this
+	// replaces already did. A live or archived holder still refuses.
+	if err := reapTombstonedHolderTx(ctx, tx, "name", newName, sessionID,
+		fmt.Sprintf("session name %q already exists", newName), at); err != nil {
+		return err
 	}
-	var slugExists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE slug = ? AND id != ?`, slug, sessionID).Scan(&slugExists); err == nil {
-		return fmt.Errorf("session name %q collides with existing slug %q", newName, slug)
-	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("check session slug %q: %w", slug, err)
+	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug, sessionID,
+		fmt.Sprintf("session name %q collides with existing slug %q", newName, slug), at); err != nil {
+		return err
 	}
 	// Note: only the `name` column is written here -- `slug` is deliberately
 	// left out of this UPDATE, which is the entire mechanism by which the
@@ -1623,16 +1627,21 @@ func reapSessionTx(ctx context.Context, tx *sql.Tx, sessionID string, at int64) 
 // half of R77: it looks up whatever row currently holds `value` in `column`
 // ("name" or "slug", always a literal supplied by this package, never
 // caller/user input, so the fmt.Sprintf below never carries untrusted SQL)
-// inside the caller's own transaction. No holder: nil, proceed. A LIVE or
-// ARCHIVED holder (deleted_at == 0, which is true for both -- R78 keeps an
-// archived row's name reserved) is refused with conflictMsg, unchanged from
-// before this task. A TOMBSTONED holder is reaped via reapSessionTx, in the
-// same transaction as the caller's own INSERT/UPDATE, so the row is gone by
-// the time that statement runs and never trips its UNIQUE constraint.
-func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, conflictMsg string, at int64) error {
+// inside the caller's own transaction. excludeID, when non-empty, is
+// excluded from the lookup -- RenameSession's own row must never be found
+// as its own "holder" just because the new name/slug happens to already be
+// its current one; CreateSession has no existing row yet and passes "",
+// under which the exclusion is a no-op since no session ever has an empty
+// id. No holder: nil, proceed. A LIVE or ARCHIVED holder (deleted_at == 0,
+// which is true for both -- R78 keeps an archived row's name reserved) is
+// refused with conflictMsg, unchanged from before this task. A TOMBSTONED
+// holder is reaped via reapSessionTx, in the same transaction as the
+// caller's own INSERT/UPDATE, so the row is gone by the time that statement
+// runs and never trips its UNIQUE constraint.
+func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, excludeID, conflictMsg string, at int64) error {
 	var id string
 	var deletedAt int64
-	err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT id, deleted_at FROM sessions WHERE %s = ?`, column), value).Scan(&id, &deletedAt)
+	err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT id, deleted_at FROM sessions WHERE %s = ? AND id != ?`, column), value, excludeID).Scan(&id, &deletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

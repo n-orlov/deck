@@ -350,6 +350,112 @@ func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
 	}
 }
 
+// TestRenameSessionReapsTombstonedNameHolder proves task 004: renaming a
+// session onto a name whose only holder is tombstoned succeeds through the
+// same reapTombstonedHolderTx helper CreateSession uses (R77, SPEC.md
+// §9.2), reaping that holder inside RenameSession's own transaction rather
+// than refusing the rename.
+func TestRenameSessionReapsTombstonedNameHolder(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	subject := createTombstoneTestSession(t, st, ctx, "rename-subject")
+	old := createTombstoneTestSession(t, st, ctx, "rename-old-holder")
+	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
+		t.Fatalf("soft delete %q: %v", old.ID, err)
+	}
+
+	if err := st.RenameSession(ctx, subject.ID, old.Name, "user", 300); err != nil {
+		t.Fatalf("rename onto tombstoned name %q: %v", old.Name, err)
+	}
+
+	renamed, err := st.GetSession(ctx, subject.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Name != old.Name {
+		t.Fatalf("name = %q, want %q", renamed.Name, old.Name)
+	}
+	if renamed.Slug != subject.Slug {
+		t.Fatalf("slug changed from %q to %q; a rename must never touch slug", subject.Slug, renamed.Slug)
+	}
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, old.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("tombstoned holder %q survived the reap-on-rename, count = %d", old.ID, count)
+	}
+}
+
+// TestRenameSessionReapsTombstonedSlugHolder covers the §3.2 slug half:
+// a tombstoned row holding only the slug -- not the exact name -- must
+// still be reaped so the rename proceeds.
+func TestRenameSessionReapsTombstonedSlugHolder(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	subject := createTombstoneTestSession(t, st, ctx, "rename-slug-subject")
+	old, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "rename-slug-old", Name: "Slug Holder", CWD: "/work/rename-slug-old",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+	})
+	if err != nil {
+		t.Fatalf("create slug holder: %v", err)
+	}
+	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
+		t.Fatalf("soft delete %q: %v", old.ID, err)
+	}
+
+	if err := st.RenameSession(ctx, subject.ID, "slug holder", "user", 300); err != nil {
+		t.Fatalf("rename reusing tombstoned slug: %v", err)
+	}
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, old.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("tombstoned slug holder %q survived the reap-on-rename, count = %d", old.ID, count)
+	}
+}
+
+// TestRenameSessionRefusesLiveAndArchivedHolders proves a live holder and
+// an archived holder (R78: archiving keeps a name reserved) both still
+// refuse the rename, unchanged by the tombstone-reap addition, and that a
+// refused rename never mutates the subject row.
+func TestRenameSessionRefusesLiveAndArchivedHolders(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	subject := createTombstoneTestSession(t, st, ctx, "rename-refuse-subject")
+	live := createTombstoneTestSession(t, st, ctx, "rename-refuse-live")
+	archived := createTombstoneTestSession(t, st, ctx, "rename-refuse-archived")
+	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatalf("archive %q: %v", archived.ID, err)
+	}
+
+	if err := st.RenameSession(ctx, subject.ID, live.Name, "user", 300); err == nil {
+		t.Fatal("rename onto a live holder's name must be refused, got nil error")
+	}
+	if err := st.RenameSession(ctx, subject.ID, archived.Name, "user", 301); err == nil {
+		t.Fatal("rename onto an archived holder's name must be refused, got nil error")
+	}
+
+	reloaded, err := st.GetSession(ctx, subject.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Name != subject.Name {
+		t.Fatalf("a refused rename mutated the subject's name to %q, want unchanged %q", reloaded.Name, subject.Name)
+	}
+	for _, holder := range []Session{live, archived} {
+		var count int
+		if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, holder.ID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("holder %q must survive a refused rename, count = %d", holder.ID, count)
+		}
+	}
+}
+
 // TestTombstonedNameHoldersAndSessionRowExists covers the two reads the
 // SERVICE layer needs to finish a name-reuse reap on the filesystem after
 // the create's own transaction has committed: which tombstoned rows hold a
