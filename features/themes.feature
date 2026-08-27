@@ -49,11 +49,17 @@ Feature: theme rendering end-to-end (requirement 49)
     Then deck client "chrome" text "deck" has foreground token "title"
     And deck client "chrome" cell at row 0 column 0 has foreground token "border_focus"
     And deck client "chrome" cell at row 0 column 99 has foreground token "border"
-    And deck client "chrome" text "Enter" has foreground token "key"
-    And deck client "chrome" text "attach" has foreground token "hint"
     When deck client "chrome" creates shell session "grp-one"
     And deck client "chrome" creates shell session "grp-two"
-    And the state database session "grp-two" has workspace "req49-beta-workspace"
+    # The footer's key/hint chrome is read once a row exists: SPEC §11.3's
+    # footer "never lists a key that would refuse the current selection",
+    # and `↵`/`a` refuse an empty list outright (there is no pane to
+    # reach), so the empty first frame above legitimately carries only the
+    # global keys -- reading `key`/`hint` off it would be reading a footer
+    # deck no longer draws.
+    Then deck client "chrome" text "Enter" has foreground token "key"
+    And deck client "chrome" text "attach" has foreground token "hint"
+    When the state database session "grp-two" has workspace "req49-beta-workspace"
     Then within one configured reconcile interval deck client "chrome" screen contains "req49-beta-workspace"
     And deck client "chrome" text "req49-beta-workspace" has foreground token "group"
     # Task 301 (requirement 52) auto-selects the just-created row, so after

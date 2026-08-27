@@ -423,9 +423,22 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// The released PTY shows the actionable footer before help opens; the
 	// companion lifecycle PTY test exercises n, a, attachment, and x.
 	// Help itself must never advertise a later-phase command.
+	//
+	// This client has NO sessions yet ("No sessions yet" above), and SPEC
+	// §11.3 is that the footer never lists a key that would refuse the
+	// current selection -- "every per-row key when the list is empty". So
+	// the empty-list footer is exactly the global commands; `Enter`, `a`,
+	// `Y`, `x`, `r`, `R` and `i` are absent here because there is no row
+	// for them to act on (task 013 -- internal/tui/footer_legend_test.go
+	// pins the per-row cases, and the help overlay asserted below still
+	// names every one of those keys, since absence from the footer is never
+	// absence from the keymap).
 	help := output.String()
-	if !strings.Contains(help, "up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - r resume") {
+	if !strings.Contains(help, "up/down - n new - ? help - q quit") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
+	}
+	if strings.Contains(help, "up/down - Enter interactive - a attach") {
+		t.Errorf("empty-list footer still advertises per-row keys (SPEC §11.3):\n%s", help)
 	}
 	// Every new key, create-modal field and control this phase added must be
 	// visible through a real PTY, not merely via View() in internal/tui.

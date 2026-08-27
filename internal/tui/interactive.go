@@ -39,7 +39,7 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	session := m.sessions[m.selected]
-	if session.Status == "stopped" {
+	if !canReachPane(session) {
 		m.attachError = "Cannot enter interactive mode: session is stopped; resume it first"
 		return m, nil
 	}
