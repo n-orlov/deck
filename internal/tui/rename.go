@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // This file is task 013's `i` detail dialog's rename action (SPEC §11.4,
@@ -151,8 +152,20 @@ func (m *Model) submitRename() tea.Cmd {
 // SPEC §11.4/PRD requirement 31 both require -- the tmux session name is
 // NOT changing, deck's display name and tmux's own session name are
 // deliberately decoupled -- so the user is told this rather than left to
-// discover it later.
+// discover it later. Task 021: rendered through styledRenameBody, never
+// renameBody itself, the same split styledArchiveConfirmBody/
+// styledProfileSwitchBody already draw for their own dialogs, so §11.6's
+// tokens land at render time without ever being baked into the plain
+// string a test or the box's own word-wrap measures.
 func (m Model) renameView() string {
+	return m.framedDialog(m.styledRenameBody())
+}
+
+// renameBody builds renameView's text before framedDialog's box-width
+// padTrunc touches it, split out for the same reason archiveConfirmBody
+// is: a test can assert the exact wording without a terminal-rendering
+// concern in between.
+func (m Model) renameBody() string {
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Rename %s\n\n", session.Name)
@@ -162,5 +175,62 @@ func (m Model) renameView() string {
 	if m.renameNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.renameNote)
 	}
-	return m.framedDialog(b.String())
+	return b.String()
+}
+
+// renameFooterKeyTokens is styledRenameBody's own footer vocabulary (task
+// 021), the same shape as archiveConfirmFooterKeyTokens: the leading
+// token of each key phrase in renameBody's own submit line ("Type a new
+// name · Enter confirms · Esc cancels"), used to decide which
+// already-wrapped word gets theme.Key instead of theme.Hint.
+var renameFooterKeyTokens = map[string]bool{
+	"Enter": true,
+	"Esc":   true,
+}
+
+// styledRenameBody re-derives renameBody's exact structure -- same
+// title/field/explanation/footer/note order -- but colours each finished
+// PHYSICAL line rather than the logical one, exactly like
+// styledArchiveConfirmBody: every string below is wrapped via
+// m.wrapDialogLines FIRST, and only the strings that call already
+// returned are ever coloured, so a colour token can never straddle a
+// word-wrap boundary wrapDialogLines has not drawn yet. Token mapping is
+// SPEC.md:1355: the title in `title`, the New name field via detailField
+// (already hint/text, task 022 -- untouched here), the tmux-name
+// explanation in `dimmed`, the footer legend's keys in `key` and the rest
+// of it in `hint`, and a failed-submit note in `error`.
+func (m Model) styledRenameBody() string {
+	session := m.sessions[m.selected]
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if renameFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Rename %s", session.Name))
+	out = append(out, "")
+	out = append(out, m.detailField("New name:  ", m.renameValue))
+	out = append(out, "")
+	colorWhole(theme.Dimmed, fmt.Sprintf("This changes only the display name. The tmux session stays named\n%q; it is never renamed, so a rename can never move or disturb a\nlive pane's identity.", "deck_"+session.Slug))
+	out = append(out, "")
+	colorFooterLine("Type a new name · Enter confirms · Esc cancels")
+	if m.renameNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.renameNote)
+	}
+	return strings.Join(out, "\n")
 }

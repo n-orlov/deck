@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // maxEventLogRows is the `E` event log's own bound (SPEC \u00a712/requirement
@@ -38,7 +39,7 @@ const maxEventLogPayloadRunes = 96
 // "E" key handler in tui.go), never re-fetched here no matter how many
 // reconcileTick/previewTick messages land while the dialog stays open.
 func (m Model) eventLogView() string {
-	return m.framedDialogScrollable(m.eventLogBody(), m.eventLogScroll)
+	return m.framedDialogScrollable(m.styledEventLogBody(), m.eventLogScroll)
 }
 
 // eventLogBody builds eventLogView's own content, split out (task 078) so
@@ -123,6 +124,73 @@ func (m Model) updateEventLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.eventLogScroll = m.dialogScrollByLines(m.eventLogScroll, m.eventLogBody(), 1)
 	}
 	return m, nil
+}
+
+// eventLogFooterKeyTokens is styledEventLogBody's own footer vocabulary
+// (task 021): the closing sentence's one contract key ("Esc closes."),
+// used to decide which already-wrapped word gets theme.Key instead of
+// theme.Hint, the same shape archiveConfirmFooterKeyTokens/
+// renameFooterKeyTokens already use for their own dialogs.
+var eventLogFooterKeyTokens = map[string]bool{
+	"Esc": true,
+}
+
+// styledEventLogBody re-derives eventLogBody's exact structure -- same
+// title/rows/closing-note order, same early returns for "no store"/"read
+// error" -- but colours each finished PHYSICAL line rather than the
+// logical one, exactly like styledArchiveConfirmBody/styledRenameBody:
+// every string below is wrapped via m.wrapDialogLines FIRST, so a colour
+// token can never straddle a word-wrap boundary wrapDialogLines has not
+// drawn yet. Token mapping is SPEC.md:1355: the title in `title`, the
+// "no store"/"no events yet" states and the closing explanatory sentence
+// in `dimmed`, a read error in `error`, each event row (this dialog's
+// only "value" content, there being no separate field label here) in
+// `text`, and the closing sentence's own "Esc" in `key`.
+func (m Model) styledEventLogBody() string {
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if eventLogFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, "Event log")
+	out = append(out, "")
+	if m.store == nil {
+		colorWhole(theme.Dimmed, "(event log is unavailable: no store is attached)")
+		return strings.Join(out, "\n")
+	}
+	if m.eventLogErr != nil {
+		colorWhole(theme.Error, fmt.Sprintf("Cannot read events: %s", m.eventLogErr))
+		return strings.Join(out, "\n")
+	}
+	if len(m.eventLogRows) == 0 {
+		colorWhole(theme.Dimmed, "(no events recorded yet)")
+	} else {
+		for _, event := range m.eventLogRows {
+			reason := event.Reason
+			if reason == "" {
+				reason = "-"
+			}
+			payload := m.renderEventPayload(event.Payload)
+			colorWhole(theme.Text, fmt.Sprintf("%-4s  %-22s %-20s %s", m.relativeAge(event.At), event.Kind, reason, payload))
+		}
+	}
+	colorFooterLine(fmt.Sprintf("\nNewest first, up to the most recent %d events. Secret-shaped payload\nvalues mask the same way the env editor's do. Esc closes.", maxEventLogRows))
+	return strings.Join(out, "\n")
 }
 
 // renderEventPayload is the event log's one display transformation of a
