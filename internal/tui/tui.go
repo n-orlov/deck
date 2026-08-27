@@ -4348,10 +4348,26 @@ func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// profileSwitchView renders the `P` permission-profile switch dialog. It
-// states plainly that the change only applies on the session's next
-// launch/restart; it never claims the live pane's mode changed (SPEC §5).
-func (m Model) profileSwitchView() string {
+// cycleConfirmFooterKeyTokens is the footer-legend vocabulary shared by
+// every single-field left/right-cycle dialog this task themes --
+// profileSwitchView, pinView and restartChoiceView all render the exact
+// same submit line ("Left/Right cycles · Enter confirms · Esc cancels"),
+// so one map, mirroring archiveConfirmFooterKeyTokens/
+// deleteConfirmFooterKeyTokens' shape, covers all three rather than three
+// byte-identical copies.
+var cycleConfirmFooterKeyTokens = map[string]bool{
+	"Left/Right": true,
+	"Enter":      true,
+	"Esc":        true,
+}
+
+// profileSwitchBody builds profileSwitchView's text before framedDialog's
+// box-width padTrunc gets anywhere near it, the same split
+// deleteConfirmBody/deleteConfirmView draws: a plain function a test (or
+// styledProfileSwitchBody's own equivalence check) can call directly,
+// separate from the coloured styledProfileSwitchBody below and from
+// framedDialog's own terminal-width clamp.
+func (m Model) profileSwitchBody() string {
 	session := m.sessions[m.selected]
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	var b strings.Builder
@@ -4363,7 +4379,90 @@ func (m Model) profileSwitchView() string {
 	if m.profileSwitchNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.profileSwitchNote)
 	}
-	return m.framedDialog(b.String())
+	return b.String()
+}
+
+// styledProfileSwitchBody re-derives profileSwitchBody's exact structure --
+// same title/fields/prose/footer/note order -- but colours each finished
+// PHYSICAL line rather than the logical one, exactly like
+// styledArchiveConfirmBody/styledDeleteConfirmBody: every string is
+// wrapped via m.wrapDialogLines FIRST, so a colour token can never
+// straddle a word-wrap boundary wrapDialogLines has not drawn yet. Token
+// mapping is SPEC.md:1355: the title in `title`, the explanatory
+// restart-to-apply sentence in `dimmed`, the footer legend's keys in
+// `key` and the rest in `hint`, a failed-submit note in `error`, and --
+// this task's own addition -- the "New:" row (the only field this dialog
+// ever lets left/right cycle) carrying the same `selection` treatment a
+// selected list row does (renderCreateRowSegments, reused verbatim: task
+// 020, like task 017's env editor, has one row that is always "focused"
+// since there is no Tab between fields here). The "Current:" row is not a
+// cycle target, so it renders through the ordinary unfocused branch of
+// the same helper -- label in `hint`, value in `text`, matching
+// detailField's own pre-existing split so the two rows read consistently.
+func (m Model) styledProfileSwitchBody() string {
+	session := m.sessions[m.selected]
+	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
+	wrap := m.wrapDialogLines
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorField := func(label, value string, focused bool) {
+		for _, l := range wrap(label + value) {
+			var segs []settingsRowSegment
+			rest := l
+			if strings.HasPrefix(l, label) {
+				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+				rest = strings.TrimPrefix(l, label)
+			}
+			if rest != "" {
+				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+			}
+			if len(segs) == 0 {
+				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+			}
+			out = append(out, m.renderCreateRowSegments(focused, segs))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if cycleConfirmFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Change permission profile for %s", session.Name))
+	out = append(out, "")
+	colorField("Current:   ", session.PermissionProfile, false)
+	colorField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.profileSwitchValue, strings.Join(options, ", ")), true)
+	out = append(out, "")
+	colorWhole(theme.Dimmed, "This applies on the session's next launch/restart; it does not change a\nrunning pane's mode.")
+	out = append(out, "")
+	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	if m.profileSwitchNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.profileSwitchNote)
+	}
+	return strings.Join(out, "\n")
+}
+
+// profileSwitchView renders the `P` permission-profile switch dialog. It
+// states plainly that the change only applies on the session's next
+// launch/restart; it never claims the live pane's mode changed (SPEC §5).
+// Task 020: the body is now styledProfileSwitchBody, never
+// profileSwitchBody itself, the same split styledArchiveConfirmBody/
+// styledDeleteConfirmBody already draw for their own dialogs.
+func (m Model) profileSwitchView() string {
+	return m.framedDialog(m.styledProfileSwitchBody())
 }
 
 // resumeModeOptions lists the SPEC §8/§9.3 resume_state choices the `p`
@@ -4406,11 +4505,10 @@ func (m Model) updatePinDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// pinView renders the `p` pin/start-fresh dialog. "pinned" always resumes
-// the session's own current conversation id, sticky across a deck restart;
-// "fresh-once" starts a brand-new conversation exactly once and then
-// reverts to auto; neither ever touches a live pane.
-func (m Model) pinView() string {
+// pinBody builds pinView's text before framedDialog's box-width padTrunc
+// gets anywhere near it, the same plain/styled split profileSwitchBody
+// draws one section up.
+func (m Model) pinBody() string {
 	session := m.sessions[m.selected]
 	state := session.ResumeState
 	if state == "" {
@@ -4425,7 +4523,82 @@ func (m Model) pinView() string {
 	if m.pinNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.pinNote)
 	}
-	return m.framedDialog(b.String())
+	return b.String()
+}
+
+// styledPinBody re-derives pinBody's exact structure -- see
+// styledProfileSwitchBody's own doc comment one section up for the shape
+// this mirrors line for line, including the same "New:" row selection
+// treatment for the dialog's one cycle target and the "Current:" row's
+// unfocused rendering. Token mapping is SPEC.md:1355: title in `title`,
+// the pinned/fresh-once explanatory sentence in `dimmed`, footer keys in
+// `key` over `hint` prose, a failed-submit note in `error`.
+func (m Model) styledPinBody() string {
+	session := m.sessions[m.selected]
+	state := session.ResumeState
+	if state == "" {
+		state = "auto"
+	}
+	wrap := m.wrapDialogLines
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorField := func(label, value string, focused bool) {
+		for _, l := range wrap(label + value) {
+			var segs []settingsRowSegment
+			rest := l
+			if strings.HasPrefix(l, label) {
+				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+				rest = strings.TrimPrefix(l, label)
+			}
+			if rest != "" {
+				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+			}
+			if len(segs) == 0 {
+				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+			}
+			out = append(out, m.renderCreateRowSegments(focused, segs))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if cycleConfirmFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Change resume mode for %s", session.Name))
+	out = append(out, "")
+	colorField("Current:   ", state, false)
+	colorField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.pinValue, strings.Join(resumeModeOptions, ", ")), true)
+	out = append(out, "")
+	colorWhole(theme.Dimmed, "pinned always resumes this session's own current conversation id, sticky\nacross a deck restart. fresh-once starts a brand-new conversation exactly\nonce, then reverts to auto. Neither changes a running pane.")
+	out = append(out, "")
+	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	if m.pinNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.pinNote)
+	}
+	return strings.Join(out, "\n")
+}
+
+// pinView renders the `p` pin/start-fresh dialog. "pinned" always resumes
+// the session's own current conversation id, sticky across a deck restart;
+// "fresh-once" starts a brand-new conversation exactly once and then
+// reverts to auto; neither ever touches a live pane. Task 020: the body is
+// now styledPinBody, never pinBody itself.
+func (m Model) pinView() string {
+	return m.framedDialog(m.styledPinBody())
 }
 
 // restartChoiceOptions lists task 023's `R` choice for a shell session:
@@ -4487,6 +4660,13 @@ func (m Model) updateRestartChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // inject exports the pending change into the SAME already-running shell
 // process without ever killing it.
 func (m Model) restartChoiceView() string {
+	return m.framedDialog(m.styledRestartChoiceBody())
+}
+
+// restartChoiceBody builds restartChoiceView's text before framedDialog's
+// box-width padTrunc gets anywhere near it, the same plain/styled split
+// profileSwitchBody/pinBody draw above.
+func (m Model) restartChoiceBody() string {
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Restart or inject for %s\n\n", session.Name)
@@ -4497,7 +4677,75 @@ func (m Model) restartChoiceView() string {
 	if m.restartChoiceNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.restartChoiceNote)
 	}
-	return m.framedDialog(b.String())
+	return b.String()
+}
+
+// styledRestartChoiceBody re-derives restartChoiceBody's exact structure --
+// see styledProfileSwitchBody's own doc comment for the shape this
+// mirrors: title/field/prose/footer/note order, coloured per finished
+// PHYSICAL line after m.wrapDialogLines. Unlike profileSwitchBody/pinBody
+// this dialog has only one field row ("Choice:"), so it is always the
+// focused/cycle target and always carries the `selection` treatment --
+// there is no unfocused "Current:" counterpart here. Token mapping is
+// SPEC.md:1355: title in `title`, both consequence-stating sentences
+// (what restart does, what inject does) in `dimmed` -- neither is a
+// warning about an irreversible loss the way archive's live-agent
+// sentence is, just plain statements of two different, equally valid
+// outcomes -- footer keys in `key` over `hint` prose, a failed-submit note
+// in `error`.
+func (m Model) styledRestartChoiceBody() string {
+	session := m.sessions[m.selected]
+	wrap := m.wrapDialogLines
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorField := func(label, value string, focused bool) {
+		for _, l := range wrap(label + value) {
+			var segs []settingsRowSegment
+			rest := l
+			if strings.HasPrefix(l, label) {
+				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+				rest = strings.TrimPrefix(l, label)
+			}
+			if rest != "" {
+				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+			}
+			if len(segs) == 0 {
+				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+			}
+			out = append(out, m.renderCreateRowSegments(focused, segs))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if cycleConfirmFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Restart or inject for %s", session.Name))
+	out = append(out, "")
+	colorField("Choice:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.restartChoiceValue, strings.Join(restartChoiceOptions, ", ")), true)
+	out = append(out, "")
+	colorWhole(theme.Dimmed, "restart kills this session's pane and relaunches it with the resume argv\n(same conversation id), losing whatever state the running shell had.")
+	colorWhole(theme.Dimmed, "inject exports the pending environment change into the SAME live shell\nprocess via export -- the pane is never killed or relaunched.")
+	out = append(out, "")
+	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	if m.restartChoiceNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.restartChoiceNote)
+	}
+	return strings.Join(out, "\n")
 }
 
 // deletePurgeOptions lists task 110's non-default "purge conversation"
