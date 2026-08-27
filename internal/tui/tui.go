@@ -5292,6 +5292,32 @@ func (m Model) createCWDHelp() string {
 	return help
 }
 
+// createNameReuseWarning reports the specific, in-dialog reason to show on
+// the Name field before submit (PRD R77 / SPEC §11.4's "the dialog says so
+// before it happens"): when the typed name (or its §3.2 slug) is currently
+// held ONLY by a tombstoned row, submitting reuses it, and CreateSession's
+// own tx-scoped reap (task 003, reapTombstonedHolderTx) silently removes
+// that row -- events, files and all -- forfeiting its 60s undo as a side
+// effect the user would otherwise only discover after the fact. "" means
+// nothing to warn about: a blank field (resolveCreateName's synthesized
+// default was never typed by the user, so it is not checked here), a name
+// that is free, or one held by a LIVE or ARCHIVED row (those refuse the
+// create outright instead -- store's own UNIQUE constraint / R78 -- so
+// there is no undo at stake to warn about). A nil store (e.g. this Model
+// used in a unit test with no backing store) is treated the same as
+// "nothing to warn about" rather than a panic.
+func (m Model) createNameReuseWarning() string {
+	name := strings.TrimSpace(m.createName)
+	if name == "" || m.store == nil {
+		return ""
+	}
+	holders, err := m.store.TombstonedNameHolders(context.Background(), name)
+	if err != nil || len(holders) == 0 {
+		return ""
+	}
+	return "this name belongs to a deleted session; reuse discards its undo"
+}
+
 // createFieldRows describes the create modal's field set: label, current
 // value renderer and a one-line explanation of what the field does. Keeping
 // this as one table (rather than scattered Fprintf calls) is what lets a
@@ -5335,6 +5361,19 @@ func (m Model) createView() string {
 	b.WriteString(title + "\n")
 	for field, row := range m.createFieldRows() {
 		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", marker(field), row.label, row.value, row.help)
+		if field == 0 {
+			// The reuse warning (PRD R77 / SPEC §11.4) gets its own
+			// dedicated line rather than being folded into the Name
+			// row's own one-line explanation above: that explanation is
+			// already long enough on its own that appending this to it
+			// risks framedDialog's word-wrap splitting the warning's own
+			// sentence across two physical lines at a point that varies
+			// with dialogWidth, whereas a short, dedicated line stays
+			// intact.
+			if warning := m.createNameReuseWarning(); warning != "" {
+				fmt.Fprintf(&b, "    %s\n", warning)
+			}
+		}
 	}
 	if len(m.createCWDCandidates) > 0 {
 		// task 012's tab-completion listing branch: rendered directly under
