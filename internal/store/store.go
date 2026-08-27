@@ -1656,15 +1656,15 @@ const tombstoneSweepMinInterval = time.Hour
 const tombstoneSweepLastRunKey = "tombstone_sweep_last_run_at"
 
 // tombstoneSweepBatchRows bounds how many tombstoned rows a single
-// SweepTombstones batch reaps; tombstoneSweepMaxBatches bounds how many
-// batches one call performs. Together they cap the synchronous work one
-// call can do -- SPEC's "bounded batches", one batch never blocks the
-// caller -- even after a long backlog (deck not run for a long time, or
-// many abandoned dd's with no tea.Tick left to reap them, task 011).
-const (
-	tombstoneSweepBatchRows  = 200
-	tombstoneSweepMaxBatches = 50
-)
+// SweepTombstones call reaps. One call performs exactly ONE batch and
+// returns -- deliberately unlike EnforceEventRetention's inner batch loop
+// -- because this sweep's first caller runs on store open, before the
+// model exists and before the first frame is drawn: one batch is the whole
+// bound on how long it can hold that path up, however large the backlog is
+// (deck not run for a long time, or many abandoned dd's with no tea.Tick
+// left to reap them, task 011). Any remainder is left for the next pass
+// rather than pushing the caller's latency past this bound.
+const tombstoneSweepBatchRows = 200
 
 // SweepTombstones reaps every session row whose deleted_at is older than
 // deleteGrace, oldest first, in bounded batches, modelled directly on
@@ -1682,6 +1682,13 @@ const (
 // reap pass only on the first call ever (store open, no prior ui_state
 // row) and thereafter at most once per tombstoneSweepMinInterval; every
 // call in between is a cheap no-op single SELECT against ui_state.
+//
+// A pass reaps at most tombstoneSweepBatchRows rows, oldest tombstone
+// first, in a single transaction, and then returns: one batch never blocks
+// the caller. A backlog larger than one batch is therefore drained one
+// batch per pass -- correctness (a row past its grace window is gone)
+// never depends on a single call doing unbounded work on the store-open
+// path.
 func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, now int64) error {
 	if deleteGrace < 0 {
 		return errors.New("delete grace window must not be negative")
@@ -1701,19 +1708,13 @@ func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, 
 		return nil
 	}
 	cutoff := now - deleteGrace.Milliseconds()
-	for batch := 0; batch < tombstoneSweepMaxBatches; batch++ {
-		ids, err := s.tombstonesOlderThan(ctx, cutoff, tombstoneSweepBatchRows)
-		if err != nil {
-			return fmt.Errorf("list expired tombstones: %w", err)
-		}
-		if len(ids) == 0 {
-			break
-		}
+	ids, err := s.tombstonesOlderThan(ctx, cutoff, tombstoneSweepBatchRows)
+	if err != nil {
+		return fmt.Errorf("list expired tombstones: %w", err)
+	}
+	if len(ids) > 0 {
 		if err := s.reapTombstoneBatch(ctx, ids, now); err != nil {
 			return err
-		}
-		if len(ids) < tombstoneSweepBatchRows {
-			break
 		}
 	}
 	if err := s.setUIState(ctx, tombstoneSweepLastRunKey, strconv.FormatInt(now, 10)); err != nil {
@@ -1724,8 +1725,10 @@ func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, 
 
 // tombstonesOlderThan returns up to limit ids of rows tombstoned strictly
 // before cutoff (deleted_at != 0 AND deleted_at < cutoff), oldest first --
-// SweepTombstones' own read half, kept separate from the reap so the batch
-// loop above stays readable.
+// SweepTombstones' own read half, kept separate from the reap so the pass
+// above stays readable. The ORDER BY is what makes a multi-pass drain
+// deterministic: the longest-expired tombstones always go first, so no row
+// can be starved by later arrivals.
 func (s *Store) tombstonesOlderThan(ctx context.Context, cutoff int64, limit int) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id FROM sessions WHERE deleted_at != 0 AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT ?`,

@@ -74,7 +74,10 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// reap it, so the next open does it. A sweep failure must not stop deck
 	// from starting -- unlike the event-retention call above, this is a
 	// best-effort backlog catch-up, not part of any user-visible promise made
-	// at open time -- so it is reported and stepped over.
+	// at open time -- so it is reported and stepped over. It reaps at most one
+	// bounded batch before returning, so the work here cannot grow with the
+	// size of the backlog; tuiReconcile's hourly passes below drain any
+	// remainder once the first frame is up.
 	if err := db.SweepTombstones(context.Background(), settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
 		fmt.Fprintln(stderr, "deck tombstone sweep:", err)
 	}
@@ -123,7 +126,9 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		// Same tick carries task 010's sweep, so "on store open and thereafter
 		// at most once an hour" holds for a long-running client too:
 		// Store.SweepTombstones throttles internally, so all but one call an
-		// hour is a single ui_state SELECT.
+		// hour is a single ui_state SELECT, and the one that does run reaps a
+		// single bounded batch -- a backlog drains one batch per hourly pass
+		// instead of stalling a tick.
 		return db.SweepTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli())
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename, sessions.Unarchive)
