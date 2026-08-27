@@ -404,13 +404,17 @@ with every citation in `docs/` repointed
 (`docs/reports/phase3f-020-r67-report-section-titles.md`).
 
 **Phase 3f** — `prds/phase3f-residuals-and-suite-determinism.md`, run `deck-phase3f`, 2026-08-26.
-Eleven requirements in two halves: the *residual* half (R63–R67, suite determinism and report
-hygiene) and the *field* half (R68–R73, the operator's GitHub bug log, issues #5–#10). Evidence:
+Thirteen requirements: the PRD's eleven in two halves — the *residual* half (R63–R67, suite
+determinism and report hygiene) and the *field* half (R68–R73, the operator's GitHub bug log, issues
+#5–#10) — plus **R74 and R75**, which the PRD never contained and the operator authorised mid-run
+from issue #11 (list (c) below, kept separate from both bug-log reconciliations). Evidence:
 [`docs/reports/phase3f.md`](reports/phase3f.md) (per-requirement, with revert-and-reproduce proofs
 for the nine requirements the PRD named a naive test for) and
 [`docs/reports/phase3f-findings.md`](reports/phase3f-findings.md) (what it found and did not fix).
-Commits run from `f3c25d5` to the final code commit `e47cb35`, whose code tree is identical to
-`c12c30e` (the suite and stability runs were made there).
+Commits run from `f3c25d5` to the final code commit `0a5034d`. The phase took two approaches: the
+first ended at code sha `e47cb35`, whose tree is identical to `c12c30e` (its suite and stability runs
+were made there) and was rejected on two deliverables; the second closed finding F1 (`2b39124`),
+added R74 and R75, and re-took both deliverable runs at `0a5034d`.
 
 **The bug log this phase inherited was two different lists, and they must not be read as one.**
 One is Phase 3e's residual bug log, whose items were already fixed *before* Phase 3f started and
@@ -453,6 +457,17 @@ reproduce proof in [`phase3f.md`](reports/phase3f.md):
 | #10 — `A` kills a live agent on one unconfirmed keystroke | how the operator lost a working session (`A` is `Shift`+`a`, and `a` is attach) | R72 | `10f3970` (confirm dialog) + `4822484` (`u` undo toast), end-to-end round trip `eb2089e` |
 | #7 — scrollable overlays only page, via `PgUp`/`PgDn` | ergonomics only | R73 | `2714d1b` (line scroll on arrows and `j`/`k`) + `4edbfc2` (wheel) + `9c2e66a` (help overlay) |
 
+*(c) Added AFTER the PRD by the phase's second approach — two requirements, issue #11.* Neither
+belongs to either list above: these are not Phase 3e bug-log items from (a), and not field defects
+the phase was cut to fix from (b). Both were authorised by operator steer mid-run, from issue #11,
+once approach 01's eleven requirements had landed, and each has its own regression tests and
+revert-and-reproduce proofs in [`phase3f.md`](reports/phase3f.md):
+
+| Issue | What it did | Requirement | Fixing sha(s) |
+|---|---|---|---|
+| #11 — a late hook from a launch deck has already replaced stops the row deck just started | `DECK_SESSION_ID` names the *row*, so a killed launch's `SessionEnd` was indistinguishable from the live pane's | R74 | `a0d4887` (a random per-launch generation minted into `launch_lease_owner` and exported to the pane) + `196e6f4` (`hookrecv` declines a write from a superseded generation, for every event name) |
+| #11 — a concluded launch keeps holding its 30-second launch lease | a row that legitimately became `stopped` again inside that window was refused with "starting elsewhere" by this process's own finished launch, against `SPEC.md` §9.3 | R75 | `0a5034d` (`ReleaseLaunchLease` sets `launch_lease_until = 0`, CASed on the acquiring owner, released by `defer` on every exit path; acquisition logic and the §9.3 guard unchanged, and the owner column deliberately kept because it carries R74's discriminator) |
+
 The load-bearing orderings the PRD demanded were honoured and are visible in the log: R68 first
 overall, R69 before R70 (same line, `internal/service/reconcile.go:61`), R71 before R72, R63 before
 R65 and before the stability run.
@@ -462,16 +477,34 @@ residual half landed too: R63 (a passive preview fit can never overlap itself, `
 two unsound shell-`starting` waypoints, `677f5a0`), R66 (matrix's seven status tokens quantise to
 seven distinct 16-colour slots, `ce8ef91`) and R67 (eleven task-numbered test files and two
 duplicate report section titles renamed after what they are, `b848d28` + `300ee86` + `e47cb35`).
-**R65 is published as a FAILED requirement**: its assertion criteria were met (`5071389` removed the
-poll-shaped unsoundness and both red directions were demonstrated) but its field symptom recurred,
-so the claim it was meant to support does not hold and nothing was widened, tagged out or retried to
-hide that. **The published stability rate is 9/10, not 10/10** — `ci/stability.sh 10` at `c12c30e`,
-exit status 1, 59m21s, no re-run and no eleventh run; the single failure (run 9,
-`preview.feature:147`, `received 1 SIGWINCH signals, want exactly 0`) is root-caused to a named
-product-side mechanism, an unbounded race in `previewFit`'s no-live-pane early return that spends
-the row's one coalesced fit, and host load is ruled out rather than blamed (run 9 started at the
-*lowest* 1-minute loadavg of the ten). The whole suite is green at the same tree:
-`ci/run.sh go test -p=1 -count=1 ./...`, 360s, 306 scenarios, `defaultTags` untouched.
+With R74 and R75 from list (c) that makes **thirteen requirements met and none FAILED**.
+**R65 was published as a FAILED requirement by approach 01 and is re-derived as met at `0a5034d`**
+([re-derivation](reports/phase3f.md)): its assertion criteria were already met there (`5071389`
+removed the poll-shaped unsoundness and both red directions were demonstrated), but its field
+symptom — `received 1 SIGWINCH signals, want exactly 0` at `preview.feature:147` — recurred on that
+tree, including in run 9 of its stability deliverable, so the claim the requirement was meant to
+support did not hold and nothing was widened, tagged out or retried to hide it. The second approach
+fixed that symptom as finding F1, by restructuring the scenario's prefix only — `2b39124`, no product
+code and **no expected SIGWINCH count re-baselined**, the two counts byte-identical and merely moved
+to `features/preview.feature:171` and `:173` — pinned by a deterministic new assertion that goes red
+when the prefix is reverted (`deck client "solo" has been 30 rows tall at some point, want never more
+than 9`, `features/preview_test.go:26`,
+[`phase3f-028-f1-passive-fit-floor/README.md`](reports/phase3f-028-f1-passive-fit-floor/README.md)),
+and the symptom then did not fire once across a fresh ten-run measurement at `0a5034d`
+([`phase3f-033-stability10/README.md`](reports/phase3f-033-stability10/README.md)). Two limits are
+published with that verdict rather than glossed: ten runs bound a per-run failure rate only loosely,
+and the residual product-side mechanism is **not** claimed fixed — `previewFit`'s no-live-pane early
+return still spends the row's one coalesced fit (`internal/tui/tui.go:1406-1413`), proved by
+instrumented trace *not* to be what the scenario was losing to, and bounding it would move other
+scenarios' counts, which this phase forbids. **Two stability rates are published, both real.**
+`ci/stability.sh 10` at the final code commit `0a5034d` is **10/10, script exit 0**, no run re-run
+and no eleventh run ([logs](reports/phase3f-033-stability10/)); approach 01's **9/10** at `c12c30e`
+(exit status 1, 59m21s, no re-run) stays published unedited as the previous tree's history, with its
+single failure root-caused to that named early-return race rather than blamed on host load (run 9
+started at the *lowest* 1-minute loadavg of the ten). The whole suite is green at both trees:
+`ci/run.sh go test -p=1 -count=1 ./...`, `exit 0`, 14 `ok` + 3 `[no test files]` at `0a5034d`
+([log](reports/phase3f-032-fullsuite/go-test-p1-count1-all.log)) and 360s / 306 scenarios at
+`e47cb35`, `defaultTags` untouched in both.
 
 ## Other milestones
 
