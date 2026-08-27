@@ -372,7 +372,10 @@ func TestCreateSessionRefusesLiveNameHolder(t *testing.T) {
 // TestCreateSessionRefusesArchivedNameHolder proves an archived holder
 // (R78: an archived row keeps its name, only `dd` frees it) still refuses,
 // distinct from the tombstoned case this task teaches CreateSession to
-// reap.
+// reap, and (task 007) that the refusal names the archived holder and
+// both routes out -- U to unarchive, dd to delete -- never the bare
+// "already exists" a live holder still gets, which names no path forward
+// for a row no list shows.
 func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
@@ -386,6 +389,15 @@ func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("create session with an archived name holder must be refused, got nil error")
+	}
+	if strings.Contains(err.Error(), `already exists`) {
+		t.Fatalf("error = %q, must not be the bare 'already exists' message a live holder gets", err.Error())
+	}
+	if !strings.Contains(err.Error(), archived.Name) {
+		t.Fatalf("error = %q, want it to name the archived holder %q", err.Error(), archived.Name)
+	}
+	if !strings.Contains(err.Error(), "U") || !strings.Contains(err.Error(), "dd") {
+		t.Fatalf("error = %q, want both routes out named: U to unarchive, dd to delete", err.Error())
 	}
 	var count int
 	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, archived.ID).Scan(&count); err != nil {
@@ -466,7 +478,10 @@ func TestRenameSessionReapsTombstonedSlugHolder(t *testing.T) {
 // TestRenameSessionRefusesLiveAndArchivedHolders proves a live holder and
 // an archived holder (R78: archiving keeps a name reserved) both still
 // refuse the rename, unchanged by the tombstone-reap addition, and that a
-// refused rename never mutates the subject row.
+// refused rename never mutates the subject row. Task 007: the archived
+// refusal names the archived holder and both routes out (U to unarchive,
+// dd to delete) instead of the bare "already exists" the live refusal
+// keeps getting.
 func TestRenameSessionRefusesLiveAndArchivedHolders(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
@@ -477,11 +492,26 @@ func TestRenameSessionRefusesLiveAndArchivedHolders(t *testing.T) {
 		t.Fatalf("archive %q: %v", archived.ID, err)
 	}
 
-	if err := st.RenameSession(ctx, subject.ID, live.Name, "user", 300); err == nil {
+	liveErr := st.RenameSession(ctx, subject.ID, live.Name, "user", 300)
+	if liveErr == nil {
 		t.Fatal("rename onto a live holder's name must be refused, got nil error")
 	}
-	if err := st.RenameSession(ctx, subject.ID, archived.Name, "user", 301); err == nil {
+	if !strings.Contains(liveErr.Error(), "already exists") {
+		t.Fatalf("live-holder rename error = %q, want the unchanged bare 'already exists' message", liveErr.Error())
+	}
+
+	archivedErr := st.RenameSession(ctx, subject.ID, archived.Name, "user", 301)
+	if archivedErr == nil {
 		t.Fatal("rename onto an archived holder's name must be refused, got nil error")
+	}
+	if strings.Contains(archivedErr.Error(), "already exists") {
+		t.Fatalf("archived-holder rename error = %q, must not be the bare 'already exists' message", archivedErr.Error())
+	}
+	if !strings.Contains(archivedErr.Error(), archived.Name) {
+		t.Fatalf("archived-holder rename error = %q, want it to name the archived holder %q", archivedErr.Error(), archived.Name)
+	}
+	if !strings.Contains(archivedErr.Error(), "U") || !strings.Contains(archivedErr.Error(), "dd") {
+		t.Fatalf("archived-holder rename error = %q, want both routes out named: U to unarchive, dd to delete", archivedErr.Error())
 	}
 
 	reloaded, err := st.GetSession(ctx, subject.ID)
