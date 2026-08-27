@@ -1,7 +1,8 @@
 # Phase 3f findings
 
 Companion to [`phase3f.md`](phase3f.md) (the per-requirement evidence report for
-R63–R73). This file carries what the requirements themselves do not: what
+R63–R73, extended by approach 02 with R74 and R75). This file carries what the
+requirements themselves do not: what
 `prds/phase3f-residuals-and-suite-determinism.md` got wrong and the corrected
 reading, where `SPEC.md` is ambiguous, every defect found and deliberately **not**
 fixed with the reason, and the re-verification of the PRD's "already closed" table.
@@ -9,7 +10,9 @@ fixed with the reason, and the re-verification of the PRD's "already closed" tab
 Nothing here is a requirement verdict — those live in
 [`phase3f.md`'s per-requirement table](phase3f.md#per-requirement-table). Nothing
 here was fixed silently: every item below is either cross-referenced to the commit
-that fixed it or explicitly recorded as open, with why.
+that fixed it or explicitly recorded as open, with why. Approach 02 closed exactly one
+of them — F1, in `2b39124` — and added six new ones (F12–F17) found while doing tasks
+028–031; every other finding here is still open and still labelled open.
 
 Every sha cited resolves under `git cat-file -e` and every path cited exists in the
 tree; the checking command is in [§9](#9-how-to-re-check-every-citation-in-this-report).
@@ -85,16 +88,22 @@ and in run 9 of ten at `c12c30e`
 ([`run-9-FAIL-trimmed.log`](phase3f-022-stability10/run-9-FAIL-trimmed.log)).
 Corrected reading: R63's overlapping-fit defect was real and is fixed, but it is a
 *different* mechanism from the one behind this flake — a pre-resize fit licensed at
-the client's default 100x30 whose `previewFit` no-live-pane early return emits
-`previewFitDone` anyway and spends the row's one coalesced fit (§6, item F1). The
-ordering was still worth honouring: doing R65 first would have destroyed the
+the client's default 100x30 while `m.width`/`m.height` still held that geometry, which
+the shrink to 100x9 never retracted (§6, item F1, closed in `2b39124` by rebuilding the
+scenario's prefix so the counted client is never above the floor). One clause of the
+original write-up of this paragraph — that `previewFit`'s no-live-pane early return is
+what spends the row's one coalesced fit here — was measured in task 028 and is **not**
+this flake's mechanism; the early-return spend is real and stays open on its own as F12.
+The ordering was still worth honouring: doing R65 first would have destroyed the
 information that says so.
 
 ## 2. Spec ambiguities
 
-Three, all read the way the standing rules require (`SPEC.md` wins; a disagreement
-is a finding, never a spec edit). None blocked a requirement; each is a place where
-two honest implementations could differ and the spec does not choose.
+Three ambiguities the spec does not resolve, plus one place where approach 02's own work
+moved past what the spec *describes* and therefore files a spec-change request (2.4) —
+all read the way the standing rules require (`SPEC.md` wins; a disagreement
+is a finding, never a spec edit). None blocked a requirement; each of the first three is
+a place where two honest implementations could differ and the spec does not choose.
 
 **2.1 §11.6 requires legibility after quantisation, not distinctness.** `SPEC.md:1374`
 states the tested property exactly: "for every built-in theme, `text`, `hint`,
@@ -134,6 +143,25 @@ neither clips nor scrolls, so three real dialogs draw past the frame at the supp
 minimum 80x24 ([§5](#5-r73-the-frameddialog-overflow-check-result)).
 With the spec silent, that is a defect by consistency rather than by rule — which is
 exactly why it is here and not a requirement.
+
+**2.4 §9.3 describes `launch_lease_owner` as `pid@boot_id`; R74 made it
+`pid@boot_id#<generation>` — spec-change REQUEST, not a spec edit.** `SPEC.md:781`'s
+§9.3 sentence and the DDL comment at `SPEC.md:277` both give the lease owner's value as
+`pid@boot_id`. R74 (task 029, `a0d4887`) needed a discriminator that two successive
+launches of one row cannot share, and neither half of `pid@boot_id` qualifies (same pid,
+same boot) while `launch_lease_until` is a timestamp a frozen clock can repeat and R75
+is about to clear — so the generation token is appended to that same column rather than
+added as a new one, and `parseLeaseOwner` strips the suffix before comparing launcher
+identity, leaving §9.3's double-launch guard semantics unchanged
+(`internal/store/lease.go`). `SPEC.md` is a protected path for this job, so the
+divergence is **disclosed here and in the code comments, not edited into the spec**.
+The request, for whoever owns the spec: reword both sites to
+`pid@boot_id[#launch_generation]` and state that comparisons of launcher identity ignore
+the suffix. Filed at the time in
+[`phase3f-029-r74-launch-generation/README.md`](phase3f-029-r74-launch-generation/README.md)
+("Spec-change REQUEST (not applied here — `SPEC.md` is protected)"); tracked below as
+[F13](#6-defects-found-and-not-fixed-and-why). Until it is accepted, a reader who takes
+`SPEC.md:781` literally will read the tree's owner values as malformed.
 
 ## 3. R68: the two leaks issue #5 also noticed, plus two library findings
 
@@ -289,13 +317,16 @@ points here instead of asserting the opposite. Judgement calls and the full tabl
 
 ## 6. Defects found and not fixed, and why
 
-Everything found in this phase that is a real defect and was left standing, with the
-reason. Two of them are **open flakes that need their own task** and are explicitly
-not claimed fixed anywhere in [`phase3f.md`](phase3f.md).
+Everything found in this phase that is a real defect, with the reason it was left
+standing. Approach 02 later closed exactly one of them — **F1**, in `2b39124` (task 028)
+— and it is kept in the table with its fixing sha rather than deleted, because this
+section's heading and anchor are cited from other reports. **F2 is still an open flake and
+is explicitly not claimed fixed anywhere in** [`phase3f.md`](phase3f.md). F12–F17 were
+found while doing tasks 028–031 and are all open.
 
 | # | defect | where | why not fixed here |
 |---|---|---|---|
-| F1 | pre-resize passive preview fit spends the row's one coalesced fit → `preview.feature:134`/`:147` fails `received 1 SIGWINCH signals, want exactly 0` | `internal/tui` `previewFit` no-live-pane early return | product change outside R65's scope (R65 was forbidden to paper it over); needs a task — see below |
+| F1 | a passive preview fit licensed *before* the scenario's shrink spent the row's one coalesced fit → the fit-floor scenario failed `received 1 SIGWINCH signals, want exactly 0` in roughly one run of ten | `features/preview.feature`'s `@steer-018-preview-fit-on-navigation` fit-floor scenario (expected counts unchanged, `0` now at `:171`, `1` at `:173`) | **FIXED in `2b39124`** (approach 02, task 028) — the observing client is now *born* at 100x9 and a new `has never been taller than` assertion pins it, so no fit is licensed at the larger size; evidence [`phase3f-028-f1-passive-fit-floor/README.md`](phase3f-028-f1-passive-fit-floor/README.md), see below |
 | F2 | `TestGoldenMinimumFrame` "frame kept changing after the fixture rendered; not settled" | `features/golden_frame_test.go:236`, reported at the `:74` call site because the helper calls `t.Helper()` | not reproduced at the final tree; open and **unproven fixed**, not retired |
 | F3 | `inject.go:51` decides "can this shell pane receive `send-keys`?" with `Exists`, which a **retained dead pane passes** | `internal/service/inject.go:51` | a different defect from #6/R69 (injection into a corpse, not reconciliation); changing it needs its own test and requirement |
 | F4 | abnormal exit leaks `/tmp/deck-interactive-pipe-*`, the FIFO, an armed `pipe-pane` and window ownership | `internal/tmux/pipe.go:94`/`:280`, `cmd/deck/main.go` | `internal/tmux` + `cmd/deck` lifecycle work — [§3.1](#3-r68-the-two-leaks-issue-5-also-noticed-plus-two-library-findings) |
@@ -306,19 +337,23 @@ not claimed fixed anywhere in [`phase3f.md`](phase3f.md).
 | F9 | the PRD's `:467-479` pre-rename file list and `:480` pre-retitle quotation | `prds/…phase3f….md` | `prds/` is protected for this job — disclosed, not edited ([§1.3](#1-what-this-prd-got-wrong-with-the-corrected-reading)) |
 | F10 | `new_session_selection.feature:12-15`'s comment explains row placement via a `starting` attention rank the assertion no longer depends on | `features/new_session_selection.feature` | comment-only staleness; the assertion is sound either way (the anchor is forced to `waiting`), and R64 changes no line whose behaviour is sound |
 | F11 | the held-filter status line promises `Esc to clear`, but with the text field closed no `Esc` clears `filterQuery` | `internal/tui/filter.go:147` (wording) vs `filter.go:101-106` (the only clear) and `tui.go:2110` (top-level `esc`) | wording-vs-binding mismatch found while writing R71's filter round trip; fixing it is a binding or a copy change outside R71/R72's scope, and SPEC.md pins neither — see below |
+| F12 | `previewFit`'s no-live-pane early return emits `previewFitDone` anyway, spending the row's one coalesced fit attempt on an attempt that fitted nothing — the next legitimate fit is then refused until the selection moves away and back | `internal/tui/tui.go:1406-1413` | **open** (F1's residue, and *not* F1's mechanism: task 028 traced the observed failure to the pre-shrink licensed fit instead). Bounding it changes passive-fit behaviour for every session that starts while selected, i.e. it moves other scenarios' expected SIGWINCH counts, and re-baselining a count is forbidden here — [`phase3f-028-f1-passive-fit-floor/README.md`](phase3f-028-f1-passive-fit-floor/README.md) |
+| F13 | the tree writes `launch_lease_owner` as `pid@boot_id#<generation>`; `SPEC.md:781` and `SPEC.md:277` describe it as `pid@boot_id` | `internal/store/lease.go` (R74, `a0d4887`) | a **spec-change request**, not a defect in the code: identity semantics are unchanged (`parseLeaseOwner` strips the suffix) and `SPEC.md` is a protected path for this job, so it is disclosed — [§2.4](#2-spec-ambiguities) |
+| F14 | F1's own write-up said `ScreenDriver.ResizeAndAwaitRender` "does not wait"; it does wait — but its render marker proves only that *some* repaint happened after the resize, never that `m.width`/`m.height` already hold the new size | `features/pty_driver_test.go:209` | the sentence was wrong, not the helper, so nothing was changed: strengthening the wait would not have fixed F1, whose fit was licensed by a periodic `previewTick` and not by the following keypress — corrected below and in [`phase3f-028-f1-passive-fit-floor/README.md`](phase3f-028-f1-passive-fit-floor/README.md) |
+| F15 | a hook dropped as superseded is stored verbatim with the row untouched, but nothing marks it *dropped*: "event present, status unchanged" is the only signal a forensic reader gets | `internal/hookrecv/receiver.go:114-141` (R74 leg 2, `196e6f4`) | labelling it needs a new event kind or reason — outside R74's criteria, which asked for the drop and not for a new forensic vocabulary — [`phase3f-030-r74-superseded-hooks/README.md`](phase3f-030-r74-superseded-hooks/README.md) |
+| F16 | nothing detects the "terminal row + live pane" invariant violation that R74/R75's field scenario makes visible | `internal/service/reconcile.go` | explicitly out of scope for R74 and R75 by this job's standing rules; recorded as a follow-up by both tasks — [`phase3f-030-r74-superseded-hooks/README.md`](phase3f-030-r74-superseded-hooks/README.md), [`phase3f-031-r75-launch-lease-release/README.md`](phase3f-031-r75-launch-lease-release/README.md) |
+| F17 | R75's release-failure fallback (audit `launch_lease.release_failed`, then §9.3's TTL as backstop) is never exercised by any test | `internal/service/resume.go:184-193` (R75, `0a5034d`) | the release is best-effort by design and the fallback *is* the pre-R75 behaviour, so no verdict depends on it; driving the `UPDATE` to fail needs a store fault-injection seam the tree does not have, and no report claims the path has been exercised — [`phase3f-031-r75-launch-lease-release/README.md`](phase3f-031-r75-launch-lease-release/README.md) |
 
-**F1 in full, because it cost the phase its 10/10.** `preview.feature:134` creates
-`beacon` while the client is still at its default 100x30, where a passive fit *is*
-licensed, then shrinks the panel to 100x9 and asserts exactly 0 SIGWINCH. The
-resize step returns without waiting for deck to process the `tea.WindowSizeMsg`, so
-the next keypress can be handled while `m.width/m.height` are still 100x30;
-`previewFit`'s floor check passes and issues one fit. Worse, `previewFit`'s
-**no-live-pane early return still emits `previewFitDone`**, spending the row's single
-coalesced fit on a failed attempt — so the scenario observes 0 only when it wins that
-race. Run 9's own frames carry the signature: the crop line reads `61x6 of 61x27`, the
-100x30 geometry, not the 100x9 the scenario resizes to. It flaked the same way
-**before** R65's settle (`f7b97fe`-era run:
-[`task015-r63-features-exacttags-flake.log`](phase3f-evidence/task015-r63-features-exacttags-flake.log)),
+**F1 in full, and how approach 02 closed it in `2b39124`.** *The diagnosis as it stood
+when F1 was filed, kept because it is the record of what was measured:* the fit-floor
+scenario created `beacon` while the client was still at its default 100x30, where a
+passive fit *is* licensed, then shrank the panel to 100x9 and asserted exactly 0 SIGWINCH.
+The resize step's wait does not prove `m.width`/`m.height` have taken the new size (see
+the correction below), so the next keypress could be handled while they still held
+100x30; `previewFit`'s floor check passed and issued one fit. Run 9's own frames carry
+the signature: the crop line reads `61x6 of 61x27`, the 100x30 geometry, not the 100x9
+the scenario resizes to. It flaked the same way **before** R65's settle (`f7b97fe`-era
+run: [`task015-r63-features-exacttags-flake.log`](phase3f-evidence/task015-r63-features-exacttags-flake.log)),
 so the settle did not cause it — it raises its detection rate, which is what R65 is
 for. Evidence: [`task017-r65-full-suite-run3-RED-trimmed.log`](phase3f-evidence/task017-r65-full-suite-run3-RED-trimmed.log)
 (1 red in 3 whole-suite runs at `e47cb35`),
@@ -326,11 +361,42 @@ for. Evidence: [`task017-r65-full-suite-run3-RED-trimmed.log`](phase3f-evidence/
 at `c12c30e`, at the **lowest** start loadavg of the ten, `1.49` — host load ruled out,
 not merely doubted), root cause in
 [`phase3f-017-r65-settled-sigwinch-count.md`](phase3f-017-r65-settled-sigwinch-count.md).
-**The fix is to restructure the scenario's prefix so no fit is licensed at the larger
-size, or to bound the no-live-pane return so it cannot spend the coalesced fit.
-Re-baselining the expected counts is forbidden.** This is why R65 is recorded FAILED in
-[`phase3f.md`](phase3f.md#per-requirement-table): its assertion criteria are met, its
-field-symptom claim is not.
+
+**Closed by `2b39124`** (approach 02, task 028), taking the first of the two repairs F1
+itself sanctioned — restructure the scenario's prefix so no fit is licensed at the larger
+size — and **not** the forbidden one: no expected SIGWINCH count changed, no scenario was
+deleted, skipped or tagged out, and no product code changed. A `DECK_PREVIEW_FIT=0`
+"maker" client now creates the sessions through the real create modal, and the *observing*
+client is born at 100x9, so it has no frame above the floor in its whole life before the
+assertion; a new `Then deck client "solo" has never been taller than 9 rows` step
+(`features/preview_test.go:26` over `ScreenDriver.TallestRows`,
+`features/pty_driver_test.go:240`) fails **before** the count assertion it protects, so a
+future re-break cannot be mistaken for a flake. Red-on-revert and green evidence, the
+instrumented `previewFit` trace that measured the race at 3 ms, and the twenty-run context
+run are all in
+[`phase3f-028-f1-passive-fit-floor/README.md`](phase3f-028-f1-passive-fit-floor/README.md).
+The scenario's expected counts are unchanged but have moved with the new prefix: `0` at
+`features/preview.feature:171`, `1` at `:173`. With F1 closed, `ci/stability.sh 10` at the
+phase's final code commit `0a5034d` is **10/10**
+([`phase3f-033-stability10/README.md`](phase3f-033-stability10/README.md)), and R65 is
+re-derived as **met** — [`phase3f.md`](phase3f.md#r65-re-derived-at-0a5034d-verdict-met-task-034-from-tasks-028-and-033)
+— replacing the FAILED verdict this paragraph used to justify, which that report keeps
+quoted verbatim as history rather than deleting.
+
+**Two things F1's own text got wrong, corrected rather than repeated.** (1) It said
+`ScreenDriver.ResizeAndAwaitRender` "does not wait". It does wait
+(`features/pty_driver_test.go:209`); what it cannot prove is that `m.width`/`m.height`
+had already taken the new size, because a render marker only shows that *some* repaint
+happened after the resize — filed above as [F14](#6-defects-found-and-not-fixed-and-why).
+(2) It named `previewFit`'s no-live-pane early return as part of *this* failure's
+mechanism. Task 028's trace shows the fit that fires here is a licensed one from a
+periodic `previewTick`, not a spent attempt, so the early return is a **separate** open
+finding — [F12](#6-defects-found-and-not-fixed-and-why),
+`internal/tui/tui.go:1406-1413` — and the restructured scenario no longer depends on
+which way that race falls, because at 100x9 no attempt is scheduled at all. Task 028's
+own report quotes F1 by line number into *this* file (`docs/reports/phase3f-findings.md`
+at `ac273c9`); those line citations point at the pre-update text of this section, not at
+the lines above.
 
 **F2 in full.** Seen once during task 016 at a `-count=10` run of the golden-frame test
 ([`task016-goldenframe-count10.log`](phase3f-evidence/task016-goldenframe-count10.log));
@@ -346,7 +412,10 @@ github.com/n-orlov/deck/features` lines), and the tenth run's **only** failure i
 `preview.feature` fit assertion, not this test
 ([`run-9-FAIL-trimmed.log`](phase3f-022-stability10/run-9-FAIL-trimmed.log): the single
 `--- FAIL: TestFeatures/…7-inner-row_floor…` at `:4905`, package verdict at `:4964`; no
-`TestGoldenMinimumFrame` failure appears in any of the ten). That is *absence of
+`TestGoldenMinimumFrame` failure appears in any of the ten). Approach 02's ten-run
+stability re-measurement at `0a5034d` adds ten more clean `features` runs
+([`phase3f-033-stability10/README.md`](phase3f-033-stability10/README.md), 10/10) with no
+`TestGoldenMinimumFrame` failure either. That is *absence of
 recurrence*, not a fix: no code changed to address it, so it stays open. Whoever picks
 it up should expect a settle/quiescence gap in the fixture's render path, not a colour
 bug.
@@ -470,7 +539,14 @@ confirms it still fails on the wrong package.
 
 ```
 $ docs/reports/phase3f-evidence/check-citations.sh          # run from the repo root
+$ python3 docs/reports/phase3f-027-closeout/citation_sweep.py  # every phase-3f report
 ```
+
+The second checker (task 027) sweeps **every** `*phase3f*` report markdown under
+`docs/reports/`, not just this pair, and resolves each link against the *citing report's
+own* directory — which is how the approach-02 evidence directories cited above
+(`phase3f-028-…`, `phase3f-029-…`, `phase3f-030-…`, `phase3f-031-…`,
+`phase3f-033-stability10/`) are checked as well. Both must pass from the repo root.
 
 Its output for this commit is quoted in this commit's own message. `phase3f.md`'s
 section titles are stable anchors: this file links to
