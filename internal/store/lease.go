@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -40,6 +42,54 @@ type LaunchLeaseResult struct {
 	Outcome    LaunchLeaseOutcome
 	HeldBy     string
 	HeldStatus string
+	// LaunchGeneration is the per-launch discriminator minted by THIS
+	// acquisition (issue #11, R74); empty unless Outcome is
+	// LaunchLeaseAcquired. It is persisted as the generation half of
+	// launch_lease_owner, so the row always names the launch whose pane is
+	// current, and the launcher passes it into the agent's environment so a
+	// hook can say which launch it came from.
+	LaunchGeneration string
+}
+
+// launchGenerationSep separates the "pid@boot_id" launcher identity SPEC
+// §9.3 pins from the per-launch generation token R74 appends to it inside
+// launch_lease_owner. The composite lives in the existing column on purpose:
+// SPEC.md:243-284 pins the sessions DDL, so a discriminator needing a column
+// of its own would need a spec change first.
+const launchGenerationSep = "#"
+
+// newLaunchGeneration mints a per-launch generation token: 8 bytes of
+// crypto/rand as hex. Deliberately NOT a timestamp and not a counter -- two
+// launches of one row from the same process at the same clock reading (deck's
+// clock is injectable, and a test clock does not advance at all) must still
+// get different tokens, which is the whole point of the discriminator.
+func newLaunchGeneration() (string, error) {
+	var raw [8]byte
+	if _, err := cryptorand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("mint launch generation: %w", err)
+	}
+	return hex.EncodeToString(raw[:]), nil
+}
+
+// splitOwnerGeneration splits a stored launch_lease_owner into launcher
+// identity and per-launch generation. An owner written before R74 (or by a
+// test fixture) carries no generation and yields an empty one, so every
+// identity-based check keeps working unchanged.
+func splitOwnerGeneration(stored string) (identity, generation string) {
+	identity, generation, found := strings.Cut(stored, launchGenerationSep)
+	if !found {
+		return stored, ""
+	}
+	return identity, generation
+}
+
+// composeLeaseOwner joins a launcher identity and a generation into the value
+// written to launch_lease_owner.
+func composeLeaseOwner(identity, generation string) string {
+	if generation == "" {
+		return identity
+	}
+	return identity + launchGenerationSep + generation
 }
 
 // CurrentLaunchLeaseOwner formats this process's launch-lease owner string
@@ -62,6 +112,11 @@ func bootID() string {
 // parseLeaseOwner splits a "pid@boot_id" owner string. An owner that does not
 // parse cleanly is treated as unparseable-and-therefore-stale by the caller.
 func parseLeaseOwner(owner string) (pid int, boot string, ok bool) {
+	// The generation suffix R74 appends is not part of the identity: left on,
+	// it would make every boot id compare unequal, so every live lease would
+	// look like one from a previous boot and be breakable -- exactly the
+	// double-launch §9.3 exists to prevent.
+	owner, _ = splitOwnerGeneration(owner)
 	at := strings.LastIndex(owner, "@")
 	if at < 0 {
 		return 0, "", false
@@ -132,6 +187,17 @@ func leaseOwnerAlive(owner string) bool {
 // pid, or a pid from a previous boot). Every outcome — including a lost
 // race — leaves the row in a state where a subsequent legitimate acquire can
 // still succeed; no case wedges it.
+//
+// Each acquisition also mints a fresh per-launch generation token (issue #11,
+// R74) and stores it as the generation half of launch_lease_owner
+// ("pid@boot_id#generation"), returning it in
+// LaunchLeaseResult.LaunchGeneration. The row therefore always names the
+// launch whose pane is the current one, which is what lets a late hook write
+// from a superseded launch be recognized as superseded: the launcher hands
+// the token to the agent's environment, the hook hands it back, and a token
+// that no longer matches the row belongs to a pane deck has already replaced.
+// The token is random, not a timestamp: two launches of one row can share a
+// clock reading (deck's clock is injectable) but must never share a token.
 func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string, ttl time.Duration, at int64) (LaunchLeaseResult, error) {
 	if sessionID == "" {
 		return LaunchLeaseResult{}, errors.New("session id is required")
@@ -146,6 +212,15 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		ttl = DefaultLaunchLeaseTTL
 	}
 	until := at + ttl.Milliseconds()
+
+	// Mint the per-launch generation before the transaction: it identifies
+	// THIS launch attempt, and a failure to produce one must not leave a
+	// half-acquired lease behind (issue #11, R74).
+	generation, err := newLaunchGeneration()
+	if err != nil {
+		return LaunchLeaseResult{}, err
+	}
+	storedOwner := composeLeaseOwner(owner, generation)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -193,7 +268,7 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		 WHERE id = ? AND status = 'stopped'
 		   AND launch_lease_owner IS ?
 		   AND launch_lease_until = ?`,
-		owner, until, sessionID, ownerMatch, curUntil)
+		storedOwner, until, sessionID, ownerMatch, curUntil)
 	if err != nil {
 		return LaunchLeaseResult{}, fmt.Errorf("acquire launch lease: %w", err)
 	}
@@ -208,11 +283,11 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere}, nil
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", owner); err != nil {
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", storedOwner); err != nil {
 		return LaunchLeaseResult{}, fmt.Errorf("record launch lease event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return LaunchLeaseResult{}, fmt.Errorf("commit launch lease acquisition: %w", err)
 	}
-	return LaunchLeaseResult{Outcome: LaunchLeaseAcquired, HeldBy: owner}, nil
+	return LaunchLeaseResult{Outcome: LaunchLeaseAcquired, HeldBy: storedOwner, LaunchGeneration: generation}, nil
 }

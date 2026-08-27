@@ -86,6 +86,13 @@ type LaunchInput struct {
 	// DeckSessionID is deck's row identity, which may differ from the agent's
 	// conversation id. It is the fallback identity supplied to hook processes.
 	DeckSessionID string
+	// LaunchGeneration is the per-launch discriminator minted by the launch
+	// lease this launch holds (store.LaunchLeaseResult.LaunchGeneration,
+	// issue #11 R74). Empty when the launch took no lease, in which case no
+	// generation is exported at all rather than an empty one: an absent
+	// variable is honestly "this launch has no token", while
+	// DECK_LAUNCH_GENERATION="" would look like a token that failed to match.
+	LaunchGeneration string
 	// DeckHome is the resolved data root whose state database receives hooks.
 	DeckHome string
 }

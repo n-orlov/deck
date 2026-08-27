@@ -127,10 +127,20 @@ func (Claude) Instrument(in LaunchInput) ([]string, map[string]string) {
 		}}}}
 	}
 	settings, _ := json.Marshal(claudeHookSettings{Hooks: hooks})
-	return []string{"--settings", string(settings)}, map[string]string{
+	env := map[string]string{
 		"DECK_SESSION_ID": in.DeckSessionID,
 		"DECK_HOME":       in.DeckHome,
 	}
+	// The launch generation travels beside DECK_SESSION_ID so every hook this
+	// pane's agent runs can say WHICH launch of that row it belongs to (issue
+	// #11, R74): the session id alone cannot distinguish a hook from the pane
+	// deck just started from a late hook from the pane it replaced. Omitted
+	// when the launch holds no lease-minted token, so a hook never sees an
+	// empty token it would have to interpret.
+	if in.LaunchGeneration != "" {
+		env["DECK_LAUNCH_GENERATION"] = in.LaunchGeneration
+	}
+	return []string{"--settings", string(settings)}, env
 }
 
 // shellQuote quotes one argv path for Claude's command-hook shell. Always

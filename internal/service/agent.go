@@ -92,6 +92,11 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		return session, fmt.Errorf("audit starting agent session %q: %w", session.Name, err)
 	}
 
+	// No LaunchGeneration here: a brand-new row's first launch takes no launch
+	// lease (the row is created directly as `starting`), so there is no earlier
+	// launch of it that a hook could be confused with (issue #11, R74). The
+	// row's generation is first written by the AcquireLaunchLease of its first
+	// resume/restart.
 	launchInput := agent.LaunchInput{
 		CWD: session.CWD, ConversationID: conversationID, Profile: profile, ExtraArgs: input.LaunchArgs,
 		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
