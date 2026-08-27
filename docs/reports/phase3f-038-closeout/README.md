@@ -10,7 +10,9 @@ Raw evidence in this directory:
 [check-citations-all-reports.log](check-citations-all-reports.log),
 [citation-sweep.log](citation-sweep.log),
 [delivery-log-manual-check.log](delivery-log-manual-check.log),
-[delivery_log_sweep.py](delivery_log_sweep.py).
+[delivery_log_sweep.py](delivery_log_sweep.py),
+[push.log](push.log),
+[sweeps-after-commit-a.log](sweeps-after-commit-a.log).
 
 ## 0. Scope and dependency check
 
@@ -195,9 +197,60 @@ is hidden by the skip. **Citation sweeps: PASS, all three, zero failures.**
 
 ## 5. Push
 
-Filled in by commit **B** (see §3 deviation 1): this section quotes commit A's push output, the
-post-push `git status --short` and `git log origin/main..HEAD`, the re-run protected-path audit and
-the re-run sweeps, none of which exist until commit A has been pushed.
+This section is commit **B** (§3 deviation 1): commit A is the report and its evidence, commit B is
+the record of A's push. The regress stops at B — B's own push output cannot be inside B either, so it
+is captured outside the repo, in the run's artifacts directory
+(`artifacts/task038-closeout/push-commit-B.log`), together with the final `git status --short` and
+`git log origin/main..HEAD` taken after it.
+
+**Commit A's push, verbatim.** Full record: [push.log](push.log).
+
+```
+$ git push origin main
+To https://github.com/n-orlov/deck.git
+   84b26a9..47d4164  main -> main
+(exit 0)
+$ git log origin/main..HEAD --oneline
+(empty)
+$ git rev-parse HEAD origin/main
+47d41644df781a24fa768349546922ee2f796d9a
+47d41644df781a24fa768349546922ee2f796d9a
+```
+
+`git status --short` in that same capture shows exactly one entry — `?? push.log`, the file being
+written at that moment. That is the only thing standing between the tree and clean, and commit B is
+what tracks it; the clean `git status --short` and empty `git log origin/main..HEAD` after commit B's
+push are in the artifacts file named above, because they cannot be inside commit B itself.
+
+**The push rewrote nothing.** All **449** `refs/remotes/origin/main` reflog entries (448 before this
+task, plus commit A's) are `update by push`, `forced-update` count **0**; commit A's entry is
+`47d4164 refs/remotes/origin/main@{2026-08-27 03:04:50 +0000}: update by push`.
+
+**The protected-path audit re-run after commit A landed is unchanged** — still exactly the two
+recognised shas, because commit A adds files only under `docs/reports/`:
+
+```
+$ git log --format=%H bce80ea..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+60c2c56af9b7456df81c7408e7ca812a9434701a
+c80a14cd13110d884bc7a79cb1c8de0619f58610
+```
+
+**All three sweeps re-run with commit A in the tree** — these are the numbers that describe the
+shipped tree, and §4's are the same runs one commit earlier. Full output:
+[sweeps-after-commit-a.log](sweeps-after-commit-a.log).
+
+| sweep | result at `84b26a9` (§4) | result at `47d4164` (commit A in tree) |
+| --- | --- | --- |
+| `check-citations.sh` | 59 shas, 141 cited paths, 81 source paths, exit 0 | identical (it reads only the two aggregators, which A did not touch), exit 0 |
+| `citation_sweep.py` | 34 reports, 44 shas, 167 link pairs, 0 failures | **35 reports, 47 shas, 179 link pairs**, 0 failures, exit 0 |
+| `delivery_log_sweep.py` | 42 tokens (31 commit / 7 blob / 4 foreign / **0 unexplained**), 0 failures | identical, exit 0 |
+
+Commit B adds `push.log`, `sweeps-after-commit-a.log` and this section; it touches no other file, so
+its only effect on those counts is the two link targets and the one sha it newly cites — commit A's
+own `47d4164`. Re-running sweep B on the tree commit B is made from therefore reports **35 reports,
+48 shas, 181 link pairs, 0 failures, exit 0**; sweep A and sweep C are byte-identical to the rows
+above, since neither reads this file.
+
 
 ## 6. Result against task 038's criteria, and the truths carried forward
 
@@ -209,14 +262,19 @@ Each criterion against the section that shows it:
   explicitly **not** on author or committer identity (which is the byte-identical
   `Nik <nikolaiorl@gmail.com>` for the operator and the run alike, so an identity check would pass a
   run-made edit). A third sha would have been named here as a hard failure; none appeared. **PASS.**
-- **(b) clean tree, nothing unpushed, push output captured** — §2 (at pickup) and §5 (after this
-  task's own two commits). **PASS.**
-- **(c) no forced update in `origin/main`'s reflog** — §3: all 448 entries are `update by push`,
-  `forced-update` count **0**, across the repository's whole push history. **PASS.**
-- **(d) both citation checkers green from the repo root, with counts** — §4: `check-citations.sh`
-  (59 shas, 141 cited paths, 81 backticked source paths, exit 0) and `citation_sweep.py`
-  (34 reports, 44 shas, 167 link pairs, exit 0), plus a third hand-written sweep of
-  `docs/DELIVERY-LOG.md`, which neither committed checker covers. **PASS.**
+- **(b) clean tree, nothing unpushed, push output captured** — §2 (at pickup) and §5 (commit A's
+  push quoted verbatim, `84b26a9..47d4164`, with `git log origin/main..HEAD` empty afterwards; the
+  clean `git status --short` after commit B's own push is in
+  `artifacts/task038-closeout/push-commit-B.log`, since a commit cannot contain its own push).
+  **PASS.**
+- **(c) no forced update in `origin/main`'s reflog** — §3 and §5: all 448 entries before this task
+  and all 449 after commit A's push are `update by push`, `forced-update` count **0**, across the
+  repository's whole push history. **PASS.**
+- **(d) both citation checkers green from the repo root, with counts** — §4 at `84b26a9` and §5 at
+  `47d4164`: `check-citations.sh` (59 shas, 141 cited paths, 81 backticked source paths, exit 0) and
+  `citation_sweep.py` (35 reports, 47 shas, 179 link pairs, exit 0, with commit A in the tree), plus
+  a third hand-written sweep of `docs/DELIVERY-LOG.md`, which neither committed checker covers.
+  **PASS.**
 - **task-to-commit map for 028-037, deviations disclosed** — §3: ten tasks, ten commits, one each;
   no task carries a second commit and there was no amend in approach 02's window. The two disclosed
   deviations are task 038's own two commits (a commit cannot quote its own push) and the record of
