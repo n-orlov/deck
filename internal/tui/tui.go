@@ -1426,6 +1426,65 @@ func (m *Model) previewFit() tea.Cmd {
 	}
 }
 
+// Task 012: one eligibility predicate per action, each taking the
+// candidate session and nothing else, so the key cases below (and any
+// batch/marked-set variant of the same action) share exactly one place
+// that decides whether the action applies to a given row instead of
+// deciding it inline in the case body. Where the switch case currently
+// has no per-session refusal (Y/A/dd today act on any selected row; the
+// service, not this switch, is the authority), the predicate is
+// unconditionally true -- it still exists so a future restriction has
+// one place to land rather than being added ad hoc to the case body.
+
+// canAcknowledge reports whether Y may act on session. AcknowledgeSession
+// carries no per-session restriction, so this is always true.
+func canAcknowledge(session store.Session) bool {
+	return true
+}
+
+// canKill reports whether x may act on session. Used by the batch (marked
+// set) path, which silently skips an already-stopped row rather than
+// erroring (a batch action naming rows that need nothing done would be
+// noise). The single-row path deliberately does NOT call this: it defers
+// the already-stopped refusal to the service's own verdict instead of a
+// locally read Status, because remain-on-exit can leave a stopped row
+// with a live tmux pane still needing a kill (#6) -- see the comment on
+// case "x" below.
+func canKill(session store.Session) bool {
+	return session.Status != "stopped"
+}
+
+// canArchive reports whether A may act on session. Archiving accepts any
+// row (a live one is killed first, in the same action), so this is
+// always true.
+func canArchive(session store.Session) bool {
+	return true
+}
+
+// canUnarchive reports whether U may act on session: only a row that is
+// actually archived.
+func canUnarchive(session store.Session) bool {
+	return session.ArchivedAt != 0
+}
+
+// canResume reports whether r may act on session: only a stopped row.
+func canResume(session store.Session) bool {
+	return session.Status == "stopped"
+}
+
+// canRestart reports whether R may act on session: any row that is not
+// already stopped (r resumes a stopped one instead).
+func canRestart(session store.Session) bool {
+	return session.Status != "stopped"
+}
+
+// canDelete reports whether dd may act on session. Deleting accepts any
+// row, live or archived (the live pane is killed first, in the same
+// action), so this is always true.
+func canDelete(session store.Session) bool {
+	return true
+}
+
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	i1Trace("enter", message, m.selected)
 	i1TraceSessions(m)
@@ -2078,7 +2137,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// whatever that other key would normally have done.
 		if m.pendingDelete {
 			m.pendingDelete = false
-			if msg.String() == "d" && len(m.sessions) > 0 {
+			if msg.String() == "d" && len(m.sessions) > 0 && canDelete(m.sessions[m.selected]) {
 				m.deleteConfirming = true
 				m.deleteNote = ""
 				if len(m.marked) > 0 {
@@ -2191,7 +2250,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.acknowledge == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
-			sessionID := m.sessions[m.selected].ID
+			session := m.sessions[m.selected]
+			if !canAcknowledge(session) {
+				return m, nil
+			}
+			sessionID := session.ID
 			return m, func() tea.Msg {
 				return sessionAcknowledged{err: m.acknowledge(context.Background(), sessionID)}
 			}
@@ -2217,7 +2280,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					result := sessionsBulkKilled{}
 					for _, s := range sessions {
-						if s.Status == "stopped" {
+						if !canKill(s) {
 							continue
 						}
 						result.sessions = append(result.sessions, s)
@@ -2276,6 +2339,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if !canArchive(m.sessions[m.selected]) {
+				return m, nil
+			}
 			m.archiveConfirming = true
 			m.archiveNote = ""
 			return m, nil
@@ -2298,7 +2364,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			if session.ArchivedAt == 0 {
+			if !canUnarchive(session) {
 				m.attachError = "Cannot unarchive: session is not archived"
 				return m, nil
 			}
@@ -2418,7 +2484,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			if session.Status != "stopped" {
+			if !canResume(session) {
 				m.attachError = "Cannot resume: session is not stopped"
 				return m, nil
 			}
@@ -2432,7 +2498,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			if session.Status == "stopped" {
+			if !canRestart(session) {
 				m.attachError = "Cannot restart: session is not running (use r to resume it)"
 				return m, nil
 			}
