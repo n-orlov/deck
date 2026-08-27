@@ -528,18 +528,30 @@ func releasedHookForSession(ctx context.Context, name, payload string) error {
 		return err
 	}
 	var sessionID string
-	if err := db.QueryRowContext(ctx, `SELECT id FROM sessions WHERE name = ?`, name).Scan(&sessionID); err != nil {
+	var leaseOwner string
+	if err := db.QueryRowContext(ctx, `SELECT id, COALESCE(launch_lease_owner, '') FROM sessions WHERE name = ?`, name).Scan(&sessionID, &leaseOwner); err != nil {
 		db.Close()
 		return fmt.Errorf("resolve hook target %q: %w", name, err)
 	}
 	if err := db.Close(); err != nil {
 		return err
 	}
+	// A real hook process inherits the environment of the pane it runs in, which
+	// for a leased launch includes that launch's generation token (issue #11,
+	// R74): without it this fixture would be impersonating a pane deck has
+	// already replaced, and the receiver would correctly drop the write. The
+	// token is read from the row's own launch_lease_owner, i.e. exactly what the
+	// current launch exported. A row whose only launch came from create holds
+	// none, and then none is exported -- same as the real pane.
+	env := []string{"DECK_SESSION_ID=" + sessionID}
+	if _, generation, found := strings.Cut(leaseOwner, "#"); found && generation != "" {
+		env = append(env, "DECK_LAUNCH_GENERATION="+generation)
+	}
 
 	commandCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(commandCtx, h.Binary, "_hook")
-	cmd.Env = append(os.Environ(), h.Environment("DECK_SESSION_ID="+sessionID)...)
+	cmd.Env = append(os.Environ(), h.Environment(env...)...)
 	cmd.Stdin = strings.NewReader(payload)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("released hook for session %q: %w: %s", name, err, strings.TrimSpace(string(output)))

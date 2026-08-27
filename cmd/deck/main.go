@@ -202,7 +202,11 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) err
 		return fmt.Errorf("open audit log: %w", err)
 	}
 	timed := timedHookStore{Store: db, Audit: logger}
-	result, err := hookrecv.Receive(ctx, timed, trimmed, os.Getenv("DECK_SESSION_ID"), settings.Clock.Now().UnixMilli())
+	// The pane's own launch generation travels with the row identity so the
+	// receiver can tell a hook from the current launch apart from a late hook
+	// from a launch deck has already replaced (issue #11, R74). Absent when
+	// this pane's launch took no lease, which Receive reads as "no token".
+	result, err := hookrecv.Receive(ctx, timed, trimmed, os.Getenv("DECK_SESSION_ID"), os.Getenv(agent.LaunchGenerationEnv), settings.Clock.Now().UnixMilli())
 	if err != nil {
 		return err
 	}

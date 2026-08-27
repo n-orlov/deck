@@ -1,0 +1,8 @@
+=== RUN   TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow
+    superseded_launch_hook_test.go:90: the killed launch's SessionEnd stopped the row deck had just started: status="stopped" reason="other" source="hook"
+--- FAIL: TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow (0.13s)
+=== RUN   TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator
+--- PASS: TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator (0.12s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.253s
+FAIL

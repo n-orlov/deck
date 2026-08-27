@@ -214,6 +214,18 @@ type Session struct {
 	ConversationID          string
 	ResumePin               string
 	ResumeState             string
+	// LaunchGeneration is the generation half of the row's own
+	// launch_lease_owner ("pid@boot_id#generation"): the per-launch
+	// discriminator minted by the AcquireLaunchLease of the launch deck
+	// currently considers the live one (issue #11, R74). Empty for a row no
+	// lease has ever been taken on -- notably a brand-new row whose first
+	// launch came straight from CreateAgent -- which means "this row names no
+	// particular launch", not "a launch whose token is empty". The hook
+	// receiver compares it with the token the hook's pane carries, so a write
+	// from a pane deck has already replaced can be recognized as superseded
+	// (internal/hookrecv). It is read here rather than through a dedicated
+	// query because every hook already resolves through a Session.
+	LaunchGeneration string
 	// LastProbeAt is the wall-clock millisecond timestamp of the most recent
 	// stale-eligible pane sample that matched no probe.go rule at all (a
 	// total miss), recorded by RecordProbeMiss. It deliberately never
@@ -467,6 +479,7 @@ func scanSession(row interface {
 	var session Session
 	var launchArgsJSON, envJSON string
 	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace sql.NullString
+	var leaseOwner string
 	var loginShell, killedByUser, acknowledged, envDirty int
 	var paneExitStatus sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
@@ -474,9 +487,14 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt); err != nil {
+		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt,
+		&leaseOwner); err != nil {
 		return Session{}, err
 	}
+	// Only the generation half is surfaced: the launcher identity is lease
+	// bookkeeping (SPEC §9.3) that no reader outside this package needs, while
+	// the generation is the discriminator a hook hands back (issue #11, R74).
+	_, session.LaunchGeneration = splitOwnerGeneration(leaseOwner)
 	session.EnvDirty = envDirty != 0
 	if workspace.Valid && workspace.String != "" {
 		session.Workspace = workspace.String
@@ -524,7 +542,8 @@ const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace, last_probe_at, env_dirty, deleted_at, archived_at`
+		workspace, last_probe_at, env_dirty, deleted_at, archived_at,
+		COALESCE(launch_lease_owner, '')`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.

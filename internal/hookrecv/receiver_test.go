@@ -45,7 +45,7 @@ func TestReceiveMappingTable(t *testing.T) {
 			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q%s}`, tc.event, conversationID, tc.extra))
 
-			result, err := Receive(context.Background(), db, raw, "wrong-fallback", int64(100+index))
+			result, err := Receive(context.Background(), db, raw, "wrong-fallback", "", int64(100+index))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +96,7 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 						t.Fatal(err)
 					}
 					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"question","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
-					if _, err := Receive(context.Background(), db, raw, "", 20); err != nil {
+					if _, err := Receive(context.Background(), db, raw, "", "", 20); err != nil {
 						t.Fatal(err)
 					}
 					got, err := db.GetSession(context.Background(), id)
@@ -144,7 +144,7 @@ func TestReceiveHookOverridesStaleTmuxLaunchFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q%s}`, tc.event, id, tc.extra))
-			if _, err := Receive(context.Background(), db, raw, "", 50); err != nil {
+			if _, err := Receive(context.Background(), db, raw, "", "", 50); err != nil {
 				t.Fatal(err)
 			}
 			got, err := db.GetSession(context.Background(), id)
@@ -171,7 +171,7 @@ func TestReceiveDoesNotResurrectAUserKilledRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := []byte(fmt.Sprintf(`{"hook_event_name":"SessionStart","session_id":%q,"source":"resume"}`, id))
-	if _, err := Receive(context.Background(), db, raw, "", 20); err != nil {
+	if _, err := Receive(context.Background(), db, raw, "", "", 20); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.GetSession(context.Background(), id)
@@ -212,7 +212,7 @@ func TestReceiveSessionEndReasonTaxonomy(t *testing.T) {
 			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":"SessionEnd","session_id":%q,"reason":%q}`, id, tc.reason))
 
-			if _, err := Receive(context.Background(), db, raw, "", 200); err != nil {
+			if _, err := Receive(context.Background(), db, raw, "", "", 200); err != nil {
 				t.Fatal(err)
 			}
 
@@ -256,7 +256,7 @@ func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 				t.Fatal(err)
 			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume"}`, tc.event, tc.name))
-			if _, err := Receive(context.Background(), db, raw, "", 30); err != nil {
+			if _, err := Receive(context.Background(), db, raw, "", "", 30); err != nil {
 				t.Fatal(err)
 			}
 			got, err := db.GetSession(context.Background(), tc.name)
@@ -283,7 +283,7 @@ func TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity(t *testing
 	createHookSession(t, db, "injected-row", "claude", "different-conversation")
 	ctx := context.Background()
 
-	if result, err := Receive(ctx, db, []byte(`{"hook_event_name":"SessionStart","session_id":"reported-conversation","source":"resume"}`), "injected-row", 20); err != nil {
+	if result, err := Receive(ctx, db, []byte(`{"hook_event_name":"SessionStart","session_id":"reported-conversation","source":"resume"}`), "injected-row", "", 20); err != nil {
 		t.Fatal(err)
 	} else if result.SessionID != "conversation-row" {
 		t.Fatalf("conversation resolution selected %q", result.SessionID)
@@ -296,7 +296,7 @@ func TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity(t *testing
 		t.Fatalf("fallback row changed despite conversation match: %#v", injected)
 	}
 
-	if result, err := Receive(ctx, db, []byte(`{"hook_event_name":"UserPromptSubmit","session_id":"unknown-upstream-id"}`), "injected-row", 21); err != nil {
+	if result, err := Receive(ctx, db, []byte(`{"hook_event_name":"UserPromptSubmit","session_id":"unknown-upstream-id"}`), "injected-row", "", 21); err != nil {
 		t.Fatal(err)
 	} else if result.SessionID != "injected-row" {
 		t.Fatalf("injected resolution selected %q", result.SessionID)
@@ -325,7 +325,7 @@ func TestReceiveSessionStartFollowsLiveConversation(t *testing.T) {
 
 	ctx := context.Background()
 	raw := []byte(`{"hook_event_name":"SessionStart","session_id":"new-conversation","source":"resume"}`)
-	result, err := Receive(ctx, db, raw, "resumed-row", 30)
+	result, err := Receive(ctx, db, raw, "resumed-row", "", 30)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestReceiveSessionStartFollowsLiveConversation(t *testing.T) {
 func TestReceivePreservesUnresolvedPayloadAsOrphan(t *testing.T) {
 	db := newHookStore(t)
 	raw := []byte("{\n  \"hook_event_name\": \"Notification\", \"notification_type\": \"question\", \"session_id\": \"gone\"\n}")
-	result, err := Receive(context.Background(), db, raw, "also-gone", 42)
+	result, err := Receive(context.Background(), db, raw, "also-gone", "", 42)
 	if !errors.Is(err, ErrUnresolved) || !result.Orphan {
 		t.Fatalf("Receive error/result = %v, %#v", err, result)
 	}
@@ -382,7 +382,7 @@ func TestReceivePreservesUnresolvedPayloadAsOrphan(t *testing.T) {
 func TestReceiveRejectsShellTarget(t *testing.T) {
 	db := newHookStore(t)
 	createHookSession(t, db, "shell-row", "shell", "")
-	_, err := Receive(context.Background(), db, []byte(`{"hook_event_name":"SessionStart"}`), "shell-row", 50)
+	_, err := Receive(context.Background(), db, []byte(`{"hook_event_name":"SessionStart"}`), "shell-row", "", 50)
 	if err == nil {
 		t.Fatal("shell hook unexpectedly accepted")
 	}

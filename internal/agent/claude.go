@@ -138,7 +138,7 @@ func (Claude) Instrument(in LaunchInput) ([]string, map[string]string) {
 	// when the launch holds no lease-minted token, so a hook never sees an
 	// empty token it would have to interpret.
 	if in.LaunchGeneration != "" {
-		env["DECK_LAUNCH_GENERATION"] = in.LaunchGeneration
+		env[LaunchGenerationEnv] = in.LaunchGeneration
 	}
 	return []string{"--settings", string(settings)}, env
 }
