@@ -39,7 +39,7 @@ func TestReceiveResolvesAnArchivedRowByBothKeys(t *testing.T) {
 	}
 
 	// Key 1: the payload's own conversation id (SPEC §8.1's first route).
-	result, err := Receive(ctx, db, []byte(`{"hook_event_name":"SessionStart","session_id":"archived-conversation","source":"resume"}`), "", 10)
+	result, err := Receive(ctx, db, []byte(`{"hook_event_name":"SessionStart","session_id":"archived-conversation","source":"resume"}`), "", "", 10)
 	if err != nil {
 		t.Fatalf("conversation-id hook on an archived row: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestReceiveResolvesAnArchivedRowByBothKeys(t *testing.T) {
 
 	// Key 2: the deck row id injected into the pane environment (§8.1's
 	// fallback), with a conversation id that matches no row.
-	result, err = Receive(ctx, db, []byte(`{"hook_event_name":"Notification","notification_type":"question","session_id":"not-a-known-conversation"}`), "archived-row", 11)
+	result, err = Receive(ctx, db, []byte(`{"hook_event_name":"Notification","notification_type":"question","session_id":"not-a-known-conversation"}`), "archived-row", "", 11)
 	if err != nil {
 		t.Fatalf("injected-id hook on an archived row: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestReceiveKeepsATombstonedRowsHookAnOrphan(t *testing.T) {
 		{name: "by injected row id", raw: `{"hook_event_name":"Stop","session_id":"unknown"}`, injected: "tombstoned-row", wantOrphans: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := Receive(ctx, db, []byte(tc.raw), tc.injected, 20+int64(tc.wantOrphans))
+			result, err := Receive(ctx, db, []byte(tc.raw), tc.injected, "", 20+int64(tc.wantOrphans))
 			if !errors.Is(err, ErrUnresolved) || !result.Orphan || result.SessionID != "" {
 				t.Fatalf("tombstoned hook = %#v, err %v; want unresolved orphan", result, err)
 			}

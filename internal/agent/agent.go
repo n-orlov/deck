@@ -97,6 +97,12 @@ type LaunchInput struct {
 	DeckHome string
 }
 
+// LaunchGenerationEnv names the pane environment variable carrying the
+// per-launch generation token (issue #11, R74). It is exported so the launcher
+// that writes it and the hook entrypoint that reads it back cannot drift apart:
+// a typo on either side would silently look like "this hook has no token".
+const LaunchGenerationEnv = "DECK_LAUNCH_GENERATION"
+
 // ResumeInput carries what an adapter needs to build a resume argv.
 type ResumeInput struct {
 	CWD            string

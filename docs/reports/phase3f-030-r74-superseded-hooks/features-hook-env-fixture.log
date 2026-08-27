@@ -1,0 +1,66 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m User kill is terminal against later automation
+  An explicit x kill is durable user intent. A delayed agent hook may remain
+  useful evidence, but it must not resurrect the row behind the user's back.
+=== RUN   TestFeatures/a_running_hook_cannot_undo_an_explicit_user_kill
+
+  [1;37mScenario:[0m a running hook cannot undo an explicit user kill                                       [1;30m# status_user_kill.feature:6[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                   [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "terminal kill" with permission profile "safe"[0m     [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mthe private tmux session "deck_terminal-kill" exists[0m                                      [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database session "terminal kill" is "stopped" from "user" with killed_by_user=1[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mWhen[0m [32mthe released running hook fires for session "terminal kill"[0m                               [1;30m# assertions_test.go:44 -> github.com/n-orlov/deck/features.releasedRunningHookForSession[0m
+    [32mThen[0m [32mthe state database session "terminal kill" is "stopped" from "user" with killed_by_user=1[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mAnd[0m [32mthe state database contains session "terminal kill" with status "stopped"[0m                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "terminal kill"[0m                                      [1;30m# agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "terminal kill" is "starting" from "tmux" with killed_by_user=0[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mWhen[0m [32mthe released running hook fires for session "terminal kill"[0m                               [1;30m# assertions_test.go:44 -> github.com/n-orlov/deck/features.releasedRunningHookForSession[0m
+    [32mThen[0m [32mthe state database session "terminal kill" is "running" from "hook" with killed_by_user=0[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mAnd[0m [32mthe state database contains session "terminal kill" with status "running"[0m                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m Attaching records the selected attention episode
+  Enter is an observed user action, not merely an acknowledgement. A waiting
+  row is answered atomically, while an error row keeps its verdict; both clear
+  their unseen marker before deck yields the terminal to tmux.
+=== RUN   TestFeatures/attach_clears_waiting_and_acknowledges_it_in_one_transition
+
+  [1;37mScenario:[0m attach clears waiting and acknowledges it in one transition                                                                 [1;30m# status_attach.feature:7[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                        [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                      [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "answer prompt" with permission profile "safe"[0m                                          [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mthe released running hook fires for session "answer prompt"[0m                                                                     [1;30m# assertions_test.go:44 -> github.com/n-orlov/deck/features.releasedRunningHookForSession[0m
+    [32mAnd[0m [32mthe released waiting hook fires for session "answer prompt"[0m                                                                     [1;30m# assertions_test.go:45 -> github.com/n-orlov/deck/features.releasedWaitingHookForSession[0m
+    [32mThen[0m [32mthe state database session "answer prompt" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events[0m [1;30m# assertions_test.go:46 -> github.com/n-orlov/deck/features.databaseSessionAttentionFields[0m
+    [32mWhen[0m [32mdeck client "A" attaches to and detaches from its selected agent[0m                                                               [1;30m# assertions_test.go:60 -> github.com/n-orlov/deck/features.clientAttachesToSelectedAgentAndDetaches[0m
+    [32mThen[0m [32mthe state database session "answer prompt" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event[0m  [1;30m# assertions_test.go:46 -> github.com/n-orlov/deck/features.databaseSessionAttentionFields[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict
+
+  [1;37mScenario:[0m attach acknowledges a live error without replacing its verdict                                                                         [1;30m# status_attach.feature:18[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                                                   [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "failed prompt" with permission profile "safe"[0m                                                     [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mfake Claude session "failed prompt" fires "SessionStart" for itself using injected identity:[0m                                               [1;30m# status_claude_hooks_test.go:23 -> github.com/n-orlov/deck/features.fakeClaudeFiresForSelf[0m
+      | [36msource[0m | [36mfresh[0m |
+    [32mAnd[0m [32mfake Claude session "failed prompt" fires "StopFailure" for itself using injected identity:[0m                                                [1;30m# status_claude_hooks_test.go:23 -> github.com/n-orlov/deck/features.fakeClaudeFiresForSelf[0m
+      | [36merror_type[0m | [36mtool_failure[0m |
+    [32mThen[0m [32mthe state database session "failed prompt" has hook status "error", reason "tool_failure", message "", acknowledged 0, and notify_epoch 0[0m [1;30m# status_claude_hooks_test.go:25 -> github.com/n-orlov/deck/features.databaseSessionHasHookStatus[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" row "failed prompt" contains "!"[0m                                                  [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mWhen[0m [32mdeck client "A" attaches to and detaches from its selected agent[0m                                                                          [1;30m# assertions_test.go:60 -> github.com/n-orlov/deck/features.clientAttachesToSelectedAgentAndDetaches[0m
+    [32mThen[0m [32mthe state database session "failed prompt" is "error" from "hook" with acknowledged=1, notify_epoch=0, and 1 attached event[0m               [1;30m# assertions_test.go:46 -> github.com/n-orlov/deck/features.databaseSessionAttentionFields[0m
+    [32mAnd[0m [32mafter one configured reconcile interval deck client "A" row "failed prompt" does not contain "!"[0m                                           [1;30m# assertions_test.go:32 -> github.com/n-orlov/deck/features.clientRowDoesNotContainAfterReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+3 scenarios ([32m3 passed[0m)
+36 steps ([32m36 passed[0m)
+4.27850497s
+--- PASS: TestFeatures (4.28s)
+    --- PASS: TestFeatures/a_running_hook_cannot_undo_an_explicit_user_kill (1.43s)
+    --- PASS: TestFeatures/attach_clears_waiting_and_acknowledges_it_in_one_transition (1.17s)
+    --- PASS: TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict (1.66s)
+PASS
+ok  	github.com/n-orlov/deck/features	4.292s

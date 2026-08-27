@@ -93,6 +93,10 @@ type Result struct {
 	Kind      string
 	Reason    string
 	Orphan    bool
+	// Superseded means the hook named a launch generation that is not the
+	// one the row currently holds, so its status write was recorded as an
+	// event but deliberately never applied (issue #11, R74).
+	Superseded bool
 }
 
 // payload contains only fields deck interprets. The original JSON, not a
@@ -107,11 +111,49 @@ type payload struct {
 	LastMessage    string `json:"last_assistant_message"`
 }
 
+// supersededLaunch decides, for the whole hook class at once, whether a hook
+// write belongs to a launch deck has already replaced (issue #11, R74).
+//
+// The row's launch_lease_owner names the generation of the launch whose pane is
+// the current one; every instrumented launch that took a lease exports that
+// token into its pane (DECK_LAUNCH_GENERATION), so a hook hands back the token
+// of the launch it actually came from. A token that is not the row's current
+// one therefore came from a pane deck has already killed and replaced, and its
+// verdict describes a process that is gone -- SessionEnd->stopped is the one
+// that visibly wrecked a live row (it stopped a row whose new pane was
+// running), but Stop->idle and Notification->waiting are the same lie about the
+// same dead pane, so the rule is applied to the whole class rather than to one
+// event name.
+//
+// The two token-absent cases are decided deliberately, not by accident:
+//
+//   - row token empty: nothing to discriminate. No launch lease has ever been
+//     taken on this row (its only launch came from CreateAgent, which takes
+//     none), so deck has no opinion about which launch is current and every
+//     hook applies exactly as it did before R74. This is what keeps pre-R74
+//     rows, and any uninstrumented path, working unchanged.
+//   - hook token empty while the row holds one: superseded. The row says a
+//     leased launch is current, and such a launch always exports its token, so
+//     a hook with no token cannot have come from it -- it comes from the row's
+//     pre-lease (create-time) pane, which is exactly the older launch this rule
+//     exists to discount. Treating it as "unknown, therefore allow" would leave
+//     the first-launch hooks of every resumed row still able to stop it.
+func supersededLaunch(rowGeneration, hookGeneration string) bool {
+	if rowGeneration == "" {
+		return false
+	}
+	return hookGeneration != rowGeneration
+}
+
 // Receive maps and persists one already-framed JSON hook object. Session
 // resolution follows SPEC §8.1 exactly: payload conversation id first, then
 // the deck row id injected into the pane environment. Shell rows are resolved
 // but rejected because shell instrumentation is forbidden.
-func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string, at int64) (Result, error) {
+//
+// injectedLaunchGeneration is the DECK_LAUNCH_GENERATION value the hook's pane
+// carries (empty when it carries none); see supersededLaunch for what a
+// mismatch means and how the token-absent cases are decided.
+func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injectedLaunchGeneration string, at int64) (Result, error) {
 	if db == nil {
 		return Result{}, errors.New("hook store is required")
 	}
@@ -153,10 +195,22 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID string
 	}
 
 	result.SessionID = session.ID
-	if p.EventName == "SessionStart" && p.ConversationID != "" && p.ConversationID != session.ConversationID {
+	if supersededLaunch(session.LaunchGeneration, injectedLaunchGeneration) {
+		// Recorded, never applied -- the same mechanism requirement 43 uses
+		// for an in-session SessionEnd. The event keeps the evidence that a
+		// superseded pane spoke, while the unsatisfiable AllowedFrom makes the
+		// status write a no-op inside the store's own transaction, so the row
+		// is never wrong even momentarily and nothing has to repair it after.
+		result.Superseded = true
+		allowedFrom = noCurrentStatusMatches
+	}
+	if !result.Superseded && p.EventName == "SessionStart" && p.ConversationID != "" && p.ConversationID != session.ConversationID {
 		// Requirement 44: the row deck already owns follows the live
 		// conversation, independent of whether the status transition below
-		// is itself allowed from the row's current state.
+		// is itself allowed from the row's current state. A superseded launch
+		// is the exception: its conversation belongs to the replaced pane, so
+		// moving the row's identity onto it would hand the row the id of a
+		// conversation that is already over.
 		if err := db.SetConversationID(ctx, session.ID, p.ConversationID, "hook", at); err != nil {
 			return result, fmt.Errorf("update conversation id: %w", err)
 		}

@@ -72,7 +72,11 @@ func TestResumedRowAcceptsTheNewPanesFirstHook(t *testing.T) {
 			}
 
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume"}`, event, conversationID))
-			if _, err := Receive(ctx, db, raw, "", 14); err != nil {
+			// The new pane carries the generation THIS lease minted, which is
+			// what a really-resumed pane exports (issue #11, R74): passing an
+			// empty token here would make the hook look like one from the
+			// replaced pane and test R74's drop instead of #9's guard.
+			if _, err := Receive(ctx, db, raw, "", result.LaunchGeneration, 14); err != nil {
 				t.Fatalf("receive %s from the new pane: %v", event, err)
 			}
 
