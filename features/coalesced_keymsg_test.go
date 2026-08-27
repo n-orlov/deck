@@ -69,7 +69,7 @@ func TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := driver.Send("\t" + cwd + "\r"); err != nil {
+	if err := driver.Send("\x1b[B" + cwd + "\r"); err != nil {
 		t.Fatal(err)
 	}
 	// "starting" (not the session's own name) is the unambiguous wait target:

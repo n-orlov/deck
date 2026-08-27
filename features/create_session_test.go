@@ -24,7 +24,7 @@ func registerCreateSessionCWDPrefillSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" with a fresh working directory labelled "([^"]+)"$`, clientCreatesShellSessionWithFreshCWDLabelled)
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" typing over the prefilled working directory with the directory labelled "([^"]+)"$`, clientCreatesShellSessionTypingOverPrefillWithLabelled)
 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the directory labelled "([^"]+)"$`, sessionHasCWDExactlyLabelled)
-	sc.Step(`^deck client "([^"]+)" presses "(up|down)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
+	sc.Step(`^deck client "([^"]+)" presses "(up|down|ctrl\+p|ctrl\+n)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
 	sc.Step(`^deck client "([^"]+)" tabs to the cwd field$`, clientTabsToCWDField)
 }
 
@@ -122,7 +122,8 @@ func clientScreenDoesNotContainDirectoryLabelled(ctx context.Context, name, labe
 
 // createShellSessionInLabelledCWD drives the real create modal to a
 // successful shell-session creation in a brand-new, existing directory
-// under the scenario's DECK_HOME: send "n", type the session name, tab to
+// under the scenario's DECK_HOME: send "n", type the session name, move
+// down (↑/↓, task 025) to
 // the cwd field, type dir over whatever the field already held (its own
 // §11.7 prefill included -- typing never clears first, by design; see
 // task 008) and submit. Shared by both create-session steps below, which
@@ -148,7 +149,7 @@ func createShellSessionInLabelledCWD(ctx context.Context, h *ScenarioHarness, cl
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + dir + "\r"); err != nil {
+	if err := client.Send("\x1b[B" + dir + "\r"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "starting")
@@ -208,12 +209,15 @@ func clientTabsToCWDField(ctx context.Context, name string) error {
 	return nil
 }
 
-// clientPressesArrowInCWDFieldNTimes drives task 009's shell-history-style
-// up/down cycling: the caller must already have tabbed focus to the cwd
-// field (clientTabsToCWDField) since up/down are a no-op everywhere else in
-// the create modal. Sends the real terminal escape sequence for up
-// (\x1b[A) or down (\x1b[B) n times, pausing between presses exactly as
-// clientPressesKeyNTimes (features/layout_modes_test.go) does for any
+// clientPressesArrowInCWDFieldNTimes drives ↑/↓ field navigation or (task
+// 025 moved recent_cwds cycling off ↑/↓ onto shell-history-style Ctrl+P
+// (older) / Ctrl+N (newer)) recent-cwd cycling on the cwd field: the
+// caller must already have tabbed focus to the cwd field
+// (clientTabsToCWDField), since ↑/↓ move to a different field, and
+// Ctrl+P/Ctrl+N are a no-op, everywhere else in the create modal. Sends
+// the real terminal escape/control byte for up (\x1b[A), down (\x1b[B),
+// ctrl+p (\x10) or ctrl+n (\x0e) n times, pausing between presses exactly
+// as clientPressesKeyNTimes (features/layout_modes_test.go) does for any
 // other repeated-keystroke step, since the same pty-coalescing gotcha
 // applies to any raw byte sent back to back.
 func clientPressesArrowInCWDFieldNTimes(ctx context.Context, name, direction string, n int) error {
@@ -225,9 +229,14 @@ func clientPressesArrowInCWDFieldNTimes(ctx context.Context, name, direction str
 	if err != nil {
 		return err
 	}
-	seq := "\x1b[A"
-	if direction == "down" {
-		seq = "\x1b[B"
+	seq, ok := map[string]string{
+		"up":     "\x1b[A",
+		"down":   "\x1b[B",
+		"ctrl+p": "\x10",
+		"ctrl+n": "\x0e",
+	}[direction]
+	if !ok {
+		return fmt.Errorf("clientPressesArrowInCWDFieldNTimes: unrecognised direction %q", direction)
 	}
 	for i := 0; i < n; i++ {
 		if err := client.Send(seq); err != nil {

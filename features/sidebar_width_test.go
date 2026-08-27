@@ -103,7 +103,7 @@ func clientCreatesLongNamedShellSession(ctx context.Context, clientName, name st
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t/tmp\r"); err != nil {
+	if err := client.Send("\x1b[B/tmp\r"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "created ")

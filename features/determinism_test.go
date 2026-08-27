@@ -119,7 +119,7 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + cwd + "\r"); err != nil {
+	if err := client.Send("\x1b[B" + cwd + "\r"); err != nil {
 		return err
 	}
 	if err := waitForPrivateSession(ctx, "deck_frozen-clock"); err != nil {
@@ -298,7 +298,7 @@ func generatedIDForSeed(ctx context.Context, binary, seed string) (string, error
 		return "", err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + cwd + "\r"); err != nil {
+	if err := client.Send("\x1b[B" + cwd + "\r"); err != nil {
 		return "", err
 	}
 	if err := waitForPrivateSession(context.WithValue(ctx, scenarioHarnessKey{}, h), "deck_seed-session"); err != nil {

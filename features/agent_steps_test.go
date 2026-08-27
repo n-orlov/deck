@@ -172,14 +172,15 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 		return err
 	}
 	if message != "" {
-		// Tab onto the Launch args (JSON array) field, right after Permission
-		// profile, and type a one-element JSON array holding message verbatim
-		// (internal/tui.createFieldRows field order).
+		// Down-arrow (task 025 moved field navigation off tab) onto the Launch
+		// args (JSON array) field, right after Permission profile, and type a
+		// one-element JSON array holding message verbatim (internal/tui.
+		// createFieldRows field order).
 		encoded, err := json.Marshal([]string{message})
 		if err != nil {
 			return fmt.Errorf("encode launch_args message %q: %w", message, err)
 		}
-		if err := client.Send("\t" + string(encoded)); err != nil {
+		if err := client.Send("\x1b[B" + string(encoded)); err != nil {
 			return err
 		}
 		time.Sleep(75 * time.Millisecond)
@@ -195,7 +196,8 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 
 // clientCreatesAgentSessionWithProfileAndEnv is clientCreatesAgentSessionWithProfile's
 // counterpart that also fills the Env field (createFieldRows field 5, two
-// tabs past Permission profile: 3 Permission profile, 4 Launch args, 5 Env)
+// down-arrows past Permission profile (task 025 moved field navigation off
+// tab): 3 Permission profile, 4 Launch args, 5 Env)
 // with a comma-separated key=value entry before submitting. This is how a
 // launch record carrying a custom environment key gets onto the audit log
 // for a real create through the released TUI (task 019 / PRD requirement
@@ -208,7 +210,7 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\t\t" + envText); err != nil {
+	if err := client.Send("\x1b[B\x1b[B" + envText); err != nil {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
@@ -227,19 +229,19 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 // (internal/tui.createFieldRows field order: 3 Permission profile, 4
 // Launch args, 5 Env, 6 Pre-launch command, 7 Login shell) onto the Login
 // shell field, toggles it on with space, and submits (task 017, SPEC
-// §6.3). It never types anything into the fields it tabs through, so
+// §6.3). It never types anything into the fields it moves through, so
 // they keep their empty defaults.
 func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clientName, kind, name, profile string) error {
 	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\t\t\t\t"); err != nil {
+	if err := client.Send("\x1b[B\x1b[B\x1b[B\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
 	if err := client.WaitForFrame(ctx, false, "Login shell"); err != nil {
-		return fmt.Errorf("tab onto Login shell field: %w", err)
+		return fmt.Errorf("down-arrow onto Login shell field: %w", err)
 	}
 	if err := client.Send(" "); err != nil {
 		return err
@@ -269,12 +271,12 @@ func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientNa
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\t\t\t"); err != nil {
+	if err := client.Send("\x1b[B\x1b[B\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
 	if err := client.WaitForFrame(ctx, false, "Pre-launch command"); err != nil {
-		return fmt.Errorf("tab onto Pre-launch command field: %w", err)
+		return fmt.Errorf("down-arrow onto Pre-launch command field: %w", err)
 	}
 	if err := client.Send(command); err != nil {
 		return err
@@ -305,12 +307,12 @@ func clientCreatesAgentSessionWithSucceedingPreLaunch(ctx context.Context, clien
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\t\t\t"); err != nil {
+	if err := client.Send("\x1b[B\x1b[B\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
 	if err := client.WaitForFrame(ctx, false, "Pre-launch command"); err != nil {
-		return fmt.Errorf("tab onto Pre-launch command field: %w", err)
+		return fmt.Errorf("down-arrow onto Pre-launch command field: %w", err)
 	}
 	if err := client.Send(command); err != nil {
 		return err
@@ -515,9 +517,10 @@ func clientOpensCreateModalForAgent(ctx context.Context, clientName, kind string
 	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
 		return err
 	}
-	// One tab: Name -> Working directory. cycleCreateFieldToValue's own
-	// leading tab then moves Working directory -> Agent.
-	if err := client.Send("\t"); err != nil {
+	// One down-arrow (task 025 moved field navigation off tab): Name ->
+	// Working directory. cycleCreateFieldToValue's own leading down-arrow
+	// then moves Working directory -> Agent.
+	if err := client.Send("\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(50 * time.Millisecond)

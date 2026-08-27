@@ -70,7 +70,7 @@ func TestCreateModalWarnsBeforeReusingADeletedSessionsName(t *testing.T) {
 	}
 
 	// Submit it as a real shell session.
-	if err := driver.Send("\t" + cwd + "\r"); err != nil {
+	if err := driver.Send("\x1b[B" + cwd + "\r"); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.WaitForFrame(ctx, false, "starting"); err != nil {

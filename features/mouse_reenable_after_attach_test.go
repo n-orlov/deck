@@ -33,7 +33,7 @@ func attachAndDetach(ctx context.Context, driver *ScreenDriver, name string) err
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := driver.Send("\t\r"); err != nil {
+	if err := driver.Send("\r"); err != nil {
 		return err
 	}
 	if err := driver.WaitForFrame(ctx, false, "starting"); err != nil {

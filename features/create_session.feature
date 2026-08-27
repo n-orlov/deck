@@ -37,7 +37,7 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     When deck client "A" exits cleanly
 
   @requirement-13-cycle-recent
-  Scenario: up/down cycle the cwd field through recent_cwds history, shell-history style, showing "recent N/M"
+  Scenario: Ctrl+P/Ctrl+N cycle the cwd field through recent_cwds history, shell-history style, showing "recent N/M"
     Given deck client "A" is started
     When deck client "A" creates shell session "cs-cycle-1" with a fresh working directory labelled "cycle-1"
     And deck client "A" creates shell session "cs-cycle-2" with a fresh working directory labelled "cycle-2"
@@ -48,13 +48,13 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     Then deck client "A" screen contains the directory labelled "cycle-5"
     And deck client "A" screen does not contain "recent 1/5"
     When deck client "A" tabs to the cwd field
-    And deck client "A" presses "up" in the cwd field 2 times
+    And deck client "A" presses "ctrl+p" in the cwd field 2 times
     Then deck client "A" screen contains the directory labelled "cycle-4"
     And deck client "A" screen contains "recent 2/5"
-    When deck client "A" presses "down" in the cwd field 1 times
+    When deck client "A" presses "ctrl+n" in the cwd field 1 times
     Then deck client "A" screen contains the directory labelled "cycle-5"
     And deck client "A" screen contains "recent 1/5"
-    When deck client "A" presses "down" in the cwd field 1 times
+    When deck client "A" presses "ctrl+n" in the cwd field 1 times
     Then deck client "A" screen contains the directory labelled "cycle-5"
     And deck client "A" screen contains "(last used)"
     And deck client "A" screen does not contain "recent 1/5"
@@ -211,11 +211,11 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     Then deck client "A" screen contains the directory labelled "limit-3"
     And deck client "A" screen contains "(last used)"
     When deck client "A" tabs to the cwd field
-    And deck client "A" presses "up" in the cwd field 2 times
+    And deck client "A" presses "ctrl+p" in the cwd field 2 times
     Then deck client "A" screen contains the directory labelled "limit-1"
     And deck client "A" screen contains "recent 2/2"
     And deck client "A" screen does not contain the directory labelled "limit-2"
-    When deck client "A" presses "up" in the cwd field 1 times
+    When deck client "A" presses "ctrl+p" in the cwd field 1 times
     Then deck client "A" screen contains the directory labelled "limit-1"
     And deck client "A" screen contains "recent 2/2"
     When deck client "A" closes the create modal
