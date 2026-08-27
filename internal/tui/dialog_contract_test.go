@@ -217,6 +217,41 @@ func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
 		t.Fatalf("Ctrl+P moved createField to %d, want to stay on 1", got.createField)
 	}
 
+	// A second Ctrl+P walks further back through history (older).
+	updated, _ = got.Update(key("ctrl+p"))
+	got = updated.(Model)
+	if got.createCWD != "/recent/one" {
+		t.Fatalf("second Ctrl+P did not cycle to the older entry: createCWD = %q, want %q", got.createCWD, "/recent/one")
+	}
+
+	// Ctrl+N walks back towards newer entries -- readline's "next history".
+	updated, _ = got.Update(key("ctrl+n"))
+	got = updated.(Model)
+	if got.createCWD != "/recent/two" {
+		t.Fatalf("Ctrl+N did not cycle back to the newer entry: createCWD = %q, want %q", got.createCWD, "/recent/two")
+	}
+	if got.createField != 1 {
+		t.Fatalf("Ctrl+N moved createField to %d, want to stay on 1", got.createField)
+	}
+
+	// One more Ctrl+N runs past the most recent entry: the cycle exits and
+	// whatever the user had typed before it started comes back exactly.
+	updated, _ = got.Update(key("ctrl+n"))
+	got = updated.(Model)
+	if got.createCWD != "/typed/value" {
+		t.Fatalf("Ctrl+N past the newest entry did not restore the pre-cycle value: createCWD = %q, want %q", got.createCWD, "/typed/value")
+	}
+	if got.createCWDRecentIndex != -1 {
+		t.Fatalf("Ctrl+N past the newest entry left the cycle open: createCWDRecentIndex = %d, want -1", got.createCWDRecentIndex)
+	}
+
+	// Ctrl+N with no cycle in progress is a no-op, not a jump into history.
+	updated, _ = got.Update(key("ctrl+n"))
+	got = updated.(Model)
+	if got.createCWD != "/typed/value" {
+		t.Fatalf("Ctrl+N with no cycle in progress changed createCWD to %q, want %q", got.createCWD, "/typed/value")
+	}
+
 	// up/down on the cwd field, with no candidate list open, move fields
 	// exactly like everywhere else -- they do NOT cycle recents anymore.
 	updated, _ = got.Update(key("down"))
