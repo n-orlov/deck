@@ -213,24 +213,35 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 // means running, because a shell has no other signal, ever); for an agent
 // row liveness supplies no verdict at all, so the row is reset to the
 // neutral "starting" a fresh pane always begins at, leaving the hook/probe
-// rules to take it from there on a later pass. Either way the pane itself is
-// touched not at all -- no kill, no respawn, no send-keys -- and the
-// correction is recorded as an event, the same way every other reconcile
-// verdict is. It is unleased and idempotent: once applied, the row is no
-// longer terminal, so a repeat pass takes the ordinary (non-terminal, no-op)
-// path above instead of repairing it again.
+// rules to take it from there on a later pass. The two terminal verdicts the
+// row may be carrying are spent by the same observation and are cleared with
+// it: killed_by_user exists so an in-flight hook cannot undo an explicit
+// kill, and a stored pane_exit_status/crash tail describes a pane that died
+// -- a live pane is direct evidence against both. Left set, either one
+// re-freezes the row the moment it is repaired (the status reads live while
+// every hook is outranked forever, and PaneExitStatus alone keeps the row
+// terminal for every later pass), which is SPEC §9.1's "spent verdict
+// outranks everything forever" bug and the very unrecoverable row §7 sends
+// this repair to fix. Either way the pane itself is touched not at all -- no
+// kill, no respawn, no send-keys -- and the correction is recorded as an
+// event, the same way every other reconcile verdict is. It is unleased and
+// idempotent: once applied, the row is no longer terminal, so a repeat pass
+// takes the ordinary (non-terminal, no-op) path above instead of repairing it
+// again.
 func (s Service) repairTerminalRowWithLivePane(ctx context.Context, session store.Session) error {
 	status, reason, eventKind := "starting", "tmux pane is alive; terminal row corrected", "tmux.terminal_pane_alive"
 	if session.Agent == "shell" {
 		status, reason, eventKind = "running", "tmux pane is alive", "tmux.shell_live"
 	}
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-		SessionID: session.ID,
-		Status:    status,
-		Reason:    reason,
-		Source:    "tmux",
-		At:        s.Clock.Now().UnixMilli(),
-		EventKind: eventKind,
+		SessionID:         session.ID,
+		Status:            status,
+		Reason:            reason,
+		Source:            "tmux",
+		At:                s.Clock.Now().UnixMilli(),
+		EventKind:         eventKind,
+		ClearKilledByUser: true,
+		ClearCrashVerdict: true,
 	}); err != nil {
 		return fmt.Errorf("repair terminal row with live pane for session %q: %w", session.ID, err)
 	}

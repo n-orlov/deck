@@ -292,10 +292,22 @@ type StatusUpdateInput struct {
 	// interval; the check and update happen under one write transaction.
 	StaleAfter int64
 	// KilledByUser marks an explicit terminal user action. ClearKilledByUser
-	// is reserved for resume, which is the only operation allowed to make the
-	// row automation-writable again.
+	// makes the row automation-writable again and has exactly two callers:
+	// resume (SPEC §9.1 -- once the user resumes, the kill verdict is spent),
+	// and the reconciler's §7 terminal-row-with-a-live-pane repair, where tmux
+	// has directly observed that the kill did not take. Both are cases where
+	// the flag's whole purpose (an in-flight hook cannot undo an explicit
+	// kill) is already served and keeping it would outrank every later hook
+	// forever.
 	KilledByUser      bool
 	ClearKilledByUser bool
+	// ClearCrashVerdict drops a stored pane_exit_status and crash tail. Like
+	// ClearKilledByUser it belongs to the operations that have established the
+	// verdict is spent: resume replaces the pane it described, and the §7
+	// repair has observed a live pane under the row it froze. A crash verdict
+	// that outlives its pane keeps the row terminal, which silently removes it
+	// from reconciliation and blocks the transitions that would correct it.
+	ClearCrashVerdict bool
 	// Acknowledged explicitly changes the durable unseen marker. Independently,
 	// every waiting/error transition resets it to false.
 	Acknowledged *bool
@@ -644,6 +656,16 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	// state even while repairing this violation.
 	tmuxTerminalRepair := (currentStatus == "stopped" || currentStatus == "error") &&
 		((agent == "shell" && input.Status == "running") || (agent != "shell" && input.Status == "starting"))
+	// The repair is also the one tmux write allowed past the two terminal
+	// verdicts, and only because tmux has observed the pane they describe to be
+	// alive: killed_by_user exists so an in-flight hook cannot undo an explicit
+	// kill, and a crash verdict describes a pane that died. Neither claim
+	// survives a live pane, and leaving either one set would repair the status
+	// into a row that still outranks every later hook forever (SPEC §9.1's
+	// "spent verdict" hazard), i.e. exactly the frozen row §7 sends the repair
+	// to fix. The reconciler therefore passes ClearKilledByUser and
+	// ClearCrashVerdict with it, which is what makes this branch reachable
+	// through the killed_by_user precedence above.
 	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !tmuxShellPromotion && !tmuxLaunchObservation && !tmuxTerminalRepair {
 		apply = false
 	}
@@ -671,15 +693,21 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 			newKilled = 1
 		}
 		lastMessage := truncateUTF8(input.LastMessage, 2*1024)
+		// clearCrash drops both crash columns; otherwise they keep their existing
+		// pre-clear behaviour, where a tail is written only alongside the exit
+		// status that explains it (the crash_tail CASE is gated on
+		// input.PaneExitStatus, never on the tail string itself, which is empty
+		// on every unrelated write).
+		clearCrash := boolInt(input.ClearCrashVerdict)
 		_, err = tx.ExecContext(ctx, `UPDATE sessions SET
 			status = ?, status_reason = ?, status_source = ?, status_at = ?,
 			killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
-			pane_exit_status = COALESCE(?, pane_exit_status),
-			crash_tail = CASE WHEN ? IS NULL THEN crash_tail ELSE ? END,
+			pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
+			crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 			last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
 			WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
-			newKilled, acknowledged, notifyEpoch, input.PaneExitStatus,
-			input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
+			newKilled, acknowledged, notifyEpoch, clearCrash, input.PaneExitStatus,
+			clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
 		if err != nil {
 			return fmt.Errorf("update session status: %w", err)
 		}
