@@ -156,36 +156,92 @@ func TestSweepTombstonesIsCheapNoOpInsideInterval(t *testing.T) {
 }
 
 // TestSweepTombstonesHonoursFrozenClock proves the sweep never leaks a
-// real time.Now() call: driven entirely by a `now` far in the future (long
-// past any real wall-clock moment this test could ever run at) and a
-// tombstone whose deleted_at sits just inside the grace window measured
-// against THAT now, the row must survive -- if the sweep instead compared
-// against the real clock, deleted_at (an ordinary, much smaller int64)
-// would look ancient and get reaped regardless.
+// real time.Now() call, by driving it with two frozen clocks whose verdict
+// is the OPPOSITE of what the real wall clock would decide, so neither
+// case can pass under a leaked time.Now():
+//
+//   - a clock frozen in the past (2001) with a tombstone fresh against it:
+//     the real clock (2024+) would see an ancient deleted_at and reap it,
+//     so survival is only possible if `now` alone decided;
+//   - a clock frozen far in the future (year ~5138) with a tombstone
+//     expired against it: the real clock would see a deleted_at millennia
+//     in the future, well inside any grace window, and leave it, so the
+//     reap is only possible if `now` alone decided.
+//
+// Each case gets its own store, because the hourly ui_state throttle would
+// otherwise make the second call a no-op for reasons unrelated to clocks.
+// The persisted last-run value is checked too: a leak in the throttle write
+// would stamp wall-clock time rather than the injected `now`.
 func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
-	st := openTombstoneTestStore(t)
-	ctx := context.Background()
+	t.Run("clock frozen in the past leaves a row the real clock would reap", func(t *testing.T) {
+		st := openTombstoneTestStore(t)
+		ctx := context.Background()
 
-	// Far beyond any real wall-clock UnixMilli value this test could ever
-	// observe (year ~5138), so a leaked time.Now() comparison would behave
-	// completely differently from the frozen `now` below.
-	const frozenNow int64 = 100_000_000_000_000
-	session := createTombstoneTestSession(t, st, ctx, "sweep-frozen")
-	deletedAt := frozenNow - sweepGrace.Milliseconds() + 1000 // just inside the grace window
-	if err := st.SoftDeleteSession(ctx, session.ID, deletedAt); err != nil {
-		t.Fatalf("soft delete: %v", err)
-	}
+		// 2001-09-09, far behind any moment this test can really run at, so
+		// the real clock's cutoff sits ~20 years past deletedAt below.
+		const frozenNow int64 = 1_000_000_000_000
+		if realNow := time.Now().UnixMilli(); realNow-frozenNow < sweepGrace.Milliseconds() {
+			t.Fatalf("test premise broken: real clock %d is not far enough ahead of the frozen clock %d", realNow, frozenNow)
+		}
+		session := createTombstoneTestSession(t, st, ctx, "sweep-frozen-past")
+		deletedAt := frozenNow - sweepGrace.Milliseconds() + 1000 // just inside the grace window
+		if err := st.SoftDeleteSession(ctx, session.ID, deletedAt); err != nil {
+			t.Fatalf("soft delete: %v", err)
+		}
 
-	if err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
-		t.Fatalf("SweepTombstones: %v", err)
-	}
+		if err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
+			t.Fatalf("SweepTombstones: %v", err)
+		}
 
-	got, err := st.GetSession(ctx, session.ID)
+		got, err := st.GetSession(ctx, session.ID)
+		if err != nil {
+			t.Fatalf("row reaped though it is inside the grace window measured against the injected `now` -- a real time.Now() leaked into the age comparison: %v", err)
+		}
+		if got.DeletedAt != deletedAt {
+			t.Fatalf("DeletedAt = %d, want unchanged %d", got.DeletedAt, deletedAt)
+		}
+		assertSweepLastRun(t, st, ctx, frozenNow)
+	})
+
+	t.Run("clock frozen in the future reaps a row the real clock would keep", func(t *testing.T) {
+		st := openTombstoneTestStore(t)
+		ctx := context.Background()
+
+		// Year ~5138: deletedAt below is itself in the far future, so a real
+		// time.Now() comparison would put it comfortably inside any grace
+		// window and reap nothing at all.
+		const frozenNow int64 = 100_000_000_000_000
+		if realNow := time.Now().UnixMilli(); realNow >= frozenNow-sweepGrace.Milliseconds() {
+			t.Fatalf("test premise broken: real clock %d has caught up with the frozen clock %d", realNow, frozenNow)
+		}
+		session := createTombstoneTestSession(t, st, ctx, "sweep-frozen-future")
+		deletedAt := frozenNow - sweepGrace.Milliseconds() - 1000 // just outside the grace window
+		if err := st.SoftDeleteSession(ctx, session.ID, deletedAt); err != nil {
+			t.Fatalf("soft delete: %v", err)
+		}
+
+		if err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
+			t.Fatalf("SweepTombstones: %v", err)
+		}
+
+		if _, err := st.GetSession(ctx, session.ID); err == nil {
+			t.Fatal("row survived though it is outside the grace window measured against the injected `now` -- a real time.Now() leaked into the age comparison")
+		}
+		assertSweepLastRun(t, st, ctx, frozenNow)
+	})
+}
+
+// assertSweepLastRun checks the persisted throttle stamp is exactly the
+// injected `now`, catching a real-clock leak on the write half of the
+// sweep as well as on its age comparison.
+func assertSweepLastRun(t *testing.T, st *Store, ctx context.Context, want int64) {
+	t.Helper()
+	raw, err := st.getUIState(ctx, tombstoneSweepLastRunKey, "0")
 	if err != nil {
-		t.Fatalf("row reaped despite being inside the grace window measured against the injected `now`: %v", err)
+		t.Fatal(err)
 	}
-	if got.DeletedAt != deletedAt {
-		t.Fatalf("DeletedAt = %d, want unchanged %d", got.DeletedAt, deletedAt)
+	if raw != strconv.FormatInt(want, 10) {
+		t.Fatalf("ui_state %s = %q, want the injected now %d (a wall-clock value here means time.Now() leaked into the throttle write)", tombstoneSweepLastRunKey, raw, want)
 	}
 }
 
