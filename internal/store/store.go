@@ -411,11 +411,20 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	// deterministic and reachable rather than incidentally shadowed by the
 	// slug branch below -- which remains exactly what surfaces a genuine
 	// slug collision (a different name whose slug matches an existing row).
-	var nameExists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE name = ?`, input.Name).Scan(&nameExists); err == nil {
-		return Session{}, fmt.Errorf("session name %q already exists", input.Name)
-	} else if err != sql.ErrNoRows {
-		return Session{}, fmt.Errorf("check session name %q: %w", input.Name, err)
+	//
+	// SPEC.md §9.2 (R77): a name or slug held ONLY by a tombstoned row is
+	// available again, and taking it reaps that row -- in this same
+	// transaction, via reapTombstonedHolderTx, never a second BeginTx
+	// against the shared *sql.DB (that would block on SQLite's single
+	// writer lock behind this very tx). A live or archived holder still
+	// refuses, unchanged.
+	if err := reapTombstonedHolderTx(ctx, tx, "name", input.Name,
+		fmt.Sprintf("session name %q already exists", input.Name), input.CreatedAt); err != nil {
+		return Session{}, err
+	}
+	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug,
+		fmt.Sprintf("session name %q collides with existing slug %q", input.Name, slug), input.CreatedAt); err != nil {
+		return Session{}, err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
@@ -1587,17 +1596,62 @@ func (s *Store) EnforceEventRetention(ctx context.Context, retentionDays int, no
 	return nil
 }
 
+// reapSessionTx performs the actual tombstone removal -- the orphan
+// 'reaped' event (session_id NULL, task 019's audit-log convention for
+// events that must outlive the row they describe) recorded BEFORE the
+// DELETE, then the DELETE itself, which cascades away every row's own
+// events (ON DELETE CASCADE, schemaV1) -- against an ALREADY-OPEN
+// transaction. It does not begin or commit anything: both ReapSession and
+// CreateSession's own tombstoned-holder reap (R77, SPEC.md §9.2) call
+// this so a caller never opens a second *sql.Tx against the shared
+// *sql.DB while the first is still open, which would block forever on
+// SQLite's single writer lock rather than the deadlock ever surfacing as
+// an error. The JSONL audit log, not this events table, is where task 107
+// keeps a reaped session's earlier history durably past the reap.
+func reapSessionTx(ctx context.Context, tx *sql.Tx, sessionID string, at int64) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (NULL, ?, 'reaped', 'user', ?)`, at, sessionID); err != nil {
+		return fmt.Errorf("record reap event for session %q: %w", sessionID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID); err != nil {
+		return fmt.Errorf("reap session %q: %w", sessionID, err)
+	}
+	return nil
+}
+
+// reapTombstonedHolderTx is CreateSession's (and, task 004, RenameSession's)
+// half of R77: it looks up whatever row currently holds `value` in `column`
+// ("name" or "slug", always a literal supplied by this package, never
+// caller/user input, so the fmt.Sprintf below never carries untrusted SQL)
+// inside the caller's own transaction. No holder: nil, proceed. A LIVE or
+// ARCHIVED holder (deleted_at == 0, which is true for both -- R78 keeps an
+// archived row's name reserved) is refused with conflictMsg, unchanged from
+// before this task. A TOMBSTONED holder is reaped via reapSessionTx, in the
+// same transaction as the caller's own INSERT/UPDATE, so the row is gone by
+// the time that statement runs and never trips its UNIQUE constraint.
+func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, conflictMsg string, at int64) error {
+	var id string
+	var deletedAt int64
+	err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT id, deleted_at FROM sessions WHERE %s = ?`, column), value).Scan(&id, &deletedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check session %s %q: %w", column, value, err)
+	}
+	if deletedAt == 0 {
+		return errors.New(conflictMsg)
+	}
+	return reapSessionTx(ctx, tx, id, at)
+}
+
 // ReapSession permanently removes a tombstoned session once its grace
 // window (task 106) has elapsed. Only a row SoftDeleteSession has already
 // tombstoned may be reaped; reaping a live row is refused so a caller
-// cannot skip the tombstone/undo window by mistake. The deletion event is
-// recorded as an orphan event (session_id NULL, task 019's audit-log
-// convention for events that must outlive the row they describe) in the
-// same transaction, BEFORE the DELETE, because the sessions row's own
-// events cascade away with it (ON DELETE CASCADE, schemaV1) -- that
-// cascade is exactly what this method's own reap is for, not something to
-// route around. The JSONL audit log, not this events table, is where task
-// 107 keeps this session's earlier history durably past the reap.
+// cannot skip the tombstone/undo window by mistake. The actual removal is
+// reapSessionTx, shared with CreateSession's own tombstoned-holder reap
+// (R77) so neither caller ever opens a second transaction against the
+// same *sql.DB while one is already open.
 func (s *Store) ReapSession(ctx context.Context, sessionID string, at int64) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
@@ -1620,12 +1674,8 @@ func (s *Store) ReapSession(ctx context.Context, sessionID string, at int64) err
 	if deletedAt == 0 {
 		return fmt.Errorf("session %q is not tombstoned, refusing to reap", sessionID)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (NULL, ?, 'reaped', 'user', ?)`, at, sessionID); err != nil {
-		return fmt.Errorf("record reap event for session %q: %w", sessionID, err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID); err != nil {
-		return fmt.Errorf("reap session %q: %w", sessionID, err)
+	if err := reapSessionTx(ctx, tx, sessionID, at); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit reap session %q: %w", sessionID, err)

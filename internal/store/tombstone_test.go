@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // openTombstoneTestStore mirrors openRecentCwdTestStore's pattern for the
@@ -212,5 +213,139 @@ func TestSoftDeleteAndRestoreRejectMissingSession(t *testing.T) {
 	}
 	if err := st.RestoreSession(ctx, "does-not-exist", 100); err == nil {
 		t.Fatal("RestoreSession on an unknown id must fail, got nil error")
+	}
+}
+
+// TestCreateSessionReapsTombstonedNameHolder covers R77 (SPEC.md §9.2): a
+// name held only by a tombstoned row is available again, and CreateSession
+// reaps that row -- inside its own transaction, against the SAME *sql.DB
+// this test's *Store already opened, never a second connection -- rather
+// than reporting a UNIQUE constraint failure or hanging on SQLite's write
+// lock. The old row and its events must be gone afterward.
+func TestCreateSessionReapsTombstonedNameHolder(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	old := createTombstoneTestSession(t, st, ctx, "old-holder")
+	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
+		t.Fatalf("soft delete %q: %v", old.ID, err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := st.CreateSession(ctx, CreateSessionInput{
+			ID: "new-holder", Name: old.Name, CWD: "/work/new-holder",
+			Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
+		})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("create session reusing tombstoned name %q: %v", old.Name, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("create session reusing tombstoned name %q hung (write-lock deadlock)", old.Name)
+	}
+
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, old.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("tombstoned row %q survived the reap-on-create, count = %d", old.ID, count)
+	}
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE session_id = ?`, old.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("events for reaped row %q survived, count = %d", old.ID, count)
+	}
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE session_id IS NULL AND kind = 'reaped' AND payload = ?`, old.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("orphan 'reaped' event for %q, count = %d, want 1", old.ID, count)
+	}
+}
+
+// TestCreateSessionReapsTombstonedSlugHolder covers the §3.2 slug half of
+// R77: two different Name strings that produce the same slug (Slug lower-
+// cases and collapses whitespace to '-'). A tombstoned row holding only
+// the slug -- not the exact name -- must still be reaped so the create
+// proceeds.
+func TestCreateSessionReapsTombstonedSlugHolder(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	old, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "slug-old", Name: "Slug Holder", CWD: "/work/slug-old",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+	})
+	if err != nil {
+		t.Fatalf("create slug holder: %v", err)
+	}
+	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
+		t.Fatalf("soft delete %q: %v", old.ID, err)
+	}
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "slug-new", Name: "slug holder", CWD: "/work/slug-new",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
+	}); err != nil {
+		t.Fatalf("create session reusing tombstoned slug: %v", err)
+	}
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, old.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("tombstoned slug holder %q survived the reap-on-create, count = %d", old.ID, count)
+	}
+}
+
+// TestCreateSessionRefusesLiveNameHolder proves a live (never soft-deleted)
+// name holder still refuses, unchanged by the tombstone-reap addition.
+func TestCreateSessionRefusesLiveNameHolder(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	live := createTombstoneTestSession(t, st, ctx, "live-holder")
+	_, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "live-holder-2", Name: live.Name, CWD: "/work/live-holder-2",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
+	})
+	if err == nil {
+		t.Fatal("create session with a live name holder must be refused, got nil error")
+	}
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, live.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("live holder %q must survive a refused create, count = %d", live.ID, count)
+	}
+}
+
+// TestCreateSessionRefusesArchivedNameHolder proves an archived holder
+// (R78: an archived row keeps its name, only `dd` frees it) still refuses,
+// distinct from the tombstoned case this task teaches CreateSession to
+// reap.
+func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	archived := createTombstoneTestSession(t, st, ctx, "archived-holder")
+	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatalf("archive %q: %v", archived.ID, err)
+	}
+	_, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "archived-holder-2", Name: archived.Name, CWD: "/work/archived-holder-2",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
+	})
+	if err == nil {
+		t.Fatal("create session with an archived name holder must be refused, got nil error")
+	}
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, archived.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("archived holder %q must survive a refused create, count = %d", archived.ID, count)
 	}
 }
