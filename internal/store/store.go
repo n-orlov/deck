@@ -2124,6 +2124,30 @@ func (s *Store) SetSidebarWidth(ctx context.Context, width int) error {
 	return s.setUIState(ctx, "sidebar_width", strconv.Itoa(width))
 }
 
+// lastCreateAgentUIStateKey is the ui_state key GetLastCreateAgent/
+// SetLastCreateAgent use to persist SPEC.md:1364-1367's "a dialog opens on
+// the choice the user last made" for the create modal's Agent field: the
+// kind of the most recent session a create actually succeeded with, never
+// a cycled-then-abandoned choice.
+const lastCreateAgentUIStateKey = "last_create_agent"
+
+// GetLastCreateAgent returns the persisted last-successfully-created agent
+// kind, or "" when no create has ever succeeded (ui_state is not
+// load-bearing: a missing row degrades to "", which the tui package treats
+// as "nothing to remember" and falls back to its own built-in default --
+// never a store-side default, since validating the value against the
+// currently registered kinds is the caller's job, not this accessor's).
+func (s *Store) GetLastCreateAgent(ctx context.Context) (string, error) {
+	return s.getUIState(ctx, lastCreateAgentUIStateKey, "")
+}
+
+// SetLastCreateAgent persists the just-succeeded create modal's agent kind
+// in state.db's ui_state table, never in config.toml, so a later create
+// opens pre-selecting it.
+func (s *Store) SetLastCreateAgent(ctx context.Context, agent string) error {
+	return s.setUIState(ctx, lastCreateAgentUIStateKey, agent)
+}
+
 // RecentCwd is one row of the §11.7 directory history: a resolved absolute
 // path and the monotonic sequence number it was last promoted with. Most
 // recent is the highest UsedSeq, never the newest wall-clock timestamp

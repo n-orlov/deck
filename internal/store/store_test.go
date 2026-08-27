@@ -1007,6 +1007,44 @@ func TestUIStateAccessorsDegradeToDocumentedDefaults(t *testing.T) {
 	}
 }
 
+func TestLastCreateAgentAccessorsDegradeToDocumentedDefaults(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	agent, err := store.GetLastCreateAgent(ctx)
+	if err != nil || agent != "" {
+		t.Fatalf("GetLastCreateAgent before any write = %q, %v; want \"\"", agent, err)
+	}
+
+	if err := store.SetLastCreateAgent(ctx, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	agent, err = store.GetLastCreateAgent(ctx)
+	if err != nil || agent != "claude" {
+		t.Fatalf("GetLastCreateAgent after write = %q, %v; want %q", agent, err, "claude")
+	}
+
+	// Overwriting an existing key updates in place rather than duplicating a
+	// row -- ui_state.key is a PRIMARY KEY, exercised here the same way
+	// TestUIStateAccessorsDegradeToDocumentedDefaults exercises sidebar_width.
+	if err := store.SetLastCreateAgent(ctx, "pi"); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM ui_state WHERE key = 'last_create_agent'`).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("ui_state last_create_agent rows = %d, %v; want 1", rows, err)
+	}
+	agent, err = store.GetLastCreateAgent(ctx)
+	if err != nil || agent != "pi" {
+		t.Fatalf("GetLastCreateAgent after overwrite = %q, %v; want %q", agent, err, "pi")
+	}
+}
+
 func TestOpenMigratesV1FixtureToUIStateWithoutRecreatingSessionRow(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "deck")
 	if err := os.MkdirAll(home, 0o755); err != nil {
