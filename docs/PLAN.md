@@ -68,10 +68,63 @@ Six standing rules for every phase:
 | **Phase 2b-2 — configuration & appearance** | The dialog contract (§11.4) **retrofitted onto the dialogs that already exist** (create, detail `i`, profile picker, pin, kill confirm, help) — dialogs for unbuilt features are *not* stubbed, per §11.3's footer rule — the settings takeover over the flat config schema (§11.5, §6.5; structured `[notify]` tables stay with Phase 5's rules dialog), and the theme system incl. picker and quantised floor (§11.6). Note `internal/config/toml.go` is **replaced** by the schema-driven parser, not extended. Harness prerequisites: per-cell SGR-attribute assertions (§13.2) and `DECK_COLOR_DEPTH` (§13.1). Budget ~120 iterations / 6 approaches | `settings`, `themes`, and the §11.2 golden frame still green | planned |
 | **Phase 3 — sessions & lifecycle** | Create modal completed, incl. **§11.7 path entry**: the `recent_cwds` table, last-used prefill, `↑`/`↓` cycling, ghost completion accepted with `→`, and `tab` on bash's contract (deck deliberately ghosts nothing when matches are ambiguous — see §11.7); env editor showing winning layer → `env↻` → restart-to-apply (+ shell "inject instead"); the **blank-name default** `<workspace>-<MMDD-HHMM>` with its collision suffix (§3.2); kill/undo, `dd` tombstone, the **reap** that leaves no trace while the agent's own transcript survives (§9.2), the separate conversation purge, archive, bulk marks; **rename** (an action inside the `i` detail dialog per §11.4, not a top-level key) **and the event log `E`** | `create_session`, `kill_delete_undo`, `environment` | planned |
 | **Phase 3b — the interactive preview** | `Enter` hands the keyboard to the selected session without leaving the list: the window is fitted to the preview panel, the pane is streamed through `pipe-pane -IO` into an in-process `x/vt` grid, and keystrokes are forwarded with `send-keys`. `a` takes over full attach; `Ctrl+Q` returns. Geometry is claimed, bounded and restored byte-exactly; the mode is **refused** when a bystander is attached, when the box is under 7 inner rows, or when another process owns the size. Carries deck-owned scrollback, which is the only way to scroll a full-screen agent at all. **Passive preview's non-perturbation guarantee is unchanged and its scenario must stay green unmodified.** Cut from three spikes measured on tmux 3.5a and 3.6b (`docs/spikes/interactive-preview.md`). Budget ~120 iterations / 6 approaches | `interactive_preview`, plus `preview` and `mouse` re-aimed | **running as Part II of `prds/phase3c-residual-and-interactive-preview.md`** (run `deck-phase3c`) |
-| **Phase 4 — Codex adapter** | Store-backed claim-based id discovery (§8.2 — a CAS lease like §9.3, *not* a process mutex); `id unresolved` state and picker; never "most recent". **Spike §14.2 (can Codex take an assigned name at launch?) before cutting this PRD — if yes, discovery disappears entirely** | `codex_discovery` | planned |
+| **Phase 3g — the field backlog** | Everything the operator hit by using the Phase 3f build, plus the open findings from it. **§7's terminal-row-with-a-live-pane repair** (the self-heal for the class that produced GH #6 and #11, and the only thing that recovers an already-wedged row); **reusing a deleted session's name** — reap-on-collision, the store-open sweep for tombstones that outlived their process, honest messages, and `dd` on an archived row (#17); the **contextual footer** with one shared eligibility definition per action (#16); **themed dialogs**, together with the three that draw past the frame at 80x24 (#13 + F6) and an extension of §11.6's enforced contrast floor to the token/background pairs a dialog actually uses — `hint`, `key` and `error` over `surface`, and every text token over `selection` for the focused field — none of which today's floor test covers; the create modal opening on the **last used agent** (#14); **`↑`/`↓` field navigation** with `tab` reserved for completion (#15); `esc` clearing a **held filter** (F11); `inject` refusing a **retained dead pane** (F3); the interactive **FIFO/`pipe-pane` leak** on abnormal exit (F4); a **superseded hook labelled dropped** (F15); `previewFit`'s spent-fit early return, which licenses a SIGWINCH re-baseline Phase 3f forbade (F12); and R75's **release-failure fallback** behind a store fault-injection seam (F17). `SPEC.md` was amended for the eight of these it had nothing to say about, or contradicted, **before** this row was written — see below | `create_session`, `kill_delete_undo`, `filter`, `crash` re-aimed, plus a scenario per footer eligibility state | **PRD not yet cut** |
 | **Phase 5 — notifications** | Channel abstraction (webhook / command / desktop); rules table; epoch dedupe over the `notify_epoch` Phase 2 maintains; quiet hours; outbox + retry; redaction. **Flips one Phase 2 assertion deliberately:** with no `outbox` table at schema v1, Phase 2 pins "the session-end path enqueues nothing"; §8.1's contract is enqueue-only, so this phase makes it enqueue and re-aims that assertion | `notifications` against an httptest sink, **and T3 closed** | planned |
 | **Phase 6 — shell state** | Per-session history file; scrollback capture ownership + replay; cwd tracking; `sensitive` | `shell_state` | planned |
 | **Phase 7 — TUI completeness** | Send-without-attach (§11.1), cross-session search, health view (**preview pane, layout, and now the attention sort and grouping, all moved to Phase 2b-1**) | `search`, `health`, a scenario per keybinding | planned |
+| **Phase 4 — Codex adapter** *(last, deferred — see below)* | Store-backed claim-based id discovery (§8.2 — a CAS lease like §9.3, *not* a process mutex); `id unresolved` state and picker; never "most recent". **Spike §14.2 (can Codex take an assigned name at launch?) before cutting this PRD — if yes, discovery disappears entirely** | `codex_discovery` | planned, deferred to last |
+
+**Colour work is judged on legibility, and `matrix` is the reference theme** (operator ruling,
+27 Aug 2026). §11.6 already requires contrast, not distinctness, and that is the bar: text must
+be readable everywhere it is drawn, and no phase is spent making status colours more different
+from each other than they need to be. The operator runs `matrix`, so `matrix` is the theme a
+change has to look right in — and it is the one built-in whose status tokens have already been
+tuned for the 16-colour floor (`idle`, `stopped` and `archived` carry their quantisation targets
+in the file). Phase 3g's dialog theming therefore ships with the contrast floor *extended* rather
+than with a palette redesign: measured at `76b7347`, every pair the extension would newly cover
+already clears the 3.0 floor in `matrix` (thinnest: `error` on `selection` at 3.16, `dimmed` on
+`selection` at 3.78), so the requirement pins what is already true instead of licensing a
+recolour. The four other built-ins collide 2–5 status tokens onto one ANSI slot at 16 colours
+(F7 in `docs/reports/phase3f-findings.md`); that stays open and unscheduled, because §11.6 asks
+those themes to be legible and they are.
+
+**The table is four insert phases behind between 3b and 3g, and this is a known gap.** Phases
+**3c**, **3d**, **3e** and **3f** were all cut and run after Phase 3b — `prds/phase3c-residual-and-interactive-preview.md`,
+`prds/phase3e-list-ergonomics-and-chrome.md` and `prds/phase3f-residuals-and-suite-determinism.md`,
+with 3d recorded only in its `docs/reports/phase3d-*` artefacts — and none has a row here or in
+`docs/DELIVERY-LOG.md`, whose own phases table stops at 2b-2. Their scope and verdicts live in
+`docs/reports/phase3e.md`, `docs/reports/phase3f.md` and the findings files beside them. Nothing
+in this file should be read as a claim that they did not happen; the rows are missing, not the
+work.
+
+**A spec amendment precedes the PRD that needs it, and Phase 3g is the worked example.** Eight
+of its items had no `SPEC.md` rule to build against, or contradicted the one that was there:
+`tab` was the field-navigation key that #15 replaces, §11.7 owned `↑`/`↓` for recent
+directories, §7's reconcile table said to *keep* a terminal status under a live pane, §9.2 was
+silent on whether a deleted name can be reused, §9.3 described the lease owner as `pid@boot_id`
+and mentioned neither the per-launch generation nor the release, §11.3's footer rule stopped at
+unbound keys without reaching ineligible ones, §11.4 said nothing about theming a dialog or
+remembering the last choice, and the `/` filter had no subsection at all. **Jobs cannot fix
+that** — `SPEC.md` is read-only to them and the correct response to a PRD contradicting it is to
+refuse, which is what nearly sank four of Phase 3e's seven requirements until the operator
+amended the spec first in `6584299`. So the rule is now explicit: **work is never cut from a
+phase because the spec has not caught up; the spec is amended first, in its own commit, and the
+PRD is written against the amended text.** Deferring a requirement is a scope decision, and it
+is the operator's — never a side effect of a stale document.
+
+**Phase 4 is now the last phase, and its number is a label rather than a position.** The
+operator deferred Codex support behind everything else on **27 Aug 2026**. It keeps the
+number 4 because that identifier is cited as "Phase 4" across five PRDs, four phase reports
+and this file's own rationale, all of which are historical records; renumbering it would
+falsify them to record a reordering the table already shows. Read the table top to bottom
+for delivery order and treat the numbers as names.
+
+Nothing depends on it, which is why it can move at all: no other phase's scope mentions
+Codex, `codex_discovery` is its own feature file, and the adapter registry Phase 1 built
+(`agentCapabilities` over `agent.Registry`, not a name switch) is the seam it plugs into
+whenever it lands. The §14.2 spike moves with it — that spike exists to decide whether id
+discovery needs building at all, and deciding an architecture nobody is waiting for is the
+least valuable thing on the list while the operator's own daily-use backlog is open.
 
 **T2 (concurrency) is not a phase.** It lands in Phase 0's harness as `@multiclient` and is
 re-run from then on — cheaper to keep green continuously than to retrofit.
@@ -159,6 +212,17 @@ rather than stubbed (§11.3's footer rule, applied to tests), and Phase 5 adds t
    than built. And it **overlaps Phase 6 deliberately and narrowly** — Phase 6 owns scrollback
    *capture and replay across restarts*; Phase 3b owns the live grid's in-memory scrollback,
    discarded on exit. Conflating them would give deck two history mechanisms.
+
+8. **Codex last (27 Aug 2026).** It had already been reordered once — behind Phase 3b on 22
+   Aug — and each of the four insert phases since (3c, 3d, 3e, 3f) overtook it for the same
+   reason: every one of them fixed something the operator hit by *using* deck, and Codex
+   fixes nothing, because deck does not yet launch Codex at all. A third agent adapter widens
+   the product; the backlog narrows the gap between what deck claims and what it does. The
+   second argument is sequencing risk, and it runs the other way from the usual one: §8.2's
+   id discovery is the only place in the spec where deck cannot assign an identity up front,
+   so it is the one adapter whose design might be *invalidated* by an upstream change to a
+   tool that is still moving. Building it early buys a rewrite; building it late buys a
+   cheaper spike. Nothing in Phases 5–7 is blocked by the wait.
 
 **Permission modes (`SPEC.md` §5) were unassigned to any phase** until this revision — a
 planning defect, since launching Claude in a skip-permissions mode was one of the first
