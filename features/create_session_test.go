@@ -183,11 +183,15 @@ func clientCreatesShellSessionTypingOverPrefillWithLabelled(ctx context.Context,
 	return createShellSessionInLabelledCWD(ctx, h, clientName, sessionName, label)
 }
 
-// clientTabsToCWDField sends a single tab, moving create-modal focus from
-// the name field (0, where "n" leaves it) to the cwd field (1) --
+// clientTabsToCWDField moves create-modal focus from the name field (0,
+// where "n" leaves it) to the cwd field (1) via a single ↑/↓ press (task
+// 025 moved field navigation off tab onto ↑/↓; the step's own name is
+// kept since every scenario using it still reads as "get onto the cwd
+// field", regardless of which key does it) --
 // clientPressesArrowInCWDFieldNTimes below needs the cwd field actually
 // focused, since up/down are a no-op on every other create-modal field
-// (task 009: only field 1 binds them).
+// once ANY dialog's own list/recent-cwd per-field key set (§11.4) doesn't
+// claim them first.
 func clientTabsToCWDField(ctx context.Context, name string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -197,7 +201,7 @@ func clientTabsToCWDField(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\t"); err != nil {
+	if err := client.Send("\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(60 * time.Millisecond)

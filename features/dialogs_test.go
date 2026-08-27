@@ -26,7 +26,8 @@ func registerDialogsSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" submits the open dialog$`, clientSubmitsOpenDialog)
 	sc.Step(`^deck client "([^"]+)" opens the create modal and alters every field$`, clientOpensCreateModalAndAltersEveryField)
 	sc.Step(`^deck client "([^"]+)" walks and edits every create modal field by keyboard, asserting each change is visible$`, clientWalksAndEditsEveryCreateFieldAssertingVisibility)
-	sc.Step(`^deck client "([^"]+)" tabs (\d+) times in the open dialog$`, clientTabsInOpenDialog)
+	sc.Step(`^deck client "([^"]+)" presses (down|up) (\d+) times in the open dialog$`, clientPressesArrowInOpenDialog)
+	sc.Step(`^deck client "([^"]+)" presses tab in the open dialog$`, clientPressesTabInOpenDialog)
 	sc.Step(`^deck client "([^"]+)" dialog box width is (\d+)$`, clientDialogBoxWidthIs)
 	sc.Step(`^deck client "([^"]+)" attempts to create a shell session named "([^"]+)" with working directory "([^"]+)"$`, clientAttemptsCreateModalWithCWD)
 	sc.Step(`^the state database session "([^"]+)" has resume mode "([^"]+)"$`, sessionHasResumeMode)
@@ -158,10 +159,11 @@ func clientSubmitsOpenDialog(ctx context.Context, clientName string) error {
 	return client.WaitForFrame(ctx, false, "deck - sessions")
 }
 
-// clientTabsInOpenDialog sends the shared §11.4 tab key n times, which
-// createView's Fields.Count/Index (dialog_contract.go) advances the
-// focused-field marker by.
-func clientTabsInOpenDialog(ctx context.Context, clientName string, n int) error {
+// clientPressesArrowInOpenDialog sends the shared §11.4 ↑/↓ field
+// navigation key n times (task 025 moved field navigation off tab onto
+// ↑/↓), which createView's Fields.Count/Index (dialog_contract.go)
+// advances/retreats the focused-field marker by.
+func clientPressesArrowInOpenDialog(ctx context.Context, clientName, direction string, n int) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -170,8 +172,9 @@ func clientTabsInOpenDialog(ctx context.Context, clientName string, n int) error
 	if err != nil {
 		return err
 	}
+	seq := map[string]string{"down": "\x1b[B", "up": "\x1b[A"}[direction]
 	for i := 0; i < n; i++ {
-		if err := client.Send("\t"); err != nil {
+		if err := client.Send(seq); err != nil {
 			return err
 		}
 		time.Sleep(25 * time.Millisecond)
@@ -179,11 +182,31 @@ func clientTabsInOpenDialog(ctx context.Context, clientName string, n int) error
 	return nil
 }
 
+// clientPressesTabInOpenDialog sends a single tab -- §11.4/§11.7's
+// completion-only key (task 025) -- and gives the render a moment to catch
+// up, so a caller can assert it did NOT move focus on a non-path field.
+func clientPressesTabInOpenDialog(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\t"); err != nil {
+		return err
+	}
+	time.Sleep(25 * time.Millisecond)
+	return nil
+}
+
 // clientOpensCreateModalAndAltersEveryField opens the create modal and
 // edits all eight of createFieldRows' fields (Name, Working directory,
 // Agent, Permission profile, Launch args, Env, Pre-launch command, Login
-// shell) in turn, tabbing onto each one before changing it -- text fields
-// get typed characters, the two selection fields (Agent, Permission
+// shell) in turn, moving onto each one with a single down-arrow (task 025
+// moved field navigation off tab onto up/down) before changing it -- text
+// fields get typed characters, the two selection fields (Agent, Permission
 // profile) get a right-arrow cycle, and the toggle field (Login shell)
 // gets a space. It never submits: requirement 8 wants every field altered
 // and then esc, not a valid, submittable form.
@@ -202,15 +225,16 @@ func clientOpensCreateModalAndAltersEveryField(ctx context.Context, clientName s
 	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
 		return err
 	}
+	down := "\x1b[B"
 	edits := []string{
-		"dc-name",                // field 0: Name (already focused on open)
-		"\t/dialog/contract/cwd", // field 1: Working directory
-		"\t\x1b[C",               // field 2: Agent -- cycle right
-		"\t\x1b[C",               // field 3: Permission profile -- cycle right
-		"\tlaunch-args-typed",    // field 4: Launch args (JSON array)
-		"\tENV_TYPED=1",          // field 5: Env
-		"\tpre-launch-typed",     // field 6: Pre-launch command
-		"\t ",                    // field 7: Login shell -- space toggles
+		"dc-name",                     // field 0: Name (already focused on open)
+		down + "/dialog/contract/cwd", // field 1: Working directory
+		down + "\x1b[C",               // field 2: Agent -- cycle right
+		down + "\x1b[C",               // field 3: Permission profile -- cycle right
+		down + "launch-args-typed",    // field 4: Launch args (JSON array)
+		down + "ENV_TYPED=1",          // field 5: Env
+		down + "pre-launch-typed",     // field 6: Pre-launch command
+		down + " ",                    // field 7: Login shell -- space toggles
 	}
 	for _, edit := range edits {
 		if err := client.Send(edit); err != nil {
@@ -223,10 +247,10 @@ func clientOpensCreateModalAndAltersEveryField(ctx context.Context, clientName s
 
 // clientWalksAndEditsEveryCreateFieldAssertingVisibility covers task 016
 // (SPEC requirement 7): every one of createFieldRows' eight fields is
-// reachable by tab/shift+tab alone, editable with its own stated per-field
-// key (typing for the free-text fields, right-arrow for the two selection
-// fields, space for the toggle), and each edit is asserted VISIBLE on
-// screen -- not merely performed and left unobserved, unlike the sibling
+// reachable by ↑/↓ alone (task 025 moved field navigation off
+// tab/shift+tab), editable with its own stated per-field key (typing for
+// the free-text fields, right-arrow for the two selection fields, space
+// for the toggle), and each edit is asserted VISIBLE on screen -- not merely performed and left unobserved, unlike the sibling
 // esc-changes-nothing scenario driven by clientOpensCreateModalAndAltersEveryField
 // above, which never looks at the screen mid-walk. It never submits (esc is
 // left to the caller), matching that sibling's own contract.
@@ -261,56 +285,58 @@ func clientWalksAndEditsEveryCreateFieldAssertingVisibility(ctx context.Context,
 	if err := assertVisible("typing into Name", "dc-walk-name"); err != nil {
 		return err
 	}
-	// Field 1 (Working directory): tab onto it, then type -- the first
-	// keystroke replaces the prefill wholesale (task 008/009).
-	if err := client.Send("\t/dc-walk/cwd"); err != nil {
+	// Field 1 (Working directory): down-arrow onto it (task 025 moved
+	// field navigation off tab), then type -- the first keystroke replaces
+	// the prefill wholesale (task 008/009).
+	if err := client.Send("\x1b[B/dc-walk/cwd"); err != nil {
 		return err
 	}
 	if err := assertVisible("typing into Working directory", "/dc-walk/cwd"); err != nil {
 		return err
 	}
-	// Field 2 (Agent): tab onto it, then right-arrow cycles §5's kinds
-	// (sorted: claude, pi, shell); the default open value is "shell" (the
-	// last, alphabetically), so one right-arrow wraps to "claude".
-	if err := client.Send("\t\x1b[C"); err != nil {
+	// Field 2 (Agent): down-arrow onto it, then right-arrow cycles §5's
+	// kinds (sorted: claude, pi, shell); the default open value is "shell"
+	// (the last, alphabetically), so one right-arrow wraps to "claude".
+	if err := client.Send("\x1b[B\x1b[C"); err != nil {
 		return err
 	}
 	if err := assertVisible("cycling Agent right", "Agent: claude"); err != nil {
 		return err
 	}
-	// Field 3 (Permission profile): tab onto it, then right-arrow cycles
-	// claude's declared profiles (safe, plan, edits[, yolo if allowed]);
-	// the default settings this harness starts with have allow_yolo off,
-	// and the field opened on "safe", so one right-arrow lands on "plan".
-	if err := client.Send("\t\x1b[C"); err != nil {
+	// Field 3 (Permission profile): down-arrow onto it, then right-arrow
+	// cycles claude's declared profiles (safe, plan, edits[, yolo if
+	// allowed]); the default settings this harness starts with have
+	// allow_yolo off, and the field opened on "safe", so one right-arrow
+	// lands on "plan".
+	if err := client.Send("\x1b[B\x1b[C"); err != nil {
 		return err
 	}
 	if err := assertVisible("cycling Permission profile right", "Permission profile: plan"); err != nil {
 		return err
 	}
-	// Field 4 (Launch args): tab onto it, then type.
-	if err := client.Send("\twalk-launch-args"); err != nil {
+	// Field 4 (Launch args): down-arrow onto it, then type.
+	if err := client.Send("\x1b[Bwalk-launch-args"); err != nil {
 		return err
 	}
 	if err := assertVisible("typing into Launch args", "walk-launch-args"); err != nil {
 		return err
 	}
-	// Field 5 (Env): tab onto it, then type.
-	if err := client.Send("\tWALK_ENV=1"); err != nil {
+	// Field 5 (Env): down-arrow onto it, then type.
+	if err := client.Send("\x1b[BWALK_ENV=1"); err != nil {
 		return err
 	}
 	if err := assertVisible("typing into Env", "WALK_ENV=1"); err != nil {
 		return err
 	}
-	// Field 6 (Pre-launch command): tab onto it, then type.
-	if err := client.Send("\twalk-pre-launch"); err != nil {
+	// Field 6 (Pre-launch command): down-arrow onto it, then type.
+	if err := client.Send("\x1b[Bwalk-pre-launch"); err != nil {
 		return err
 	}
 	if err := assertVisible("typing into Pre-launch command", "walk-pre-launch"); err != nil {
 		return err
 	}
-	// Field 7 (Login shell): tab onto it, then space toggles off -> on.
-	if err := client.Send("\t "); err != nil {
+	// Field 7 (Login shell): down-arrow onto it, then space toggles off -> on.
+	if err := client.Send("\x1b[B "); err != nil {
 		return err
 	}
 	if err := assertVisible("toggling Login shell", "Login shell: on"); err != nil {
@@ -365,7 +391,7 @@ func clientAttemptsCreateModalWithCWD(ctx context.Context, clientName, name, cwd
 	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
 		return err
 	}
-	if err := client.Send(name + "\t" + cwd); err != nil {
+	if err := client.Send(name + "\x1b[B" + cwd); err != nil {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)

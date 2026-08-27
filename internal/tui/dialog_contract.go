@@ -5,14 +5,13 @@ import tea "github.com/charmbracelet/bubbletea"
 // dialogFields describes the field navigation and value-cycling a §11.4
 // dialog exposes to the shared contract below. A dialog with no navigable
 // fields at all (detailView, helpView have nothing to submit or cycle) uses
-// the zero value: Count 0 (or 1) leaves tab/shift+tab a no-op — there is
-// nothing else to move to — and a nil Cycle leaves left/right/space a
-// no-op too.
+// the zero value: Count 0 (or 1) leaves ↑/↓ a no-op — there is nothing
+// else to move to — and a nil Cycle leaves left/right/space a no-op too.
 type dialogFields struct {
-	// Count is the number of fields tab/shift+tab cycle through.
+	// Count is the number of fields ↑/↓ cycle through.
 	Count int
-	// Index is the dialog's own focused-field variable; tab/shift+tab
-	// mutate *Index in place. Only consulted when Count > 1.
+	// Index is the dialog's own focused-field variable; ↑/↓ mutate *Index
+	// in place. Only consulted when Count > 1.
 	Index *int
 	// Cycle changes the currently focused field's value by delta (-1 for
 	// left, +1 for right or space). nil means nothing is cycled here.
@@ -46,12 +45,17 @@ type dialogContract struct {
 }
 
 // applyDialogContract is the ONE implementation of SPEC §11.4's shared
-// dialog keys — esc cancels, enter submits, tab/shift+tab move between
-// fields, left/right/space change a selection — that createView's,
+// dialog keys — esc cancels, enter submits, ↑/↓ move between fields,
+// left/right/space change a selection — that createView's,
 // profileSwitchView's and pinView's Update functions all defer to, and
 // that the single esc case shared by detailView and helpView in
 // Model.Update also calls, instead of five hand-written key switches that
 // merely happen to agree with each other.
+//
+// tab/shift+tab are deliberately NOT bound here (SPEC §11.4: "tab is
+// reserved for completion and never moves between fields"): on a path
+// field tab is bash's own completion key (§11.7) and on every other field,
+// and every dialog with no path field at all, it is simply unbound.
 //
 // It reports handled=false for any key outside that vocabulary, so a
 // dialog's own ADDITIONAL load-bearing keys (createView's free-text
@@ -75,13 +79,13 @@ func applyDialogContract(msg tea.KeyMsg, c dialogContract) (cmd tea.Cmd, handled
 			return nil, false
 		}
 		return c.Submit(), true
-	case "tab":
+	case "down":
 		if c.Fields.Count <= 1 || c.Fields.Index == nil {
 			return nil, false
 		}
 		*c.Fields.Index = (*c.Fields.Index + 1) % c.Fields.Count
 		return nil, true
-	case "shift+tab":
+	case "up":
 		if c.Fields.Count <= 1 || c.Fields.Index == nil {
 			return nil, false
 		}
