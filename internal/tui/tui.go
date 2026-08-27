@@ -378,7 +378,15 @@ type Model struct {
 	// "r" below) masks every secret-shaped row's value via maskEnvValue;
 	// "r" while browsing (not mid-edit) flips it back off, never sticking
 	// across a close/reopen of the dialog.
-	envReveal     bool
+	envReveal bool
+	// envScroll is task 017's own instance of the same createScroll/
+	// helpScroll pattern: framedDialogScrollable's viewport offset once
+	// the resolved-key list (task 014's height probe: from 16 resolved
+	// keys up) pushes the dialog past the frame budget. PgUp/PgDn
+	// (updateEnvDialog) move it; opening the dialog always resets it to 0
+	// so a reopen never starts scrolled from wherever a previous visit
+	// left off.
+	envScroll     int
 	setSessionEnv func(context.Context, string, string, string) (store.Session, error)
 	// eventLogOpen is task 124's `E` event log (SPEC §12/requirement 32,
 	// I-9): a read-only, newest-first listing of store.Event rows across
@@ -2621,6 +2629,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.envEditKey, m.envEditValue, m.envNote = "", "", ""
 				m.envEditPrefilled = false
 				m.envReveal = false
+				m.envScroll = 0
 			}
 		case "E":
 			// SPEC §12/requirement 32, task 124: unlike `e`, this is global

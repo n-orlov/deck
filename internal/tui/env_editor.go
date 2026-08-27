@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // envLayerServer, envLayerCapturedPath, envLayerConfig and envLayerSession
@@ -96,44 +97,168 @@ func (m Model) resolveEnvKey(key string, session store.Session) (value, layer st
 // an edit in progress without touching anything, or closes the whole
 // dialog when nothing is being edited.
 func (m Model) envView() string {
+	return m.framedDialogScrollable(m.styledEnvBody(), m.envScroll)
+}
+
+// envRowLine is the one place that decides a row's marker, label and
+// value text -- both envBody (plain, measured) and styledEnvBody (coloured,
+// rendered) call this instead of each re-deriving the same row
+// independently, so the two can never drift into a different physical
+// line count the way createBody/styledCreateBody's shared field-table walk
+// avoids for the create modal.
+func (m Model) envRowLine(row envRow, focused bool) (label, value string) {
+	marker := "  "
+	if focused {
+		marker = "> "
+	}
+	label = fmt.Sprintf("%s%-24s", marker, row.Key)
+	// SPEC §6.4/requirement 21: a secret-shaped key's value is masked by
+	// default via the single maskEnvValue predicate, revealed only while
+	// m.envReveal is on (the "r" toggle in updateEnvDialog).
+	displayValue := m.maskEnvValue(row.Key, row.Value, m.envReveal)
+	value = fmt.Sprintf("%s  [%s]", displayValue, row.Layer)
+	if m.envEditKey != "" && m.envEditKey == row.Key {
+		value = m.maskEnvValue(row.Key, m.envEditValue, m.envReveal) + "_"
+	}
+	return label, value
+}
+
+// envBody builds the env editor's PLAIN, unstyled content -- byte for byte
+// what envView rendered directly before task 017 added a themed rendering
+// pass. It stays the one text wrapDialogLines/dialogMaxScroll/PgUp/PgDn
+// measure (mirroring createBody's own role for the create modal) so a
+// colour token styledEnvBody adds can never move where a page boundary
+// falls.
+func (m Model) envBody() string {
 	session := m.sessions[m.selected]
 	rows := m.sessionEnvRows(session)
-	var b strings.Builder
-	fmt.Fprintf(&b, "Environment for %s\n\n", session.Name)
+	var lines []string
+	lines = append(lines, fmt.Sprintf("Environment for %s", session.Name))
+	lines = append(lines, "")
 	if len(rows) == 0 {
-		b.WriteString("(no environment keys resolved for this session)\n")
+		lines = append(lines, "(no environment keys resolved for this session)")
 	} else {
 		for i, row := range rows {
-			marker := "  "
-			if i == m.envCursor {
-				marker = "> "
-			}
-			label := fmt.Sprintf("%s%-24s", marker, row.Key)
-			// SPEC §6.4/requirement 21: a secret-shaped key's value is masked
-			// by default via the single maskEnvValue predicate, revealed only
-			// while m.envReveal is on (the "r" toggle in updateEnvDialog).
-			displayValue := m.maskEnvValue(row.Key, row.Value, m.envReveal)
-			value := fmt.Sprintf("%s  [%s]", displayValue, row.Layer)
-			if m.envEditKey != "" && m.envEditKey == row.Key {
-				value = m.maskEnvValue(row.Key, m.envEditValue, m.envReveal) + "_"
-			}
-			fmt.Fprintf(&b, "%s\n", m.detailField(label, value))
+			label, value := m.envRowLine(row, i == m.envCursor)
+			lines = append(lines, label+value)
 		}
 	}
-	b.WriteString("\nOrder, lowest to highest: server env \u2192 captured_path \u2192 config [env] \u2192 session env.\n")
+	lines = append(lines, "")
+	lines = append(lines, "Order, lowest to highest: server env \u2192 captured_path \u2192 config [env] \u2192 session env.")
 	if m.envNote != "" {
-		fmt.Fprintf(&b, "\n%s\n", m.envNote)
+		lines = append(lines, "")
+		lines = append(lines, m.envNote)
+	}
+	lines = append(lines, m.envHintLine())
+	return strings.Join(lines, "\n")
+}
+
+// envHintLine is the env editor's closing instructional line -- the one
+// line every keyboard-only PTY assertion in features/env_editor_test.go
+// waits on ("Enter saves this key", the browse-mode legend) -- shared by
+// envBody and styledEnvBody so the two never state it differently.
+func (m Model) envHintLine() string {
+	if m.envEditKey != "" {
+		return "Enter saves this key into the session's own env; Esc cancels this edit."
+	}
+	revealHint := "r reveals secret-shaped values (masked by default)"
+	if m.envReveal {
+		revealHint = "r masks secret-shaped values again"
+	}
+	return fmt.Sprintf("j/k select a key, Enter edits it, %s; Esc closes.", revealHint)
+}
+
+// envBrowseLegendKeys/envEditLegendKeys are styledEnvBody's own key
+// vocabulary for envHintLine's two variants (task 017), mirroring
+// createFooterKeyTokens one file over: the exact words in that sentence
+// that name a bound key, so styledEnvBody's colorLegendLine can single
+// them out for `key` and leave the surrounding prose `dimmed`.
+var envBrowseLegendKeys = map[string]bool{"j/k": true, "Enter": true, "r": true, "Esc": true}
+var envEditLegendKeys = map[string]bool{"Enter": true, "Esc": true}
+
+// styledEnvBody re-derives envBody's exact structure -- same title, blank
+// line, row loop, order line, optional note and closing hint, in the same
+// order -- but colours each finished PHYSICAL line rather than the
+// logical one, exactly like styledCreateBody: every helper below wraps a
+// plain string via wrap (m.wrapDialogLines) FIRST, so a colour token can
+// never straddle a word-wrap boundary wrapDialogLines hasn't drawn yet.
+// Token mapping is SPEC.md:1355 verbatim: the title in `title`, a row's
+// key in `hint` and its value (with winning layer) in `text`, the order
+// line in `dimmed`, a validation/error note in `error`, the bound keys in
+// the closing legend in `key`, and the focused row (m.envCursor, whether
+// merely highlighted or actively being edited) carrying the same
+// `selection` treatment a selected list row does (renderCreateRowSegments,
+// reused verbatim from the create modal -- the composition it performs is
+// generic to "one row, several coloured segments, an optional selection
+// background," not specific to that dialog).
+func (m Model) styledEnvBody() string {
+	wrap := m.wrapDialogLines
+	var out []string
+
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorRow := func(label, value string, focused bool) {
+		for _, l := range wrap(label + value) {
+			var segs []settingsRowSegment
+			rest := l
+			if strings.HasPrefix(l, label) {
+				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+				rest = strings.TrimPrefix(l, label)
+			}
+			if rest != "" {
+				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+			}
+			if len(segs) == 0 {
+				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+			}
+			out = append(out, m.renderCreateRowSegments(focused, segs))
+		}
+	}
+	// colorLegendLine colours envHintLine's already-wrapped sentence word
+	// by word, never before wrap: every key word in keys gets `key`, every
+	// other word (punctuation attached and all) gets `dimmed`.
+	colorLegendLine := func(line string, keys map[string]bool) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				trimmed := strings.TrimRight(f, ",;.")
+				if keys[trimmed] {
+					fields[i] = m.colorToken(theme.Key, trimmed) + f[len(trimmed):]
+				} else {
+					fields[i] = m.colorToken(theme.Dimmed, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	session := m.sessions[m.selected]
+	rows := m.sessionEnvRows(session)
+	colorWhole(theme.Title, fmt.Sprintf("Environment for %s", session.Name))
+	out = append(out, "")
+	if len(rows) == 0 {
+		colorWhole(theme.Dimmed, "(no environment keys resolved for this session)")
+	} else {
+		for i, row := range rows {
+			label, value := m.envRowLine(row, i == m.envCursor)
+			colorRow(label, value, i == m.envCursor)
+		}
+	}
+	out = append(out, "")
+	colorWhole(theme.Dimmed, "Order, lowest to highest: server env \u2192 captured_path \u2192 config [env] \u2192 session env.")
+	if m.envNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.envNote)
 	}
 	if m.envEditKey != "" {
-		b.WriteString("Enter saves this key into the session's own env; Esc cancels this edit.\n")
+		colorLegendLine(m.envHintLine(), envEditLegendKeys)
 	} else {
-		revealHint := "r reveals secret-shaped values (masked by default)"
-		if m.envReveal {
-			revealHint = "r masks secret-shaped values again"
-		}
-		fmt.Fprintf(&b, "j/k select a key, Enter edits it, %s; Esc closes.\n", revealHint)
+		colorLegendLine(m.envHintLine(), envBrowseLegendKeys)
 	}
-	return m.framedDialog(b.String())
+	return strings.Join(out, "\n")
 }
 
 // updateEnvDialog handles keys while the `e` env editor is open (task 021).
@@ -212,6 +337,16 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// (m.envEditKey != "") this branch is unreachable, since that
 		// case returns earlier in this function.
 		m.envReveal = !m.envReveal
+	case "pgup":
+		// Task 017: the env editor moved onto framedDialogScrollable (task
+		// 014's height probe found the resolved-key list overflows an
+		// 80x24 frame from 16 keys up), so PgUp/PgDn now scroll it exactly
+		// like the create modal's own task 016 -- measured off m.envBody(),
+		// the plain body, never the coloured one, so a theme change can
+		// never move where a page boundary falls.
+		m.envScroll = m.dialogScrollByPage(m.envScroll, m.envBody(), -1)
+	case "pgdown":
+		m.envScroll = m.dialogScrollByPage(m.envScroll, m.envBody(), 1)
 	}
 	return m, nil
 }
