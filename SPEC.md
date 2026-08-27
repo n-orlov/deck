@@ -274,7 +274,7 @@ CREATE TABLE sessions (
   workspace          TEXT,                  -- free-text grouping label
   snoozed_until      INTEGER NOT NULL DEFAULT 0,
   acknowledged       INTEGER NOT NULL DEFAULT 1,
-  launch_lease_owner TEXT,                  -- pid@boot_id holding a start (§9.3)
+  launch_lease_owner TEXT,                  -- pid@boot_id#generation holding a start (§9.3)
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
   created_at         INTEGER NOT NULL,
@@ -537,7 +537,7 @@ Rules:
   |---|---|
   | session gone | `stopped` — clean exit, `/exit`, `exit` in a shell, or an explicit kill |
   | session present, pane dead, status ≠ 0 | `error` with `pane_exit_status`, plus a crash tail captured *before* the session is torn down |
-  | session present, pane alive | keep the current status |
+  | session present, pane alive | keep the current status — unless it is terminal, which is the invariant violation below |
 
   This is what makes a crash tail capturable at all — with the tmux default
   (`remain-on-exit off`) the pane and session vanish on death and there is nothing left to
@@ -556,6 +556,24 @@ Rules:
   no-op, not an error, so N clients seeing one corpse need no lease between them — and with
   no TUI running nothing collects at all, which is the unattended gap stated below rather
   than a new one.
+
+  **A terminal row with a live pane is an invariant violation, and the same pass repairs it.**
+  A terminal status — `stopped`, `error` — claims there is nothing running here, and a live,
+  non-dead pane is direct evidence against it. So when the reconcile observes one under a
+  terminal row it **corrects the row from what it can observe** (the liveness and probe rules
+  above), records the correction as an event, and touches the pane not at all: the pane is the
+  part that is right. Dead-pane collection is decided first, so a corpse is still collected
+  rather than mistaken for a live contradiction.
+
+  This is the one self-healing rule in §7, and it earns that exception because the alternative
+  is a row that every action refuses. Resume declines — nothing needs launching, a pane is
+  already there; kill declines — the row says it is already stopped; and the only escape is a
+  keystroke pair the user has to know is an escape. Status writes are not the only way in:
+  §9.3's per-launch generation closes the out-of-order-hook path that produced this in
+  practice, but deck being killed between a kill and its status write reaches the same state,
+  and so does any future writer that gets the order wrong. An invariant that repairs itself is
+  cheaper than every action having to tolerate its violation, and far cheaper than a user
+  discovering the violation as a session that cannot be recovered.
 - **A `shell` session has no agent signal, ever.** It has no hooks to fire and nothing
   meaningful to probe, so the rules above would leave it at `starting` for its entire life
   — not just until some later capability lands. For `shell` rows only, tmux liveness
@@ -765,6 +783,30 @@ a trace. The one deliberate exception is the JSONL log (§13.1), which keeps its
 record of what happened, because a log that rewrites itself when a row is deleted is not a
 log.
 
+**A tombstone that outlives its process is reaped at the next store open**, once its window
+has passed. Undo is a live-session affordance and not a durable one — nothing that survives a
+restart is still undoable — so a tombstone waiting for a grace window that no running process
+is counting is not protecting anything. Left unreaped it leaks the row, its events, its files
+and its **name**, none of which anything would ever collect.
+
+**A deleted session's name is available again, and taking it forfeits that session's undo.**
+"Gone without a trace" includes the name: a name that can never be reused is the deleted
+session still occupying the one namespace the user types into. So creating a session — or
+renaming one — with a name (or a §3.2 slug) whose only holder is a tombstoned row reaps that
+row and proceeds. The 60 s undo dies with it, which is the accepted trade: the user named the
+row they deleted, and then asked for its name back. Because that create silently destroys
+another row's record, the dialog says so where it happens (§11.4's in-dialog validation), and
+a `u` afterwards reports that the session was reaped when its name was reused rather than
+failing obscurely.
+
+**An archived row keeps its name, and `dd` is the way to free it.** Archiving keeps the record
+on purpose and `U` reverses it, so letting a second session quietly take the name would make
+the restored row's identity ambiguous — the refusal here is correct, and only its *message* has
+to earn its keep: it names the archived holder and both ways out, `U` to bring it back or `dd`
+to delete it. `dd` therefore applies to an archived row exactly as it does to any other.
+Archived is a hidden state, never a protected one, and the row is reachable for it wherever
+archived rows are reachable at all (§11.10).
+
 **Deleting a deck session never touches the agent's own history.** Claude's and Pi's
 transcripts live where those tools put them, and they belong to those tools — R1's "no
 session owns anything on disk" cuts both ways. So `dd` kills the pane and forgets the row
@@ -778,8 +820,30 @@ path it will delete before doing it.
 
 Two TUIs pressing `r` on the same `stopped` session must not double-launch. The
 transaction that flips `stopped → starting` also CAS-acquires
-`launch_lease_owner`/`launch_lease_until` (owner = `pid@boot_id`, TTL ~30 s). A stale lease
-(dead pid or expired TTL) is breakable.
+`launch_lease_owner`/`launch_lease_until` (owner = `pid@boot_id#<generation>`, TTL ~30 s). A
+stale lease (dead pid or expired TTL) is breakable. Only `pid@boot_id` is compared for
+identity; the generation is carried in the same column rather than a second one because it is
+minted by, and dies with, the same acquisition.
+
+**The generation identifies the launch attempt, not the row.** It is **random**, never a clock
+reading or a counter: deck's clock is injectable and frozen in tests (§13.1), so two launches
+of one row can share a timestamp, and a discriminator two launches can share is not one. It is
+exported into the pane beside the session id, so an event arriving from a pane can be told from
+one arriving from the pane that replaced it — `DECK_SESSION_ID` names the row and cannot answer
+that question. **A hook carrying a superseded generation is recorded and does not write
+status**, for every event name rather than the one that motivated it: it is genuine history
+from a pane that is genuinely gone, and the row it would otherwise describe belongs to a
+different launch. A hook carrying no generation at all, against a row that has none, behaves as
+it always did.
+
+**A launch releases its lease the moment it concludes** — pane up or launch failed, on every
+exit path — by clearing `launch_lease_until`, CASed on the exact owner that acquired it. The
+lease exists to keep a second launcher out while a launch is *in flight*, and nothing else: once
+the row is no longer `stopped` the status check already refuses a second launcher, so holding
+the lease past the launch protects nothing while making the paragraph below impossible to honour
+for 30 s. Release clears the **deadline only** and deliberately keeps the owner, because the
+generation half of it is what the rule above discriminates on, and a pane can still emit a hook
+long after 30 s.
 
 **"starting elsewhere" is a claim about another client, so it is only made when one is
 actually there.** A failed acquisition has two unrelated causes and they must not share a
@@ -1225,6 +1289,24 @@ truncated-but-honest frame beats an unpredictable one.
   (`↵ attach · n new · …`). It is contextual: it lists what is bound *now*, in this mode.
   **It never lists a key that is not bound** — a footer advertising a verb the binary does
   not have is worse than no footer, because it is the one place a user is entitled to trust.
+  **Nor does it list a key that would refuse the current selection.** `x` is absent on a row
+  with no pane to kill, `r` on a row that is already running, `A` on a row that is already
+  archived, `U` on one that is not, and every per-row key when the list is empty; with a mark
+  set in force the question is asked of the marked rows, since that is what the key would act
+  on. This is the same argument one step finer: a key that is bound but refuses *here* is,
+  from the user's side, indistinguishable from one that does not exist, and discovering the
+  difference costs a keystroke and a failure message. Eligibility has exactly one definition
+  per action, shared by the footer and the key handler — a footer deciding it separately is a
+  footer that will drift out of agreement with the behaviour it advertises.
+- **The footer's fixed set is curated for the keys worth a whole line of the frame.** It
+  carries navigation, `↵`, `a`, `Y`, `n`, `x`, `r`, `R`, `dd`, the eligible one of `A`/`U`,
+  `,`, `i`, `?` and `q`. Rarely-used per-row actions — the permission switcher `P`, pin `p` —
+  stay bound, stay in the `?` overlay and in §11's keymap, and stay out of the footer: one
+  line is a budget, and spending it on keys a user presses monthly crowds out `dd`, `U` and
+  `,`. `U` in particular has to be there when it applies, because it is the reversal of an
+  action that otherwise looks one-way, and `,` because settings has no other visible entry
+  point in the default frame. Absence from the footer is never absence from the keymap, and
+  §11's keymap plus the `?` overlay remain the complete list.
 - **The footer also carries the selected row's status reason**, on its left, separated from
   the keys. §7's reasons are prose — `awaiting signal`, `resumable`, `pane failed after the
   stale frame` — and a sidebar with 31 content columns cannot hold a name and a reason on the
@@ -1238,15 +1320,57 @@ truncated-but-honest frame beats an unpredictable one.
 Every dialog is a bordered, centred modal over a dimmed backdrop, and they all obey one
 contract so learning any one of them teaches the rest:
 
-- `esc` cancels and changes nothing. `↵` submits. `tab`/`shift+tab` move between fields.
+- `esc` cancels and changes nothing. `↵` submits. `↑`/`↓` move between fields.
   `←`/`→`/`space` change a selection. A dialog may declare **additional load-bearing keys
   of its own**, but only if it states them inline where they apply — the `r` that reveals a
   masked secret (§6.4) is the canonical example: an explicit per-view toggle, named on screen
   at the place it acts. Nothing *undeclared* is load-bearing.
+- **`tab` is reserved for completion and never moves between fields.** On a path field it is
+  bash's completion key and nothing else (§11.7); on every other field, and in every dialog
+  that has no path field at all, it is unbound. A key that navigates on seven fields and
+  completes on the eighth means two things a few rows apart, and *which* thing the user gets
+  depends on whether anything happens to exist on disk under the text they just typed — so
+  the field where completion matters most is the field where navigation stops being
+  predictable. Reserving the key costs one habit and buys navigation that is identical in
+  every dialog. A dialog's own footer names the keys it binds, so the reservation is visible
+  rather than inferred. This is a rule about moving between a dialog's *fields*; §11.5's
+  settings takeover is not a dialog and its `tab` switches between two whole regions, which is
+  the same thing §11.3 means when it says a focus cycle would imply stops that do nothing.
+- **A transient list inside a dialog owns `↑`/`↓` while it is open**, and says so on screen:
+  the completion candidate list (§11.7) is the one that exists, it moves its highlight with
+  `↑`/`↓`, accepts with `↵` or `tab`, and closes with `esc` — one step short of the contract's
+  own `esc`, so backing out of a list does not throw the user out of the dialog in the same
+  keystroke. Field navigation resumes the moment it closes. This is a declared per-field key
+  set, not an exception to the contract.
+- **An overlay with no fields keeps `esc` and spends `↑`/`↓` on scrolling.** The `?` help
+  overlay, the `i` session detail and the `E` event log have nothing to submit and nothing to
+  move between, so the navigation keys are theirs: `↑`/`↓` (and their `j`/`k` aliases) scroll a
+  line, `PgUp`/`PgDn` a page, and the wheel a line. Paging alone is not enough — a reader who
+  overshoots by two lines should not have to page back and forth to find them. A contract key a
+  surface has nothing to do with is left **unbound**, never made to do something invented.
 - **Validation is in-dialog and specific**, and it retains what the user typed. A dialog
   never closes to reveal an error somewhere else.
 - **Destructive actions confirm**, and the confirmation names the target and what will
   survive it (`kill notes — the session's history and conversation id are kept`).
+- **A dialog is themed like every other surface**, in §11.6's tokens and at render time: the
+  title in `title`, a field's label in `hint` and its value in `text`, explanatory help in
+  `dimmed`, the keys in a footer legend in `key`, a validation message in `error`, and the
+  focused field carrying the same `selection` treatment a selected list row does. A dialog is
+  where deck asks for a decision, and the two destructive confirms are where it asks for the
+  most consequential ones, so an unthemed dialog puts flat undifferentiated text exactly where
+  the user most needs to tell a warning from a value from a hint. Colour is applied where the
+  frame is drawn and never baked into the strings the model holds, so `NO_COLOR` and
+  `DECK_ASCII` still yield a fully legible dialog and the golden frames stay assertable.
+- **A dialog opens on the choice the user last made**, wherever it has one to remember, and
+  *labels* it as such so nothing is silently assumed on their behalf: the `cwd` field's
+  last-used prefill (§11.7), the create modal's **agent**, and §5's `yolo_default`. The
+  remembered value is machine-local UI state (§11.2's `ui_state`), promoted only when an
+  action *succeeds* — an abandoned dialog changes no default — validated against what is
+  currently available (an agent whose adapter is no longer registered falls back to the
+  built-in default), and re-derives anything computed from it, since a permission profile is a
+  function of the agent it applies to. Repetition is the norm in this product: the same agent
+  in the same directory, over and over, is what a session manager is *for*, and a dialog that
+  forgets makes the user re-state it every time.
 - **The mouse can neither cancel nor confirm.** A click outside a dialog does nothing, and
   no dialog action is reachable by mouse alone (§11.8).
 - Width targets 80% of the viewport, clamped to `[26, 80]` columns. At every supported
@@ -1407,9 +1531,13 @@ front, deduplicated by resolved absolute path, evicting the oldest beyond the li
   history it pre-fills the directory deck itself was started in. Typing replaces the
   pre-filled value wholesale (it is offered, not committed), and the field labels it as
   the last used so nothing is silently assumed on the user's behalf.
-- `↑`/`↓` in the field cycle the recent list, shell-history style, showing `recent 2/5`
-  so the user knows both where they are and that more exist. This is a declared
-  per-field key set under §11.4's contract.
+- `Ctrl+P`/`Ctrl+N` in the field cycle the recent list, shell-history style, showing
+  `recent 2/5` so the user knows both where they are and that more exist. This is a declared
+  per-field key set under §11.4's contract, and the field's own help line names it. They are
+  readline's history bindings, chosen for the same reason `tab` completion is: the fingers
+  already know them. `↑`/`↓` are **not** bound here — they move between fields in every dialog
+  (§11.4), and a path field does not get to redefine the navigation keys of the dialog it sits
+  in.
 - Recency is ordered by a **monotonic sequence, not the wall clock**, so the order stays
   deterministic and assertable while `DECK_CLOCK` is frozen (§13.1): anything ordered by a
   frozen clock has no order at all.
@@ -1605,6 +1733,28 @@ must be restored afterwards.
   the agent being wedged. Help states that previewing and entering interactive mode both
   resize the agent's window, that output produced while narrow consumes scrollback faster, and
   that `[ui] preview_fit = false` turns the passive half of that off.
+
+### 11.10 The list filter
+
+`/` narrows the list as you type, incrementally, over what a row already shows — name, `cwd`,
+workspace and status. It is a **view over the list and never a mutation**: nothing about a
+session changes because it is hidden or shown.
+
+- **It widens the pool to archived rows** while a query is in force, and only then. Archived
+  rows are absent from the default list by definition (§9.2), so a filter that could only
+  narrow the default list would leave them unreachable — this is the route back to one, which
+  is what makes `U` and `dd` reachable on an archived row at all.
+- **`↵` closes the text field and leaves the query in force**, so the ordinary keymap — arrows,
+  `m`, `↵`, `U`, `dd` — acts on the narrowed list. A filter is a working set, not a modal
+  search box you have to leave before you can do anything.
+- **`esc` clears the query and returns to the unfiltered list**, from the open text field *and*
+  from a query held in force with the field closed. Both, because the line that states the
+  filter is in force also names the key that clears it, and a UI that advertises a key which
+  does nothing is the §11.3 footer defect in a different place. When something nearer is open —
+  an overlay, a dialog, a mark set — `esc` dismisses that first; the held filter is what it
+  reaches when there is nothing nearer, and one press never does two of those at once.
+- **The sidebar states that a filter is in force**, with the match count, so a hidden row is
+  never mistaken for a deleted one. That statement is the whole reason hiding rows is safe.
 
 ---
 
