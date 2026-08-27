@@ -806,6 +806,24 @@ func (m Model) wrapDialogLines(body string) []string {
 	return lines
 }
 
+// wrapDialogRegion is wrapDialogLines' line-slice counterpart: wrap each
+// logical line of a dialog REGION (a head/list/tail group a dialog assembles
+// separately so it can scroll one of them independently, task 018) and keep
+// the blank separator lines intact -- wrapDialogLines trims trailing newlines
+// off the body it is given, so joining a region that ends in a blank line and
+// wrapping that would silently lose the separator.
+func (m Model) wrapDialogRegion(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			out = append(out, "")
+			continue
+		}
+		out = append(out, m.wrapDialogLines(line)...)
+	}
+	return out
+}
+
 // dialogContentBudget is framedDialogScrollable's own content-row budget:
 // the frame height minus the box's own top/bottom border -- the most rows
 // a scrollable overlay's body may ever render at once without pushing the

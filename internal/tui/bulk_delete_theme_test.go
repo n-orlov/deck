@@ -155,16 +155,28 @@ func TestBulkDeleteConfirmSubmitLineVisibleForAnOrdinaryMarkSet(t *testing.T) {
 	}
 }
 
-// TestBulkDeleteConfirmSubmitLineReachableViaPgDown proves the submit line
-// stays REACHABLE once the mark list overflows the frame: it is off the
-// first page at 20 marks, PgDn brings it on screen, and PgUp returns to
-// the top with deleteScroll back at 0.
-func TestBulkDeleteConfirmSubmitLineReachableViaPgDown(t *testing.T) {
+// TestBulkDeleteConfirmSubmitLinePinnedWhileTheMarkListScrolls proves task
+// 018's residual criterion: at 80x24 the submit line is visible WITH NO
+// KEYSTROKE even for a mark set that overflows the frame -- only the list of
+// marked names scrolls (PgUp/PgDn), the title and the legend are pinned --
+// and no marked name is dropped: paging down reaches the last one.
+func TestBulkDeleteConfirmSubmitLinePinnedWhileTheMarkListScrolls(t *testing.T) {
 	m := task018BulkDeleteModel(t, 20)
+	if !m.bulkDeleteConfirmScrolls() {
+		t.Fatal("a 20-mark confirm already fits the frame -- this test needs an overflowing mark list to be non-vacuous")
+	}
 
 	first := stripANSI(m.deleteConfirmView())
-	if strings.Contains(first, "Enter deletes all") {
-		t.Fatalf("the submit line is already visible on the first page -- this test needs more marks to be non-vacuous:\n%s", first)
+	for _, want := range []string{"Delete 20 marked sessions", "Enter deletes all", "Esc cancels", "PgUp/PgDn scrolls", task018MarkName(0)} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("the first page of a 20-mark confirm does not show %q with no keystroke:\n%s", want, first)
+		}
+	}
+	if strings.Contains(first, task018MarkName(19)) {
+		t.Fatalf("the first page already shows the last marked name -- nothing is scrolling:\n%s", first)
+	}
+	if n := countViewLines(first); n > 24 {
+		t.Fatalf("20-mark confirm is %d lines at 80x24, want <= 24:\n%s", n, first)
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
@@ -172,12 +184,17 @@ func TestBulkDeleteConfirmSubmitLineReachableViaPgDown(t *testing.T) {
 	if down.deleteScroll == 0 {
 		t.Fatal("PgDn in the bulk delete confirm left deleteScroll at 0")
 	}
-	bottom := stripANSI(down.deleteConfirmView())
-	if !strings.Contains(bottom, "Enter deletes all") {
-		t.Fatalf("paging down never reached the submit line:\n%s", bottom)
-	}
 	if !down.deleteConfirming {
 		t.Fatal("PgDn closed the bulk delete confirm")
+	}
+	bottom := stripANSI(down.deleteConfirmView())
+	for _, want := range []string{task018MarkName(19), "Delete 20 marked sessions", "Enter deletes all"} {
+		if !strings.Contains(bottom, want) {
+			t.Fatalf("after PgDn the confirm does not show %q (the head and tail are pinned, the list scrolls):\n%s", want, bottom)
+		}
+	}
+	if n := countViewLines(bottom); n > 24 {
+		t.Fatalf("scrolled 20-mark confirm is %d lines at 80x24, want <= 24:\n%s", n, bottom)
 	}
 
 	back, _ := down.Update(tea.KeyMsg{Type: tea.KeyPgUp})
@@ -185,8 +202,35 @@ func TestBulkDeleteConfirmSubmitLineReachableViaPgDown(t *testing.T) {
 	if up.deleteScroll != 0 {
 		t.Fatalf("deleteScroll = %d after paging back up, want 0", up.deleteScroll)
 	}
-	if top := stripANSI(up.deleteConfirmView()); !strings.Contains(top, "Delete 20 marked sessions") {
-		t.Fatalf("paging back up did not return to the top of the dialog:\n%s", top)
+	top := stripANSI(up.deleteConfirmView())
+	if !strings.Contains(top, task018MarkName(0)) || !strings.Contains(top, "Enter deletes all") {
+		t.Fatalf("paging back up did not return to the top of the mark list with the legend still pinned:\n%s", top)
+	}
+}
+
+// TestBulkDeleteConfirmBodyKeepsEveryMarkedName proves the pinning above is
+// a WINDOW, not a truncation: the plain body -- what an assertion or a copy
+// of the dialog's text reads -- still names all 20 marked sessions, and the
+// scroll keys are advertised on the submit line whenever some of them are
+// off screen (SPEC requirement 39: paginate, never silently drop).
+func TestBulkDeleteConfirmBodyKeepsEveryMarkedName(t *testing.T) {
+	m := task018BulkDeleteModel(t, 20)
+	body := m.bulkDeleteConfirmBody()
+	for i := 0; i < 20; i++ {
+		if !strings.Contains(body, task018MarkName(i)) {
+			t.Fatalf("bulkDeleteConfirmBody() dropped marked name %q:\n%s", task018MarkName(i), body)
+		}
+	}
+	if !strings.Contains(body, "PgUp/PgDn scrolls") {
+		t.Fatalf("an overflowing confirm does not advertise the scroll keys:\n%s", body)
+	}
+
+	small := task018BulkDeleteModel(t, 2)
+	if small.bulkDeleteConfirmScrolls() {
+		t.Fatal("a two-mark confirm reports itself as scrolling at 80x24")
+	}
+	if got := small.bulkDeleteConfirmBody(); strings.Contains(got, "PgUp/PgDn") {
+		t.Fatalf("a confirm that fits advertises scroll keys it does not need:\n%s", got)
 	}
 }
 
