@@ -1,0 +1,113 @@
+# The two SPEC 9.3 lease feature files at the task-031 code (real terminal, real tmux)
+# /proc/loadavg: 5.18 3.19 3.00 (1-minute value at the start of the run)
+# ci/run.sh env DECK_GODOG_PATHS=launch_lease.feature,lease_race.feature go test -count=1 -v -run TestFeatures ./features/
+# exit=0
+
+=== RUN   TestFeatures
+Feature: Launch-lease stale/live breaking
+  The SPEC §9.3 launch lease must block a second launch only while a live
+  owner still holds it within its TTL, and must never leave a row wedged: a
+  lease from a dead process or one whose TTL has elapsed is breakable, and
+  the row remains usable by a plain `r` afterwards in every case.
+=== RUN   TestFeatures/a_live_in-TTL_lease_blocks_a_second_launch_and_the_row_stays_usable
+
+  Scenario: a live in-TTL lease blocks a second launch and the row stays usable                   # launch_lease.feature:8
+    Given deck client "A" is started                                                              # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "A" creates shell session "live lease target"                                 # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" kills its selected session                                                # assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession
+    Then the state database contains session "live lease target" with status "stopped"            # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When the state database session "live lease target" has a launch lease held by a live process # agent_steps_test.go:65 -> github.com/n-orlov/deck/features.sessionHasLiveLaunchLease
+    And deck client "A" presses r on session "live lease target"                                  # agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession
+    Then deck client "A" screen contains "starting elsewhere"                                     # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And the state database contains session "live lease target" with status "stopped"             # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When the state database session "live lease target"'s launch lease is cleared                 # agent_steps_test.go:69 -> github.com/n-orlov/deck/features.sessionLaunchLeaseIsCleared
+    And deck client "A" presses r on session "live lease target"                                  # agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession
+    Then deck client "A" screen contains "running"                                                # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen does not contain "starting elsewhere"                              # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    When deck client "A" exits cleanly                                                            # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+=== RUN   TestFeatures/a_stale_stopped_row_reports_its_new_non-leasable_verdict_instead_of_a_lease_conflict
+
+  Scenario: a stale stopped row reports its new non-leasable verdict instead of a lease conflict                                             # launch_lease.feature:23
+    Given deck client "A" is started with a slow reconcile interval                                                                          # agent_steps_test.go:47 -> github.com/n-orlov/deck/features.startNamedClientWithSlowReconcile
+    And deck client "A" creates shell session "changed verdict target"                                                                       # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" kills its selected session                                                                                           # assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession
+    Then the state database contains session "changed verdict target" with status "stopped"                                                  # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    And deck client "A" screen contains "stopped - resumable"                                                                                # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When the state database session "changed verdict target" changes to a non-leasable error with reason "pane failed after the stale frame" # agent_steps_test.go:66 -> github.com/n-orlov/deck/features.sessionChangesToNonLeasableError
+    And deck client "A" presses r on session "changed verdict target"                                                                        # agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession
+    Then deck client "A" screen contains "error"                                                                                             # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen does not contain "starting elsewhere"                                                                         # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    When deck client "A" opens detail for session "changed verdict target"                                                                   # agent_steps_test.go:36 -> github.com/n-orlov/deck/features.clientOpensDetailForSession
+    Then deck client "A" screen contains "Status reason:      pane failed after the stale frame"                                             # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And the state database contains session "changed verdict target" with status "error"                                                     # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" exits cleanly                                                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+=== RUN   TestFeatures/a_lease_from_a_dead_process_is_breakable_and_the_row_stays_usable
+
+  Scenario: a lease from a dead process is breakable and the row stays usable                      # launch_lease.feature:38
+    Given deck client "A" is started                                                               # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "A" creates shell session "dead lease target"                                  # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" kills its selected session                                                 # assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession
+    Then the state database contains session "dead lease target" with status "stopped"             # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When the state database session "dead lease target" has a launch lease owned by a dead process # agent_steps_test.go:67 -> github.com/n-orlov/deck/features.sessionHasDeadLaunchLease
+    And deck client "A" presses r on session "dead lease target"                                   # agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession
+    Then deck client "A" screen contains "running"                                                 # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen does not contain "starting elsewhere"                               # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    When deck client "A" exits cleanly                                                             # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+=== RUN   TestFeatures/an_expired-TTL_lease_is_breakable_and_the_row_stays_usable
+
+  Scenario: an expired-TTL lease is breakable and the row stays usable                    # launch_lease.feature:49
+    Given deck client "A" is started                                                      # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "A" creates shell session "expired lease target"                      # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" kills its selected session                                        # assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession
+    Then the state database contains session "expired lease target" with status "stopped" # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When the state database session "expired lease target" has an expired launch lease    # agent_steps_test.go:68 -> github.com/n-orlov/deck/features.sessionHasExpiredLaunchLease
+    And deck client "A" presses r on session "expired lease target"                       # agent_steps_test.go:45 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession
+    Then deck client "A" screen contains "running"                                        # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "A" screen does not contain "starting elsewhere"                      # agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain
+    When deck client "A" exits cleanly                                                    # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+Feature: Launch-lease race
+  Multiple independent deck clients racing the resume key on the same
+  stopped row must converge on exactly one real launch (SPEC §9.3).
+=== RUN   TestFeatures/three_clients_racing_resume_on_one_row_produce_exactly_one_launch
+
+  Scenario: three clients racing resume on one row produce exactly one launch                          # lease_race.feature:6
+    Given a long-running fake "claude" binary is on PATH for future deck clients                       # agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients
+    And deck client "A" is started                                                                     # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "B" is started                                                                     # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "C" is started                                                                     # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    When deck client "A" creates claude session "race target" with permission profile "safe"           # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    And deck client "A" kills its selected session                                                     # assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession
+    Then the state database contains session "race target" with status "stopped"                       # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck client "A" creates claude session "unsignalled agent" with permission profile "safe"     # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    Then the state database contains session "unsignalled agent" with status "starting"                # assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus
+    When deck clients "A", "B" and "C" race pressing r on session "race target"                        # agent_steps_test.go:63 -> github.com/n-orlov/deck/features.clientsRacePressingResumeOnNamedSession
+    Then at least one of deck clients "A", "B" and "C" screen contains "starting elsewhere"            # agent_steps_test.go:64 -> github.com/n-orlov/deck/features.atLeastOneOfClientsShowsStartingElsewhere
+    And within one configured reconcile interval deck client "A" row "race target" contains "starting" # status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile
+    And within one configured reconcile interval deck client "B" row "race target" contains "starting" # status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile
+    And within one configured reconcile interval deck client "C" row "race target" contains "starting" # status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile
+    And exactly 1 private tmux session matches slug "deck_race-target"                                 # agent_steps_test.go:56 -> github.com/n-orlov/deck/features.exactlyNPrivateSessionsMatchSlug
+    And the audit log has 2 launch records for session "race target"                                   # agent_steps_test.go:54 -> github.com/n-orlov/deck/features.auditHasLaunchRecordCountForSession
+    When fake Claude session "race target" fires "SessionStart" for itself using injected identity:    # status_claude_hooks_test.go:23 -> github.com/n-orlov/deck/features.fakeClaudeFiresForSelf
+      | source | resume |
+    Then within one configured reconcile interval deck client "A" row "race target" contains "running" # status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile
+    And within one configured reconcile interval deck client "B" row "race target" contains "running"  # status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile
+    And within one configured reconcile interval deck client "C" row "race target" contains "running"  # status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile
+    And deck client "A" row "unsignalled agent" does not contain "running"                             # agent_steps_test.go:35 -> github.com/n-orlov/deck/features.clientRowDoesNotContain
+    And deck client "B" row "unsignalled agent" does not contain "running"                             # agent_steps_test.go:35 -> github.com/n-orlov/deck/features.clientRowDoesNotContain
+    And deck client "C" row "unsignalled agent" does not contain "running"                             # agent_steps_test.go:35 -> github.com/n-orlov/deck/features.clientRowDoesNotContain
+    When deck client "A" exits cleanly                                                                 # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+    And deck client "B" exits cleanly                                                                  # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+    And deck client "C" exits cleanly                                                                  # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+5 scenarios (5 passed)
+70 steps (70 passed)
+6.510686836s
+--- PASS: TestFeatures (6.51s)
+    --- PASS: TestFeatures/a_live_in-TTL_lease_blocks_a_second_launch_and_the_row_stays_usable (1.57s)
+    --- PASS: TestFeatures/a_stale_stopped_row_reports_its_new_non-leasable_verdict_instead_of_a_lease_conflict (1.19s)
+    --- PASS: TestFeatures/a_lease_from_a_dead_process_is_breakable_and_the_row_stays_usable (0.91s)
+    --- PASS: TestFeatures/an_expired-TTL_lease_is_breakable_and_the_row_stays_usable (0.91s)
+    --- PASS: TestFeatures/three_clients_racing_resume_on_one_row_produce_exactly_one_launch (1.91s)
+PASS
+ok  	github.com/n-orlov/deck/features	6.528s

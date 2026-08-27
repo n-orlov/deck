@@ -40,19 +40,6 @@ func assertNoTMuxEnvironment(t *testing.T, socket, slug, key string) {
 	}
 }
 
-// expireLaunchLease ages the row's launch lease out of its TTL while leaving
-// launch_lease_owner (and therefore the generation) in place. It stands in for
-// the wall-clock passage of the 30 s TTL, which a test clock never provides,
-// and it is the same shape R75 (task 031) will produce when a completed launch
-// stops holding its lease: the lease is over, but the row still names which
-// launch is current.
-func expireLaunchLease(t *testing.T, db *store.Store, sessionID string) {
-	t.Helper()
-	if _, err := db.DB().Exec(`UPDATE sessions SET launch_lease_until = 0 WHERE id = ?`, sessionID); err != nil {
-		t.Fatalf("expire launch lease: %v", err)
-	}
-}
-
 // TestResumeExportsCurrentLaunchGenerationToThePane is R74 leg 1's end of the
 // chain (issue #11): the discriminator the launch lease minted has to reach
 // the agent's environment, and the value the pane carries has to be the one
@@ -81,7 +68,9 @@ func TestResumeExportsCurrentLaunchGenerationToThePane(t *testing.T) {
 			t.Fatalf("%s: kill pane: %v", label, err)
 		}
 		stopSession(t, db, created.ID)
-		expireLaunchLease(t, db, created.ID)
+		// No lease fixture is needed: each completed launch releases its own
+		// lease (R75, task 031), so the previous launch is not still holding
+		// one even though the test clock has not advanced.
 		session, outcome, err := service.Resume(context.Background(), created.ID)
 		if err != nil {
 			t.Fatalf("%s: resume: %v", label, err)

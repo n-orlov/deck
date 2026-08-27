@@ -1,0 +1,6 @@
+# GREEN at the task-031 code (final working tree = the commit under review)
+# /proc/loadavg: 5.17 3.82 3.27 5/4198 83703
+# ci/run.sh go test -count=1 ./internal/store/ ./internal/service/
+ok  	github.com/n-orlov/deck/internal/store	2.390s
+ok  	github.com/n-orlov/deck/internal/service	4.367s
+exit=0

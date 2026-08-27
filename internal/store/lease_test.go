@@ -238,10 +238,10 @@ func TestAcquireLaunchLeaseNeverWedgesTheRow(t *testing.T) {
 		t.Fatalf("outcome = %v; want held elsewhere", blocked.Outcome)
 	}
 
-	// Simulate the holder legitimately releasing the lease (a later phase
-	// clears it when a launch attempt concludes) — a subsequent legitimate
-	// acquire by a different owner must still work; the row must not stay
-	// wedged just because it was once refused.
+	// Simulate the holder legitimately releasing the lease (ReleaseLaunchLease
+	// does this for real when a launch concludes, R75) — a subsequent
+	// legitimate acquire by a different owner must still work; the row must not
+	// stay wedged just because it was once refused.
 	setRawLease(t, store, id, "", 0)
 	newOwner := "55555@boot-y"
 	retry, err := store.AcquireLaunchLease(context.Background(), id, newOwner, time.Second*30, leaseTestNow)

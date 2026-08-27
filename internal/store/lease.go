@@ -162,6 +162,59 @@ func leaseOwnerAlive(owner string) bool {
 	return false
 }
 
+// ReleaseLaunchLease ends a launch's hold on the row's launch lease once that
+// launch attempt has concluded (issue #11, R75). It clears
+// launch_lease_until -- and ONLY launch_lease_until.
+//
+// Why the hold has to end at all: SPEC §9.3's lease exists so two clients
+// cannot double-start one row, i.e. so a SECOND launcher is kept out while a
+// launch is in flight. Once the pane is up (or the attempt has failed) nothing
+// is in flight any more, but the ~30 s TTL keeps the row "held by <owner>" for
+// the rest of the window. Any resume in that window -- including one by the
+// very process that holds the lease, on a row that is legitimately stopped
+// again -- was answered *starting elsewhere*, which §9.3 pins as "a claim about
+// another client, so it is only made when one is actually there". There was no
+// other client: the row's own last launcher was reported as one.
+//
+// Why launch_lease_owner is deliberately KEPT: its generation half is R74's
+// per-launch discriminator (see composeLeaseOwner and
+// store.Session.LaunchGeneration). The row must go on naming which launch is
+// current for as long as the pane exists, because that is what lets a late hook
+// write from a superseded launch be recognized -- and a superseded pane can
+// chatter long after 30 s. Blanking the owner here would silently un-fix R74:
+// with no token on the row, every hook is "nothing to discriminate, therefore
+// apply" again. So the released state is exactly "owner names the current
+// launch, nobody is mid-launch": launch_lease_until = 0 is what AcquireLaunchLease
+// already reads as breakable (an unset/elapsed TTL), so no acquisition logic
+// changes and no guard is weakened -- a lease held by a *different* live owner
+// still has its own non-zero until and still blocks.
+//
+// heldOwner is the full stored owner string this launch acquired
+// (LaunchLeaseResult.HeldBy, generation included) and the write CASes on it, so
+// a release that arrives after some other launcher has already taken the row
+// over releases nothing: it cannot cut short a lease it does not own. The
+// boolean reports whether a held lease was actually released.
+func (s *Store) ReleaseLaunchLease(ctx context.Context, sessionID, heldOwner string) (bool, error) {
+	if sessionID == "" {
+		return false, errors.New("session id is required")
+	}
+	if heldOwner == "" {
+		return false, errors.New("lease owner is required")
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET launch_lease_until = 0
+		 WHERE id = ? AND launch_lease_owner = ? AND launch_lease_until != 0`,
+		sessionID, heldOwner)
+	if err != nil {
+		return false, fmt.Errorf("release launch lease: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("check launch lease release: %w", err)
+	}
+	return affected == 1, nil
+}
+
 // AcquireLaunchLease implements the SPEC §9.3 launch lease: the transaction
 // that flips a stopped session to starting also CAS-acquires
 // launch_lease_owner/launch_lease_until and clears killed_by_user: an explicit

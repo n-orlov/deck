@@ -1,0 +1,14 @@
+# REVERT A: Resume no longer releases the lease of a concluded launch (pre-R75 behaviour)
+# the ONLY product change reverted; both new test files unchanged
+# /proc/loadavg: 2.81 2.61 2.84 4/4153 82530
+# ci/run.sh go test -count=1 ./internal/store/ ./internal/service/
+ok  	github.com/n-orlov/deck/internal/store	2.306s
+--- FAIL: TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes (0.08s)
+    lease_release_test.go:125: first resume: launch_lease_until = 1735787075000 after the launch completed; want 0 (the launch is no longer in flight)
+    lease_release_test.go:126: second resume inside the lease window: outcome = ResumeStartingElsewhere; the only launcher in this test is this process's own concluded launch
+--- FAIL: TestResumeStillRefusesALeaseHeldByADifferentLiveOwner (0.09s)
+    lease_release_test.go:190: launch_lease_until = 1735787075000 after that launch completed; want 0
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	4.226s
+FAIL
+exit=1

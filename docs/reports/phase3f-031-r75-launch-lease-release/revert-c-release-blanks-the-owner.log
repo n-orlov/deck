@@ -1,0 +1,24 @@
+# REVERT C: the release blanks launch_lease_owner as well as launch_lease_until
+#           (i.e. it destroys R74's per-launch generation discriminator)
+# /proc/loadavg: 2.41 2.53 2.80 2/4175 82713
+# ci/run.sh go test -count=1 ./internal/store/ ./internal/service/ ./internal/hookrecv/
+--- FAIL: TestReleaseLaunchLeaseLetsTheSameOwnerLaunchAgainInsideTheTTL (0.03s)
+    lease_release_test.go:73: launch_lease_owner = "" after the release; want it untouched at "246@0a1ca121-8429-41b6-bbf2-2452d3728fdb#230dd8fda168a001" (R74's generation lives here)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	3.182s
+--- FAIL: TestResumeExportsCurrentLaunchGenerationToThePane (0.10s)
+    launch_generation_test.go:100: stored launch_lease_owner "" carries no generation
+--- FAIL: TestResumeShellSessionCarriesNoLaunchGeneration (0.07s)
+    launch_generation_test.go:135: stored launch_lease_owner "" carries no generation
+--- FAIL: TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes (0.08s)
+    lease_release_test.go:125: first resume: launch_lease_owner = "" after the release; want the owner (with its generation) kept
+    lease_release_test.go:125: stored launch_lease_owner "" carries no generation
+--- FAIL: TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow (0.08s)
+    superseded_launch_hook_test.go:71: stored launch_lease_owner "" carries no generation
+--- FAIL: TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator (0.14s)
+    superseded_launch_hook_test.go:140: stored launch_lease_owner "" carries no generation
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	4.583s
+ok  	github.com/n-orlov/deck/internal/hookrecv	5.625s
+FAIL
+exit=1

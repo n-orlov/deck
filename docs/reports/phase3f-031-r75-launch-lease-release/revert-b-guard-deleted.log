@@ -1,0 +1,21 @@
+# REVERT B: the lease-held guard in AcquireLaunchLease deleted outright (the naive 'fix' R75 must NOT be)
+# /proc/loadavg: 2.31 2.51 2.80 2/4173 82635
+# ci/run.sh go test -count=1 ./internal/store/ ./internal/service/
+--- FAIL: TestLiveOwnerWithGenerationIsStillNotBreakable (0.02s)
+    launch_generation_test.go:121: outcome = 0; want held elsewhere for a live in-TTL owner carrying a generation
+--- FAIL: TestReleaseLaunchLeaseDoesNotEndADifferentLiveOwnersLease (0.02s)
+    lease_release_test.go:157: outcome = 0 while a live in-TTL owner holds the lease; want held elsewhere
+--- FAIL: TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable (0.02s)
+    lease_test.go:122: outcome = 0; want held elsewhere
+--- FAIL: TestAcquireLaunchLeaseNeverWedgesTheRow (0.02s)
+    lease_test.go:238: outcome = 0; want held elsewhere
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	2.395s
+--- FAIL: TestResumeStillRefusesALeaseHeldByADifferentLiveOwner (0.09s)
+    lease_release_test.go:163: outcome = 0 while another live process holds the lease in its TTL; want ResumeStartingElsewhere
+--- FAIL: TestResumeLosingLeaseCreatesNoTMuxSession (0.05s)
+    resume_test.go:152: outcome = 2, want ResumeStartingElsewhere
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	4.440s
+FAIL
+exit=1
