@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattn/go-runewidth"
+
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
@@ -154,12 +156,31 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 	if !strings.Contains(line, "r resume") {
 		t.Fatalf("footer line dropped the resume key beside the reason: %q", line)
 	}
+	if strings.Contains(line, "…") || strings.Contains(line, "...") {
+		t.Fatalf("footer line at 80 columns must not elide either half: %q", line)
+	}
+	// The whole legend survives beside the reason -- the last entry is the
+	// one a width-driven clip would eat first.
+	if !strings.Contains(line, "q quit") {
+		t.Fatalf("footer line dropped the legend's tail beside the reason: %q", line)
+	}
 
-	// The join formula is `reason + "    " + keys`, unconditionally. Swap
-	// in a same-shape reason as long as SPEC §11.3's own example --
-	// `pane failed after the stale frame`, launch_lease.feature's
-	// non-leasable-error reason text -- and confirm both halves still
-	// survive intact.
+	// Anchor the join formula in the product's own output before reusing
+	// it below: footerLine joins reason and keys with exactly four spaces
+	// and nothing else (no width-aware truncation on this path). If that
+	// ever changes -- a clip, a different separator, a reordering -- this
+	// fails here rather than letting the long-reason case below quietly
+	// assert a formula the product no longer uses.
+	if want := m.selectedRowReason() + "    " + m.footerKeyLegend(); line != want {
+		t.Fatalf("footer join changed shape:\n got %q\nwant %q", line, want)
+	}
+
+	// Now the long reason itself. §7's reasons are prose and SPEC §11.3
+	// names this one: `pane failed after the stale frame`, which is
+	// launch_lease.feature's non-leasable-error text. selectedRowReason
+	// only ever derives the two short reasons (`resumable`, `awaiting
+	// signal`) today, so the long case is exercised through the anchored
+	// join above rather than by inventing a store field for it.
 	longReason := "pane failed after the stale frame"
 	assembled := longReason + "    " + m.footerKeyLegend()
 	if strings.Contains(assembled, "\n") {
@@ -168,7 +189,33 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 	if !strings.Contains(assembled, longReason) {
 		t.Fatalf("long-reason join lost the reason text: %q", assembled)
 	}
-	if !strings.Contains(assembled, "r resume") {
-		t.Fatalf("long-reason join lost the resume key: %q", assembled)
+	for _, want := range []string{"r resume", "q quit"} {
+		if !strings.Contains(assembled, want) {
+			t.Fatalf("long-reason join lost %q: %q", want, assembled)
+		}
+	}
+	// The stopped row's legend is SHORTER than an unfiltered one (no `x`,
+	// no `R`), which is the whole point of the eligibility filter here:
+	// record both widths so a future change that lengthens the legend can
+	// see what it is spending. SPEC §11.3 gives the footer the whole
+	// terminal width and puts the full reason in the `i` detail "when it
+	// is long", so exceeding 80 is not itself a defect -- what must hold
+	// is that neither half is dropped or split, asserted above.
+	unfiltered := New(nil, config.Settings{}, "")
+	unfiltered.width, unfiltered.height = 80, 24
+	unfiltered.sessions = []store.Session{{ID: "s1", Name: "sess", Agent: "shell", Status: "running"}}
+	if got, live := runewidth.StringWidth(assembled), runewidth.StringWidth(unfiltered.footerKeyLegend()); got < 1 || live < 1 {
+		t.Fatalf("legend widths came out empty: joined=%d live-row legend=%d", got, live)
+	} else {
+		t.Logf("long reason + stopped-row legend = %d cells; live-row legend alone = %d cells", got, live)
+	}
+
+	// End to end at exactly 80x24: the footer is mainView's last line and
+	// still carries both halves, so the reason does not push the keys off
+	// the frame.
+	viewLines := strings.Split(m.mainView(), "\n")
+	footer := viewLines[len(viewLines)-1]
+	if !strings.Contains(footer, "resumable") || !strings.Contains(footer, "r resume") || !strings.Contains(footer, "q quit") {
+		t.Fatalf("80x24 frame's last line is not the shared footer: %q", footer)
 	}
 }
