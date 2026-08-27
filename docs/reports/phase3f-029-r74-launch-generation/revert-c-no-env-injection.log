@@ -1,0 +1,7 @@
+--- FAIL: TestResumeExportsCurrentLaunchGenerationToThePane (0.11s)
+    launch_generation_test.go:100: show tmux environment DECK_LAUNCH_GENERATION: exit status 1 (unknown variable: DECK_LAUNCH_GENERATION
+        )
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.193s
+ok  	github.com/n-orlov/deck/internal/store	0.056s
+FAIL

@@ -1,0 +1,11 @@
+--- FAIL: TestAcquireLaunchLeaseMintsAFreshGenerationPerLaunch (0.03s)
+    launch_generation_test.go:70: stored launch_lease_owner = "12345@boot-a"; want "12345@boot-a#eb5e375925fafeab"
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.224s
+--- FAIL: TestResumeExportsCurrentLaunchGenerationToThePane (0.10s)
+    launch_generation_test.go:100: stored launch_lease_owner "178@0a1ca121-8429-41b6-bbf2-2452d3728fdb" carries no generation
+--- FAIL: TestResumeShellSessionCarriesNoLaunchGeneration (0.09s)
+    launch_generation_test.go:135: stored launch_lease_owner "178@0a1ca121-8429-41b6-bbf2-2452d3728fdb" carries no generation
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.194s
+FAIL

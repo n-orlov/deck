@@ -1,0 +1,151 @@
+package service
+
+import (
+	"context"
+	"os/exec"
+	"strings"
+	"testing"
+
+	"github.com/n-orlov/deck/internal/store"
+)
+
+// rowLaunchGeneration reads the generation half of the row's own
+// launch_lease_owner: the launch deck currently considers the live one
+// (issue #11, R74).
+func rowLaunchGeneration(t *testing.T, db *store.Store, sessionID string) string {
+	t.Helper()
+	var owner string
+	if err := db.DB().QueryRow(`SELECT COALESCE(launch_lease_owner, '') FROM sessions WHERE id = ?`, sessionID).Scan(&owner); err != nil {
+		t.Fatalf("read launch_lease_owner: %v", err)
+	}
+	_, generation, found := strings.Cut(owner, "#")
+	if !found {
+		t.Fatalf("stored launch_lease_owner %q carries no generation", owner)
+	}
+	if generation == "" {
+		t.Fatalf("stored launch_lease_owner %q carries an empty generation", owner)
+	}
+	return generation
+}
+
+// assertNoTMuxEnvironment asserts tmux itself does not know key for this
+// session. `show-environment -t <session> KEY` exits non-zero with "unknown
+// variable" when it is unset, which is the only honest way to distinguish
+// "absent" from "present but empty".
+func assertNoTMuxEnvironment(t *testing.T, socket, slug, key string) {
+	t.Helper()
+	out, err := exec.Command("tmux", "-L", socket, "show-environment", "-t", "deck_"+slug, key).CombinedOutput()
+	if err == nil {
+		t.Fatalf("tmux environment for %s unexpectedly has %s: %s", slug, key, out)
+	}
+}
+
+// expireLaunchLease ages the row's launch lease out of its TTL while leaving
+// launch_lease_owner (and therefore the generation) in place. It stands in for
+// the wall-clock passage of the 30 s TTL, which a test clock never provides,
+// and it is the same shape R75 (task 031) will produce when a completed launch
+// stops holding its lease: the lease is over, but the row still names which
+// launch is current.
+func expireLaunchLease(t *testing.T, db *store.Store, sessionID string) {
+	t.Helper()
+	if _, err := db.DB().Exec(`UPDATE sessions SET launch_lease_until = 0 WHERE id = ?`, sessionID); err != nil {
+		t.Fatalf("expire launch lease: %v", err)
+	}
+}
+
+// TestResumeExportsCurrentLaunchGenerationToThePane is R74 leg 1's end of the
+// chain (issue #11): the discriminator the launch lease minted has to reach
+// the agent's environment, and the value the pane carries has to be the one
+// the row currently names. Two successive resumes of the same row export
+// different tokens, so a hook from the first pane can be told apart from a
+// hook from the second even though both name the same session id.
+func TestResumeExportsCurrentLaunchGenerationToThePane(t *testing.T) {
+	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
+	service, db, _, socket := newAgentTestService(t, nil, "launch-generation-test")
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: generation", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	// The first launch of a brand-new row takes no launch lease, so it has no
+	// generation and must export none at all rather than an empty one.
+	assertTMuxEnvironment(t, socket, created.Slug, "DECK_SESSION_ID", created.ID)
+	assertNoTMuxEnvironment(t, socket, created.Slug, "DECK_LAUNCH_GENERATION")
+
+	relaunch := func(label string) string {
+		t.Helper()
+		if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
+			t.Fatalf("%s: kill pane: %v", label, err)
+		}
+		stopSession(t, db, created.ID)
+		expireLaunchLease(t, db, created.ID)
+		session, outcome, err := service.Resume(context.Background(), created.ID)
+		if err != nil {
+			t.Fatalf("%s: resume: %v", label, err)
+		}
+		if outcome != ResumeStarted {
+			t.Fatalf("%s: outcome = %v, want ResumeStarted", label, outcome)
+		}
+		generation := rowLaunchGeneration(t, db, created.ID)
+		// What the pane really carries, asked of tmux rather than of deck's
+		// own bookkeeping: this is the environment the agent's hooks inherit.
+		assertTMuxEnvironment(t, socket, session.Slug, "DECK_LAUNCH_GENERATION", generation)
+		assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", created.ID)
+		return generation
+	}
+
+	first := relaunch("first resume")
+	second := relaunch("second resume")
+	if first == second {
+		t.Fatalf("both resumes exported generation %q; two launches of one row must be distinguishable", first)
+	}
+}
+
+// TestResumeShellSessionCarriesNoLaunchGeneration keeps R74 off the shell
+// path: a shell has no hook source at all (Shell.Instrument returns nothing),
+// so nothing about it should acquire deck-owned environment. Its resume still
+// takes the launch lease, so the row does get a generation -- the point is
+// that the pane does not.
+func TestResumeShellSessionCarriesNoLaunchGeneration(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, logger, socket := newAgentTestService(t, nil, "launch-generation-shell")
+	service.Shell = "/bin/sh"
+
+	created, err := service.CreateShell(context.Background(), ShellCreateInput{
+		Name: "Shell: generation", CWD: cwd, Env: map[string]string{"FROM_SESSION": "1"},
+	})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
+		t.Fatalf("kill pane: %v", err)
+	}
+	stopSession(t, db, created.ID)
+
+	session, outcome, err := service.Resume(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("resume shell: %v", err)
+	}
+	if outcome != ResumeStarted {
+		t.Fatalf("outcome = %v, want ResumeStarted", outcome)
+	}
+	if generation := rowLaunchGeneration(t, db, created.ID); generation == "" {
+		t.Fatal("resumed shell row carries no launch generation")
+	}
+	assertNoTMuxEnvironment(t, socket, session.Slug, "DECK_LAUNCH_GENERATION")
+	assertNoTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID")
+
+	for _, record := range auditRecords(t, logger.Path()) {
+		if record["event"] != "launch" {
+			continue
+		}
+		for _, key := range jsonStrings(record["env_keys"]) {
+			if strings.HasPrefix(key, "DECK_") {
+				t.Fatalf("shell launch environment contains deck-owned key %q", key)
+			}
+		}
+	}
+}

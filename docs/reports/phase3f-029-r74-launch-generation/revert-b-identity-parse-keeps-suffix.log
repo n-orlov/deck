@@ -1,0 +1,7 @@
+--- FAIL: TestLiveOwnerWithGenerationIsStillNotBreakable (0.02s)
+    launch_generation_test.go:121: outcome = 0; want held elsewhere for a live in-TTL owner carrying a generation
+--- FAIL: TestSplitOwnerGenerationHandlesPreR74Owners (0.00s)
+    launch_generation_test.go:152: parseLeaseOwner(with generation) = (4321, "boot-b#ff00", true); want (4321, boot-b, true)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.223s
+FAIL
