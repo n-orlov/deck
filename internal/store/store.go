@@ -636,7 +636,15 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	// it cannot invent an agent's working state.
 	tmuxLaunchObservation := input.Status == "starting" && currentStatus == "starting" && currentSource == "user"
 	tmuxShellPromotion := input.Status == "running" && agent == "shell" && currentStatus == "starting"
-	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !tmuxShellPromotion && !tmuxLaunchObservation {
+	// SPEC §7's one self-healing rule: a terminal row (stopped/error) paired
+	// with a live pane is an invariant violation the reconciler repairs from
+	// tmux liveness alone -- a shell promotes straight to running (its only
+	// rule), everything else resets to the neutral starting a fresh pane
+	// always begins at, since tmux still cannot fabricate an agent's working
+	// state even while repairing this violation.
+	tmuxTerminalRepair := (currentStatus == "stopped" || currentStatus == "error") &&
+		((agent == "shell" && input.Status == "running") || (agent != "shell" && input.Status == "starting"))
+	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !tmuxShellPromotion && !tmuxLaunchObservation && !tmuxTerminalRepair {
 		apply = false
 	}
 	// Crash collection is first-writer-only. A racing observer still records

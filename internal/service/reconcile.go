@@ -84,6 +84,17 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 			pane, crashed := crashedPane(observed)
 			if !crashed {
 				if terminal {
+					// A user-sourced starting row (between the durable create and
+					// the tmux launch) is not an invariant violation, only a
+					// transient window this pass takes no verdict from; it
+					// resolves on its own via tmuxLaunchObservation once the
+					// launch is observed. Only stopped/error are the terminal
+					// statuses SPEC §7 calls a live pane a contradiction of.
+					if session.Status == "stopped" || session.Status == "error" {
+						if err := s.repairTerminalRowWithLivePane(ctx, session); err != nil {
+							return err
+						}
+					}
 					continue
 				}
 				// Shells have no higher-quality signal or probe, so a live pane is
@@ -190,6 +201,41 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		if err := s.Audit.Transition(session.ID, "tmux.session_gone"); err != nil {
 			return fmt.Errorf("audit disappeared tmux session %q: %w", session.ID, err)
 		}
+	}
+	return nil
+}
+
+// repairTerminalRowWithLivePane is SPEC §7's one self-healing rule: a
+// terminal status (stopped, error) paired with a live, non-dead pane is an
+// invariant violation, not evidence to act on -- the pane is the part that
+// is right. It corrects the row from what liveness alone can observe: for a
+// shell row that is exactly the §7 shell-liveness rule (a live pane always
+// means running, because a shell has no other signal, ever); for an agent
+// row liveness supplies no verdict at all, so the row is reset to the
+// neutral "starting" a fresh pane always begins at, leaving the hook/probe
+// rules to take it from there on a later pass. Either way the pane itself is
+// touched not at all -- no kill, no respawn, no send-keys -- and the
+// correction is recorded as an event, the same way every other reconcile
+// verdict is. It is unleased and idempotent: once applied, the row is no
+// longer terminal, so a repeat pass takes the ordinary (non-terminal, no-op)
+// path above instead of repairing it again.
+func (s Service) repairTerminalRowWithLivePane(ctx context.Context, session store.Session) error {
+	status, reason, eventKind := "starting", "tmux pane is alive; terminal row corrected", "tmux.terminal_pane_alive"
+	if session.Agent == "shell" {
+		status, reason, eventKind = "running", "tmux pane is alive", "tmux.shell_live"
+	}
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: session.ID,
+		Status:    status,
+		Reason:    reason,
+		Source:    "tmux",
+		At:        s.Clock.Now().UnixMilli(),
+		EventKind: eventKind,
+	}); err != nil {
+		return fmt.Errorf("repair terminal row with live pane for session %q: %w", session.ID, err)
+	}
+	if err := s.Audit.Transition(session.ID, eventKind); err != nil {
+		return fmt.Errorf("audit terminal-row repair for session %q: %w", session.ID, err)
 	}
 	return nil
 }
