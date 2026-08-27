@@ -1,0 +1,60 @@
+=== run 1 loadavg=3.51 2.55 2.37 1/4184 70709
+ok  	github.com/n-orlov/deck/features	17.145s
+exit=0
+=== run 2 loadavg=4.57 2.90 2.49 20/4145 70796
+ok  	github.com/n-orlov/deck/features	16.930s
+exit=0
+=== run 3 loadavg=4.21 2.92 2.51 17/4145 70882
+ok  	github.com/n-orlov/deck/features	16.941s
+exit=0
+=== run 4 loadavg=3.73 2.88 2.50 18/4207 70973
+ok  	github.com/n-orlov/deck/features	17.381s
+exit=0
+=== run 5 loadavg=4.48 3.12 2.59 18/4162 71064
+ok  	github.com/n-orlov/deck/features	17.290s
+exit=0
+=== run 6 loadavg=4.39 3.21 2.63 21/4157 71151
+ok  	github.com/n-orlov/deck/features	16.650s
+exit=0
+=== run 7 loadavg=4.09 3.20 2.64 10/4168 71238
+ok  	github.com/n-orlov/deck/features	17.194s
+exit=0
+=== run 8 loadavg=4.83 3.45 2.73 17/4153 71323
+ok  	github.com/n-orlov/deck/features	17.172s
+exit=0
+=== run 9 loadavg=4.61 3.50 2.77 18/4221 71409
+ok  	github.com/n-orlov/deck/features	16.756s
+exit=0
+=== run 10 loadavg=4.39 3.51 2.78 32/4160 71496
+ok  	github.com/n-orlov/deck/features	17.290s
+exit=0
+=== run 11 loadavg=4.86 3.69 2.86 3/4166 71584
+ok  	github.com/n-orlov/deck/features	17.320s
+exit=0
+=== run 12 loadavg=4.59 3.70 2.88 17/4198 71672
+ok  	github.com/n-orlov/deck/features	17.281s
+exit=0
+=== run 13 loadavg=4.31 3.68 2.89 23/4140 71761
+ok  	github.com/n-orlov/deck/features	16.951s
+exit=0
+=== run 14 loadavg=5.50 4.03 3.02 23/4216 71847
+ok  	github.com/n-orlov/deck/features	16.880s
+exit=0
+=== run 15 loadavg=4.70 3.95 3.02 21/4142 71935
+ok  	github.com/n-orlov/deck/features	16.988s
+exit=0
+=== run 16 loadavg=4.09 3.85 3.00 25/4138 72021
+ok  	github.com/n-orlov/deck/features	16.930s
+exit=0
+=== run 17 loadavg=4.29 3.93 3.05 34/4205 72106
+ok  	github.com/n-orlov/deck/features	17.182s
+exit=0
+=== run 18 loadavg=3.70 3.82 3.02 11/4150 72194
+ok  	github.com/n-orlov/deck/features	17.037s
+exit=0
+=== run 19 loadavg=3.97 3.89 3.06 21/4199 72281
+ok  	github.com/n-orlov/deck/features	16.883s
+exit=0
+=== run 20 loadavg=3.50 3.79 3.05 21/4141 72368
+ok  	github.com/n-orlov/deck/features	17.076s
+exit=0

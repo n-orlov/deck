@@ -22,6 +22,8 @@ import (
 // frame or tmux's own public state, never an internal channel.
 func registerPreviewSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the deck config disables preview fit$`, deckConfigDisablesPreviewFit)
+	sc.Step(`^deck client "([^"]+)" is started with preview fit disabled$`, startNamedClientWithPreviewFitDisabled)
+	sc.Step(`^deck client "([^"]+)" has never been taller than (\d+) rows$`, clientHasNeverBeenTallerThan)
 	sc.Step(`^deck client "([^"]+)" selects the next session$`, clientSelectsNextSession)
 	sc.Step(`^deck client "([^"]+)" screen matches the pattern "([^"]+)"$`, clientScreenMatchesPattern)
 	sc.Step(`^deck client "([^"]+)" every full-width row is bordered on both edges$`, clientEveryFullWidthRowIsBorderedOnBothEdges)
@@ -35,6 +37,74 @@ func registerPreviewSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake claude agent's size log is captured as "([^"]+)"$`, fakeClaudeAgentSizeLogIsCapturedAs)
 	sc.Step(`^the fake claude agent's size log still matches "([^"]+)"$`, fakeClaudeAgentSizeLogStillMatches)
 	sc.Step(`^deck client "([^"]+)" screen stops containing "([^"]+)"$`, clientScreenStopsContaining)
+}
+
+// clientHasNeverBeenTallerThan asserts this client's terminal has never, in
+// its whole life, had more than want rows -- neither at start nor through
+// any later resize (ScreenDriver.TallestRows).
+//
+// This is the deterministic half of task 028's fix for finding F1. The
+// symptom F1 names -- `received 1 SIGWINCH signals, want exactly 0` at the
+// @steer-018-preview-fit-on-navigation scenario -- was a passive fit
+// licensed while the observing client was still ABOVE §11.9's 7-inner-row
+// floor: previewFit reads m.width/m.height, which only take a smaller size
+// when Update processes the shrink's tea.WindowSizeMsg, and a previewTick
+// that fires before that (or before the row that gets auto-selected on
+// creation stops being selected) fits at the larger geometry. Asserting the
+// SIGWINCH count alone cannot pin the repair, because the losing
+// interleaving showed up in roughly one run in ten; asserting the client
+// was never tall enough for a fit to be licensed AT ALL is a property of
+// the scenario's own construction and is therefore true or false on every
+// single run.
+//
+// It reads the harness's own recorded pty geometry, never deck's internals:
+// a client born at 100x9 has a preview content box of 61x6 (below
+// internal/tui's interactiveMinInnerRows of 7) on every frame it has ever
+// rendered, so no fit can have been licensed before the scenario grows it.
+func clientHasNeverBeenTallerThan(ctx context.Context, name string, want int) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if tallest := client.TallestRows(); tallest > want {
+		return fmt.Errorf("deck client %q has been %d rows tall at some point, want never more than %d: a taller frame licenses the very passive fit this scenario asserts never happened, so the assertion below would be racing that fit rather than observing its absence (task 028, finding F1)", name, tallest, want)
+	}
+	return nil
+}
+
+// startNamedClientWithPreviewFitDisabled starts a client with
+// DECK_PREVIEW_FIT=0 in its own environment (config.Load's own documented
+// override for `[ui] preview_fit`, internal/config/config.go:249-255), so
+// this ONE client can never issue a passive fit while other clients in the
+// same scenario keep the default.
+//
+// The @steer-018-preview-fit-on-navigation scenario needs exactly that
+// separation: its assertions count SIGWINCHes at a client that must never
+// have been above §11.9's 7-inner-row floor, yet the session it counts has
+// to be created through the real create modal, which cannot render at all
+// in a 9-row terminal ("timed out waiting for frame \"Create shell
+// session\""). The creating client therefore runs at the ordinary size with
+// fit switched off rather than the observing client being resized after the
+// fact -- see that scenario's own comment and
+// preview_fit_floor_prefix_guard_test.go.
+//
+// This is an environment override on the released binary, not a test hook:
+// the client still runs the same code path every other client runs, with
+// the same public config key a user can set in config.toml.
+func startNamedClientWithPreviewFitDisabled(ctx context.Context, name string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClient(ctx, name, "DECK_PREVIEW_FIT=0")
+	if err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "deck - sessions")
 }
 
 // clientSelectsNextSession drives the sidebar's own down-arrow binding

@@ -1,0 +1,120 @@
+diff --git a/features/lifecycle_test.go b/features/lifecycle_test.go
+index 16eff3d..e356da1 100644
+--- a/features/lifecycle_test.go
++++ b/features/lifecycle_test.go
+@@ -227,6 +227,7 @@ func (h *ScenarioHarness) Environment(extra ...string) []string {
+ 		"DECK_TMUX_SOCKET=" + h.Socket,
+ 		"DECK_ASCII=1", "DECK_ANIM=0",
+ 		"DECK_RECONCILE_MS=" + fmt.Sprintf("%d", scenarioReconcileInterval.Milliseconds()), "DECK_PREVIEW_MS=50",
++		"DECK_FIT_TRACE=/w/.scratch/fit.log",
+ 	}
+ 	// NO_COLOR=1 is the default so every scenario that does not care about
+ 	// colour keeps seeing plain text, but a requirement-1 scenario that does
+diff --git a/internal/tui/scratch_fittrace.go b/internal/tui/scratch_fittrace.go
+new file mode 100644
+index 0000000..2f1d1eb
+--- /dev/null
++++ b/internal/tui/scratch_fittrace.go
+@@ -0,0 +1,35 @@
++package tui
++
++// SCRATCH INSTRUMENT (task 028 derivation only) -- never committed.
++
++import (
++	"fmt"
++	"os"
++	"sync"
++	"time"
++)
++
++var (
++	fitTraceMu   sync.Mutex
++	fitTraceFile *os.File
++	fitTraceOnce sync.Once
++)
++
++func fitTrace(format string, args ...any) {
++	path := os.Getenv("DECK_FIT_TRACE")
++	if path == "" {
++		return
++	}
++	fitTraceOnce.Do(func() {
++		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
++		if err == nil {
++			fitTraceFile = f
++		}
++	})
++	if fitTraceFile == nil {
++		return
++	}
++	fitTraceMu.Lock()
++	defer fitTraceMu.Unlock()
++	fmt.Fprintf(fitTraceFile, "%d pid=%d %s\n", time.Now().UnixNano()/1e6, os.Getpid(), fmt.Sprintf(format, args...))
++}
+diff --git a/internal/tui/tui.go b/internal/tui/tui.go
+index b08701a..01d29d3 100644
+--- a/internal/tui/tui.go
++++ b/internal/tui/tui.go
+@@ -1375,22 +1375,28 @@ func (m Model) capturePreview() tea.Cmd {
+ // to the event loop, or the very next tick can slip past the guard.
+ func (m *Model) previewFit() tea.Cmd {
+ 	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
++		fitTrace("skip settings/interactive/socket")
+ 		return nil
+ 	}
+ 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
++		fitTrace("skip no-selection")
+ 		return nil
+ 	}
+ 	if !m.computeLayout().PreviewShown {
++		fitTrace("skip preview-not-shown term=%dx%d", m.width, m.height)
+ 		return nil
+ 	}
+ 	session := m.sessions[m.selected]
+ 	if session.ID == m.previewFitSessionID || m.previewFitInFlight != "" {
++		fitTrace("skip coalesced sel=%s fitSession=%s inFlight=%s term=%dx%d", session.Name, m.previewFitSessionID, m.previewFitInFlight, m.width, m.height)
+ 		return nil
+ 	}
+ 	width, height := m.previewContentSize()
+ 	if width <= 0 || height < interactiveMinInnerRows {
++		fitTrace("skip floor sel=%s box=%dx%d term=%dx%d", session.Name, width, height, m.width, m.height)
+ 		return nil
+ 	}
++	fitTrace("schedule sel=%s box=%dx%d term=%dx%d", session.Name, width, height, m.width, m.height)
+ 	client := m.tmuxClient
+ 	slug := session.Slug
+ 	sessionID := session.ID
+@@ -1404,6 +1410,7 @@ func (m *Model) previewFit() tea.Cmd {
+ 	return func() tea.Msg {
+ 		ctx := context.Background()
+ 		pane, ok, err := client.PreviewPane(ctx, slug)
++		fitTrace("previewPane slug=%s ok=%v err=%v", slug, ok, err)
+ 		if err != nil || !ok {
+ 			// No live pane (stopped/starting/archived/reaped) or a read
+ 			// error: nothing to fit, and nothing to retry until the
+@@ -1421,7 +1428,8 @@ func (m *Model) previewFit() tea.Cmd {
+ 		// window some other action (an attaching client, a prior fit) has
+ 		// already brought to the panel's own size costs nothing beyond the
+ 		// one display-message read that discovers that.
+-		_, _ = client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height)
++		calls, fitErr := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height)
++		fitTrace("fitWindowToPane slug=%s want=%dx%d calls=%v err=%v", slug, width, height, calls, fitErr)
+ 		return previewFitDone{sessionID: sessionID}
+ 	}
+ }
+@@ -1431,6 +1439,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+ 	i1TraceSessions(m)
+ 	switch msg := message.(type) {
+ 	case tea.WindowSizeMsg:
++		fitTrace("windowSize %dx%d (was %dx%d)", msg.Width, msg.Height, m.width, m.height)
+ 		m.width, m.height = msg.Width, msg.Height
+ 		// PRD Part II requirement 48/task 204 (review finding F3's second
+ 		// half): the floor check in enterInteractive only ever ran AT
+@@ -1956,6 +1965,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+ 		}
+ 		return m, tea.Batch(cmds...)
+ 	case previewFitDone:
++		fitTrace("previewFitDone id=%s", msg.sessionID)
+ 		m.previewFitSessionID = msg.sessionID
+ 		// Cleared unconditionally, not only when it matches the session
+ 		// reported: at most one fit is ever outstanding (previewFit refuses
