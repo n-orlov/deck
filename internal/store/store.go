@@ -416,14 +416,21 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	// available again, and taking it reaps that row -- in this same
 	// transaction, via reapTombstonedHolderTx, never a second BeginTx
 	// against the shared *sql.DB (that would block on SQLite's single
-	// writer lock behind this very tx). A live or archived holder still
-	// refuses, unchanged.
+	// writer lock behind this very tx). A live holder still refuses with the
+	// bare "already exists"; an archived holder refuses too, but (task 007,
+	// R78) with a message that names it and both routes out.
 	if err := reapTombstonedHolderTx(ctx, tx, "name", input.Name, "",
-		fmt.Sprintf("session name %q already exists", input.Name), input.CreatedAt); err != nil {
+		fmt.Sprintf("session name %q already exists", input.Name),
+		func(holderName string) error {
+			return fmt.Errorf("the archived session %q holds this name; press U to unarchive it, or dd to delete it, to free the name", holderName)
+		}, input.CreatedAt); err != nil {
 		return Session{}, err
 	}
 	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug, "",
-		fmt.Sprintf("session name %q collides with existing slug %q", input.Name, slug), input.CreatedAt); err != nil {
+		fmt.Sprintf("session name %q collides with existing slug %q", input.Name, slug),
+		func(holderName string) error {
+			return fmt.Errorf("session name %q collides with the archived session %q's slug; press U to unarchive it, or dd to delete it, to free the slug", input.Name, holderName)
+		}, input.CreatedAt); err != nil {
 		return Session{}, err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
@@ -1193,13 +1200,21 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 	// against the shared *sql.DB. sessionID is excluded from both lookups
 	// so renaming a session onto its own current name/slug never finds
 	// itself as a "holder", exactly as the two `AND id != ?` checks this
-	// replaces already did. A live or archived holder still refuses.
+	// replaces already did. A live holder still refuses with the bare
+	// "already exists"; an archived holder refuses too, but (task 007, R78)
+	// with a message that names it and both routes out.
 	if err := reapTombstonedHolderTx(ctx, tx, "name", newName, sessionID,
-		fmt.Sprintf("session name %q already exists", newName), at); err != nil {
+		fmt.Sprintf("session name %q already exists", newName),
+		func(holderName string) error {
+			return fmt.Errorf("the archived session %q holds this name; press U to unarchive it, or dd to delete it, to free the name", holderName)
+		}, at); err != nil {
 		return err
 	}
 	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug, sessionID,
-		fmt.Sprintf("session name %q collides with existing slug %q", newName, slug), at); err != nil {
+		fmt.Sprintf("session name %q collides with existing slug %q", newName, slug),
+		func(holderName string) error {
+			return fmt.Errorf("session name %q collides with the archived session %q's slug; press U to unarchive it, or dd to delete it, to free the slug", newName, holderName)
+		}, at); err != nil {
 		return err
 	}
 	// Note: only the `name` column is written here -- `slug` is deliberately
@@ -1658,16 +1673,23 @@ func reapSessionTx(ctx context.Context, tx *sql.Tx, sessionID string, at int64) 
 // as its own "holder" just because the new name/slug happens to already be
 // its current one; CreateSession has no existing row yet and passes "",
 // under which the exclusion is a no-op since no session ever has an empty
-// id. No holder: nil, proceed. A LIVE or ARCHIVED holder (deleted_at == 0,
-// which is true for both -- R78 keeps an archived row's name reserved) is
-// refused with conflictMsg, unchanged from before this task. A TOMBSTONED
-// holder is reaped via reapSessionTx, in the same transaction as the
-// caller's own INSERT/UPDATE, so the row is gone by the time that statement
-// runs and never trips its UNIQUE constraint.
-func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, excludeID, conflictMsg string, at int64) error {
-	var id string
-	var deletedAt int64
-	err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT id, deleted_at FROM sessions WHERE %s = ? AND id != ?`, column), value, excludeID).Scan(&id, &deletedAt)
+// id. No holder: nil, proceed. A LIVE holder (deleted_at == 0, archived_at
+// == 0) is refused with conflictMsg, unchanged from before this task. An
+// ARCHIVED holder (deleted_at == 0, archived_at != 0 -- R78 keeps an
+// archived row's name reserved) is refused too, but with a DIFFERENT
+// message: archivedMsg is handed the holder's own current name (never
+// `value`, which for the slug-column call is the slug, not a name) and
+// builds a message that names that holder and both routes out, `U` to
+// unarchive it or `dd` to delete it -- the bare "already exists" a live
+// holder still gets tells the user nothing, since no list shows an
+// archived row (R78, SPEC.md §9.2). A TOMBSTONED holder is reaped via
+// reapSessionTx, in the same transaction as the caller's own INSERT/UPDATE,
+// so the row is gone by the time that statement runs and never trips its
+// UNIQUE constraint.
+func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, excludeID, conflictMsg string, archivedMsg func(holderName string) error, at int64) error {
+	var id, holderName string
+	var deletedAt, archivedAt int64
+	err := tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT id, name, deleted_at, archived_at FROM sessions WHERE %s = ? AND id != ?`, column), value, excludeID).Scan(&id, &holderName, &deletedAt, &archivedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -1675,6 +1697,9 @@ func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, excl
 		return fmt.Errorf("check session %s %q: %w", column, value, err)
 	}
 	if deletedAt == 0 {
+		if archivedAt != 0 {
+			return archivedMsg(holderName)
+		}
 		return errors.New(conflictMsg)
 	}
 	return reapSessionTx(ctx, tx, id, at)
