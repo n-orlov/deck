@@ -35,23 +35,75 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 		if strings.Contains(legend, "r resume") {
 			t.Errorf("live row: legend must not offer r resume: %q", legend)
 		}
-		// A shell has no permission profile and no conversation id
-		// (agentCapabilities), and both handlers refuse it saying so, so
-		// neither key belongs here.
+		// Task 014 (SPEC §11.3's curated fixed set) removed P (profile) and
+		// p (pin) from the footer altogether -- they stay bound, stay in the
+		// `?` overlay (TestEmptyAndHelpViewsAreDiscoverable) and stay in
+		// §11's keymap, but never render here, for ANY row, agent or not.
 		for _, unwanted := range []string{"P profile", "p pin"} {
 			if strings.Contains(legend, unwanted) {
 				t.Errorf("live shell row: legend must not offer %q: %q", unwanted, legend)
 			}
 		}
+		// dd (delete) has no per-session refusal (canDelete, task 013's
+		// comment on it: "accepts any row"), so it belongs on any non-empty
+		// selection, live included.
+		if !strings.Contains(legend, "dd delete") {
+			t.Errorf("live row: legend missing dd delete: %q", legend)
+		}
 	})
 
-	t.Run("live agent row: profile and pin come back when the agent has them", func(t *testing.T) {
+	t.Run("live agent row: P and p stay out of the footer even though the agent has them", func(t *testing.T) {
+		// Before task 014 this exact model was used to prove P/p COME BACK
+		// for an agent that has a permission profile and a conversation id;
+		// task 014 curated them out of the footer's fixed set entirely (SPEC
+		// §11.3: "Rarely-used per-row actions -- the permission switcher P,
+		// pin p -- stay bound, stay in the `?` overlay and in §11's keymap,
+		// and stay out of the footer"), so this now asserts the opposite: no
+		// row, however capable its agent, ever puts them back.
 		m := newModel([]store.Session{{ID: "s1", Name: "live-agent", Agent: "claude", Status: "running", PermissionProfile: "safe"}}, 0, nil)
 		legend := m.footerKeyLegend()
-		for _, want := range []string{"P profile", "p pin"} {
-			if !strings.Contains(legend, want) {
-				t.Errorf("claude row: legend missing %q: %q", want, legend)
+		for _, unwanted := range []string{"P profile", "p pin"} {
+			if strings.Contains(legend, unwanted) {
+				t.Errorf("claude row: legend must not offer %q: %q", unwanted, legend)
 			}
+		}
+	})
+
+	t.Run("the eligible one of A/U shows, never both: A on an unarchived row, U on an archived one", func(t *testing.T) {
+		// SPEC §11.3: "A on a row that is already archived, U on one that
+		// is not" are exactly the cases the footer never lists; the two
+		// entries share footerArchiveEligible/canUnarchive, which are exact
+		// complements of ArchivedAt, so exactly one of A/U shows per row.
+		unarchived := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running"}}, 0, nil)
+		legend := unarchived.footerKeyLegend()
+		if !strings.Contains(legend, "A archive") {
+			t.Errorf("unarchived row: legend missing A archive: %q", legend)
+		}
+		if strings.Contains(legend, "U unarchive") {
+			t.Errorf("unarchived row: legend must not offer U unarchive: %q", legend)
+		}
+
+		archived := newModel([]store.Session{{ID: "s1", Name: "archived", Agent: "shell", Status: "stopped", ArchivedAt: 100}}, 0, nil)
+		legend = archived.footerKeyLegend()
+		if !strings.Contains(legend, "U unarchive") {
+			t.Errorf("archived row: legend missing U unarchive: %q", legend)
+		}
+		if strings.Contains(legend, "A archive") {
+			t.Errorf("archived row: legend must not offer A archive: %q", legend)
+		}
+	})
+
+	t.Run(", (settings) is a global key: present with sessions and without", func(t *testing.T) {
+		// SPEC §11.3: ", because settings has no other visible entry point
+		// in the default frame" -- it carries no eligible predicate at all
+		// (like n/?/q), so it is not conditioned on there being a row.
+		withRows := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running"}}, 0, nil)
+		if !strings.Contains(withRows.footerKeyLegend(), ", settings") {
+			t.Errorf(", must be in the footer with sessions present: %q", withRows.footerKeyLegend())
+		}
+		noRows := newModel(nil, 0, nil)
+		if !strings.Contains(noRows.footerKeyLegend(), ", settings") {
+			t.Errorf(", must be in the footer with an empty list too: %q", noRows.footerKeyLegend())
 		}
 	})
 
@@ -145,14 +197,18 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 		legend := m.footerKeyLegend()
 		// Including the keys whose handlers refuse an empty list without
 		// naming a status: `↵`/`a` (no row to reach), `i` (nothing to
-		// describe), `P`/`p` (no row's agent to ask about).
-		for _, unwanted := range []string{"Y acknowledge", "x kill", "r resume", "R relaunch", "↵ interactive", "a attach", "i detail", "P profile", "p pin"} {
+		// describe), `P`/`p` (permanently out of the footer since task 014,
+		// no row's agent to ask about either), `dd`/`A`/`U` (task 014's own
+		// additions -- nothing to delete or (un)archive with no row).
+		for _, unwanted := range []string{"Y acknowledge", "x kill", "r resume", "R relaunch", "↵ interactive", "a attach", "i detail", "P profile", "p pin", "dd delete", "A archive", "U unarchive"} {
 			if strings.Contains(legend, unwanted) {
 				t.Errorf("empty list: legend must not offer %q: %q", unwanted, legend)
 			}
 		}
-		// Global commands that never act on a row stay, exactly as before.
-		for _, want := range []string{"n new", "? help", "q quit"} {
+		// Global commands that never act on a row stay, exactly as before;
+		// `,` (settings, task 014) joins them -- it has no eligible predicate
+		// at all.
+		for _, want := range []string{"n new", ", settings", "? help", "q quit"} {
 			if !strings.Contains(legend, want) {
 				t.Errorf("empty list: legend missing global key %q: %q", want, legend)
 			}
@@ -241,6 +297,16 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 		if want := m.selectedRowReason() + "    " + m.footerKeyLegend(); line != want {
 			t.Fatalf("wide footer is not the plain join:\n got %q\nwant %q", line, want)
 		}
+		// Wide enough that task 014's curated additions (dd, the eligible
+		// one of A/U, ,) render in full alongside everything else -- logged
+		// so a report can cite the exact rendered text rather than the
+		// entries table alone.
+		t.Logf("200-col full legend: %q", m.footerKeyLegend())
+		for _, want := range []string{"dd delete", "A archive", ", settings"} {
+			if !strings.Contains(line, want) {
+				t.Fatalf("at 200 columns task 014's curated addition %q must survive: %q", want, line)
+			}
+		}
 	})
 
 	t.Run("80 columns, short reason", func(t *testing.T) {
@@ -318,7 +384,7 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 		// Only the global keys are left, and they now fit without eliding
 		// anything -- so the empty list is also the case that proves the
 		// width fitting is not unconditional.
-		for _, want := range []string{"↑/↓", "n new", "? help", "q quit"} {
+		for _, want := range []string{"↑/↓", "n new", ", settings", "? help", "q quit"} {
 			if !strings.Contains(line, want) {
 				t.Fatalf("empty-list footer missing %q: %q", want, line)
 			}
