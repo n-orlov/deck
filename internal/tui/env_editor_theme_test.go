@@ -267,14 +267,16 @@ func TestEnvViewNoteIsError(t *testing.T) {
 
 // TestEnvViewClosingHintKeysAreKeyToken proves the closing legend line's
 // own bound-key words (SPEC.md:1355's "the keys in a footer legend in
-// `key`") render distinctly from the surrounding prose, in both the
-// browsing and the editing variant of that line.
+// `key`") render distinctly from the surrounding prose, and that the prose
+// itself is `hint` -- R82's "footer keys -> key with the rest in hint",
+// the same split styledCreateBody's colorFooterLine already applies -- in
+// both the browsing and the editing variant of that line.
 func TestEnvViewClosingHintKeysAreKeyToken(t *testing.T) {
 	m := task017EnvTestModel(t)
 	keyHex := tokenHex(t, m, theme.Key)
-	dimmedHex := tokenHex(t, m, theme.Dimmed)
-	if keyHex == dimmedHex {
-		t.Skip("this theme's key and dimmed tokens happen to share a colour; the distinctness assertion below would be vacuous")
+	hintHex := tokenHex(t, m, theme.Hint)
+	if keyHex == hintHex {
+		t.Skip("this theme's key and hint tokens happen to share a colour; the distinctness assertion below would be vacuous")
 	}
 
 	view := m.envView()
@@ -286,8 +288,8 @@ func TestEnvViewClosingHintKeysAreKeyToken(t *testing.T) {
 		t.Fatalf("j/k foreground = %q ok=%v, want key token %s", fg, ok, keyHex)
 	}
 	selectCol := findCol(t, term, row, "select")
-	if fg, ok := cellFgHex(t, term, selectCol, row); !ok || fg != dimmedHex {
-		t.Fatalf("surrounding prose foreground = %q ok=%v, want dimmed token %s", fg, ok, dimmedHex)
+	if fg, ok := cellFgHex(t, term, selectCol, row); !ok || fg != hintHex {
+		t.Fatalf("surrounding prose foreground = %q ok=%v, want hint token %s", fg, ok, hintHex)
 	}
 
 	editing := task017EnvTestModel(t)
@@ -298,5 +300,88 @@ func TestEnvViewClosingHintKeysAreKeyToken(t *testing.T) {
 	enterCol := findCol(t, editTerm, editRow, "Enter")
 	if fg, ok := cellFgHex(t, editTerm, enterCol, editRow); !ok || fg != keyHex {
 		t.Fatalf("edit-mode Enter foreground = %q ok=%v, want key token %s", fg, ok, keyHex)
+	}
+}
+
+// TestEnvViewEditPromptAndSubmitLineVisibleWhenListOverflows closes the
+// gap task 017's first pass left: with enough resolved keys to overflow an
+// 80x24 frame, pressing enter on the cursor's row opened an edit whose
+// submit legend ("Enter saves this key") and typed value both sat off the
+// bottom of the visible page -- and PgDn could not reach them either,
+// because updateEnvDialog returned early for every key while a row was
+// open. features/env_editor_test.go's keyboard-only PTY step reads exactly
+// those two strings out of this view with no scroll keystroke in between,
+// so both must be on screen the instant the edit opens.
+func TestEnvViewEditPromptAndSubmitLineVisibleWhenListOverflows(t *testing.T) {
+	m := task017ManyEnvKeysModel(t)
+
+	browsing := m.envView()
+	if strings.Contains(browsing, "closes.") {
+		t.Fatalf("the closing legend is already visible while browsing -- this test needs an overflowing list to be non-vacuous:\n%s", browsing)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	editing := updated.(Model)
+	if editing.envEditKey != task017EnvKeyName(0) {
+		t.Fatalf("enter opened edit on key %q, want %q", editing.envEditKey, task017EnvKeyName(0))
+	}
+
+	// stripANSI first: colorLegendLine colours the legend word by word, so
+	// the raw view string carries an escape run between "Enter" and
+	// "saves". What the PTY step matches is the rendered GRID, which is
+	// what stripANSI reproduces here.
+	view := stripANSI(editing.envView())
+	if !strings.Contains(view, "Enter saves this key") {
+		t.Fatalf("the edit-mode submit legend is not on screen when the edit opens:\n%s", view)
+	}
+	if !strings.Contains(view, "Editing "+task017EnvKeyName(0)) {
+		t.Fatalf("the edit prompt naming the open key is not on screen:\n%s", view)
+	}
+	if n := countViewLines(view); n > 24 {
+		t.Fatalf("editing env view is %d lines at 80x24, want <= 24:\n%s", n, view)
+	}
+
+	typed, _ := editing.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("typed-here")})
+	typing := typed.(Model)
+	typedView := stripANSI(typing.envView())
+	if !strings.Contains(typedView, "typed-here") {
+		t.Fatalf("the typed value is not on screen while editing an overflowing list:\n%s", typedView)
+	}
+	if !strings.Contains(typedView, "Enter saves this key") {
+		t.Fatalf("the submit legend fell off screen once typing started:\n%s", typedView)
+	}
+}
+
+// TestEnvEditModePagingScrollsAndKeepsTheEditOpen proves PgUp/PgDn stay
+// live while a row is open for editing (they were silent no-ops before,
+// swallowed by updateEnvDialog's edit-mode early return) and that paging
+// never abandons the edit in progress.
+func TestEnvEditModePagingScrollsAndKeepsTheEditOpen(t *testing.T) {
+	m := task017ManyEnvKeysModel(t)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	editing := updated.(Model)
+	if max := editing.dialogMaxScroll(editing.envBody()); max == 0 {
+		t.Fatalf("the editing body already fits the frame (maxScroll 0) -- this test needs an overflowing list to be non-vacuous")
+	}
+
+	paged, _ := editing.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	down := paged.(Model)
+	if down.envScroll == 0 {
+		t.Fatalf("PgDn while editing left envScroll at 0 (the paging keys are still being swallowed by edit mode)")
+	}
+	if down.envEditKey != editing.envEditKey {
+		t.Fatalf("PgDn while editing changed the open key: %q -> %q", editing.envEditKey, down.envEditKey)
+	}
+	if !down.envEditing {
+		t.Fatal("PgDn while editing closed the env editor")
+	}
+
+	back, _ := down.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	up := back.(Model)
+	if up.envScroll >= down.envScroll {
+		t.Fatalf("PgUp while editing did not scroll back: %d -> %d", down.envScroll, up.envScroll)
+	}
+	if up.envEditKey != editing.envEditKey {
+		t.Fatalf("PgUp while editing changed the open key: %q -> %q", editing.envEditKey, up.envEditKey)
 	}
 }
