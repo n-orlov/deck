@@ -78,6 +78,13 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	}
 
 	now := s.Clock.Now().UnixMilli()
+	// SPEC §9.2 (R77), as in CreateShell: note which tombstoned rows hold
+	// this name before the create reaps them in its own transaction, and
+	// clean up their files only once that transaction has committed.
+	reapedHolders, err := s.tombstonedNameHolders(ctx, input.Name)
+	if err != nil {
+		return store.Session{}, err
+	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: adapter.Kind(), CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
@@ -86,6 +93,9 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable agent session %q: %w", input.Name, err)
+	}
+	if err := s.reapedHolderFiles(ctx, reapedHolders); err != nil {
+		return session, fmt.Errorf("clean up the session reaped by reusing name %q: %w", input.Name, err)
 	}
 	s.promoteRecentCwd(ctx, session.CWD)
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {

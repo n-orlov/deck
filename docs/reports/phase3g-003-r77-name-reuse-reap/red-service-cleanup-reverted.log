@@ -1,0 +1,7 @@
+--- FAIL: TestCreateShellReusingATombstonedNameCleansUpThatSessionsFiles (0.05s)
+    create_name_reuse_test.go:66: captures dir of the reaped holder after reuse: stat = <nil>, want IsNotExist
+--- FAIL: TestCreateAgentReusingATombstonedNameCleansUpThatSessionsFiles (0.06s)
+    create_name_reuse_test.go:104: captures dir after reuse: stat = <nil>, want IsNotExist
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.158s
+FAIL

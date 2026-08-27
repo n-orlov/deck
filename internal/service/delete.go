@@ -108,12 +108,64 @@ func (s Service) Reap(ctx context.Context, sessionID string) error {
 	if err := s.Store.ReapSession(ctx, sessionID, at); err != nil {
 		return fmt.Errorf("reap session %q: %w", sessionID, err)
 	}
-	if s.DeckHome != "" {
-		if err := os.RemoveAll(config.CapturesDir(s.DeckHome, sessionID)); err != nil {
-			return fmt.Errorf("remove captures for reaped session %q: %w", sessionID, err)
+	return s.removeReapedSessionFiles(sessionID)
+}
+
+// removeReapedSessionFiles is the filesystem half of a reap, shared by the
+// grace-window Reap above and by the create path's name-reuse reap
+// (reapedHolderFiles below): the captures directory and the §9.4 history
+// file, the two paths config.CapturesDir/config.HistoryFile define, are
+// removed if present and their absence is never an error. It is always
+// called AFTER the SQL removal has committed -- files are the one part of
+// a reap that cannot be rolled back, so nothing may delete them while the
+// row is still restorable.
+func (s Service) removeReapedSessionFiles(sessionID string) error {
+	if s.DeckHome == "" {
+		return nil
+	}
+	if err := os.RemoveAll(config.CapturesDir(s.DeckHome, sessionID)); err != nil {
+		return fmt.Errorf("remove captures for reaped session %q: %w", sessionID, err)
+	}
+	if err := os.Remove(config.HistoryFile(s.DeckHome, sessionID)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove history file for reaped session %q: %w", sessionID, err)
+	}
+	return nil
+}
+
+// tombstonedNameHolders reads, BEFORE a create runs, which tombstoned rows
+// currently hold the name that create is about to take -- i.e. exactly the
+// rows store.CreateSession will reap inside its own transaction (R77,
+// SPEC.md §9.2, task 003). The ids are only remembered here; nothing is
+// deleted until reapedHolderFiles runs after the commit.
+func (s Service) tombstonedNameHolders(ctx context.Context, name string) ([]string, error) {
+	if s.DeckHome == "" {
+		return nil, nil
+	}
+	ids, err := s.Store.TombstonedNameHolders(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("check deleted holders of session name %q: %w", name, err)
+	}
+	return ids, nil
+}
+
+// reapedHolderFiles completes a name-reuse reap on the filesystem, and is
+// called only ever AFTER store.CreateSession's transaction has committed:
+// SPEC §9.2 says taking a tombstoned session's name reaps that session,
+// and a reap removes deck's own per-session files as well as its row. Each
+// candidate is re-checked against the store first, so a holder that is no
+// longer gone -- restored, or never reaped because the create took a
+// different name in the end -- keeps its scrollback.
+func (s Service) reapedHolderFiles(ctx context.Context, candidateIDs []string) error {
+	for _, id := range candidateIDs {
+		exists, err := s.Store.SessionRowExists(ctx, id)
+		if err != nil {
+			return err
 		}
-		if err := os.Remove(config.HistoryFile(s.DeckHome, sessionID)); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove history file for reaped session %q: %w", sessionID, err)
+		if exists {
+			continue
+		}
+		if err := s.removeReapedSessionFiles(id); err != nil {
+			return err
 		}
 	}
 	return nil
