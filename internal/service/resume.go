@@ -51,7 +51,10 @@ const (
 // launch_args. A caller that loses the lease race gets
 // ResumeStartingElsewhere and no tmux session is created for it. An
 // archived row is refused up front (SPEC.md:718, #8) with a message naming
-// `U`, before the lease and before tmux is touched at all.
+// `U`, before the lease and before tmux is touched at all. The launch lease is
+// held only while this launch is in flight: when the attempt concludes — pane
+// up or launch failed — it is released (issue #11, R75), so the row's own last
+// launcher is never reported to the next resume as another client.
 func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, ResumeOutcome, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.Agents == nil {
 		return store.Session{}, ResumeStartingElsewhere, errors.New("resume requires store, audit logger, clock, and adapter registry")
@@ -167,6 +170,27 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		// created for this loser.
 		return session, ResumeStartingElsewhere, nil
 	}
+	// R75 (issue #11): this launch attempt now holds the lease, and it holds it
+	// only for as long as it is IN FLIGHT. Every exit path below concludes the
+	// attempt -- the pane is up, or the launch failed and the row is `error` --
+	// so the hold ends here, by defer, on all of them. Left to expire on the
+	// ~30 s TTL instead, the row's own last launcher kept answering *starting
+	// elsewhere* to the next resume of a legitimately stopped row, which SPEC
+	// §9.3 forbids: that message is a claim that another client is there.
+	//
+	// The release clears only launch_lease_until; launch_lease_owner (and with
+	// it R74's generation) stays on the row, because the row must go on naming
+	// which launch is current for as long as that pane can still send hooks.
+	defer func() {
+		if _, releaseErr := s.Store.ReleaseLaunchLease(ctx, session.ID, lease.HeldBy); releaseErr != nil {
+			// A lease that cannot be released is not a failed launch and must
+			// not change the verdict the user is given for one. The §9.3 TTL is
+			// still the backstop, so the row becomes leasable again within the
+			// window exactly as it did before R75; the audit log carries the
+			// fact that the faster path did not run.
+			_ = s.Audit.Transition(session.ID, "launch_lease.release_failed")
+		}
+	}()
 	session.Status = "starting"
 	session.KilledByUser = false
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {

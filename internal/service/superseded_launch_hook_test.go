@@ -148,7 +148,6 @@ func TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator(t *testing.T
 	sessionEndFromLaunch(t, db, created.ID, killedGeneration, 1_700_000_000_001)
 
 	// `r` afterwards, and the row comes up: no fix is needed for this ordering.
-	expireLaunchLease(t, db, created.ID)
 	if _, outcome, err := service.Resume(ctx, created.ID); err != nil || outcome != ResumeStarted {
 		t.Fatalf("resume after an already-delivered SessionEnd: outcome=%v err=%v", outcome, err)
 	}
@@ -160,9 +159,9 @@ func TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator(t *testing.T
 // relaunchForGeneration is `x` then `r`: kill the live pane, record the row as
 // stopped the way reconciliation would, and resume it. It returns the
 // generation the resulting launch minted, which is the one the row now names.
-// The lease is expired first because the test clock never advances, so the
-// 30 s TTL of the previous launch would otherwise still be held by this very
-// process -- that is R75's subject (task 031), not this test's.
+// No lease fixture is needed even though the test clock never advances: a
+// launch that has concluded releases its lease (R75, task 031), so the
+// previous launch is not still holding one.
 func relaunchForGeneration(t *testing.T, service Service, db *store.Store, sessionID, slug, label string) string {
 	t.Helper()
 	ctx := context.Background()
@@ -170,7 +169,6 @@ func relaunchForGeneration(t *testing.T, service Service, db *store.Store, sessi
 		t.Fatalf("%s: kill pane: %v", label, err)
 	}
 	stopSession(t, db, sessionID)
-	expireLaunchLease(t, db, sessionID)
 	if _, outcome, err := service.Resume(ctx, sessionID); err != nil || outcome != ResumeStarted {
 		t.Fatalf("%s: resume outcome=%v err=%v", label, outcome, err)
 	}
