@@ -4571,9 +4571,11 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // mark set THE MOMENT it fires ("the marks clear on the action"), before
 // the async delete loop even runs, using the session list resolved right
 // now rather than re-reading m.marked after it is gone. Task 018: PgUp/PgDn
-// scroll m.deleteScroll, measured off the plain bulkDeleteConfirmBody (never
-// the coloured one, so a theme change can never move where a page boundary
-// falls), mirroring createView/envView's own framedDialogScrollable pairing.
+// scroll m.deleteScroll over the MARK LIST alone (bulkDeleteScrollByPage,
+// measured off the plain regions -- never the coloured ones, so a theme
+// change can never move where a page boundary falls): the title and the
+// submit legend are pinned by bulkDeleteConfirmView, so paging moves which
+// marked names are on screen and never which controls are.
 func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	sessions := m.markedSessions()
 	cmd, handled := applyDialogContract(msg, dialogContract{
@@ -4604,9 +4606,9 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "pgup":
-		m.deleteScroll = m.dialogScrollByPage(m.deleteScroll, m.bulkDeleteConfirmBody(), -1)
+		m.deleteScroll = m.bulkDeleteScrollByPage(m.deleteScroll, -1)
 	case "pgdown":
-		m.deleteScroll = m.dialogScrollByPage(m.deleteScroll, m.bulkDeleteConfirmBody(), 1)
+		m.deleteScroll = m.bulkDeleteScrollByPage(m.deleteScroll, 1)
 	}
 	return m, nil
 }
@@ -4707,7 +4709,7 @@ func (m Model) archiveConfirmBody() string {
 // single-session case below (its own theming/bounding is task 019).
 func (m Model) deleteConfirmView() string {
 	if len(m.marked) > 0 {
-		return m.framedDialogScrollable(m.styledBulkDeleteConfirmBody(), m.deleteScroll)
+		return m.bulkDeleteConfirmView()
 	}
 	return m.framedDialog(m.deleteConfirmBody())
 }
@@ -4752,35 +4754,133 @@ func (m Model) deleteConfirmBody() string {
 	return b.String()
 }
 
+// bulkDeleteExplanationLines is the bulk confirm's own survives-text, one
+// physical line per entry so head/list/tail line counts (the scroll math in
+// bulkDeleteListBudget) never depend on where a wrap happens to fall.
+var bulkDeleteExplanationLines = []string{
+	"This kills each live pane (if any) and removes each session from the",
+	"list. Every marked session's own conversation and working directory",
+	"survive, untouched. Purge is not offered for a bulk delete.",
+}
+
+const (
+	// bulkDeleteSubmitText is the confirm's submit line when the whole
+	// dialog already fits the frame; bulkDeleteSubmitTextScrollable adds the
+	// scroll keys once the mark list has to scroll, so nothing is ever
+	// hidden without the dialog saying how to reach it (SPEC requirement 39:
+	// pagination, never silently dropped content).
+	bulkDeleteSubmitText           = "Enter deletes all · Esc cancels"
+	bulkDeleteSubmitTextScrollable = bulkDeleteSubmitText + " · PgUp/PgDn scrolls"
+)
+
+// bulkDeleteConfirmRegions splits the bulk confirm into the three regions
+// bulkDeleteConfirmView renders (task 018): a fixed head (title, blank,
+// survives-text, blank), the scrollable list of marked names, and a fixed
+// tail (blank, submit legend, and a failed-submit note when there is one).
+// The split is what keeps the submit line ON SCREEN at 80x24 for any mark
+// count: only the middle region ever scrolls, so head and tail are drawn
+// every frame rather than paged off the bottom. Every entry is one logical
+// line (no embedded \n) so wrapDialogRegion can count the regions without
+// losing a blank separator. scrollHint picks the submit-line variant; the
+// caller decides it once, via bulkDeleteConfirmScrolls, so this function
+// stays free of the recursion "does it overflow?" would otherwise create.
+func (m Model) bulkDeleteConfirmRegions(scrollHint bool) (head, list, tail []string) {
+	sessions := m.markedSessions()
+	head = append(head, fmt.Sprintf("Delete %d marked sessions", len(sessions)), "")
+	head = append(head, bulkDeleteExplanationLines...)
+	head = append(head, "")
+	for _, s := range sessions {
+		list = append(list, "  "+s.Name)
+	}
+	submit := bulkDeleteSubmitText
+	if scrollHint {
+		submit = bulkDeleteSubmitTextScrollable
+	}
+	tail = append(tail, "", submit)
+	if m.deleteNote != "" {
+		tail = append(tail, "", m.deleteNote)
+	}
+	return head, list, tail
+}
+
+// bulkDeleteConfirmScrolls answers whether the mark list has to scroll at
+// the current frame size: it measures the regions with the SHORT submit line
+// (the variant that carries no scroll keys), so the answer never depends on
+// the answer. A hint line that then wraps to two lines only shrinks the list
+// budget bulkDeleteListBudget derives from the real regions afterwards.
+func (m Model) bulkDeleteConfirmScrolls() bool {
+	head, list, tail := m.bulkDeleteConfirmRegions(false)
+	total := len(m.wrapDialogRegion(head)) + len(m.wrapDialogRegion(list)) + len(m.wrapDialogRegion(tail))
+	return total > m.dialogContentBudget()
+}
+
+// bulkDeleteListBudget is how many wrapped lines of marked names fit between
+// the pinned head and the pinned tail inside framedDialogScrollable's own
+// content budget -- at least one, so an absurdly small frame still shows a
+// name rather than none.
+func (m Model) bulkDeleteListBudget() int {
+	head, _, tail := m.bulkDeleteConfirmRegions(m.bulkDeleteConfirmScrolls())
+	budget := m.dialogContentBudget() - len(m.wrapDialogRegion(head)) - len(m.wrapDialogRegion(tail))
+	if budget < 1 {
+		budget = 1
+	}
+	return budget
+}
+
+// bulkDeleteMaxScroll is dialogMaxScroll's counterpart for the one region
+// that scrolls here: the number of wrapped name lines hanging below one full
+// list page, measured off the PLAIN regions so a theme change can never move
+// where a page boundary falls.
+func (m Model) bulkDeleteMaxScroll() int {
+	_, list, _ := m.bulkDeleteConfirmRegions(m.bulkDeleteConfirmScrolls())
+	over := len(m.wrapDialogRegion(list)) - m.bulkDeleteListBudget()
+	if over < 0 {
+		return 0
+	}
+	return over
+}
+
+// bulkDeleteScrollByPage is PgUp/PgDn's step inside the bulk confirm: one
+// full list page (bulkDeleteListBudget), clamped to [0, bulkDeleteMaxScroll]
+// exactly as dialogScrollBy clamps the whole-body scrollers.
+func (m Model) bulkDeleteScrollByPage(current, dir int) int {
+	next := current + dir*m.bulkDeleteListBudget()
+	if next < 0 {
+		next = 0
+	}
+	if max := m.bulkDeleteMaxScroll(); next > max {
+		next = max
+	}
+	return next
+}
+
 // bulkDeleteConfirmBody is deleteConfirmBody's task 112 counterpart for a
 // non-empty mark set: it names the batch size and every marked session's
 // own name rather than one session's conversation id/working directory (a
 // batch of N each has its own), and states plainly that purge is not
-// offered here.
+// offered here. This is the WHOLE body -- every marked name, unwindowed --
+// which is what a text assertion (and the plain-vs-styled parity test)
+// wants; bulkDeleteConfirmView is what decides which slice of the list a
+// given frame shows.
 func (m Model) bulkDeleteConfirmBody() string {
-	sessions := m.markedSessions()
-	var b strings.Builder
-	fmt.Fprintf(&b, "Delete %d marked sessions\n\n", len(sessions))
-	b.WriteString("This kills each live pane (if any) and removes each session from the\nlist. Every marked session's own conversation and working directory\nsurvive, untouched. Purge is not offered for a bulk delete.\n\n")
-	for _, s := range sessions {
-		fmt.Fprintf(&b, "  %s\n", s.Name)
-	}
-	b.WriteString("\nEnter deletes all · Esc cancels\n")
-	if m.deleteNote != "" {
-		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
-	}
-	return b.String()
+	head, list, tail := m.bulkDeleteConfirmRegions(m.bulkDeleteConfirmScrolls())
+	lines := make([]string, 0, len(head)+len(list)+len(tail))
+	lines = append(lines, head...)
+	lines = append(lines, list...)
+	lines = append(lines, tail...)
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // bulkDeleteFooterKeyTokens is styledBulkDeleteConfirmBody's own footer
 // vocabulary (task 018), the same shape as createFooterKeyTokens one
 // section up in this file: the leading token of each word in
 // bulkDeleteConfirmBody's own submit line ("Enter deletes all · Esc
-// cancels"), used to decide which already-wrapped word gets theme.Key
-// instead of theme.Hint.
+// cancels", plus the scroll keys when the mark list scrolls), used to decide
+// which already-wrapped word gets theme.Key instead of theme.Hint.
 var bulkDeleteFooterKeyTokens = map[string]bool{
-	"Enter": true,
-	"Esc":   true,
+	"Enter":     true,
+	"Esc":       true,
+	"PgUp/PgDn": true,
 }
 
 // styledBulkDeleteConfirmBody re-derives bulkDeleteConfirmBody's exact
@@ -4798,15 +4898,34 @@ var bulkDeleteFooterKeyTokens = map[string]bool{
 // (updateBulkDeleteConfirm's own doc: no Fields.Cycle at all), so
 // `selection` never applies here.
 func (m Model) styledBulkDeleteConfirmBody() string {
-	wrap := m.wrapDialogLines
-	var out []string
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
+	head, list, tail := m.styledBulkDeleteConfirmRegions()
+	lines := make([]string, 0, len(head)+len(list)+len(tail))
+	lines = append(lines, head...)
+	lines = append(lines, list...)
+	lines = append(lines, tail...)
+	return strings.Join(lines, "\n")
+}
+
+// styledBulkDeleteConfirmRegions is styledBulkDeleteConfirmBody's own
+// head/list/tail split (task 018): the same three regions
+// bulkDeleteConfirmRegions returns, already wrapped AND coloured, so
+// bulkDeleteConfirmView can window the list region alone while drawing the
+// pinned head and tail every frame. Each region is derived from the plain
+// region line by line, which is what keeps the styled body line-for-line
+// identical to wrapDialogLines(bulkDeleteConfirmBody()) once escapes are
+// stripped.
+func (m Model) styledBulkDeleteConfirmRegions() (head, list, tail []string) {
+	colorWhole := func(dst []string, tok theme.Token, line string) []string {
+		if line == "" {
+			return append(dst, "")
 		}
+		for _, l := range m.wrapDialogLines(line) {
+			dst = append(dst, m.colorToken(tok, l))
+		}
+		return dst
 	}
-	colorFooterLine := func(line string) {
-		for _, l := range wrap(line) {
+	colorFooterLine := func(dst []string, line string) []string {
+		for _, l := range m.wrapDialogLines(line) {
 			fields := strings.Fields(l)
 			for i, f := range fields {
 				if bulkDeleteFooterKeyTokens[f] {
@@ -4815,25 +4934,56 @@ func (m Model) styledBulkDeleteConfirmBody() string {
 					fields[i] = m.colorToken(theme.Hint, f)
 				}
 			}
-			out = append(out, strings.Join(fields, " "))
+			dst = append(dst, strings.Join(fields, " "))
 		}
+		return dst
 	}
 
-	sessions := m.markedSessions()
-	colorWhole(theme.Title, fmt.Sprintf("Delete %d marked sessions", len(sessions)))
-	out = append(out, "")
-	colorWhole(theme.Dimmed, "This kills each live pane (if any) and removes each session from the\nlist. Every marked session's own conversation and working directory\nsurvive, untouched. Purge is not offered for a bulk delete.")
-	out = append(out, "")
-	for _, s := range sessions {
-		colorWhole(theme.Text, "  "+s.Name)
+	plainHead, plainList, plainTail := m.bulkDeleteConfirmRegions(m.bulkDeleteConfirmScrolls())
+	// plainHead is title, blank, survives-text..., blank.
+	head = colorWhole(head, theme.Title, plainHead[0])
+	for _, line := range plainHead[1:] {
+		head = colorWhole(head, theme.Dimmed, line)
 	}
-	out = append(out, "")
-	colorFooterLine("Enter deletes all · Esc cancels")
-	if m.deleteNote != "" {
-		out = append(out, "")
-		colorWhole(theme.Error, m.deleteNote)
+	for _, line := range plainList {
+		list = colorWhole(list, theme.Text, line)
 	}
-	return strings.Join(out, "\n")
+	// plainTail is blank, submit legend, and optionally blank + note.
+	tail = append(tail, "")
+	tail = colorFooterLine(tail, plainTail[1])
+	for _, line := range plainTail[2:] {
+		tail = colorWhole(tail, theme.Error, line)
+	}
+	return head, list, tail
+}
+
+// bulkDeleteConfirmView renders the bulk confirm through
+// framedDialogScrollable with the submit line pinned: the head and tail
+// regions are drawn on every frame and only the marked-name list scrolls
+// (m.deleteScroll, PgUp/PgDn), so at 80x24 a 20-mark confirm shows its
+// "Enter deletes all" legend immediately instead of hanging it off the
+// bottom of the first page. The assembled body already fits
+// dialogContentBudget, so the scroll offset handed to
+// framedDialogScrollable is 0 -- the frame bound is still enforced there,
+// as a floor under this function's own arithmetic rather than instead of it.
+func (m Model) bulkDeleteConfirmView() string {
+	head, list, tail := m.styledBulkDeleteConfirmRegions()
+	visible := list
+	if budget := m.bulkDeleteListBudget(); len(list) > budget {
+		scroll := m.deleteScroll
+		if scroll < 0 {
+			scroll = 0
+		}
+		if max := len(list) - budget; scroll > max {
+			scroll = max
+		}
+		visible = list[scroll : scroll+budget]
+	}
+	lines := make([]string, 0, len(head)+len(visible)+len(tail))
+	lines = append(lines, head...)
+	lines = append(lines, visible...)
+	lines = append(lines, tail...)
+	return m.framedDialogScrollable(strings.Join(lines, "\n"), 0)
 }
 
 // detailBody builds the selected session's full detail text (detailView's
