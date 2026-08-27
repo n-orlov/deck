@@ -8,7 +8,17 @@ the implementing sha(s), the tests and scenarios added, real command output, and
 — for each of the nine requirements the PRD names a naive test for — the
 revert-and-reproduce proof that the test actually goes red without the fix.
 
-Written incrementally, one section per write, by task 023.
+Approach 02 then reopened the file for three things and only those three: the review
+finding **F1** that cost approach 01 its ten-run stability deliverable (closed by task
+028, `2b39124`), the two requirements the operator authorised afterwards — **R74** and
+**R75**, both from issue #11 (tasks 029–031) — and the two deliverable runs re-taken at
+the final code commit `0a5034d` (tasks 032, 033). **R65's verdict is re-derived below
+from that evidence and is now `met`**; approach 01's own 9/10 measurement and its
+reasoning stay published as history of the *previous* code tree, marked where they are
+superseded rather than rewritten.
+
+Written incrementally, one section per write, by task 023; the approach-02 sections and
+the re-derivations by task 034, the same way.
 
 - Sections: [orderings](#load-bearing-orderings-honoured) ·
   [R63](#r63-a-passive-preview-fit-can-never-overlap-itself-task-015) ·
@@ -24,7 +34,11 @@ Written incrementally, one section per write, by task 023.
   [R73](#r73-the-three-scrollable-overlays-scroll-by-line-and-by-wheel-tasks-012-014) ·
   [naive-test traps](#the-nine-naive-test-traps-revert-and-reproduce) ·
   [suite](#green-whole-suite-run-at-the-final-code-commit-task-021) ·
-  [stability](#stability-the-real-rate-is-910-task-022) ·
+  [stability 9/10, approach 01](#stability-the-real-rate-is-910-task-022) ·
+  [F1 closed](#finding-f1-closed-the-passive-fit-floor-scenario-no-longer-races-its-own-shrink-task-028) ·
+  [R74](#r74-a-late-hook-from-a-superseded-launch-generation-is-dropped-tasks-029-030) ·
+  [R75](#r75-a-completed-launch-releases-its-launch-lease-task-031) ·
+  [approach-02 deliverable runs](#approach-02-deliverable-runs-whole-suite-green-and-stability-1010-at-0a5034d-tasks-032-033) ·
   [table](#per-requirement-table)
 
 ## Tool versions and wall clock
@@ -289,6 +303,9 @@ the *arrival* wait for `features/sigwinch_count_test.go`.
 There is one step definition, so all seven assertion sites moved together and
 **no expected count changed**: `preview.feature:95` (1), `:107` (1), `:130` (0),
 `:147` (0), `:149` (1), `interactive_sigwinch_budget.feature:33` (2), `:46` (2).
+(Those line numbers are as of `202e1ba`. Task 028's longer scenario prefix later moved the
+last two of them — `0` is now at `features/preview.feature:171` and `1` at `:173` — with
+the **counts themselves unchanged**; the other five sites did not move.)
 
 **Revert-and-reproduce** (trap: a settle can be made permissive, so it must still
 go red in *both* directions — an extra signal and an unexpected one). Both
@@ -321,24 +338,69 @@ ok  	github.com/n-orlov/deck/features	18.847s
 [`task017-r65-targeted-two-files-run{1,2,3}.log`](phase3f-evidence/) and
 [`…-summary.txt`](phase3f-evidence/task017-r65-targeted-two-files-summary.txt).
 
-**R65 is nevertheless recorded as a FAILED requirement.** Its assertion criteria
-are met, but its field-symptom claim is not: three whole-suite runs on this tree
-went 2 green / 1 red, run 3 failing `preview.feature:134` at `:147` with
-`received 1 SIGWINCH signals, want exactly 0` — the same site and the same message
-R65's own source cited as the symptom to remove
-([`task017-r65-full-suite-run3-RED-trimmed.log`](phase3f-evidence/task017-r65-full-suite-run3-RED-trimmed.log),
-[`…-summary.txt`](phase3f-evidence/task017-r65-full-suite-summary.txt)) — and the
-same failure then took run 9 of the ten-run stability deliverable (see
-[stability](#stability-the-real-rate-is-910-task-022)). Root cause, written up in
-[`phase3f-017-r65-settled-sigwinch-count.md`](phase3f-017-r65-settled-sigwinch-count.md)
-"FINDING": `:134` creates `beacon` at 100x30 where a passive fit is licensed, and
-`previewFit`'s no-live-pane early return still emits `previewFitDone`, spending
-the row's one coalesced fit on a failed attempt — so the scenario observes 0 only
-when it loses that race. The settle did not cause it (the same scenario flaked
-the same way before, [`task015-r63-features-exacttags-flake.log`](phase3f-evidence/task015-r63-features-exacttags-flake.log));
-it raises its detection rate, which is what R65 exists to do. Fixing it means
-restructuring the scenario's prefix, **never re-baselining its counts**, and it is
-carried forward as an open item, not silently absorbed here.
+**R65 was recorded as a FAILED requirement in approach 01, and is re-derived here as
+met.** The paragraph that follows is approach 01's own reasoning, kept verbatim as the
+record of what was true of the *previous* code tree; the re-derivation is immediately
+after it.
+
+> **R65 is nevertheless recorded as a FAILED requirement.** Its assertion criteria
+> are met, but its field-symptom claim is not: three whole-suite runs on this tree
+> went 2 green / 1 red, run 3 failing `preview.feature:134` at `:147` with
+> `received 1 SIGWINCH signals, want exactly 0` — the same site and the same message
+> R65's own source cited as the symptom to remove
+> ([`task017-r65-full-suite-run3-RED-trimmed.log`](phase3f-evidence/task017-r65-full-suite-run3-RED-trimmed.log),
+> [`…-summary.txt`](phase3f-evidence/task017-r65-full-suite-summary.txt)) — and the
+> same failure then took run 9 of the ten-run stability deliverable (see
+> [stability](#stability-the-real-rate-is-910-task-022)). Root cause, written up in
+> [`phase3f-017-r65-settled-sigwinch-count.md`](phase3f-017-r65-settled-sigwinch-count.md)
+> "FINDING": `:134` creates `beacon` at 100x30 where a passive fit is licensed, and
+> `previewFit`'s no-live-pane early return still emits `previewFitDone`, spending
+> the row's one coalesced fit on a failed attempt — so the scenario observes 0 only
+> when it loses that race. The settle did not cause it (the same scenario flaked
+> the same way before, [`task015-r63-features-exacttags-flake.log`](phase3f-evidence/task015-r63-features-exacttags-flake.log));
+> it raises its detection rate, which is what R65 exists to do. Fixing it means
+> restructuring the scenario's prefix, **never re-baselining its counts**, and it is
+> carried forward as an open item, not silently absorbed here.
+
+### R65 re-derived at `0a5034d`: verdict **met** (task 034, from tasks 028 and 033)
+
+The open item that paragraph carries forward was done. Every clause of the FAILED
+verdict is re-checked below against approach 02's evidence, by sha and log path:
+
+| what approach 01's FAILED verdict rested on | what the evidence now shows |
+|---|---|
+| the field symptom `received 1 SIGWINCH signals, want exactly 0` at `preview.feature:134`/`:147` | the scenario's prefix was restructured by task 028, sha **`2b39124`** (`features: stop preview.feature's floor scenario racing its own shrink`) — no product code, no expected count changed. Report: [`phase3f-028-f1-passive-fit-floor/README.md`](phase3f-028-f1-passive-fit-floor/README.md) |
+| "fixing it means restructuring the scenario's prefix, never re-baselining its counts" | exactly that was done: the counted client is *born* at 100x9 and a `DECK_PREVIEW_FIT=0` maker client creates the sessions, so no frame above the floor ever exists for the observing client. **Both expected counts are byte-identical to before**, only their line numbers moved with the longer prefix: `0` now at `features/preview.feature:171` (was `:147`), `1` at `:173` (was `:149`) — [§3](phase3f-028-f1-passive-fit-floor/README.md), [§6](phase3f-028-f1-passive-fit-floor/README.md) |
+| a nine-in-ten pass rate means "it is green now" proves nothing | the pin is a *deterministic* new assertion, `deck client "solo" has never been taller than 9 rows` (`features/preview_test.go:26`, over `ScreenDriver.TallestRows`, `features/pty_driver_test.go:240`): RED on its own step with the prefix reverted — `deck client "solo" has been 30 rows tall at some point, want never more than 9` — [`red-fix-reverted.log`](phase3f-028-f1-passive-fit-floor/red-fix-reverted.log) (loadavg `1.40 1.90 2.16`); GREEN with it applied, `4 scenarios (4 passed)` — [`green-fix-applied.log`](phase3f-028-f1-passive-fit-floor/green-fix-applied.log) (loadavg `4.14 2.59 2.38`) |
+| the symptom "took run 9 of the ten-run stability deliverable" | the ten-run deliverable was re-taken at the final code commit **`0a5034d`** and is **10/10, script exit 0** — no run failed, so the symptom did not fire once. [`phase3f-033-stability10/README.md`](phase3f-033-stability10/README.md), the script's own [`stability-summary.log`](phase3f-033-stability10/stability-summary.log) ending `10/10 passed`, ten untrimmed per-run logs [`run-1.log`](phase3f-033-stability10/run-1.log) … [`run-10.log`](phase3f-033-stability10/run-10.log) |
+| the assertion criteria themselves (settle, then read once, then compare for equality) | unchanged and untouched by approach 02: `5071389`'s step definition still stands, all seven sites still read `1 1 0 0 1 2 2`, and `features` is `ok` in each of the ten stability runs (304–312 s) and in task 032's whole-suite run |
+
+**So R65's verdict is `met`.** Its assertion criteria were already met in approach 01;
+the field-symptom claim — that the poll-shaped counter read stops producing that
+failure in the field — is now carried by a green ten-run measurement at `0a5034d`
+rather than by a 9/10 one at `e47cb35`. Two honest limits on that, so the verdict is
+not over-read:
+
+- Ten runs bound a per-run failure rate loosely. The absence of the symptom across ten
+  whole-suite runs is an *absence* claim from ten samples, stated as such in
+  [`phase3f-033-stability10/README.md` §4](phase3f-033-stability10/README.md); what
+  makes the repair non-statistical is task 028's red-on-revert assertion, which fails
+  on every run without the fix, not the streak.
+- **The residual product-side mechanism is still open, and is not claimed fixed.**
+  `previewFit`'s no-live-pane early return still emits `previewFitDone` and so still
+  spends the row's one coalesced fit (`internal/tui/tui.go:1406-1413`). Task 028 proved
+  by instrumented trace that this is *not* what the scenario was losing to (the shrink
+  won that race by 3 ms; [`fit-trace-after.log`](phase3f-028-f1-passive-fit-floor/fit-trace-after.log),
+  [`fit-trace-before.log`](phase3f-028-f1-passive-fit-floor/fit-trace-before.log)),
+  and bounding it would move other scenarios' SIGWINCH counts — which this phase
+  forbids. It stays an open finding in
+  [`phase3f-findings.md`](phase3f-findings.md), not a requirement failure.
+
+**Finding F1 is closed by `2b39124`.** The full disposition, including the one sentence
+of F1's own text that is wrong (`ResizeAndAwaitRender` *does* wait — a render marker
+just never proves `m.width`/`m.height` already took the new size), is in
+[F1 closed](#finding-f1-closed-the-passive-fit-floor-scenario-no-longer-races-its-own-shrink-task-028)
+below.
 
 ## R66: matrix's seven status tokens quantise distinctly (task 018)
 
@@ -1087,6 +1149,12 @@ treating their absence as evidence they are gone.
 
 ## Stability: the real rate is 9/10 (task 022)
 
+**This section measures the *previous* code tree (`e47cb35`) and is kept unedited as
+history. It is not the shipped rate.** The shipped ten-run measurement is
+[10/10 at `0a5034d`](#approach-02-deliverable-runs-whole-suite-green-and-stability-1010-at-0a5034d-tasks-032-033)
+(task 033), taken after finding F1's fix `2b39124`; the requirement-attribution bullet at
+the end of this section is superseded there and says so in place.
+
 **The published rate is 9/10. Not 10/10.** Ten runs were commissioned, ten were run,
 none was re-run and no eleventh run was made to hunt a streak.
 
@@ -1156,6 +1224,14 @@ same assertion failed at the *highest* start-loadavg of ten.)
   second, product-side mechanism at the same site that R65 was explicitly forbidden to
   paper over and therefore left standing, with the finding written up in advance and
   flagged as threatening this very deliverable.
+  **Superseded (task 034):** that recurrence was review finding F1, and it is fixed —
+  scenario prefix restructured at sha **`2b39124`**, red-on-revert in
+  [`phase3f-028-f1-passive-fit-floor/red-fix-reverted.log`](phase3f-028-f1-passive-fit-floor/red-fix-reverted.log),
+  and **10/10 with script exit 0** at `0a5034d`
+  ([`phase3f-033-stability10/stability-summary.log`](phase3f-033-stability10/stability-summary.log)).
+  R65's verdict is therefore re-derived as **met**
+  ([re-derivation](#r65-re-derived-at-0a5034d-verdict-met-task-034-from-tasks-028-and-033));
+  the sentences above stand as what was true of `e47cb35`, not of the shipped tree.
 - **`TestGoldenMinimumFrame`** ("frame kept changing", seen at task 016) did **not** fire:
   `internal/tui` is `ok` in all ten logs. It stays open and unproven-fixed rather than
   retired by this run.
@@ -1164,6 +1240,198 @@ Carried forward as an open item needing **its own task**: restructure
 `preview.feature:134`'s prefix so no fit is licensed at the larger size, or bound
 `previewFit`'s no-live-pane return so it cannot spend the coalesced fit. **Re-baselining
 the counts is forbidden.**
+
+## Finding F1 closed: the passive-fit floor scenario no longer races its own shrink (task 028)
+
+**Fixing sha: `2b39124`** (`features: stop preview.feature's floor scenario racing its
+own shrink (task 028)`). No product code changed; no expected SIGWINCH count changed; no
+scenario deleted, skipped or tagged out. Full write-up:
+[`phase3f-028-f1-passive-fit-floor/README.md`](phase3f-028-f1-passive-fit-floor/README.md).
+
+F1 was the review finding that cost approach 01 its ten-run stability deliverable: the
+fit-floor scenario (`features/preview.feature`, `@steer-018-preview-fit-on-navigation`)
+lost roughly one run in ten with `fake "claude" agent received 1 SIGWINCH signals, want
+exactly 0`.
+
+**Mechanism, re-derived from the code rather than from F1's text.** The scenario created
+the counted `claude` session at the client's default **100x30**, where requirement 52
+auto-selects it and `previewFit`'s floor guard — which reads `m.width`/`m.height`, written
+only when `Update` processes the shrink's `tea.WindowSizeMsg` — licenses the very passive
+fit the scenario asserts never happens. The shrink to 100x9 does not retract it, and the
+window between the create and that `WindowSizeMsg` is several 50 ms `previewTick`s wide.
+An instrumented trace of `previewFit`'s own decisions shows the shrink winning that race
+by **3 ms** ([`fit-trace-before.log`](phase3f-028-f1-passive-fit-floor/fit-trace-before.log),
+[`fit-trace-after.log`](phase3f-028-f1-passive-fit-floor/fit-trace-after.log),
+instrumentation kept as [`fit-trace-instrument.patch`](phase3f-028-f1-passive-fit-floor/fit-trace-instrument.patch)).
+
+**One sentence of F1 is wrong and is corrected, not repeated.** F1 said
+`ScreenDriver.ResizeAndAwaitRender` "does not wait". It does wait — but a render marker
+only proves *some* repaint happened after the resize, never that `m.width`/`m.height`
+had already taken the new size, which is the property the scenario needed.
+
+**The repair is F1's first sanctioned option, the scenario prefix.** A "maker" client with
+`DECK_PREVIEW_FIT=0` creates the sessions through the real create modal (which cannot
+render at all in a 9-row terminal, so the counted client cannot be the one that creates
+them), and the observing client is *born* at 100x9 — it has no frame above the floor in
+its whole life before the assertion.
+
+| leg | command | evidence | revert-and-reproduce |
+|---|---|---|---|
+| deterministic pin | `ci/run.sh env DECK_GODOG_PATHS=preview.feature go test -count=1 -run TestFeatures ./features/` | [`green-fix-applied.log`](phase3f-028-f1-passive-fit-floor/green-fix-applied.log): `4 scenarios (4 passed)`, `59 steps (59 passed)`, loadavg [`green-loadavg.txt`](phase3f-028-f1-passive-fit-floor/green-loadavg.txt) `4.14 2.59 2.38` | prefix reverted to its pre-fix shape, new assertion left in place → [`red-fix-reverted.log`](phase3f-028-f1-passive-fit-floor/red-fix-reverted.log): `deck client "solo" has been 30 rows tall at some point, want never more than 9`, `--- FAIL: TestFeatures (9.69s)`, loadavg [`red-loadavg.txt`](phase3f-028-f1-passive-fit-floor/red-loadavg.txt) `1.40 1.90 2.16` |
+| the assertion that makes it deterministic | `Then deck client "solo" has never been taller than 9 rows` — `clientHasNeverBeenTallerThan` (`features/preview_test.go:26`) over `ScreenDriver.TallestRows` (`features/pty_driver_test.go:240`) | reads the harness's own pty geometry, never deck's internals; needs the *history* because a client born small and one shrunk a moment ago have the same current size | it fails **before** the count assertion it protects and names the reason, so a future re-break cannot be mistaken for a flake |
+| whole `features` package | `ci/run.sh go test -count=1 ./features/` | [`features-package-full.log`](phase3f-028-f1-passive-fit-floor/features-package-full.log) — `ok` | — |
+| twenty consecutive targeted runs (context, **not** the pin) | the same `DECK_GODOG_PATHS=preview.feature` command, ×20 | [`twenty-runs.log`](phase3f-028-f1-passive-fit-floor/twenty-runs.log) — 20/20 `ok`, 20/20 `exit=0`, per-run loadavg 3.50–5.50 (deliberately not a quiet host), 16.65–17.38 s each | a streak is not evidence here and is not offered as such: the pre-fix shape passed nine runs in ten |
+
+**Status: F1 closed.** The residual `previewFit` early-return spend is a separate, open
+finding (see the [R65 re-derivation](#r65-re-derived-at-0a5034d-verdict-met-task-034-from-tasks-028-and-033)
+and [`phase3f-findings.md`](phase3f-findings.md)); it is not the flake mechanism and is
+not claimed fixed.
+
+## R74: a late hook from a superseded launch generation is dropped (tasks 029, 030)
+
+**Implementing shas: `a0d4887`** (leg 1, `store: mint a per-launch generation for each
+launch lease`) **and `196e6f4`** (leg 2, `hookrecv: drop a hook write from a superseded
+launch generation`). Authorised by operator steer 002; bare reference: issue #11.
+Reports: [`phase3f-029-r74-launch-generation/README.md`](phase3f-029-r74-launch-generation/README.md),
+[`phase3f-030-r74-superseded-hooks/README.md`](phase3f-030-r74-superseded-hooks/README.md).
+
+Defect: a late hook write from a pane deck has **already replaced** is indistinguishable
+from a hook from the live pane, because `DECK_SESSION_ID` names the *row* and both panes
+belong to the same row. In the field (issue #11) the killed launch's `SessionEnd` arrived
+after deck had started the replacement pane and stopped the row deck had just started.
+
+**Leg 1 — the discriminator (`a0d4887`).** `AcquireLaunchLease` mints a **random**
+per-launch generation token, stores it as the second half of `launch_lease_owner`
+(`pid@boot_id#generation`, so no `sessions` column is added) and returns it to the
+launcher, which hands it to Claude's `Instrument` beside `DECK_SESSION_ID`
+(`internal/store/lease.go`, `internal/agent/claude.go`). Random rather than a timestamp on
+purpose: deck's clock is injectable, so two launches of one row can share a clock reading,
+and a discriminator two launches can share is not one. `parseLeaseOwner` strips the suffix
+before comparing identity — left on, it lands in the boot-id component and SPEC §9.3's
+double-launch guard silently stops holding.
+
+| leg-1 evidence | command | logs | revert-and-reproduce |
+|---|---|---|---|
+| green | `ci/run.sh go test -count=1 ./internal/store/ ./internal/agent/ ./internal/service/` | [`green-store-agent-service.log`](phase3f-029-r74-launch-generation/green-store-agent-service.log) — exit 0, three `ok`, loadavg `4.78` before / `4.64` after; `internal/hookrecv/` also green ([`hookrecv.log`](phase3f-029-r74-launch-generation/hookrecv.log)) | — |
+| A: token minted but never persisted (`storedOwner := owner`) | same | [`revert-a-no-generation-persisted.log`](phase3f-029-r74-launch-generation/revert-a-no-generation-persisted.log) | store test red: `stored launch_lease_owner = "12345@boot-a"; want "12345@boot-a#eb5e…"`; both real-tmux service tests red on `carries no generation` |
+| B: drop the `splitOwnerGeneration` strip from `parseLeaseOwner` (the naive owner-format change) | same | [`revert-b-identity-parse-keeps-suffix.log`](phase3f-029-r74-launch-generation/revert-b-identity-parse-keeps-suffix.log) | `TestLiveOwnerWithGenerationIsStillNotBreakable` red with `outcome = 0` — the live lease was **broken**, i.e. the §9.3 guard is off. This revert passes every generation assertion; only that test catches it |
+| C: drop the `DECK_LAUNCH_GENERATION` export from `Claude.Instrument` | same | [`revert-c-no-env-injection.log`](phase3f-029-r74-launch-generation/revert-c-no-env-injection.log) | `TestResumeExportsCurrentLaunchGenerationToThePane` red with tmux's own `unknown variable: DECK_LAUNCH_GENERATION` |
+
+Tests pinning leg 1: `internal/store/launch_generation_test.go` (fresh token per launch at
+the *same* `at`; live-owner-with-generation still unbreakable; pre-R74 tokenless owners
+still parse) and `internal/service/launch_generation_test.go` (real tmux, values read back
+out of tmux with `show-environment`: two successive resumes each export the row's current
+token and the two differ; a resumed *shell* row's pane carries neither variable).
+
+**Leg 2 — the drop, for the whole class (`196e6f4`).** `internal/hookrecv` declines the
+write when the hook's `DECK_LAUNCH_GENERATION` is not the row's current one — for **every**
+event name, not just `SessionEnd` — and a tokenless hook is deliberately allowed (pre-R74
+panes and out-of-band callers).
+
+| leg-2 evidence | command | logs | revert-and-reproduce |
+|---|---|---|---|
+| green | `ci/run.sh go test -count=1 ./internal/service/ ./internal/hookrecv/ ./internal/store/` | [`green-service-hookrecv-store.log`](phase3f-030-r74-superseded-hooks/green-service-hookrecv-store.log) — exit 0, three `ok`, loadavg `3.09 3.47 3.21` | — |
+| A: disable the drop entirely (`if false && supersededLaunch(...)`) — pre-fix behaviour | same | [`revert-a-no-drop-at-all.log`](phase3f-030-r74-superseded-hooks/revert-a-no-drop-at-all.log) | the service discriminator red: `the killed launch's SessionEnd stopped the row deck had just started: status="stopped" reason="other" source="hook"`, plus **12** hookrecv subtests (6 event names × {superseded token, no token}) |
+| A, ordering control (`-v`, service only) | `ci/run.sh go test -count=1 -v ./internal/service/` | [`revert-a-service-ordering-verbose.log`](phase3f-030-r74-superseded-hooks/revert-a-service-ordering-verbose.log) | in one run: `--- FAIL: TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow` **and** `--- PASS: TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator` — the before-lease ordering is green on unfixed code, so the ordering is measured, not asserted in prose |
+| B: narrow the class to `SessionEnd` only | same as green | [`revert-b-sessionend-only.log`](phase3f-030-r74-superseded-hooks/revert-b-sessionend-only.log) | the service test **passes** — a `SessionEnd`-only fix would have looked complete — while **10** hookrecv subtests fail (`Stop`, `Notification`, `SessionStart`, `UserPromptSubmit`, `StopFailure`) plus the conversation-id test |
+| C: treat a tokenless hook as superseded | same as green | [`revert-c-tokenless-hook-allowed.log`](phase3f-030-r74-superseded-hooks/revert-c-tokenless-hook-allowed.log) | exactly the **6** `hook_carries_no_token` subtests fail, one per event name — the decision is enforced, not incidental |
+| feature-level fixture correction | `ci/run.sh env DECK_GODOG_PATHS=… go test -count=1 -run TestFeatures ./features/` | [`features-hook-env-fixture.log`](phase3f-030-r74-superseded-hooks/features-hook-env-fixture.log) — `3 scenarios (3 passed)`, `36 steps (36 passed)`, loadavg `3.87 3.13 3.07` | the whole-suite run taken that iteration is published **even though it failed** ([`whole-suite.log`](phase3f-030-r74-superseded-hooks/whole-suite.log)): `releasedHookForSession` (`features/assertions_test.go`) ran the real `deck _hook` out of band exporting only `DECK_SESSION_ID`, so R74 correctly dropped it. The **fixture** was corrected to export the row's own generation — no scenario, step wording, tag or expected count changed |
+
+**The protected guards are untouched**, checked in the diff rather than asserted:
+`git diff internal/store/store.go` for `196e6f4` contains exactly three hunks (the
+`Session.LaunchGeneration` field, its `scanSession` scan, its `sessionColumns` entry).
+The "a hook cannot resurrect a stopped row" guard (`internal/store/store.go:624`) and the
+`pane_exit_status` `COALESCE` (`internal/store/store.go:669`) do not appear in the diff at
+all: R74's drop sits a layer *above* them — they answer "can a hook move THIS row from
+THIS status", the new rule answers "is this hook even from the row's current pane".
+
+## R75: a completed launch releases its launch lease (task 031)
+
+**Implementing sha: `0a5034d`** (`store: release a concluded launch's lease so its own row
+is not "starting elsewhere"`) — the phase's **final code commit**. Authorised by operator
+steer 002; bare reference: issue #11. Report:
+[`phase3f-031-r75-launch-lease-release/README.md`](phase3f-031-r75-launch-lease-release/README.md).
+
+Defect: `AcquireLaunchLease` wrote `launch_lease_owner` + `launch_lease_until = now + 30 s`
+in the same transaction that flips `stopped → starting` (`internal/store/lease.go`), and
+**nothing ever ended that hold** — it could only expire. So for 30 s after a launch,
+`leaseHeld` was true for the row (the owner is this very process, therefore alive, TTL not
+elapsed) and any resume of a row that had legitimately become `stopped` again in that
+window returned `ResumeStartingElsewhere` (`internal/service/resume.go`) — a claim about
+another client when the only "other client" was this process's own concluded launch, which
+is exactly what SPEC §9.3 forbids.
+
+Fix, in two pieces, with **no change to acquisition logic and no weakening of the guard**:
+`store.ReleaseLaunchLease(ctx, sessionID, heldOwner)` sets `launch_lease_until = 0` and
+nothing else, CASed on the exact owner string the launch acquired
+(`WHERE id = ? AND launch_lease_owner = ? AND launch_lease_until != 0`); `Resume` releases
+by `defer`, set up immediately after a successful acquisition, so every exit path below it
+concludes the attempt (pane up, or launch failed and the row is `error`). A failed release
+is audited as `launch_lease.release_failed` and deliberately does not change the launch
+verdict — the worst case is exactly the pre-R75 behaviour, since the §9.3 TTL is still the
+backstop. **The owner column is kept on purpose: that column *is* R74's discriminator.**
+
+| direction / leg | command | logs | revert-and-reproduce |
+|---|---|---|---|
+| green (store + service) | `ci/run.sh go test -count=1 ./internal/store/ ./internal/service/` | [`green-store-service.log`](phase3f-031-r75-launch-lease-release/green-store-service.log) — `exit=0`, both `ok`, loadavg `5.17 3.82 3.27` | — |
+| green (real terminal, real tmux) | `ci/run.sh env DECK_GODOG_PATHS=launch_lease.feature,lease_race.feature go test -count=1 -v -run TestFeatures ./features/` | [`features-lease.log`](phase3f-031-r75-launch-lease-release/features-lease.log) — `5 scenarios (5 passed)`, `70 steps (70 passed)`, `exit=0`, loadavg `5.18 3.19 3.00`; includes `lease_race.feature`'s three-client race (exactly 1 tmux session, 2 launch records, at least one client still shown "starting elsewhere") | — |
+| **direction 1** — the same owner is no longer locked out inside the window | `TestReleaseLaunchLeaseLetsTheSameOwnerLaunchAgainInsideTheTTL` (`internal/store/lease_release_test.go`, one literal `leaseTestNow` for every call, so nothing passes because time passed); `TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes` (`internal/service/lease_release_test.go`, real tmux, `x`+`r` twice, frozen clock, **no lease fixture at all**) | in the green logs above | **A**: `Resume` no longer releases → [`revert-a-no-release.log`](phase3f-031-r75-launch-lease-release/revert-a-no-release.log): `launch_lease_until = 1735787075000 after the launch completed; want 0` **and** `second resume inside the lease window: outcome = ResumeStartingElsewhere` |
+| **direction 2** — a lease genuinely held by a different live owner still blocks | `TestReleaseLaunchLeaseDoesNotEndADifferentLiveOwnersLease` (`internal/store/lease_release_test.go`); `TestResumeStillRefusesALeaseHeldByADifferentLiveOwner` (`internal/service/lease_release_test.go` — the holder is a **real live process the test spawned itself**, `sleep 300`, so the signal-0 liveness probe genuinely answers "alive"; then it is killed *and reaped* and the very same `Resume` succeeds, so the row is refused, never wedged) | in the green logs above | **B**, the naive "fix" (delete the lease-held guard, `leaseHeld := false`) → [`revert-b-guard-deleted.log`](phase3f-031-r75-launch-lease-release/revert-b-guard-deleted.log): **6** tests fail, four of them pre-existing §9.3 coverage (`TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable`, `TestAcquireLaunchLeaseNeverWedgesTheRow`, `TestLiveOwnerWithGenerationIsStillNotBreakable`, `TestResumeLosingLeaseCreatesNoTMuxSession`) |
+| R74 compatibility of the chosen mechanism | as above | — | **C**: the release also blanks the owner (`launch_lease_owner = NULL`) → [`revert-c-release-blanks-the-owner.log`](phase3f-031-r75-launch-lease-release/revert-c-release-blanks-the-owner.log): **5** tests fail and the interesting ones are **R74's** — `TestResumeExportsCurrentLaunchGenerationToThePane`, `TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow`, `TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator`, all reporting `stored launch_lease_owner "" carries no generation` |
+
+**What is not claimed.** The best-effort release path (`UPDATE` fails → fall back to TTL
+expiry) is not exercised by any test, and nothing here claims it is.
+`reconcile.go`'s "terminal row + live pane" invariant detector is explicitly out of scope
+and recorded as a follow-up in [`phase3f-findings.md`](phase3f-findings.md).
+
+**The watch item R75 stated in advance, and how it came out.** `lease_race.feature` asserts
+that *at least one* of three racing clients is shown "starting elsewhere"; after R75 a
+loser only observes that while the winner's launch is genuinely in flight — the narrowest
+window this assertion has ever had. Task 031 wrote down before the deliverable runs that a
+failure there would be **R75's own mechanism, not a host-load note**. It is inside the
+`features` package of every one of task 033's ten stability runs and every one was `ok`
+([`phase3f-033-stability10/README.md` §4](phase3f-033-stability10/README.md)), so the
+window held ten times out of ten.
+
+## Approach 02 deliverable runs: whole suite green and stability 10/10 at `0a5034d` (tasks 032, 033)
+
+Both runs were re-taken after F1's fix and R74/R75 landed, at the **same** final code sha
+`0a5034d`. **These, not the approach-01 runs above, are the phase's shipped
+measurements**; task 021's `e47cb35` suite run and task 022's 9/10 stay published as
+history of the previous code tree.
+
+| | whole suite (task 032) | stability (task 033) |
+|---|---|---|
+| command | `ci/run.sh go test -p=1 -count=1 ./...` — no tag selector, no path filter, no `-run`, no `DECK_*` override | `ci/stability.sh 10` — same, and nothing beyond the count |
+| checked-out commit | `9ce65be` | `9ce65be` |
+| code sha exercised | **`0a5034d`** | **`0a5034d`** (identical tree: `git diff --stat 0a5034d HEAD -- '*.go' '*.feature' '*.toml' '*.sh' go.mod go.sum` empty, quoted in both reports) |
+| result | **exit 0**, 17 package lines: 14 `ok`, 3 `[no test files]` | **`10/10 passed`**, script **exit 0**; ten `PASS (exit 0)` markers, none re-run |
+| wall clock | 360 s | 3604 s = 60m04s |
+| host load | recorded in the report §4 | all ten start `/proc/loadavg` tabulated (1-min `2.39`–`5.38`); 721-sample trace, mean `3.82`, max `11.58` |
+| report | [`phase3f-032-fullsuite/README.md`](phase3f-032-fullsuite/README.md) | [`phase3f-033-stability10/README.md`](phase3f-033-stability10/README.md) |
+| logs | [`go-test-p1-count1-all.log`](phase3f-032-fullsuite/go-test-p1-count1-all.log) | [`stability-summary.log`](phase3f-033-stability10/stability-summary.log), [`run-markers-timestamped.log`](phase3f-033-stability10/run-markers-timestamped.log), [`loadavg-trace.log`](phase3f-033-stability10/loadavg-trace.log), untrimmed [`run-1.log`](phase3f-033-stability10/run-1.log) … [`run-10.log`](phase3f-033-stability10/run-10.log) |
+
+**Nothing was skipped, tagged out or retried to get there**: `defaultTags` is still
+`"~@real-agents && ~@nightly"` at `0a5034d`, the script passes no tag override, the marker
+log holds exactly ten numbered `=== RUN n ===` / `=== RUN n: PASS ===` pairs with no gap
+and no repeat, and the pass/fail label is `go test`'s own exit status captured without a
+pipe. Only **one** ten-run measurement was taken at `0a5034d` and it is the one published.
+
+**The host was not idle**, so 10/10 is not a quiet-host artefact: background load ran ~2–4
+with spikes to `11.58`, and the two most-loaded run starts (runs 9 and 10, `5.38` and
+`5.04`) passed in 361 s and 359 s — within 3 s of the quietest run.
+
+**Attribution, stated the way a failure would have been.** No run failed, so there is no
+failure to root-cause — by measurement, not by omission (`grep -lE '^(FAIL|--- FAIL)'` over
+the ten committed logs matches nothing; each log carries 14 `ok`). Two mechanisms were
+under watch and neither fired: **F1's** SIGWINCH-count race (fixed at `2b39124`; ten green
+`features` packages, 304–312 s) and **R75's** `lease_race.feature` window. Ten samples
+bound a per-run failure rate loosely and that is said plainly in task 033's report §7 —
+what makes F1's repair non-statistical is its red-on-revert assertion, not this streak.
+
+Any later commit touching compiled code (`*.go`, `*.feature`, `*.toml`, `*.sh`, `go.mod`,
+`go.sum`) would invalidate **both** runs and oblige a fresh pair, which is why every
+remaining task of this approach is documentation-only.
 
 ## Per-requirement table
 
@@ -1176,7 +1444,7 @@ checking command and its clean output are quoted in this report's own commit mes
 |---|---|---|---|---|---|---|
 | **R63** | steer-018 residual | `f7b97fe` | `internal/tui/preview_fit_overlap_test.go`: `TestPreviewFitDoesNotOverlapItself`, `TestPreviewFitResumesAfterItsDoneLands`, `TestPreviewFitDoneForUnselectedSessionClearsTheMarker` | yes | `previewFitInFlight` half reverted → `returned 2 commands, want 1` | **met** |
 | **R64** | — | `677f5a0` (no product code) | five waypoints replaced by `has session … selected` in `create_cwd_ghost.feature` (×4) and `create_cwd_tab.feature`; full classification table above | no (two controls done anyway) | mutated name → `timed out waiting for frame`; waypoint deleted → 3/3 red | **met** (5 sites found where the PRD named 2) |
-| **R65** | phase3e-408 item 2 | `5071389`, `202e1ba` | settled `theFakeAgentReceivedExactlySigwinchSignals` over all seven sites; `DECK_GODOG_PATHS` selector | yes | both directions: `received 2 … want exactly 1`, `received 1 … want exactly 0` | **FAILED** — assertion criteria met, field symptom recurred at `preview.feature:134`/`:147` in task 021/022 runs |
+| **R65** | phase3e-408 item 2 | `5071389`, `202e1ba`; field symptom closed by `2b39124` (finding F1, task 028) | settled `theFakeAgentReceivedExactlySigwinchSignals` over all seven sites; `DECK_GODOG_PATHS` selector; task 028's `clientHasNeverBeenTallerThan` (`features/preview_test.go:26`) pinning the fit-floor scenario's prefix | yes | both directions: `received 2 … want exactly 1`, `received 1 … want exactly 0`; prefix reverted → `has been 30 rows tall at some point, want never more than 9` ([`red-fix-reverted.log`](phase3f-028-f1-passive-fit-floor/red-fix-reverted.log)) | **met** — re-derived at `0a5034d` (task 034): assertion criteria met in approach 01, field symptom fixed at `2b39124` and absent from a **10/10** ten-run measurement ([`phase3f-033-stability10/stability-summary.log`](phase3f-033-stability10/stability-summary.log)); approach 01's FAILED verdict at `e47cb35` stays published as history |
 | **R66** | phase3e-findings §4b | `ce8ef91` | `internal/theme/matrix_status_quantization_test.go`: `TestMatrixStatusTokensQuantiseToSevenDistinctReferenceEntries`; two pinned entries reconciled | yes | authored hexes restored → `5 distinct … want 7`, **while the true-colour test still passes** | **met** |
 | **R67** | — | `b848d28`, `300ee86`, `e47cb35` | eleven `git mv` renames (441 test names identical before/after); two sections retitled; `citation-sweep.py` | no | sweep at parent `300ee86` → `exit=1`, `'Task 014' is ambiguous`, `'Requirement 19/21 correction' is dangling` | **met** |
 | **R68** | #5 | `f3c25d5`, `7d060cd` | `internal/interactive/replydrain_test.go` (DA1/DSR/OSC 11 over a real tmux pane), `writestall_test.go` (×3) | yes | drain disabled → `DEADLOCK …` on the test's **own** deadline; `grid.go`→`f3c25d5` → wedge tests red; `s.writes` stripped → `DATA RACE` | **met** |
@@ -1185,15 +1453,35 @@ checking command and its clean output are quoted in this report's own commit mes
 | **R71** | #8 | `88742b2`, `63d4189`, `9d43a32` | `resume_archived_refusal_test.go` (×2), `unarchive_test.go` (×2), `archived_resolution_test.go`, `archive_test.go` addition; `@requirement-33-unarchive-from-filter-results` | yes | leg 1 guard stashed; `m.baseSessions` naive `U`; one-reload; `ListSessions` restore; `deleted_at` dropped — five reds, both `WHERE` halves pinned | **met** |
 | **R72** | #10 | `10f3970`, `4822484`, `eb2089e` | `archive_confirm_test.go` (×4); `@requirement-27-archive-confirm-writes-nothing`, `…-kills-and-archives`, `@requirement-27-archive-undo-toast`, `@requirement-33-archive-round-trip` | yes | pre-R72 `case "A"` → unit reds **plus a pre-existing caller** of the repaired step red; toast wiring → `did not show "Killed and archived"` | **met** |
 | **R73** | #7 | `2714d1b`, `4edbfc2`, `9c2e66a` | `overlay_line_scroll_test.go` (×3×3 overlays), `overlay_wheel_scroll_test.go` (×6), six help lines pinned by two existing tests incl. the real-PTY one | yes | four mutations: wheel block deleted, guard loosened, page step, help lines removed — opposed pairs both red | **met** |
+| **R74** | #11 (steer 002) | `a0d4887` (leg 1), `196e6f4` (leg 2) | `internal/store/launch_generation_test.go` (×3), `internal/service/launch_generation_test.go` (×2, real tmux via `show-environment`), `internal/service/superseded_launch_hook_test.go` (the after-lease discriminator **and** the before-lease control), hookrecv class matrix (6 event names × 3 token cases) | n/a (authorised after the PRD; controls done anyway) | leg 1: token not persisted; `parseLeaseOwner` keeps the suffix → `outcome = 0`, the §9.3 guard off; env export dropped → tmux `unknown variable: DECK_LAUNCH_GENERATION`. leg 2: drop disabled → `SessionEnd stopped the row deck had just started` + 12 hookrecv subtests; `SessionEnd`-only → service test **green** while 10 subtests red; tokenless treated as superseded → exactly the 6 `hook_carries_no_token` subtests | **met** |
+| **R75** | #11 (steer 002) | `0a5034d` | `internal/store/lease_release_test.go` (`TestReleaseLaunchLeaseLetsTheSameOwnerLaunchAgainInsideTheTTL`, `TestReleaseLaunchLeaseDoesNotEndADifferentLiveOwnersLease`), `internal/service/lease_release_test.go` (`TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes`, `TestResumeStillRefusesALeaseHeldByADifferentLiveOwner` — holder is a real spawned process), with `internal/store/lease_test.go`'s pre-existing §9.3 tests unchanged and still green | n/a (authorised after the PRD; the naive "delete the guard" fix tested explicitly) | no release → `launch_lease_until = 1735787075000 after the launch completed; want 0`; guard deleted → **6** reds incl. four pre-existing §9.3 tests; release blanks the owner → **5** reds, three of them R74's `carries no generation` | **met** |
 
-**Phase verdict: ten of eleven requirements met; R65 recorded as FAILED** on its
-field-symptom claim, with the residual mechanism root-caused, its restructure specified,
-and its counts explicitly not re-baselined. Two flakes remain open and are **not** claimed
-fixed: `preview.feature:134`'s pre-resize fit race (1 in 10 whole-suite runs here, ~1 in 4
-in task 017) and `TestGoldenMinimumFrame`'s "frame kept changing" recurrence. Deliverable
-runs: whole suite green at **`e47cb35`** ([log](phase3f-021-fullsuite/go-test-p1-count1-all.log)),
-stability **9/10** at **`c12c30e`** ([logs](phase3f-022-stability10/)). Findings that are
-not requirement failures — the four other built-in themes' quantisation collisions,
-`inject.go:51`'s `Exists` check, `vt`'s unsynchronised `Emulator.closed`, the five
-`Task 034` sections, and the PRD's stale citations at `:467-479`/`:480` (protected, not
-edited) — belong to `docs/reports/phase3f-findings.md`.
+**Phase verdict: thirteen requirements met — R63–R73 from the PRD plus R74 and R75 from
+operator steer 002 (issue #11) — and none FAILED.** R65 is the one verdict that moved:
+approach 01 recorded it FAILED on its field-symptom claim, and task 034 re-derives it as
+**met** from finding F1's fix (`2b39124`) and a **10/10** ten-run measurement at the final
+code commit `0a5034d`
+([re-derivation](#r65-re-derived-at-0a5034d-verdict-met-task-034-from-tasks-028-and-033)).
+No expected SIGWINCH count was re-baselined and no scenario was deleted, skipped or
+tagged out to get there.
+
+**Shipped deliverable runs (approach 02, both at code sha `0a5034d`):** whole suite green,
+`exit 0`, 14 `ok` + 3 `[no test files]`
+([log](phase3f-032-fullsuite/go-test-p1-count1-all.log)); stability **10/10**, script
+`exit 0` ([logs](phase3f-033-stability10/)). Approach 01's runs stay published as history
+of the previous code tree: whole suite green at **`e47cb35`**
+([log](phase3f-021-fullsuite/go-test-p1-count1-all.log)), stability **9/10** at
+**`c12c30e`** ([logs](phase3f-022-stability10/)).
+
+**Still open, and not claimed fixed.** `previewFit`'s no-live-pane early return still
+spends the row's one coalesced fit (`internal/tui/tui.go:1406-1413`) — proved *not* to be
+F1's flake mechanism, and bounding it would move other scenarios' counts, which is
+forbidden here. `TestGoldenMinimumFrame`'s "frame kept changing" recurrence (seen at task
+016) did not fire in any of task 033's ten runs — `internal/tui` is `ok` in all ten — but
+ten samples do not retire it, so it stays open and unproven-fixed. `reconcile.go`'s
+"terminal row + live pane" invariant detector was explicitly out of R75's scope and is a
+follow-up. Findings that are not requirement failures — those three, the four other
+built-in themes' quantisation collisions, `inject.go:51`'s `Exists` check, `vt`'s
+unsynchronised `Emulator.closed`, the five `Task 034` sections, and the PRD's stale
+citations at `:467-479`/`:480` (protected, not edited) — belong to
+`docs/reports/phase3f-findings.md`.
