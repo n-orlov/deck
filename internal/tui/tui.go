@@ -3273,6 +3273,46 @@ const belowMinimumNotice = "Terminal is below deck's supported minimum of 80x24;
 // legend always has -- so hint is left "" there rather than inventing one.
 type footerKeyHint struct {
 	unicodeKey, asciiKey, hint string
+
+	// eligible reports whether this entry belongs in the footer for the
+	// current Model state (SPEC §11.3: "nor does it list a key that would
+	// refuse the current selection"). nil means the entry carries no
+	// per-row eligibility predicate -- either it is a global command that
+	// never acts on a row (`n`, `?`, `q`, `↑`/`↓`) or task 012 defined no
+	// predicate for it -- and it is always shown. A non-nil eligible is
+	// always one of task 012's own per-action predicates
+	// (canAcknowledge/canKill/canResume/canRestart today), wired through
+	// footerRowEligible so the footer can never drift from the key
+	// handler's own verdict.
+	eligible func(m Model) bool
+}
+
+// footerRowEligible answers whether a predicated footer entry belongs in
+// the legend: false outright when the list is empty (task 105/§11.3: every
+// per-row key vanishes when there is nothing for it to act on), otherwise
+// the predicate evaluated over the marked set when batch is true and a
+// mark is in force -- ANY marked row the action would actually touch is
+// enough to keep the key, mirroring x's own batch handler, which silently
+// skips the rows predicate rejects rather than refusing outright -- or
+// over the selected row otherwise. Y/r/R never switch to the marked set
+// here because their own key handlers (case "Y"/"r"/"R" above) don't
+// either: a mark set changes nothing about what pressing those keys does.
+func footerRowEligible(m Model, batch bool, predicate func(store.Session) bool) bool {
+	if len(m.sessions) == 0 {
+		return false
+	}
+	if batch && len(m.marked) > 0 {
+		for _, s := range m.markedSessions() {
+			if predicate(s) {
+				return true
+			}
+		}
+		return false
+	}
+	if m.selected < 0 || m.selected >= len(m.sessions) {
+		return false
+	}
+	return predicate(m.sessions[m.selected])
 }
 
 // footerLegend is SPEC requirement 20's key legend, SPEC requirement 35's
@@ -3283,13 +3323,13 @@ type footerKeyHint struct {
 // byte what it always was, and pending tests that grep for a plain
 // substring like "up/down" or "Enter interactive" never see the joins move.
 var footerLegend = []footerKeyHint{
-	{"↑/↓", "up/down", ""},
-	{"↵", "Enter", "interactive"},
-	{"a", "a", "attach"},
-	{"Y", "Y", "acknowledge"},
-	{"n", "n", "new"},
-	{"x", "x", "kill"},
-	{"r", "r", "resume"},
+	{"↑/↓", "up/down", "", nil},
+	{"↵", "Enter", "interactive", nil},
+	{"a", "a", "attach", nil},
+	{"Y", "Y", "acknowledge", func(m Model) bool { return footerRowEligible(m, false, canAcknowledge) }},
+	{"n", "n", "new", nil},
+	{"x", "x", "kill", func(m Model) bool { return footerRowEligible(m, true, canKill) }},
+	{"r", "r", "resume", func(m Model) bool { return footerRowEligible(m, false, canResume) }},
 	// The footer's own hint word was originally "relaunch" rather than
 	// "restart" purely so this entry's length kept the legend's 100-column
 	// wrap boundary (a real 100-column PTY, features/pty_driver_test.go's
@@ -3299,12 +3339,12 @@ var footerLegend = []footerKeyHint{
 	// test pins the exact landing column (only the legend's leading
 	// "up/down - Enter ..." text, which this insertion left alone), so the
 	// wording is kept as "relaunch" for its own sake now, not for the tuning.
-	{"R", "R", "relaunch"},
-	{"P", "P", "profile"},
-	{"p", "p", "pin"},
-	{"i", "i", "detail"},
-	{"?", "?", "help"},
-	{"q", "q", "quit"},
+	{"R", "R", "relaunch", func(m Model) bool { return footerRowEligible(m, false, canRestart) }},
+	{"P", "P", "profile", nil},
+	{"p", "p", "pin", nil},
+	{"i", "i", "detail", nil},
+	{"?", "?", "help", nil},
+	{"q", "q", "quit", nil},
 }
 
 // footerKeyLegend renders footerLegend into the footer's key legend line,
@@ -3312,17 +3352,25 @@ var footerLegend = []footerKeyHint{
 // `hint` token (SPEC requirement 35), joined by the same " · "/" - "
 // separator the legend has always used -- never coloured itself, so it
 // reads as neutral punctuation between differently-coloured runs rather
-// than borrowing either token.
+// than borrowing either token. Task 013: an entry whose eligible predicate
+// (footerRowEligible over one of task 012's own canX functions) rejects
+// the current selection -- or the marked set, for the one action (x) that
+// switches to it -- is skipped entirely, never rendered as a disabled or
+// greyed key; SPEC §11.3 is that the footer either lists a key or it
+// doesn't, with nothing in between.
 func (m Model) footerKeyLegend() string {
 	sep := m.glyph(" · ", " - ")
-	parts := make([]string, len(footerLegend))
-	for i, e := range footerLegend {
+	parts := make([]string, 0, len(footerLegend))
+	for _, e := range footerLegend {
+		if e.eligible != nil && !e.eligible(m) {
+			continue
+		}
 		key := m.glyph(e.unicodeKey, e.asciiKey)
 		seg := m.colorToken(theme.Key, key)
 		if e.hint != "" {
 			seg += " " + m.colorToken(theme.Hint, e.hint)
 		}
-		parts[i] = seg
+		parts = append(parts, seg)
 	}
 	return strings.Join(parts, sep)
 }
