@@ -1641,6 +1641,131 @@ func (s *Store) EnforceEventRetention(ctx context.Context, retentionDays int, no
 	return nil
 }
 
+// tombstoneSweepMinInterval is how often SweepTombstones actually performs
+// a reap pass, mirroring eventRetentionMinInterval exactly (task 010, SPEC
+// §6.5/§12's "on store open and thereafter at most once an hour"): the
+// throttle is persisted in ui_state, not held only in memory, for the same
+// reason -- deck's many short-lived hook-command invocations of store.Open,
+// each a fresh process, must not each re-run a full sweep.
+const tombstoneSweepMinInterval = time.Hour
+
+// tombstoneSweepLastRunKey is the ui_state key SweepTombstones uses to
+// remember when it last actually ran a sweep pass. Absent key means
+// "never run", so the very first call -- on store open, per the contract
+// above -- always runs.
+const tombstoneSweepLastRunKey = "tombstone_sweep_last_run_at"
+
+// tombstoneSweepBatchRows bounds how many tombstoned rows a single
+// SweepTombstones batch reaps; tombstoneSweepMaxBatches bounds how many
+// batches one call performs. Together they cap the synchronous work one
+// call can do -- SPEC's "bounded batches", one batch never blocks the
+// caller -- even after a long backlog (deck not run for a long time, or
+// many abandoned dd's with no tea.Tick left to reap them, task 011).
+const (
+	tombstoneSweepBatchRows  = 200
+	tombstoneSweepMaxBatches = 50
+)
+
+// SweepTombstones reaps every session row whose deleted_at is older than
+// deleteGrace, oldest first, in bounded batches, modelled directly on
+// EnforceEventRetention above (task 010, steer 3e-001 §6.4/§7's "on store
+// open and thereafter at most once an hour" contract, applied here to the
+// dd/undo tombstone window instead of the events table). now is the
+// caller's current time in the same UnixMilli units as deleted_at
+// elsewhere in this file -- it is the ONLY source of "now" this method
+// ever consults; it never calls time.Now() itself, so a frozen-clock
+// caller's store never reaps on wall-clock time by accident. This is a
+// safety net for a row whose tea.Tick deleteGraceExpired never fires
+// (process killed, crashed, or simply quit before the grace window
+// elapsed) -- task 011 wires the real store-open call site; this method
+// only implements the primitive and its throttle. It performs an actual
+// reap pass only on the first call ever (store open, no prior ui_state
+// row) and thereafter at most once per tombstoneSweepMinInterval; every
+// call in between is a cheap no-op single SELECT against ui_state.
+func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, now int64) error {
+	if deleteGrace < 0 {
+		return errors.New("delete grace window must not be negative")
+	}
+	if now <= 0 {
+		return errors.New("tombstone sweep timestamp is required")
+	}
+	lastRunRaw, err := s.getUIState(ctx, tombstoneSweepLastRunKey, "0")
+	if err != nil {
+		return fmt.Errorf("read tombstone sweep throttle: %w", err)
+	}
+	lastRun, err := strconv.ParseInt(lastRunRaw, 10, 64)
+	if err != nil {
+		lastRun = 0
+	}
+	if lastRun != 0 && now-lastRun < tombstoneSweepMinInterval.Milliseconds() {
+		return nil
+	}
+	cutoff := now - deleteGrace.Milliseconds()
+	for batch := 0; batch < tombstoneSweepMaxBatches; batch++ {
+		ids, err := s.tombstonesOlderThan(ctx, cutoff, tombstoneSweepBatchRows)
+		if err != nil {
+			return fmt.Errorf("list expired tombstones: %w", err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		if err := s.reapTombstoneBatch(ctx, ids, now); err != nil {
+			return err
+		}
+		if len(ids) < tombstoneSweepBatchRows {
+			break
+		}
+	}
+	if err := s.setUIState(ctx, tombstoneSweepLastRunKey, strconv.FormatInt(now, 10)); err != nil {
+		return fmt.Errorf("write tombstone sweep throttle: %w", err)
+	}
+	return nil
+}
+
+// tombstonesOlderThan returns up to limit ids of rows tombstoned strictly
+// before cutoff (deleted_at != 0 AND deleted_at < cutoff), oldest first --
+// SweepTombstones' own read half, kept separate from the reap so the batch
+// loop above stays readable.
+func (s *Store) tombstonesOlderThan(ctx context.Context, cutoff int64, limit int) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM sessions WHERE deleted_at != 0 AND deleted_at < ? ORDER BY deleted_at ASC, id ASC LIMIT ?`,
+		cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// reapTombstoneBatch reaps every id in ids inside a single transaction,
+// via the same reapSessionTx CreateSession's own tombstoned-holder reap
+// (R77) and ReapSession use, so a sweep batch never opens more than one
+// transaction against the shared *sql.DB at a time.
+func (s *Store) reapTombstoneBatch(ctx context.Context, ids []string, at int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tombstone sweep batch: %w", err)
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		if err := reapSessionTx(ctx, tx, id, at); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tombstone sweep batch: %w", err)
+	}
+	return nil
+}
+
 // reapSessionTx performs the actual tombstone removal -- the orphan
 // 'reaped' event (session_id NULL, task 019's audit-log convention for
 // events that must outlive the row they describe) recorded BEFORE the
