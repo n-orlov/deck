@@ -473,6 +473,8 @@ var specialKeyTypes = map[string]tea.KeyType{
 	"ctrl+s":    tea.KeyCtrlS,
 	"ctrl+c":    tea.KeyCtrlC,
 	"ctrl+h":    tea.KeyCtrlH,
+	"ctrl+p":    tea.KeyCtrlP,
+	"ctrl+n":    tea.KeyCtrlN,
 }
 
 // key avoids coupling these small behaviour tests to a terminal driver.

@@ -37,14 +37,19 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     Then the state database contains session "dc-submit"
     When deck client "A" exits cleanly
 
-  Scenario: create dialog -- tab moves focus between fields
+  Scenario: create dialog -- ↑/↓ move focus between fields, and tab does not
     Given deck client "A" is started
     When deck client "A" sends "n"
     Then deck client "A" screen contains "Create shell session"
     And deck client "A" screen contains "> Name:"
-    When deck client "A" tabs 2 times in the open dialog
+    When deck client "A" presses down 2 times in the open dialog
     Then deck client "A" screen contains "> Agent:"
     And deck client "A" screen does not contain "> Name:"
+    When deck client "A" presses tab in the open dialog
+    Then deck client "A" screen contains "> Agent:"
+    And deck client "A" screen does not contain "> Permission profile:"
+    When deck client "A" presses up 1 times in the open dialog
+    Then deck client "A" screen contains "> Working directory:"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
 

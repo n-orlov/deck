@@ -397,17 +397,18 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 		return nil, nil, err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + h.workingDir); err != nil {
+	if err := client.Send("\x1b[B" + h.workingDir); err != nil {
 		return nil, nil, err
 	}
 	time.Sleep(75 * time.Millisecond)
 	if err := cycleCreateFieldToValue(ctx, client, kind, createAgentOptionsOrder); err != nil {
 		return nil, nil, fmt.Errorf("cycle Agent field to %q: %w", kind, err)
 	}
-	// Tab onto the Permission profile field, then cycle right until it
-	// reads profile. Options depend on the now-selected agent, so read them
-	// from the current frame rather than hard-coding claude/pi's lists here.
-	if err := client.Send("\t"); err != nil {
+	// Move onto the Permission profile field (↓, task 025), then cycle right
+	// until it reads profile. Options depend on the now-selected agent, so
+	// read them from the current frame rather than hard-coding claude/pi's
+	// lists here.
+	if err := client.Send("\x1b[B"); err != nil {
 		return nil, nil, err
 	}
 	time.Sleep(50 * time.Millisecond)
@@ -472,11 +473,12 @@ func trustRealClaudeScenarioWorkingDirectory(cwd string) error {
 	return nil
 }
 
-// cycleCreateFieldToValue tabs onto the field the caller is currently
-// positioned before (the Agent field, in every current caller) and cycles
-// right until want is on screen, matching one entry of order.
+// cycleCreateFieldToValue moves onto the field the caller is currently
+// positioned before (↓, task 025 -- the Agent field, in every current
+// caller) and cycles right until want is on screen, matching one entry of
+// order.
 func cycleCreateFieldToValue(ctx context.Context, client *ScreenDriver, want string, order []string) error {
-	if err := client.Send("\t"); err != nil {
+	if err := client.Send("\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(50 * time.Millisecond)

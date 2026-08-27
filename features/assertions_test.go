@@ -783,7 +783,7 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + cwd + "\r"); err != nil {
+	if err := client.Send("\x1b[B" + cwd + "\r"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "starting")
@@ -814,7 +814,7 @@ func clientAttemptsShellSession(ctx context.Context, clientName, name string) er
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + h.workingDir + "\r"); err != nil {
+	if err := client.Send("\x1b[B" + h.workingDir + "\r"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "name collides with existing slug")
@@ -1052,7 +1052,7 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(100 * time.Millisecond) // separate real terminal key batches
-	if err := client.Send("\t"); err != nil {
+	if err := client.Send("\x1b[B"); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(100 * time.Millisecond)

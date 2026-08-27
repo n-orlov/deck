@@ -44,7 +44,7 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
     When deck client "A" exits cleanly
 
   @requirement-16-tab-does-nothing-when-already-unique
-  Scenario: tab falls through to the next field when the segment already names the one candidate in full
+  Scenario: tab does nothing, and does not move focus, when the segment already names the one candidate in full
     Given a scratch directory labelled "tabunique" exists
     And a directory named "onlyoneprefix" exists in the scratch directory labelled "tabunique"
     And deck client "A" is started
@@ -52,6 +52,7 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
     And deck client "A" tabs to the cwd field
     And deck client "A" types the scratch directory labelled "tabunique" followed by "onlyoneprefix" into the cwd field
     And deck client "A" presses "tab" in the cwd field
-    Then deck client "A" screen contains "> Agent:"
+    Then deck client "A" screen contains "> Working directory:"
+    And deck client "A" screen does not contain "> Agent:"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly

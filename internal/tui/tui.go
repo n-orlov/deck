@@ -106,10 +106,10 @@ type Model struct {
 	// choice, not the remembered one.
 	createAgentLastUsed bool
 	// createCWDRecents is the §11.7 recent_cwds snapshot the cwd field is
-	// currently cycling through (task 009), fetched once when up/down
-	// first starts a cycle rather than re-queried on every keypress, so
-	// the list a user is cycling through cannot change under them mid-
-	// cycle. nil while not cycling.
+	// currently cycling through (task 009), fetched once when Ctrl+P/Ctrl+N
+	// (task 025) first starts a cycle rather than re-queried on every
+	// keypress, so the list a user is cycling through cannot change under
+	// them mid-cycle. nil while not cycling.
 	createCWDRecents []store.RecentCwd
 	// createCWDRecentIndex is the 0-based position within createCWDRecents
 	// the field currently shows (rendered 1-based as "recent N/M"), or -1
@@ -117,8 +117,8 @@ type Model struct {
 	// cycled recent entry, just whatever the user has typed (task 009).
 	createCWDRecentIndex int
 	// createCWDPreCycleValue/Prefilled/LastUsed snapshot the cwd field's
-	// state from the moment before the first "up" started a cycle, so
-	// pressing "down" back past the most recent entry restores exactly
+	// state from the moment before the first "Ctrl+P" started a cycle, so
+	// pressing "Ctrl+N" back past the most recent entry restores exactly
 	// what was there -- the untouched §11.7 prefill and its "last used"
 	// label, or whatever the user had already typed -- rather than
 	// leaving the field on recents[0] or blanking it.
@@ -5810,18 +5810,19 @@ func (m Model) validateCreateFields() string {
 }
 
 // cycleCreateCWDRecent implements the cwd field's second declared §11.7
-// per-field key set (task 009): up/down cycle recents shell-history style.
-// delta is +1 for "up" (older) and -1 for "down" (newer, eventually exiting
-// the cycle back to whatever the field held before it started).
+// per-field key set (task 009, moved onto Ctrl+P/Ctrl+N by task 025):
+// Ctrl+P/Ctrl+N cycle recents shell-history style. delta is +1 for
+// "Ctrl+P" (older) and -1 for "Ctrl+N" (newer, eventually exiting the
+// cycle back to whatever the field held before it started).
 //
-// The first "up" snapshots both the recent_cwds list itself (so it cannot
-// change under a live cycle) and the field's pre-cycle state (value plus
-// its prefilled/last-used flags) so "down" can restore it exactly once the
-// cycle runs back past the most recent entry -- an untouched §11.7 prefill,
-// or whatever the user had already typed, comes back exactly as it was
-// rather than as a blank field or a stale recents[0]. A "down" with no
-// cycle in progress, or a store with no history at all, is a no-op: there
-// is nothing to cycle to.
+// The first "Ctrl+P" snapshots both the recent_cwds list itself (so it
+// cannot change under a live cycle) and the field's pre-cycle state (value
+// plus its prefilled/last-used flags) so "Ctrl+N" can restore it exactly
+// once the cycle runs back past the most recent entry -- an untouched
+// §11.7 prefill, or whatever the user had already typed, comes back
+// exactly as it was rather than as a blank field or a stale recents[0]. A
+// "Ctrl+N" with no cycle in progress, or a store with no history at all,
+// is a no-op: there is nothing to cycle to.
 func (m *Model) cycleCreateCWDRecent(delta int) {
 	if m.createCWDRecentIndex < 0 {
 		if delta <= 0 || m.store == nil {
@@ -5843,8 +5844,8 @@ func (m *Model) cycleCreateCWDRecent(delta int) {
 	}
 	next := m.createCWDRecentIndex + delta
 	if next < 0 {
-		// Ran "down" back past the most recent entry: exit the cycle and
-		// restore exactly what was there before the first "up".
+		// Ran "Ctrl+N" back past the most recent entry: exit the cycle and
+		// restore exactly what was there before the first "Ctrl+P".
 		m.createCWD = m.createCWDPreCycleValue
 		m.createCWDPrefilled = m.createCWDPreCyclePrefilled
 		m.createCWDLastUsed = m.createCWDPreCycleLastUsed
@@ -5852,7 +5853,7 @@ func (m *Model) cycleCreateCWDRecent(delta int) {
 		return
 	}
 	if next >= len(m.createCWDRecents) {
-		// "up" at the oldest entry stays there rather than wrapping --
+		// "Ctrl+P" at the oldest entry stays there rather than wrapping --
 		// shell history has an end, and wrapping back to recents[0] would
 		// be indistinguishable on screen from having never moved.
 		next = len(m.createCWDRecents) - 1
@@ -5941,31 +5942,31 @@ func parseCreateEnv(raw string) (map[string]string, error) {
 
 func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// The candidate list (task 012) only ever exists while field 1 (cwd)
-	// is focused; leaving it any other way -- shift+tab away, cycling the
+	// is focused; leaving it any other way -- ↑/↓ away, cycling the
 	// Agent/profile fields, anything applyDialogContract's own field
 	// navigation does -- must not leave it open and stale for the next
-	// time the user tabs back onto this field.
+	// time the user moves back onto this field.
 	if m.createField != 1 {
 		m.closeCreateCWDCandidates()
 	}
 	if m.createField == 1 {
 		switch msg.String() {
 		case "tab":
-			// §11.7's bash-completion-contract key (task 012): "tab completes
-			// to the longest common prefix when that advances the text, and
-			// otherwise lists the candidates for selection". This replaces
-			// the cwd field's normal "tab moves to the next field" ONLY
-			// while there is something to complete or list; whenever there
-			// is nothing to do at all -- no directory matches the segment,
-			// or the segment already names the one candidate there is in
-			// full -- tabCompleteCreateCWD reports false and tab falls
-			// through to applyDialogContract below exactly as it always
-			// has, so existing callers that tab straight through an
-			// untouched, already-real cwd prefill onto the next field stay
-			// unaffected.
+			// §11.7's bash-completion-contract key (task 012), and (task 025,
+			// SPEC §11.4) the ONLY thing tab ever does anywhere in this
+			// dialog: "tab completes to the longest common prefix when that
+			// advances the text, and otherwise lists the candidates for
+			// selection". When there is nothing to do at all -- no directory
+			// matches the segment, or the segment already names the one
+			// candidate there is in full -- tabCompleteCreateCWD reports
+			// false and tab is left UNHANDLED here: applyDialogContract below
+			// no longer binds tab at all (field navigation moved to ↑/↓), so
+			// falling out of this switch with no return means tab simply does
+			// nothing and focus stays exactly where it was.
 			if m.tabCompleteCreateCWD() {
 				return m, nil
 			}
+			return m, nil
 		case "esc":
 			// esc closes an open candidate list without changing the field
 			// or the value, one step short of applyDialogContract's own esc
@@ -5986,9 +5987,10 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "up":
 			// While the list is open, up/down move the highlighted entry
-			// rather than cycling recent_cwds (the existing "up"/"down" case
-			// below): the two per-field key sets are mutually exclusive,
-			// same as the ghost/ambiguous-count/recent labels already are.
+			// rather than moving the dialog's focused field or cycling
+			// recent_cwds (Ctrl+P/Ctrl+N, below): the three per-field key sets
+			// are mutually exclusive, same as the ghost/ambiguous-count/recent
+			// labels already are.
 			if len(m.createCWDCandidates) > 0 {
 				m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
 				return m, nil
@@ -6013,17 +6015,20 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch msg.String() {
-	case "up":
+	case "ctrl+p":
 		// §11.7's second declared per-field key set on the cwd field (task
-		// 009): shell-history-style cycling through recent_cwds, older with
-		// each press. Only field 1 (cwd) binds it -- every other field's
-		// up/down stays a no-op here, matching "up"/"down" doing nothing at
-		// all in this dialog before this task.
+		// 009, moved off up/down onto Ctrl+P/Ctrl+N by task 025 once ↑/↓
+		// became the dialog's own field-navigation keys): shell-history-style
+		// cycling through recent_cwds, older with each press -- readline's
+		// own "previous history" binding. Only field 1 (cwd) binds it --
+		// every other field's Ctrl+P/Ctrl+N stays a no-op here.
 		if m.createField == 1 {
 			m.cycleCreateCWDRecent(1)
 			return m, nil
 		}
-	case "down":
+	case "ctrl+n":
+		// readline's "next history": newer, eventually exiting the cycle
+		// back to whatever the field held before it started.
 		if m.createField == 1 {
 			m.cycleCreateCWDRecent(-1)
 			return m, nil
