@@ -1494,6 +1494,47 @@ func canDelete(session store.Session) bool {
 	return true
 }
 
+// canReachPane reports whether the two pane-reaching keys -- `↵` (enter
+// interactive mode) and `a` (attach) -- may act on session. Both handlers
+// (enterInteractive, attachSelected) refuse a stopped row with the same
+// "resume it first" message, because a stopped session has no pane to
+// reach at all, so that one session-level rule lives here and both of
+// them plus the footer (task 013) read it from the same place. The
+// refusals that are NOT properties of the selection -- no tmux socket, a
+// preview box below interactiveMinInnerRows, a bystander already attached
+// to the window -- deliberately stay in enterInteractive: they are
+// properties of the terminal and of the tmux server, and §11.3's
+// eligibility question is asked of the selection.
+func canReachPane(session store.Session) bool {
+	return session.Status != "stopped"
+}
+
+// canShowDetail reports whether i may act on session: the detail dialog
+// describes any row there is, live, stopped or archived, so its handler's
+// only refusal is an empty list -- which footerRowEligible answers before
+// this is ever consulted.
+func canShowDetail(session store.Session) bool {
+	return true
+}
+
+// canSwitchProfile reports whether P may act on session: only an agent
+// that has a permission profile at all (SPEC §5/§8 -- a shell session has
+// none, and case "P" says exactly that when asked). It hangs off Model
+// rather than being a bare function because the answer comes from
+// m.agentCapabilities, which is configuration, not row state.
+func (m Model) canSwitchProfile(session store.Session) bool {
+	_, applicable := m.agentCapabilities(session.Agent)
+	return applicable
+}
+
+// canPinResume reports whether p may act on session: only an agent whose
+// adapter assigns a conversation id, since pinning is a statement about
+// which conversation the next launch resumes.
+func (m Model) canPinResume(session store.Session) bool {
+	caps, applicable := m.agentCapabilities(session.Agent)
+	return applicable && caps.AssignsConversationID
+}
+
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	i1Trace("enter", message, m.selected)
 	i1TraceSessions(m)
@@ -2532,7 +2573,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			if _, applicable := m.agentCapabilities(session.Agent); !applicable {
+			if !m.canSwitchProfile(session) {
 				m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
 				return m, nil
 			}
@@ -2545,8 +2586,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			session := m.sessions[m.selected]
-			caps, applicable := m.agentCapabilities(session.Agent)
-			if !applicable || !caps.AssignsConversationID {
+			if !m.canPinResume(session) {
 				m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
 				return m, nil
 			}
@@ -2799,7 +2839,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	session := m.sessions[m.selected]
-	if session.Status == "stopped" {
+	if !canReachPane(session) {
 		m.attachError = "Cannot attach: session is stopped; resume it first"
 		return m, nil
 	}
@@ -3241,6 +3281,20 @@ func (m Model) mainView() string {
 // its tail rather than letting it wrap and push the frame's line count
 // past the terminal's actual height (task 010) — a below-minimum terminal
 // is, by definition, exactly the case where that budget is tight.
+//
+// Task 013: reason and legend SHARE the line, within the terminal's own
+// width. §7's reasons are prose (`pane failed after the stale frame`) and
+// the curated legend is long, so at deck's 80-column minimum the two
+// together can exceed the width — and a footer that overflows is a footer
+// that wraps into a second physical line, costing the frame a row and
+// breaking §11.3's guarantee that this line stays on screen (bubbletea
+// clips it instead, mid-glyph, which advertises half a key). So each half
+// gets a share: whatever it needs when both fit, otherwise the reason is
+// held to half the line and elided (its full text is in the `i` detail,
+// where §11.3 puts a long one) and the legend takes the rest, dropping
+// whole trailing entries. Neither half can squeeze the other out
+// entirely, which is what "shares the line" has to mean to be worth
+// anything.
 func (m Model) footerLine() string {
 	if m.computeLayout().BelowMinimum {
 		width, _ := m.frameSize()
@@ -3249,11 +3303,25 @@ func (m Model) footerLine() string {
 	if m.interactive {
 		return m.interactiveFooterLine()
 	}
-	keys := m.footerKeyLegend()
-	if reason := m.selectedRowReason(); reason != "" {
-		return reason + "    " + keys
+	width, _ := m.frameSize()
+	reason := m.selectedRowReason()
+	if reason == "" {
+		return m.footerLegendWithin(width)
 	}
-	return keys
+	const gap = "    "
+	available := width - len(gap)
+	if available <= 0 {
+		return m.elideToWidth(reason, width)
+	}
+	reasonWidth, legendWidth := stringWidth(reason), m.footerLegendWidth()
+	if reasonWidth+legendWidth <= available {
+		return reason + gap + m.footerKeyLegend()
+	}
+	reasonBudget := available / 2
+	if reasonWidth < reasonBudget {
+		reasonBudget = reasonWidth
+	}
+	return m.elideToWidth(reason, reasonBudget) + gap + m.footerLegendWithin(available-reasonBudget)
 }
 
 // interactiveFooterLine is PRD Part II requirement 43's other half: list
@@ -3287,12 +3355,13 @@ type footerKeyHint struct {
 	// eligible reports whether this entry belongs in the footer for the
 	// current Model state (SPEC §11.3: "nor does it list a key that would
 	// refuse the current selection"). nil means the entry carries no
-	// per-row eligibility predicate -- either it is a global command that
-	// never acts on a row (`n`, `?`, `q`, `↑`/`↓`) or task 012 defined no
-	// predicate for it -- and it is always shown. A non-nil eligible is
-	// always one of task 012's own per-action predicates
-	// (canAcknowledge/canKill/canResume/canRestart today), wired through
-	// footerRowEligible so the footer can never drift from the key
+	// per-row eligibility question at all -- it is a global command that
+	// never acts on a row (`n`, `?`, `q`, `↑`/`↓`) -- and it is always
+	// shown. A non-nil eligible is always one of the per-action predicates
+	// the key handlers themselves call (task 012's
+	// canAcknowledge/canKill/canResume/canRestart, plus task 013's
+	// canReachPane/canShowDetail/canSwitchProfile/canPinResume), wired
+	// through footerRowEligible so the footer can never drift from the key
 	// handler's own verdict.
 	eligible func(m Model) bool
 }
@@ -3334,8 +3403,8 @@ func footerRowEligible(m Model, batch bool, predicate func(store.Session) bool) 
 // substring like "up/down" or "Enter interactive" never see the joins move.
 var footerLegend = []footerKeyHint{
 	{"↑/↓", "up/down", "", nil},
-	{"↵", "Enter", "interactive", nil},
-	{"a", "a", "attach", nil},
+	{"↵", "Enter", "interactive", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
+	{"a", "a", "attach", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
 	{"Y", "Y", "acknowledge", func(m Model) bool { return footerRowEligible(m, false, canAcknowledge) }},
 	{"n", "n", "new", nil},
 	{"x", "x", "kill", func(m Model) bool { return footerRowEligible(m, true, canKill) }},
@@ -3350,9 +3419,9 @@ var footerLegend = []footerKeyHint{
 	// "up/down - Enter ..." text, which this insertion left alone), so the
 	// wording is kept as "relaunch" for its own sake now, not for the tuning.
 	{"R", "R", "relaunch", func(m Model) bool { return footerRowEligible(m, false, canRestart) }},
-	{"P", "P", "profile", nil},
-	{"p", "p", "pin", nil},
-	{"i", "i", "detail", nil},
+	{"P", "P", "profile", func(m Model) bool { return footerRowEligible(m, false, m.canSwitchProfile) }},
+	{"p", "p", "pin", func(m Model) bool { return footerRowEligible(m, false, m.canPinResume) }},
+	{"i", "i", "detail", func(m Model) bool { return footerRowEligible(m, false, canShowDetail) }},
 	{"?", "?", "help", nil},
 	{"q", "q", "quit", nil},
 }
@@ -3369,20 +3438,100 @@ var footerLegend = []footerKeyHint{
 // greyed key; SPEC §11.3 is that the footer either lists a key or it
 // doesn't, with nothing in between.
 func (m Model) footerKeyLegend() string {
-	sep := m.glyph(" · ", " - ")
-	parts := make([]string, 0, len(footerLegend))
+	segments, _ := m.footerLegendSegments()
+	return strings.Join(segments, m.glyph(" · ", " - "))
+}
+
+// footerLegendSegments renders the eligible entries of footerLegend, one
+// styled segment each, paired with the visible width of that segment's
+// plain text. Splitting the render from the join is what lets the
+// width-aware footer (footerLine) drop whole entries without ever
+// measuring an SGR escape as if it occupied cells, and without cutting a
+// key glyph or its hint word in half -- a footer showing `Y ackno` claims
+// a key that does not exist, which SPEC §11.3 rates worse than no footer.
+func (m Model) footerLegendSegments() (segments []string, widths []int) {
+	segments = make([]string, 0, len(footerLegend))
+	widths = make([]int, 0, len(footerLegend))
 	for _, e := range footerLegend {
 		if e.eligible != nil && !e.eligible(m) {
 			continue
 		}
 		key := m.glyph(e.unicodeKey, e.asciiKey)
 		seg := m.colorToken(theme.Key, key)
+		plain := key
 		if e.hint != "" {
 			seg += " " + m.colorToken(theme.Hint, e.hint)
+			plain += " " + e.hint
 		}
-		parts = append(parts, seg)
+		segments = append(segments, seg)
+		widths = append(widths, stringWidth(plain))
 	}
-	return strings.Join(parts, sep)
+	return segments, widths
+}
+
+// footerLegendWidth is the visible width footerKeyLegend needs to render
+// in full for the current state.
+func (m Model) footerLegendWidth() int {
+	_, widths := m.footerLegendSegments()
+	sep := stringWidth(m.glyph(" · ", " - "))
+	total := 0
+	for i, w := range widths {
+		if i > 0 {
+			total += sep
+		}
+		total += w
+	}
+	return total
+}
+
+// footerLegendWithin renders the legend into at most budget cells. When
+// the eligible keys fit, this is exactly footerKeyLegend. When they do
+// not, whole trailing entries are dropped -- never a partial one -- and
+// the elision is marked with `…` (`...` under DECK_ASCII) in the `hint`
+// token, so the line stays the one line SPEC §11.3 guarantees stays on
+// screen and the user can see that the legend is not the whole story (the
+// `?` overlay and §11's keymap remain the complete list). Only a budget
+// too small for even the first entry plus that marker falls back to a
+// plain clip, which is a terminal narrower than any deck supports.
+func (m Model) footerLegendWithin(budget int) string {
+	segments, widths := m.footerLegendSegments()
+	sep := m.glyph(" · ", " - ")
+	sepWidth := stringWidth(sep)
+	if m.footerLegendWidth() <= budget {
+		return strings.Join(segments, sep)
+	}
+	marker := m.colorToken(theme.Hint, m.glyph("…", "..."))
+	markerWidth := stringWidth(marker)
+	kept, width := 0, 0
+	for i, w := range widths {
+		next := width + w
+		if i > 0 {
+			next += sepWidth
+		}
+		if next+sepWidth+markerWidth > budget {
+			break
+		}
+		width, kept = next, i+1
+	}
+	if kept == 0 {
+		return truncateToWidth(strings.Join(segments, sep), budget)
+	}
+	return strings.Join(segments[:kept], sep) + sep + marker
+}
+
+// elideToWidth clips s to budget cells, marking the clip with `…`
+// (`...` under DECK_ASCII) whenever anything was actually dropped, so an
+// elided status reason never reads as the whole reason -- the full text is
+// in the `i` detail dialog, which is where SPEC §11.3 puts a long one.
+func (m Model) elideToWidth(s string, budget int) string {
+	if stringWidth(s) <= budget {
+		return s
+	}
+	marker := m.glyph("…", "...")
+	if budget <= stringWidth(marker) {
+		return truncateToWidth(s, budget)
+	}
+	return truncateToWidth(s, budget-stringWidth(marker)) + marker
 }
 
 // renderSideBySideFrame draws two panels sharing one seam (SPEC requirement
@@ -4043,8 +4192,17 @@ func (m Model) crashTailPreviewLines(tail string, contentWidth, contentHeight in
 // looking at gets a stable home on the footer's left, clearly separated from
 // the key legend, rather than jittering every row's width as sessions move
 // between statuses. It returns "" when the selected session has no reason to
-// show (e.g. running, waiting, or a starting shell whose only signal is its
-// own liveness).
+// show (e.g. running, or a starting shell whose only signal is its own
+// liveness).
+//
+// The two derived reasons come first, because they say more than the
+// stored one does: a stopped row's `resumable` names the way out, and an
+// unsignalled agent's `awaiting signal` explains a status that otherwise
+// looks stuck. Otherwise the row's own stored StatusReason is the reason
+// (task 013) — that is where §7's prose verdicts live, including the long
+// ones like `pane failed after the stale frame`, and the footer was always
+// meant to be where the selected row's "why" is legible without opening
+// the `i` detail.
 func (m Model) selectedRowReason() string {
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		return ""
@@ -4055,6 +4213,8 @@ func (m Model) selectedRowReason() string {
 		return session.Status + m.glyph(" · resumable", " - resumable")
 	case session.Status == "starting" && session.Agent != "shell":
 		return "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
+	case session.StatusReason != "":
+		return session.Status + m.glyph(" · ", " - ") + session.StatusReason
 	default:
 		return ""
 	}
