@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -205,17 +206,23 @@ func clientSubmitsCreateModal(ctx context.Context, clientName string) error {
 // clientCWDFieldShowsNoGhostText backs task 011's negative proof (SPEC
 // requirement 15): with several ambiguous directory matches, the field
 // must ghost NOTHING at all -- not the alphabetically-first candidate, not
-// any other arbitrary one. Since createCWDDisplayValue's ghost is the ONLY
-// thing this package ever renders in the dimmed token anywhere on screen
-// while the create modal is open (createView fully replaces the sidebar,
-// which is the only other dimmed user in internal/tui/tui.go), scanning
-// the WHOLE grid for a single dimmed-foreground cell and failing if one is
-// found is a strictly stronger assertion than checking any one candidate
-// substring is absent: it also catches a ghost of some OTHER, unexpected
-// text this scenario's author didn't think to name. This is a cell-grid
-// assertion, not an absence-of-error check -- it reads real Style.Fg
-// values via CellAt, exactly as the per-cell steps in
+// any other arbitrary one. The ghost is the only text this package ever
+// renders in the `dimmed` token ON THE CWD FIELD'S OWN ROWS, so scanning
+// every cell of those rows for a single dimmed foreground -- rather than
+// checking one candidate substring is absent -- also catches a ghost of
+// some OTHER, unexpected text this scenario's author didn't think to name.
+// This is a cell-grid assertion, not an absence-of-error check: it reads
+// real Style.Fg values via CellAt, exactly as the per-cell steps in
 // features/cell_attributes_test.go do.
+//
+// The scan is bounded to the field's own rows (its label/value row plus any
+// physical continuation rows, ending before its one-line help text)
+// because task 016 gave the modal its §11.6 tokens: SPEC.md:1355 puts every
+// field's HELP line in `dimmed` too, so "no dimmed cell anywhere on screen"
+// -- what this step asserted while the modal was uncoloured -- now says
+// "the modal is unthemed", which is the opposite of what the spec asks for.
+// The cwd rows are exactly where a ghost could ever appear, so bounding the
+// scan there loses no ghost this step could previously have caught.
 func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
@@ -226,14 +233,43 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 		return err
 	}
 	cols, rows := client.GridSize()
+	rowText := func(y int) string {
+		var b strings.Builder
+		for x := 0; x < cols; x++ {
+			if cell := client.CellAt(x, y); cell != nil {
+				b.WriteString(cell.Content)
+			}
+		}
+		return b.String()
+	}
+	first := -1
 	for y := 0; y < rows; y++ {
+		if strings.Contains(rowText(y), "Working directory:") {
+			first = y
+			break
+		}
+	}
+	if first < 0 {
+		return fmt.Errorf("client %q shows no \"Working directory:\" row -- the create modal is not open, so this step cannot assert anything", name)
+	}
+	// The field's help line ("... the session's cwd; must exist ...",
+	// possibly prefixed with "N matches — tab to list") ends the field's
+	// own rows; every row before it belongs to the value.
+	last := first
+	for y := first + 1; y < rows; y++ {
+		if strings.Contains(rowText(y), "the session's cwd") {
+			break
+		}
+		last = y
+	}
+	for y := first; y <= last; y++ {
 		for x := 0; x < cols; x++ {
 			cell := client.CellAt(x, y)
 			if cell == nil || cell.Style.Fg == nil {
 				continue
 			}
 			if colorHex(cell.Style.Fg) == dimmed {
-				return fmt.Errorf("client %q has a dimmed-token cell %q at row %d column %d, want no ghost text anywhere on screen", name, cell.Content, y, x)
+				return fmt.Errorf("client %q has a dimmed-token cell %q at row %d column %d (inside the cwd field's own rows %d-%d), want no ghost text there", name, cell.Content, y, x, first, last)
 			}
 		}
 	}

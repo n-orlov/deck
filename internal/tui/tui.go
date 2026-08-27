@@ -5556,21 +5556,38 @@ func (m *Model) backspaceCreateField() {
 // length, whereas a label prefixed to the help text never does. The plain
 // directory-deck-started-in fallback (no history, not cycling, not
 // ambiguous) carries no label at all.
-// createCWDDisplayValue is the cwd field's rendered value: m.createCWD,
-// plus its ghost completion (task 010) coloured in the theme's dimmed
-// token when one is available AND the field is actually focused --
-// "cursor at end of field" only means something while this field is the
-// one being edited, so a ghost is never shown, and right/end never has
-// anything to accept, on any OTHER field's rendering of this same row.
-func (m Model) createCWDDisplayValue() string {
+// createCWDGhostSuffix is the cwd field's ghost completion (task 010) as
+// the PLAIN trailing suffix of createCWDDisplayValue's value: non-empty
+// only when a unique directory match exists AND the cwd field is actually
+// focused -- "cursor at end of field" only means something while this
+// field is the one being edited, so a ghost is never shown, and right/end
+// never has anything to accept, on any OTHER field's rendering of this
+// same row.
+//
+// It exists so the ghost's §11.6 `dimmed` colouring can be applied where
+// the frame is drawn (styledCreateBody, which asks this for the cwd row
+// and colours exactly those trailing bytes) instead of inside the value
+// itself: colouring it here baked SGR bytes into the string
+// createFieldRows returns, which createBody then interpolated into the
+// very body wrapDialogLines/dialogMaxScroll measure -- so an escape
+// sequence counted as display width and moved where a page boundary fell,
+// exactly what SPEC.md:1355 forbids.
+func (m Model) createCWDGhostSuffix() string {
 	if m.createField != 1 {
-		return m.createCWD
+		return ""
 	}
 	ghost, ok := createCWDGhostCompletion(m.createCWD)
-	if !ok || ghost == "" {
-		return m.createCWD
+	if !ok {
+		return ""
 	}
-	return m.createCWD + m.colorToken(theme.Dimmed, ghost)
+	return ghost
+}
+
+// createCWDDisplayValue is the cwd field's rendered value: m.createCWD
+// plus its ghost completion, both plain -- see createCWDGhostSuffix for
+// where the ghost's dimmed token is applied instead.
+func (m Model) createCWDDisplayValue() string {
+	return m.createCWD + m.createCWDGhostSuffix()
 }
 
 func (m Model) createCWDHelp() string {
@@ -5784,18 +5801,54 @@ func (m Model) styledCreateBody() string {
 			out = append(out, m.colorToken(tok, l))
 		}
 	}
-	colorLabelValue := func(labelPrefix, plainLine string, focused bool) {
-		for _, l := range wrap(plainLine) {
+	// colorLabelValue colours one field row's already-wrapped label/value
+	// line. ghost is the plain trailing suffix of plainLine that is a ghost
+	// completion rather than typed text (createCWDGhostSuffix; "" for every
+	// row but the focused cwd one): those bytes take `dimmed` while the
+	// typed part keeps `text`, which is how the ghost stays visibly
+	// provisional now that the suffix itself reaches here uncoloured.
+	colorLabelValue := func(labelPrefix, plainLine, ghost string, focused bool) {
+		lines := wrap(plainLine)
+		// ghostSpan[i] is how many TRAILING bytes of lines[i] belong to the
+		// ghost. Walking the physical lines backwards, consuming the ghost
+		// from its own end, attributes it correctly even when wrapping
+		// splits it across two lines. A line whose tail does not match the
+		// ghost's remaining tail byte for byte (wrapping dropped a space at
+		// the break) stops the walk instead of guessing: the affected line
+		// then renders wholly as `text`, never as a mis-aligned colour span.
+		ghostSpan := make([]int, len(lines))
+		for i, rem := len(lines)-1, ghost; i >= 0 && rem != ""; i-- {
+			n := len(rem)
+			if n > len(lines[i]) {
+				n = len(lines[i])
+			}
+			if !strings.HasSuffix(lines[i], rem[len(rem)-n:]) {
+				break
+			}
+			ghostSpan[i] = n
+			rem = rem[:len(rem)-n]
+		}
+		for i, l := range lines {
 			var segs []settingsRowSegment
+			value := l
 			if strings.HasPrefix(l, labelPrefix) {
-				segs = []settingsRowSegment{
-					{Text: labelPrefix, Tok: theme.Hint},
-					{Text: strings.TrimPrefix(l, labelPrefix), Tok: theme.Text},
-				}
-			} else {
-				// A physical continuation line (the value overflowed onto
-				// its own line): no label prefix left to split out, so the
-				// whole line is the value's own overflow, coloured `text`.
+				segs = append(segs, settingsRowSegment{Text: labelPrefix, Tok: theme.Hint})
+				value = strings.TrimPrefix(l, labelPrefix)
+			}
+			// Otherwise this is a physical continuation line (the value
+			// overflowed onto its own line): no label prefix left to split
+			// out, so the whole line is the value's own overflow.
+			n := ghostSpan[i]
+			if n > len(value) {
+				n = len(value)
+			}
+			if typed := value[:len(value)-n]; typed != "" {
+				segs = append(segs, settingsRowSegment{Text: typed, Tok: theme.Text})
+			}
+			if n > 0 {
+				segs = append(segs, settingsRowSegment{Text: value[len(value)-n:], Tok: theme.Dimmed})
+			}
+			if len(segs) == 0 {
 				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
 			}
 			out = append(out, m.renderCreateRowSegments(focused, segs))
@@ -5832,7 +5885,13 @@ func (m Model) styledCreateBody() string {
 	for field, row := range m.createFieldRows() {
 		marker := m.createFieldMarker(field)
 		labelPrefix := fmt.Sprintf("%s%s: ", marker, row.label)
-		colorLabelValue(labelPrefix, labelPrefix+row.value, field == m.createField)
+		// Field 1 is the cwd row (createFieldRows' own order): the one row
+		// whose value can end in a ghost completion rather than typed text.
+		ghost := ""
+		if field == 1 {
+			ghost = m.createCWDGhostSuffix()
+		}
+		colorLabelValue(labelPrefix, labelPrefix+row.value, ghost, field == m.createField)
 		colorWhole(theme.Dimmed, "    "+row.help)
 		if field == 0 {
 			if warning := m.createNameReuseWarning(); warning != "" {
