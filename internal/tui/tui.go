@@ -41,8 +41,17 @@ type Model struct {
 	// a scrollable window; these hold the window's top line, reset to 0
 	// every time the overlay opens (never sticking across a close/reopen,
 	// like envReveal). See eventLogScroll below for the event log's own.
-	helpScroll       int
-	detailScroll     int
+	helpScroll   int
+	detailScroll int
+	// createScroll is task 016's own instance of the same helpScroll/
+	// detailScroll pattern above: the create modal's field set can wrap
+	// well past the frame budget (framedDialogScrollable's own doc
+	// comment measured it at 29 lines untouched, before this task's own
+	// theming/candidate-list growth), so PgUp/PgDn (updateCreate) scroll
+	// this window instead of the modal ever truncating its own submit
+	// line away. Reset to 0 every time `n` opens the modal, same as the
+	// other two never sticking across a close/reopen.
+	createScroll     int
 	createName       string
 	createCWD        string
 	createAgent      string
@@ -2218,6 +2227,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
+				m.createScroll = 0
 				m.createName = ""
 				m.createCWD, m.createCWDLastUsed = m.prefillCreateCWD()
 				m.createCWDPrefilled = true
@@ -5128,6 +5138,18 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "backspace", "ctrl+h":
 		m.backspaceCreateField()
 		return m, nil
+	case "pgup":
+		// Task 016: the create modal moved onto framedDialogScrollable
+		// (its field set + candidate list + footer/error lines can wrap
+		// well past the frame budget), so PgUp/PgDn now scroll it exactly
+		// like the three no-fields overlays already do -- measured off
+		// m.createBody(), the plain body, never the coloured one, so a
+		// theme change can never move where a page boundary falls.
+		m.createScroll = m.dialogScrollByPage(m.createScroll, m.createBody(), -1)
+		return m, nil
+	case "pgdown":
+		m.createScroll = m.dialogScrollByPage(m.createScroll, m.createBody(), 1)
+		return m, nil
 	}
 	if runes := msg.Runes; len(runes) > 0 && createFieldIsText(m.createField) {
 		switch m.createField {
@@ -5467,13 +5489,28 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	}
 }
 
-func (m Model) createView() string {
-	marker := func(field int) string {
-		if m.createField == field {
-			return "> "
-		}
-		return "  "
+// createFieldMarker is the create modal's own ">"/"  " focus marker
+// (task 016 split this out of createBody so styledCreateBody can build
+// the identical plain label line it colours, without duplicating the
+// marker literal in two places).
+func (m Model) createFieldMarker(field int) string {
+	if m.createField == field {
+		return "> "
 	}
+	return "  "
+}
+
+// createBody builds the create modal's PLAIN, unstyled content -- byte
+// for byte what createView rendered directly before task 016 added a
+// themed rendering pass. It stays the one text scroll math measures
+// (dialogScrollByPage in updateCreate's new pgup/pgdown cases, mirroring
+// helpText/eventLogBody's own plain body passed to their PgUp/PgDn
+// handlers) so a colour token this task adds can never move where a page
+// boundary falls. styledCreateBody (below) is createView's only other
+// caller, and never re-derives this structure independently -- both walk
+// createFieldRows/createNameReuseWarning/createCWDCandidates in the same
+// order, so the two can never drift into a different physical line count.
+func (m Model) createBody() string {
 	var b strings.Builder
 	title := "Create session"
 	if m.createAgent == "shell" {
@@ -5481,7 +5518,7 @@ func (m Model) createView() string {
 	}
 	b.WriteString(title + "\n")
 	for field, row := range m.createFieldRows() {
-		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", marker(field), row.label, row.value, row.help)
+		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", m.createFieldMarker(field), row.label, row.value, row.help)
 		if field == 0 {
 			// The reuse warning (PRD R77 / SPEC §11.4) gets its own
 			// dedicated line rather than being folded into the Name
@@ -5519,7 +5556,179 @@ func (m Model) createView() string {
 			fmt.Fprintf(&b, "\nCannot create session: %s\n", m.createError)
 		}
 	}
-	return m.framedDialog(b.String())
+	return b.String()
+}
+
+// createFooterKeyTokens is the create modal's footer legend vocabulary
+// (task 016), mirroring help_style.go's helpKeycapTokens one section
+// down: the leading token of each " · "-separated entry in createBody's
+// own footer line ("Tab/Shift+Tab field · Left/Right/Space cycles ·
+// Enter submits · Esc cancels"), used only to decide which already-
+// wrapped word gets theme.Key instead of theme.Hint -- see
+// styledCreateBody's colorFooterLine for why this runs word-by-word on
+// the PLAIN, already-wrapped line rather than colouring before wrapping.
+var createFooterKeyTokens = map[string]bool{
+	"Tab/Shift+Tab":    true,
+	"Left/Right/Space": true,
+	"Enter":            true,
+	"Esc":              true,
+}
+
+// renderCreateRowSegments composes segs onto one already-wrapped physical
+// line (task 016): a plain colorToken call per segment for an unfocused
+// row (each self-resetting, exactly like every other themed line
+// styledCreateBody builds), or -- for the one row m.createField currently
+// names -- SPEC.md:1355's "focused field carrying the same selection
+// treatment a selected list row does": composed through
+// settingsRenderRowOpen (settings.go), which opens each segment's own
+// foreground colour but never closes it, wrapped in exactly one
+// bgColorToken(theme.Selection, ...) reset at the very end. A per-segment
+// colorToken reset would double as clearing that outer background the
+// instant the first segment's own text ended (foregroundSGR's own doc
+// comment on theme_color.go), which is why a focused row cannot reuse the
+// unfocused branch's plain per-segment colorToken calls.
+func (m Model) renderCreateRowSegments(focused bool, segs []settingsRowSegment) string {
+	if focused {
+		return m.bgColorToken(theme.Selection, m.settingsRenderRowOpen(segs))
+	}
+	var b strings.Builder
+	for _, s := range segs {
+		b.WriteString(m.colorToken(s.Tok, s.Text))
+	}
+	return b.String()
+}
+
+// styledCreateBody re-derives createBody's exact structure -- same field
+// loop, same reuse-warning/candidate/footer/error branches, in the same
+// order -- but colours each finished PHYSICAL line rather than the
+// logical one: every call below wraps a plain (uncoloured) string via
+// wrap (m.wrapDialogLines) FIRST, and only ever colours the strings that
+// call already returned. A colour token this task adds can therefore
+// never straddle a word-wrap boundary wrapDialogLines hasn't drawn yet --
+// the failure mode SPEC.md:1355's "colour is applied where the frame is
+// drawn and never baked into the strings the model holds" warns against,
+// and the reason createBody above stays the one plain body every scroll
+// measurement uses. Token mapping is SPEC.md:1355 verbatim: the title in
+// `title`, a field's label in `hint` and its value in `text`, its help in
+// `dimmed`, the footer legend's keys in `key`, a validation message in
+// `error`, and the focused field in `selection` (renderCreateRowSegments).
+// The one-line reuse warning (R77) is not itself a validation message --
+// it renders before any submit is attempted -- so it takes `dimmed`,
+// matching every other inline explanatory caveat in this dialog.
+func (m Model) styledCreateBody() string {
+	wrap := m.wrapDialogLines
+	var out []string
+
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorLabelValue := func(labelPrefix, plainLine string, focused bool) {
+		for _, l := range wrap(plainLine) {
+			var segs []settingsRowSegment
+			if strings.HasPrefix(l, labelPrefix) {
+				segs = []settingsRowSegment{
+					{Text: labelPrefix, Tok: theme.Hint},
+					{Text: strings.TrimPrefix(l, labelPrefix), Tok: theme.Text},
+				}
+			} else {
+				// A physical continuation line (the value overflowed onto
+				// its own line): no label prefix left to split out, so the
+				// whole line is the value's own overflow, coloured `text`.
+				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+			}
+			out = append(out, m.renderCreateRowSegments(focused, segs))
+		}
+	}
+	// colorFooterLine colours createBody's already-wrapped footer legend
+	// line word by word (never before wrap: see this function's own doc
+	// comment) -- safe because every createFooterKeyTokens entry and its
+	// one-word meaning ("Tab/Shift+Tab field", "Enter submits", ...) is
+	// exactly two whitespace-delimited words, so no colour span this adds
+	// ever covers more than one word, and rejoining strings.Fields' output
+	// with single spaces reproduces createBody's own single-space-and-
+	// " · "-separated layout exactly.
+	colorFooterLine := func(line string) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if createFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	title := "Create session"
+	if m.createAgent == "shell" {
+		title = "Create shell session"
+	}
+	colorWhole(theme.Title, title)
+
+	for field, row := range m.createFieldRows() {
+		marker := m.createFieldMarker(field)
+		labelPrefix := fmt.Sprintf("%s%s: ", marker, row.label)
+		colorLabelValue(labelPrefix, labelPrefix+row.value, field == m.createField)
+		colorWhole(theme.Dimmed, "    "+row.help)
+		if field == 0 {
+			if warning := m.createNameReuseWarning(); warning != "" {
+				colorWhole(theme.Dimmed, "    "+warning)
+			}
+		}
+	}
+	if len(m.createCWDCandidates) > 0 {
+		colorWhole(theme.Hint, "  candidates (up/down selects, enter or tab accepts, esc closes):")
+		for i, name := range m.createCWDCandidates {
+			marker := "    "
+			if i == m.createCWDCandidateIndex {
+				marker = "  > "
+			}
+			colorWhole(theme.Text, marker+name+"/")
+		}
+	}
+	colorFooterLine("Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels")
+	if m.createError != "" {
+		out = append(out, "")
+		if strings.Contains(m.createError, "collides with existing slug") {
+			colorWhole(theme.Error, "Cannot create session: name collides with existing slug.")
+		} else {
+			colorWhole(theme.Error, "Cannot create session: "+m.createError)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// createView renders the create modal through framedDialogScrollable
+// (task 016) rather than the unbounded framedDialog: its own field set
+// alone already reaches 29 lines untouched (framedDialogScrollable's doc
+// comment), well past an 80x24 frame's budget, and this task's theming
+// pass adds no new content but must not regress that -- PgUp/PgDn
+// (updateCreate) scroll m.createScroll so the submit line stays reachable
+// instead of ever silently truncated off the bottom.
+//
+// A rejection is the one case that must not wait for a manual PgDn: every
+// existing validation/collision test in this package (predating this
+// task, e.g. create_validation_test.go) submits, then reads createView's
+// OWN string for the rejection reason with no scroll keystroke in
+// between -- exactly the SPEC.md requirement-15 contract ("names the
+// specific problem in-dialog"). So whenever an error is set and the user
+// has not already scrolled away from the top (m.createScroll == 0, its
+// value the instant `n`/submit opened or last redrew this dialog), the
+// view scrolls itself to the bottom -- where every error/collision line
+// this file ever appends always lands, since createBody appends them
+// last -- rather than requiring a page-down to see why the submit
+// failed. A user who has already scrolled elsewhere keeps their own
+// position; this only ever overrides the untouched default.
+func (m Model) createView() string {
+	scroll := m.createScroll
+	if m.createError != "" && scroll == 0 {
+		scroll = m.dialogMaxScroll(m.createBody())
+	}
+	return m.framedDialogScrollable(m.styledCreateBody(), scroll)
 }
 
 // helpView renders the `?` help overlay (SPEC requirement 16: bordered like
