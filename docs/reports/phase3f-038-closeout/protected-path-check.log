@@ -1,0 +1,36 @@
+=== task 038 protected-path audit, BY SHA (never by identity) ===
+date: 2026-08-27T03:00:57Z
+HEAD: 84b26a97a02eba77ca81cc987e013db8d43f9dcd
+
+$ git log --format=%H bce80ea..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+60c2c56af9b7456df81c7408e7ca812a9434701a
+c80a14cd13110d884bc7a79cb1c8de0619f58610
+
+--- per-path, independently ---
+$ git log --format='%h %s' bce80ea..HEAD -- SPEC.md
+c80a14c spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+(count: 1)
+
+$ git log --format='%h %s' bce80ea..HEAD -- prds/
+60c2c56 prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+(count: 1)
+
+$ git log --format='%h %s' bce80ea..HEAD -- ci/Dockerfile
+(count: 0)
+
+$ git log --format='%h %s' bce80ea..HEAD -- ci/SPIKE.md
+(count: 0)
+
+--- what each recognised sha touched ---
+$ git show --stat --format='%h %s' c80a14c -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+c80a14c spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+
+ SPEC.md | 57 ++++++++++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 42 insertions(+), 15 deletions(-)
+
+$ git show --stat --format='%h %s' 60c2c56 -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+60c2c56 prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+
+ prds/phase3f-residuals-and-suite-determinism.md | 1110 +++++++++++++++++++++++
+ 1 file changed, 1110 insertions(+)
+

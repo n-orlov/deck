@@ -1,0 +1,45 @@
+$ python3 docs/reports/phase3f-027-closeout/citation_sweep.py
+reports scanned: 34
+  docs/reports/phase3f-016-r64-starting-assertion-sweep.md
+  docs/reports/phase3f-017-r65-settled-sigwinch-count.md
+  docs/reports/phase3f-018-r66-matrix-quantised-distinctness.md
+  docs/reports/phase3f-019-r67-test-file-names.md
+  docs/reports/phase3f-020-r67-report-section-titles.md
+  docs/reports/phase3f-021-fullsuite/README.md
+  docs/reports/phase3f-022-stability10/README.md
+  docs/reports/phase3f-026-issue-notifications.md
+  docs/reports/phase3f-027-closeout/README.md
+  docs/reports/phase3f-028-f1-passive-fit-floor/README.md
+  docs/reports/phase3f-029-r74-launch-generation/README.md
+  docs/reports/phase3f-030-r74-superseded-hooks/README.md
+  docs/reports/phase3f-031-r75-launch-lease-release/README.md
+  docs/reports/phase3f-032-fullsuite/README.md
+  docs/reports/phase3f-033-stability10/README.md
+  docs/reports/phase3f-037-issue-11-r74-r75.md
+  docs/reports/phase3f-evidence/README.md
+  docs/reports/phase3f-evidence/task001-r68-reply-drain.md
+  docs/reports/phase3f-evidence/task002-r68-write-lock.md
+  docs/reports/phase3f-evidence/task003-r69-leg1.md
+  docs/reports/phase3f-evidence/task004-r69-legs23.md
+  docs/reports/phase3f-evidence/task005-r70.md
+  docs/reports/phase3f-evidence/task007-r71-leg2-revert-reproduce.md
+  docs/reports/phase3f-evidence/task008-r71-leg3-revert-reproduce.md
+  docs/reports/phase3f-evidence/task009-r72-archive-confirm-revert-reproduce.md
+  docs/reports/phase3f-evidence/task010-r72-archive-undo-toast.md
+  docs/reports/phase3f-evidence/task011-r71-r72-round-trip.md
+  docs/reports/phase3f-evidence/task012-r73-line-scroll.md
+  docs/reports/phase3f-evidence/task013-r73-wheel-routing.md
+  docs/reports/phase3f-evidence/task014-r73-help-text-and-decisions.md
+  docs/reports/phase3f-evidence/task015-r63-preview-fit-overlap.md
+  docs/reports/phase3f-evidence/task017-r65-settled-sigwinch-count.md
+  docs/reports/phase3f-findings.md
+  docs/reports/phase3f.md
+
+distinct shas cited: 44
+sha resolution failures: 0
+
+distinct (citing dir, link target) pairs: 167
+link resolution failures: 0
+
+CITATION SWEEP: PASS - every cited sha resolves and every cited path exists
+(exit 0)

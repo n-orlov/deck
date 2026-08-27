@@ -1,0 +1,70 @@
+=== task 038 git hygiene (approach 02 window 60c2c56..HEAD; approach 02's own commits 2b39124..HEAD) ===
+date: 2026-08-27T03:01:22Z  HEAD: 84b26a97a02eba77ca81cc987e013db8d43f9dcd
+
+$ git status --short
+?? docs/reports/phase3f-038-closeout/
+(entries: 1)
+
+$ git log origin/main..HEAD --oneline
+(entries: 0)
+
+$ git rev-parse HEAD origin/main
+84b26a97a02eba77ca81cc987e013db8d43f9dcd
+84b26a97a02eba77ca81cc987e013db8d43f9dcd
+
+=== coverage: every task 028-037 -> commits in 60c2c56..HEAD (subject suffix '(task NNN)') ===
+task 028: count=1 commits=2b39124 
+task 029: count=1 commits=a0d4887 
+task 030: count=1 commits=196e6f4 
+task 031: count=1 commits=0a5034d 
+task 032: count=1 commits=9ce65be 
+task 033: count=1 commits=2ab9f4a 
+task 034: count=1 commits=ac273c9 
+task 035: count=1 commits=7bc8a39 
+task 036: count=1 commits=f8174f7 
+task 037: count=1 commits=84b26a9 
+task 038: count=0 commits=NONE
+
+--- tasks 028-037 with no commit ---
+completed tasks with no commit: (none)
+
+--- every commit in 2b39124~1..HEAD, oldest first, with its task tag ---
+2b39124 features: stop preview.feature's floor scenario racing its own shrink (task 028)
+a0d4887 store: mint a per-launch generation for each launch lease (task 029)
+196e6f4 hookrecv: drop a hook write from a superseded launch generation (task 030)
+0a5034d store: release a concluded launch's lease so its own row is not "starting elsewhere" (task 031)
+9ce65be docs: publish the green whole-suite run at the final code commit (task 032)
+2ab9f4a docs: publish the real 10/10 stability rate at the final code commit (task 033)
+ac273c9 docs: re-derive R65's verdict and record R74/R75 in the phase report (task 034)
+7bc8a39 docs: record F1's closure and approach 02's six new findings (task 035)
+f8174f7 docs: reconcile DELIVERY-LOG with R65's re-derived verdict and R74/R75 (task 036)
+84b26a9 docs: record the R74/R75 fixing shas posted to issue #11 (task 037)
+
+=== no rewritten history ===
+$ git reflog show refs/remotes/origin/main | wc -l  -> 448
+$ git reflog show refs/remotes/origin/main | grep -c forced-update  -> 0
+
+$ git reflog show refs/remotes/origin/main --date=iso | head -11   (approach 02 pushes)
+84b26a9 refs/remotes/origin/main@{2026-08-27 02:58:45 +0000}: update by push
+f8174f7 refs/remotes/origin/main@{2026-08-27 02:52:59 +0000}: update by push
+7bc8a39 refs/remotes/origin/main@{2026-08-27 02:48:26 +0000}: update by push
+ac273c9 refs/remotes/origin/main@{2026-08-27 02:40:32 +0000}: update by push
+2ab9f4a refs/remotes/origin/main@{2026-08-27 02:23:29 +0000}: update by push
+9ce65be refs/remotes/origin/main@{2026-08-27 01:06:26 +0000}: update by push
+0a5034d refs/remotes/origin/main@{2026-08-27 00:51:21 +0000}: update by push
+196e6f4 refs/remotes/origin/main@{2026-08-27 00:37:00 +0000}: update by push
+a0d4887 refs/remotes/origin/main@{2026-08-27 00:18:03 +0000}: update by push
+2b39124 refs/remotes/origin/main@{2026-08-27 00:03:37 +0000}: update by push
+9a20134 refs/remotes/origin/main@{2026-08-26 23:11:15 +0000}: update by push
+
+$ git reflog show HEAD --date=iso | grep -Ei "amend|rebase|reset|filter-branch" | head -5   (newest first)
+202e1ba HEAD@{2026-08-26 18:20:27 +0000}: commit (amend): features: let a targeted run select feature files by path (task 017)
+4f5cfce HEAD@{2026-08-26 18:20:21 +0000}: commit (amend): features: let a targeted run select feature files by path (task 017)
+0f4db8a HEAD@{2026-08-26 04:00:16 +0000}: reset: moving to HEAD
+517bf57 HEAD@{2026-08-26 02:32:48 +0000}: commit (amend): docs: add 3-consecutive tag-alone runs for R54 retarget scenario (403)
+bc6bc84 HEAD@{2026-08-26 02:12:53 +0000}: reset: moving to bc6bc840d69df1e6502bf09f8f0fba986244508c
+(newest amend/reset entry predates approach 02's first commit 2b39124, pushed 2026-08-27 00:03:37 +0000)
+
+=== both operator commits published (ancestry, not log reading) ===
+c80a14c: PUBLISHED
+60c2c56: PUBLISHED

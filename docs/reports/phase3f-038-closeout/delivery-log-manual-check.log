@@ -1,0 +1,11 @@
+$ python3 docs/reports/phase3f-038-closeout/delivery_log_sweep.py
+document: docs/DELIVERY-LOG.md
+distinct hex tokens cited: 42
+  commit      31  0745ced 0a5034d 10f3970 17e91ce 196e6f4 2714d1b 2b39124 300ee86 366dd78 465a7d9 4edbfc2 63d4189 677f5a0 7d060cd 88742b2 9c2e66a 9d43a32 9f73996 a0d4887 a9ff496 b848d28 b8f2513 c12c30e ce8ef91 d346a4b e47cb35 e5d2b58 eb2089e f3c25d5 f7b97fe fb9bd71
+  blob         7  3f7c1eb 40af336 588c7fa 6aea36f 7ae5e05 9b23161 a1951f8
+  foreign      4  08ce400 322a7e0 a5a18d2 db465ad
+  UNEXPLAINED  0  
+distinct relative link targets: 6 - failures: 0 
+distinct backticked repo paths: 29 - failures: 0 
+VERDICT: PASS - no unexplained sha, every link and path resolves
+(exit 0)
