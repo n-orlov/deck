@@ -349,3 +349,70 @@ func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
 		t.Fatalf("archived holder %q must survive a refused create, count = %d", archived.ID, count)
 	}
 }
+
+// TestTombstonedNameHoldersAndSessionRowExists covers the two reads the
+// SERVICE layer needs to finish a name-reuse reap on the filesystem after
+// the create's own transaction has committed: which tombstoned rows hold a
+// name (or its §3.2 slug), and whether one of them is really gone
+// afterwards. Both are plain reads -- neither reaps anything itself, and a
+// live or archived holder is deliberately NOT reported (its files stay).
+func TestTombstonedNameHoldersAndSessionRowExists(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	live := createTombstoneTestSession(t, st, ctx, "still-live")
+	tomb, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "holder-tomb", Name: "Held Name", CWD: "/work/holder-tomb",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := createTombstoneTestSession(t, st, ctx, "archived-name")
+	if err := st.ArchiveSession(ctx, archived.ID, 150); err != nil {
+		t.Fatal(err)
+	}
+
+	if ids, err := st.TombstonedNameHolders(ctx, live.Name); err != nil || len(ids) != 0 {
+		t.Fatalf("TombstonedNameHolders(live) = %#v, %v, want none", ids, err)
+	}
+	if ids, err := st.TombstonedNameHolders(ctx, archived.Name); err != nil || len(ids) != 0 {
+		t.Fatalf("TombstonedNameHolders(archived) = %#v, %v, want none", ids, err)
+	}
+	if ids, err := st.TombstonedNameHolders(ctx, tomb.Name); err != nil || len(ids) != 0 {
+		t.Fatalf("TombstonedNameHolders(not yet deleted) = %#v, %v, want none", ids, err)
+	}
+	if err := st.SoftDeleteSession(ctx, tomb.ID, 200); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := st.TombstonedNameHolders(ctx, tomb.Name)
+	if err != nil || len(ids) != 1 || ids[0] != tomb.ID {
+		t.Fatalf("TombstonedNameHolders(tombstoned name) = %#v, %v, want [%q]", ids, err, tomb.ID)
+	}
+	// A different Name whose slug matches is reported too (the create would
+	// reap that row via the slug pre-check).
+	ids, err = st.TombstonedNameHolders(ctx, "held name")
+	if err != nil || len(ids) != 1 || ids[0] != tomb.ID {
+		t.Fatalf("TombstonedNameHolders(slug-equal name) = %#v, %v, want [%q]", ids, err, tomb.ID)
+	}
+	if _, err := st.TombstonedNameHolders(ctx, ""); err == nil {
+		t.Fatal("TombstonedNameHolders(\"\") returned nil error, want a refusal")
+	}
+
+	exists, err := st.SessionRowExists(ctx, tomb.ID)
+	if err != nil || !exists {
+		t.Fatalf("SessionRowExists(tombstoned) = %v, %v, want true (the row is still there)", exists, err)
+	}
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "holder-new", Name: tomb.Name, CWD: "/work/holder-new",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
+	}); err != nil {
+		t.Fatalf("create reusing the tombstoned name: %v", err)
+	}
+	exists, err = st.SessionRowExists(ctx, tomb.ID)
+	if err != nil || exists {
+		t.Fatalf("SessionRowExists(reaped) = %v, %v, want false", exists, err)
+	}
+	if _, err := st.SessionRowExists(ctx, ""); err == nil {
+		t.Fatal("SessionRowExists(\"\") returned nil error, want a refusal")
+	}
+}

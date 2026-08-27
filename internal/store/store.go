@@ -1645,6 +1645,58 @@ func reapTombstonedHolderTx(ctx context.Context, tx *sql.Tx, column, value, conf
 	return reapSessionTx(ctx, tx, id, at)
 }
 
+// TombstonedNameHolders reports the ids of the tombstoned rows that hold
+// `name` or its §3.2 slug -- exactly the rows that a CreateSession (and,
+// task 004, a RenameSession) taking that name reaps inside its own
+// transaction via reapTombstonedHolderTx (R77, SPEC.md §9.2). It reaps
+// nothing itself and writes nothing: it exists so the SERVICE layer can
+// learn, BEFORE the create runs, whose deck-owned per-session FILES (the
+// captures dir and §9.4 history file) that create is about to orphan, and
+// then remove them AFTER the SQL commit. Reading the ids up front rather
+// than deleting files up front is the whole point: a create that is
+// refused (a live or archived holder) or that fails for any other reason
+// must leave a still-restorable session's scrollback exactly as it was.
+func (s *Store) TombstonedNameHolders(ctx context.Context, name string) ([]string, error) {
+	if name == "" {
+		return nil, errors.New("session name is required")
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM sessions WHERE deleted_at != 0 AND (name = ? OR slug = ?)`, name, Slug(name))
+	if err != nil {
+		return nil, fmt.Errorf("list tombstoned holders of name %q: %w", name, err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan tombstoned holder of name %q: %w", name, err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list tombstoned holders of name %q: %w", name, err)
+	}
+	return ids, nil
+}
+
+// SessionRowExists reports whether a row with this id is still present at
+// all, tombstoned or not. The service layer uses it to confirm, after a
+// create committed, that a holder it saw tombstoned beforehand really was
+// reaped by that create before removing that holder's files -- so a row
+// that was restored in between (its name freed some other way) never has
+// its scrollback deleted underneath it.
+func (s *Store) SessionRowExists(ctx context.Context, id string) (bool, error) {
+	if id == "" {
+		return false, errors.New("session id is required")
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE id = ?`, id).Scan(&count); err != nil {
+		return false, fmt.Errorf("check session %q exists: %w", id, err)
+	}
+	return count > 0, nil
+}
+
 // ReapSession permanently removes a tombstoned session once its grace
 // window (task 106) has elapsed. Only a row SoftDeleteSession has already
 // tombstoned may be reaped; reaping a live row is refused so a caller

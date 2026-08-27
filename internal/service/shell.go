@@ -102,12 +102,23 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 		return store.Session{}, errors.New("PATH is required to create a shell session")
 	}
 	now := s.Clock.Now().UnixMilli()
+	// SPEC §9.2 (R77): if this name (or its slug) is held only by a
+	// tombstoned row, CreateSession reaps that row inside its own
+	// transaction. Note the holders now, remove their files only after that
+	// commit -- a create that is refused must leave them untouched.
+	reapedHolders, err := s.tombstonedNameHolders(ctx, input.Name)
+	if err != nil {
+		return store.Session{}, err
+	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable shell session: %w", err)
+	}
+	if err := s.reapedHolderFiles(ctx, reapedHolders); err != nil {
+		return session, fmt.Errorf("clean up the session reaped by reusing name %q: %w", input.Name, err)
 	}
 	s.promoteRecentCwd(ctx, session.CWD)
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
