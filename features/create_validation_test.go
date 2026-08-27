@@ -32,15 +32,16 @@ func registerCreateValidationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" screen contains, allowing word-wrap, "([^"]+)"$`, clientScreenContainsDewrapped)
 }
 
-// tabCreateModalNTimes sends n individual tab keystrokes with a short pause
-// between each, matching the pacing every other repeated-keystroke step in
-// this package already needs (features/assertions_test.go's own comment on
-// this: a pty write burst of the same raw byte can coalesce/drop all but
-// the first). This is what walks create-modal focus from the name field
-// (0) to a later field without landing two tabs in the same write.
-func tabCreateModalNTimes(client *ScreenDriver, n int) error {
+// downCreateModalNTimes sends n individual down-arrow keystrokes (↑/↓
+// field navigation, task 025) with a short pause between each, matching
+// the pacing every other repeated-keystroke step in this package already
+// needs (features/assertions_test.go's own comment on this: a pty write
+// burst of the same raw byte can coalesce/drop all but the first). This is
+// what walks create-modal focus from the name field (0) to a later field
+// without landing two presses in the same write.
+func downCreateModalNTimes(client *ScreenDriver, n int) error {
 	for i := 0; i < n; i++ {
-		if err := client.Send("\t"); err != nil {
+		if err := client.Send("\x1b[B"); err != nil {
 			return err
 		}
 		time.Sleep(60 * time.Millisecond)
@@ -79,7 +80,7 @@ func clientAttemptsShellSessionExpectingRejection(ctx context.Context, clientNam
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\t" + dir + "\r"); err != nil {
+	if err := client.Send("\x1b[B" + dir + "\r"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "Cannot create session")
@@ -104,13 +105,13 @@ func clientTypesIntoCreateNameField(ctx context.Context, name, text string) erro
 	return nil
 }
 
-// clientTypesIntoCreateEnvField tabs from the name field (0) to the env
+// clientTypesIntoCreateEnvField moves down (↑/↓, task 025) from the name
+// field (0) to the env
 // field (5: name, cwd, agent, permission profile, launch_args, env --
 // createFieldRows' own order) and types text there. The cwd field is
 // deliberately left untouched at whatever it already holds (a real,
-// existing directory), so the one intervening tab through it (task 012's
-// bash-completion contract) finds nothing to complete or list and falls
-// straight through to its ordinary field-advance meaning.
+// existing directory), so the one intervening down-arrow past it moves
+// focus without touching its value.
 func clientTypesIntoCreateEnvField(ctx context.Context, name, text string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -120,7 +121,7 @@ func clientTypesIntoCreateEnvField(ctx context.Context, name, text string) error
 	if err != nil {
 		return err
 	}
-	if err := tabCreateModalNTimes(client, 5); err != nil {
+	if err := downCreateModalNTimes(client, 5); err != nil {
 		return err
 	}
 	if err := client.Send(text); err != nil {
@@ -141,7 +142,7 @@ func clientTypesIntoCreateLaunchArgsField(ctx context.Context, name, text string
 	if err != nil {
 		return err
 	}
-	if err := tabCreateModalNTimes(client, 4); err != nil {
+	if err := downCreateModalNTimes(client, 4); err != nil {
 		return err
 	}
 	if err := client.Send(text); err != nil {
@@ -152,9 +153,10 @@ func clientTypesIntoCreateLaunchArgsField(ctx context.Context, name, text string
 }
 
 // clientTypesNonexistentPathIntoCreateCWDField registers label under a
-// path that is never created on disk, then types it (via a single tab from
-// the name field) into the cwd field -- validateCreateFields' os.Stat call
-// is what turns this into the "does not exist" message.
+// path that is never created on disk, then types it (via a single
+// down-arrow from the name field, task 025) into the cwd field --
+// validateCreateFields' os.Stat call is what turns this into the
+// "does not exist" message.
 func clientTypesNonexistentPathIntoCreateCWDField(ctx context.Context, name, label string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -166,7 +168,7 @@ func clientTypesNonexistentPathIntoCreateCWDField(ctx context.Context, name, lab
 	}
 	dir := filepath.Join(h.Home, "create-validation-missing-"+label)
 	registerNamedDirectory(h, label, dir)
-	if err := client.Send("\t" + dir); err != nil {
+	if err := client.Send("\x1b[B" + dir); err != nil {
 		return err
 	}
 	time.Sleep(60 * time.Millisecond)
@@ -191,7 +193,7 @@ func clientTypesFilePathIntoCreateCWDField(ctx context.Context, name, label stri
 		return fmt.Errorf("create file labelled %q: %w", label, err)
 	}
 	registerNamedDirectory(h, label, path)
-	if err := client.Send("\t" + path); err != nil {
+	if err := client.Send("\x1b[B" + path); err != nil {
 		return err
 	}
 	time.Sleep(60 * time.Millisecond)

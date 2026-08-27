@@ -8,8 +8,9 @@ import (
 )
 
 // TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation drives the real
-// released binary through a PTY and, using only Tab keystrokes (no mouse, no
-// direct field jumps), visits every field the create modal offers (task
+// released binary through a PTY and, using only ↑/↓ keystrokes (task 025
+// moved field navigation off tab onto ↑/↓; no mouse, no direct field
+// jumps), visits every field the create modal offers (task
 // 015): name, cwd, agent, permission profile, launch_args, env, pre_launch
 // and login_shell. It asserts each field's label and its one-line
 // explanation are rendered as the field becomes active, proving the whole
@@ -45,7 +46,7 @@ func TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation(t *testing.T) {
 
 	// Every field and its explanation are rendered together regardless of
 	// which one is currently active, so the whole set can be asserted from
-	// one settled frame reached by keyboard alone (Tab having cycled
+	// one settled frame reached by keyboard alone (↓ having cycled
 	// through every field at least once, proving each is reachable).
 	wantPairs := [][2]string{
 		{"Name:", "display name"},
@@ -64,8 +65,8 @@ func TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation(t *testing.T) {
 		{"Login shell:", "$SHELL -lc"},
 	}
 	for i := 0; i < len(wantPairs); i++ {
-		if err := driver.Send("\t"); err != nil {
-			t.Fatalf("tab to field %d: %v", i, err)
+		if err := driver.Send("\x1b[B"); err != nil {
+			t.Fatalf("down-arrow to field %d: %v", i, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

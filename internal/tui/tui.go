@@ -6359,7 +6359,7 @@ func (m Model) createAgentHelp() string {
 }
 
 func (m Model) createCWDHelp() string {
-	help := "the session's cwd; must exist and be a directory; \u2191/\u2193 cycles recent history; right/end completes a shown directory match"
+	help := "the session's cwd; must exist and be a directory; Ctrl+P/Ctrl+N cycles recent history; right/end completes a shown directory match"
 	// Ambiguous-match counting (task 011, requirement 15) only applies
 	// while this field is actually focused and being typed into, exactly
 	// like createCWDDisplayValue's ghost: "the cursor is at end of field"
@@ -6493,7 +6493,7 @@ func (m Model) createBody() string {
 			fmt.Fprintf(&b, "%s%s/\n", marker, name)
 		}
 	}
-	b.WriteString("Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels\n")
+	b.WriteString("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels\n")
 	if m.createError != "" {
 		if strings.Contains(m.createError, "collides with existing slug") {
 			b.WriteString("\nCannot create session: name collides with existing slug.\n")
@@ -6507,13 +6507,13 @@ func (m Model) createBody() string {
 // createFooterKeyTokens is the create modal's footer legend vocabulary
 // (task 016), mirroring help_style.go's helpKeycapTokens one section
 // down: the leading token of each " · "-separated entry in createBody's
-// own footer line ("Tab/Shift+Tab field · Left/Right/Space cycles ·
+// own footer line ("↑/↓ field · Left/Right/Space cycles ·
 // Enter submits · Esc cancels"), used only to decide which already-
 // wrapped word gets theme.Key instead of theme.Hint -- see
 // styledCreateBody's colorFooterLine for why this runs word-by-word on
 // the PLAIN, already-wrapped line rather than colouring before wrapping.
 var createFooterKeyTokens = map[string]bool{
-	"Tab/Shift+Tab":    true,
+	"\u2191/\u2193":    true,
 	"Left/Right/Space": true,
 	"Enter":            true,
 	"Esc":              true,
@@ -6625,7 +6625,7 @@ func (m Model) styledCreateBody() string {
 	// colorFooterLine colours createBody's already-wrapped footer legend
 	// line word by word (never before wrap: see this function's own doc
 	// comment) -- safe because every createFooterKeyTokens entry and its
-	// one-word meaning ("Tab/Shift+Tab field", "Enter submits", ...) is
+	// one-word meaning ("↑/↓ field", "Enter submits", ...) is
 	// exactly two whitespace-delimited words, so no colour span this adds
 	// ever covers more than one word, and rejoining strings.Fields' output
 	// with single spaces reproduces createBody's own single-space-and-
@@ -6677,7 +6677,7 @@ func (m Model) styledCreateBody() string {
 			colorWhole(theme.Text, marker+name+"/")
 		}
 	}
-	colorFooterLine("Tab/Shift+Tab field · Left/Right/Space cycles · Enter submits · Esc cancels")
+	colorFooterLine("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels")
 	if m.createError != "" {
 		out = append(out, "")
 		if strings.Contains(m.createError, "collides with existing slug") {
@@ -6915,7 +6915,7 @@ Create dialog fields
                       environment without deck ever storing or logging them
   Login shell         run the pane via $SHELL -lc instead of execing the
                       agent argv directly
-  Tab or ↑/↓ changes field; ↵ advances or submits; Esc cancels
+  ↑/↓ changes field; ↵ advances or submits; Esc cancels
 
 Yolo is gated by allow_yolo: it must be enabled in config.toml, or yolo is
 not offered at all (the UI states why). Once allow_yolo is enabled, choosing

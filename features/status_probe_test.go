@@ -147,7 +147,7 @@ func createPersistentShell(ctx context.Context, clientName, name string) error {
 	// The ordinary interactive /bin/sh fixture can legitimately consume EOF
 	// under a heavily repeated PTY suite. Pin this eligibility row to an
 	// explicit long-running shell command instead.
-	if err := client.Send("\t[\"-c\",\"while :; do sleep 3600; done\"]\r"); err != nil {
+	if err := client.Send("\x1b[B[\"-c\",\"while :; do sleep 3600; done\"]\r"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "starting")
