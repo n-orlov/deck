@@ -1,0 +1,15 @@
+$ ci/run.sh go test -count=1 -run 'TestReconcileRepair' -v ./internal/service/   # the fix
+=== RUN   TestReconcileRepairsUserKilledRowWithLivePane
+--- PASS: TestReconcileRepairsUserKilledRowWithLivePane (0.02s)
+=== RUN   TestReconcileRepairSpendsCrashVerdictOnLivePane
+--- PASS: TestReconcileRepairSpendsCrashVerdictOnLivePane (0.02s)
+=== RUN   TestReconcileRepairsTerminalRowWithLivePaneShell
+--- PASS: TestReconcileRepairsTerminalRowWithLivePaneShell (0.06s)
+=== RUN   TestReconcileRepairsTerminalRowWithLivePaneAgent
+--- PASS: TestReconcileRepairsTerminalRowWithLivePaneAgent (0.06s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	0.172s
+
+$ ci/run.sh go test -count=1 ./internal/service/ ./internal/store/
+ok  	github.com/n-orlov/deck/internal/service	4.528s
+ok  	github.com/n-orlov/deck/internal/store	2.341s
