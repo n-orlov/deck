@@ -103,6 +103,37 @@ Feature: The / list filter: by name, workspace and cwd, and the route back to an
     And deck client "A" screen contains "trip-bystander"
     And deck client "A" exits cleanly
 
+  @requirement-33-dd-reaches-and-tombstones-an-archived-row
+  Scenario: dd found through / tombstones an archived row, u returns it to the archived pool intact, and the reap removes it
+    # internal/tui/filter.go's own comment used to call deleted_at != 0 AND
+    # archived_at != 0 impossible. It is reachable exactly this way: A
+    # archives (hidden from the default list), / is still the only route
+    # back to it, and dd found through that route tombstones it without
+    # ever clearing archived_at -- proven here through the real keystrokes,
+    # the internal/store/tombstone_test.go store test exercises this same
+    # round trip directly against the store API.
+    Given deck client "A" is started with a short delete grace window
+    And deck client "A" creates shell session "filter-dd-archived"
+    And deck client "A" archives its selected session "filter-dd-archived"
+    Then the state database session "filter-dd-archived" is archived
+    When deck client "A" opens the list filter
+    And deck client "A" types "filter-dd-archived" into the filter field
+    And deck client "A" keeps the filter in force with enter
+    Then deck client "A" screen contains "filter-dd-archived"
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    Then deck client "A" screen contains "press u to undo"
+    And the state database session "filter-dd-archived" is tombstoned
+    When deck client "A" presses u
+    Then deck client "A" screen contains "filter-dd-archived"
+    And the state database session "filter-dd-archived" is not tombstoned
+    And the state database session "filter-dd-archived" is archived
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    And 400 milliseconds pass
+    Then the state database session "filter-dd-archived" is reaped
+    And deck client "A" exits cleanly
+
   @requirement-33-unarchive-from-filter-results
   Scenario: U inside the filter's results returns the archived row to the default list
     # R71 (issue #8): the way back out of `A` that resume's own refusal

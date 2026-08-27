@@ -598,3 +598,119 @@ func TestTombstonedNameHoldersAndSessionRowExists(t *testing.T) {
 		t.Fatal("SessionRowExists(\"\") returned nil error, want a refusal")
 	}
 }
+
+// TestDDOnAnArchivedRowIsReachableAndReapsCleanly proves the state
+// filter.go's own comment used to call impossible: deleted_at != 0 AND
+// archived_at != 0 IS reachable, and walks all four consequences an
+// operator meets going through it, end to end at the store API:
+//
+//  1. `dd` (SoftDeleteSession) on an already-archived row tombstones it
+//     without touching archived_at -- neither flag is cleared by the
+//     other's own setter.
+//  2. ListArchivedSessions (deleted_at = 0 AND archived_at != 0) no longer
+//     returns it the moment deleted_at is set, even though archived_at
+//     never changed -- the tombstone, not the archive flag, decides that
+//     list's membership.
+//  3. `u` (RestoreSession) returns it to the archived pool: deleted_at
+//     goes back to 0, archived_at is untouched throughout, so
+//     ListArchivedSessions reports it again with the SAME archived_at it
+//     had before `dd` ever ran.
+//  4. Deleting it again and letting ReapSession run (the grace-window
+//     expiry `dd`'s tombstone is eventually spent on) removes the row
+//     permanently, exactly as it would for a never-archived tombstoned
+//     row -- ReapSession's own refusal gate checks deleted_at alone, so
+//     archived_at being set is never a reason to keep it.
+func TestDDOnAnArchivedRowIsReachableAndReapsCleanly(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	bystander := createTombstoneTestSession(t, st, ctx, "dd-archived-bystander")
+	subject := createTombstoneTestSession(t, st, ctx, "dd-archived-subject")
+
+	if err := st.ArchiveSession(ctx, subject.ID, 100); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	// Step 1: dd tombstones the already-archived row, leaving archived_at
+	// untouched -- the reachable state filter.go's comment used to deny.
+	if err := st.SoftDeleteSession(ctx, subject.ID, 200); err != nil {
+		t.Fatalf("soft delete an archived row: %v", err)
+	}
+	got, err := st.GetSession(ctx, subject.ID)
+	if err != nil {
+		t.Fatalf("GetSession must still find a tombstoned-and-archived row by id: %v", err)
+	}
+	if got.DeletedAt != 200 {
+		t.Fatalf("DeletedAt after dd = %d, want 200", got.DeletedAt)
+	}
+	if got.ArchivedAt != 100 {
+		t.Fatalf("ArchivedAt after dd = %d, want the original 100 untouched", got.ArchivedAt)
+	}
+
+	// Step 2: ListArchivedSessions no longer returns it, even though
+	// archived_at is still set -- the tombstone alone decides.
+	archivedAfterDD, err := st.ListArchivedSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range archivedAfterDD {
+		if row.ID == subject.ID {
+			t.Fatalf("ListArchivedSessions after dd = %+v, must no longer include the tombstoned row %q", archivedAfterDD, subject.ID)
+		}
+	}
+	// And it is not back in the default ListSessions view either -- a
+	// tombstoned row has no filter route back at all, archived or not.
+	visible, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(visible) != 1 || visible[0].ID != bystander.ID {
+		t.Fatalf("ListSessions after dd on the archived row = %+v, want only the bystander %q", visible, bystander.ID)
+	}
+
+	// Step 3: u (RestoreSession) returns it to the archived pool, with the
+	// SAME archived_at it had before dd ever ran.
+	if err := st.RestoreSession(ctx, subject.ID, 300); err != nil {
+		t.Fatalf("restore a tombstoned-and-archived row: %v", err)
+	}
+	restored, err := st.GetSession(ctx, subject.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.DeletedAt != 0 {
+		t.Fatalf("DeletedAt after u = %d, want 0", restored.DeletedAt)
+	}
+	if restored.ArchivedAt != 100 {
+		t.Fatalf("ArchivedAt after u = %d, want the original 100 still intact", restored.ArchivedAt)
+	}
+	archivedAfterRestore, err := st.ListArchivedSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archivedAfterRestore) != 1 || archivedAfterRestore[0].ID != subject.ID {
+		t.Fatalf("ListArchivedSessions after u = %+v, want only %q back in the archived pool", archivedAfterRestore, subject.ID)
+	}
+	if archivedAfterRestore[0].ArchivedAt != 100 {
+		t.Fatalf("ListArchivedSessions row's ArchivedAt after u = %d, want the original 100", archivedAfterRestore[0].ArchivedAt)
+	}
+
+	// Step 4: deleting it again and letting the grace window's own reap
+	// run removes it permanently -- ReapSession's tombstone gate is
+	// deleted_at alone, so the still-set archived_at is never a reason to
+	// refuse.
+	if err := st.SoftDeleteSession(ctx, subject.ID, 400); err != nil {
+		t.Fatalf("soft delete the archived row a second time: %v", err)
+	}
+	if err := st.ReapSession(ctx, subject.ID, 500); err != nil {
+		t.Fatalf("reap a tombstoned-and-archived row: %v", err)
+	}
+	if _, err := st.GetSession(ctx, subject.ID); err == nil {
+		t.Fatal("GetSession after reap must fail, the row is permanently gone")
+	}
+	finalArchived, err := st.ListArchivedSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(finalArchived) != 0 {
+		t.Fatalf("ListArchivedSessions after the reap = %+v, want empty", finalArchived)
+	}
+}
