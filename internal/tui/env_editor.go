@@ -96,8 +96,24 @@ func (m Model) resolveEnvKey(key string, session store.Session) (value, layer st
 // future panes, never into the pane that is already running. Esc cancels
 // an edit in progress without touching anything, or closes the whole
 // dialog when nothing is being edited.
+//
+// An edit in progress is the one case that must not wait for a manual
+// PgDn (mirroring createView's own rejection case): the moment enter opens
+// a row, features/env_editor_test.go's keyboard-only PTY step reads this
+// view's own string for the submit legend ("Enter saves this key") and for
+// the runes it just typed, with no scroll keystroke in between. Once the
+// resolved-key list overflows an 80x24 frame both of those sit off the
+// bottom of the first page, so whenever a row is being edited and the user
+// has not scrolled away from the top themselves (m.envScroll == 0, the
+// value `e` opened this dialog with), the view renders its LAST page --
+// where envBody always puts the edit prompt and the submit legend, back to
+// back -- rather than requiring a page-down to see what is being typed.
 func (m Model) envView() string {
-	return m.framedDialogScrollable(m.styledEnvBody(), m.envScroll)
+	scroll := m.envScroll
+	if m.envEditKey != "" && scroll == 0 {
+		scroll = m.dialogMaxScroll(m.envBody())
+	}
+	return m.framedDialogScrollable(m.styledEnvBody(), scroll)
 }
 
 // envRowLine is the one place that decides a row's marker, label and
@@ -117,9 +133,23 @@ func (m Model) envRowLine(row envRow, focused bool) (label, value string) {
 	// m.envReveal is on (the "r" toggle in updateEnvDialog).
 	displayValue := m.maskEnvValue(row.Key, row.Value, m.envReveal)
 	value = fmt.Sprintf("%s  [%s]", displayValue, row.Layer)
-	if m.envEditKey != "" && m.envEditKey == row.Key {
-		value = m.maskEnvValue(row.Key, m.envEditValue, m.envReveal) + "_"
-	}
+	return label, value
+}
+
+// envEditPromptLine is the one line an edit in progress is typed on --
+// deliberately NOT the row's own line in the list above, which keeps
+// showing the value that is still in force until enter commits the new
+// one. Putting the buffer here, immediately above envHintLine, is what
+// makes "what I am typing" and "the key that saves it" a single adjacent
+// pair: they can never land on opposite sides of a page boundary the way a
+// buffer rendered 20 rows up can (the env editor is scroll-bounded since
+// this task, and the cursor row may be anywhere in an overflowing list).
+// It returns label/value separately for the same reason envRowLine does:
+// styledEnvBody colours the key part in `hint` and the typed value in
+// `text`, over the focused row's own `selection` background.
+func (m Model) envEditPromptLine() (label, value string) {
+	label = fmt.Sprintf("Editing %s: ", m.envEditKey)
+	value = m.maskEnvValue(m.envEditKey, m.envEditValue, m.envReveal) + "_"
 	return label, value
 }
 
@@ -149,6 +179,11 @@ func (m Model) envBody() string {
 		lines = append(lines, "")
 		lines = append(lines, m.envNote)
 	}
+	if m.envEditKey != "" {
+		lines = append(lines, "")
+		label, value := m.envEditPromptLine()
+		lines = append(lines, label+value)
+	}
 	lines = append(lines, m.envHintLine())
 	return strings.Join(lines, "\n")
 }
@@ -172,7 +207,10 @@ func (m Model) envHintLine() string {
 // vocabulary for envHintLine's two variants (task 017), mirroring
 // createFooterKeyTokens one file over: the exact words in that sentence
 // that name a bound key, so styledEnvBody's colorLegendLine can single
-// them out for `key` and leave the surrounding prose `dimmed`.
+// them out for `key` and leave the surrounding prose `hint` -- the split
+// R82 states for a dialog footer legend ("footer keys -> key with the rest
+// in hint"), which is also what styledCreateBody's own colorFooterLine
+// does one file over.
 var envBrowseLegendKeys = map[string]bool{"j/k": true, "Enter": true, "r": true, "Esc": true}
 var envEditLegendKeys = map[string]bool{"Enter": true, "Esc": true}
 
@@ -185,7 +223,7 @@ var envEditLegendKeys = map[string]bool{"Enter": true, "Esc": true}
 // Token mapping is SPEC.md:1355 verbatim: the title in `title`, a row's
 // key in `hint` and its value (with winning layer) in `text`, the order
 // line in `dimmed`, a validation/error note in `error`, the bound keys in
-// the closing legend in `key`, and the focused row (m.envCursor, whether
+// the closing legend in `key` over `hint` prose, and the focused row (m.envCursor, whether
 // merely highlighted or actively being edited) carrying the same
 // `selection` treatment a selected list row does (renderCreateRowSegments,
 // reused verbatim from the create modal -- the composition it performs is
@@ -219,7 +257,7 @@ func (m Model) styledEnvBody() string {
 	}
 	// colorLegendLine colours envHintLine's already-wrapped sentence word
 	// by word, never before wrap: every key word in keys gets `key`, every
-	// other word (punctuation attached and all) gets `dimmed`.
+	// other word (punctuation attached and all) gets `hint`.
 	colorLegendLine := func(line string, keys map[string]bool) {
 		for _, l := range wrap(line) {
 			fields := strings.Fields(l)
@@ -228,7 +266,7 @@ func (m Model) styledEnvBody() string {
 				if keys[trimmed] {
 					fields[i] = m.colorToken(theme.Key, trimmed) + f[len(trimmed):]
 				} else {
-					fields[i] = m.colorToken(theme.Dimmed, f)
+					fields[i] = m.colorToken(theme.Hint, f)
 				}
 			}
 			out = append(out, strings.Join(fields, " "))
@@ -254,6 +292,9 @@ func (m Model) styledEnvBody() string {
 		colorWhole(theme.Error, m.envNote)
 	}
 	if m.envEditKey != "" {
+		out = append(out, "")
+		label, value := m.envEditPromptLine()
+		colorRow(label, value, true)
 		colorLegendLine(m.envHintLine(), envEditLegendKeys)
 	} else {
 		colorLegendLine(m.envHintLine(), envBrowseLegendKeys)
@@ -276,6 +317,19 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			cmd := m.submitEnvEdit()
 			return m, cmd
+		case "pgup", "pgdown":
+			// An edit in progress does not consume the paging keys: the
+			// list it was opened from is scroll-bounded (this task), so a
+			// typist who wants to re-read a row further up must be able to
+			// page there without abandoning the edit. Before this, the
+			// whole edit-mode branch returned early and PgUp/PgDn were
+			// silent no-ops for as long as a row stayed open.
+			dir := -1
+			if msg.String() == "pgdown" {
+				dir = 1
+			}
+			m.envScroll = m.dialogScrollByPage(m.envScroll, m.envBody(), dir)
+			return m, nil
 		case "backspace", "ctrl+h":
 			// Backspace is also an edit (SPEC §11.7's "typing replaces it
 			// wholesale" pattern, already used by createView's cwd field):
