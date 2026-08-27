@@ -87,6 +87,24 @@ type Model struct {
 	// directory-deck-started-in fallback), driving createFieldRows' "last
 	// used" label. Cleared together with createCWDPrefilled on first edit.
 	createCWDLastUsed bool
+	// lastCreateAgent is SPEC.md:1364-1367's persisted "last agent a create
+	// actually succeeded with" (state.db's ui_state, never config.toml),
+	// read once in New (mirroring layoutMode/sidebarWidth just above it)
+	// and kept current in memory thereafter -- shellCreated's success path
+	// updates this field directly alongside the async persisting write, so
+	// a render path (createFieldRows, the "n" handler) never touches the
+	// store itself. "" means no create has ever succeeded yet.
+	lastCreateAgent string
+	// createAgentLastUsed is true only when the create modal's Agent field
+	// was opened on lastCreateAgent (as opposed to defaultCreateAgent's
+	// built-in fallback, used when lastCreateAgent is empty, unparseable --
+	// N/A here, it is always a bare string -- or no longer present in
+	// m.registry().Kinds()), driving createFieldRows' "(last used)" label
+	// on the Agent field, exactly as createCWDLastUsed does for cwd.
+	// Cleared the moment the Agent field is cycled (case 2 of
+	// cycleCreateField), since the value showing is then a deliberate
+	// choice, not the remembered one.
+	createAgentLastUsed bool
 	// createCWDRecents is the §11.7 recent_cwds snapshot the cwd field is
 	// currently cycling through (task 009), fetched once when up/down
 	// first starts a cycle rather than re-queried on every keypress, so
@@ -777,6 +795,28 @@ func defaultCreateAgent(kinds []string) string {
 	return ""
 }
 
+// pickCreateAgent chooses which registered kind the create modal opens on
+// (task 024, SPEC.md:1364-1367): m.lastCreateAgent -- the kind of the most
+// recent session a create actually succeeded with, read once at store-open
+// time (see New) and never re-read from the store here, since this runs on
+// every "n" and must not touch the store from a render path -- when it is
+// still valid against the CURRENT registry, otherwise defaultCreateAgent's
+// built-in fallback. "Still valid" covers every way the remembered value
+// can go stale at once: missing (never set, ""), or present but no longer
+// registered (an adapter removed since, or a hand-edited/unparseable
+// state.db value) -- all three degrade identically to the fallback rather
+// than opening on an agent the registry cannot create. The second result
+// reports whether the picked value came from lastCreateAgent, so callers
+// can drive the "(last used)" label without re-deriving this comparison
+// themselves.
+func (m Model) pickCreateAgent() (string, bool) {
+	kinds := m.registry().Kinds()
+	if m.lastCreateAgent != "" && contains(kinds, m.lastCreateAgent) {
+		return m.lastCreateAgent, true
+	}
+	return defaultCreateAgent(kinds), false
+}
+
 // registry returns m.agents, falling back to defaultAgentRegistry() when the
 // model was built without one (e.g. via New or any constructor that predates
 // registry support).
@@ -1055,6 +1095,12 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 		}
 		if width, err := db.GetSidebarWidth(ctx); err == nil {
 			m.sidebarWidth = width
+		}
+		// Task 024: the last agent a create actually succeeded with (SPEC.md:
+		// 1364-1367). A read failure is likewise not load-bearing -- ""
+		// degrades to defaultCreateAgent's own fallback via pickCreateAgent.
+		if lastAgent, err := db.GetLastCreateAgent(ctx); err == nil {
+			m.lastCreateAgent = lastAgent
 		}
 	}
 	return m
@@ -1703,7 +1749,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// selection itself is applied once loadSessions' own
 		// sessionsLoaded actually contains it, never here.
 		m.pendingSelectSessionID = msg.session.ID
-		return m, m.loadSessions
+		// Task 024 (SPEC.md:1364-1367): a create only ever promotes the
+		// default on SUCCESS, never on submit -- this is the one branch
+		// where that already holds (the err != nil branch above returns
+		// before reaching here, and Esc/abandon never produces this msg at
+		// all). msg.session.Agent, not m.createAgent, is what actually got
+		// created -- store.CreateSession/service.CreateAgent are the ones
+		// that set it ("shell" for the shell path, service.shell.go:114),
+		// so this is correct even if the dialog's own fields have since
+		// moved on. Updating m.lastCreateAgent here (not only via the
+		// async persist below) is what lets the very next "n" in this same
+		// run see it without a store round trip in that render path.
+		m.lastCreateAgent = msg.session.Agent
+		return m, tea.Batch(m.loadSessions, m.persistLastCreateAgent(msg.session.Agent))
 	case attachFinished:
 		if msg.err != nil {
 			m.attachError = "Cannot attach: " + msg.err.Error()
@@ -2310,7 +2368,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
 				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
 				m.closeCreateCWDCandidates()
-				m.createAgent = defaultCreateAgent(m.registry().Kinds())
+				m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
 				m.createProfile = m.defaultCreateProfile(m.createAgent)
 				m.createProfileTouched = false
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
@@ -2964,6 +3022,20 @@ func (m Model) persistSidebarWidth() tea.Cmd {
 	width := m.sidebarWidth
 	return func() tea.Msg {
 		return uiStatePersisted{err: m.store.SetSidebarWidth(context.Background(), width)}
+	}
+}
+
+// persistLastCreateAgent is persistLayoutMode's task-024 counterpart: it
+// writes the just-succeeded create's agent kind to state.db's ui_state
+// table, never to config.toml, so a later "n" (via pickCreateAgent) opens
+// pre-selecting it. With no store attached (most unit tests) it is a
+// no-op, exactly like persistLayoutMode/persistSidebarWidth.
+func (m Model) persistLastCreateAgent(agentKind string) tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		return uiStatePersisted{err: m.store.SetLastCreateAgent(context.Background(), agentKind)}
 	}
 }
 
@@ -6124,6 +6196,12 @@ func (m *Model) cycleCreateField(delta int) {
 	switch m.createField {
 	case 2:
 		m.createAgent = cycleOption(m.registry().Kinds(), m.createAgent, delta)
+		// The value showing is now a deliberate cycle, not the remembered
+		// one (task 024) -- clear the "(last used)" label regardless of
+		// which way the cycle landed, even back on the original value,
+		// exactly as createCWDLastUsed is cleared on the cwd field's first
+		// edit rather than only on a value change.
+		m.createAgentLastUsed = false
 		// createProfileTouched (steer 017 item 2 / yolo_default): as long as
 		// the user has not yet cycled the Permission profile field itself
 		// (case 3 below), the value showing there is still "whatever the
@@ -6261,6 +6339,20 @@ func (m Model) createCWDDisplayValue() string {
 	return m.createCWD + m.createCWDGhostSuffix()
 }
 
+// createAgentHelp is the Agent field's help-text label (task 024,
+// SPEC.md:1364-1367), mirroring createCWDHelp's "(last used)" prefix for
+// the cwd field: prefixed onto the field's constant-length help rather
+// than appended to the value, for the identical reason createCWDHelp gives
+// -- the value's own width varies (with the registry's kind names) and
+// framedDialog's word-wrap can split a value-suffixed label unpredictably.
+func (m Model) createAgentHelp() string {
+	help := "which coding agent adapter launches this session"
+	if m.createAgentLastUsed {
+		return "(last used) " + help
+	}
+	return help
+}
+
 func (m Model) createCWDHelp() string {
 	help := "the session's cwd; must exist and be a directory; \u2191/\u2193 cycles recent history; right/end completes a shown directory match"
 	// Ambiguous-match counting (task 011, requirement 15) only applies
@@ -6328,7 +6420,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
 		{"Working directory", m.createCWDDisplayValue(), m.createCWDHelp()},
-		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.registry().Kinds(), ", ") + ")", "which coding agent adapter launches this session"},
+		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.registry().Kinds(), ", ") + ")", m.createAgentHelp()},
 		{"Permission profile", profileValue, profileHelp},
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
