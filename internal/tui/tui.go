@@ -4658,9 +4658,12 @@ func (m Model) updateArchiveConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // target and what will survive it") it names the session, says what survives
 // -- the whole record, reachable again through `/` and reversible with `U` --
 // and, when the row is not stopped, states in as many words that confirming
-// kills the live agent first. Nothing is written until Enter.
+// kills the live agent first. Nothing is written until Enter. Task 019:
+// rendered through styledArchiveConfirmBody, never archiveConfirmBody
+// itself, so §11.6's tokens land at render time without ever being baked
+// into the plain string a test or the box's own word-wrap measures.
 func (m Model) archiveConfirmView() string {
-	return m.framedDialog(m.archiveConfirmBody())
+	return m.framedDialog(m.styledArchiveConfirmBody())
 }
 
 // archiveConfirmBody builds archiveConfirmView's text before framedDialog's
@@ -4689,6 +4692,75 @@ func (m Model) archiveConfirmBody() string {
 	return b.String()
 }
 
+// archiveConfirmFooterKeyTokens is styledArchiveConfirmBody's own footer
+// vocabulary (task 019), the same shape as createFooterKeyTokens/
+// bulkDeleteFooterKeyTokens one section down: the leading token of each
+// word in archiveConfirmBody's own submit line ("Enter archives · Esc
+// cancels"), used to decide which already-wrapped word gets theme.Key
+// instead of theme.Hint.
+var archiveConfirmFooterKeyTokens = map[string]bool{
+	"Enter": true,
+	"Esc":   true,
+}
+
+// styledArchiveConfirmBody re-derives archiveConfirmBody's exact structure
+// -- same title/warning/survives-text/fields/reversal-note/footer/note
+// order -- but colours each finished PHYSICAL line rather than the
+// logical one, exactly like styledCreateBody/styledBulkDeleteConfirmBody:
+// every string below is wrapped via m.wrapDialogLines FIRST, and only the
+// strings that call already returned are ever coloured, so a colour token
+// can never straddle a word-wrap boundary wrapDialogLines has not drawn
+// yet. Token mapping is SPEC.md:1355 plus this task's own addition: the
+// title in `title`, the live-agent sentence -- the one line in this
+// dialog that is a warning about a consequence rather than plain
+// explanatory prose or a value -- in `badge_warn` (the token SPEC's
+// builtin themes already reserve for a non-default, weigh-carefully
+// state, see profileBadgeSegment), the rest of the explanatory prose in
+// `dimmed`, each field's label/value pair via detailField (already
+// hint/text, task 022 -- untouched here), the footer legend's keys in
+// `key` and the rest of it in `hint`, and a failed-submit note in `error`.
+func (m Model) styledArchiveConfirmBody() string {
+	session := m.sessions[m.selected]
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if archiveConfirmFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Archive %s", session.Name))
+	out = append(out, "")
+	if session.Status != "stopped" {
+		colorWhole(theme.BadgeWarn, fmt.Sprintf("This session is %s, not stopped: confirming kills the live agent\nfirst and archives it in the same action.", session.Status))
+		out = append(out, "")
+	}
+	colorWhole(theme.Dimmed, "Archiving keeps the record and hides the row from the default list.\nIt survives, untouched:")
+	out = append(out, m.detailField("Conversation:       ", session.ConversationID))
+	out = append(out, m.detailField("Working directory:  ", session.CWD))
+	out = append(out, "")
+	colorWhole(theme.Dimmed, "The / filter is where an archived row is found again, and U there\nunarchives it. Nothing is written until you confirm.")
+	out = append(out, "")
+	colorFooterLine("Enter archives · Esc cancels")
+	if m.archiveNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.archiveNote)
+	}
+	return strings.Join(out, "\n")
+}
+
 // deleteConfirmView renders task 105's second-`d` confirm dialog. It states
 // plainly what dd does NOT destroy -- the conversation id and the working
 // directory both survive -- and, since task 110, offers "purge" as an
@@ -4706,12 +4778,15 @@ func (m Model) archiveConfirmBody() string {
 // instead -- framedDialogScrollable's own doc comment names "a bulk dd
 // confirm over ~13+ marks" as one of the dialogs that already overflows an
 // 80x24 frame through the unbounded framedDialog path this keeps for the
-// single-session case below (its own theming/bounding is task 019).
+// single-session case below. Task 019: that single-session case is now
+// themed via styledDeleteConfirmBody, never deleteConfirmBody itself, the
+// same split styledBulkDeleteConfirmBody already draws for the marked
+// branch above it.
 func (m Model) deleteConfirmView() string {
 	if len(m.marked) > 0 {
 		return m.bulkDeleteConfirmView()
 	}
-	return m.framedDialog(m.deleteConfirmBody())
+	return m.framedDialog(m.styledDeleteConfirmBody())
 }
 
 // deleteConfirmBody builds deleteConfirmView's text before framedDialog's
@@ -4752,6 +4827,75 @@ func (m Model) deleteConfirmBody() string {
 		fmt.Fprintf(&b, "\n%s\n", m.deleteNote)
 	}
 	return b.String()
+}
+
+// deleteConfirmFooterKeyTokens is styledDeleteConfirmBody's own footer
+// vocabulary (task 019), mirroring archiveConfirmFooterKeyTokens/
+// bulkDeleteFooterKeyTokens: the leading token of each word in
+// deleteConfirmBody's own submit line ("Enter deletes · Esc cancels").
+var deleteConfirmFooterKeyTokens = map[string]bool{
+	"Enter": true,
+	"Esc":   true,
+}
+
+// styledDeleteConfirmBody is deleteConfirmBody's task 019 counterpart for
+// the single-session case (a non-empty mark set is styledBulkDeleteConfirmBody's
+// job, several lines up): same title/archived-note/survives-text/
+// fields/purge-choice/footer/note order, coloured per finished PHYSICAL
+// line after m.wrapDialogLines, exactly like styledArchiveConfirmBody
+// right above it. Token mapping is SPEC.md:1355: the title in `title`,
+// every explanatory sentence (the archived-row note, the survives-text,
+// and purge's own decline sentence -- none of these is a warning about a
+// consequence the way archive's live-agent sentence is) in `dimmed`, each
+// field's label/value pair via detailField (hint/text, task 022,
+// untouched), the footer legend's keys in `key` and the rest in `hint`,
+// and a failed-submit note in `error`.
+func (m Model) styledDeleteConfirmBody() string {
+	session := m.sessions[m.selected]
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range m.wrapDialogLines(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if deleteConfirmFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Delete %s", session.Name))
+	out = append(out, "")
+	if session.ArchivedAt != 0 {
+		colorWhole(theme.Dimmed, "This session is archived: the target is the archived record itself,\nnot a live one.")
+		out = append(out, "")
+	}
+	colorWhole(theme.Dimmed, "This kills the live pane (if any) and removes the session from the\nlist. It survives, untouched:")
+	out = append(out, m.detailField("Conversation:       ", session.ConversationID))
+	out = append(out, m.detailField("Working directory:  ", session.CWD))
+	out = append(out, "")
+	out = append(out, m.detailField("Purge:      ", fmt.Sprintf("%s (left/right cycles: %s)", m.deletePurgeValue, strings.Join(deletePurgeOptions, ", "))))
+	switch {
+	case m.deletePurgeValue == "purge" && m.deletePurgeOK:
+		out = append(out, m.detailField("Will delete: ", m.deletePurgePath))
+	case m.deletePurgeValue == "purge":
+		colorWhole(theme.Dimmed, "No transcript could be located for this agent; purge deletes nothing.")
+	}
+	out = append(out, "")
+	colorFooterLine("Enter deletes · Esc cancels")
+	if m.deleteNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.deleteNote)
+	}
+	return strings.Join(out, "\n")
 }
 
 // bulkDeleteExplanationLines is the bulk confirm's own survives-text, one
