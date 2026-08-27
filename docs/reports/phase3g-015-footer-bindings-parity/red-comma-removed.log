@@ -1,0 +1,10 @@
+=== RUN   TestFooterEntriesNameOnlyBoundKeysViaSourceParse
+--- PASS: TestFooterEntriesNameOnlyBoundKeysViaSourceParse (0.00s)
+=== RUN   TestFooterEntryEligibilityMatchesRealPredicate
+--- PASS: TestFooterEntryEligibilityMatchesRealPredicate (0.00s)
+=== RUN   TestFooterFixedSetMatchesSpecAndExcludesRareKeys
+    footer_bindings_parity_test.go:316: SPEC.md §11.3's footer fixed set requires "," but tui.go's footerLegend does not have it
+--- FAIL: TestFooterFixedSetMatchesSpecAndExcludesRareKeys (0.01s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.022s
+FAIL

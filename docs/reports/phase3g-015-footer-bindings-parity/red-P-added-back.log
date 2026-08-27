@@ -1,0 +1,11 @@
+=== RUN   TestFooterEntriesNameOnlyBoundKeysViaSourceParse
+--- PASS: TestFooterEntriesNameOnlyBoundKeysViaSourceParse (0.00s)
+=== RUN   TestFooterEntryEligibilityMatchesRealPredicate
+    footer_bindings_parity_test.go:196: footer entry "profile" (glyph "P") carries no eligibility predicate and is not one of the fixed global keys allowed to have none -- a per-row action must gate on eligibility (SPEC §11.3: "nor does it list a key that would refuse the current selection")
+--- FAIL: TestFooterEntryEligibilityMatchesRealPredicate (0.00s)
+=== RUN   TestFooterFixedSetMatchesSpecAndExcludesRareKeys
+    footer_bindings_parity_test.go:321: SPEC.md §11.3 keeps "P" out of the footer (a rarely-used per-row action) but tui.go's footerLegend has it
+--- FAIL: TestFooterFixedSetMatchesSpecAndExcludesRareKeys (0.01s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.025s
+FAIL
