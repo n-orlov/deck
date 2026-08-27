@@ -67,6 +67,17 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "deck event retention:", err)
 		return 0
 	}
+	// Task 010's store-open call site, deliberately right beside R62's above
+	// and throttled by the same ui_state mechanism: a row tombstoned by `dd`
+	// and then abandoned (deck quit, was killed, or crashed before its
+	// tea.Tick deleteGraceExpired could fire) has nothing left in-process to
+	// reap it, so the next open does it. A sweep failure must not stop deck
+	// from starting -- unlike the event-retention call above, this is a
+	// best-effort backlog catch-up, not part of any user-visible promise made
+	// at open time -- so it is reported and stepped over.
+	if err := db.SweepTombstones(context.Background(), settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
+		fmt.Fprintln(stderr, "deck tombstone sweep:", err)
+	}
 
 	logger, err := audit.New(settings.Paths, settings.Clock)
 	if err != nil {
@@ -106,7 +117,14 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		if err := sessions.ReconcileWithProbes(ctx, settings.StaleAfter); err != nil {
 			return err
 		}
-		return db.EnforceEventRetention(ctx, settings.EventRetentionDays, settings.Clock.Now().UnixMilli())
+		if err := db.EnforceEventRetention(ctx, settings.EventRetentionDays, settings.Clock.Now().UnixMilli()); err != nil {
+			return err
+		}
+		// Same tick carries task 010's sweep, so "on store open and thereafter
+		// at most once an hour" holds for a long-running client too:
+		// Store.SweepTombstones throttles internally, so all but one call an
+		// hour is a single ui_state SELECT.
+		return db.SweepTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli())
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename, sessions.Unarchive)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
