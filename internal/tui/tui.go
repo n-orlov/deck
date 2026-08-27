@@ -4354,7 +4354,11 @@ func (m Model) archiveConfirmBody() string {
 // offered here and nowhere else. An adapter with no declared transcript
 // (or one that could not locate it for this session right now) is stated
 // plainly to decline, and submitting with purge chosen in that state
-// deletes nothing beyond the tombstone itself.
+// deletes nothing beyond the tombstone itself. Task 009: when the target row
+// is archived (ArchivedAt != 0), the body says so in as many words alongside
+// §11.4's existing target/survives text -- reaching it through / (the only
+// route to an archived row, task 008) must not read like an ordinary
+// live-row delete.
 func (m Model) deleteConfirmView() string {
 	return m.framedDialog(m.deleteConfirmBody())
 }
@@ -4379,6 +4383,9 @@ func (m Model) deleteConfirmBody() string {
 	session := m.sessions[m.selected]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Delete %s\n\n", session.Name)
+	if session.ArchivedAt != 0 {
+		b.WriteString("This session is archived: the target is the archived record itself,\nnot a live one.\n\n")
+	}
 	b.WriteString("This kills the live pane (if any) and removes the session from the\nlist. It survives, untouched:\n")
 	fmt.Fprintf(&b, "%s\n", m.detailField("Conversation:       ", session.ConversationID))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
