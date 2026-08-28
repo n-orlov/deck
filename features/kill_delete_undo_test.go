@@ -434,26 +434,49 @@ func sessionDeletedAt(ctx context.Context, name string) (int64, error) {
 	return deletedAt.Int64, nil
 }
 
+// waitForSessionColumnState is the one shared bounded-wait for every
+// state-database assertion reachable immediately after an async keypress
+// (task 204, review finding 1): u's undo, dd's tombstone, and A's archive
+// all dispatch their store mutation from a goroutine (an internal/service
+// Cmd, a tea.Tick callback, ...) that races whatever step comes next in the
+// .feature file, exactly the way stateDatabaseSessionIsReaped's own poll
+// already accounted for -- a single immediate read merely gets lucky most
+// of the time. Stability run 7 caught exactly this for
+// stateDatabaseSessionIsNotTombstoned, reading the DB once right after the
+// `u` keypress and losing the race
+// (docs/reports/phase3g-112-stability10/run-7.log:5019):
+//
+//	Error: after scenario hook failed: session "filter-dd-archived" has deleted_at=1787938118179, want not tombstoned
+//
+// column identifies the table field purely for the timeout message; get is
+// the column's existing single-read accessor (sessionDeletedAt,
+// sessionArchivedAt, ...); satisfied reports whether the observed value is
+// the one the step wants. No assertion is weakened: once the deadline
+// passes the last observed value is still checked and still fails, with a
+// clear message naming both the column and the value actually observed.
+func waitForSessionColumnState(ctx context.Context, name, column string, timeout time.Duration, get func(context.Context, string) (int64, error), satisfied func(int64) bool, want string) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		value, err := get(ctx, name)
+		if err != nil {
+			return err
+		}
+		if satisfied(value) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q still has %s=%d after %s, want %s", name, column, value, timeout, want)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
 func stateDatabaseSessionIsTombstoned(ctx context.Context, name string) error {
-	deletedAt, err := sessionDeletedAt(ctx, name)
-	if err != nil {
-		return err
-	}
-	if deletedAt == 0 {
-		return fmt.Errorf("session %q has deleted_at=0, want tombstoned", name)
-	}
-	return nil
+	return waitForSessionColumnState(ctx, name, "deleted_at", 3*time.Second, sessionDeletedAt, func(v int64) bool { return v != 0 }, "tombstoned")
 }
 
 func stateDatabaseSessionIsNotTombstoned(ctx context.Context, name string) error {
-	deletedAt, err := sessionDeletedAt(ctx, name)
-	if err != nil {
-		return err
-	}
-	if deletedAt != 0 {
-		return fmt.Errorf("session %q has deleted_at=%d, want not tombstoned", name, deletedAt)
-	}
-	return nil
+	return waitForSessionColumnState(ctx, name, "deleted_at", 3*time.Second, sessionDeletedAt, func(v int64) bool { return v == 0 }, "not tombstoned")
 }
 
 // clientArchivesSelectedSession drives R72's REAL confirm dialog (issue #10,
@@ -603,56 +626,37 @@ func sessionArchivedAt(ctx context.Context, name string) (int64, error) {
 }
 
 func stateDatabaseSessionIsArchived(ctx context.Context, name string) error {
-	archivedAt, err := sessionArchivedAt(ctx, name)
-	if err != nil {
-		return err
-	}
-	if archivedAt == 0 {
-		return fmt.Errorf("session %q has archived_at=0, want archived", name)
-	}
-	return nil
+	return waitForSessionColumnState(ctx, name, "archived_at", 3*time.Second, sessionArchivedAt, func(v int64) bool { return v != 0 }, "archived")
 }
 
 func stateDatabaseSessionIsNotArchived(ctx context.Context, name string) error {
-	archivedAt, err := sessionArchivedAt(ctx, name)
-	if err != nil {
-		return err
-	}
-	if archivedAt != 0 {
-		return fmt.Errorf("session %q has archived_at=%d, want not archived", name, archivedAt)
-	}
-	return nil
+	return waitForSessionColumnState(ctx, name, "archived_at", 3*time.Second, sessionArchivedAt, func(v int64) bool { return v == 0 }, "not archived")
 }
 
-// stateDatabaseSessionIsReaped polls -- task 106's DECK_DELETE_GRACE_MS
-// expiry dispatches store.ReapSession from a real tea.Tick's Cmd on its
-// own goroutine, which races this assertion exactly the way an in-flight
-// hook or probe does elsewhere, unlike a synchronous in-Update mutation --
-// until the row is gone from the sessions table entirely (not merely
-// tombstoned), mirroring databaseSessionStatus's own poll-rather-than-
-// read-once shape (features/assertions_test.go).
-func stateDatabaseSessionIsReaped(ctx context.Context, name string) error {
+// sessionRowCount backs stateDatabaseSessionIsReaped below -- task 106's
+// DECK_DELETE_GRACE_MS expiry dispatches store.ReapSession from a real
+// tea.Tick's Cmd on its own goroutine, which races this assertion exactly
+// the way an in-flight hook or probe does elsewhere, unlike a synchronous
+// in-Update mutation -- until the row is gone from the sessions table
+// entirely (not merely tombstoned), mirroring databaseSessionStatus's own
+// poll-rather-than-read-once shape (features/assertions_test.go).
+func sessionRowCount(ctx context.Context, name string) (int64, error) {
 	h, err := assertionHarness(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	db, err := openObservedDatabase(h)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer db.Close()
-	deadline := time.Now().Add(5 * time.Second)
-	var count int
-	for {
-		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE name = ?`, name).Scan(&count); err != nil {
-			return fmt.Errorf("observe session %q count: %w", name, err)
-		}
-		if count == 0 {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q still present after reap deadline, count=%d", name, count)
-		}
-		time.Sleep(25 * time.Millisecond)
+	var count int64
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE name = ?`, name).Scan(&count); err != nil {
+		return 0, fmt.Errorf("observe session %q count: %w", name, err)
 	}
+	return count, nil
+}
+
+func stateDatabaseSessionIsReaped(ctx context.Context, name string) error {
+	return waitForSessionColumnState(ctx, name, "count(*)", 5*time.Second, sessionRowCount, func(v int64) bool { return v == 0 }, "reaped (count=0)")
 }
