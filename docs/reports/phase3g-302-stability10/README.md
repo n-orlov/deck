@@ -2,132 +2,149 @@
 
 ## Launch
 
+Recorded in one shell call at launch time (2026-08-28 22:21 UTC):
+
 ```
 $ cd /workspace && git rev-parse HEAD
-bdc18796c5633208403d9ae25760ed87edc08724
-$ nohup timeout 7200 ci/stability.sh 10 > /run/ralphd/artifacts/stability-302.log 2>&1 &
+d0e36e4eb5448e1e3315756aecddea675d898c64
+$ nohup sh -c 'timeout 7200 ci/stability.sh 10 > /run/ralphd/artifacts/stability-302.log 2>&1; s=$?;
+      printf "=== ci/stability.sh 10 exit status: %s ... ===\n" "$s" >> /run/ralphd/artifacts/stability-302.log;
+      printf "%s\n" "$s" > /run/ralphd/artifacts/stability-302.exitstatus' &
+launched pid=25839
 ```
 
-- Launch sha (`git rev-parse HEAD` recorded at launch): **`bdc18796c5633208403d9ae25760ed87edc08724`** (`bdc1879`).
-- Launched 2026-08-28 21:07 UTC, completed 2026-08-28 22:09 UTC (~62 min wall for the ten
-  runs; well inside the 120-min iteration cap, and the command itself was started as a
-  non-blocking background job per `nohup ... &` and polled, never blocked on).
-- `git rev-parse HEAD` at report-authoring time is unchanged: still `bdc1879` (verified
-  immediately below); no other commit landed on the tree between launch and this report.
+- Launch sha (`git rev-parse HEAD` recorded at launch): **`d0e36e4eb5448e1e3315756aecddea675d898c64`**
+  (`d0e36e4`), clean tree, `== origin/main`.
+- Launched 2026-08-28 22:21 UTC, all ten runs finished by 2026-08-28 23:27 UTC (~66 min wall).
+  Started as a non-blocking background job and polled (`grep '^=== RUN' <log>`), never blocked on;
+  nothing else was run in that iteration.
+- The `sh -c` wrapper is the only deviation from the bare `nohup timeout 7200 ci/stability.sh 10 > … &`
+  line: it exists so that `s=$?` reads **the script's own exit status in the same shell call,
+  immediately after the command line that produced it, with no pipe** — the same discipline
+  `ci/stability.sh` itself documents. The wrapper adds no pipe and does not touch the suite.
 
 ## Observed rate
 
-Verbatim from `summary.log` (also the last line of `stability-302.log`):
+Verbatim from `summary.log` (also the second-to-last line of the driver log,
+`stability-302-driver.log`, a copy of `/run/ralphd/artifacts/stability-302.log`):
 
 ```
-7/10 passed
+8/10 passed
 ```
 
 ## Script's own exit status
 
-The stability run was launched with `nohup ... &` per the task's required launch
-command, which backgrounds the job immediately — there is no single shell call that both
-starts the run and waits 60-80 minutes for it to finish, so the literal `$?` of the launch
-call is only the exit status of the `&`-backgrounding itself (0), not of `ci/stability.sh`.
-The process was polled to completion (`ps -p <pid>`, log tail) rather than `wait`-ed on from
-a *different* shell (background jobs are not attached to a new shell's job table, so a later
-bash call cannot `wait` on that PID either), so the real exit status was not captured as a
-literal `$?` in either the launch call or a poll call.
+Captured, not derived — `s=$?` in the same shell call as the `timeout 7200 ci/stability.sh 10`
+command line, before anything else ran:
 
-`ci/stability.sh`'s own exit logic (`ci/stability.sh`, end of file) is:
-```sh
-if [ "$fail" -gt 0 ]; then
-    exit 1
-fi
-exit 0
 ```
-i.e. the exit status is a deterministic function of the observed fail count. `summary.log`
-records `fail=3` (runs 4, 7 and 10 below), so by the script's own documented logic the exit
-status of this invocation was **1**. This is derived from the script's own read source and
-the observed per-run PASS/FAIL markers below, not re-run to obtain a literal capture.
+$ cat /run/ralphd/artifacts/stability-302.exitstatus
+1
+```
+
+and the same captured value appended to the run's own log (last line of
+`stability-302-driver.log`):
+
+```
+=== ci/stability.sh 10 exit status: 1 (captured with 0 in the same shell call, immediately after the command line, no pipe) ===
+```
+
+**Exit status: 1.** (Wart in that line, recorded rather than edited away: the literal `$?` I put
+inside the parenthetical was itself expanded by the shell — to `0`, the status of the preceding
+`s=$?` assignment — so the parenthetical prints `0` where it meant to say "`$?`". The
+authoritative captured value is the `%s`-substituted `1` at the start of the line and the `1`
+in `stability-302.exitstatus`; it is consistent with `ci/stability.sh`'s own
+`if [ "$fail" -gt 0 ]; then exit 1` and with `fail=2` below, but it was *captured*, not inferred
+from the fail count.)
 
 ## Per-run results
 
 | run | result | notes |
 |-----|--------|-------|
 | 1 | PASS (exit 0) | |
-| 2 | PASS (exit 0) | |
+| 2 | **FAIL** (exit 1) | `TestSigwinchCountDistinguishesTwoFromThree`, see below |
 | 3 | PASS (exit 0) | |
-| 4 | **FAIL** (exit 1) | see below |
+| 4 | PASS (exit 0) | |
 | 5 | PASS (exit 0) | |
 | 6 | PASS (exit 0) | |
-| 7 | **FAIL** (exit 1) | see below |
+| 7 | PASS (exit 0) | |
 | 8 | PASS (exit 0) | |
 | 9 | PASS (exit 0) | |
-| 10 | **FAIL** (exit 1) | see below |
+| 10 | **FAIL** (exit 1) | `TestDeckBinaryEmptyHelpAndQuitThroughPTY`, see below |
 
-Full logs: `run-1.log` .. `run-10.log` in this directory (copied verbatim out of the
-script's `mktemp` outdir, `/tmp/deck-stability.gd2mKZ`, after the run completed).
-Combined log: `summary.log`. Frozen-tree proof: `frozen-tree-check.log`.
+Full logs: `run-1.log` .. `run-10.log` in this directory (copied verbatim out of the script's
+`mktemp` outdir, `/tmp/deck-stability.LAal98`, after the run completed). Combined log:
+`summary.log`. Driver log with the captured exit status: `stability-302-driver.log`.
+Frozen-tree proof: `frozen-tree-check.log`.
 
-### `=== RUN 4: FAIL` — `docs/reports/phase3g-302-stability10/run-4.log`
+### `=== RUN 2: FAIL` — `docs/reports/phase3g-302-stability10/run-2.log`
 
-- Failing scenario: **"the collapsed strip's attention count matches the sort's own notion
-  of attention"** (`features/attention_sort.feature:92`, failing step at line 104).
-- Error (`run-4.log`, package `github.com/n-orlov/deck/features`,
-  `TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention`):
-  `after scenario hook failed: deck client "A" collapsed strip attention count = 1, want 2`.
-
-### `=== RUN 7: FAIL` — `docs/reports/phase3g-302-stability10/run-7.log`
-
-- Failing scenario: **"a failing pre_launch leaves visible evidence without attaching"**
-  (`features/crash.feature:46`, failing step at line 48).
-- Error (`run-7.log`, `TestFeatures/a_failing_pre_launch_leaves_visible_evidence_without_attaching`):
-  `after scenario hook failed: timed out waiting for frame "starting": context deadline exceeded`.
+- Failing test: **`TestSigwinchCountDistinguishesTwoFromThree`**, package
+  `github.com/n-orlov/deck/features` (a Go test in that package, not a Gherkin scenario;
+  no `.feature` scenario failed in this run).
+- Error (`run-2.log`, at the tail of the `features` package output):
+  `sigwinch_count_test.go:80: sigwinch count after 2 resizes = 1, want exactly 2`, then
+  `FAIL github.com/n-orlov/deck/features 320.542s`.
+- The Gherkin suite itself was green in that run: `run-2.log:4969` reads
+  `311 scenarios (311 passed)`; the only other scenario tallies in the file are the harness
+  self-tests' `1 scenarios (1 undefined)` and `1 scenarios (1 failed)` fixtures described below.
+- Every other package in that run reported `ok` or `[no test files]`.
 
 ### `=== RUN 10: FAIL` — `docs/reports/phase3g-302-stability10/run-10.log`
 
-- Failing scenario: **"a wheel notch scrolls an attached pane's scrollback and leaves the
-  shell's input line untouched"** (`features/attach_scroll.feature:11`, failing step at
-  line 20).
-- Error (`run-10.log`,
-  `TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched`):
-  `after scenario hook failed: client "A" frame changed after gesture, want unchanged from
-  captured "before-wheel-scroll"`.
+- Failing test: **`TestDeckBinaryEmptyHelpAndQuitThroughPTY`**, package
+  `github.com/n-orlov/deck/cmd/deck` (again a Go test, not a Gherkin scenario; the `features`
+  package reported `ok` in this run).
+- Error (`run-10.log`, first line): `main_test.go:500: released help missing "copies it into
+  deck's own tmux buffer" through the real PTY:` followed by the captured help frame, which is
+  truncated mid-line at `| drag over the preview      while interactive, selects text; relea`
+  — i.e. the PTY capture ended before the asserted help line had been written.
+- Every other package in that run reported `ok` or `[no test files]`.
 
-Note: each of `run-4.log`, `run-7.log` and `run-10.log` also contains a later, unrelated
-`Scenario: error binding` / `a failing step` failure with error text `deliberate step
-failure`. That is the Godog self-test fixture `TestGodogRejectsUndefinedAndFailedSteps`
-(in `features/`) deliberately injecting an undefined/failed step to prove the harness
-correctly labels such steps as failures — it is not a product bug and is not one of the
-three real failures tallied above; it is the same self-test in every run (including the
-seven PASS runs' packages, where it is not separately visible in the terse `go test`
-output because per-test detail is only printed for the failing top-level package).
+Note on a failure marker that appears in **every** run, pass or fail: the `features` package
+output always contains `Scenario: error binding` / `Given a failing step` with
+`Error: deliberate step failure` against a `/tmp/TestGodogRejectsUndefinedAndFailedSteps…/
+failure.feature`. That is the harness self-test `TestGodogRejectsUndefinedAndFailedSteps`
+deliberately injecting an undefined/failed step to prove the harness labels such steps as
+failures. It is not a product failure and is not counted above.
 
 ## Measured surface — exclusions and no-test packages
 
 - `features/godog_test.go`'s `defaultTags` (line 16): `"~@real-agents && ~@nightly"` —
-  scenarios tagged `@real-agents` or `@nightly` are excluded from every one of these ten
-  runs. File is unmodified by this task (verified: `frozen-tree-check.log`'s empty diff
-  covers `*.feature`; `godog_test.go` itself is `*.go`, also covered by that same empty
-  diff).
-- Three packages have no test files and report `[no test files]` in every PASS run's log
-  (see e.g. `run-1.log`): `internal/notify`, `internal/search`, `internal/unit`.
+  scenarios tagged `@real-agents` or `@nightly` are excluded from all ten runs. That file is
+  **unmodified by this task** (covered by `frozen-tree-check.log`'s empty `*.go` diff and empty
+  `git status --porcelain` for the same globs).
+- Three packages have no test files and report `[no test files]` in every run (see e.g.
+  `run-1.log`): `internal/notify`, `internal/search`, `internal/unit`.
 
 ## Frozen-tree proof
 
-`frozen-tree-check.log` (this directory) records, in one shell call each:
-```
-$ git rev-parse HEAD
-bdc18796c5633208403d9ae25760ed87edc08724
+`frozen-tree-check.log` (this directory) records, each with its exit status in the same shell
+call: `git rev-parse HEAD` = `d0e36e4…`, an **empty** `git diff --stat d0e36e4..HEAD --
+"*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum`, and an **empty** `git status --porcelain`
+for the same globs. The only change this task commits is documentation under
+`docs/reports/phase3g-302-stability10/`, so the ten runs measured exactly the code tree at
+`d0e36e4`.
 
-$ git diff --stat bdc1879..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum ; echo "exit status: $?"
-exit status: 0
-```
-Empty diff, confirming the ten runs above measured the code tree at `bdc1879` and that
-tree has not moved between launch and the writing of this report.
+## Relation to the superseded first measurement
+
+An earlier measurement of this same task ran at `bdc1879` (the code tree of `d0e36e4` — the
+only commit between them is `d0e36e4` itself, which is documentation only) and observed
+**7/10**, but published a *derived* exit status instead of a captured one, which is why this
+task was re-measured rather than repaired in prose. That first run's ten per-run logs,
+`summary.log` and README remain in git history at commit `d0e36e4` under this same path, and
+its driver log is kept at `/run/ralphd/artifacts/stability-302-attempt1.log`. Its three
+failures were `attention_sort.feature:92` (collapsed-strip attention count), `crash.feature:46`
+(timed out waiting for frame "starting") and `attach_scroll.feature:11` (frame changed after a
+wheel-scroll gesture) — a **disjoint** set from this run's two, so across the twenty runs
+measured at this code tree five distinct instabilities have now been observed.
 
 ## Disposition
 
-This task is a measurement, not a fix. Per the standing rules, a green suite (or a 9/10 or
-7/10 one) is not itself evidence a requirement is met, and this task must not be re-run to
-improve the number: **7/10 is the honest result at `bdc1879` and is reported as-is.** The
-three failing scenarios above are candidates for later disposition (fix, revert-and-reproduce
-evidence, or a named finding) under whichever follow-up task in this plan is licensed to
-touch product/test code for stability (see `docs/reports/phase3g-findings.md` and task 303's
-scope) — this task does not attempt that itself.
+This task is a measurement, not a fix. **8/10 is the honest result at `d0e36e4` and is
+reported as-is**; the run was not repeated to improve the number, and per the standing rules
+an 8/10 is not rounded up and is not evidence that any requirement is met. The two failures
+above (plus the first measurement's three) are the raw input for whichever follow-up task is
+licensed to touch test code for stability or to name a finding; note in particular that
+re-baselining a SIGWINCH count is permitted only against a derivation written and committed
+*before* the change, never read off this failure.
