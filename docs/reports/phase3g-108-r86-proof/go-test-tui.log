@@ -1,1 +1,3 @@
-ok  	github.com/n-orlov/deck/internal/tui	1.040s
+# re-run on the second pass at 2026-08-28T15:45:50Z, HEAD ab34cb4 (docs-only changes since the first run)
+ok  	github.com/n-orlov/deck/internal/tui	1.018s
+exit=0
