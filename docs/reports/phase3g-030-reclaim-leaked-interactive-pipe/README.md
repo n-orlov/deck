@@ -46,9 +46,21 @@ internal/tmux/reclaim.go` against the committed tree is empty.
 ## Required commands (final state, fix applied)
 
 - `ci/run.sh go test -count=1 ./internal/tmux/ ./internal/interactive/ ./cmd/deck/`
-  -- green except one confirmed pre-existing, unrelated flake
-  (`TestAbandonedDDIsReapedAtNextStoreOpen`, a PTY timeout; reproduced
-  identically on unmodified `HEAD` via `git stash -u` before this task's
-  changes were written -- see notes.md).
-- `ci/run.sh env DECK_GODOG_PATHS=interactive_pipe_leak.feature go test ./features/ -run TestFeatures -count=1`
-  -- green.
+  -- green (`criterion-packages-run1.log` + `criterion-interactive-rerun.log`).
+  Two failures seen on the first run of this command were both stale test
+  drivers predating this task, fixed here because they blocked the criterion:
+  - `cmd/deck` `TestDeckBinaryEmptyHelpAndQuitThroughPTY` asserted the
+    empty-list footer literal `up/down - n new - ? help - q quit`, stale since
+    task 014 (`7dbe5c5`) put `,` settings into the fixed set (SPEC.md:1307).
+  - `cmd/deck` `TestAbandonedDDIsReapedAtNextStoreOpen` still drove the create
+    modal's field navigation with tab, stale since task 025 moved it to
+    down-arrow: the cwd was typed into the Name field, so the session was
+    created under a long path-shaped name and the delete confirm's
+    "press d again to confirm" wrapped, timing the wait out. Now sends the
+    name, settles 75ms, then `\x1b[B` + cwd, the way features/*_test.go do.
+  - `internal/interactive`'s `TestSessionRendersAreCoalescedAgainstAKnownByte...`
+    failed once under three-package parallel load (5s pipe-pane fifo connect
+    timeout) and passes on its own re-run -- a pre-existing timing flake, not
+    touched.
+- `ci/run.sh env DECK_GODOG_PATHS=<the nine interactive_*.feature files>,no_leak_scan.feature go test ./features/ -run TestFeatures -count=1`
+  -- green (`criterion-feature-files.log`).
