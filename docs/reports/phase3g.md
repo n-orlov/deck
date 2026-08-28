@@ -32,7 +32,7 @@ with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
   [R81](#r81--the-footers-fixed-set-is-curated-tasks-014-015) ·
   [R82](#r82--dialogs-are-themed-tasks-016-021) ·
   [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-80x24-tasks-016-018-022) ·
-  [R84](#r84--the-contrast-floor-covers-the-pairs-a-dialog-actually-uses-task-023-not-yet-done) ·
+  [R84](#r84--the-contrast-floor-covers-the-pairs-a-dialog-actually-uses-task-106) ·
   [R85](#r85--the-create-modal-opens-on-the-last-used-agent-task-024) ·
   [R86](#r86--updown-navigate-dialog-fields-tab-is-completion-only-tasks-025-026) ·
   [R87](#r87--esc-clears-a-filter-held-in-force-tasks-027-028) ·
@@ -403,32 +403,32 @@ regression net the PRD's "Width and height accounting must not shift" and "`NO_C
 and `DECK_ASCII` degradation is the one thing this can regress" bullets ask for. This
 report does not claim that net exists.
 
-## R84 — the contrast floor covers the pairs a dialog actually uses (task 023, not yet done)
+## R84 — the contrast floor covers the pairs a dialog actually uses (task 106)
 
-`SPEC.md` §11.6. Not one of the eight. **Task 023 is `pending`.** `hint`/`surface`,
-`key`/`surface`, `error`/`surface`, and every text token over `Selection`/
-`SelectionIdle` for the focused field are **not yet added** to
-`internal/theme/contrast_test.go`'s coverage. This report makes no claim that R84 is
-met; it is recorded here only so the requirement has a section, per this report's own
-structural criterion.
+`SPEC.md` §11.6. **Task 106, met.** `internal/theme/contrast_test.go` gains a third
+table-driven test, `TestThemedDialogTokensClearContrastFloor`, adding exactly the pairs
+R84 names: `hint/surface`, `key/surface`, `error/surface`, and every one of a dialog
+focused field's text tokens (`text`, `dimmed`, `hint`, `key`, `error`) over both
+`theme.Selection` and `theme.SelectionIdle` — both the theme's authored hex palette and
+its 16-colour quantisation, for all five built-ins, exactly as the two pre-existing
+contrast tests already do for their own pair sets.
 
-**There is no fixing sha for R84, because nothing was implemented.** The sha of record
-for the unmet state is **`7033e12`** (`tui: alternate sidebar row background stripe
-using theme.Surface (084)`, Phase 3) — the last commit to touch
-`internal/theme/contrast_test.go`, whose pair list is exactly what R84 asks to grow. No
-sha in Phase 3g's range touches that file; `git log --oneline 1cfbd5a..e02ef08 --
-internal/theme/contrast_test.go` is empty.
+`internal/theme/builtin/*.toml` is unmodified (`git show --stat` on this task's commit
+touches only `internal/theme/contrast_test.go`) — per the PRD's own instruction, this
+requirement pins what is already true and is not a licence to recolour a theme.
+`matrix`, the PRD's reference theme, is measured to clear every new pair (thinnest
+`error/selection` at 3.16:1 hex, matching the PRD's own citation) and is the one built-in
+whose floor is hard-enforced inside the new test; `cobalt`, `empire` and `parchment`
+each fail one or more new pairs (always `dimmed` against `Selection`/`SelectionIdle`) —
+recorded as `FINDING` log lines plus a per-theme summary rather than turned into a
+build-breaking assertion, so `ci/run.sh go test -count=1 ./internal/theme/` stays green.
+See [§3's F23](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
+for the measured ratios and disposition.
 
-Test that would carry it: `internal/theme/contrast_test.go`'s `contrastChecks()` /
-`sessionRowSurfaceChecks()` (the two pair tables `TestBuiltinContrastFloor` and
-`TestSessionRowTokensClearContrastFloorOnSurface` iterate) — neither declares any of the
-pairs above.
-
-Evidence: [`phase3g-038-r84-contrast-floor-absent/`](phase3g-038-r84-contrast-floor-absent/)
-— deliberately evidence of *absence*: `missing-pairs-absence-check.log` greps the file
-for each pair R84 names and prints `ABSENT` for ten of the eleven (only requirement 30's
-older `text/selection` is `PRESENT`), then lists every pair label the file does declare.
-Captured by task 038 at `e02ef08`; reproduce with the command in the log's header.
+Evidence: [`phase3g-106-contrast-floor/`](phase3g-106-contrast-floor/README.md) —
+`dialog-contrast-v.log` (every pair's ratio, all five built-ins, the `FINDING`/`SUMMARY`
+lines) and `theme-suite-green.log` (`ci/run.sh go test -count=1 ./internal/theme/`,
+exit 0).
 
 ## R85 — the create modal opens on the last used agent (task 024)
 
@@ -856,7 +856,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R81 | met | 014–015 | `7dbe5c5`, `3498b3e` | not required |
 | R82 | **partial** | 016 (skipped), 017–020, 021 (failed) | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad` | not required |
 | R83 | **partial** | 016, 018, 022 (pending) | see R82 row | not required |
-| R84 | **not done** | 023 (pending) | none — state of record `7033e12` | not required |
+| R84 | met | 106 | this task's commit | not required |
 | R85 | met | 024 | `9991689` | not required |
 | R86 | met | 025–026 | `a337671`, `17b7bb9`, `8cff03b` | yes (retroactive, disclosed) |
 | R87 | met | 027–028 | `f3f3d26`, `3d749bb` | yes |
