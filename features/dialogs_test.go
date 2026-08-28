@@ -222,7 +222,12 @@ func clientOpensCreateModalAndAltersEveryField(ctx context.Context, clientName s
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19) equivalent-row wait: this step edits every
+	// field including Agent itself (a right-arrow cycle regardless of
+	// starting value) and never inspects the modal's title, so waiting on
+	// the Agent row instead of the shell-only "Create shell session" title
+	// changes nothing it does or checks.
+	if err := client.WaitForFrame(ctx, false, "Agent: "); err != nil {
 		return err
 	}
 	down := "\x1b[B"
@@ -266,7 +271,14 @@ func clientWalksAndEditsEveryCreateFieldAssertingVisibility(ctx context.Context,
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): the walk below asserts the Agent field's own
+	// default reads "shell" ("the default open value is 'shell' ...", see
+	// the field-2 comment below), so ensureCreateModalAgent forces that
+	// rather than a literal wait for the shell-only "Create shell session"
+	// title, which would only ever be an accidental proxy for the same
+	// assumption. ensureCreateModalAgent leaves focus back on Name, matching
+	// where "n" itself would have left it.
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
 	assertVisible := func(step, want string) error {
@@ -388,7 +400,10 @@ func clientAttemptsCreateModalWithCWD(ctx context.Context, clientName, name, cwd
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19) equivalent-row wait: this step only types
+	// name/cwd and submits, never inspecting the modal's title or caring
+	// which agent is pre-selected.
+	if err := client.WaitForFrame(ctx, false, "Agent: "); err != nil {
 		return err
 	}
 	if err := client.Send(name + "\x1b[B" + cwd); err != nil {

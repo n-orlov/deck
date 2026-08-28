@@ -40,7 +40,12 @@ func TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation(t *testing.T) {
 	if err := driver.Send("n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19) equivalent-row wait: this test only asserts
+	// field labels/explanations, never the modal's title text, so waiting
+	// on the Agent row (rendered unconditionally by createFieldRows)
+	// instead of the shell-only "Create shell session" title changes
+	// nothing it checks.
+	if err := driver.WaitForFrame(ctx, false, "Agent: "); err != nil {
 		t.Fatal(err)
 	}
 

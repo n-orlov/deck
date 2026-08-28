@@ -62,7 +62,13 @@ func TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth(t *testing.T) {
 	if err := driver.Send("n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19) equivalent-row wait: waits on the Agent row,
+	// which createFieldRows renders unconditionally, rather than on the
+	// "Create shell session" title, which only appears while shell is the
+	// pre-selected agent -- true here regardless, since this is the very
+	// first modal this fresh-DECK_HOME test opens, but the wait target no
+	// longer depends on that being so.
+	if err := driver.WaitForFrame(ctx, false, "Agent: "); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Send("coalesced-dd"); err != nil {

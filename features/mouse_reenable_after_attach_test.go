@@ -26,7 +26,10 @@ func attachAndDetach(ctx context.Context, driver *ScreenDriver, name string) err
 	if err := driver.Send("n"); err != nil {
 		return err
 	}
-	if err := driver.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): ensureCreateModalAgent forces the Agent
+	// field to shell rather than a literal wait for the shell-only
+	// "Create shell session" title.
+	if err := ensureCreateModalAgent(ctx, driver, "shell"); err != nil {
 		return err
 	}
 	if err := driver.Send(name); err != nil {

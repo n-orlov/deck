@@ -810,7 +810,11 @@ func clientAttemptsShellSession(ctx context.Context, clientName, name string) er
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): ensureCreateModalAgent forces the Agent
+	// field back to shell whatever task 024's "(last used)" pre-selection
+	// left it at, rather than a literal wait for "Create shell session"
+	// that hangs once a non-shell agent was created earlier in the scenario.
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
 	if err := client.Send(name); err != nil {
@@ -1048,7 +1052,12 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := client.Send("n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19) equivalent-row wait: the Agent row renders
+	// unconditionally (internal/tui.createFieldRows) whether the modal's
+	// title is "Create shell session" or plain "Create session", so this
+	// stays correct even though this particular scenario's own fresh
+	// DECK_HOME guarantees shell is the pre-selected agent anyway.
+	if err := client.WaitForFrame(ctx, false, "Agent: "); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Send("black-box"); err != nil {

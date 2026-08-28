@@ -1,0 +1,23 @@
+features/agent_steps_test.go:398:	// "Create shell session", which hangs the whole scenario timeout once a
+features/agent_steps_test.go:521:	// Title-independent (F19): the modal title is "Create shell session"
+features/agent_steps_test.go:551:// "Create shell session" only while the pre-selected agent is shell and a
+features/assertions_test.go:779:	// Not a wait on the "Create shell session" title: the modal pre-selects
+features/assertions_test.go:815:	// left it at, rather than a literal wait for "Create shell session"
+features/assertions_test.go:1057:	// title is "Create shell session" or plain "Create session", so this
+features/coalesced_keymsg_test.go:67:	// "Create shell session" title, which only appears while shell is the
+features/create_blank_name_test.go:77:	// Literal "Create shell session" kept here (F19): every scenario using
+features/create_blank_name_test.go:85:	if err := waitForFrameGone(ctx, client, "Create shell session"); err != nil {
+features/create_modal_test.go:46:	// instead of the shell-only "Create shell session" title changes
+features/create_reuse_warning_test.go:63:	// "Create shell session" title -- guaranteed here on a fresh
+features/create_session_test.go:76:// modal's title, which reads "Create shell session" only while shell is
+features/create_session_test.go:151:	// "Create shell session" title, which hangs once a non-shell agent
+features/create_tilde_test.go:64:	// "Create shell session" title.
+features/create_tilde_test.go:96:	// "Create shell session" title.
+features/create_validation_test.go:78:	// "Create shell session" title.
+features/determinism_test.go:117:	// "Create shell session" title. The Agent row's own text never
+features/determinism_test.go:301:	// "Create shell session" title.
+features/dialogs_test.go:228:	// the Agent row instead of the shell-only "Create shell session" title
+features/dialogs_test.go:277:	// rather than a literal wait for the shell-only "Create shell session"
+features/kill_delete_undo_fingerprint_test.go:54:	// "Create shell session" title.
+features/mouse_reenable_after_attach_test.go:31:	// "Create shell session" title.
+features/sidebar_width_test.go:101:	// "Create shell session" title.

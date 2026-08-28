@@ -71,8 +71,12 @@ func clientStartedInFreshDirectoryLabelled(ctx context.Context, name, label stri
 }
 
 // clientOpensCreateModal sends "n" and waits for the create modal's own
-// title, without asserting anything about which fields are pre-filled --
-// callers state what they expect separately.
+// Agent row -- rendered unconditionally by createFieldRows regardless of
+// which agent is pre-selected (task 024's "(last used)"), unlike the
+// modal's title, which reads "Create shell session" only while shell is
+// selected and a plain "Create session" otherwise (F19) -- without
+// asserting anything about which fields are pre-filled: callers state what
+// they expect separately.
 func clientOpensCreateModal(ctx context.Context, name string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -85,7 +89,7 @@ func clientOpensCreateModal(ctx context.Context, name string) error {
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "Create shell session")
+	return client.WaitForFrame(ctx, false, "Agent: ")
 }
 
 // clientScreenContainsDirectoryLabelled asserts the currently rendered
@@ -142,7 +146,13 @@ func createShellSessionInLabelledCWD(ctx context.Context, h *ScenarioHarness, cl
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): ensureCreateModalAgent forces the Agent
+	// field to shell rather than a literal wait for the shell-only
+	// "Create shell session" title, which hangs once a non-shell agent
+	// was pre-selected by an earlier create in the same scenario (proven
+	// by create_session.feature's "converges on the shell agent even
+	// after a non-shell session was created earlier" scenario).
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
 	if err := client.Send(sessionName); err != nil {

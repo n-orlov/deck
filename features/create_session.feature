@@ -79,6 +79,29 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     Then the state database has sessions named "create-session-blank-collide-0820-1443" and "create-session-blank-collide-0820-1443-2", both with cwd exactly the directory labelled "blank-collide"
     When deck client "A" exits cleanly
 
+  # F19: every "the create modal is open" wait in features/*_test.go used to
+  # be a literal wait for the "Create shell session" title
+  # (internal/tui.createBody), which reads that only while shell is the
+  # pre-selected agent and a plain "Create session" otherwise (task 024's
+  # "(last used)" pre-selection) -- so any of those steps would hang for the
+  # whole scenario timeout once a non-shell agent was created earlier in
+  # the same scenario. Every such wait converged onto the Agent row
+  # (rendered unconditionally by createFieldRows) instead, either directly
+  # or via ensureCreateModalAgent (features/agent_steps_test.go), which also
+  # forces the field back to a specific kind. This scenario is the proof:
+  # it creates a claude session first, so the modal's title would read
+  # plain "Create session" at the very next open, then drives a shell
+  # create through createShellSessionInLabelledCWD -- one of the converted
+  # sites -- and shows it still reaches "starting" rather than hanging.
+  @requirement-12-title-independent-after-non-shell
+  Scenario: the create modal converges on the shell agent even after a non-shell session was created earlier
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "cs-nonshell-seed" with permission profile "safe"
+    And deck client "A" creates shell session "cs-after-nonshell" with a fresh working directory labelled "after-nonshell"
+    Then the state database session "cs-after-nonshell" has cwd exactly the directory labelled "after-nonshell"
+    When deck client "A" exits cleanly
+
   # Requirement 15: each rejection the create modal can produce -- a duplicate
   # name, a slug collision with an existing session, a working directory that
   # does not exist, a working directory that exists but is not a directory, a
