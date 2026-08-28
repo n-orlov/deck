@@ -1556,6 +1556,43 @@ func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 	return events, nil
 }
 
+// droppedHookKindSuffix is hookrecv's own supersededEventKind suffix
+// ("<baseKind>.superseded") duplicated here as a literal rather than an
+// import: internal/store cannot depend on internal/hookrecv (the store is
+// the lower-level package hookrecv itself depends on), and the LIKE clause
+// below needs the literal either way. R90/task 033: this is the one place
+// that reads the vocabulary task 032's supersededEventKind writes, so the
+// `i` detail dialog can say "a hook was declined here, and why" without a
+// caller trawling ListEvents itself.
+const droppedHookKindSuffix = ".superseded"
+
+// LastDroppedHook returns the most recent event recorded for sessionID
+// whose kind carries droppedHookKindSuffix -- i.e. the newest hook write
+// supersededLaunch (internal/hookrecv) declined for this row, if any.
+// found is false, with a zero Event and nil error, when this session has
+// never had one; that is the ordinary case and is not an error. Ordered
+// the same way ListEvents is (at DESC, seq DESC) so two declines sharing a
+// millisecond still resolve to the actually-newest one.
+func (s *Store) LastDroppedHook(ctx context.Context, sessionID string) (Event, bool, error) {
+	if sessionID == "" {
+		return Event{}, false, errors.New("session id is required")
+	}
+	row := s.db.QueryRowContext(ctx, `SELECT seq, session_id, at, kind, reason, payload
+		FROM events WHERE session_id = ? AND kind LIKE '%' || ? ORDER BY at DESC, seq DESC LIMIT 1`, sessionID, droppedHookKindSuffix)
+	var event Event
+	var sqlSessionID, reason, payload sql.NullString
+	if err := row.Scan(&event.Seq, &sqlSessionID, &event.At, &event.Kind, &reason, &payload); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Event{}, false, nil
+		}
+		return Event{}, false, fmt.Errorf("last dropped hook for session %q: %w", sessionID, err)
+	}
+	event.SessionID = sqlSessionID.String
+	event.Reason = reason.String
+	event.Payload = payload.String
+	return event, true, nil
+}
+
 // ListEventsCallCount reports how many times ListEvents has actually run
 // against this store (R61, steer 3e-001 §6.3): test-only instrumentation
 // used to prove a caller (the `E` event log) reads the store once per

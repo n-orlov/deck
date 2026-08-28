@@ -441,6 +441,25 @@ type Model struct {
 	// or a stale row set from a previous visit.
 	eventLogRows []store.Event
 	eventLogErr  error
+	// detailDroppedHookSessionID/detailDroppedHookFound/detailDroppedHookEvent
+	// are the `i` detail dialog's own R61 (steer 3e-001 §6.3) in-memory copy
+	// of loadDetailDroppedHook's LastDroppedHook result (R90/task 033).
+	// detailDroppedHookSessionID is set to the session's id the moment "i"
+	// opens the dialog and dispatches loadDetailDroppedHook for it -- both a
+	// pending marker (detailDroppedHookFound stays false until a reply
+	// arrives) and, once the matching detailDroppedHookLoaded lands, the
+	// name of the session detailDroppedHookEvent actually belongs to. The
+	// dialog is exclusive (updateDetailView intercepts every key while
+	// m.detail is true, so m.selected cannot change under it), but a reply
+	// can still arrive after Esc closed this visit and a DIFFERENT session's
+	// "i" reopened it with a new pending id; the Update case below compares
+	// the reply's own session id against this field before applying it, so
+	// that stale reply is discarded rather than rendered against the wrong
+	// row. detailBody/View() only ever read these three fields -- never
+	// m.store directly.
+	detailDroppedHookSessionID string
+	detailDroppedHookFound     bool
+	detailDroppedHookEvent     store.Event
 	// filtering is task 123's `/` list filter (SPEC §11.3/requirement 33,
 	// I-10): true while the filter's own text field has keyboard focus
 	// (see updateFilter). filterQuery is the live, incrementally-applied
@@ -1737,6 +1756,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// "E" reopens and resets them again).
 		m.eventLogRows = msg.events
 		m.eventLogErr = msg.err
+	case detailDroppedHookLoaded:
+		// R90/task 033, R61: the ONE place loadDetailDroppedHook's result is
+		// consumed. Applied only when msg.sessionID still names the pending
+		// target the "i" key handler set (see detailDroppedHookSessionID's
+		// own comment) -- a mismatch means this reply belongs to a session
+		// the dialog has since moved past, and is discarded rather than
+		// rendered against the wrong row. A read error also leaves
+		// detailDroppedHookFound false: this field is supplementary detail,
+		// not a state the dialog needs to report failing to load the way
+		// eventLogErr does for the whole `E` log.
+		if msg.sessionID == m.detailDroppedHookSessionID && msg.err == nil {
+			m.detailDroppedHookFound = msg.found
+			m.detailDroppedHookEvent = msg.event
+		}
 	case shellCreated:
 		if msg.err != nil {
 			m.createError = msg.err.Error()
@@ -2350,9 +2383,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// m.help is never true here either (task 078's updateHelpView
 			// intercepts every key first), so this only ever opens it;
 			// detailScroll resets for the same reason helpScroll does above.
+			// R90/task 033, R61: whether a hook was recently declined for
+			// THIS session is fetched fresh on every open, as a tea.Cmd
+			// (loadDetailDroppedHook), rather than read from m.store inline
+			// in View() -- the previous visit's result is cleared first so a
+			// slow reply landing after a different session's "i" reopened the
+			// dialog is caught by the session-id mismatch guard in the
+			// detailDroppedHookLoaded case below, never rendered against the
+			// wrong row.
 			if len(m.sessions) > 0 {
 				m.detail = true
 				m.detailScroll = 0
+				target := m.sessions[m.selected].ID
+				m.detailDroppedHookSessionID = target
+				m.detailDroppedHookFound = false
+				m.detailDroppedHookEvent = store.Event{}
+				return m, m.loadDetailDroppedHook(target)
 			}
 		case ",":
 			if !m.help {
@@ -3053,6 +3099,38 @@ func (m Model) persistLastCreateAgent(agentKind string) tea.Cmd {
 	}
 	return func() tea.Msg {
 		return uiStatePersisted{err: m.store.SetLastCreateAgent(context.Background(), agentKind)}
+	}
+}
+
+// detailDroppedHookLoaded carries loadDetailDroppedHook's LastDroppedHook
+// result back into Update (R90/task 033, R61): dispatched exactly once by
+// the "i" key handler when the detail dialog opens. sessionID is the
+// session the lookup was FOR, not necessarily the one still selected when
+// the reply lands -- the Update case below compares it against
+// m.detailDroppedHookSessionID's own pending marker before applying the
+// result, so a stale reply from a session the dialog has since moved past
+// is discarded rather than rendered against the wrong row.
+type detailDroppedHookLoaded struct {
+	sessionID string
+	event     store.Event
+	found     bool
+	err       error
+}
+
+// loadDetailDroppedHook is the `i` detail dialog's one store read for
+// R90/task 033: whether supersededLaunch (internal/hookrecv) has recently
+// declined a hook write for sessionID, and why. Mirrors loadEventLog's own
+// no-store-attached degrade (an empty result, never a panic) and
+// loadArchivedSessions'/persistLastCreateAgent's parameterized-tea.Cmd
+// shape, since this lookup -- unlike the `E` log's global one -- is always
+// for one particular session.
+func (m Model) loadDetailDroppedHook(sessionID string) tea.Cmd {
+	if m.store == nil {
+		return func() tea.Msg { return detailDroppedHookLoaded{sessionID: sessionID} }
+	}
+	return func() tea.Msg {
+		event, found, err := m.store.LastDroppedHook(context.Background(), sessionID)
+		return detailDroppedHookLoaded{sessionID: sessionID, event: event, found: found, err: err}
 	}
 }
 
@@ -5524,6 +5602,20 @@ func (m Model) detailBody() string {
 	}
 	if session.ConversationID != "" {
 		fmt.Fprintf(&b, "%s\n", m.detailField("Conversation id:    ", session.ConversationID))
+	}
+	if m.detailDroppedHookFound && m.detailDroppedHookSessionID == session.ID {
+		// R90/task 033: supersededLaunch (internal/hookrecv) recorded this
+		// hook's write as declined -- an event present but the row
+		// untouched -- rather than silently doing nothing, so this is the
+		// one place besides `E`'s own event log that answers "was a hook
+		// declined here, and why" without a reader having to trawl the
+		// database. event.Kind already carries supersededEventKind's
+		// distinct "<baseKind>.superseded" suffix (task 032) and
+		// event.Reason already carries supersededReason's own explanation
+		// naming both launch generations -- shown verbatim, exactly as `E`
+		// shows them, so the two views never disagree about the wording.
+		event := m.detailDroppedHookEvent
+		fmt.Fprintf(&b, "%s\n", m.detailField("Hook declined:      ", fmt.Sprintf("%s -- %s (%s)", event.Kind, event.Reason, m.relativeAge(event.At))))
 	}
 	if session.LastMessage != "" {
 		fmt.Fprintf(&b, "\nLast message:\n%s\n", session.LastMessage)
