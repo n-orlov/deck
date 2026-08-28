@@ -112,6 +112,32 @@ Evidence: [`phase3g-001-r76-terminal-row-live-pane/`](phase3g-001-r76-terminal-r
 A regression this evidence itself discovered — not fixed by task 038 — is recorded
 [below](#known-open-regression-discovered-by-task-002s-own-evidence-not-fixed-here).
 
+**Task 103, no fix to R76 itself, a verdict on its interaction with a scenario.**
+`status_claude_hooks.feature`'s "Every declared Claude hook maps to honest status
+through both identity routes" scenario posed a hook-written `SessionEnd` `stopped` row
+while the fake claude's own pane stayed alive underneath it — precisely the state R76's
+`repairTerminalRowWithLivePane` exists to correct, so the repair fired before the
+scenario's own assertion read the row. **Implementing sha: `51b7f17`** re-routes the
+scenario to reach the same assertion through a state R76 does not repair (the fake
+claude's pane is driven to a confirmed, clean exit first, then `deck _hook SessionEnd`
+is delivered as a one-shot released invocation, never a `send-keys` into a still-live
+pane) — `internal/service/reconcile.go` is untouched by the commit, and every
+status/reason/message/acknowledged/notify_epoch assertion the scenario had at `b6cbbc7`
+is unedited. Red at `b6cbbc7`, `docs/reports/phase3g-103-hook-sessionend-repair/red-b6cbbc7-step-error.txt`:
+```
+step error: session "hook truth" = status "starting" source "tmux" reason "tmux pane
+is alive; terminal row corrected" message "permission granted; work is complete"
+acknowledged=0 epoch=3; want "stopped" hook "logout" "permission granted; work is
+complete" 0 3
+```
+Green, three consecutive runs of `status_claude_hooks.feature`
+(`green-run1.log`/`green-run2.log`/`green-run3.log`, all `ok
+github.com/n-orlov/deck/features <5s`). **Verdict recorded for task 110's fold-in**: a
+hook-declared terminal status arriving while its own pane is still alive is R76 working
+as specified, the same class of case F20 already documents for a raw state-database
+write — not a spec contradiction, and not grounds to loosen or bypass the repair.
+Evidence: [`phase3g-103-hook-sessionend-repair/`](phase3g-103-hook-sessionend-repair/).
+
 ## R77 — a deleted session's name is reusable (tasks 003–006)
 
 `SPEC.md` §9.2. **Implementing shas: `b80a4bd` + `70162d4`** (task 003, the tx-scoped
@@ -368,12 +394,52 @@ create modal's own focused field). The recorded follow-up (not yet its own task)
 `theme.Selection` to the rename dialog's focused field, with a rendered-grid assertion
 that a New-name cell carries that background, plain text still byte-identical.
 
+**Resolved by task 105, implementing sha `ea6ce4b`.** A new `renderRenameFieldRow`
+composes the "New name" label (`theme.Hint`) and value (`theme.Text`) via
+`settingsRenderRowOpen` (which opens each segment's foreground but never closes it) and
+wraps the whole result in one `bgColorToken(theme.Selection, ...)` — the same shape
+`renderCreateRowSegments` already uses for the create modal's own focused row;
+`styledRenameBody` calls it instead of `m.detailField("New name:  ", m.renameValue)`,
+and `detailField` itself (still used by `detailView`/`pinView`/`profileSwitchView`) is
+untouched. New assertion: `TestRenameViewFocusedFieldGetsSelectionBackground`
+(`internal/tui/rename_theme_test.go`), reading the rendered dialog off a real
+`vt.Emulator` grid. Red (with the fix reverted to the old `detailField` call),
+`docs/reports/phase3g-105-rename-selection/red-before-fix.log`; green,
+`green-internal-tui.log` and `green-dialogs-feature.log`
+(`ci/run.sh env DECK_GODOG_PATHS=dialogs.feature go test ./features/ -run TestFeatures -count=1`).
+The dialog's visible text is byte-identical after ANSI stripping (asserted in the same
+test), and the pre-existing rename assertions are only added to, never loosened. Evidence:
+[`phase3g-105-rename-selection/`](phase3g-105-rename-selection/).
+
 Green (both dialogs' own theme tests plus the whole `internal/tui` package, at
 `cc36cfa`): `ci/run.sh go test -count=1 ./internal/tui/`; event log:
 `ci/run.sh env DECK_GODOG_PATHS=event_log.feature go test ./features/ -run TestFeatures -count=1`.
 
-**`NO_COLOR`/`DECK_ASCII` degradation and width accounting under the new tokens are
-netted by task 022, which is still `pending`** — see [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-80x24-tasks-016-018-022).
+**`NO_COLOR`/`DECK_ASCII` degradation and width accounting under the new tokens, which
+were netted by a still-`pending` task 022 as of `cc36cfa`, are now netted by task 107,
+implementing sha `02e64a5`.** A new `internal/tui/dialog_degradation_net_test.go`,
+`TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII`, iterates all ten dialogs themed
+this phase (create modal, env editor, bulk delete confirm, delete/purge confirm,
+archive confirm, profile picker, pin conversation, restart-or-inject, rename, event
+log), reusing each dialog's own existing model-building test helper so this file can
+never silently diverge from what those dialogs' own theme tests already assert is a
+themed render. For each dialog (several with a couple of mutated states) it builds the
+themed (`Color: true`) and the degraded (`Color: false, ASCII: true` — NO_COLOR and
+DECK_ASCII set **together**, the one combination `config.Load` can actually produce,
+since the two env vars gate entirely independent `Settings` fields) renders and asserts:
+the degraded body carries no SGR byte at all; the degraded body is byte-identical to the
+themed body once ANSI is stripped (no label or value lost to either degradation); and
+`wrapDialogLines` produces the same physical line count, line for line, for the themed
+body and its own ANSI-stripped twin (the width/height-accounting bullet). A further
+assertion, `TestRenameFieldRowTruncationReemitsItsOwnReset`, pins that `truncateToWidth`
+re-emits its own reset when it truncates a coloured run, satisfying §11.3's truncated-run
+bullet. Green: `internal-tui-go-test.log` (`ci/run.sh go test -count=1 ./internal/tui/`)
+and `features-go-test.log`
+(`ci/run.sh env DECK_GODOG_PATHS=dialogs.feature,environment.feature,create_session.feature go test ./features/ -run TestFeatures -count=1`),
+both exit 0. Evidence:
+[`phase3g-107-dialog-degradation-net/`](phase3g-107-dialog-degradation-net/). This also
+satisfies [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-80x24-tasks-016-018-022)'s
+same net, which the R83 section below records.
 
 ## R83 — the three dialogs that draw past the frame at 80×24 (tasks 016, 018, 022)
 
@@ -393,19 +459,41 @@ bound at 80×24 and PgUp/PgDn reachability directly.
 Evidence: [`phase3g-038-r83-dialog-frame-bound/`](phase3g-038-r83-dialog-frame-bound/) —
 `green-80x24-bounds.log`, the frame-budget and submit-line-reachability tests of all
 three dialogs run by name; captured by task 038 at `e02ef08` against the unmodified
-tree, green-only, as its README states. No red is owed (R83 is not one of the eight),
-and nothing there covers task 022's still-missing net.
+tree, green-only, as its README states. No red is owed (R83 is not one of the eight).
 
-**Task 022 — "net the themed dialogs against `NO_COLOR`, `DECK_ASCII` and width
-accounting" — is `pending`, not yet started.** The bounding itself is in the tree and
-covered by the dialogs' own theme tests; what is not yet done is the cross-dialog
-regression net the PRD's "Width and height accounting must not shift" and "`NO_COLOR`
-and `DECK_ASCII` degradation is the one thing this can regress" bullets ask for. This
-report does not claim that net exists.
+**Task 022's net is superseded by task 107 (see the [R82](#r82--dialogs-are-themed-tasks-016-021)
+section above for the full description).** `02e64a5`'s
+`TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII` and
+`TestRenameFieldRowTruncationReemitsItsOwnReset`
+(`internal/tui/dialog_degradation_net_test.go`) are exactly the cross-dialog regression
+net the PRD's "Width and height accounting must not shift" and "`NO_COLOR` and
+`DECK_ASCII` degradation is the one thing this can regress" bullets ask for, covering
+all ten dialogs themed this phase, not only the three named here. Evidence:
+[`phase3g-107-dialog-degradation-net/`](phase3g-107-dialog-degradation-net/).
+
+**Task 101, a test-wait fix, not a product change, on this same clamp.**
+`kill_delete_undo.feature`'s "the dd confirm dialog width is 80% of the viewport
+clamped to [26,80], at both clamp ends" scenario exercises exactly this requirement's
+clamp at a 30x60 terminal, but `features/agent_steps_test.go`'s `ensureCreateModalAgent`
+waited on a literal (`"Agent: " + want + " (left/right cycles"`) that the theming's
+word-wrap can split across two grid rows at that width, so the wait timed out forever
+once the clamp was narrow enough. **Implementing sha: `2549406`** drops the
+`"(left/right cycles"` clause from the awaited literal while still pinning the Agent
+row's own value. Red at `b6cbbc7`,
+`docs/reports/phase3g-101-agent-wait-wrap/red-b6cbbc7.log`:
+```
+after scenario hook failed: cycle the create modal's Agent field to "shell": timed out
+waiting for frame "Agent: shell (left/right cycles": context deadline exceeded
+```
+Green, three consecutive runs of `kill_delete_undo.feature`
+(`green-1.log`/`green-2.log`/`green-3.log`). `git show --stat` for `2549406` touches no
+path under `internal/` or `cmd/`. Evidence:
+[`phase3g-101-agent-wait-wrap/`](phase3g-101-agent-wait-wrap/).
 
 ## R84 — the contrast floor covers the pairs a dialog actually uses (task 106)
 
-`SPEC.md` §11.6. **Task 106, met.** `internal/theme/contrast_test.go` gains a third
+`SPEC.md` §11.6. **Task 106, met. Implementing shas: `57a6882`, `0219e42`.**
+`internal/theme/contrast_test.go` gains a third
 table-driven test, `TestThemedDialogTokensClearContrastFloor`, adding exactly the pairs
 R84 names: `hint/surface`, `key/surface`, `error/surface`, and every one of a dialog
 focused field's text tokens (`text`, `dimmed`, `hint`, `key`, `error`) over both
@@ -459,6 +547,30 @@ Evidence: [`phase3g-038-r85-last-used-agent/`](phase3g-038-r85-last-used-agent/)
 task 038 at `e02ef08` against the unmodified tree, green-only, as its README states.
 Task 024 left no directory of its own and no red is owed: R85 is not one of the eight.
 
+**Task 102, a test disambiguation, not a product fix.** `features/settings.feature`'s
+`@requirement-17-clear-recent-cwds-history` scenario asserted the bare literal
+`"(last used)"` was gone after clearing recent cwds — but R85's own `createAgentHelp`
+(`internal/tui/tui.go:6486-6516`) prefixes the Agent row's help with the identical
+`"(last used) "`, untouched by clearing recent cwds, so the assertion could never
+legitimately pass once R85 landed. **Implementing sha: `89682e5`** narrows both of the
+scenario's `(last used)` assertions to the working-directory row's own help text,
+`"(last used) the session's cwd"`, leaving the Agent row's identical prefix alone. Red
+at `b6cbbc7`, `docs/reports/phase3g-102-clear-recents-label/red-b6cbbc7-agent-label-collision.log`:
+```
+Then deck client "A" screen does not contain "(last used)" # settings.feature:402
+  Error: after scenario hook failed: deck client "A" screen unexpectedly contains
+  "(last used)":
+...
+|     (last used) which coding agent adapter launches this session             |
+```
+— the matched text is the Agent row's own help, not the cleared cwd prefill. Green,
+three consecutive runs (`green-run-1.log`/`-2`/`-3`, `settings.feature`). The same
+directory also shows the narrowed assertion is still load-bearing: with the recents
+clear locally disabled (an uncommitted one-line patch, quoted in
+`red-disabled-clear-loadbearing.log`), the scenario is still red — no assertion was
+deleted, only the matched string was narrowed to the row it is actually about. Evidence:
+[`phase3g-102-clear-recents-label/`](phase3g-102-clear-recents-label/).
+
 ## R86 — `↑`/`↓` navigate dialog fields; `tab` is completion only (tasks 025, 026)
 
 `SPEC.md` §11.4/§11.7. **Implementing shas: `a337671`** (task 025, `applyDialogContract`'s
@@ -507,6 +619,51 @@ something to break and re-fix — and are green in the same evidence file
 `TestFooterKeyLegendNamesOnlyBoundKeys`,
 `TestScrollableOverlaysScrollOneLineWithArrows`,
 `TestScrollableOverlaysScrollOneLineWithJK`.
+
+**Task 104, the title-independent wait convergence (finding F19), implementing sha
+`045a6e6`.** `createBody` titles the create modal "Create shell session" only while
+`shell` is the pre-selected agent (task 024's "(last used)" pre-selection) and a plain
+"Create session" otherwise, so every `WaitForFrame(ctx, _, "Create shell session")`
+whose real purpose was just "the create modal is open" hung for the whole scenario
+timeout once a non-shell agent had been created earlier in the same scenario — the same
+class of wrap/label coupling task 101 fixed for `ensureCreateModalAgent`'s own Agent
+wait, triggered a different way. Every remaining "the create modal is open" wait in
+`features/*_test.go` converged onto `ensureCreateModalAgent(ctx, client, kind)` (when
+the caller needs a specific agent selected) or a direct `WaitForFrame(ctx, _, "Agent: ")`
+wait (when it does not), each converted site carrying an inline `// Title-independent
+(F19): ...` comment; `clientOpensCreateModalForAgent`
+(`features/agent_steps_test.go:521`) is among the converted sites. After conversion,
+`grep -n "Create shell session" features/*_test.go`
+(`docs/reports/phase3g-104-title-independent-waits/grep-output.txt`) contains only
+comments and exactly one real wait, `features/create_blank_name_test.go:85`, which is a
+deliberate title assertion (the scenario never creates a non-shell session first).
+Green: `ci/run.sh env DECK_GODOG_PATHS=event_log.feature,durable_identity.feature,create_session.feature,dialogs.feature go test ./features/ -run TestFeatures -count=1`
+(`godog-run.log`), exit 0. Evidence:
+[`phase3g-104-title-independent-waits/`](phase3g-104-title-independent-waits/).
+
+**Task 108 re-proves R86's on-screen text and the overlays' surviving line scroll,
+reproducibly. Implementing shas: `ab34cb4`, `860c412`.** Validation rejected the first
+cut on its own criterion (a) alone — a hand-assembled footer table, missing the detail-
+view footer (`tui.go:5660`) and the help-overlay closing footer (`tui.go:7152`);
+`860c412` rebuilds that section of
+`docs/reports/phase3g-108-r86-proof/README.md` on ten quoted, reproducible commands
+(A1–A10, whole output plus exit status, mirrored in `criterion-a-greps.log`): A1 greps
+every footer's closing words for `↑`/`↓` field navigation and `Ctrl+P`/`Ctrl+N` recents
+with `tab` advertised only as path completion, A1b `colorFooterLine(` (nine styled
+twins), A1c the bulk-delete constants including the scrollable variant no literal grep
+sees; every A1 hit is classified in a 13-row table and tied to `dialogFields.Count`/
+`applyDialogContract` (`dialog_contract.go:82-92`) by A8/A9. Criterion (b),
+`internal/tui/help_keymap_parity_test.go` and `internal/tui/footer_bindings_parity_test.go`,
+pass (`go-test-parity-verbose.log`). Criterion (c), that `?`/`i`/`E` still scroll exactly
+one line on `↑`/`↓` under task 025's dialog contract, is covered by the pre-existing
+`internal/tui/overlay_line_scroll_test.go` — cited by name, no test added, none loosened
+(`go-test-overlay-line-scroll-verbose.log`). Criterion (d),
+`git log --oneline 1cfbd5a..HEAD -- internal/tui/settings.go`, is empty
+(`settings-go-untouched.log`). Criterion (e), `ci/run.sh go test -count=1
+./internal/tui/` (`go-test-tui.log`) and
+`ci/run.sh env DECK_GODOG_PATHS=dialogs.feature,create_session.feature,event_log.feature go test ./features/ -run TestFeatures -count=1`
+(`go-test-features.log`), both exit 0. Evidence:
+[`phase3g-108-r86-proof/`](phase3g-108-r86-proof/).
 
 ## R87 — `esc` clears a filter held in force (tasks 027, 028)
 
@@ -852,17 +1009,17 @@ scenario's assertion to a store read or otherwise account for R76.
 
 | req | status | tasks | shas | red/green quoted |
 |---|---|---|---|---|
-| R76 | met | 001, 002 | `89fcffc`, `15e33c6`, `904419c` | yes |
+| R76 | met | 001, 002, 103 | `89fcffc`, `15e33c6`, `904419c`, `51b7f17` | yes |
 | R77 | met | 003–006 | `b80a4bd`, `70162d4`, `be3df32`, `31510ab`, `c791a6a` | yes (task 003 leg) |
 | R78 | met | 007–009 | `47166c8`, `e699c31`, `3247a7a` | not required |
 | R79 | met | 010–011 | `c987953`, `e475660`, `8276450`, `e45bf2e` | yes |
 | R80 | met | 012–013 | `f5977d4`, `745a25b`, `f9611b7`, `ebbc3fd` | not required |
 | R81 | met | 014–015 | `7dbe5c5`, `3498b3e` | not required |
-| R82 | **partial** | 016 (skipped), 017–020, 021 (failed) | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad` | not required |
-| R83 | **partial** | 016, 018, 022 (pending) | see R82 row | not required |
-| R84 | met | 106 | this task's commit | not required |
-| R85 | met | 024 | `9991689` | not required |
-| R86 | met | 025–026 | `a337671`, `17b7bb9`, `8cff03b` | yes (retroactive, disclosed) |
+| R82 | **partial (016 unsatisfiable only; 021's own gap closed by 105)** | 016 (skipped), 017–020, 021 (failed), 105, 107 | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad`,`ea6ce4b`,`02e64a5` | yes (105, retroactive not needed) |
+| R83 | met (net closed by 107) | 016, 018, 101, 107 | see R82 row, plus `2549406` | not required |
+| R84 | met | 106 | `57a6882`, `0219e42` | not required |
+| R85 | met | 024, 102 | `9991689`, `89682e5` | not required |
+| R86 | met | 025–026, 104, 108 | `a337671`, `17b7bb9`, `8cff03b`, `045a6e6`, `ab34cb4`, `860c412` | yes (retroactive, disclosed) |
 | R87 | met | 027–028 | `f3f3d26`, `3d749bb` | yes |
 | R88 | met | 029 | `f9c6fc4` | yes |
 | R89 | met | 030–031 | `6718823`, `f70b773`, `8ddf869`, `ce22192` | yes |
@@ -870,6 +1027,18 @@ scenario's assertion to a store read or otherwise account for R76.
 | R91 | met | 034–035 | `c93f811`, `9d6c22a` | yes (retroactive, disclosed; plus the count prediction) |
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
 
-"Partial"/"not done" rows are not claims of completion; they are carried forward to
-`docs/reports/phase3g-findings.md` (task 039's deliverable, not yet written at
-`e02ef08`) and the close-out (task 042).
+"Partial" is not a claim of completion; R82's residual is carried forward to
+`docs/reports/phase3g-findings.md` and the close-out (task 113).
+
+### Tasks 101–108 (approach 02), test/scenario and evidence path per sha
+
+| task | req | sha(s) | test/scenario (file) | evidence path |
+|---|---|---|---|---|
+| 101 | R83 | `2549406` | `features/agent_steps_test.go` `ensureCreateModalAgent`; `kill_delete_undo.feature`'s dd-confirm 80%-clamp scenario | `docs/reports/phase3g-101-agent-wait-wrap/` |
+| 102 | R85 | `89682e5` | `features/settings.feature` `@requirement-17-clear-recent-cwds-history` | `docs/reports/phase3g-102-clear-recents-label/` |
+| 103 | R76 (verdict only) | `51b7f17` | `features/status_claude_hooks.feature`'s SessionEnd scenario; `features/status_claude_hooks_test.go` `releasedHookFiresForSession` | `docs/reports/phase3g-103-hook-sessionend-repair/` |
+| 104 | R86 | `045a6e6` | `features/agent_steps_test.go:521` `clientOpensCreateModalForAgent`; `event_log.feature`, `durable_identity.feature`, `create_session.feature`, `dialogs.feature` | `docs/reports/phase3g-104-title-independent-waits/` |
+| 105 | R82 (F18) | `ea6ce4b` | `internal/tui/rename_theme_test.go` `TestRenameViewFocusedFieldGetsSelectionBackground` | `docs/reports/phase3g-105-rename-selection/` |
+| 106 | R84 | `57a6882`, `0219e42` | `internal/theme/contrast_test.go` `TestThemedDialogTokensClearContrastFloor` | `docs/reports/phase3g-106-contrast-floor/` |
+| 107 | R82/R83 | `02e64a5` | `internal/tui/dialog_degradation_net_test.go` `TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII`, `TestRenameFieldRowTruncationReemitsItsOwnReset` | `docs/reports/phase3g-107-dialog-degradation-net/` |
+| 108 | R86 | `ab34cb4`, `860c412` | `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_bindings_parity_test.go`, `internal/tui/overlay_line_scroll_test.go` | `docs/reports/phase3g-108-r86-proof/` |
