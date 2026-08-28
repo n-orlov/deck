@@ -2322,11 +2322,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// close either today, but keeps clearing both anyway so a caller
 			// that somehow reaches it with one already true is not left
 			// stuck open.
+			//
+			// Task 027: a filter query left in force by `enter` closing the
+			// `/` text field (m.filtering == false, m.filterQuery != "") is
+			// ALSO only ever reachable here -- filter.go's own updateFilter
+			// intercepts esc itself while the field still has focus, so this
+			// branch never doubles up with that one. It is deliberately an
+			// else, not a second unconditional clear: SPEC's "esc cancels
+			// [one thing]" means a press that lands on a non-empty mark set
+			// clears the marks and leaves the filter (if any) held, exactly
+			// as it leaves every other state alone -- one press never clears
+			// two things at once.
+			hadMarks := len(m.marked) > 0
 			_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
 				m.help = false
 				m.detail = false
 				m.marked = nil
 			}})
+			if !hadMarks && m.filterQuery != "" {
+				m.filterQuery = ""
+				m.sessions = m.filteredSessions()
+				m.selected = m.nearestVisibleSelection(m.selected)
+			}
 		case "i":
 			// m.detail is never true here (task 013's updateDetailView
 			// intercepts every key, including a second "i", while it is), and

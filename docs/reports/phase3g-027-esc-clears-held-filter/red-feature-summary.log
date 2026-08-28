@@ -1,0 +1,4 @@
+    --- FAIL: TestFeatures/esc_clears_a_filter_held_in_force_at_the_plain_list,_with_the_text_field_never_reopened (6.82s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	11.900s
+FAIL

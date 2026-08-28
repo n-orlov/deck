@@ -159,3 +159,27 @@ Feature: The / list filter: by name, workspace and cwd, and the route back to an
     Then deck client "A" screen contains "unarchive-target"
     And deck client "A" screen contains "unarchive-bystander"
     And deck client "A" exits cleanly
+
+  @requirement-33-esc-clears-a-held-filter-without-reopening-the-field
+  Scenario: esc clears a filter held in force at the plain list, with the text field never reopened
+    # Task 027: `enter` closes the `/` text field but keeps the query (and
+    # the narrowed list it produced) in force -- SPEC.md:318's own "esc
+    # clearing" must also reach that held state at the plain top-level
+    # list, not merely while the text field itself still has focus (every
+    # other "clears the list filter with escape" step above reopens `/`
+    # first). This is the one scenario in the file that does NOT reopen
+    # the field before pressing escape -- it goes straight from the
+    # held-filter state to a bare escape, exercising the top-level
+    # keymap's own esc case instead of updateFilter's.
+    Given deck client "A" is started
+    And deck client "A" creates shell session "esc-hold-alpha"
+    And deck client "A" creates shell session "esc-hold-beta"
+    When deck client "A" opens the list filter
+    And deck client "A" types "esc-hold-alpha" into the filter field
+    And deck client "A" keeps the filter in force with enter
+    Then deck client "A" screen contains "esc-hold-alpha"
+    And deck client "A" screen does not contain "esc-hold-beta"
+    When deck client "A" clears the list filter with escape
+    Then deck client "A" screen contains "esc-hold-beta"
+    And deck client "A" screen does not contain "in force"
+    And deck client "A" exits cleanly
