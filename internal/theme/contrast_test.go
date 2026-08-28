@@ -248,6 +248,74 @@ func dialogSelectionChecks(label string, bg Token) []struct {
 	return checks
 }
 
+// dialogPairKey names one (built-in theme, pair, colour space) cell of
+// TestThemedDialogTokensClearContrastFloor's table, so a sub-floor cell
+// can be allowlisted individually instead of a whole theme being exempted.
+func dialogPairKey(theme, label, space string) string {
+	return theme + " " + label + " " + space
+}
+
+// dialogPairAllowlist is the explicit, measured list of the cells that
+// already sat below minContrastRatio when R84's coverage was added (task
+// 106) -- authored palette values this plan is forbidden to change (a
+// sub-floor pair is a finding for the operator, not a licence to recolour
+// a theme file: finding F23 in docs/reports/phase3g-findings.md and
+// docs/reports/phase3g-106-contrast-floor/).
+//
+// The value is the ratio measured then, to two decimals. It is pinned,
+// not merely tolerated, and every cell NOT listed here is hard-enforced
+// for every built-in, so this table cannot hide a regression:
+//   - an unlisted cell that drops below the floor fails;
+//   - a listed cell that drifts (worse OR better) by more than 0.01 fails,
+//     because the recorded ratio no longer describes the palette;
+//   - a listed cell that has reached the floor fails as a stale entry, so
+//     the allowlist shrinks only deliberately;
+//   - a listed cell naming a theme/pair/space this test does not cover
+//     fails as unmatched, so a typo cannot silently exempt a real cell.
+var dialogPairAllowlist = map[string]float64{
+	// cobalt: dimmed (a field's own help text) over the active selection.
+	"cobalt dimmed/selection hex": 2.59,
+	// empire: dimmed over both selection backgrounds, plus the 16-colour
+	// quantisation collapsing dimmed/hint/key/error onto SelectionIdle's
+	// own reference colour (#7f7f7f).
+	"empire dimmed/selection hex":       2.69,
+	"empire dimmed/selectionidle hex":   2.13,
+	"empire dimmed/selectionidle quant": 1.00,
+	"empire hint/selectionidle quant":   1.00,
+	"empire key/selectionidle quant":    2.35,
+	"empire error/selectionidle hex":    2.69,
+	"empire error/selectionidle quant":  1.00,
+	// parchment: dimmed over both selection backgrounds.
+	"parchment dimmed/selection hex":     2.51,
+	"parchment dimmed/selectionidle hex": 2.87,
+}
+
+// checkDialogPair enforces minContrastRatio for one cell of R84's table,
+// honouring dialogPairAllowlist exactly as that variable's comment
+// describes. It returns the allowlist key it covered, so the caller can
+// prove every allowlist entry matched a real cell.
+func checkDialogPair(t *testing.T, theme, label, space string, ratio float64, fg, bg string) string {
+	t.Helper()
+	key := dialogPairKey(theme, label, space)
+	want, known := dialogPairAllowlist[key]
+
+	switch {
+	case known && ratio >= minContrastRatio:
+		t.Errorf("theme %q %s (%s): %.2f:1 now clears the %.1f:1 floor -- stale dialogPairAllowlist entry (recorded %.2f:1), delete it",
+			theme, label, space, ratio, minContrastRatio, want)
+	case known && math.Abs(ratio-want) > 0.01:
+		t.Errorf("theme %q %s (%s): %.2f:1 (fg=%s bg=%s) drifted from the recorded %.2f:1 -- the palette moved; re-measure and update dialogPairAllowlist (never recolour a built-in to pass)",
+			theme, label, space, ratio, fg, bg, want)
+	case known:
+		t.Logf("FINDING theme %q %s: %s contrast %.2f:1 < %.1f:1 (fg=%s bg=%s) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84",
+			theme, label, space, ratio, minContrastRatio, fg, bg)
+	case ratio < minContrastRatio:
+		t.Errorf("theme %q %s: %s contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+			theme, label, space, ratio, minContrastRatio, fg, bg)
+	}
+	return key
+}
+
 // TestThemedDialogTokensClearContrastFloor is R84's own contrast
 // obligation (task 106): the pairs a themed dialog (R82) actually draws
 // that neither TestBuiltinContrastFloor nor
@@ -257,20 +325,17 @@ func dialogSelectionChecks(label string, bg Token) []struct {
 // theme.Selection and theme.SelectionIdle -- over both the theme's
 // authored hex palette and its 16-colour quantisation, exactly like the
 // two existing tests. This requirement pins what the PRD measured as
-// already true; a failing pair here is a finding to report, not a
-// licence to recolour a built-in theme.
+// already true; a failing pair here is a finding to report, not a licence
+// to recolour a built-in theme.
 //
-// R84's own text states the reference theme (matrix) is measured to clear
-// every new pair; a *different* built-in failing one is a finding for the
-// operator (legibility over distinctness), not licence to recolour a
-// theme file. So the floor is hard-enforced (t.Errorf, fails the suite)
-// only for matrix, the reference theme -- a regression there is a real
-// break. For every other built-in a sub-floor pair is recorded as a
-// FINDING line (still visible with `go test -v`, still counted into the
-// per-theme thinnest-ratio summary logged at the end) rather than turned
-// into a build-breaking assertion, so this test's own exit code stays 0
-// without silencing the gap -- see docs/reports/phase3g-106-contrast-floor/
-// and docs/reports/phase3g-findings.md for the recorded ratios.
+// The floor is hard-enforced for EVERY built-in, not just the reference
+// theme (matrix): the cells that were already sub-floor when this
+// coverage landed are listed individually, with their measured ratios, in
+// dialogPairAllowlist, and every other cell fails the suite the moment it
+// drops. See that variable's comment for what the allowlist can and
+// cannot absorb, docs/reports/phase3g-106-contrast-floor/ for the
+// measurements, and docs/reports/phase3g-findings.md (F23) for the
+// finding those sub-floor cells were reported as.
 func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 	checks := dialogSurfaceChecks()
 	checks = append(checks, dialogSelectionChecks("selection", Selection)...)
@@ -278,6 +343,7 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 
 	thinnest := make(map[string]float64, len(Builtins()))
 	thinnestLabel := make(map[string]string, len(Builtins()))
+	covered := make(map[string]bool, len(Builtins())*len(checks)*2)
 
 	for _, th := range Builtins() {
 		th := th
@@ -321,24 +387,8 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 					min, minLabel = ratioQuant, chk.label+" (quant)"
 				}
 
-				if ratioHex < minContrastRatio {
-					if th.Name == "matrix" {
-						t.Errorf("theme %q %s: hex contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
-							th.Name, chk.label, ratioHex, minContrastRatio, fgHex, bgHex)
-					} else {
-						t.Logf("FINDING theme %q %s: hex contrast %.2f:1 < %.1f:1 (fg=%s bg=%s) -- reported, not silenced or recoloured, per R84",
-							th.Name, chk.label, ratioHex, minContrastRatio, fgHex, bgHex)
-					}
-				}
-				if ratioQuant < minContrastRatio {
-					if th.Name == "matrix" {
-						t.Errorf("theme %q %s: quantised contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
-							th.Name, chk.label, ratioQuant, minContrastRatio, fgQ, bgQ)
-					} else {
-						t.Logf("FINDING theme %q %s: quantised contrast %.2f:1 < %.1f:1 (fg=%s bg=%s) -- reported, not silenced or recoloured, per R84",
-							th.Name, chk.label, ratioQuant, minContrastRatio, fgQ, bgQ)
-					}
-				}
+				covered[checkDialogPair(t, th.Name, chk.label, "hex", ratioHex, fgHex, bgHex)] = true
+				covered[checkDialogPair(t, th.Name, chk.label, "quant", ratioQuant, fgQ, bgQ)] = true
 			}
 		})
 		thinnest[th.Name] = min
@@ -352,6 +402,14 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 		}
 		t.Logf("SUMMARY %-10s thinnest newly-covered pair %-24s = %.2f:1 (%s floor %.1f:1)",
 			th.Name, thinnestLabel[th.Name], thinnest[th.Name], status, minContrastRatio)
+	}
+
+	// An allowlist entry that matches no cell this test walks would be a
+	// silent exemption of whatever it was meant to name.
+	for key := range dialogPairAllowlist {
+		if !covered[key] {
+			t.Errorf("dialogPairAllowlist entry %q matches no (theme, pair, colour space) this test covers -- typo, or the pair/theme was renamed", key)
+		}
 	}
 }
 

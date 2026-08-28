@@ -1,0 +1,30 @@
+--- FAIL: TestThemedDialogTokensClearContrastFloor (0.00s)
+    --- FAIL: TestThemedDialogTokensClearContrastFloor/empire (0.00s)
+        contrast_test.go:379: empire   hint/surface         hex #94a3b8/#172033 = 6.34:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:379: empire   key/surface          hex #d97706/#172033 = 5.11:1   quant #cdcd00/#000000 = 12.33:1
+        contrast_test.go:379: empire   error/surface        hex #ef4444/#172033 = 4.32:1   quant #ff0000/#000000 = 5.25:1
+        contrast_test.go:379: empire   text/selection       hex #cbd5e1/#26324b = 8.62:1   quant #e5e5e5/#000000 = 16.67:1
+        contrast_test.go:379: empire   dimmed/selection     hex #64748b/#26324b = 2.69:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:389: theme "empire" dimmed/selection: hex contrast 2.69:1 < 3.0:1 (fg=#64748b bg=#26324b)
+        contrast_test.go:379: empire   hint/selection       hex #94a3b8/#26324b = 4.99:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:379: empire   key/selection        hex #d97706/#26324b = 4.02:1   quant #cdcd00/#000000 = 12.33:1
+        contrast_test.go:379: empire   error/selection      hex #ef4444/#26324b = 3.40:1   quant #ff0000/#000000 = 5.25:1
+        contrast_test.go:379: empire   text/selectionidle   hex #cbd5e1/#37415c = 6.82:1   quant #e5e5e5/#7f7f7f = 3.18:1
+        contrast_test.go:379: empire   dimmed/selectionidle hex #64748b/#37415c = 2.13:1   quant #7f7f7f/#7f7f7f = 1.00:1
+        contrast_test.go:389: FINDING theme "empire" dimmed/selectionidle: hex contrast 2.13:1 < 3.0:1 (fg=#64748b bg=#37415c) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+        contrast_test.go:390: FINDING theme "empire" dimmed/selectionidle: quant contrast 1.00:1 < 3.0:1 (fg=#7f7f7f bg=#7f7f7f) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+        contrast_test.go:379: empire   hint/selectionidle   hex #94a3b8/#37415c = 3.95:1   quant #7f7f7f/#7f7f7f = 1.00:1
+        contrast_test.go:390: FINDING theme "empire" hint/selectionidle: quant contrast 1.00:1 < 3.0:1 (fg=#7f7f7f bg=#7f7f7f) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+        contrast_test.go:379: empire   key/selectionidle    hex #d97706/#37415c = 3.18:1   quant #cdcd00/#7f7f7f = 2.35:1
+        contrast_test.go:390: FINDING theme "empire" key/selectionidle: quant contrast 2.35:1 < 3.0:1 (fg=#cdcd00 bg=#7f7f7f) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+        contrast_test.go:379: empire   error/selectionidle  hex #ef4444/#37415c = 2.69:1   quant #ff0000/#7f7f7f = 1.00:1
+        contrast_test.go:389: FINDING theme "empire" error/selectionidle: hex contrast 2.69:1 < 3.0:1 (fg=#ef4444 bg=#37415c) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+        contrast_test.go:390: FINDING theme "empire" error/selectionidle: quant contrast 1.00:1 < 3.0:1 (fg=#ff0000 bg=#7f7f7f) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+    contrast_test.go:402: SUMMARY cobalt     thinnest newly-covered pair dimmed/selection (hex)   = 2.59:1 (BELOW floor 3.0:1)
+    contrast_test.go:402: SUMMARY daylight   thinnest newly-covered pair dimmed/selection (quant) = 3.18:1 (clears floor 3.0:1)
+    contrast_test.go:402: SUMMARY empire     thinnest newly-covered pair dimmed/selectionidle (quant) = 1.00:1 (BELOW floor 3.0:1)
+    contrast_test.go:402: SUMMARY matrix     thinnest newly-covered pair error/selection (hex)    = 3.16:1 (clears floor 3.0:1)
+    contrast_test.go:402: SUMMARY parchment  thinnest newly-covered pair dimmed/selection (hex)   = 2.51:1 (BELOW floor 3.0:1)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/theme	0.003s
+FAIL
