@@ -1647,7 +1647,14 @@ over, so deck provides the selection itself rather than leaving the user a worse
 reading output in: **a drag beginning inside the preview selects, and releasing copies.** The
 gesture is tmux's, deliberately — a manager whose own view is the primary one cannot ask
 the user to leave it to copy a line. The selection is over the cells deck drew, which in
-§11.9's interactive mode includes the grid's own scrollback. The copy is written to a **tmux
+§11.9's interactive mode includes the grid's own scrollback. **An in-progress selection is
+visible.** From the press until the release, the selected cells are marked with the
+`selection` token — the same treatment a selected sidebar row carries (§11.3) — and the
+marking clears when the release commits the copy. A selection the user cannot see is a
+selection they cannot aim: the gesture is tmux's, and so is the feedback. **The marking is
+linear, not rectangular**, because the copy is: it covers exactly the run `SelectedText`
+would return for the same anchor and current cell, so what is highlighted and what is
+copied can never disagree. The copy is written to a **tmux
 buffer** on deck's own server, which always works and is what `tmux paste-buffer` reads;
 where the outer terminal permits it an **OSC 52** write additionally reaches the user's system
 clipboard, and that half is best-effort by nature — it depends on the terminal and on tmux's
