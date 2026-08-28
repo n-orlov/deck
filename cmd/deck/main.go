@@ -159,8 +159,23 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		programOptions = append(programOptions, tea.WithMouseCellMotion())
 	}
 	programOptions = append(programOptions, rawByteCountingProgramOptions()...)
-	if _, err := tea.NewProgram(wrapForInputCounting(wrapForDeliberateTestPanic(model)), programOptions...).Run(); err != nil {
-		fmt.Fprintln(stderr, "deck:", err)
+	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
+	// (applied last, around everything else): its own recover must see a
+	// panic thrown by any of the layers below it too, not only one from
+	// inside the real tui.Model's own Update (see cmd/deck/interactive_shutdown.go).
+	finalModel, runErr := tea.NewProgram(wrapForInteractiveShutdownOnPanic(wrapForInputCounting(wrapForDeliberateTestPanic(model))), programOptions...).Run()
+	// PRD R89/task 031: SIGTERM's QuitMsg (Bubble Tea's own signal handler)
+	// returns the model completely unchanged, without ever calling Update --
+	// so unlike a panic (already handled inside the wrapper above, before
+	// this point), a SIGTERM mid-interactive never reaches any recover at
+	// all. finalModel is exactly what QuitMsg's own early return in
+	// eventLoop handed back, so this is deck's only remaining chance to tear
+	// an armed claim down before the process exits. A no-op whenever
+	// interactive mode was not armed (ShutdownInteractive's own guard), so
+	// this is safe to call unconditionally on every other exit route too.
+	shutdownArmedInteractiveClaim(finalModel)
+	if runErr != nil {
+		fmt.Fprintln(stderr, "deck:", runErr)
 		return 0
 	}
 	return 0

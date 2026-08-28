@@ -63,6 +63,12 @@ type inputCountingModel struct {
 	total int64
 }
 
+// Unwrap lets cmd/deck's own always-on interactiveShutdownGuard
+// (interactive_shutdown.go) see through this test-only wrapper to reach
+// the real tui.Model underneath, in case a panic reaches it while a
+// -tags deckinputcount build is also in use.
+func (m *inputCountingModel) Unwrap() tea.Model { return m.Model }
+
 func (m *inputCountingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := msg.(tea.KeyMsg); ok {
 		weight := int64(1)

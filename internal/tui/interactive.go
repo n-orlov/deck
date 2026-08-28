@@ -180,15 +180,24 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// exitInteractive is Ctrl+Q's job (SPEC \u00a711.9, PRD Part II): tear down
-// the transport, restore the window's own geometry byte-exact (PRD II-9/12)
-// and release ownership, in that order, so a concurrent claimant never
-// observes a window resized by an owner that has already let go of it.
-func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
+// teardownInteractive is exitInteractive's own disarm/restore/release
+// sequence, factored out so it can run from two exit routes exitInteractive
+// itself never sees: SIGTERM's QuitMsg (Bubble Tea's own signal handler
+// hands that straight to Program.Run's eventLoop, which returns the model
+// completely unchanged, never calling Update at all) and a panic anywhere
+// in a single Update call's dynamic extent (Bubble Tea's own recover
+// restores the terminal but discards the model outright once the panic
+// unwinds past Run's own `model, err := p.eventLoop(...)` assignment).
+// Both routes are handled from cmd/deck, which owns the process's own exit
+// sequencing (see ShutdownInteractive below and cmd/deck's
+// interactiveShutdownOnPanic wrapper) -- this only performs the tmux-facing
+// half, never touching any of Model's own bookkeeping fields, because
+// whoever calls it here is not about to hand back a "next" model for the
+// rest of Update to keep using; the process is exiting.
+func (m Model) teardownInteractive(ctx context.Context) {
 	if !m.interactive {
-		return m, nil
+		return
 	}
-	ctx := context.Background()
 	if m.interactiveGrid != nil {
 		_ = m.interactiveGrid.Close()
 	}
@@ -198,6 +207,27 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	if m.interactiveOwnership != nil {
 		_ = m.interactiveOwnership.Release(ctx)
 	}
+}
+
+// ShutdownInteractive is deck's own last-chance cleanup for the SIGTERM and
+// panic exit routes named above: a no-op, exactly like exitInteractive's
+// own guard, unless interactive mode was still armed. It is exported so
+// cmd/deck -- which owns both the post-Run() SIGTERM check and the panic
+// recover -- can reach it without either wrapper needing to know anything
+// about interactive mode's own fields.
+func (m Model) ShutdownInteractive(ctx context.Context) {
+	m.teardownInteractive(ctx)
+}
+
+// exitInteractive is Ctrl+Q's job (SPEC \u00a711.9, PRD Part II): tear down
+// the transport, restore the window's own geometry byte-exact (PRD II-9/12)
+// and release ownership, in that order, so a concurrent claimant never
+// observes a window resized by an owner that has already let go of it.
+func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
+	if !m.interactive {
+		return m, nil
+	}
+	m.teardownInteractive(context.Background())
 	m.interactive = false
 	m.interactiveWindowTarget = ""
 	m.interactiveGeometry = tmux.WindowGeometry{}

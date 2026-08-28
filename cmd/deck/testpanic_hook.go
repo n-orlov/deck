@@ -34,6 +34,13 @@ type panicOnKeyModel struct {
 	key string
 }
 
+// Unwrap lets cmd/deck's own always-on interactiveShutdownGuard
+// (interactive_shutdown.go) see through this test-only wrapper to reach
+// the real tui.Model underneath, so a deliberate test panic -- which fires
+// BEFORE ever delegating to m.Model -- still exercises PRD R89/task 031's
+// panic-cleanup guarantee exactly like a genuine bug would.
+func (m panicOnKeyModel) Unwrap() tea.Model { return m.Model }
+
 func (m panicOnKeyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if k, ok := msg.(tea.KeyMsg); ok && k.String() == m.key {
 		panic("deliberate test panic (DECK_TEST_PANIC_KEY=" + m.key + ") for requirement 36's disable-on-panic proof")
