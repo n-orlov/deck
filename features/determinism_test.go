@@ -112,7 +112,12 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, true, "Create shell session"); err != nil {
+	// Title-independent (F19): ensureCreateModalAgent forces the Agent
+	// field to shell rather than a literal wait for the shell-only
+	// "Create shell session" title. The Agent row's own text never
+	// depends on the frozen clock, so dropping this wait's clockFrozen=true
+	// changes nothing this scenario checks.
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
 	if err := client.Send("frozen clock"); err != nil {
@@ -291,7 +296,10 @@ func generatedIDForSeed(ctx context.Context, binary, seed string) (string, error
 	if err := client.Send("n"); err != nil {
 		return "", err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): ensureCreateModalAgent forces the Agent
+	// field to shell rather than a literal wait for the shell-only
+	// "Create shell session" title.
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return "", err
 	}
 	if err := client.Send("seed session"); err != nil {

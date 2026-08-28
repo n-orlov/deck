@@ -518,7 +518,14 @@ func clientOpensCreateModalForAgent(ctx context.Context, clientName, kind string
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): the modal title is "Create shell session"
+	// only while shell is the pre-selected agent (internal/tui.createBody)
+	// and a plain "Create session" otherwise, so a literal wait for the
+	// shell title hangs the whole scenario timeout once a non-shell kind
+	// (this caller's own kind parameter may itself be non-shell) was
+	// pre-selected from an earlier create in the same scenario. The Agent
+	// row itself, by contrast, is rendered unconditionally by createFieldRows.
+	if err := client.WaitForFrame(ctx, false, "Agent: "); err != nil {
 		return err
 	}
 	// One down-arrow (task 025 moved field navigation off tab): Name ->

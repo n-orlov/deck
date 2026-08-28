@@ -74,6 +74,14 @@ func clientSubmitsCreateModalWithBlankName(ctx context.Context, name string) err
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
+	// Literal "Create shell session" kept here (F19): every scenario using
+	// this step (create_session.feature's blank-name scenarios) submits a
+	// blank name without ever touching the Agent field, so the modal's
+	// pre-selected agent is always whatever the previous blank-name create
+	// in the same scenario also left it as -- shell, since none of those
+	// scenarios ever creates a non-shell session. waitForFrameGone still
+	// waits for the modal to CLOSE, not for it to open, so this is not the
+	// "is the modal open" wait pattern F19 targets anyway.
 	if err := waitForFrameGone(ctx, client, "Create shell session"); err != nil {
 		return err
 	}

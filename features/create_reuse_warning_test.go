@@ -58,7 +58,12 @@ func TestCreateModalWarnsBeforeReusingADeletedSessionsName(t *testing.T) {
 	if err := driver.Send("n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19): ensureCreateModalAgent forces the Agent
+	// field to shell rather than a literal wait for the shell-only
+	// "Create shell session" title -- guaranteed here on a fresh
+	// DECK_HOME's first-ever modal open, but converged anyway so the
+	// scenario keeps working unchanged if a step is ever added earlier.
+	if err := ensureCreateModalAgent(ctx, driver, "shell"); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Send(name); err != nil {
@@ -103,7 +108,8 @@ func TestCreateModalWarnsBeforeReusingADeletedSessionsName(t *testing.T) {
 	if err := driver.Send("n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Title-independent (F19), same rationale as the first open above.
+	if err := ensureCreateModalAgent(ctx, driver, "shell"); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.Send(name); err != nil {
