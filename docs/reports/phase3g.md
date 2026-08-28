@@ -353,7 +353,7 @@ render time):
 
 | dialog | task | shas | status |
 |---|---|---|---|
-| create modal | 016 | `cdb927b`, `adb7db4` | **partial — task skipped, see below** |
+| create modal | 016 | `cdb927b`, `adb7db4`; task 203 (F27) | **resolved (task 203; F27), see below** |
 | env editor | 017 | `5cc1b45`, `8c3351a` | done |
 | bulk delete confirm | 018 | `26a5b47`, `f33d67a`, `7f1a780` | done |
 | archive / delete-purge confirms | 019 | `103d430` | done |
@@ -383,6 +383,31 @@ modal at `adb7db4`: `step error: client "A" has a dimmed-token cell " " at row 3
 column 2, want no ghost text anywhere on screen` — row 3 is the Name field's help
 line, not the ghost). The create modal **is** themed and bounded in the tree; only the
 literal "byte-unchanged" half of the criterion is what could not also hold.
+
+**Resolved by task 203, per finding [F27](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
+(`docs/reports/phase3g-findings.md`).** Independent review (finding 4) correctly held
+that this was a `SPEC.md`-vs-PRD contradiction, not merely a standing-rule collision as
+first filed — `SPEC.md:1357` (every field's help renders `dimmed`) and
+`prds/phase3g-field-backlog.md:261` ("the keyboard-only PTY assertions... must stay
+green **unchanged**") cannot both hold once the create modal is themed, and no operator
+ruling had waived the PRD's "unchanged" word. The PRD's own precedence rule
+(`prds/phase3g-field-backlog.md:21-22`) resolves it: `SPEC.md` wins, so
+`clientCWDFieldShowsNoGhostText`'s narrowed, cwd-rows-only scope (`adb7db4`) stands as
+the correct fix, not a defect. Two experiments in
+[`phase3g-203-r82-assertion-conflict/`](phase3g-203-r82-assertion-conflict/) prove this
+is load-bearing rather than a rubber stamp: (1)
+[`original-assertion-red.log`](phase3g-203-r82-assertion-conflict/original-assertion-red.log) —
+the pre-`adb7db4` whole-grid assertion, restored verbatim into the current, themed tree
+and run, reproduces the same red (`step error: client "A" has a dimmed-token cell " "
+at row 3 column 2, ...`) fresh at this commit, then is reverted; (2)
+[`positive-control-red.log`](phase3g-203-r82-assertion-conflict/positive-control-red.log) —
+a new step, `clientCWDFieldShowsGhostText`, built on the same bounded-scan helpers the
+narrowed assertion uses and wired into `create_cwd_ghost.feature`, still goes red when
+`internal/tui/tui.go`'s `createCWDGhostSuffix` is mutated to always return `""` (no
+ghost rendered at all), then goes green again once both the mutation and the feature
+edit are reverted — so the narrowed scan still catches a real ghost regression, it is
+not vacuously green. `create_cwd_ghost.feature` and `create_session.feature` both pass
+targeted after the revert.
 
 **Task 021 is `failed`, not `validated`, after 3 validation attempts.** `1c8cbad`
 themes both the rename dialog and the event log, and `ci/run.sh go test -count=1
@@ -1016,7 +1041,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R79 | met | 010–011 | `c987953`, `e475660`, `8276450`, `e45bf2e` | yes |
 | R80 | met | 012–013 | `f5977d4`, `745a25b`, `f9611b7`, `ebbc3fd` | not required |
 | R81 | met | 014–015 | `7dbe5c5`, `3498b3e` | not required |
-| R82 | **partial (016 unsatisfiable only; 021's own gap closed by 105)** | 016 (skipped), 017–020, 021 (failed), 105, 107 | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad`,`ea6ce4b`,`02e64a5` | yes (105, retroactive not needed) |
+| R82 | **met (resolved by task 203; F27; 021's own gap closed by 105)** | 016 (skipped), 017–020, 021 (failed), 105, 107, 203 | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad`,`ea6ce4b`,`02e64a5` | yes (105, 203; retroactive not needed) |
 | R83 | met (net closed by 107) | 016, 018, 101, 107 | see R82 row, plus `2549406` | not required |
 | R84 | met | 106 | `57a6882`, `0219e42` | not required |
 | R85 | met | 024, 102 | `9991689`, `89682e5` | not required |
@@ -1028,7 +1053,8 @@ scenario's assertion to a store read or otherwise account for R76.
 | R91 | met | 034–035 | `c93f811`, `9d6c22a` | yes (retroactive, disclosed; plus the count prediction) |
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
 
-"Partial" is not a claim of completion; R82's residual is carried forward to
+R82's task-016 residual is resolved (task 203; F27, per the PRD's own
+`SPEC.md`-wins precedence rule) and carried in
 `docs/reports/phase3g-findings.md` and the [close-out (task 113)](#close-out-task-113).
 
 ### Tasks 101–108 (approach 02), test/scenario and evidence path per sha
@@ -1043,6 +1069,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | 106 | R84 | `57a6882`, `0219e42` | `internal/theme/contrast_test.go` `TestThemedDialogTokensClearContrastFloor` | `docs/reports/phase3g-106-contrast-floor/` |
 | 107 | R82/R83 | `02e64a5` | `internal/tui/dialog_degradation_net_test.go` `TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII`, `TestRenameFieldRowTruncationReemitsItsOwnReset` | `docs/reports/phase3g-107-dialog-degradation-net/` |
 | 108 | R86 | `ab34cb4`, `860c412` | `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_bindings_parity_test.go`, `internal/tui/overlay_line_scroll_test.go` | `docs/reports/phase3g-108-r86-proof/` |
+| 203 | R82 (F27) | (working-tree only; no product sha — assertion-scope finding) | `features/create_cwd_ghost_test.go` `clientCWDFieldShowsGhostText`; `create_cwd_ghost.feature`, `create_session.feature` | `docs/reports/phase3g-203-r82-assertion-conflict/` |
 
 Every sha and every local evidence link cited anywhere in this file is swept
 mechanically — 64 distinct shas through `git cat-file -e`, 29 markdown links and 33

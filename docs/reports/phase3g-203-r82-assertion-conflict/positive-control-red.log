@@ -1,0 +1,89 @@
+Command (mutant run): ci/run.sh env DECK_GODOG_PATHS=create_cwd_ghost.feature \
+  DECK_GODOG_TAGS=@requirement-14-ghost-unique-match-right-accepts \
+  go test ./features/ -run TestFeatures -count=1 -v
+Command (revert confirmation): ci/run.sh env DECK_GODOG_PATHS=create_cwd_ghost.feature \
+  go test ./features/ -run TestFeatures -count=1 -v
+
+Purpose (task 203, finding F27): prove the narrowed, cwd-rows-only scan that
+`clientCWDFieldShowsNoGhostText` uses (the version adb7db4 shipped, still in
+this tree) is not merely "narrower" in a way that hides real regressions --
+it, and the same bounded-scan helper (`cwdFieldRowBounds` /
+`cwdFieldDimmedCell`, extracted this iteration in
+features/create_cwd_ghost_test.go), still catches a ghost that should be
+there. This is the positive control the negative assertion needs: a scan
+that can never fail is not evidence of anything.
+
+New step added this iteration, using the shared helpers:
+
+    func clientCWDFieldShowsGhostText(ctx context.Context, name string) error {
+        client, err := assertionClient(ctx, name)
+        if err != nil {
+            return err
+        }
+        dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
+        if err != nil {
+            return err
+        }
+        minRow, maxRow, err := cwdFieldRowBounds(client)
+        if err != nil {
+            return err
+        }
+        if _, ok := cwdFieldDimmedCell(client, dimmed); !ok {
+            return fmt.Errorf("client %q has no dimmed-token cell inside the cwd field's own rows %d-%d, want a ghost there", name, minRow, maxRow)
+        }
+        return nil
+    }
+
+Registered as step `deck client "A" cwd field shows ghost text` and wired
+into create_cwd_ghost.feature's "a unique directory match ghosts in the
+dimmed token and right accepts it with a trailing slash" scenario, right
+after the existing dimmed-token text assertion.
+
+Mutation: internal/tui/tui.go's `createCWDGhostSuffix` was temporarily
+replaced with `return ""` -- unconditionally disabling ghost rendering for
+every field, not just the cwd field -- so the modal never draws a ghost
+however it's driven.
+
+To get the new step's OWN failure (rather than the pre-existing "text ...
+has foreground token dimmed" assertion earlier in the same scenario tripping
+first and skipping the rest, which is what happens when the whole scenario
+is run against the mutant), the run captured below also temporarily dropped
+that one earlier line from the scenario and ran only this scenario via its
+tag; both the feature file and the tui.go mutation were reverted immediately
+after, and the "revert confirmation" run above (all 6 scenarios, unmodified
+feature file, unmodified tui.go) is the proof the revert is exact.
+
+Mutant run result (RED, ANSI stripped):
+
+    Scenario: a unique directory match ghosts in the dimmed token and right accepts it with a trailing slash # create_cwd_ghost.feature:14
+      And deck client "A" cwd field shows ghost text # create_cwd_ghost.feature:22
+        Error: after scenario hook failed: client "A" has no dimmed-token cell inside the cwd field's own rows 4-5, want a ghost there
+
+    1 scenarios (1 failed)
+    14 steps (7 passed, 1 failed, 6 skipped)
+    --- FAIL: TestFeatures (1.64s)
+        --- FAIL: TestFeatures/a_unique_directory_match_ghosts_in_the_dimmed_token_and_right_accepts_it_with_a_trailing_slash (1.63s)
+    FAIL
+
+Revert confirmation result (GREEN, both files back to their pre-experiment
+state -- `git diff` on internal/tui/tui.go is empty, and
+features/create_cwd_ghost.feature matches the version committed with the
+new positive-control step wired in):
+
+    6 scenarios (6 passed)
+    84 steps (84 passed)
+    --- PASS: TestFeatures (3.97s)
+        --- PASS: TestFeatures/a_unique_directory_match_ghosts_in_the_dimmed_token_and_right_accepts_it_with_a_trailing_slash (0.68s)
+        --- PASS: TestFeatures/end_also_accepts_the_ghosted_completion (0.69s)
+        --- PASS: TestFeatures/a_same-named_file_never_becomes_a_ghost_candidate (0.60s)
+        --- PASS: TestFeatures/a_hidden_directory_is_a_candidate_only_when_the_segment_starts_with_a_dot (0.72s)
+        --- PASS: TestFeatures/a_leading_tilde_expands_for_scanning_without_being_rewritten_in_the_field (0.65s)
+        --- PASS: TestFeatures/several_matches_with_no_further_common_prefix_ghost_nothing_and_show_a_match_count (0.60s)
+    PASS
+    ok  github.com/n-orlov/deck/features 3.973s
+
+Conclusion: the narrowed scan is not a rubber stamp. It fails loudly, on its
+own, the moment the ghost it exists to check for is actually gone -- which
+is exactly the property the pre-016 whole-grid scan lost once every field's
+help line started rendering `dimmed` too (see
+original-assertion-red.log in this same directory).

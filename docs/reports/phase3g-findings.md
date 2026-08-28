@@ -25,28 +25,33 @@ are exactly that kind of negative check).
 
 ## 1. SPEC.md contradictions actually met
 
-**None.** The PRD is explicit that eight of its seventeen requirements
-contradicted `SPEC.md` as it stood, and that the correct response was to amend
-the spec first rather than implement against a contradiction — which the
-operator did, in `2eed8de` (plan change `a03527c`), *before* this phase's
-tasks began. Every requirement below R76–R92 therefore has a spec authority
-that already agrees with it; no task in this phase found a place where the
-tree it was asked to build disagreed with `SPEC.md` as amended.
+**One, F27, resolved.** The PRD is explicit that eight of its seventeen
+requirements contradicted `SPEC.md` as it stood, and that the correct
+response was to amend the spec first rather than implement against a
+contradiction — which the operator did, in `2eed8de` (plan change `a03527c`),
+*before* this phase's tasks began. Every requirement below R76–R92 therefore
+has a spec authority that already agrees with it going in; the one place a
+task in this phase *did* find the tree it was asked to build disagreeing with
+`SPEC.md` as amended is R82's own text, corrected below.
 
-The nearest things to a contradiction, both already resolved without touching
-`SPEC.md`:
-
+- **[F27](#3-defects-found-and-deliberately-not-fixed-and-why) — R82's
+  "the keyboard-only PTY assertions... must stay green unchanged" clause
+  (`prds/phase3g-field-backlog.md:261`) contradicts `SPEC.md:1357`'s
+  per-field-help-in-`dimmed` requirement for exactly the class of assertion
+  it names.** §2.3 below originally filed task 016's create-modal
+  unsatisfiable as a standing-rule collision rather than a `SPEC.md`
+  contradiction; independent review (finding 4) correctly identified that
+  framing as wrong — there is no operator ruling waiving the PRD's
+  "unchanged" word, so the PRD's own precedence rule
+  (`prds/phase3g-field-backlog.md:21-22`) applies and `SPEC.md` wins.
+  Resolved by task 203: see F27's own row for the full quote and the two
+  experiments (original assertion red, positive control red) proving the
+  resolution is load-bearing, not a rubber stamp.
 - Task 021's residual (rename dialog's focused field has no `theme.Selection`
   background, §11.4) is a **gap between the delivered code and `SPEC.md`**,
   not a contradiction in the requirement itself — the fix is now landed, by
   task 105 (`ea6ce4b`). Recorded as [F18](#3-defects-found-and-deliberately-not-fixed-and-why) below,
   not here, because nothing about the *requirement* disagrees with `SPEC.md`.
-- Task 016's unsatisfiable report (create modal) found that one **pre-existing
-  PTY assertion**, not `SPEC.md` or the PRD, could not survive full §11.6
-  theming. See [§2.3](#23-the-create-modals-unsatisfiable-task-016-was-a-standing-rule-vs-specmd-collision-not-a-prd-error) —
-  it is filed as a standing-rule collision, not a `SPEC.md` contradiction,
-  because `SPEC.md:1355` and the theming requirement were never in tension
-  with each other, only with that one assertion's own scope.
 
 ## 2. What this PRD got wrong
 
@@ -120,6 +125,18 @@ anything either requirement's own text asks for:
 
 ### 2.3 The create modal's unsatisfiable (task 016) was a standing-rule vs. `SPEC.md` collision, not a PRD error
 
+**Correction (task 203, F27):** independent review (finding 4) found this
+section's own framing wrong — the collision below **is** a `SPEC.md`-vs-PRD
+contradiction, not merely a standing-rule one, because the PRD's own
+"unchanged" word (`prds/phase3g-field-backlog.md:261`) is PRD text, not a
+standing rule, and it is what `SPEC.md:1357` actually contradicts. See
+[F27](#3-defects-found-and-deliberately-not-fixed-and-why) for the
+side-by-side quote, the precedence-rule resolution, and the evidence that the
+narrowed assertion this section describes is load-bearing. The rest of this
+section is left as the historical record of the collision as task 016 and
+task 039 first described it; only the "not a `SPEC.md` contradiction"
+conclusion in its last sentence is superseded.
+
 Not a PRD-wrong item — filed here to record why it is *not* one. The PRD's
 R82 asks the create modal to render in §11.6 tokens (`SPEC.md:1355` pins
 per-field help text to the `dimmed` token) and this job's standing rules ask
@@ -158,6 +175,7 @@ Numbering continues from [`phase3f-findings.md`'s F1–F17](phase3f-findings.md#
 | F24 | `features/agent_steps_test.go`'s `ensureCreateModalAgent` waited on the literal `"Agent: " + want + " (left/right cycles"` joined against `ScreenDriver.Frame`'s `"\n"` line join; once the create modal's dialog box narrows enough to wrap `createFieldRows`' Agent-row sentence across two grid rows (`kill_delete_undo.feature`'s 26-column clamp scenario forces exactly this at a 30x60 terminal), the wrap point falls inside the awaited literal and the wait can never match, timing out deterministically | `features/agent_steps_test.go` (state of record `b6cbbc7`) | **Resolved by task 101** (`2549406`): `ensureCreateModalAgent` now matches `dewrapCreateModalAgentRow(frame)`, which finds the Agent row, strips both it and the following row's dialog-box border/padding, and rejoins them with a single space, reconstructing the same logical line `createFieldRows` produced before the box wrapped it; the awaited marker's own value is unchanged. Test-harness-only — `internal/tui.createFieldRows`'s wrapping is correct and untouched. Three consecutive green runs; see [`phase3g-101-agent-wait-wrap/README.md`](phase3g-101-agent-wait-wrap/README.md). |
 | F25 | R85 (task 024, `9991689`) added the literal `(last used) ` as a prefix on the create modal's **Agent** row help (`createAgentHelp`), identical to the pre-existing prefix on the **Working-directory** row help (`createCWDHelp`) that `features/settings.feature`'s `@requirement-17-clear-recent-cwds-history` scenario was asserting the bare literal `"(last used)"` against; from that point the scenario's negative check could never legitimately pass, because the Agent row's own `(last used)` prefix survives clearing recent cwds regardless of the cwd prefill's own state | `features/settings.feature:402` (state of record `b6cbbc7`) | **Resolved by task 102** (`89682e5`): both the positive and negative `(last used)` assertions are now pinned to the cwd row's own help text specifically (`"(last used) the session's cwd"`), which only `createCWDHelp` ever renders; the Agent row's identical prefix is always followed by `"which coding agent..."`, never `"the session's cwd"`, so the two can no longer collide. Proven still load-bearing by a local, uncommitted, reverted disable-and-check of the clear itself. See [`phase3g-102-clear-recents-label/README.md`](phase3g-102-clear-recents-label/README.md). |
 | F26 | A hook-declared terminal status delivered while the pane it came through is still alive triggers R76's reconcile self-heal (`repairTerminalRowWithLivePane`) exactly as it does for a raw state-database write — SPEC §7 names the repair from the pane's own physical liveness, not from which mechanism produced the terminal write, so a scenario that poses a hook (e.g. `SessionEnd`) into a still-live pane races the same repair [F20](#3-defects-found-and-deliberately-not-fixed-and-why) documents for a direct write, and loses it deterministically, one reconcile tick later | `internal/service/reconcile.go`'s `repairTerminalRowWithLivePane` (untouched); `features/status_claude_hooks.feature` (state of record `b6cbbc7`) | **Not a defect — R76 working as specified**, a sibling of F20's own interaction, confirmed by task 103 (`51b7f17`): a genuine Claude `SessionEnd` and a genuinely dead pane always arrive together in the real product, so the fix belongs in the scenario's route to the state, not in loosening R76. Task 103 gave the fixture a clean pane-exit command and a released, pane-independent `deck _hook` route for both `SessionEnd` and the `SessionStart` that follows it, with every `Then` assertion unchanged; three consecutive green runs. See [`phase3g-103-hook-sessionend-repair/README.md`](phase3g-103-hook-sessionend-repair/README.md). |
+| F27 | R82's create-modal theming and the PRD's own unchanged-PTY-assertion condition are a genuine `SPEC.md`-vs-PRD contradiction, not merely a standing-rule collision as [§2.3](#23-the-create-modals-unsatisfiable-task-016-was-a-standing-rule-vs-specmd-collision-not-a-prd-error) originally filed it (independent review finding 4). `SPEC.md:1357` requires every dialog field's "explanatory help" to render in `dimmed` — the same token the create modal's cwd-ghost completion also renders in (§11.6). `prds/phase3g-field-backlog.md:259-261` (R82) requires in the same breath: "The keyboard-only PTY assertions (`create_field_help_test.go`, `archive_confirm_test.go`, `delete_purge_test.go`, `dialog_width_test.go`, …) match plain substrings and must stay green **unchanged**." Side by side: once every field's help line renders `dimmed` per `SPEC.md:1357`, the pre-adb7db4 `features/create_cwd_ghost_test.go` step `clientCWDFieldShowsNoGhostText` — a whole-grid "no dimmed cell anywhere" scan, one of exactly this class of keyboard-only PTY assertion the PRD names — cannot both keep scanning the whole grid **and** stay green, because the Name field's own help line at row 3 column 2 is now correctly `dimmed` too. `adb7db4` narrowed the scan to the cwd field's own rows to make it green again, which **is** a change to the assertion, contradicting the PRD's own "unchanged" word for that assertion's class | `SPEC.md:1357`; `prds/phase3g-field-backlog.md:261`; `features/create_cwd_ghost_test.go` (`adb7db4`) | **Resolved by task 203, per the PRD's own precedence rule** (`prds/phase3g-field-backlog.md:21-22`: "`SPEC.md` is the authoritative product spec... Where this PRD and `SPEC.md` disagree, `SPEC.md` wins and the disagreement is a finding for `docs/reports/phase3g-findings.md`") — `SPEC.md` wins, so the assertion's *scope* was correctly narrowed rather than the theming rolled back or the Name field's help left undimmed to keep the old scan green. Two experiments prove the narrowing is the right fix rather than a rubber stamp: (1) the ORIGINAL whole-grid assertion, restored verbatim into the current tree and run, goes red on exactly the Name field's dimmed help cell it was expected to (`docs/reports/phase3g-203-r82-assertion-conflict/original-assertion-red.log`), then reverted; (2) a positive control — the same bounded-scan helper the narrowed assertion uses, driven by a new step `clientCWDFieldShowsGhostText`, wired into `create_cwd_ghost.feature` — still catches a *real* ghost regression: with `internal/tui/tui.go`'s `createCWDGhostSuffix` mutated to always return `""`, the new step goes red (`docs/reports/phase3g-203-r82-assertion-conflict/positive-control-red.log`); reverted, both `create_cwd_ghost.feature` and `create_session.feature` are green. The narrowed scan is therefore load-bearing, not vacuous. See [`phase3g-203-r82-assertion-conflict/`](phase3g-203-r82-assertion-conflict/). |
 
 ## 4. F2 — the golden-frame settle flake: no recurrence found
 
