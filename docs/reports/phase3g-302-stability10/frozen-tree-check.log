@@ -1,0 +1,5 @@
+$ git rev-parse HEAD
+bdc18796c5633208403d9ae25760ed87edc08724
+
+$ git diff --stat bdc1879..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum ; echo "exit status: $?"
+exit status: 0
