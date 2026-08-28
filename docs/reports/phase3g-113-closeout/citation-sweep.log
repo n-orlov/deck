@@ -1,3 +1,4 @@
+# first pass (task 113, at df7a35e): quoted in README.md §2
 reports scanned: 2
   docs/reports/phase3g.md
   docs/reports/phase3g-findings.md
@@ -12,3 +13,22 @@ distinct same-document anchors cited: 27
 anchor resolution failures: 0
 
 CITATION SWEEP: PASS - every cited sha resolves, every cited path exists, every same-document anchor resolves
+
+# second pass (task 113 follow-up commit: after phase3g.md gained its "Close-out (task 113)" section
+# linking this directory, and README.md gained §1a; +1 sha, +6 links, +1 anchor over the first pass)
+$ python3 docs/reports/phase3g-113-closeout/citation_sweep.py
+reports scanned: 2
+  docs/reports/phase3g.md
+  docs/reports/phase3g-findings.md
+
+distinct shas cited: 66
+sha resolution failures: 0
+
+distinct link targets cited: 48
+link resolution failures: 0
+
+distinct same-document anchors cited: 28
+anchor resolution failures: 0
+
+CITATION SWEEP: PASS - every cited sha resolves, every cited path exists, every same-document anchor resolves
+(exit 0)

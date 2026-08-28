@@ -42,7 +42,8 @@ with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
   [R91](#r91--previewfits-spent-fit-and-the-sigwinch-re-baseline-it-licenses-tasks-034-035) ·
   [R92](#r92--r75s-release-failure-fallback-is-exercised-tasks-036-037) ·
   [known open regression](#known-open-regression-discovered-by-task-002s-own-evidence-not-fixed-here) ·
-  [table](#per-requirement-table)
+  [table](#per-requirement-table) ·
+  [close-out](#close-out-task-113)
 
 ## Tool versions
 
@@ -1028,7 +1029,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
 
 "Partial" is not a claim of completion; R82's residual is carried forward to
-`docs/reports/phase3g-findings.md` and the close-out (task 113).
+`docs/reports/phase3g-findings.md` and the [close-out (task 113)](#close-out-task-113).
 
 ### Tasks 101–108 (approach 02), test/scenario and evidence path per sha
 
@@ -1050,3 +1051,33 @@ output checked in at
 [`phase3g-109-report-update/`](phase3g-109-report-update/). The one deliberately
 non-resolving string is R86's glob `phase3g-02[56]-*/`, which names a directory that was
 never produced; that absence is the disclosure, not a broken link.
+
+## Close-out (task 113)
+
+The phase's close-out note is
+[`phase3g-113-closeout/README.md`](phase3g-113-closeout/README.md), and it is part of this
+report by reference: everything below is stated and evidenced there, not here.
+
+- **Protected-path audit, by sha and never by author or committer** (§1, §1a;
+  [`protected-path-check.log`](phase3g-113-closeout/protected-path-check.log),
+  [`protected-path-all-refs.log`](phase3g-113-closeout/protected-path-all-refs.log)):
+  `git log --oneline 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md` is empty, and so
+  is the same query over every ref (`git log --all --oneline 1cfbd5a.. -- <protected set>`) —
+  this run touched none of the four protected paths. All **30** commits in the repo's whole
+  history that do touch them are ancestors of the run's base `1cfbd5a`; of the two
+  pre-authorised shas only `2eed8de` touches a protected path (`SPEC.md`) at all, `a03527c`
+  touching only `docs/PLAN.md`. Both of those precisions are corrections the close-out
+  discloses rather than restating the standing rules' looser phrasing.
+- **Citation sweep over both phase 3g reports** (§2;
+  [`citation_sweep.py`](phase3g-113-closeout/citation_sweep.py),
+  [`citation-sweep.log`](phase3g-113-closeout/citation-sweep.log)): shas, relative links and
+  same-document anchors across `phase3g.md` and
+  [`phase3g-findings.md`](phase3g-findings.md) all resolve; the sweep's first run found eight
+  broken anchors in *this* file's own section list (en dash between digits, and `×`/`↑`/`↓`,
+  slug to no separator) and only the anchor strings were fixed. The known self-citation
+  false-positive class is disclosed there, including where it legitimately fires
+  (`phase3g-findings.md` §4).
+- **Delivery log** (§3): Phase 3g is recorded in [`../DELIVERY-LOG.md`](../DELIVERY-LOG.md) with
+  task 111's whole-suite result (green at `9f61e21`, 311/311) and task 112's stability rate
+  (9/10, root-caused), each with its log path, plus R82's published-*partial* status and the
+  known open regression above.
