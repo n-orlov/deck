@@ -1,0 +1,66 @@
+$ bash docs/reports/phase3g-110-findings-update/check-citations.sh; echo "exit status: $?"
+== HEAD ==
+961e9cc
+
+== shas cited in the new/edited rows (git cat-file -e) ==
+0219e42 ok  theme+docs: hold every built-in to R84's dialog floor, exempting only measured cells (task 106)
+045a6e6 ok  features: converge the remaining hard-coded create-modal title waits (task 104)
+050ca9f ok  docs: close the phase 3g report's remaining evidence-path gaps (task 038)
+15e33c6 ok  service,store: spend the terminal verdicts the repair contradicts (task 001)
+1c8cbad ok  tui: theme the rename dialog and event log (task 021)
+1cfbd5a ok  prds: cut Phase 3g, the field backlog (operator)
+2549406 ok  features: dewrap the create-modal Agent-field wait's box-wrapped row (task 101)
+51b7f17 ok  features+fixtures: reach SessionEnd through a genuinely dead pane, not R76's repair (task 103)
+57a6882 ok  theme: extend contrast floor to R84's dialog pairs (task 106)
+7033e12 ok  tui: alternate sidebar row background stripe using theme.Surface (084)
+89682e5 ok  features: disambiguate the clear-recent-cwds assertion from R85's Agent label (task 102)
+89fcffc ok  service,store: repair a terminal row with a live pane in Reconcile (task 001)
+8cff03b ok  tui+features: sync dialog text and remaining feature steps to ↑/↓ + Ctrl+P/Ctrl+N (task 026)
+9991689 ok  tui: open the create modal on the last successfully-created agent, labelled (task 024)
+b6cbbc7 ok  features: stop posing the stopped status token via a raced fake write (task 040)
+ea6ce4b ok  tui+docs: give the rename dialog's focused field a Selection background (task 105)
+fe79040 ok  features: repoint the dup-pane resume scenario at R76's self-heal, not the race it lost to (task 040)
+961e9cc ok  docs: close out F18-F21 and fold in F24-F26 from tasks 101-103 (task 110)
+
+== markdown links in the new/edited rows (relative to docs/reports/) ==
+docs/reports/phase3g-101-agent-wait-wrap/README.md ok
+docs/reports/phase3g-102-clear-recents-label/README.md ok
+docs/reports/phase3g-103-hook-sessionend-repair/README.md ok
+docs/reports/phase3g-104-title-independent-waits/README.md ok
+docs/reports/phase3g-105-rename-selection/README.md ok
+docs/reports/phase3g-106-contrast-floor/README.md ok
+docs/reports/phase3g-110-findings-update/citation-check.log ok
+docs/reports/phase3g-110-findings-update/check-citations.sh ok
+docs/reports/phase3g-030-reclaim-leaked-interactive-pipe/README.md ok
+
+== same-document anchors: every '](#...)' link in the report, GitHub slug rule ==
+#2-what-this-prd-got-wrong ok (heading present)
+#4-f2--the-golden-frame-settle-flake-no-recurrence-found ok (heading present)
+#1-specmd-contradictions-actually-met ok (heading present)
+#3-defects-found-and-deliberately-not-fixed-and-why ok (heading present)
+#5-f7-f8-f10-f14--disposition ok (heading present)
+#6-how-to-re-check-every-citation-in-this-report ok (heading present)
+#23-the-create-modals-unsatisfiable-task-016-was-a-standing-rule-vs-specmd-collision-not-a-prd-error ok (heading present)
+#22-the-ordering-sections-r85--independent-claim-does-not-hold ok (heading present)
+
+== in-tree paths cited in the new/edited rows ==
+ci/run.sh ok
+features/create_session.feature ok
+features/durable_identity.feature ok
+features/event_log.feature ok
+features/kill_delete_undo.feature ok
+features/settings.feature ok
+features/status_claude_hooks.feature ok
+features/status_recovery.feature ok
+features/agent_steps_test.go ok
+internal/service/reconcile.go ok
+internal/theme/contrast_test.go ok
+internal/tui/rename.go ok
+internal/tui/rename_theme_test.go ok
+docs/reports/phase3g-002-r76-field-route/README.md ok
+
+== SPEC.md untouched by this task's commits ==
+SPEC.md ok (no commit in 961e9cc~1..HEAD touches it)
+
+ALL CITATIONS OK
+exit status: 0
