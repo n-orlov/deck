@@ -1,0 +1,4 @@
+=== RUN   TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim
+--- PASS: TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim (0.06s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tmux	0.061s

@@ -1,0 +1,41 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The next start reclaims a leaked interactive pipe (Part II, R89, task 030)
+  SIGKILL cannot be handled at all, so a deck client killed mid-interactive
+  leaves its armed `pipe-pane`, its FIFO temp dir and its window ownership
+  claim all behind -- the guarantee has to be "the next start reclaims it",
+  never "the exit cleans it". This proves both halves: the leak is real
+  (the scan's own positive control), and the very next deck start against
+  the same tmux server disarms the stale pipe, removes the leaked temp
+  dir/FIFO, releases ownership and restores the window's geometry
+  byte-exact (SPEC.md \u00a711.9), all without the reclaimed session's own
+  window ever having had a live client attached to it in between.
+=== RUN   TestFeatures/SIGKILL_mid-interactive_leaks_pipe-pane_and_a_temp_dir;_the_next_start_reclaims_both
+
+  [1;37mScenario:[0m SIGKILL mid-interactive leaks pipe-pane and a temp dir; the next start reclaims both [1;30m# interactive_pipe_leak.feature:14[0m
+    [32mGiven[0m [32mdeck client "victim" is started[0m                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "victim" creates shell session "leaky"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "victim" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "victim" selects session "leaky"[0m                                             [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mthe private tmux window for session "leaky" is captured as "before-interactive"[0m          [1;30m# preview_test.go:34 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "victim" enters interactive mode[0m                                            [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "victim" screen contains "Ctrl+Q"[0m                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mtmux pane pipe is armed for session "leaky"[0m                                              [1;30m# interactive_pipe_leak_test.go:26 -> github.com/n-orlov/deck/features.tmuxPanePipeIsArmedForSession[0m
+    [32mAnd[0m [32ma deck interactive pipe temp directory for session "leaky" exists on disk[0m                [1;30m# interactive_pipe_leak_test.go:28 -> github.com/n-orlov/deck/features.aDeckInteractivePipeTempDirectoryForSessionExistsOnDisk[0m
+    [32mAnd[0m [32mtmux window "deck_leaky" option "@deck_isize_owner" is set in the window scope[0m           [1;30m# interactive_pipe_leak_test.go:30 -> github.com/n-orlov/deck/features.tmuxWindowOptionIsSetInWindowScope[0m
+    [32mWhen[0m [32mdeck client "victim" is killed with SIGKILL[0m                                             [1;30m# assertions_test.go:62 -> github.com/n-orlov/deck/features.clientIsKilledWithSIGKILL[0m
+    [32mThen[0m [32mtmux pane pipe is armed for session "leaky"[0m                                             [1;30m# interactive_pipe_leak_test.go:26 -> github.com/n-orlov/deck/features.tmuxPanePipeIsArmedForSession[0m
+    [32mAnd[0m [32ma deck interactive pipe temp directory for session "leaky" exists on disk[0m                [1;30m# interactive_pipe_leak_test.go:28 -> github.com/n-orlov/deck/features.aDeckInteractivePipeTempDirectoryForSessionExistsOnDisk[0m
+    [32mGiven[0m [32mdeck client "rescuer" is started[0m                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mThen[0m [32mtmux pane pipe is not armed for session "leaky"[0m                                         [1;30m# interactive_pipe_leak_test.go:27 -> github.com/n-orlov/deck/features.tmuxPanePipeIsNotArmedForSession[0m
+    [32mAnd[0m [32mno deck interactive pipe temp directory for session "leaky" exists on disk[0m               [1;30m# interactive_pipe_leak_test.go:29 -> github.com/n-orlov/deck/features.noDeckInteractivePipeTempDirectoryForSessionExistsOnDisk[0m
+    [32mAnd[0m [32mtmux window "deck_leaky" option "@deck_isize_owner" is unset in the window scope[0m         [1;30m# tmux_option_scope_test.go:126 -> github.com/n-orlov/deck/features.tmuxWindowOptionIsUnsetInScope[0m
+    [32mAnd[0m [32mthe private tmux window for session "leaky" still matches "before-interactive"[0m           [1;30m# preview_test.go:35 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mAnd[0m [32mdeck client "rescuer" exits cleanly[0m                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+19 steps ([32m19 passed[0m)
+1.192886754s
+--- PASS: TestFeatures (1.19s)
+    --- PASS: TestFeatures/SIGKILL_mid-interactive_leaks_pipe-pane_and_a_temp_dir;_the_next_start_reclaims_both (1.18s)
+PASS
+ok  	github.com/n-orlov/deck/features	1.205s

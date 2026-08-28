@@ -1,0 +1,6 @@
+=== RUN   TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim
+    reclaim_test.go:98: reclaimed = [], want exactly ["/tmp/TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStale2223426616/001/deck-interactive-pipe-3192533966"]
+--- FAIL: TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim (0.03s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tmux	0.036s
+FAIL
