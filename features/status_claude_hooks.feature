@@ -55,12 +55,27 @@ Feature: Claude hook status truth
     Then the state database session "hook truth" has hook status "running", reason "", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has an audited "user_prompt_submitted" event with payload field "prompt" equal to "retry after failure"
 
-    When fake Claude session "hook truth" fires "SessionEnd" for itself using conversation identity:
+    # SessionEnd cannot be posed by firing it through the fake claude pane
+    # while that pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats the
+    # hook's own "stopped" write, paired with a live, non-dead pane, as an
+    # invariant violation and repairs it back to starting/tmux on the very
+    # next reconcile tick -- the same self-heal task 040 hit for shell rows
+    # posed by a raw state-database write. A real Claude process's own
+    # SessionEnd genuinely coincides with that process ending, so this drives
+    # the pane to a confirmed clean exit first (deck's remain-on-exit=failed
+    # then removes the whole "deck_hook-truth" tmux session), and delivers
+    # SessionEnd the way a real hook subprocess always does: as a one-shot
+    # invocation of the released deck _hook, independent of the interactive
+    # pane's own lifetime rather than a send-keys into it. The row's terminal
+    # status is therefore read with no live pane underneath it to repair.
+    When fake Claude session "hook truth" exits its pane cleanly
+    And the released deck _hook receives "SessionEnd" for session "hook truth" using conversation identity:
       | reason | logout |
     Then the state database session "hook truth" has hook status "stopped", reason "logout", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has one "session_end" event with payload field "reason" equal to "logout"
 
-    When fake Claude session "hook truth" fires "SessionStart" for itself using injected identity:
+    When the released deck _hook receives "SessionStart" for session "hook truth" using injected identity:
       | source | late-after-clean-stop |
     Then the state database session "hook truth" has hook status "stopped", reason "logout", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has an audited "session_start" event with payload field "source" equal to "late-after-clean-stop"
