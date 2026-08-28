@@ -1,60 +1,115 @@
-=== run 1 19:36:33 ===
-ok  	github.com/n-orlov/deck/features	5.952s
-run 1 exit=0
-=== run 2 19:36:40 ===
-ok  	github.com/n-orlov/deck/features	5.558s
-run 2 exit=0
-=== run 3 19:36:46 ===
-ok  	github.com/n-orlov/deck/features	5.635s
-run 3 exit=0
-=== run 4 19:36:52 ===
-ok  	github.com/n-orlov/deck/features	5.532s
-run 4 exit=0
-=== run 5 19:36:59 ===
-ok  	github.com/n-orlov/deck/features	5.459s
-run 5 exit=0
-=== run 6 19:37:05 ===
-ok  	github.com/n-orlov/deck/features	5.815s
-run 6 exit=0
-=== run 7 19:37:12 ===
-ok  	github.com/n-orlov/deck/features	5.831s
-run 7 exit=0
-=== run 8 19:37:18 ===
-ok  	github.com/n-orlov/deck/features	5.820s
-run 8 exit=0
-=== run 9 19:37:25 ===
-ok  	github.com/n-orlov/deck/features	5.831s
-run 9 exit=0
-=== run 10 19:37:32 ===
-ok  	github.com/n-orlov/deck/features	5.865s
-run 10 exit=0
-=== run 11 19:37:38 ===
-ok  	github.com/n-orlov/deck/features	5.866s
-run 11 exit=0
-=== run 12 19:37:45 ===
-ok  	github.com/n-orlov/deck/features	5.826s
-run 12 exit=0
-=== run 13 19:37:52 ===
-ok  	github.com/n-orlov/deck/features	5.519s
-run 13 exit=0
-=== run 14 19:37:58 ===
-ok  	github.com/n-orlov/deck/features	5.775s
-run 14 exit=0
-=== run 15 19:38:04 ===
-ok  	github.com/n-orlov/deck/features	5.606s
-run 15 exit=0
-=== run 16 19:38:11 ===
-ok  	github.com/n-orlov/deck/features	5.739s
-run 16 exit=0
-=== run 17 19:38:17 ===
-ok  	github.com/n-orlov/deck/features	5.856s
-run 17 exit=0
-=== run 18 19:38:24 ===
-ok  	github.com/n-orlov/deck/features	5.923s
-run 18 exit=0
-=== run 19 19:38:31 ===
-ok  	github.com/n-orlov/deck/features	5.656s
-run 19 exit=0
-=== run 20 19:38:37 ===
-ok  	github.com/n-orlov/deck/features	5.771s
-run 20 exit=0
+harness: docs/reports/phase3g-204-async-db-assert-sync/parallel-pressure-runs.sh
+host uname: Linux 7.0.12-201.fc44.x86_64  nproc: 28
+git HEAD: 54fd6e0d333bb8d4199a27c1f1badb4c8ceb88b5  dirty: 2 file(s)
+targeted command (x20): ci/run.sh env DECK_GODOG_PATHS=filter.feature go test ./features/ -run TestFeatures -count=1
+parallel second suite invocation: ci/run.sh go test ./features/ -run TestFeatures -count=1 (whole godog suite, all feature files)
+all timestamps UTC HH:MM:SS.mmm
+parallel suite: shell pid=17594 started 19:48:40.849
+parallel suite: sibling container id=aebe2c4de218
+parallel suite: docker inspect StartedAt=2026-08-28T19:48:41.153471769Z Cmd=[go test ./features/ -run TestFeatures -count=1]
+
+=== run 1 start=19:48:41.895 end=19:48:48.383 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.670s
+-- docker ps (this run's siblings) during/at end of run 1:
+   aebe2c4de218 started=8 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 2 start=19:48:48.389 end=19:48:54.856 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.589s
+-- docker ps (this run's siblings) during/at end of run 2:
+   aebe2c4de218 started=14 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 3 start=19:48:54.862 end=19:49:01.980 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.897s
+-- docker ps (this run's siblings) during/at end of run 3:
+   aebe2c4de218 started=21 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 4 start=19:49:01.986 end=19:49:08.474 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.614s
+-- docker ps (this run's siblings) during/at end of run 4:
+   aebe2c4de218 started=28 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 5 start=19:49:08.481 end=19:49:14.959 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.629s
+-- docker ps (this run's siblings) during/at end of run 5:
+   aebe2c4de218 started=34 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 6 start=19:49:14.965 end=19:49:21.824 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.776s
+-- docker ps (this run's siblings) during/at end of run 6:
+   aebe2c4de218 started=41 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 7 start=19:49:21.832 end=19:49:29.239 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.954s
+-- docker ps (this run's siblings) during/at end of run 7:
+   aebe2c4de218 started=49 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 8 start=19:49:29.245 end=19:49:35.915 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.808s
+-- docker ps (this run's siblings) during/at end of run 8:
+   aebe2c4de218 started=55 seconds ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 9 start=19:49:35.922 end=19:49:42.564 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.816s
+-- docker ps (this run's siblings) during/at end of run 9:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 10 start=19:49:42.571 end=19:49:49.629 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.713s
+-- docker ps (this run's siblings) during/at end of run 10:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 11 start=19:49:49.636 end=19:49:56.351 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.838s
+-- docker ps (this run's siblings) during/at end of run 11:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 12 start=19:49:56.359 end=19:50:03.054 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.802s
+-- docker ps (this run's siblings) during/at end of run 12:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 13 start=19:50:03.061 end=19:50:09.660 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.668s
+-- docker ps (this run's siblings) during/at end of run 13:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 14 start=19:50:09.667 end=19:50:16.476 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.830s
+-- docker ps (this run's siblings) during/at end of run 14:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 15 start=19:50:16.482 end=19:50:23.695 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.841s
+-- docker ps (this run's siblings) during/at end of run 15:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 16 start=19:50:23.703 end=19:50:30.373 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.556s
+-- docker ps (this run's siblings) during/at end of run 16:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 17 start=19:50:30.380 end=19:50:36.975 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.686s
+-- docker ps (this run's siblings) during/at end of run 17:
+   aebe2c4de218 started=About a minute ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 18 start=19:50:36.982 end=19:50:43.840 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.863s
+-- docker ps (this run's siblings) during/at end of run 18:
+   aebe2c4de218 started=2 minutes ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 19 start=19:50:43.846 end=19:50:50.594 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.754s
+-- docker ps (this run's siblings) during/at end of run 19:
+   aebe2c4de218 started=2 minutes ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+=== run 20 start=19:50:50.602 end=19:50:57.824 exit=0 OVERLAP=yes ===
+ok  	github.com/n-orlov/deck/features	5.947s
+-- docker ps (this run's siblings) during/at end of run 20:
+   aebe2c4de218 started=2 minutes ago cmd="go test ./features/…"
+-- parallel suite pid 17594 alive: yes
+
+loop finished 19:50:57.832: green=20/20 overlapped_with_parallel_suite=20/20
+waiting for the parallel suite invocation to finish...
+parallel suite exit=0 (full output: parallel-suite.log)
+SUMMARY green=20/20 overlapped=20/20 parallel_suite_exit=0
