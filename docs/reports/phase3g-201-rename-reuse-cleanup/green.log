@@ -1,3 +1,4 @@
+$ ci/run.sh go test -count=1 -run 'TestRenameOntoATombstonedNameCleansUpThatSessionsFiles|TestRefusedRenameKeepsLiveAndArchivedHoldersFiles' -v ./internal/service/
 === RUN   TestRenameOntoATombstonedNameCleansUpThatSessionsFiles
 --- PASS: TestRenameOntoATombstonedNameCleansUpThatSessionsFiles (0.05s)
 === RUN   TestRefusedRenameKeepsLiveAndArchivedHoldersFiles

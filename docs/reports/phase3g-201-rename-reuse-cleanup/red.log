@@ -1,3 +1,4 @@
+$ ci/run.sh go test -count=1 -run 'TestRenameOntoATombstonedNameCleansUpThatSessionsFiles|TestRefusedRenameKeepsLiveAndArchivedHoldersFiles' -v ./internal/service/
 === RUN   TestRenameOntoATombstonedNameCleansUpThatSessionsFiles
     rename_reuse_test.go:54: captures dir of the reaped holder after rename: stat = <nil>, want IsNotExist
 --- FAIL: TestRenameOntoATombstonedNameCleansUpThatSessionsFiles (0.05s)
