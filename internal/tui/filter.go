@@ -109,9 +109,10 @@ func (m Model) filteredSessions() []store.Session {
 func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		// SPEC.md:318 "esc clearing": unlike Enter below, Esc discards the
-		// query entirely and returns to the unfiltered list, not merely
-		// closing the text field with the query still applied.
+		// SPEC §11.10 "esc clears the query and returns to the unfiltered
+		// list": unlike Enter below, Esc discards the query entirely and
+		// returns to the unfiltered list, not merely closing the text
+		// field with the query still applied.
 		m.filtering = false
 		m.filterQuery = ""
 		m.sessions = m.filteredSessions()

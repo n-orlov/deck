@@ -40,7 +40,7 @@ func clientOpensListFilter(ctx context.Context, clientName string) error {
 }
 
 // clientTypesIntoFilterField sends query as raw keystrokes into the
-// already-open filter field (SPEC.md:318 "incrementally"): the typed text
+// already-open filter field (SPEC §11.10 "incrementally"): the typed text
 // is echoed back verbatim inside filterStatusLine's own "Filter: <query>"
 // text, so waiting for that same substring to appear on screen is a
 // universal, query-content-independent readiness check -- unlike waiting
@@ -63,9 +63,10 @@ func clientTypesIntoFilterField(ctx context.Context, clientName, query string) e
 }
 
 // clientClearsListFilterWithEscape sends Esc while the filter field has
-// focus: SPEC.md:318's "esc clearing" -- the query is discarded, not
-// merely the field's focus, so filterStatusLine goes back to reporting
-// nothing at all and "Filter:" leaves the screen entirely.
+// focus: SPEC §11.10's "esc clears the query and returns to the unfiltered
+// list" -- the query is discarded, not merely the field's focus, so
+// filterStatusLine goes back to reporting nothing at all and "Filter:"
+// leaves the screen entirely.
 func clientClearsListFilterWithEscape(ctx context.Context, clientName string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {

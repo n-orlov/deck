@@ -106,7 +106,7 @@ func TestFilterByCWDShowsOnlyTheMatchingRow(t *testing.T) {
 	}
 }
 
-// TestFilterIsIncrementalAsYouType proves SPEC.md:318's "incrementally":
+// TestFilterIsIncrementalAsYouType proves SPEC §11.10's "incrementally":
 // each keystroke narrows or widens the visible set immediately, not only
 // once the query is complete or Enter is pressed.
 func TestFilterIsIncrementalAsYouType(t *testing.T) {
@@ -138,9 +138,10 @@ func TestFilterIsIncrementalAsYouType(t *testing.T) {
 	}
 }
 
-// TestFilterEscClearsBackToTheFullList proves SPEC.md:318's "esc clearing":
-// Esc while filtering discards the query and restores every row, not just
-// closing the input with the narrowed list still applied.
+// TestFilterEscClearsBackToTheFullList proves SPEC §11.10's "esc clears the
+// query and returns to the unfiltered list": Esc while filtering discards
+// the query and restores every row, not just closing the input with the
+// narrowed list still applied.
 func TestFilterEscClearsBackToTheFullList(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())
 	got, _ := model.Update(key("/"))
