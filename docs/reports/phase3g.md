@@ -417,18 +417,22 @@ contrast tests already do for their own pair sets.
 touches only `internal/theme/contrast_test.go`) — per the PRD's own instruction, this
 requirement pins what is already true and is not a licence to recolour a theme.
 `matrix`, the PRD's reference theme, is measured to clear every new pair (thinnest
-`error/selection` at 3.16:1 hex, matching the PRD's own citation) and is the one built-in
-whose floor is hard-enforced inside the new test; `cobalt`, `empire` and `parchment`
-each fail one or more new pairs (always `dimmed` against `Selection`/`SelectionIdle`) —
-recorded as `FINDING` log lines plus a per-theme summary rather than turned into a
-build-breaking assertion, so `ci/run.sh go test -count=1 ./internal/theme/` stays green.
-See [§3's F23](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
+`error/selection` at 3.16:1 hex, matching the PRD's own citation). The floor is
+hard-enforced for **every** built-in; the ten cells that were already sub-floor when the
+coverage landed (`cobalt` ×1, `empire` ×7, `parchment` ×2, always `dimmed`/`hint`/`key`/
+`error` against `Selection`/`SelectionIdle`) are exempted individually, at their measured
+ratios, by `dialogPairAllowlist`, which itself fails on drift over 0.01 either way, on a
+listed cell that has reached the floor, and on a key matching no cell. So today's palette
+keeps `ci/run.sh go test -count=1 ./internal/theme/` at exit 0 while any *new* sub-floor
+pair, in any theme, breaks the build. See
+[§3's F23](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
 for the measured ratios and disposition.
 
 Evidence: [`phase3g-106-contrast-floor/`](phase3g-106-contrast-floor/README.md) —
 `dialog-contrast-v.log` (every pair's ratio, all five built-ins, the `FINDING`/`SUMMARY`
-lines) and `theme-suite-green.log` (`ci/run.sh go test -count=1 ./internal/theme/`,
-exit 0).
+lines), `theme-suite-green.log` (`ci/run.sh go test -count=1 ./internal/theme/`, exit 0)
+and the two reverted-mutation logs proving the enforcement bites
+(`negative-unlisted-pair-fails.log`, `negative-recorded-ratio-drift-fails.log`).
 
 ## R85 — the create modal opens on the last used agent (task 024)
 

@@ -1,0 +1,25 @@
+--- FAIL: TestThemedDialogTokensClearContrastFloor (0.00s)
+    --- FAIL: TestThemedDialogTokensClearContrastFloor/parchment (0.00s)
+        contrast_test.go:380: parchment hint/surface         hex #6b5a3c/#ece0c4 = 5.08:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:380: parchment key/surface          hex #7a3b12/#ece0c4 = 6.51:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:380: parchment error/surface        hex #a12f2f/#ece0c4 = 5.41:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:380: parchment text/selection       hex #3b2a1a/#d8c79f = 8.22:1   quant #000000/#e5e5e5 = 16.67:1
+        contrast_test.go:380: parchment dimmed/selection     hex #8a7a5c/#d8c79f = 2.51:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:390: theme "parchment" dimmed/selection (hex): 2.51:1 (fg=#8a7a5c bg=#d8c79f) drifted from the recorded 2.90:1 -- the palette moved; re-measure and update dialogPairAllowlist (never recolour a built-in to pass)
+        contrast_test.go:380: parchment hint/selection       hex #6b5a3c/#d8c79f = 3.99:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:380: parchment key/selection        hex #7a3b12/#d8c79f = 5.11:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:380: parchment error/selection      hex #a12f2f/#d8c79f = 4.25:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:380: parchment text/selectionidle   hex #3b2a1a/#e2d5b3 = 9.40:1   quant #000000/#e5e5e5 = 16.67:1
+        contrast_test.go:380: parchment dimmed/selectionidle hex #8a7a5c/#e2d5b3 = 2.87:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:390: FINDING theme "parchment" dimmed/selectionidle: hex contrast 2.87:1 < 3.0:1 (fg=#8a7a5c bg=#e2d5b3) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84
+        contrast_test.go:380: parchment hint/selectionidle   hex #6b5a3c/#e2d5b3 = 4.57:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:380: parchment key/selectionidle    hex #7a3b12/#e2d5b3 = 5.85:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:380: parchment error/selectionidle  hex #a12f2f/#e2d5b3 = 4.86:1   quant #cd0000/#e5e5e5 = 4.64:1
+    contrast_test.go:403: SUMMARY cobalt     thinnest newly-covered pair dimmed/selection (hex)   = 2.59:1 (BELOW floor 3.0:1)
+    contrast_test.go:403: SUMMARY daylight   thinnest newly-covered pair dimmed/selection (quant) = 3.18:1 (clears floor 3.0:1)
+    contrast_test.go:403: SUMMARY empire     thinnest newly-covered pair dimmed/selectionidle (quant) = 1.00:1 (BELOW floor 3.0:1)
+    contrast_test.go:403: SUMMARY matrix     thinnest newly-covered pair error/selection (hex)    = 3.16:1 (clears floor 3.0:1)
+    contrast_test.go:403: SUMMARY parchment  thinnest newly-covered pair dimmed/selection (hex)   = 2.51:1 (BELOW floor 3.0:1)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/theme	0.003s
+FAIL
