@@ -46,6 +46,24 @@ i.e. it asserted the defect, not the fix.
   confirmed a pre-existing flake below, not a regression: it passes cleanly
   once the fix is restored (see `green.log`).
 - `green.log` / `full.log`: same command, full fix in place — both green.
+- `red-behavioural.log` / `green-behavioural.log`: the *behavioural* half of
+  the revert-and-reproduce pair, added because the `red.log` above only shows
+  the rewritten committed test failing to **build** against the pre-fix
+  signature, which does not by itself display the defect. The probe
+  (`r79-behavioural-probe.go.txt`, kept as `.txt` so it is not compiled by
+  the module) uses no post-fix API: it seeds a 450-row expired backlog, makes
+  the one bounded store-open pass, then makes ten `SweepTombstones` calls
+  500ms apart (the default `settings.Reconcile` ticks of that same startup)
+  and requires zero expired rows at the end.
+  - pre-fix (`git worktree` at `dd90a28^`, `red-behavioural.log`): FAIL —
+    `expired rows still present after the store-open pass and 10 reconcile
+    ticks = 250, want 0`, i.e. the throttle stamped by the store-open pass
+    turned every tick of that cycle into a no-op.
+  - post-fix (`git worktree` at `dd90a28`, same probe with only its two call
+    sites adapted to the two-value return, `green-behavioural.log`): PASS —
+    the ticks reap 200 then 50 and the backlog is gone inside the same cycle.
+  Both worktrees were throwaway and were removed after the runs; neither
+  probe file is committed as a `_test.go`, so no extra test enters the suite.
 
 ## Expectation change (`TestSweepTombstonesReapsOneBoundedBatchPerCall`)
 Rewritten in place (task 202's success criteria: no committed test may still
