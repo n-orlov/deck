@@ -1,0 +1,1385 @@
+=== RUN   TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach
+--- PASS: TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach (0.02s)
+=== RUN   TestAAcknowledgesErrorWithoutChangingVerdict
+--- PASS: TestAAcknowledgesErrorWithoutChangingVerdict (0.02s)
+=== RUN   TestYAcknowledgesOnlySelectedRowDurably
+--- PASS: TestYAcknowledgesOnlySelectedRowDurably (0.02s)
+=== RUN   TestArchiveKeyOpensAConfirmAndWritesNothing
+--- PASS: TestArchiveKeyOpensAConfirmAndWritesNothing (0.00s)
+=== RUN   TestArchiveConfirmSubmitArchivesExactlyTheRowItNamed
+--- PASS: TestArchiveConfirmSubmitArchivesExactlyTheRowItNamed (0.00s)
+=== RUN   TestArchiveConfirmEscCancelsWithoutWritingAnything
+--- PASS: TestArchiveConfirmEscCancelsWithoutWritingAnything (0.00s)
+=== RUN   TestArchiveConfirmSuppressesTheBareLetterKeymap
+--- PASS: TestArchiveConfirmSuppressesTheBareLetterKeymap (0.00s)
+=== RUN   TestArchiveConfirmOnAStoppedRowPromisesNoKill
+--- PASS: TestArchiveConfirmOnAStoppedRowPromisesNoKill (0.00s)
+=== RUN   TestArchiveConfirmFailedSubmitStaysOpenAndSaysWhy
+--- PASS: TestArchiveConfirmFailedSubmitStaysOpenAndSaysWhy (0.00s)
+=== RUN   TestArchiveKeyStatesItIsUnavailableWhenUnwired
+--- PASS: TestArchiveKeyStatesItIsUnavailableWhenUnwired (0.00s)
+=== RUN   TestArchiveConfirmStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestArchiveConfirmStyledBodyMatchesPlainBodyOnceStripped (0.00s)
+=== RUN   TestDeleteConfirmStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestDeleteConfirmStyledBodyMatchesPlainBodyOnceStripped (0.00s)
+=== RUN   TestArchiveConfirmTokensMatchSpec
+--- PASS: TestArchiveConfirmTokensMatchSpec (0.00s)
+=== RUN   TestArchiveConfirmOnAStoppedRowHasNoWarning
+--- PASS: TestArchiveConfirmOnAStoppedRowHasNoWarning (0.00s)
+=== RUN   TestArchiveConfirmNoteIsError
+--- PASS: TestArchiveConfirmNoteIsError (0.00s)
+=== RUN   TestDeleteConfirmTokensMatchSpec
+--- PASS: TestDeleteConfirmTokensMatchSpec (0.00s)
+=== RUN   TestDeleteConfirmNoteIsError
+--- PASS: TestDeleteConfirmNoteIsError (0.00s)
+=== RUN   TestListShowsArchivedGlyphFromArchivedAtFlagNotFromStatus
+--- PASS: TestListShowsArchivedGlyphFromArchivedAtFlagNotFromStatus (0.00s)
+=== RUN   TestListShowsArchivedGlyphInASCIIModeAsBracketedWord
+--- PASS: TestListShowsArchivedGlyphInASCIIModeAsBracketedWord (0.00s)
+=== RUN   TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened
+=== RUN   TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened/live-row-was-killed
+=== RUN   TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened/stopped-row-only-hidden
+--- PASS: TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened (0.00s)
+    --- PASS: TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened/live-row-was-killed (0.00s)
+    --- PASS: TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened/stopped-row-only-hidden (0.00s)
+=== RUN   TestArchiveUndoPressingUUnarchivesTheRowAndClearsTheToast
+--- PASS: TestArchiveUndoPressingUUnarchivesTheRowAndClearsTheToast (0.00s)
+=== RUN   TestArchiveUndoWindowExpiresLikeItsSiblings
+--- PASS: TestArchiveUndoWindowExpiresLikeItsSiblings (0.00s)
+=== RUN   TestArchiveUndoIsCheckedBehindTheKillAndDeleteUndoTrios
+--- PASS: TestArchiveUndoIsCheckedBehindTheKillAndDeleteUndoTrios (0.00s)
+=== RUN   TestArchiveUndoWithNoUnarchiverWiredIsANoOp
+--- PASS: TestArchiveUndoWithNoUnarchiverWiredIsANoOp (0.00s)
+=== RUN   TestNeedsAttentionMatchesWaitingAndErrorOnly
+--- PASS: TestNeedsAttentionMatchesWaitingAndErrorOnly (0.00s)
+=== RUN   TestNextAttentionSelectionWrapsAndSkipsInvisible
+--- PASS: TestNextAttentionSelectionWrapsAndSkipsInvisible (0.00s)
+=== RUN   TestNextAttentionSelectionNoopWhenNothingNeedsAttention
+--- PASS: TestNextAttentionSelectionNoopWhenNothingNeedsAttention (0.00s)
+=== RUN   TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus
+--- PASS: TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus (0.02s)
+=== RUN   TestSpaceNoopWhenSelectionAlreadyOnSoleAttentionRow
+--- PASS: TestSpaceNoopWhenSelectionAlreadyOnSoleAttentionRow (0.00s)
+=== RUN   TestSortSessionsByAttentionOrdersGroupsExactly
+--- PASS: TestSortSessionsByAttentionOrdersGroupsExactly (0.00s)
+=== RUN   TestSortSessionsByAttentionWaitingOldestFirst
+--- PASS: TestSortSessionsByAttentionWaitingOldestFirst (0.00s)
+=== RUN   TestSortSessionsByAttentionTiesBrokenByID
+--- PASS: TestSortSessionsByAttentionTiesBrokenByID (0.00s)
+=== RUN   TestSortSessionsByAttentionUnknownStatusSortsLast
+--- PASS: TestSortSessionsByAttentionUnknownStatusSortsLast (0.00s)
+=== RUN   TestSortSessionsByAttentionDoesNotMutateInput
+--- PASS: TestSortSessionsByAttentionDoesNotMutateInput (0.00s)
+=== RUN   TestSessionsLoadedRendersInAttentionOrder
+--- PASS: TestSessionsLoadedRendersInAttentionOrder (0.00s)
+=== RUN   TestSessionsLoadedTracksSelectionByIDAcrossResort
+--- PASS: TestSessionsLoadedTracksSelectionByIDAcrossResort (0.00s)
+=== RUN   TestSessionsLoadedClampsWhenSelectedSessionVanishes
+--- PASS: TestSessionsLoadedClampsWhenSelectedSessionVanishes (0.00s)
+=== RUN   TestListShowsProfileBadgeForAgentsAndNoneForShell
+--- PASS: TestListShowsProfileBadgeForAgentsAndNoneForShell (0.00s)
+=== RUN   TestDetailViewShowsProfileAndDegradation
+--- PASS: TestDetailViewShowsProfileAndDegradation (0.00s)
+=== RUN   TestDetailViewOmitsProfileForShell
+--- PASS: TestDetailViewOmitsProfileForShell (0.00s)
+=== RUN   TestDetailViewShowsCapturedPathAdvisoryWhenLoginShellSet
+--- PASS: TestDetailViewShowsCapturedPathAdvisoryWhenLoginShellSet (0.00s)
+=== RUN   TestListBadgesStatusSourceQuality
+--- PASS: TestListBadgesStatusSourceQuality (0.00s)
+=== RUN   TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts
+--- PASS: TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts (0.00s)
+=== RUN   TestDetailDistinguishesTotalProbeMissFromNoSignalYet
+--- PASS: TestDetailDistinguishesTotalProbeMissFromNoSignalYet (0.00s)
+=== RUN   TestDetailKeyTogglesAndEscCloses
+--- PASS: TestDetailKeyTogglesAndEscCloses (0.00s)
+=== RUN   TestBulkDeleteConfirmBodyMeasurementsCarryNoSGRBytes
+--- PASS: TestBulkDeleteConfirmBodyMeasurementsCarryNoSGRBytes (0.00s)
+=== RUN   TestStyledBulkDeleteConfirmBodyMatchesPlainBodyLineForLine
+--- PASS: TestStyledBulkDeleteConfirmBodyMatchesPlainBodyLineForLine (0.00s)
+=== RUN   TestBulkDeleteConfirmStaysWithinFrameBudgetAt80x24
+--- PASS: TestBulkDeleteConfirmStaysWithinFrameBudgetAt80x24 (0.00s)
+=== RUN   TestBulkDeleteConfirmSubmitLineVisibleForAnOrdinaryMarkSet
+--- PASS: TestBulkDeleteConfirmSubmitLineVisibleForAnOrdinaryMarkSet (0.00s)
+=== RUN   TestBulkDeleteConfirmSubmitLinePinnedWhileTheMarkListScrolls
+--- PASS: TestBulkDeleteConfirmSubmitLinePinnedWhileTheMarkListScrolls (0.00s)
+=== RUN   TestBulkDeleteConfirmBodyKeepsEveryMarkedName
+--- PASS: TestBulkDeleteConfirmBodyKeepsEveryMarkedName (0.00s)
+=== RUN   TestBulkDeleteConfirmReopenStartsUnscrolled
+--- PASS: TestBulkDeleteConfirmReopenStartsUnscrolled (0.00s)
+=== RUN   TestBulkDeleteConfirmTokensMatchSpec
+--- PASS: TestBulkDeleteConfirmTokensMatchSpec (0.00s)
+=== RUN   TestBulkDeleteConfirmNoteIsError
+--- PASS: TestBulkDeleteConfirmNoteIsError (0.00s)
+=== RUN   TestCoalescedKeyMsgDispatchesNavigationalThenDestructiveRune
+--- PASS: TestCoalescedKeyMsgDispatchesNavigationalThenDestructiveRune (0.00s)
+=== RUN   TestCoalescedKeyMsgDispatchesDDChordAsTwoSeparateDeletes
+--- PASS: TestCoalescedKeyMsgDispatchesDDChordAsTwoSeparateDeletes (0.00s)
+=== RUN   TestCoalescedKeyMsgSinglePressUnaffected
+--- PASS: TestCoalescedKeyMsgSinglePressUnaffected (0.00s)
+=== RUN   TestCreateFieldRowsEveryFieldHasANonEmptyLabelAndHelp
+--- PASS: TestCreateFieldRowsEveryFieldHasANonEmptyLabelAndHelp (0.00s)
+=== RUN   TestCreateFieldRowsPreLaunchLoginShellLaunchArgsDescribeWhatTheyDo
+--- PASS: TestCreateFieldRowsPreLaunchLoginShellLaunchArgsDescribeWhatTheyDo (0.00s)
+=== RUN   TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue
+--- PASS: TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue (0.02s)
+=== RUN   TestCreateModalOpensOnLastCreateAgentLabelled
+--- PASS: TestCreateModalOpensOnLastCreateAgentLabelled (0.02s)
+=== RUN   TestCreateModalOpensWithoutLabelWhenNoLastCreateAgent
+--- PASS: TestCreateModalOpensWithoutLabelWhenNoLastCreateAgent (0.02s)
+=== RUN   TestCyclingAgentFieldClearsLastUsedLabel
+--- PASS: TestCyclingAgentFieldClearsLastUsedLabel (0.02s)
+=== RUN   TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent
+--- PASS: TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent (0.02s)
+=== RUN   TestSuccessfulCreatePersistsLastCreateAgent
+--- PASS: TestSuccessfulCreatePersistsLastCreateAgent (0.02s)
+=== RUN   TestCreateModalLoginShellHelpStatesCapturedPathIsAdvisory
+--- PASS: TestCreateModalLoginShellHelpStatesCapturedPathIsAdvisory (0.00s)
+=== RUN   TestCreateModalAgentFieldDerivesFromRegistry
+--- PASS: TestCreateModalAgentFieldDerivesFromRegistry (0.00s)
+=== RUN   TestExpandCreateCWDBareTilde
+--- PASS: TestExpandCreateCWDBareTilde (0.00s)
+=== RUN   TestExpandCreateCWDTildeSlash
+--- PASS: TestExpandCreateCWDTildeSlash (0.00s)
+=== RUN   TestExpandCreateCWDOtherUserRejected
+--- PASS: TestExpandCreateCWDOtherUserRejected (0.00s)
+=== RUN   TestExpandCreateCWDNoTildeUnchanged
+--- PASS: TestExpandCreateCWDNoTildeUnchanged (0.00s)
+=== RUN   TestCreateModalTildeCWDValidatesAndSubmitsResolvedPath
+--- PASS: TestCreateModalTildeCWDValidatesAndSubmitsResolvedPath (0.00s)
+=== RUN   TestCreateModalOtherUserTildeRejectedNotHalfExpanded
+--- PASS: TestCreateModalOtherUserTildeRejectedNotHalfExpanded (0.00s)
+=== RUN   TestCreateModalMissingCWDMessage
+--- PASS: TestCreateModalMissingCWDMessage (0.00s)
+=== RUN   TestCreateModalCWDNotDirectoryMessage
+--- PASS: TestCreateModalCWDNotDirectoryMessage (0.00s)
+=== RUN   TestCreateModalMalformedEnvKeyMessage
+--- PASS: TestCreateModalMalformedEnvKeyMessage (0.00s)
+=== RUN   TestCreateModalMalformedLaunchArgsJSONMessage
+--- PASS: TestCreateModalMalformedLaunchArgsJSONMessage (0.00s)
+=== RUN   TestCreateModalUnsupportedProfileMessage
+--- PASS: TestCreateModalUnsupportedProfileMessage (0.00s)
+=== RUN   TestCreateModalShellIgnoresProfileValidation
+--- PASS: TestCreateModalShellIgnoresProfileValidation (0.00s)
+=== RUN   TestCreateModalDuplicateNameMessage
+--- PASS: TestCreateModalDuplicateNameMessage (0.00s)
+=== RUN   TestCreateModalSlugCollisionMessage
+--- PASS: TestCreateModalSlugCollisionMessage (0.00s)
+=== RUN   TestCreateModalEscapeCreatesNothing
+--- PASS: TestCreateModalEscapeCreatesNothing (0.00s)
+=== RUN   TestCreateFieldRowsSourceContainsNoColorToken
+--- PASS: TestCreateFieldRowsSourceContainsNoColorToken (0.00s)
+=== RUN   TestCreateBodyMeasurementsCarryNoSGRBytes
+--- PASS: TestCreateBodyMeasurementsCarryNoSGRBytes (0.00s)
+=== RUN   TestCreateCWDGhostValueCarriesNoSGRBytes
+--- PASS: TestCreateCWDGhostValueCarriesNoSGRBytes (0.00s)
+=== RUN   TestCreateViewGhostRendersDimmedAtRenderTime
+--- PASS: TestCreateViewGhostRendersDimmedAtRenderTime (0.00s)
+=== RUN   TestStyledCreateBodyMatchesPlainBodyLineForLine
+--- PASS: TestStyledCreateBodyMatchesPlainBodyLineForLine (0.00s)
+=== RUN   TestCreateViewStaysWithinFrameBudgetAt80x24
+--- PASS: TestCreateViewStaysWithinFrameBudgetAt80x24 (0.00s)
+=== RUN   TestCreateViewSubmitLineReachableViaPgDown
+--- PASS: TestCreateViewSubmitLineReachableViaPgDown (0.00s)
+=== RUN   TestCreateViewLabelHintValueTextTitleDimmed
+--- PASS: TestCreateViewLabelHintValueTextTitleDimmed (0.00s)
+=== RUN   TestCreateViewFocusedFieldGetsSelectionBackground
+--- PASS: TestCreateViewFocusedFieldGetsSelectionBackground (0.00s)
+=== RUN   TestCreateViewValidationMessageIsError
+--- PASS: TestCreateViewValidationMessageIsError (0.00s)
+=== RUN   TestCreateProfileOptionsForOffersOnlyDeclaredProfiles
+--- PASS: TestCreateProfileOptionsForOffersOnlyDeclaredProfiles (0.00s)
+=== RUN   TestCreateModalNoYoloOfferedWithAllowYoloFalse
+--- PASS: TestCreateModalNoYoloOfferedWithAllowYoloFalse (0.00s)
+=== RUN   TestCreateModalYoloTakesEffectImmediatelyWithNoConfirm
+--- PASS: TestCreateModalYoloTakesEffectImmediatelyWithNoConfirm (0.00s)
+=== RUN   TestCreateModalYCharacterStillTypesIntoTextFields
+--- PASS: TestCreateModalYCharacterStillTypesIntoTextFields (0.00s)
+=== RUN   TestCreateModalDefaultsToSafeWhenYoloDefaultFalse
+--- PASS: TestCreateModalDefaultsToSafeWhenYoloDefaultFalse (0.00s)
+=== RUN   TestCreateModalDefaultsToYoloWhenYoloDefaultAndAllowYoloAreBothTrue
+--- PASS: TestCreateModalDefaultsToYoloWhenYoloDefaultAndAllowYoloAreBothTrue (0.00s)
+=== RUN   TestCreateModalYoloDefaultIsInertWithoutAllowYolo
+--- PASS: TestCreateModalYoloDefaultIsInertWithoutAllowYolo (0.00s)
+=== RUN   TestCreateModalYoloDefaultSkippedForAnAdapterThatDoesNotOfferYolo
+--- PASS: TestCreateModalYoloDefaultSkippedForAnAdapterThatDoesNotOfferYolo (0.00s)
+=== RUN   TestCropRowNeverSplitsWideGlyph
+--- PASS: TestCropRowNeverSplitsWideGlyph (0.00s)
+=== RUN   TestCropPreviewBottomLeftWideFixtureKeepsBorderColumn
+--- PASS: TestCropPreviewBottomLeftWideFixtureKeepsBorderColumn (0.00s)
+=== RUN   TestPadTruncElidesWideSessionNameWithoutSplitting
+--- PASS: TestPadTruncElidesWideSessionNameWithoutSplitting (0.00s)
+=== RUN   TestDeleteConfirmPurgeShowsExactPathForClaudeWithATranscript
+--- PASS: TestDeleteConfirmPurgeShowsExactPathForClaudeWithATranscript (0.00s)
+=== RUN   TestDeleteConfirmPurgeDeclinesWhenNoTranscriptCanBeLocated
+--- PASS: TestDeleteConfirmPurgeDeclinesWhenNoTranscriptCanBeLocated (0.00s)
+=== RUN   TestDetailFieldLabelsAreHintValuesAreText
+--- PASS: TestDetailFieldLabelsAreHintValuesAreText (0.00s)
+=== RUN   TestBareQWhileDetailOpenQuitsInsteadOfNoOp
+=== RUN   TestBareQWhileDetailOpenQuitsInsteadOfNoOp/q
+=== RUN   TestBareQWhileDetailOpenQuitsInsteadOfNoOp/ctrl+c
+--- PASS: TestBareQWhileDetailOpenQuitsInsteadOfNoOp (0.00s)
+    --- PASS: TestBareQWhileDetailOpenQuitsInsteadOfNoOp/q (0.00s)
+    --- PASS: TestBareQWhileDetailOpenQuitsInsteadOfNoOp/ctrl+c (0.00s)
+=== RUN   TestApplyDialogContractCoreKeys
+=== RUN   TestApplyDialogContractCoreKeys/esc_cancels_and_does_not_submit_or_cycle
+=== RUN   TestApplyDialogContractCoreKeys/enter_submits_and_does_not_cancel
+=== RUN   TestApplyDialogContractCoreKeys/up_and_down_move_the_focused_field,_wrapping
+=== RUN   TestApplyDialogContractCoreKeys/tab_and_shift+tab_are_not_contract_keys_(§11.4:_reserved_for_completion)
+=== RUN   TestApplyDialogContractCoreKeys/left_and_right_change_the_selection
+=== RUN   TestApplyDialogContractCoreKeys/space_changes_the_selection_when_there_is_no_text_field_to_type_into
+=== RUN   TestApplyDialogContractCoreKeys/space_falls_through_unhandled_when_SpaceTypesText_says_so
+=== RUN   TestApplyDialogContractCoreKeys/a_key_outside_the_contract_vocabulary_is_unhandled
+=== RUN   TestApplyDialogContractCoreKeys/up/down_is_a_no-op_with_one_or_zero_fields,_not_merely_wrapped
+--- PASS: TestApplyDialogContractCoreKeys (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/esc_cancels_and_does_not_submit_or_cycle (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/enter_submits_and_does_not_cancel (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/up_and_down_move_the_focused_field,_wrapping (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/tab_and_shift+tab_are_not_contract_keys_(§11.4:_reserved_for_completion) (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/left_and_right_change_the_selection (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/space_changes_the_selection_when_there_is_no_text_field_to_type_into (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/space_falls_through_unhandled_when_SpaceTypesText_says_so (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/a_key_outside_the_contract_vocabulary_is_unhandled (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/up/down_is_a_no-op_with_one_or_zero_fields,_not_merely_wrapped (0.00s)
+=== RUN   TestCreateModalUpDownMoveFieldsTabDoesNot
+--- PASS: TestCreateModalUpDownMoveFieldsTabDoesNot (0.00s)
+=== RUN   TestCreateModalTabOnPathFieldWithNoMatchDoesNotMoveFocus
+--- PASS: TestCreateModalTabOnPathFieldWithNoMatchDoesNotMoveFocus (0.00s)
+=== RUN   TestCreateModalRecentCWDCyclesOnCtrlPCtrlN
+--- PASS: TestCreateModalRecentCWDCyclesOnCtrlPCtrlN (0.02s)
+=== RUN   TestCreateModalCandidateListOwnsUpDownWhileOpen
+--- PASS: TestCreateModalCandidateListOwnsUpDownWhileOpen (0.00s)
+=== RUN   TestDialogWidthClampedToViewport
+=== RUN   TestDialogWidthClampedToViewport/below_lower_clamp_falls_back_to_the_full_viewport
+=== RUN   TestDialogWidthClampedToViewport/lands_exactly_on_the_lower_clamp
+=== RUN   TestDialogWidthClampedToViewport/mid-range_viewport_stays_at_80%_uncapped
+=== RUN   TestDialogWidthClampedToViewport/lands_exactly_on_the_upper_clamp
+=== RUN   TestDialogWidthClampedToViewport/well_past_the_upper_clamp_saturates_at_80
+--- PASS: TestDialogWidthClampedToViewport (0.00s)
+    --- PASS: TestDialogWidthClampedToViewport/below_lower_clamp_falls_back_to_the_full_viewport (0.00s)
+    --- PASS: TestDialogWidthClampedToViewport/lands_exactly_on_the_lower_clamp (0.00s)
+    --- PASS: TestDialogWidthClampedToViewport/mid-range_viewport_stays_at_80%_uncapped (0.00s)
+    --- PASS: TestDialogWidthClampedToViewport/lands_exactly_on_the_upper_clamp (0.00s)
+    --- PASS: TestDialogWidthClampedToViewport/well_past_the_upper_clamp_saturates_at_80 (0.00s)
+=== RUN   TestFramedDialogBoxWidthMatchesDialogWidth
+--- PASS: TestFramedDialogBoxWidthMatchesDialogWidth (0.00s)
+=== RUN   TestFramedDialogWrapsOverlongContentInsteadOfGrowingOrTruncating
+--- PASS: TestFramedDialogWrapsOverlongContentInsteadOfGrowingOrTruncating (0.00s)
+=== RUN   TestEventLogDisplaysTheDroppedHookKindAndReasonAfterPressingE
+--- PASS: TestEventLogDisplaysTheDroppedHookKindAndReasonAfterPressingE (0.02s)
+=== RUN   TestDetailViewDisplaysTheDroppedHookKindAndReasonAfterPressingI
+--- PASS: TestDetailViewDisplaysTheDroppedHookKindAndReasonAfterPressingI (0.02s)
+=== RUN   TestDetailViewOmitsTheDroppedHookLabelWhenNoneWasDeclined
+--- PASS: TestDetailViewOmitsTheDroppedHookLabelWhenNoneWasDeclined (0.00s)
+=== RUN   TestEnvBodyMeasurementsCarryNoSGRBytes
+--- PASS: TestEnvBodyMeasurementsCarryNoSGRBytes (0.00s)
+=== RUN   TestStyledEnvBodyMatchesPlainBodyLineForLine
+--- PASS: TestStyledEnvBodyMatchesPlainBodyLineForLine (0.00s)
+=== RUN   TestEnvViewStaysWithinFrameBudgetAt80x24
+--- PASS: TestEnvViewStaysWithinFrameBudgetAt80x24 (0.00s)
+=== RUN   TestEnvViewClosingHintReachableViaPgDown
+--- PASS: TestEnvViewClosingHintReachableViaPgDown (0.00s)
+=== RUN   TestEnvViewLabelHintValueTextTitleDimmed
+--- PASS: TestEnvViewLabelHintValueTextTitleDimmed (0.00s)
+=== RUN   TestEnvViewFocusedRowGetsSelectionBackground
+--- PASS: TestEnvViewFocusedRowGetsSelectionBackground (0.00s)
+=== RUN   TestEnvViewNoteIsError
+--- PASS: TestEnvViewNoteIsError (0.00s)
+=== RUN   TestEnvViewClosingHintKeysAreKeyToken
+--- PASS: TestEnvViewClosingHintKeysAreKeyToken (0.00s)
+=== RUN   TestEnvViewEditPromptAndSubmitLineVisibleWhenListOverflows
+--- PASS: TestEnvViewEditPromptAndSubmitLineVisibleWhenListOverflows (0.00s)
+=== RUN   TestEnvEditModePagingScrollsAndKeepsTheEditOpen
+--- PASS: TestEnvEditModePagingScrollsAndKeepsTheEditOpen (0.00s)
+=== RUN   TestListShowsEnvDirtyBadgeOnlyWhenSet
+--- PASS: TestListShowsEnvDirtyBadgeOnlyWhenSet (0.00s)
+=== RUN   TestEnvEditorEditsAKeyThroughSetSessionEnvAndStaysOpen
+--- PASS: TestEnvEditorEditsAKeyThroughSetSessionEnvAndStaysOpen (0.00s)
+=== RUN   TestEnvEditorEscCancelsEditWithoutClosingThenClosesTheDialog
+--- PASS: TestEnvEditorEscCancelsEditWithoutClosingThenClosesTheDialog (0.00s)
+=== RUN   TestEnvEditorSubmitWithoutSetterStatesUnavailable
+--- PASS: TestEnvEditorSubmitWithoutSetterStatesUnavailable (0.00s)
+=== RUN   TestEnvEditorFirstTypedRuneReplacesThePrefilledValueWholesale
+--- PASS: TestEnvEditorFirstTypedRuneReplacesThePrefilledValueWholesale (0.00s)
+=== RUN   TestTruncateToWidthClosesOpenBackgroundSpanMidRun
+--- PASS: TestTruncateToWidthClosesOpenBackgroundSpanMidRun (0.00s)
+=== RUN   TestTruncateToWidthLeavesPlainTextAlone
+--- PASS: TestTruncateToWidthLeavesPlainTextAlone (0.00s)
+=== RUN   TestTruncateToWidthDoesNotDoubleCloseAnAlreadyClosedBackground
+--- PASS: TestTruncateToWidthDoesNotDoubleCloseAnAlreadyClosedBackground (0.00s)
+=== RUN   TestTruncateToWidthWideGlyphsStillCloseTheirBackground
+--- PASS: TestTruncateToWidthWideGlyphsStillCloseTheirBackground (0.00s)
+=== RUN   TestStringWidthIgnoresANSIEscapes
+--- PASS: TestStringWidthIgnoresANSIEscapes (0.00s)
+=== RUN   TestTruncateToWidthKeepsEscapeBytesItPassesOver
+--- PASS: TestTruncateToWidthKeepsEscapeBytesItPassesOver (0.00s)
+=== RUN   TestTruncateToWidthStillNeverSplitsWideGlyph
+--- PASS: TestTruncateToWidthStillNeverSplitsWideGlyph (0.00s)
+=== RUN   TestEventLogViewNeverReReadsTheStoreOnceOpen
+--- PASS: TestEventLogViewNeverReReadsTheStoreOnceOpen (0.02s)
+=== RUN   TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload
+--- PASS: TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload (0.02s)
+=== RUN   TestEventLogViewMasksSecretShapedPayloadValueButNotOrdinaryOnes
+--- PASS: TestEventLogViewMasksSecretShapedPayloadValueButNotOrdinaryOnes (0.02s)
+=== RUN   TestEventLogOpensOnECapitalAndClosesOnEsc
+--- PASS: TestEventLogOpensOnECapitalAndClosesOnEsc (0.02s)
+=== RUN   TestEventLogViewWithNoStoreStatesUnavailableRatherThanPanicking
+--- PASS: TestEventLogViewWithNoStoreStatesUnavailableRatherThanPanicking (0.00s)
+=== RUN   TestMaskEventPayloadLeavesNonJSONPayloadUnchanged
+--- PASS: TestMaskEventPayloadLeavesNonJSONPayloadUnchanged (0.00s)
+=== RUN   TestEventLogStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestEventLogStyledBodyMatchesPlainBodyOnceStripped (0.06s)
+=== RUN   TestEventLogViewCarriesSectionTokens
+--- PASS: TestEventLogViewCarriesSectionTokens (0.02s)
+=== RUN   TestFilterByNameShowsOnlyTheMatchingRow
+--- PASS: TestFilterByNameShowsOnlyTheMatchingRow (0.00s)
+=== RUN   TestFilterByWorkspaceShowsOnlyTheMatchingRow
+--- PASS: TestFilterByWorkspaceShowsOnlyTheMatchingRow (0.00s)
+=== RUN   TestFilterByCWDShowsOnlyTheMatchingRow
+--- PASS: TestFilterByCWDShowsOnlyTheMatchingRow (0.00s)
+=== RUN   TestFilterIsIncrementalAsYouType
+--- PASS: TestFilterIsIncrementalAsYouType (0.00s)
+=== RUN   TestFilterEscClearsBackToTheFullList
+--- PASS: TestFilterEscClearsBackToTheFullList (0.00s)
+=== RUN   TestFilterEnterKeepsQueryAppliedAndReturnsKeymap
+--- PASS: TestFilterEnterKeepsQueryAppliedAndReturnsKeymap (0.00s)
+=== RUN   TestFilterReachesAnArchivedRowHiddenFromTheDefaultList
+--- PASS: TestFilterReachesAnArchivedRowHiddenFromTheDefaultList (0.00s)
+=== RUN   TestFilterStatesItIsInForceOnScreen
+--- PASS: TestFilterStatesItIsInForceOnScreen (0.00s)
+=== RUN   TestEscClearsAFilterHeldInForceWithoutReopeningTheField
+--- PASS: TestEscClearsAFilterHeldInForceWithoutReopeningTheField (0.00s)
+=== RUN   TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter
+--- PASS: TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter (0.00s)
+=== RUN   TestEscOnTheHelpOverlayClosesItWithoutTouchingAHeldFilter
+--- PASS: TestEscOnTheHelpOverlayClosesItWithoutTouchingAHeldFilter (0.00s)
+=== RUN   TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter
+--- PASS: TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter (0.00s)
+=== RUN   TestFilterFrameBudgetAccountsForTheStatusLine
+=== RUN   TestFilterFrameBudgetAccountsForTheStatusLine/auto
+=== RUN   TestFilterFrameBudgetAccountsForTheStatusLine/side-by-side
+=== RUN   TestFilterFrameBudgetAccountsForTheStatusLine/stacked
+=== RUN   TestFilterFrameBudgetAccountsForTheStatusLine/collapsed
+--- PASS: TestFilterFrameBudgetAccountsForTheStatusLine (0.00s)
+    --- PASS: TestFilterFrameBudgetAccountsForTheStatusLine/auto (0.00s)
+    --- PASS: TestFilterFrameBudgetAccountsForTheStatusLine/side-by-side (0.00s)
+    --- PASS: TestFilterFrameBudgetAccountsForTheStatusLine/stacked (0.00s)
+    --- PASS: TestFilterFrameBudgetAccountsForTheStatusLine/collapsed (0.00s)
+=== RUN   TestFlatSidebarHasNoHeaderRowsWhenGroupingOff
+--- PASS: TestFlatSidebarHasNoHeaderRowsWhenGroupingOff (0.00s)
+=== RUN   TestFlatSidebarHasNoCollapseBookkeeping
+--- PASS: TestFlatSidebarHasNoCollapseBookkeeping (0.00s)
+=== RUN   TestPageSizeMathAgreesInBothGroupingModesAt80x24
+--- PASS: TestPageSizeMathAgreesInBothGroupingModesAt80x24 (0.00s)
+=== RUN   TestElisionMathAgreesInBothGroupingModesAt80x24
+=== RUN   TestElisionMathAgreesInBothGroupingModesAt80x24/grouped
+=== RUN   TestElisionMathAgreesInBothGroupingModesAt80x24/flat
+--- PASS: TestElisionMathAgreesInBothGroupingModesAt80x24 (0.00s)
+    --- PASS: TestElisionMathAgreesInBothGroupingModesAt80x24/grouped (0.00s)
+    --- PASS: TestElisionMathAgreesInBothGroupingModesAt80x24/flat (0.00s)
+=== RUN   TestFooterEntriesNameOnlyBoundKeysViaSourceParse
+--- PASS: TestFooterEntriesNameOnlyBoundKeysViaSourceParse (0.00s)
+=== RUN   TestFooterEntryEligibilityMatchesRealPredicate
+--- PASS: TestFooterEntryEligibilityMatchesRealPredicate (0.00s)
+=== RUN   TestFooterFixedSetMatchesSpecAndExcludesRareKeys
+--- PASS: TestFooterFixedSetMatchesSpecAndExcludesRareKeys (0.01s)
+=== RUN   TestFooterKeyLegendReflectsEligibility
+=== RUN   TestFooterKeyLegendReflectsEligibility/live_row:_kill,_restart,_attach_and_interactive_eligible,_resume_is_not
+=== RUN   TestFooterKeyLegendReflectsEligibility/live_agent_row:_P_and_p_stay_out_of_the_footer_even_though_the_agent_has_them
+=== RUN   TestFooterKeyLegendReflectsEligibility/the_eligible_one_of_A/U_shows,_never_both:_A_on_an_unarchived_row,_U_on_an_archived_one
+=== RUN   TestFooterKeyLegendReflectsEligibility/,_(settings)_is_a_global_key:_present_with_sessions_and_without
+=== RUN   TestFooterKeyLegendReflectsEligibility/stopped_row:_resume_eligible,_kill/restart/attach/interactive_are_not
+=== RUN   TestFooterKeyLegendReflectsEligibility/archived_row:_eligibility_follows_status,_not_the_archive_flag
+=== RUN   TestFooterKeyLegendReflectsEligibility/attention-pending_row_(waiting):_kill_and_restart_eligible,_resume_is_not
+=== RUN   TestFooterKeyLegendReflectsEligibility/marked_set:_x_asks_the_marked_rows,_not_the_selected_one
+=== RUN   TestFooterKeyLegendReflectsEligibility/empty_list:_every_per-row_key_disappears
+--- PASS: TestFooterKeyLegendReflectsEligibility (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/live_row:_kill,_restart,_attach_and_interactive_eligible,_resume_is_not (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/live_agent_row:_P_and_p_stay_out_of_the_footer_even_though_the_agent_has_them (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/the_eligible_one_of_A/U_shows,_never_both:_A_on_an_unarchived_row,_U_on_an_archived_one (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/,_(settings)_is_a_global_key:_present_with_sessions_and_without (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/stopped_row:_resume_eligible,_kill/restart/attach/interactive_are_not (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/archived_row:_eligibility_follows_status,_not_the_archive_flag (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/attention-pending_row_(waiting):_kill_and_restart_eligible,_resume_is_not (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/marked_set:_x_asks_the_marked_rows,_not_the_selected_one (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/empty_list:_every_per-row_key_disappears (0.00s)
+=== RUN   TestFooterLineSharesLineWithLongStatusReason
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/short_reason:_both_halves_in_full
+    footer_legend_test.go:304: 200-col full legend: "↑/↓ · Y acknowledge · n new · r resume · dd delete · A archive · , settings · i detail · ? help · q quit"
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/80_columns,_short_reason
+    footer_legend_test.go:327: 80-col stopped-row footer (77 cells): "stopped · resumable    ↑/↓ · Y acknowledge · n new · r resume · dd delete · …"
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/80_columns,_§11.3's_long_reason
+    footer_legend_test.go:349: 80-col long-reason footer (76 cells): "error · pane failed after the stale f…    ↑/↓ · ↵ interactive · a attach · …"
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/80_columns,_empty_list:_the_reason_goes_with_the_rows
+--- PASS: TestFooterLineSharesLineWithLongStatusReason (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/short_reason:_both_halves_in_full (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/80_columns,_short_reason (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/80_columns,_§11.3's_long_reason (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/80_columns,_empty_list:_the_reason_goes_with_the_rows (0.00s)
+=== RUN   TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode
+=== RUN   TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/auto
+=== RUN   TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/side-by-side
+=== RUN   TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/stacked
+=== RUN   TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/collapsed
+--- PASS: TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode (0.00s)
+    --- PASS: TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/auto (0.00s)
+    --- PASS: TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/side-by-side (0.00s)
+    --- PASS: TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/stacked (0.00s)
+    --- PASS: TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode/collapsed (0.00s)
+=== RUN   TestUndoToastBudgetHoldsAcrossSizes
+=== RUN   TestUndoToastBudgetHoldsAcrossSizes/80x24
+=== RUN   TestUndoToastBudgetHoldsAcrossSizes/70x24
+=== RUN   TestUndoToastBudgetHoldsAcrossSizes/60x20
+=== RUN   TestUndoToastBudgetHoldsAcrossSizes/100x30
+=== RUN   TestUndoToastBudgetHoldsAcrossSizes/120x24
+--- PASS: TestUndoToastBudgetHoldsAcrossSizes (0.00s)
+    --- PASS: TestUndoToastBudgetHoldsAcrossSizes/80x24 (0.00s)
+    --- PASS: TestUndoToastBudgetHoldsAcrossSizes/70x24 (0.00s)
+    --- PASS: TestUndoToastBudgetHoldsAcrossSizes/60x20 (0.00s)
+    --- PASS: TestUndoToastBudgetHoldsAcrossSizes/100x30 (0.00s)
+    --- PASS: TestUndoToastBudgetHoldsAcrossSizes/120x24 (0.00s)
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/auto
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/side-by-side
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/stacked
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/collapsed
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/auto
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/side-by-side
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/stacked
+=== RUN   TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/collapsed
+--- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/auto (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/side-by-side (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/stacked (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/single-row/collapsed (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/auto (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/side-by-side (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/stacked (0.00s)
+    --- PASS: TestPendingDeleteIndicatorStaysWithinFrameBudgetAtEveryLayoutMode/marked-set/collapsed (0.00s)
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/auto
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/side-by-side
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/stacked
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/collapsed
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/auto
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/side-by-side
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/stacked
+=== RUN   TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/collapsed
+--- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/auto (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/side-by-side (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/stacked (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/single-delete-undo/collapsed (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/auto (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/side-by-side (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/stacked (0.00s)
+    --- PASS: TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode/batch-delete-undo/collapsed (0.00s)
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/auto
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/side-by-side
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/stacked
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/collapsed
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/auto
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/side-by-side
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/stacked
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/collapsed
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/auto
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/side-by-side
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/stacked
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/collapsed
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/auto
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/side-by-side
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/stacked
+=== RUN   TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/collapsed
+--- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/auto (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/side-by-side (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/stacked (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_archive:_session_is_already_archived/collapsed (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/auto (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/side-by-side (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/stacked (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Archiving_is_unavailable/collapsed (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/auto (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/side-by-side (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/stacked (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Deleted,_but_purge_failed:_no_such_file_or_directory/collapsed (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/auto (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/side-by-side (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/stacked (0.00s)
+    --- PASS: TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode/Cannot_kill:_session_is_already_stopped/collapsed (0.00s)
+=== RUN   TestSessionWorkspaceDefaultsToCWDBasename
+=== RUN   TestSessionWorkspaceDefaultsToCWDBasename/defaulted
+=== RUN   TestSessionWorkspaceDefaultsToCWDBasename/defaulted_trailing_slash
+=== RUN   TestSessionWorkspaceDefaultsToCWDBasename/explicit_wins
+--- PASS: TestSessionWorkspaceDefaultsToCWDBasename (0.00s)
+    --- PASS: TestSessionWorkspaceDefaultsToCWDBasename/defaulted (0.00s)
+    --- PASS: TestSessionWorkspaceDefaultsToCWDBasename/defaulted_trailing_slash (0.00s)
+    --- PASS: TestSessionWorkspaceDefaultsToCWDBasename/explicit_wins (0.00s)
+=== RUN   TestGroupSessionsBucketsByWorkspacePreservingOrder
+--- PASS: TestGroupSessionsBucketsByWorkspacePreservingOrder (0.00s)
+=== RUN   TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows
+--- PASS: TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows (0.00s)
+=== RUN   TestCollapsedGroupStaysNavigable
+--- PASS: TestCollapsedGroupStaysNavigable (0.00s)
+=== RUN   TestGKeyTogglesOnlySelectedRowsGroup
+--- PASS: TestGKeyTogglesOnlySelectedRowsGroup (0.00s)
+=== RUN   TestGKeyNoopUnderOverlaysAndWithNoSessions
+--- PASS: TestGKeyNoopUnderOverlaysAndWithNoSessions (0.00s)
+=== RUN   TestGGKeysJumpToFirstAndLastVisibleRow
+--- PASS: TestGGKeysJumpToFirstAndLastVisibleRow (0.00s)
+=== RUN   TestToggleGroupCollapseFlipsState
+--- PASS: TestToggleGroupCollapseFlipsState (0.00s)
+=== RUN   TestNavigationFollowsVisualOrderNotIndexOrder
+--- PASS: TestNavigationFollowsVisualOrderNotIndexOrder (0.00s)
+=== RUN   TestPageSelectionFollowsVisualOrder
+--- PASS: TestPageSelectionFollowsVisualOrder (0.00s)
+=== RUN   TestHelpOverlayStaysWithinFrameBudgetAt80x24
+--- PASS: TestHelpOverlayStaysWithinFrameBudgetAt80x24 (0.00s)
+=== RUN   TestEventLogStaysWithinFrameBudgetAt80x24
+--- PASS: TestEventLogStaysWithinFrameBudgetAt80x24 (0.02s)
+=== RUN   TestDetailViewStaysWithinFrameBudgetAt80x24
+--- PASS: TestDetailViewStaysWithinFrameBudgetAt80x24 (0.00s)
+=== RUN   TestHelpOverlayScrollReachesEveryLine
+--- PASS: TestHelpOverlayScrollReachesEveryLine (0.04s)
+=== RUN   TestEventLogScrollReachesEveryLine
+--- PASS: TestEventLogScrollReachesEveryLine (0.03s)
+=== RUN   TestDetailViewScrollReachesEveryLineAndFieldsScrollTogether
+--- PASS: TestDetailViewScrollReachesEveryLineAndFieldsScrollTogether (0.00s)
+=== RUN   TestHelpOverlayKeymapMatchesBoundKeys
+--- PASS: TestHelpOverlayKeymapMatchesBoundKeys (0.00s)
+=== RUN   TestFooterKeyLegendNamesOnlyBoundKeys
+--- PASS: TestFooterKeyLegendNamesOnlyBoundKeys (0.00s)
+=== RUN   TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns
+--- PASS: TestHelpOverlayWidthStaysWithinFrameBudgetAt80Columns (0.00s)
+=== RUN   TestHelpStyleHeaderSetMatchesProduction
+--- PASS: TestHelpStyleHeaderSetMatchesProduction (0.00s)
+=== RUN   TestHelpStyleHeadersRenderInTitleToken
+--- PASS: TestHelpStyleHeadersRenderInTitleToken (0.01s)
+=== RUN   TestHelpKeysEntryKeycapRendersInKeyToken
+--- PASS: TestHelpKeysEntryKeycapRendersInKeyToken (0.01s)
+=== RUN   TestHelpKeysEntryContinuationRendersInDimmedToken
+--- PASS: TestHelpKeysEntryContinuationRendersInDimmedToken (0.01s)
+=== RUN   TestHelpNonKeysSectionBodyStaysUnstyled
+--- PASS: TestHelpNonKeysSectionBodyStaysUnstyled (0.01s)
+=== RUN   TestHelpKeysEntriesAllGetKeycapStyling
+--- PASS: TestHelpKeysEntriesAllGetKeycapStyling (0.00s)
+=== RUN   TestHelpStyleDegradesToPlainTextWithColorOff
+--- PASS: TestHelpStyleDegradesToPlainTextWithColorOff (0.00s)
+=== RUN   TestHelpOverlayWidthStaysWithinFrameBudgetAt80ColumnsWithColorOn
+--- PASS: TestHelpOverlayWidthStaysWithinFrameBudgetAt80ColumnsWithColorOn (0.00s)
+=== RUN   TestSortSessionsByAttentionStablePrefersPreviousOrderOverIDCoinFlip
+--- PASS: TestSortSessionsByAttentionStablePrefersPreviousOrderOverIDCoinFlip (0.00s)
+=== RUN   TestSortSessionsByAttentionStableFallsBackToIDWithNoPreviousFrame
+--- PASS: TestSortSessionsByAttentionStableFallsBackToIDWithNoPreviousFrame (0.00s)
+=== RUN   TestSortSessionsByAttentionStableCompositeKeyIsTransitiveWithThreeWayTie
+--- PASS: TestSortSessionsByAttentionStableCompositeKeyIsTransitiveWithThreeWayTie (0.00s)
+=== RUN   TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether
+--- PASS: TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether (0.00s)
+=== RUN   TestPreviewCellAtSideBySideMapsContentBox
+--- PASS: TestPreviewCellAtSideBySideMapsContentBox (0.00s)
+=== RUN   TestPreviewCellAtStackedMapsContentBox
+--- PASS: TestPreviewCellAtStackedMapsContentBox (0.00s)
+=== RUN   TestPreviewClampToContentClampsOffPanelCoordinates
+--- PASS: TestPreviewClampToContentClampsOffPanelCoordinates (0.00s)
+=== RUN   TestBeginInteractiveSelectionScope
+--- PASS: TestBeginInteractiveSelectionScope (0.00s)
+=== RUN   TestClickOverInteractivePreviewWithoutMotionCommitsNothing
+--- PASS: TestClickOverInteractivePreviewWithoutMotionCommitsNothing (0.03s)
+=== RUN   TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer
+--- PASS: TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer (0.03s)
+=== RUN   TestWriteOSCClipboardBestEffortEmitsTheStandardEscapeSequence
+--- PASS: TestWriteOSCClipboardBestEffortEmitsTheStandardEscapeSequence (0.00s)
+=== RUN   TestEnterWithoutATmuxClientDoesNotEnterInteractiveMode
+--- PASS: TestEnterWithoutATmuxClientDoesNotEnterInteractiveMode (0.00s)
+=== RUN   TestEnterKeyRoutesToEnterInteractiveNotAttachSelected
+--- PASS: TestEnterKeyRoutesToEnterInteractiveNotAttachSelected (0.00s)
+=== RUN   TestCtrlQExitsInteractiveModeAndClearsEveryField
+--- PASS: TestCtrlQExitsInteractiveModeAndClearsEveryField (0.00s)
+=== RUN   TestUpdateInteractiveWithoutADispatcherIsANoOp
+--- PASS: TestUpdateInteractiveWithoutADispatcherIsANoOp (0.00s)
+=== RUN   TestInteractiveFooterAdvertisesTheExitChordAndForwarding
+--- PASS: TestInteractiveFooterAdvertisesTheExitChordAndForwarding (0.00s)
+=== RUN   TestPreviewTitleNamesInteractiveModeAndTheExitChord
+--- PASS: TestPreviewTitleNamesInteractiveModeAndTheExitChord (0.00s)
+=== RUN   TestPreviewTitleNamesTheTargetSessionWhileInteractive
+--- PASS: TestPreviewTitleNamesTheTargetSessionWhileInteractive (0.00s)
+=== RUN   TestPreviewTitleStatesFittedGeometryDifferentlyFromACrop
+--- PASS: TestPreviewTitleStatesFittedGeometryDifferentlyFromACrop (0.00s)
+=== RUN   TestInteractiveGridIsBlankStripsANSIAndDetectsVisibleText
+--- PASS: TestInteractiveGridIsBlankStripsANSIAndDetectsVisibleText (0.00s)
+=== RUN   TestInteractiveBodyLinesPrependsAnnouncementOnlyWhenGridIsBlank
+--- PASS: TestInteractiveBodyLinesPrependsAnnouncementOnlyWhenGridIsBlank (0.00s)
+=== RUN   TestInteractiveNamedKeyMapsOnlyModeDependentKeys
+--- PASS: TestInteractiveNamedKeyMapsOnlyModeDependentKeys (0.00s)
+=== RUN   TestInteractiveLiteralPayloadCoversEveryFixedByteKey
+--- PASS: TestInteractiveLiteralPayloadCoversEveryFixedByteKey (0.00s)
+=== RUN   TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall
+--- PASS: TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall (0.00s)
+=== RUN   TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList
+--- PASS: TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList (0.00s)
+=== RUN   TestPipeAndAngleBracketsPersistToUIStateNotConfigToml
+--- PASS: TestPipeAndAngleBracketsPersistToUIStateNotConfigToml (0.02s)
+=== RUN   TestComputeLayoutAutoBoundary
+--- PASS: TestComputeLayoutAutoBoundary (0.00s)
+=== RUN   TestComputeLayoutGoldenMinimum
+--- PASS: TestComputeLayoutGoldenMinimum (0.00s)
+=== RUN   TestComputeLayoutPinnedFallsBackWithoutOverwritingPin
+--- PASS: TestComputeLayoutPinnedFallsBackWithoutOverwritingPin (0.00s)
+=== RUN   TestComputeLayoutStackedNeverFallsBack
+--- PASS: TestComputeLayoutStackedNeverFallsBack (0.00s)
+=== RUN   TestComputeLayoutCollapsedNeverAutomatic
+--- PASS: TestComputeLayoutCollapsedNeverAutomatic (0.00s)
+=== RUN   TestComputeLayoutBelowMinimum
+--- PASS: TestComputeLayoutBelowMinimum (0.00s)
+=== RUN   TestStackedListHeightBounds
+--- PASS: TestStackedListHeightBounds (0.00s)
+=== RUN   TestClampSidebarWidth
+--- PASS: TestClampSidebarWidth (0.00s)
+=== RUN   TestComputeLayoutSidebarWidthDefault
+--- PASS: TestComputeLayoutSidebarWidthDefault (0.00s)
+=== RUN   TestComputeLayoutSideBySideAndCollapsedAlwaysShowPreview
+--- PASS: TestComputeLayoutSideBySideAndCollapsedAlwaysShowPreview (0.00s)
+=== RUN   TestComputeLayoutStackedSuppressesPreviewBelowItsFloor
+--- PASS: TestComputeLayoutStackedSuppressesPreviewBelowItsFloor (0.00s)
+=== RUN   TestSidebarTitleRendersInTitleToken
+--- PASS: TestSidebarTitleRendersInTitleToken (0.00s)
+=== RUN   TestSidebarBorderIsFocusPreviewBorderIsUnfocused
+--- PASS: TestSidebarBorderIsFocusPreviewBorderIsUnfocused (0.00s)
+=== RUN   TestSelectedSidebarRowUsesSelectionBackground
+--- PASS: TestSelectedSidebarRowUsesSelectionBackground (0.00s)
+=== RUN   TestGroupHeaderRendersInGroupToken
+--- PASS: TestGroupHeaderRendersInGroupToken (0.00s)
+=== RUN   TestFooterKeyAndHintTokens
+--- PASS: TestFooterKeyAndHintTokens (0.00s)
+=== RUN   TestInteractiveModeSwapsBorderFocusFromSidebarToPreview
+--- PASS: TestInteractiveModeSwapsBorderFocusFromSidebarToPreview (0.00s)
+=== RUN   TestInteractiveModeSelectedRowUsesSelectionIdle
+--- PASS: TestInteractiveModeSelectedRowUsesSelectionIdle (0.00s)
+=== RUN   TestMarkTogglesBySessionIDAndSurvivesReorderAndRegroup
+--- PASS: TestMarkTogglesBySessionIDAndSurvivesReorderAndRegroup (0.00s)
+=== RUN   TestEscClearsMarkSet
+--- PASS: TestEscClearsMarkSet (0.00s)
+=== RUN   TestBulkKillActsOnMarkedSetSkipsAlreadyStoppedAndOneUndoRestoresTheBatch
+--- PASS: TestBulkKillActsOnMarkedSetSkipsAlreadyStoppedAndOneUndoRestoresTheBatch (0.00s)
+=== RUN   TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch
+--- PASS: TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch (0.00s)
+=== RUN   TestMatrixStatusTokensRenderAsSevenDistinctColours
+--- PASS: TestMatrixStatusTokensRenderAsSevenDistinctColours (0.01s)
+=== RUN   TestInteractivePressOnAlreadyTargetRowIsANoOp
+--- PASS: TestInteractivePressOnAlreadyTargetRowIsANoOp (0.00s)
+=== RUN   TestInteractivePressOnADifferentSidebarRowRetargets
+--- PASS: TestInteractivePressOnADifferentSidebarRowRetargets (0.00s)
+=== RUN   TestInteractivePressOverPreviewStillFallsThroughToDragToCopy
+--- PASS: TestInteractivePressOverPreviewStillFallsThroughToDragToCopy (0.00s)
+=== RUN   TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide
+--- PASS: TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide (0.00s)
+=== RUN   TestClickSidebarRowSelectsAndEntersInteractiveNeverCallsAttachSelected
+--- PASS: TestClickSidebarRowSelectsAndEntersInteractiveNeverCallsAttachSelected (0.00s)
+=== RUN   TestClickSidebarRowEntersInteractiveModeOnOnePress
+--- PASS: TestClickSidebarRowEntersInteractiveModeOnOnePress (0.00s)
+=== RUN   TestClickSidebarPaddingBelowLastRowIsANoOp
+--- PASS: TestClickSidebarPaddingBelowLastRowIsANoOp (0.00s)
+=== RUN   TestClickGroupHeaderTogglesOnlyThatGroup
+--- PASS: TestClickGroupHeaderTogglesOnlyThatGroup (0.00s)
+=== RUN   TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing
+=== RUN   TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing/side-by-side
+=== RUN   TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing/stacked
+--- PASS: TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing (0.00s)
+    --- PASS: TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing/side-by-side (0.00s)
+    --- PASS: TestClickCollapsedStripRestoresThePinInForceBeforeCollapsing/stacked (0.00s)
+=== RUN   TestClickCollapsedStripDiffersFromPipeKeyFromCollapsed
+--- PASS: TestClickCollapsedStripDiffersFromPipeKeyFromCollapsed (0.00s)
+=== RUN   TestWheelScrollsSidebarWithoutChangingSelectionOrFocus
+--- PASS: TestWheelScrollsSidebarWithoutChangingSelectionOrFocus (0.00s)
+=== RUN   TestClickAndWheelOverPreviewAreNoops
+--- PASS: TestClickAndWheelOverPreviewAreNoops (0.00s)
+=== RUN   TestSeamDragAdjustsSidebarWidthLive
+--- PASS: TestSeamDragAdjustsSidebarWidthLive (0.00s)
+=== RUN   TestHitTestStackedModeResolvesRowsAndPreview
+--- PASS: TestHitTestStackedModeResolvesRowsAndPreview (0.00s)
+=== RUN   TestMouseIgnoredWhileOverlayOpen
+--- PASS: TestMouseIgnoredWhileOverlayOpen (0.00s)
+=== RUN   TestSettingsTakeoverMouseIgnoredWhileOpen
+=== RUN   TestSettingsTakeoverMouseIgnoredWhileOpen/settingsOpen
+=== RUN   TestSettingsTakeoverMouseIgnoredWhileOpen/settingsDiscardConfirm
+--- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen (0.00s)
+    --- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen/settingsOpen (0.00s)
+    --- PASS: TestSettingsTakeoverMouseIgnoredWhileOpen/settingsDiscardConfirm (0.00s)
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/help
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/help/border
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/help/body
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/help/outside
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/create
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/create/border
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/create/body
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/create/outside
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail/border
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail/body
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail/outside
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin/border
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin/body
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin/outside
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile/border
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile/body
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile/outside
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename/border
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename/body
+=== RUN   TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename/outside
+--- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside (0.00s)
+    --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/help (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/help/border (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/help/body (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/help/outside (0.00s)
+    --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/create (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/create/border (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/create/body (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/create/outside (0.00s)
+    --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail/border (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail/body (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/detail/outside (0.00s)
+    --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin/border (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin/body (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/pin/outside (0.00s)
+    --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile/border (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile/body (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/profile/outside (0.00s)
+    --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename/border (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename/body (0.00s)
+        --- PASS: TestAllDialogsRejectMouseAtBorderBodyAndOutside/rename/outside (0.00s)
+=== RUN   TestNavigationVisitsEveryVisualRowInBothGroupingModes
+=== RUN   TestNavigationVisitsEveryVisualRowInBothGroupingModes/grouped
+=== RUN   TestNavigationVisitsEveryVisualRowInBothGroupingModes/flat
+--- PASS: TestNavigationVisitsEveryVisualRowInBothGroupingModes (0.00s)
+    --- PASS: TestNavigationVisitsEveryVisualRowInBothGroupingModes/grouped (0.00s)
+    --- PASS: TestNavigationVisitsEveryVisualRowInBothGroupingModes/flat (0.00s)
+=== RUN   TestPendingSelectSessionIDSelectsNewRowNotIndexZero
+--- PASS: TestPendingSelectSessionIDSelectsNewRowNotIndexZero (0.00s)
+=== RUN   TestPendingSelectSessionIDIsOneShot
+--- PASS: TestPendingSelectSessionIDIsOneShot (0.00s)
+=== RUN   TestPendingSelectSessionIDNeverAppearing
+--- PASS: TestPendingSelectSessionIDNeverAppearing (0.00s)
+=== RUN   TestPendingSelectSessionIDRespectsActiveFilter
+--- PASS: TestPendingSelectSessionIDRespectsActiveFilter (0.00s)
+=== RUN   TestPendingSelectSessionIDScrollsIntoView
+--- PASS: TestPendingSelectSessionIDScrollsIntoView (0.00s)
+=== RUN   TestNoColorLiterals
+--- PASS: TestNoColorLiterals (0.00s)
+=== RUN   TestScrollableOverlaysScrollOneLineWithArrows
+=== RUN   TestScrollableOverlaysScrollOneLineWithArrows/help_overlay
+=== RUN   TestScrollableOverlaysScrollOneLineWithArrows/detail_view
+=== RUN   TestScrollableOverlaysScrollOneLineWithArrows/event_log
+--- PASS: TestScrollableOverlaysScrollOneLineWithArrows (0.03s)
+    --- PASS: TestScrollableOverlaysScrollOneLineWithArrows/help_overlay (0.00s)
+    --- PASS: TestScrollableOverlaysScrollOneLineWithArrows/detail_view (0.00s)
+    --- PASS: TestScrollableOverlaysScrollOneLineWithArrows/event_log (0.00s)
+=== RUN   TestScrollableOverlaysScrollOneLineWithJK
+=== RUN   TestScrollableOverlaysScrollOneLineWithJK/help_overlay
+=== RUN   TestScrollableOverlaysScrollOneLineWithJK/detail_view
+=== RUN   TestScrollableOverlaysScrollOneLineWithJK/event_log
+--- PASS: TestScrollableOverlaysScrollOneLineWithJK (0.03s)
+    --- PASS: TestScrollableOverlaysScrollOneLineWithJK/help_overlay (0.01s)
+    --- PASS: TestScrollableOverlaysScrollOneLineWithJK/detail_view (0.00s)
+    --- PASS: TestScrollableOverlaysScrollOneLineWithJK/event_log (0.00s)
+=== RUN   TestScrollableOverlaysStillPageWithPgDn
+=== RUN   TestScrollableOverlaysStillPageWithPgDn/help_overlay
+=== RUN   TestScrollableOverlaysStillPageWithPgDn/detail_view
+=== RUN   TestScrollableOverlaysStillPageWithPgDn/event_log
+--- PASS: TestScrollableOverlaysStillPageWithPgDn (0.03s)
+    --- PASS: TestScrollableOverlaysStillPageWithPgDn/help_overlay (0.00s)
+    --- PASS: TestScrollableOverlaysStillPageWithPgDn/detail_view (0.00s)
+    --- PASS: TestScrollableOverlaysStillPageWithPgDn/event_log (0.00s)
+=== RUN   TestWheelScrollsScrollableOverlaysByOneLine
+=== RUN   TestWheelScrollsScrollableOverlaysByOneLine/help_overlay
+=== RUN   TestWheelScrollsScrollableOverlaysByOneLine/detail_view
+=== RUN   TestWheelScrollsScrollableOverlaysByOneLine/event_log
+--- PASS: TestWheelScrollsScrollableOverlaysByOneLine (0.03s)
+    --- PASS: TestWheelScrollsScrollableOverlaysByOneLine/help_overlay (0.00s)
+    --- PASS: TestWheelScrollsScrollableOverlaysByOneLine/detail_view (0.00s)
+    --- PASS: TestWheelScrollsScrollableOverlaysByOneLine/event_log (0.00s)
+=== RUN   TestWheelInOverlayAgreesWithArrowKeys
+=== RUN   TestWheelInOverlayAgreesWithArrowKeys/help_overlay
+=== RUN   TestWheelInOverlayAgreesWithArrowKeys/detail_view
+=== RUN   TestWheelInOverlayAgreesWithArrowKeys/event_log
+--- PASS: TestWheelInOverlayAgreesWithArrowKeys (0.02s)
+    --- PASS: TestWheelInOverlayAgreesWithArrowKeys/help_overlay (0.00s)
+    --- PASS: TestWheelInOverlayAgreesWithArrowKeys/detail_view (0.00s)
+    --- PASS: TestWheelInOverlayAgreesWithArrowKeys/event_log (0.00s)
+=== RUN   TestWheelInOverlayHonoursMouseOptOut
+=== RUN   TestWheelInOverlayHonoursMouseOptOut/help_overlay
+=== RUN   TestWheelInOverlayHonoursMouseOptOut/detail_view
+=== RUN   TestWheelInOverlayHonoursMouseOptOut/event_log
+--- PASS: TestWheelInOverlayHonoursMouseOptOut (0.02s)
+    --- PASS: TestWheelInOverlayHonoursMouseOptOut/help_overlay (0.00s)
+    --- PASS: TestWheelInOverlayHonoursMouseOptOut/detail_view (0.00s)
+    --- PASS: TestWheelInOverlayHonoursMouseOptOut/event_log (0.00s)
+=== RUN   TestClickInsideOverlayStillDoesNothing
+=== RUN   TestClickInsideOverlayStillDoesNothing/detail_view_(scrollable)
+=== RUN   TestClickInsideOverlayStillDoesNothing/help_overlay_(scrollable)
+=== RUN   TestClickInsideOverlayStillDoesNothing/delete_confirm_(not_scrollable)
+=== RUN   TestClickInsideOverlayStillDoesNothing/rename_dialog_(not_scrollable)
+--- PASS: TestClickInsideOverlayStillDoesNothing (0.01s)
+    --- PASS: TestClickInsideOverlayStillDoesNothing/detail_view_(scrollable) (0.00s)
+    --- PASS: TestClickInsideOverlayStillDoesNothing/help_overlay_(scrollable) (0.01s)
+    --- PASS: TestClickInsideOverlayStillDoesNothing/delete_confirm_(not_scrollable) (0.00s)
+    --- PASS: TestClickInsideOverlayStillDoesNothing/rename_dialog_(not_scrollable) (0.00s)
+=== RUN   TestWheelOverUnscrollableOverlayDoesNothing
+=== RUN   TestWheelOverUnscrollableOverlayDoesNothing/delete_confirm_(not_scrollable)
+=== RUN   TestWheelOverUnscrollableOverlayDoesNothing/rename_dialog_(not_scrollable)
+--- PASS: TestWheelOverUnscrollableOverlayDoesNothing (0.00s)
+    --- PASS: TestWheelOverUnscrollableOverlayDoesNothing/delete_confirm_(not_scrollable) (0.00s)
+    --- PASS: TestWheelOverUnscrollableOverlayDoesNothing/rename_dialog_(not_scrollable) (0.00s)
+=== RUN   TestWheelStillScrollsTheSidebarWithNoOverlayOpen
+--- PASS: TestWheelStillScrollsTheSidebarWithNoOverlayOpen (0.00s)
+=== RUN   TestStackedSidebarSelectionBackgroundFillsFullPanelWidth
+--- PASS: TestStackedSidebarSelectionBackgroundFillsFullPanelWidth (0.00s)
+=== RUN   TestSettingsCategoryRowBackgroundFillsFullPanelWidth
+--- PASS: TestSettingsCategoryRowBackgroundFillsFullPanelWidth (0.00s)
+=== RUN   TestSettingsFieldRowBackgroundFillsFullPanelWidth
+--- PASS: TestSettingsFieldRowBackgroundFillsFullPanelWidth (0.00s)
+=== RUN   TestSideBySideFrameHasOneSeamAndOneColumnPadding
+--- PASS: TestSideBySideFrameHasOneSeamAndOneColumnPadding (0.00s)
+=== RUN   TestSidebarContentHasOneColumnPaddingBeforeSeam
+--- PASS: TestSidebarContentHasOneColumnPaddingBeforeSeam (0.00s)
+=== RUN   TestSideBySideFrameASCIIFallbackHasNoUnicodeBorders
+--- PASS: TestSideBySideFrameASCIIFallbackHasNoUnicodeBorders (0.00s)
+=== RUN   TestEmptyStateAndPressNCopyLiveInsideSidebarAt80x24
+--- PASS: TestEmptyStateAndPressNCopyLiveInsideSidebarAt80x24 (0.00s)
+=== RUN   TestPinDialogPersistsPinnedMode
+--- PASS: TestPinDialogPersistsPinnedMode (0.00s)
+=== RUN   TestPinDialogEscCancelsWithoutPersisting
+--- PASS: TestPinDialogEscCancelsWithoutPersisting (0.00s)
+=== RUN   TestPinDialogNotOfferedForShell
+--- PASS: TestPinDialogNotOfferedForShell (0.00s)
+=== RUN   TestPreviewTickCapturesOnlyTheSelectedRow
+--- PASS: TestPreviewTickCapturesOnlyTheSelectedRow (0.00s)
+=== RUN   TestPreviewTickWithoutEngineOnlyReschedules
+--- PASS: TestPreviewTickWithoutEngineOnlyReschedules (0.00s)
+=== RUN   TestPreviewCaptureIgnoresErrorsWithoutSurfacingAttachError
+--- PASS: TestPreviewCaptureIgnoresErrorsWithoutSurfacingAttachError (0.00s)
+=== RUN   TestCapturePreviewNoSessionsReturnsNilCommand
+--- PASS: TestCapturePreviewNoSessionsReturnsNilCommand (0.00s)
+=== RUN   TestCapturePreviewStopsWhenPreviewNotShown
+--- PASS: TestCapturePreviewStopsWhenPreviewNotShown (0.00s)
+=== RUN   TestCropPreviewBottomLeftFitsWithoutGeometryLine
+--- PASS: TestCropPreviewBottomLeftFitsWithoutGeometryLine (0.00s)
+=== RUN   TestCropPreviewBottomLeftCropsOversizedPane
+--- PASS: TestCropPreviewBottomLeftCropsOversizedPane (0.00s)
+=== RUN   TestCropPreviewBottomLeftClampsToShortHistory
+--- PASS: TestCropPreviewBottomLeftClampsToShortHistory (0.00s)
+=== RUN   TestCropPreviewBottomLeftPreservesColourEscapes
+--- PASS: TestCropPreviewBottomLeftPreservesColourEscapes (0.00s)
+=== RUN   TestCropPreviewBottomLeftZeroSize
+--- PASS: TestCropPreviewBottomLeftZeroSize (0.00s)
+=== RUN   TestPreviewFitDoesNotOverlapItself
+--- PASS: TestPreviewFitDoesNotOverlapItself (0.00s)
+=== RUN   TestPreviewFitResumesAfterItsDoneLands
+--- PASS: TestPreviewFitResumesAfterItsDoneLands (0.00s)
+=== RUN   TestPreviewFitDoneForUnselectedSessionClearsTheMarker
+--- PASS: TestPreviewFitDoneForUnselectedSessionClearsTheMarker (0.00s)
+=== RUN   TestPreviewBodyLinesNoLivePaneStates
+=== RUN   TestPreviewBodyLinesNoLivePaneStates/error_shows_crash_tail_headed_as_last_output_before_exit
+=== RUN   TestPreviewBodyLinesNoLivePaneStates/stopped_shows_a_one-line_placeholder_naming_stopped
+=== RUN   TestPreviewBodyLinesNoLivePaneStates/archived_shows_a_one-line_placeholder_naming_archived
+=== RUN   TestPreviewBodyLinesNoLivePaneStates/starting_with_no_pane_yet_shows_a_one-line_placeholder_naming_starting
+--- PASS: TestPreviewBodyLinesNoLivePaneStates (0.00s)
+    --- PASS: TestPreviewBodyLinesNoLivePaneStates/error_shows_crash_tail_headed_as_last_output_before_exit (0.00s)
+    --- PASS: TestPreviewBodyLinesNoLivePaneStates/stopped_shows_a_one-line_placeholder_naming_stopped (0.00s)
+    --- PASS: TestPreviewBodyLinesNoLivePaneStates/archived_shows_a_one-line_placeholder_naming_archived (0.00s)
+    --- PASS: TestPreviewBodyLinesNoLivePaneStates/starting_with_no_pane_yet_shows_a_one-line_placeholder_naming_starting (0.00s)
+=== RUN   TestCrashTailPreviewLinesAnchorsToNewestLines
+--- PASS: TestCrashTailPreviewLinesAnchorsToNewestLines (0.00s)
+=== RUN   TestCrashTailPreviewLinesEmptyTail
+--- PASS: TestCrashTailPreviewLinesEmptyTail (0.00s)
+=== RUN   TestProfileSwitchStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestProfileSwitchStyledBodyMatchesPlainBodyOnceStripped (0.00s)
+=== RUN   TestPinStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestPinStyledBodyMatchesPlainBodyOnceStripped (0.00s)
+=== RUN   TestRestartChoiceStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestRestartChoiceStyledBodyMatchesPlainBodyOnceStripped (0.00s)
+=== RUN   TestProfileSwitchTokensMatchSpec
+--- PASS: TestProfileSwitchTokensMatchSpec (0.00s)
+=== RUN   TestProfileSwitchNoteIsError
+--- PASS: TestProfileSwitchNoteIsError (0.00s)
+=== RUN   TestPinTokensMatchSpec
+--- PASS: TestPinTokensMatchSpec (0.00s)
+=== RUN   TestPinNoteIsError
+--- PASS: TestPinNoteIsError (0.00s)
+=== RUN   TestRestartChoiceTokensMatchSpec
+--- PASS: TestRestartChoiceTokensMatchSpec (0.00s)
+=== RUN   TestRestartChoiceNoteIsError
+--- PASS: TestRestartChoiceNoteIsError (0.00s)
+=== RUN   TestProfileSwitchPersistsAndStatesRestartToApply
+--- PASS: TestProfileSwitchPersistsAndStatesRestartToApply (0.00s)
+=== RUN   TestProfileSwitchEscCancelsWithoutPersisting
+--- PASS: TestProfileSwitchEscCancelsWithoutPersisting (0.00s)
+=== RUN   TestProfileSwitchToYoloTakesEffectWithNoConfirm
+--- PASS: TestProfileSwitchToYoloTakesEffectWithNoConfirm (0.00s)
+=== RUN   TestProfileSwitchAwayFromYoloNeedsNoConfirm
+--- PASS: TestProfileSwitchAwayFromYoloNeedsNoConfirm (0.00s)
+=== RUN   TestProfileSwitchYoloAbsentWhenNotAllowed
+--- PASS: TestProfileSwitchYoloAbsentWhenNotAllowed (0.00s)
+=== RUN   TestProfileSwitchNotOfferedForShell
+--- PASS: TestProfileSwitchNotOfferedForShell (0.00s)
+=== RUN   TestRegistryDrivenCapabilities_ProfileBadgeCreateAndPin
+--- PASS: TestRegistryDrivenCapabilities_ProfileBadgeCreateAndPin (0.00s)
+=== RUN   TestDefaultCreateAgentPrefersShellRegardlessOfSortOrder
+--- PASS: TestDefaultCreateAgentPrefersShellRegardlessOfSortOrder (0.00s)
+=== RUN   TestBlackBoxRegistrySwapNeedsNoTUIEdit
+--- PASS: TestBlackBoxRegistrySwapNeedsNoTUIEdit (0.00s)
+=== RUN   TestRenameOnlyReachableInsideDetailNotAsTopLevelKey
+--- PASS: TestRenameOnlyReachableInsideDetailNotAsTopLevelKey (0.00s)
+=== RUN   TestRenameDialogPrefillsSubmitsAndClosesBackToDetail
+--- PASS: TestRenameDialogPrefillsSubmitsAndClosesBackToDetail (0.00s)
+=== RUN   TestRenameDialogEscCancelsWithoutPersistingAndKeepsDetailOpen
+--- PASS: TestRenameDialogEscCancelsWithoutPersistingAndKeepsDetailOpen (0.00s)
+=== RUN   TestRenameDialogRejectionRetainsCandidateForCorrection
+--- PASS: TestRenameDialogRejectionRetainsCandidateForCorrection (0.00s)
+=== RUN   TestRenameDialogUnavailableWithoutRenamerWired
+--- PASS: TestRenameDialogUnavailableWithoutRenamerWired (0.00s)
+=== RUN   TestRenameStyledBodyMatchesPlainBodyOnceStripped
+--- PASS: TestRenameStyledBodyMatchesPlainBodyOnceStripped (0.00s)
+=== RUN   TestRenameViewCarriesSectionTokens
+--- PASS: TestRenameViewCarriesSectionTokens (0.00s)
+=== RUN   TestResumeKeyRendersAwaitingSignalNeverRunning
+--- PASS: TestResumeKeyRendersAwaitingSignalNeverRunning (0.00s)
+=== RUN   TestResumeStartingElsewhereIsNotAnError
+--- PASS: TestResumeStartingElsewhereIsNotAnError (0.00s)
+=== RUN   TestResumeAlreadyRunningIsNotAnError
+--- PASS: TestResumeAlreadyRunningIsNotAnError (0.00s)
+=== RUN   TestResumeNonLeasableRendersActualStatusAndReason
+--- PASS: TestResumeNonLeasableRendersActualStatusAndReason (0.00s)
+=== RUN   TestResumeFailureRendersAsError
+--- PASS: TestResumeFailureRendersAsError (0.00s)
+=== RUN   TestResumeKeyRequiresStoppedRow
+--- PASS: TestResumeKeyRequiresStoppedRow (0.00s)
+=== RUN   TestSeamBodyRowIsFocusedWhenSidebarHasFocus
+--- PASS: TestSeamBodyRowIsFocusedWhenSidebarHasFocus (0.00s)
+=== RUN   TestSeamBodyRowStaysFocusedInInteractiveMode
+--- PASS: TestSeamBodyRowStaysFocusedInInteractiveMode (0.00s)
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/theme_picker_open
+=== RUN   TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/filter_input_focused
+--- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused (0.00s)
+    --- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/theme_picker_open (0.00s)
+    --- PASS: TestSeamBodyRowIsPlainBorderWhenNeitherPanelFocused/filter_input_focused (0.00s)
+=== RUN   TestSeamIsFocusedWhenSidebarHasFocus
+--- PASS: TestSeamIsFocusedWhenSidebarHasFocus (0.00s)
+=== RUN   TestSeamStaysFocusedInInteractiveMode
+--- PASS: TestSeamStaysFocusedInInteractiveMode (0.00s)
+=== RUN   TestSeamIsPlainBorderWhenNeitherPanelFocused
+=== RUN   TestSeamIsPlainBorderWhenNeitherPanelFocused/theme_picker_open
+=== RUN   TestSeamIsPlainBorderWhenNeitherPanelFocused/filter_input_focused
+--- PASS: TestSeamIsPlainBorderWhenNeitherPanelFocused (0.00s)
+    --- PASS: TestSeamIsPlainBorderWhenNeitherPanelFocused/theme_picker_open (0.00s)
+    --- PASS: TestSeamIsPlainBorderWhenNeitherPanelFocused/filter_input_focused (0.00s)
+=== RUN   TestStackedModeUnaffectedBySeamRule
+--- PASS: TestStackedModeUnaffectedBySeamRule (0.00s)
+=== RUN   TestSeamRuleAppliesWhenCollapsed
+--- PASS: TestSeamRuleAppliesWhenCollapsed (0.00s)
+=== RUN   TestIsSecretShapedKeyMatchesSPEC64Pattern
+--- PASS: TestIsSecretShapedKeyMatchesSPEC64Pattern (0.00s)
+=== RUN   TestMaskEnvValueMasksBySDefaultAndRevealsOnToggle
+--- PASS: TestMaskEnvValueMasksBySDefaultAndRevealsOnToggle (0.00s)
+=== RUN   TestEnvEditorMasksSecretShapedValueByDefaultAndRevealsOnR
+--- PASS: TestEnvEditorMasksSecretShapedValueByDefaultAndRevealsOnR (0.00s)
+=== RUN   TestEnvEditorRevealResetsToMaskedOnReopen
+--- PASS: TestEnvEditorRevealResetsToMaskedOnReopen (0.00s)
+=== RUN   TestSettingsEnvEntriesMaskSecretShapedValueByDefaultAndRevealOnR
+--- PASS: TestSettingsEnvEntriesMaskSecretShapedValueByDefaultAndRevealOnR (0.00s)
+=== RUN   TestSettingsFieldRowLabelIsHintValueIsText
+--- PASS: TestSettingsFieldRowLabelIsHintValueIsText (0.00s)
+=== RUN   TestSettingsBorderFocusCueSwapsWithTabAndReverts
+--- PASS: TestSettingsBorderFocusCueSwapsWithTabAndReverts (0.00s)
+=== RUN   TestSettingsSelectionCueUsesSelectionWhenFocusedAndIdleOtherwise
+--- PASS: TestSettingsSelectionCueUsesSelectionWhenFocusedAndIdleOtherwise (0.00s)
+=== RUN   TestSettingsEditsFromSettingsCoversEveryFlatKey
+--- PASS: TestSettingsEditsFromSettingsCoversEveryFlatKey (0.00s)
+=== RUN   TestSettingsEnvEnterOpensEntriesEditor
+--- PASS: TestSettingsEnvEnterOpensEntriesEditor (0.00s)
+=== RUN   TestSettingsEnvAddEntry
+--- PASS: TestSettingsEnvAddEntry (0.00s)
+=== RUN   TestSettingsEnvEditExistingValue
+--- PASS: TestSettingsEnvEditExistingValue (0.00s)
+=== RUN   TestSettingsEnvRemoveEntry
+--- PASS: TestSettingsEnvRemoveEntry (0.00s)
+=== RUN   TestSettingsEnvEscCancelsEditWithoutStaging
+--- PASS: TestSettingsEnvEscCancelsEditWithoutStaging (0.00s)
+=== RUN   TestSettingsEnvEscFromEntriesListReturnsToFieldList
+--- PASS: TestSettingsEnvEscFromEntriesListReturnsToFieldList (0.00s)
+=== RUN   TestTui049UnavailableActionListUntouched
+--- PASS: TestTui049UnavailableActionListUntouched (0.00s)
+=== RUN   TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie
+--- PASS: TestSettingsLabelsAnEnvOverriddenFieldAndDoesNotLie (0.00s)
+=== RUN   TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue
+--- PASS: TestSettingsSaveMovingAwayFromEnvOverrideDoesNotChangeRunningValue (0.00s)
+=== RUN   TestSettingsDoesNotLabelAFieldEnvCannotOverride
+--- PASS: TestSettingsDoesNotLabelAFieldEnvCannotOverride (0.00s)
+=== RUN   TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched
+--- PASS: TestSettingsSaveWithNoEditLeavesEnvOverriddenFileValueUntouched (0.00s)
+=== RUN   TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten
+--- PASS: TestSettingsSaveWithExplicitEditOfEnvOverriddenFieldIsWritten (0.00s)
+=== RUN   TestSettingsFieldValueDisplayPerKind
+=== RUN   TestSettingsFieldValueDisplayPerKind/toggle_on
+=== RUN   TestSettingsFieldValueDisplayPerKind/toggle_off
+=== RUN   TestSettingsFieldValueDisplayPerKind/bounded_integer
+=== RUN   TestSettingsFieldValueDisplayPerKind/unbounded-above_integer
+=== RUN   TestSettingsFieldValueDisplayPerKind/enum_selected
+=== RUN   TestSettingsFieldValueDisplayPerKind/enum_empty_falls_back_to_default_label
+=== RUN   TestSettingsFieldValueDisplayPerKind/string_synthetic_field
+=== RUN   TestSettingsFieldValueDisplayPerKind/list-of-strings_env
+=== RUN   TestSettingsFieldValueDisplayPerKind/list-of-strings_generic_default
+=== RUN   TestSettingsFieldValueDisplayPerKind/link_notify
+--- PASS: TestSettingsFieldValueDisplayPerKind (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/toggle_on (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/toggle_off (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/bounded_integer (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/unbounded-above_integer (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/enum_selected (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/enum_empty_falls_back_to_default_label (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/string_synthetic_field (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/list-of-strings_env (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/list-of-strings_generic_default (0.00s)
+    --- PASS: TestSettingsFieldValueDisplayPerKind/link_notify (0.00s)
+=== RUN   TestSettingsCollapseTildeDisplaysPathUnderHome
+--- PASS: TestSettingsCollapseTildeDisplaysPathUnderHome (0.00s)
+=== RUN   TestSettingsScopeLabelComesFromSchemaVerbatim
+--- PASS: TestSettingsScopeLabelComesFromSchemaVerbatim (0.00s)
+=== RUN   TestSettingsNotifyEntryIsNavigableAndOpensNothing
+--- PASS: TestSettingsNotifyEntryIsNavigableAndOpensNothing (0.00s)
+=== RUN   TestSettingsEnterTogglesBooleanField
+--- PASS: TestSettingsEnterTogglesBooleanField (0.00s)
+=== RUN   TestSettingsPlusMinusAdjustsBoundedInteger
+--- PASS: TestSettingsPlusMinusAdjustsBoundedInteger (0.00s)
+=== RUN   TestSettingsIntegerBoundsTextFormats
+--- PASS: TestSettingsIntegerBoundsTextFormats (0.00s)
+=== RUN   TestSettingsGroupByWorkspaceStagesUntilSave
+--- PASS: TestSettingsGroupByWorkspaceStagesUntilSave (0.00s)
+=== RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart
+=== RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/allow_yolo
+=== RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.ascii
+=== RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.mouse
+=== RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.theme
+--- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart (0.01s)
+    --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/allow_yolo (0.00s)
+    --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.ascii (0.00s)
+    --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.mouse (0.00s)
+    --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.theme (0.00s)
+=== RUN   TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive
+=== RUN   TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive/stale_after
+=== RUN   TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive/capture_min_interval
+=== RUN   TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive/ui.recent_cwd_limit
+--- PASS: TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive (0.01s)
+    --- PASS: TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive/stale_after (0.00s)
+    --- PASS: TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive/capture_min_interval (0.00s)
+    --- PASS: TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive/ui.recent_cwd_limit (0.00s)
+=== RUN   TestSettingsCtrlSSavesThroughAtomicWriter
+--- PASS: TestSettingsCtrlSSavesThroughAtomicWriter (0.00s)
+=== RUN   TestSettingsEscWithChangesPromptsToDiscard
+--- PASS: TestSettingsEscWithChangesPromptsToDiscard (0.00s)
+=== RUN   TestSettingsEscDiscardConfirmedLeavesFileUnchanged
+--- PASS: TestSettingsEscDiscardConfirmedLeavesFileUnchanged (0.00s)
+=== RUN   TestSettingsEscWithNoChangesClosesWithoutPrompting
+--- PASS: TestSettingsEscWithNoChangesClosesWithoutPrompting (0.00s)
+=== RUN   TestSettingsSaveAfterDiscardPromptDismissedStillWorks
+--- PASS: TestSettingsSaveAfterDiscardPromptDismissedStillWorks (0.00s)
+=== RUN   TestSettingsSaveFailureSurfacesNote
+--- PASS: TestSettingsSaveFailureSurfacesNote (0.00s)
+=== RUN   TestSettingsSchemaParity_EveryFlatKeyIsReachable
+--- PASS: TestSettingsSchemaParity_EveryFlatKeyIsReachable (0.00s)
+=== RUN   TestSettingsSchemaParity_EveryRenderedFieldIsBackedBySchema
+--- PASS: TestSettingsSchemaParity_EveryRenderedFieldIsBackedBySchema (0.00s)
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/allow_yolo
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/yolo_default
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/stale_after
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/capture_min_interval
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/event_retention_days
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/tmux_mouse
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/interactive_ms
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/interactive_transport
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.theme
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.ascii
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.mouse
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.preview_fit
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.recent_cwd_limit
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.group_by_workspace
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.sort_order
+=== RUN   TestSettingsScopeParityMatchesSaveBehaviour/[env]
+--- PASS: TestSettingsScopeParityMatchesSaveBehaviour (0.04s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/allow_yolo (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/yolo_default (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/stale_after (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/capture_min_interval (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/event_retention_days (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/tmux_mouse (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/interactive_ms (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/interactive_transport (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.theme (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.ascii (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.mouse (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.preview_fit (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.recent_cwd_limit (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.group_by_workspace (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/ui.sort_order (0.00s)
+    --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/[env] (0.00s)
+=== RUN   TestSettingsScopeParityEnvOverrideExemption
+=== RUN   TestSettingsScopeParityEnvOverrideExemption/ui.ascii
+=== RUN   TestSettingsScopeParityEnvOverrideExemption/ui.mouse
+--- PASS: TestSettingsScopeParityEnvOverrideExemption (0.00s)
+    --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.ascii (0.00s)
+    --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.mouse (0.00s)
+=== RUN   TestSettingsKeyOpensAndEscCloses
+--- PASS: TestSettingsKeyOpensAndEscCloses (0.00s)
+=== RUN   TestSettingsViewRendersSchemaDerivedCategoriesAndFields
+--- PASS: TestSettingsViewRendersSchemaDerivedCategoriesAndFields (0.00s)
+=== RUN   TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce
+--- PASS: TestSettingsCategoriesGroupEveryFlatKeyExactlyOnce (0.00s)
+=== RUN   TestSettingsFieldLabelIsHumanReadable
+--- PASS: TestSettingsFieldLabelIsHumanReadable (0.00s)
+=== RUN   TestSettingsViewFitsFrameBudget
+--- PASS: TestSettingsViewFitsFrameBudget (0.00s)
+=== RUN   TestSettingsNavTabAndLeftRightSwitchFocus
+--- PASS: TestSettingsNavTabAndLeftRightSwitchFocus (0.00s)
+=== RUN   TestSettingsNavUpDownMovesFocusedListAndWraps
+--- PASS: TestSettingsNavUpDownMovesFocusedListAndWraps (0.00s)
+=== RUN   TestSettingsSearchMatchesByDescriptionAlone
+--- PASS: TestSettingsSearchMatchesByDescriptionAlone (0.00s)
+=== RUN   TestSettingsSearchKeyEntersSearchModeAndEnterJumps
+--- PASS: TestSettingsSearchKeyEntersSearchModeAndEnterJumps (0.00s)
+=== RUN   TestSettingsSearchEscCancelsWithoutMovingSelection
+--- PASS: TestSettingsSearchEscCancelsWithoutMovingSelection (0.00s)
+=== RUN   TestSettingsSearchBackspaceShortensQuery
+--- PASS: TestSettingsSearchBackspaceShortensQuery (0.00s)
+=== RUN   TestSidebarNameRendersInTitleToken
+--- PASS: TestSidebarNameRendersInTitleToken (0.00s)
+=== RUN   TestStartingRowNameStaysDimmedNotTitle
+--- PASS: TestStartingRowNameStaysDimmedNotTitle (0.00s)
+=== RUN   TestSidebarCreatedLineRendersDimmed
+--- PASS: TestSidebarCreatedLineRendersDimmed (0.00s)
+=== RUN   TestSidebarQualityBadgeRendersDimmed
+--- PASS: TestSidebarQualityBadgeRendersDimmed (0.00s)
+=== RUN   TestSidebarSelectionBackgroundFillsFullPanelWidth
+--- PASS: TestSidebarSelectionBackgroundFillsFullPanelWidth (0.00s)
+=== RUN   TestSidebarSelectionIdleBackgroundFillsFullPanelWidth
+--- PASS: TestSidebarSelectionIdleBackgroundFillsFullPanelWidth (0.00s)
+=== RUN   TestSidebarStripeBackgroundFillsFullPanelWidth
+--- PASS: TestSidebarStripeBackgroundFillsFullPanelWidth (0.00s)
+=== RUN   TestSidebarStripeAlternatesPerSessionBlockNotPerLine
+--- PASS: TestSidebarStripeAlternatesPerSessionBlockNotPerLine (0.00s)
+=== RUN   TestSidebarStripeSelectionWinsRegardlessOfPhase
+--- PASS: TestSidebarStripeSelectionWinsRegardlessOfPhase (0.00s)
+=== RUN   TestSidebarStripeAbsentUnderNoColor
+--- PASS: TestSidebarStripeAbsentUnderNoColor (0.00s)
+=== RUN   TestSidebarStripeHeaderNeverParticipates
+--- PASS: TestSidebarStripeHeaderNeverParticipates (0.00s)
+=== RUN   TestSettingsSaveResortsLivePreservingSelectionByID
+--- PASS: TestSettingsSaveResortsLivePreservingSelectionByID (0.00s)
+=== RUN   TestEffectiveSortOrderResolvesKnownValuesWithNoReason
+--- PASS: TestEffectiveSortOrderResolvesKnownValuesWithNoReason (0.00s)
+=== RUN   TestSortOrderFallbackNoticeShownOnFirstPaint
+--- PASS: TestSortOrderFallbackNoticeShownOnFirstPaint (0.00s)
+=== RUN   TestSortOrderFallbackNoticeAbsentForKnownValues
+--- PASS: TestSortOrderFallbackNoticeAbsentForKnownValues (0.00s)
+=== RUN   TestSessionsLoadedRendersConfiguredOrder
+--- PASS: TestSessionsLoadedRendersConfiguredOrder (0.00s)
+=== RUN   TestSessionsLoadedPreservesSelectionByIDAcrossSortOrderChange
+--- PASS: TestSessionsLoadedPreservesSelectionByIDAcrossSortOrderChange (0.00s)
+=== RUN   TestSessionsLoadedGroupingComposesOrderWithinGroupOnly
+--- PASS: TestSessionsLoadedGroupingComposesOrderWithinGroupOnly (0.00s)
+=== RUN   TestSessionsLoadedGroupingWithinGroupOrderIsNonVacuous
+--- PASS: TestSessionsLoadedGroupingWithinGroupOrderIsNonVacuous (0.00s)
+=== RUN   TestLessByCreatedStableOrdersNewestFirst
+--- PASS: TestLessByCreatedStableOrdersNewestFirst (0.00s)
+=== RUN   TestLessByActivityStableOrdersMostRecentFirst
+--- PASS: TestLessByActivityStableOrdersMostRecentFirst (0.00s)
+=== RUN   TestLessByNameStableOrdersCaseInsensitiveAscending
+--- PASS: TestLessByNameStableOrdersCaseInsensitiveAscending (0.00s)
+=== RUN   TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame
+=== RUN   TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame/created
+=== RUN   TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame/activity
+=== RUN   TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame/name
+--- PASS: TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame (0.00s)
+    --- PASS: TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame/created (0.00s)
+    --- PASS: TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame/activity (0.00s)
+    --- PASS: TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame/name (0.00s)
+=== RUN   TestSortComparatorsPreservePreviousRelativeOrderOnTie
+=== RUN   TestSortComparatorsPreservePreviousRelativeOrderOnTie/created
+=== RUN   TestSortComparatorsPreservePreviousRelativeOrderOnTie/activity
+=== RUN   TestSortComparatorsPreservePreviousRelativeOrderOnTie/name
+--- PASS: TestSortComparatorsPreservePreviousRelativeOrderOnTie (0.00s)
+    --- PASS: TestSortComparatorsPreservePreviousRelativeOrderOnTie/created (0.00s)
+    --- PASS: TestSortComparatorsPreservePreviousRelativeOrderOnTie/activity (0.00s)
+    --- PASS: TestSortComparatorsPreservePreviousRelativeOrderOnTie/name (0.00s)
+=== RUN   TestSortComparatorsThreeWayTieIsTransitive
+=== RUN   TestSortComparatorsThreeWayTieIsTransitive/attention
+=== RUN   TestSortComparatorsThreeWayTieIsTransitive/created
+=== RUN   TestSortComparatorsThreeWayTieIsTransitive/activity
+=== RUN   TestSortComparatorsThreeWayTieIsTransitive/name
+--- PASS: TestSortComparatorsThreeWayTieIsTransitive (0.00s)
+    --- PASS: TestSortComparatorsThreeWayTieIsTransitive/attention (0.00s)
+    --- PASS: TestSortComparatorsThreeWayTieIsTransitive/created (0.00s)
+    --- PASS: TestSortComparatorsThreeWayTieIsTransitive/activity (0.00s)
+    --- PASS: TestSortComparatorsThreeWayTieIsTransitive/name (0.00s)
+=== RUN   TestSortSessionsByOrderDispatchesOnConfiguredOrder
+=== RUN   TestSortSessionsByOrderDispatchesOnConfiguredOrder/attention
+=== RUN   TestSortSessionsByOrderDispatchesOnConfiguredOrder/created
+=== RUN   TestSortSessionsByOrderDispatchesOnConfiguredOrder/activity
+=== RUN   TestSortSessionsByOrderDispatchesOnConfiguredOrder/name
+--- PASS: TestSortSessionsByOrderDispatchesOnConfiguredOrder (0.00s)
+    --- PASS: TestSortSessionsByOrderDispatchesOnConfiguredOrder/attention (0.00s)
+    --- PASS: TestSortSessionsByOrderDispatchesOnConfiguredOrder/created (0.00s)
+    --- PASS: TestSortSessionsByOrderDispatchesOnConfiguredOrder/activity (0.00s)
+    --- PASS: TestSortSessionsByOrderDispatchesOnConfiguredOrder/name (0.00s)
+=== RUN   TestSortSessionsByOrderUnknownValueFallsBackToAttention
+--- PASS: TestSortSessionsByOrderUnknownValueFallsBackToAttention (0.00s)
+=== RUN   TestStatusTokenIsExhaustiveOverSevenStatuses
+--- PASS: TestStatusTokenIsExhaustiveOverSevenStatuses (0.00s)
+=== RUN   TestColorTokenRespectsNoColor
+--- PASS: TestColorTokenRespectsNoColor (0.00s)
+=== RUN   TestColorTokenEmitsTruecolorByDefault
+--- PASS: TestColorTokenEmitsTruecolorByDefault (0.00s)
+=== RUN   TestColorTokenUsesQuantizedPaletteAtDepth16
+--- PASS: TestColorTokenUsesQuantizedPaletteAtDepth16 (0.00s)
+=== RUN   TestThemeFallbackNoticeShownOnFirstPaint
+--- PASS: TestThemeFallbackNoticeShownOnFirstPaint (0.00s)
+=== RUN   TestThemeFallbackNoticeAbsentWhenThemeResolvedCleanly
+--- PASS: TestThemeFallbackNoticeAbsentWhenThemeResolvedCleanly (0.00s)
+=== RUN   TestThemeFallbackNoticeStaysWithinFrameBudget
+=== RUN   TestThemeFallbackNoticeStaysWithinFrameBudget/80x24
+=== RUN   TestThemeFallbackNoticeStaysWithinFrameBudget/70x24
+=== RUN   TestThemeFallbackNoticeStaysWithinFrameBudget/60x20
+=== RUN   TestThemeFallbackNoticeStaysWithinFrameBudget/100x30
+=== RUN   TestThemeFallbackNoticeStaysWithinFrameBudget/120x24
+--- PASS: TestThemeFallbackNoticeStaysWithinFrameBudget (0.00s)
+    --- PASS: TestThemeFallbackNoticeStaysWithinFrameBudget/80x24 (0.00s)
+    --- PASS: TestThemeFallbackNoticeStaysWithinFrameBudget/70x24 (0.00s)
+    --- PASS: TestThemeFallbackNoticeStaysWithinFrameBudget/60x20 (0.00s)
+    --- PASS: TestThemeFallbackNoticeStaysWithinFrameBudget/100x30 (0.00s)
+    --- PASS: TestThemeFallbackNoticeStaysWithinFrameBudget/120x24 (0.00s)
+=== RUN   TestThemePickerTKeyOpensListingBuiltinsAndUserThemes
+--- PASS: TestThemePickerTKeyOpensListingBuiltinsAndUserThemes (0.00s)
+=== RUN   TestThemePickerPreviewsLiveOnRealList
+--- PASS: TestThemePickerPreviewsLiveOnRealList (0.00s)
+=== RUN   TestThemePickerEscRevertsByteForByte
+--- PASS: TestThemePickerEscRevertsByteForByte (0.00s)
+=== RUN   TestThemePickerEnterSelectsAndPersists
+--- PASS: TestThemePickerEnterSelectsAndPersists (0.00s)
+=== RUN   TestThemePickerNoteNamesLoadBearingKeysOnly
+--- PASS: TestThemePickerNoteNamesLoadBearingKeysOnly (0.00s)
+=== RUN   TestThemePickerUndisclosedKeysNotBound
+--- PASS: TestThemePickerUndisclosedKeysNotBound (0.00s)
+=== RUN   TestThemePickerDegenerateCandidateLeavesActiveThemeUnchanged
+--- PASS: TestThemePickerDegenerateCandidateLeavesActiveThemeUnchanged (0.00s)
+=== RUN   TestThemePickerMouseIgnoredWhileOpen
+--- PASS: TestThemePickerMouseIgnoredWhileOpen (0.00s)
+=== RUN   TestEmptyAndHelpViewsAreDiscoverable
+--- PASS: TestEmptyAndHelpViewsAreDiscoverable (0.00s)
+=== RUN   TestStartingCopyDistinguishesShellFromSignalledAgents
+--- PASS: TestStartingCopyDistinguishesShellFromSignalledAgents (0.00s)
+=== RUN   TestASCIIColorAndFrozenRelativeTimeRendering
+--- PASS: TestASCIIColorAndFrozenRelativeTimeRendering (0.01s)
+=== RUN   TestFrozenClockDoesNotClaimSidebarWidthKey
+--- PASS: TestFrozenClockDoesNotClaimSidebarWidthKey (0.00s)
+=== RUN   TestPipeCyclesLayoutMode
+--- PASS: TestPipeCyclesLayoutMode (0.00s)
+=== RUN   TestAngleBracketsAdjustAndClampSidebarWidth
+--- PASS: TestAngleBracketsAdjustAndClampSidebarWidth (0.00s)
+=== RUN   TestCollapsedStripRendersMarkerAndAttentionCount
+--- PASS: TestCollapsedStripRendersMarkerAndAttentionCount (0.00s)
+=== RUN   TestHelpTogglesAndEscapeCloses
+--- PASS: TestHelpTogglesAndEscapeCloses (0.00s)
+=== RUN   TestBelowMinimumNoticeIsOnTheFooterOnly
+--- PASS: TestBelowMinimumNoticeIsOnTheFooterOnly (0.00s)
+=== RUN   TestBelowMinimumFrameStaysWithinBudget
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x20/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x20/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x20/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x20/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x20/resumeNote/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x24/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x24/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x24/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x24/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/70x24/resumeNote/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/60x12/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/60x12/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/60x12/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/60x12/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/60x12/resumeNote/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/none/none
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/wraps-at-w
+--- PASS: TestBelowMinimumFrameStaysWithinBudget (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x20/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x20/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x20/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x20/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x20/resumeNote/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x24/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x24/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x24/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x24/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/70x24/resumeNote/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/60x12/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/60x12/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/60x12/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/60x12/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/60x12/resumeNote/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/none/none (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/wraps-at-w (0.00s)
+=== RUN   TestUnarchiveKeyActsOnAnArchivedRowFoundThroughTheFilter
+--- PASS: TestUnarchiveKeyActsOnAnArchivedRowFoundThroughTheFilter (0.00s)
+=== RUN   TestUnarchiveResultReloadsBothTheDefaultListAndTheArchivedPool
+--- PASS: TestUnarchiveResultReloadsBothTheDefaultListAndTheArchivedPool (0.00s)
+=== RUN   TestUnarchiveKeyRefusesARowThatIsNotArchived
+--- PASS: TestUnarchiveKeyRefusesARowThatIsNotArchived (0.00s)
+=== RUN   TestUnarchiveKeyStatesItIsUnavailableWhenUnwired
+--- PASS: TestUnarchiveKeyStatesItIsUnavailableWhenUnwired (0.00s)
+=== RUN   TestColouredPreviewKeepsFullFrameBordersColumnAligned
+--- PASS: TestColouredPreviewKeepsFullFrameBordersColumnAligned (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	1.023s
