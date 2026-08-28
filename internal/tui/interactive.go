@@ -153,6 +153,21 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
+	// PRD R89/task 030: persist enough to reclaim this claim from a LATER
+	// process's start if this one never gets to exitInteractive itself --
+	// SIGKILL cannot be handled at all, so this is the only place the
+	// guarantee can be made good. Best-effort: a write failure here must
+	// never undo an otherwise-successful entry into interactive mode, and
+	// there is nothing under TransportCapture to write against (no pipe is
+	// ever armed, so PipeTempDir reports ok=false and this is skipped).
+	if dir, ok := grid.PipeTempDir(); ok {
+		_ = tmux.SaveInteractiveClaimRecord(dir, tmux.InteractiveClaimRecord{
+			Socket:       client.Socket,
+			PaneTarget:   pane.ID,
+			WindowTarget: windowTarget,
+			Geometry:     geometry,
+		})
+	}
 
 	m.interactive = true
 	m.interactiveWindowTarget = windowTarget

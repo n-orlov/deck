@@ -571,6 +571,22 @@ func (s *Session) markDead() {
 // distinction and the panel message on top of this signal.
 func (s *Session) Dead() <-chan struct{} { return s.deadCh }
 
+// PipeTempDir returns the TransportPipe-armed PanePipe's own TempDir (task
+// 030/R89), and false under TransportCapture (where s.pipe is nil -- no
+// pipe-pane is ever armed, so there is nothing for a caller to write a
+// reclaim record against). enterInteractive (internal/tui/interactive.go)
+// uses this immediately after a successful StartWithTransport call to
+// persist a tmux.InteractiveClaimRecord inside the pipe's own temp dir, so
+// a later process's tmux.ReclaimLeakedInteractivePipes can find and undo
+// this claim even if this one is SIGKILLed before it ever gets to call
+// Close itself.
+func (s *Session) PipeTempDir() (dir string, ok bool) {
+	if s.pipe == nil {
+		return "", false
+	}
+	return s.pipe.TempDir(), true
+}
+
 // drain copies every byte the pipe delivers into the session's CURRENT
 // grid until the pipe errors (Close makes that happen deterministically).
 // It re-reads s.grid under the lock on every iteration rather than

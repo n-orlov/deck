@@ -13,6 +13,25 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// interactivePipeTempDirPrefix names the prefix every interactive-pipe temp
+// dir carries (PRD R89, `/tmp/deck-interactive-pipe-*`) -- both the prefix
+// ArmPipePane's own os.MkdirTemp call uses, and the one
+// ReclaimLeakedInteractivePipes (reclaim.go) matches directory names
+// against, so the two ends of one leak/reclaim pair can never drift apart
+// by one of them being edited alone.
+const interactivePipeTempDirPrefix = "deck-interactive-pipe-"
+
+// interactivePipeTempRoot is the parent directory ArmPipePane's own
+// os.MkdirTemp call creates each pipe's temp dir under, and the directory
+// ReclaimLeakedInteractivePipes scans. It is a var, not a hard-coded ""
+// (which os.MkdirTemp/os.TempDir would otherwise resolve to the real OS
+// temp directory), purely so a test can point both ends at an isolated
+// t.TempDir() instead of racing every other process on the machine that
+// also happens to share the real /tmp (task 030). Production code never
+// sets it; the zero value ("") is os.MkdirTemp's own "use os.TempDir()"
+// sentinel.
+var interactivePipeTempRoot = ""
+
 // PanePipe is a long-lived stream of one pane's raw bytes, produced by
 // `pipe-pane -IO` (PRD phase3b II-16). It is the ONLY primitive that reads
 // a pane's live output; nothing else in this package taps pipe-pane, and
@@ -91,7 +110,7 @@ type PanePipe struct {
 // the moment the writer side actually closes, with zero bytes lost for
 // output already queued ahead of that close -- confirmed directly.
 func (c Client) ArmPipePane(ctx context.Context, target string) (*PanePipe, error) {
-	tempDir, err := os.MkdirTemp("", "deck-interactive-pipe-")
+	tempDir, err := os.MkdirTemp(interactivePipeTempRoot, interactivePipeTempDirPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("create pipe temp dir: %w", err)
 	}
@@ -207,6 +226,15 @@ func (p *PanePipe) Read(b []byte) (int, error) {
 	}
 	return p.fifo.Read(b)
 }
+
+// TempDir returns the temp directory this PanePipe created its FIFO under
+// (task 030/R89: the caller that just armed this pipe records enough
+// metadata inside it -- via SaveInteractiveClaimRecord -- for a LATER
+// process's ReclaimLeakedInteractivePipes to find and reclaim it if this
+// one never gets to call Close itself, e.g. because it was SIGKILLed).
+// Valid for the whole life of a PanePipe, including after Close/CloseLocal
+// has already removed the directory on disk.
+func (p *PanePipe) TempDir() string { return p.tempDir }
 
 // WasClosed reports whether Close or CloseLocal has already run on this
 // PanePipe -- the discriminator a caller's Read-error handling needs
