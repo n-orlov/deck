@@ -31,6 +31,7 @@ func registerCreateCWDGhostSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" submits the create modal$`, clientSubmitsCreateModal)
 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the scratch directory labelled "([^"]+)" plus "([^"]*)"$`, sessionHasCWDExactlyScratchDirPlus)
 	sc.Step(`^deck client "([^"]+)" cwd field shows no ghost text$`, clientCWDFieldShowsNoGhostText)
+	sc.Step(`^deck client "([^"]+)" cwd field shows ghost text$`, clientCWDFieldShowsGhostText)
 }
 
 // scratchDirectoryLabelledExists creates an empty directory under the
@@ -222,7 +223,12 @@ func clientSubmitsCreateModal(ctx context.Context, clientName string) error {
 // -- what this step asserted while the modal was uncoloured -- now says
 // "the modal is unthemed", which is the opposite of what the spec asks for.
 // The cwd rows are exactly where a ghost could ever appear, so bounding the
-// scan there loses no ghost this step could previously have caught.
+// scan there loses no ghost this step could previously have caught. Finding
+// F27 (docs/reports/phase3g-findings.md) records why this narrowing, though
+// correct, cannot also satisfy a PRD condition that the pre-016 whole-grid
+// version stay byte-unchanged; clientCWDFieldShowsGhostText below is this
+// narrowing's positive control, sharing cwdFieldRowBounds/cwdFieldDimmedCell
+// so the two directions of the same check can never silently diverge.
 func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
@@ -232,6 +238,23 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	found, row, col, content, first, last, err := cwdFieldDimmedCell(client, dimmed)
+	if err != nil {
+		return fmt.Errorf("client %q %w", name, err)
+	}
+	if found {
+		return fmt.Errorf("client %q has a dimmed-token cell %q at row %d column %d (inside the cwd field's own rows %d-%d), want no ghost text there", name, content, row, col, first, last)
+	}
+	return nil
+}
+
+// cwdFieldRowBounds locates the create modal's cwd field's own rows on the
+// client's current grid: its label/value row (found by "Working
+// directory:") through any physical continuation rows, up to but not
+// including its one-line help text (found by "the session's cwd"). This is
+// the exact bound-finding logic clientCWDFieldShowsNoGhostText used inline
+// before task 203, now shared with cwdFieldDimmedCell below.
+func cwdFieldRowBounds(client *ScreenDriver) (first, last int, err error) {
 	cols, rows := client.GridSize()
 	rowText := func(y int) string {
 		var b strings.Builder
@@ -242,7 +265,7 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 		}
 		return b.String()
 	}
-	first := -1
+	first = -1
 	for y := 0; y < rows; y++ {
 		if strings.Contains(rowText(y), "Working directory:") {
 			first = y
@@ -250,18 +273,35 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 		}
 	}
 	if first < 0 {
-		return fmt.Errorf("client %q shows no \"Working directory:\" row -- the create modal is not open, so this step cannot assert anything", name)
+		return 0, 0, fmt.Errorf("shows no \"Working directory:\" row -- the create modal is not open, so this step cannot assert anything")
 	}
 	// The field's help line ("... the session's cwd; must exist ...",
 	// possibly prefixed with "N matches — tab to list") ends the field's
 	// own rows; every row before it belongs to the value.
-	last := first
+	last = first
 	for y := first + 1; y < rows; y++ {
 		if strings.Contains(rowText(y), "the session's cwd") {
 			break
 		}
 		last = y
 	}
+	return first, last, nil
+}
+
+// cwdFieldDimmedCell scans exactly the bounded rows cwdFieldRowBounds
+// returns for the first cell whose foreground equals the dimmed token
+// (already resolved to hex), reading real Style.Fg values via CellAt,
+// exactly as the per-cell steps in features/cell_attributes_test.go do.
+// found is false when no such cell exists in bounds. Shared by
+// clientCWDFieldShowsNoGhostText (the negative proof) and
+// clientCWDFieldShowsGhostText (task 203's positive control) so both
+// directions of the same check use one scan.
+func cwdFieldDimmedCell(client *ScreenDriver, dimmed string) (found bool, row, col int, content string, first, last int, err error) {
+	first, last, err = cwdFieldRowBounds(client)
+	if err != nil {
+		return false, 0, 0, "", 0, 0, err
+	}
+	cols, _ := client.GridSize()
 	for y := first; y <= last; y++ {
 		for x := 0; x < cols; x++ {
 			cell := client.CellAt(x, y)
@@ -269,9 +309,37 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 				continue
 			}
 			if colorHex(cell.Style.Fg) == dimmed {
-				return fmt.Errorf("client %q has a dimmed-token cell %q at row %d column %d (inside the cwd field's own rows %d-%d), want no ghost text there", name, cell.Content, y, x, first, last)
+				return true, y, x, cell.Content, first, last, nil
 			}
 		}
+	}
+	return false, 0, 0, "", first, last, nil
+}
+
+// clientCWDFieldShowsGhostText is task 203's positive control for the
+// narrowing clientCWDFieldShowsNoGhostText applies above: it proves the
+// bounded scan still DETECTS a ghost, sharing the identical helper
+// (cwdFieldDimmedCell/cwdFieldRowBounds), so the negative proof is not
+// vacuously true merely because the scan window shrank. It is wired into
+// the unique-match scenario (create_cwd_ghost.feature), right where a
+// ghost is expected on screen; a mutation run that disables ghost
+// rendering entirely turns this step red -- see
+// docs/reports/phase3g-203-r82-assertion-conflict/.
+func clientCWDFieldShowsGhostText(ctx context.Context, name string) error {
+	client, err := assertionClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
+	if err != nil {
+		return err
+	}
+	found, _, _, _, first, last, err := cwdFieldDimmedCell(client, dimmed)
+	if err != nil {
+		return fmt.Errorf("client %q %w", name, err)
+	}
+	if !found {
+		return fmt.Errorf("client %q has no dimmed-token cell inside the cwd field's own rows %d-%d, want a ghost there", name, first, last)
 	}
 	return nil
 }

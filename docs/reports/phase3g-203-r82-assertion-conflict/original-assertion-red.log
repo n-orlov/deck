@@ -1,0 +1,71 @@
+Command: ci/run.sh env DECK_GODOG_PATHS=create_cwd_ghost.feature go test ./features/ -run TestFeatures -count=1 -v
+
+Purpose (task 203, finding F27): restore the ORIGINAL (pre-adb7db4) whole-grid
+"no dimmed cell anywhere on screen" body of clientCWDFieldShowsNoGhostText
+verbatim into the current, themed tree (product code untouched) and run it,
+to demonstrate the PRD's "existing keyboard-only PTY assertions must stay
+green unchanged" condition is impossible against a themed dialog, not merely
+inconvenient. The narrowed (cwd-rows-only) version this repository actually
+ships is what makes this scenario green; here the narrowing is removed,
+temporarily, in the working tree only, then reverted (git diff is empty
+after revert -- confirmed in this same iteration).
+
+Restored body (verbatim, from `git show adb7db4^:features/create_cwd_ghost_test.go`):
+
+    func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
+        client, err := assertionClient(ctx, name)
+        if err != nil {
+            return err
+        }
+        dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
+        if err != nil {
+            return err
+        }
+        cols, rows := client.GridSize()
+        for y := 0; y < rows; y++ {
+            for x := 0; x < cols; x++ {
+                cell := client.CellAt(x, y)
+                if cell == nil || cell.Style.Fg == nil {
+                    continue
+                }
+                if colorHex(cell.Style.Fg) == dimmed {
+                    return fmt.Errorf("client %q has a dimmed-token cell %q at row %d column %d, want no ghost text anywhere on screen", name, cell.Content, y, x)
+                }
+            }
+        }
+        return nil
+    }
+
+Relevant test output (godog's failure block, ANSI stripped; the raw captured
+frame dump and goroutine SIGQUIT traceback that follow the "surviving deck
+client killed" note are godog's own after-scenario-hook diagnostics -- not
+part of this assertion's own failure -- and are omitted here as noise):
+
+    Scenario: several matches with no further common prefix ghost nothing and show a match count  # create_cwd_ghost.feature:97
+      And deck client "A" cwd field shows no ghost text  # create_cwd_ghost.feature:107
+        Error: after scenario hook failed: client "A" has a dimmed-token cell " " at row 3 column 2, want no ghost text anywhere on screen
+
+    6 scenarios (5 passed, 1 failed)
+    84 steps (77 passed, 1 failed, 6 skipped)
+    --- FAIL: TestFeatures (4.98s)
+        --- PASS: TestFeatures/a_unique_directory_match_ghosts_in_the_dimmed_token_and_right_accepts_it_with_a_trailing_slash (0.69s)
+        --- PASS: TestFeatures/end_also_accepts_the_ghosted_completion (0.66s)
+        --- PASS: TestFeatures/a_same-named_file_never_becomes_a_ghost_candidate (0.60s)
+        --- PASS: TestFeatures/a_hidden_directory_is_a_candidate_only_when_the_segment_starts_with_a_dot (0.70s)
+        --- PASS: TestFeatures/a_leading_tilde_expands_for_scanning_without_being_rewritten_in_the_field (0.65s)
+        --- FAIL: TestFeatures/several_matches_with_no_further_common_prefix_ghost_nothing_and_show_a_match_count (1.63s)
+    FAIL
+    FAIL	github.com/n-orlov/deck/features	4.997s
+    FAIL
+
+Row 3, column 2 is the create modal's **Name field's HELP line** ("the
+display name; also the source of the session's tmux slug"), rendered in the
+`dimmed` token per SPEC.md:1355/1357's own requirement that a dialog's
+"explanatory help" render `dimmed` -- NOT the cwd ghost (which is correctly
+absent in this scenario's 3-way-ambiguous case: the ambiguous-match
+requirement 15 ghosts nothing). The old whole-grid assertion cannot
+distinguish "the modal is themed as SPEC requires" from "a ghost leaked
+somewhere unexpected"; narrowing the scan to the cwd field's own rows is the
+only way to keep testing the ghost specifically once every field's help line
+is dimmed too, which is exactly what `cdb927b`/`adb7db4` did and what the
+current, narrowed `clientCWDFieldShowsNoGhostText` still does.

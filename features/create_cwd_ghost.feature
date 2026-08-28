@@ -20,6 +20,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     And deck client "A" tabs to the cwd field
     And deck client "A" types the scratch directory labelled "unique-right" followed by "uniquep" into the cwd field
     Then deck client "A" text "rojright/" has foreground token "dimmed"
+    And deck client "A" cwd field shows ghost text
     When deck client "A" presses "right" in the cwd field
     Then deck client "A" screen contains "uniqueprojright/"
     When deck client "A" submits the create modal
