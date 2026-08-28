@@ -1,0 +1,8 @@
+$ ci/run.sh sh -c 'cd .scratch-202 && go test -count=1 -run TestR79BacklogDrainsWithinOneStartupCycle -v ./internal/store/'   # .scratch-202 = throwaway git worktree at dd90a28^ (pre-fix store.go/main.go) + this behavioural probe
+=== RUN   TestR79BacklogDrainsWithinOneStartupCycle
+    r79_behavioural_red_test.go:65: expired rows still present after the store-open pass and 10 reconcile ticks = 250, want 0: the backlog must drain within the same open/startup cycle (review finding 3, R79), not one bounded batch per real hour
+--- FAIL: TestR79BacklogDrainsWithinOneStartupCycle (0.10s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.103s
+FAIL
+exit=1

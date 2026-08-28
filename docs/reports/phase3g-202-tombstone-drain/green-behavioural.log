@@ -1,0 +1,6 @@
+$ ci/run.sh sh -c 'cd .scratch-202g && go test -count=1 -run TestR79BacklogDrainsWithinOneStartupCycle -v ./internal/store/'   # .scratch-202g = throwaway git worktree at dd90a28 (fix in place) + the same behavioural probe, only its call sites adapted to the two-value return
+=== RUN   TestR79BacklogDrainsWithinOneStartupCycle
+--- PASS: TestR79BacklogDrainsWithinOneStartupCycle (0.11s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.114s
+exit=0

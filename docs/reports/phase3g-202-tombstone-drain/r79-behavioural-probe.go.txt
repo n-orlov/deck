@@ -1,0 +1,67 @@
+package store
+
+import (
+	"context"
+	"strconv"
+	"testing"
+)
+
+// TestR79BacklogDrainsWithinOneStartupCycle is task 202's BEHAVIOURAL red
+// probe, written against the PRE-fix store (SweepTombstones returning a
+// bare error, hourly throttle stamped after every real pass). It makes no
+// use of the post-fix API, so it compiles on both trees, and it asserts
+// only what review finding 3 (R79) requires: an expired-tombstone backlog
+// bigger than one tombstoneSweepBatchRows batch is gone by the end of the
+// SAME open/startup cycle -- the store-open call plus the reconcile ticks
+// that follow it a few hundred milliseconds later, never an extra real
+// hour per leftover batch.
+//
+// On the pre-fix tree it fails: the store-open pass reaps 200 rows and
+// stamps the throttle, so all the tick-spaced calls after it are throttled
+// no-ops and 250 rows survive the whole cycle.
+func TestR79BacklogDrainsWithinOneStartupCycle(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+
+	const now int64 = 1_700_000_000_000
+	cutoff := now - sweepGrace.Milliseconds()
+
+	// 450 rows = more than two 200-row batches, so the backlog cannot be
+	// drained by the single bounded store-open pass alone.
+	const expiredCount = 450
+	for i := 0; i < expiredCount; i++ {
+		s := createTombstoneTestSession(t, st, ctx, "r79-expired-"+strconv.Itoa(i))
+		if err := st.SoftDeleteSession(ctx, s.ID, cutoff-int64(i)-1); err != nil {
+			t.Fatalf("soft delete: %v", err)
+		}
+	}
+
+	countExpired := func() int {
+		t.Helper()
+		var n int
+		if err := st.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE deleted_at != 0`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// cmd/deck's pre-first-frame, store-open call: one bounded batch.
+	if err := st.SweepTombstones(ctx, sweepGrace, now); err != nil {
+		t.Fatalf("store-open SweepTombstones: %v", err)
+	}
+	if got, want := countExpired(), expiredCount-tombstoneSweepBatchRows; got != want {
+		t.Fatalf("expired rows after the store-open pass = %d, want %d (exactly one bounded batch)", got, want)
+	}
+
+	// The reconcile ticks of that same startup, 500ms apart (the default
+	// settings.Reconcile). Ten of them is five seconds of wall clock --
+	// far more than the three batches this backlog needs.
+	for tick := 1; tick <= 10; tick++ {
+		if err := st.SweepTombstones(ctx, sweepGrace, now+int64(tick)*500); err != nil {
+			t.Fatalf("tick %d SweepTombstones: %v", tick, err)
+		}
+	}
+	if got := countExpired(); got != 0 {
+		t.Fatalf("expired rows still present after the store-open pass and 10 reconcile ticks = %d, want 0: the backlog must drain within the same open/startup cycle (review finding 3, R79), not one bounded batch per real hour", got)
+	}
+}
