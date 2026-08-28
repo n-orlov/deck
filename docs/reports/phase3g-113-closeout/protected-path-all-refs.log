@@ -1,0 +1,53 @@
+# Exhaustive protected-path audit over ALL refs, BY SHA (task 113, second pass)
+# protected set: SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+
+$ git log --all --oneline 1cfbd5a.. -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+(exit 0; empty output above = no commit on ANY ref, after the run base, touches the protected set)
+
+$ git branch -a
+* main
+  remotes/origin/HEAD -> origin/main
+  remotes/origin/main
+
+$ git log --all --oneline -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md | wc -l
+30
+
+$ git log --all --oneline -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+1cfbd5a prds: cut Phase 3g, the field backlog (operator)
+2eed8de spec: amend §7, §9.2, §9.3, §11.3, §11.4, §11.7 and add §11.10 ahead of the field-backlog phase (operator)
+60c2c56 prds: cut Phase 3f — field defects, residuals, and suite determinism (operator)
+c80a14c spec: archiving confirms, is reversible, and an archived row is not startable (operator)
+2c56309 SPEC: probe.miss is a column not an event, events index+retention, dialogs load via tea.Cmd (operator)
+791e089 prds: cut Phase 3e — list ergonomics and chrome (operator)
+6584299 spec: configurable sort order, single-click interactive entry, shared seam focus, open built-in theme set (operator)
+395babf spec: deck is the primary view of a session — preview fits on navigation, drag-to-copy, modified keys forward, yolo de-gated
+9cda5a8 spec: amend §11 for the interactive preview, cut the Phase 3c PRD
+d702959 prds: re-cut Phase 3 - sessions and lifecycle
+a82bdf4 spec: make workspace grouping optional and set mouse on for deck's tmux server (operator)
+84af034 prds: cut Phase 2b-2 — configuration and appearance
+e5d2b58 prd: stop requirement 46 inviting the container sweep that kills the job
+78399e3 prd: fix a stale requirement cross-reference in Phase 2b-1
+17cc346 prd: cut Phase 2b-1, the visible shell
+df527cc spec: settle the preview as a cropped read-only capture, and split Phase 2b
+a7f9790 plan: move the attention sort and grouping into Phase 2b
+9aceef7 spec: add §11.8 mouse navigation, and plan it into Phase 2b
+47f58c6 spike: cut the in-screen tmux embedding PRD
+55e04e6 plan: cut the Phase 2 PRD, and settle what it was blocked on
+65aaaea spec: state the product, not its history — and fix what the sweep exposed
+68d9a83 spec: §11.7 path entry — recent cwd history, prefill, and ghost completion
+b9d9db8 spec/plan: resolve all 9 blocking findings from the adversarial design review
+126fea0 spec: rebuild §11 around a session sidebar and live preview, add themes and settings
+2dacc4f prds: forbid container sweeps by ralphd.run label (operator, unblocks self-kill)
+bb5f430 Resequence: durable identity before lifecycle polish
+2ab61e3 Add Phase 1 PRD; adopt DECK_COLOR; make delivery rules explicit
+99c343a Phase 0: BDD harness, walking skeleton, and Phase 0b hardening
+f62b70c Add delivery plan, delivery log, proven CI toolchain and phase PRDs
+2b5ea90 Add deck product spec
+
+$ for c in $(git log --all --format=%h -- <protected set>); do git merge-base --is-ancestor $c 1cfbd5a || echo "NOT ancestor: $c"; done
+checked=30 not_ancestor_of_run_base=0
+
+$ git show --name-only --format= 2eed8de
+SPEC.md
+$ git show --name-only --format= a03527c
+docs/PLAN.md

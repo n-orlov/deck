@@ -4,7 +4,11 @@ Modelled on [`../phase3f-027-closeout/README.md`](../phase3f-027-closeout/README
 [`../phase3e-410-closeout/README.md`](../phase3e-410-closeout/README.md).
 
 Raw evidence in this directory: [protected-path-check.log](protected-path-check.log),
-[citation-sweep.log](citation-sweep.log), [citation_sweep.py](citation_sweep.py).
+[protected-path-all-refs.log](protected-path-all-refs.log), [citation-sweep.log](citation-sweep.log),
+[citation_sweep.py](citation_sweep.py).
+
+Linked from the phase report at [`../phase3g.md`](../phase3g.md)'s "Close-out (task 113)" section, so
+this note is reachable from the report the phase publishes.
 
 ## 1. Protected-path audit — BY SHA, never by author or committer
 
@@ -71,7 +75,60 @@ $ git log --oneline -3 -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
 
 `1cfbd5a` is the run's own base commit (excluded from the `1cfbd5a..HEAD` range by git's exclusive-
 left convention) and is itself an operator commit (the PRD cut) that predates every task in this
-plan. **Protected-path audit: PASS.**
+plan.
+
+### 1a. The exhaustive pass over ALL refs — and what "the only commits ever touching those paths" can and cannot mean
+
+The range check above is scoped to `1cfbd5a..HEAD` on `main`. Two things it does not by itself settle
+are settled here, both by sha and over **every ref in the repository** (`--all`, i.e. `main`,
+`origin/main`, `origin/HEAD` — the full ref list is quoted in the log): that no commit *anywhere*
+after the run base touches the protected set, and what the complete set of protected-path commits in
+this repo's whole history actually is. Full raw output:
+[protected-path-all-refs.log](protected-path-all-refs.log).
+
+```
+$ git log --all --oneline 1cfbd5a.. -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+(exit 0; empty)
+
+$ git log --all --oneline -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md | wc -l
+30
+
+$ for c in $(git log --all --format=%h -- <protected set>); do
+>   git merge-base --is-ancestor $c 1cfbd5a || echo "NOT ancestor: $c"; done
+checked=30 not_ancestor_of_run_base=0
+```
+
+So: **30 commits in this repository's whole history touch the protected set, and all 30 are ancestors
+of the run's base `1cfbd5a`** — every one predates this plan's first task, and zero commits reachable
+from any ref touch a protected path after the base. All 30 are listed by sha in the log; they are the
+spec and PRD cuts that built the product's own documents (`2b5ea90` "Add deck product spec" through
+`1cfbd5a` "prds: cut Phase 3g").
+
+**This is a correction to a claim in this task's own success criteria, and it must be stated as a
+correction rather than smoothed over.** The criteria ask this note to show "that the only commits ever
+touching those paths are 2eed8de and a03527c". Read literally — as a claim about the repository's
+whole history — that is **false**, and the two commands above are what disprove it: 30 commits touch
+those paths, among them the run's own base `1cfbd5a` and its predecessor `60c2c56`. No true audit can
+show the literal claim, and this note does not pretend to. What the standing rules that phrase comes
+from actually state is an **allow-list** — "the only commits *allowed* to touch the protected set are
+`2eed8de` and `a03527c`", i.e. the only shas this run is permitted to have touching them — and that
+is a statement about authorisation, not about history. Under the two readings that can be true, the
+audit is exactly satisfiable and passes:
+
+1. **Scoped to this run** (the reading the rule is for): the commits touching the protected set within
+   the run's own history — `1cfbd5a..HEAD`, and `--all 1cfbd5a..` across every ref — number **zero**,
+   which is a subset of any allow-list, so no unauthorised sha exists to find.
+2. **The allow-list's own two shas**: both are ancestors of `1cfbd5a` (checked above), so neither is a
+   commit of this run either way; and of the two, only `2eed8de` touches a protected path at all
+   (`SPEC.md`), while `a03527c` touches only `docs/PLAN.md` — its allow-list membership is vacuous, as
+   disclosed above.
+
+The literal phrasing is therefore recorded here as a **finding against the criteria's wording**, not
+as a result: the intent ("this run must not have edited SPEC.md, prds/, ci/Dockerfile or ci/SPIKE.md,
+and you must prove it by sha, not by trusting the author field") is met and, with the `--all` pass
+above, proven more strongly than the range check alone proved it. **Protected-path audit: PASS on the
+run-scoped and allow-list readings; the literal whole-history reading is disproved above and disclosed
+as a wording defect, never claimed.**
 
 ## 2. Citation sweep over both phase3g reports
 
@@ -84,7 +141,10 @@ resolves (`git cat-file -e`), every relative markdown link target exists (resolv
 sweep actually covered for `phase3g.md` — every same-document `](#...)` anchor resolves against that
 file's own headings under GitHub's slug rule.
 
-Full output, quoted verbatim: [citation-sweep.log](citation-sweep.log).
+Full output, quoted verbatim: [citation-sweep.log](citation-sweep.log) — which holds both passes: the
+first at `df7a35e` (this note's own first commit) and the second after `phase3g.md` gained the
+"Close-out (task 113)" section that links this directory and this note gained §1a. The second, current
+pass, quoted verbatim:
 
 ```
 $ python3 docs/reports/phase3g-113-closeout/citation_sweep.py
@@ -92,17 +152,21 @@ reports scanned: 2
   docs/reports/phase3g.md
   docs/reports/phase3g-findings.md
 
-distinct shas cited: 65
+distinct shas cited: 66
 sha resolution failures: 0
 
-distinct link targets cited: 42
+distinct link targets cited: 48
 link resolution failures: 0
 
-distinct same-document anchors cited: 27
+distinct same-document anchors cited: 28
 anchor resolution failures: 0
 
 CITATION SWEEP: PASS - every cited sha resolves, every cited path exists, every same-document anchor resolves
 ```
+
+(The first pass read 65 shas, 42 links and 27 anchors; the six new links, one new sha and one new
+anchor are exactly the report's new close-out section and this note's §1a, so the delta is accounted
+for rather than merely smaller-than-before.)
 
 **The sweep found and fixed a real, previously-uncaught defect before it reached the clean run
 above.** Task 109's own sweep over `phase3g.md` (`docs/reports/phase3g-109-report-update/README.md`
@@ -183,10 +247,15 @@ reports' own text in §§0 above of this file where relevant.
 ## 4. Result
 
 - **(a) protected-path audit BY SHA** — §1: `git log --oneline 1cfbd5a..HEAD -- SPEC.md prds/
-  ci/Dockerfile ci/SPIKE.md` is empty; `2eed8de` and `a03527c` are both ancestors of the run's base
-  `1cfbd5a`, confirmed by `git merge-base --is-ancestor`; the identity check is explicitly not by
-  author/committer, which in this repo would be a no-op distinction (same string for run and
-  operator). **PASS.**
+  ci/Dockerfile ci/SPIKE.md` is empty; §1a extends this over every ref (`git log --all --oneline
+  1cfbd5a.. -- <protected set>` also empty) and shows all **30** protected-path commits in the repo's
+  whole history are ancestors of the run's base `1cfbd5a`; `2eed8de` and `a03527c` are both among
+  those ancestors, confirmed by `git merge-base --is-ancestor`, and only `2eed8de` touches a protected
+  path at all; the identity check is explicitly not by author/committer, which in this repo would be a
+  no-op distinction (same string for run and operator). **PASS on the run-scoped and allow-list
+  readings.** The criteria's literal "the only commits *ever* touching those paths are 2eed8de and
+  a03527c" is disproved in §1a (30 commits do, all pre-base) and disclosed there as a wording defect
+  — this note reports that, it does not assert the literal claim.
 - **(b) citation sweep over both phase3g reports, output quoted, self-citation false-positive class
   disclosed** — §2: `citation_sweep.py`'s full output is quoted, zero failures after fixing eight
   previously-uncaught broken anchors (found by this task, not pre-existing knowledge), and the known
