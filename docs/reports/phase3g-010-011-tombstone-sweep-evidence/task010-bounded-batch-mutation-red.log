@@ -1,0 +1,9 @@
+== MUTATION: SweepTombstones restored to a synchronous multi-batch loop (the shape validation rejected) ==
+--- FAIL: TestSweepTombstonesReapsOneBoundedBatchPerCall (0.12s)
+    tombstone_sweep_test.go:312: expired tombstones after one pass = 0, want 250 (one call must reap exactly one bounded batch of 200 and return, never the whole 450-row backlog)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.122s
+FAIL
+== GREEN after the fix: one bounded batch per call ==
+ok  	github.com/n-orlov/deck/internal/store	2.729s
+ok  	github.com/n-orlov/deck/cmd/deck	5.204s

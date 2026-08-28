@@ -1,0 +1,6 @@
+=== RUN   TestAbandonedDDIsReapedAtNextStoreOpen
+    tombstone_sweep_test.go:214: session "5661bcce-7226-43ab-90a3-e71961ed0fb6" row still exists after run 2's store open, want the abandoned tombstone reaped by task 010's call site
+--- FAIL: TestAbandonedDDIsReapedAtNextStoreOpen (0.83s)
+FAIL
+FAIL	github.com/n-orlov/deck/cmd/deck	0.836s
+FAIL
