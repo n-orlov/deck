@@ -1,0 +1,13 @@
+$ ci/run.sh sh -c "cd .scratch-206b && go test -count=1 -run \"TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns|TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows\" ./internal/tui/ ./internal/interactive/"
+# worktree .scratch-206b = HEAD b249992 + task 206 tests, with internal/interactive/grid.go SelectionHighlightRange mutated to a RECTANGULAR block (see README.md)
+--- FAIL: TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns (0.03s)
+    interactive_select_highlight_test.go:226: highlighted cells = "fghijabcdefghijabcdefghija\nfghijabcdefghijabcdefghija\nfghijabcdefghij"
+        SelectedText     = "abcdefghij\nabcdefghijabcdefghijabcdefghijabcdefghij\nabcdef"
+        the marked set and the copied set must be the same set
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.034s
+--- FAIL: TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows (0.00s)
+    selection_test.go:183: highlighted cells joined = "CDEFGH\nMNOPQR\nWXY", SelectedText(7,0,2,2) = "HIJ\nKLMNOPQRST\nUVW", want them equal
+FAIL
+FAIL	github.com/n-orlov/deck/internal/interactive	0.004s
+FAIL

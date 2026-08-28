@@ -1,0 +1,5 @@
+$ ci/run.sh go test -count=1 ./internal/interactive/ ./internal/tui/ ./internal/theme/
+ok  	github.com/n-orlov/deck/internal/interactive	11.288s
+ok  	github.com/n-orlov/deck/internal/tui	1.062s
+ok  	github.com/n-orlov/deck/internal/theme	0.006s
+EXIT=0
