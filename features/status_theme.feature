@@ -56,7 +56,17 @@ Feature: the seven §7 status tokens colour the sidebar's status word (task 014)
 
   @requirement-status-tokens
   Scenario: the stopped status token colours the stopped status word
-    When the state database session "tok-target" has status "stopped" 5 seconds ago
+    # Unlike every other status in this file, "stopped" cannot be posed by
+    # writing the state database directly while "tok-target"'s tmux pane is
+    # still alive: SPEC section 7's self-heal (internal/service.reconcile's
+    # repairTerminalRowWithLivePane) treats a stopped row paired with a live
+    # pane as an invariant violation and repairs a shell row straight back to
+    # "running" on the very next reconcile tick, so the word never renders
+    # (task 040 item 2; the same self-heal task 040 item 1 hit for the
+    # dup-pane resume scenario). A genuine clean exit removes the pane first,
+    # so the word this asserts is the real tmux.session_gone transition, not
+    # a raced fake one.
+    When shell session "tok-target" exits with status zero
     Then within one configured reconcile interval deck client "A" screen contains "stopped"
     And deck client "A" text "stopped" has foreground token "stopped"
     And deck client "A" exits cleanly
