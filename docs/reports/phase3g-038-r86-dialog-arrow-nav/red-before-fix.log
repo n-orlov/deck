@@ -1,0 +1,30 @@
+=== RUN   TestApplyDialogContractCoreKeys
+=== RUN   TestApplyDialogContractCoreKeys/esc_cancels_and_does_not_submit_or_cycle
+=== RUN   TestApplyDialogContractCoreKeys/enter_submits_and_does_not_cancel
+=== RUN   TestApplyDialogContractCoreKeys/up_and_down_move_the_focused_field,_wrapping
+    dialog_contract_test.go:55: down from last field: handled=false index=2, want wrap to 0
+=== RUN   TestApplyDialogContractCoreKeys/tab_and_shift+tab_are_not_contract_keys_(§11.4:_reserved_for_completion)
+    dialog_contract_test.go:66: tab: handled=true index=1, want unhandled and unchanged
+=== RUN   TestApplyDialogContractCoreKeys/left_and_right_change_the_selection
+=== RUN   TestApplyDialogContractCoreKeys/space_changes_the_selection_when_there_is_no_text_field_to_type_into
+=== RUN   TestApplyDialogContractCoreKeys/space_falls_through_unhandled_when_SpaceTypesText_says_so
+=== RUN   TestApplyDialogContractCoreKeys/a_key_outside_the_contract_vocabulary_is_unhandled
+=== RUN   TestApplyDialogContractCoreKeys/up/down_is_a_no-op_with_one_or_zero_fields,_not_merely_wrapped
+--- FAIL: TestApplyDialogContractCoreKeys (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/esc_cancels_and_does_not_submit_or_cycle (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/enter_submits_and_does_not_cancel (0.00s)
+    --- FAIL: TestApplyDialogContractCoreKeys/up_and_down_move_the_focused_field,_wrapping (0.00s)
+    --- FAIL: TestApplyDialogContractCoreKeys/tab_and_shift+tab_are_not_contract_keys_(§11.4:_reserved_for_completion) (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/left_and_right_change_the_selection (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/space_changes_the_selection_when_there_is_no_text_field_to_type_into (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/space_falls_through_unhandled_when_SpaceTypesText_says_so (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/a_key_outside_the_contract_vocabulary_is_unhandled (0.00s)
+    --- PASS: TestApplyDialogContractCoreKeys/up/down_is_a_no-op_with_one_or_zero_fields,_not_merely_wrapped (0.00s)
+=== RUN   TestCreateModalUpDownMoveFieldsTabDoesNot
+    dialog_contract_test.go:137: "down" moved createField to 2, want 3
+--- FAIL: TestCreateModalUpDownMoveFieldsTabDoesNot (0.00s)
+=== RUN   TestCreateModalTabOnPathFieldWithNoMatchDoesNotMoveFocus
+--- PASS: TestCreateModalTabOnPathFieldWithNoMatchDoesNotMoveFocus (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.011s
+FAIL

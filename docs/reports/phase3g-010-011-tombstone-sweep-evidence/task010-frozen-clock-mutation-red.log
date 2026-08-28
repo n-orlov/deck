@@ -1,0 +1,8 @@
+--- FAIL: TestSweepTombstonesHonoursFrozenClock (0.04s)
+    --- FAIL: TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_past_leaves_a_row_the_real_clock_would_reap (0.02s)
+        tombstone_sweep_test.go:198: row reaped though it is inside the grace window measured against the injected `now` -- a real time.Now() leaked into the age comparison: session "sweep-frozen-past" not found
+    --- FAIL: TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_future_reaps_a_row_the_real_clock_would_keep (0.02s)
+        tombstone_sweep_test.go:228: row survived though it is outside the grace window measured against the injected `now` -- a real time.Now() leaked into the age comparison
+FAIL
+FAIL	github.com/n-orlov/deck/internal/store	0.043s
+FAIL
