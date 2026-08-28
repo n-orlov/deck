@@ -20,7 +20,7 @@ Feature: Status recovery chain (requirements 43-47)
     And session "resume pair" has an audited "session_start" event with payload field "reason" equal to "resume"
     When deck client "A" exits cleanly
 
-  Scenario: r on a session whose tmux session already exists reports already-running, never an error
+  Scenario: r on a terminal row whose tmux session already exists never reaches an error, however fast Reconcile's self-heal lands
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "dup pane" with permission profile "safe"
@@ -29,10 +29,24 @@ Feature: Status recovery chain (requirements 43-47)
       | reason | logout |
     Then the state database session "dup pane" is "stopped" from "hook" with killed_by_user=0
     And the private tmux session "deck_dup-pane" exists
-    And within one configured reconcile interval deck client "A" screen contains "stopped - resumable"
+    # requirement 46's own contradiction (hook says stopped, tmux still owns
+    # the pane) is now caught by SPEC section 7's self-healing rule
+    # (requirement 76, tasks 001/002) before a human ever presses a key:
+    # Reconcile repairs it to "starting" from "tmux" within one tick. A
+    # screen-text wait for the old "stopped - resumable" text races that
+    # repair and loses at this scenario's reconcile cadence; the store poll
+    # below is immune to the same race terminal_repair_field_route.feature
+    # already proves this exact repair with, and is this scenario's model
+    # for it.
+    And within one configured reconcile interval the state database session "dup pane" is "starting" from "tmux" with killed_by_user=0
+    # The self-heal already did requirement 46's job: nothing needs
+    # launching, a pane is already there (SPEC.md:566). Pressing r on the
+    # now-"starting" row still must not manufacture a tmux duplicate-session
+    # error or touch the pane -- it declines honestly instead.
     When deck client "A" presses r on session "dup pane"
-    Then deck client "A" screen contains "already running"
-    And the state database session "dup pane" is "stopped" from "hook" with killed_by_user=0
+    Then deck client "A" screen contains "not stopped"
+    And the private tmux session "deck_dup-pane" exists
+    And the state database session "dup pane" is "starting" from "tmux" with killed_by_user=0
     And the audit log has 1 launch record for session "dup pane"
     When deck client "A" exits cleanly
 
