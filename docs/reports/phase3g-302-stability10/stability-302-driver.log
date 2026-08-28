@@ -1,0 +1,23 @@
+=== RUN 1 ===
+=== RUN 1: PASS (exit 0) ===
+=== RUN 2 ===
+=== RUN 2: FAIL (exit 1) ===
+=== RUN 3 ===
+=== RUN 3: PASS (exit 0) ===
+=== RUN 4 ===
+=== RUN 4: PASS (exit 0) ===
+=== RUN 5 ===
+=== RUN 5: PASS (exit 0) ===
+=== RUN 6 ===
+=== RUN 6: PASS (exit 0) ===
+=== RUN 7 ===
+=== RUN 7: PASS (exit 0) ===
+=== RUN 8 ===
+=== RUN 8: PASS (exit 0) ===
+=== RUN 9 ===
+=== RUN 9: PASS (exit 0) ===
+=== RUN 10 ===
+=== RUN 10: FAIL (exit 1) ===
+full per-run logs and combined summary log kept in: /tmp/deck-stability.LAal98
+8/10 passed
+=== ci/stability.sh 10 exit status: 1 (captured with 0 in the same shell call, immediately after the command line, no pipe) ===

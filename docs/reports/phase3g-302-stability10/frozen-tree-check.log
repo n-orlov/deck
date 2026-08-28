@@ -1,5 +1,11 @@
 $ git rev-parse HEAD
-bdc18796c5633208403d9ae25760ed87edc08724
+d0e36e4eb5448e1e3315756aecddea675d898c64
 
-$ git diff --stat bdc1879..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum ; echo "exit status: $?"
+$ git diff --stat d0e36e4..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum ; echo "exit status: $?"
 exit status: 0
+
+$ git status --porcelain -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum ; echo "exit status: $?"
+exit status: 0
+
+# launch sha recorded at launch (artifacts/stability-302-launch-sha.txt):
+d0e36e4eb5448e1e3315756aecddea675d898c64
