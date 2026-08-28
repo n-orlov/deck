@@ -1,0 +1,27 @@
+  Scenario: three events recorded in one order render newest first, not in insertion or al
+    And deck client "A" creates shell session "eventlog-envkey" # event_log.feature:20
+      Error: after scenario hook failed: timed out waiting for frame "Create shell session
+frame:
++------------------------------------------------------------------------------+
+| Create session                                                               |
+| > Name:                                                                      |
+|     the display name; also the source of the session's tmux slug             |
+|   Working directory: /tmp/deck-scenario-1603294798/walking-skeleton-cwd      |
+| (last used) the session's cwd; must exist and be a directory; Ctrl+P/Ctrl+N  |
+| cycles recent history; right/end completes a shown directory match           |
+|   Agent: claude (left/right cycles: claude, pi, shell)                       |
+|     (last used) which coding agent adapter launches this session             |
+|   Permission profile: safe (left/right cycles: safe, plan, edits)            |
+| how much the agent may do without asking; an unsupported profile degrades to |
+| safe; yolo is not offered because allow_yolo is not enabled in config.toml   |
+|   Launch args (JSON array):                                                  |
+|     extra arguments appended verbatim after the adapter's own argv           |
+|   Env (key=value, comma-separated):                                          |
+|     session-level environment variables, highest priority in PATH resolution |
+|   Pre-launch command:                                                        |
+|     a command run in the pane before the agent starts, e.g. to load secrets  |
+|   Login shell: off (space toggles)                                           |
+| makes captured_path advisory only (not applied): runs via $SHELL -lc instead |
+| of the agent argv, so the login shell sets PATH                              |
+| ↑/↓ field · Left/Right/Space cycles · Enter submits · Esc cancels            |
++------------------------------------------------------------------------------+

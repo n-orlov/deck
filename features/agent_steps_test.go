@@ -532,6 +532,51 @@ func clientOpensCreateModalForAgent(ctx context.Context, clientName, kind string
 // black-box observer of the released binary (see registerBlackBoxAssertionSteps).
 var createAgentOptionsOrder = []string{"shell", "claude", "pi"}
 
+// ensureCreateModalAgent leaves a just-opened create modal's Agent field
+// reading want with focus back on Name, whatever agent task 024's
+// "(last used)" pre-selection put there.
+//
+// It exists because the modal title every create step used to wait for is
+// "Create shell session" only while the pre-selected agent is shell and a
+// plain "Create session" otherwise (internal/tui.createBody), so a step
+// that hard-codes the shell title hangs for the whole scenario timeout as
+// soon as a non-shell session was created earlier in the same scenario
+// (event_log.feature does exactly that). Waiting on the Agent row, which
+// createFieldRows renders unconditionally, is title-independent; cycling to
+// want by reading the frame rather than counting presses from a presumed
+// starting option is pre-selection-independent.
+func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want string) error {
+	if err := client.WaitForFrame(ctx, false, "Agent: "); err != nil {
+		return fmt.Errorf("wait for the create modal to open: %w", err)
+	}
+	marker := "Agent: " + want + " (left/right cycles"
+	if strings.Contains(client.Frame(false), marker) {
+		return nil
+	}
+	// Name -> Working directory -> Agent (↑/↓ move between fields, task 025).
+	if err := client.Send("\x1b[B\x1b[B"); err != nil {
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+	for attempt := 0; attempt <= len(createAgentOptionsOrder); attempt++ {
+		if strings.Contains(client.Frame(false), marker) {
+			break
+		}
+		if err := client.Send("\x1b[C"); err != nil { // right arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err := client.WaitForFrame(ctx, false, marker); err != nil {
+		return fmt.Errorf("cycle the create modal's Agent field to %q: %w", want, err)
+	}
+	// Back up to Name, which is where every caller starts typing.
+	if err := client.Send("\x1b[A\x1b[A"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "> Name:")
+}
+
 // startNamedClientWithSlowReconcile gives stale-frame race scenarios a
 // deterministic window in which a durable external write cannot be picked up
 // by the periodic list refresh before the scenario sends its next key.

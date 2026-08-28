@@ -776,7 +776,10 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
+	// Not a wait on the "Create shell session" title: the modal pre-selects
+	// the last-created agent (task 024), so this step has to put the Agent
+	// field back on shell itself rather than assume it.
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
 	if err := client.Send(name); err != nil {
