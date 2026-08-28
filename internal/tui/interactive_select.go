@@ -211,6 +211,20 @@ func (m Model) updateInteractiveSelection(x, y int) Model {
 // is always cleared on return, whether or not the tmux write succeeded:
 // a failed copy must not leave deck thinking a selection is still
 // "in progress" for the very next press.
+//
+// Task 207 (steering 018's own "adjacent" item): a failed copy already
+// says so via m.attachError ("Cannot copy selection: ..." -- unchanged
+// here in both wording and behaviour); a SUCCESSFUL copy used to set no
+// message at all, so with the drag's own highlight gone the instant the
+// release commits it (R93), a copy that worked and a copy that never
+// happened were indistinguishable on screen. m.selectionCopyNote closes
+// that gap: set to a brief confirmation naming what was copied (byte
+// count, plus a line count once the run spans more than one row) and
+// that it went to deck's OWN tmux buffer -- never the OSC 52 clipboard
+// hop, which stays exactly as untested and unmentioned as it was before
+// this task. Every non-success return path (no drag, no grid, or a
+// failed tmux write) clears it, so a stale confirmation from an earlier
+// successful drag never lingers over a click or a failed one.
 func (m Model) commitInteractiveSelection() Model {
 	anchorCol, anchorRow := m.interactiveSelectAnchorCol, m.interactiveSelectAnchorRow
 	curCol, curRow := m.interactiveSelectCurrentCol, m.interactiveSelectCurrentRow
@@ -223,6 +237,7 @@ func (m Model) commitInteractiveSelection() Model {
 	m.interactiveSelectDragged = false
 
 	if !dragged || grid == nil {
+		m.selectionCopyNote = ""
 		return m
 	}
 	_, contentHeight := m.previewContentSize()
@@ -233,11 +248,29 @@ func (m Model) commitInteractiveSelection() Model {
 	ctx := context.Background()
 	if err := client.SetSelectionBuffer(ctx, text); err != nil {
 		m.attachError = "Cannot copy selection: " + err.Error()
+		m.selectionCopyNote = ""
 		return m
 	}
 	writeOSCClipboardBestEffort(text)
 	m.attachError = ""
+	m.selectionCopyNote = selectionCopyConfirmation(text)
 	return m
+}
+
+// selectionCopyConfirmation is task 207's own wording for a successful
+// commitInteractiveSelection: a byte count always, plus a line count once
+// the copied run spans more than one row (a single-row run's line count
+// would just repeat "1 line" for every selection, telling the user
+// nothing a multi-row run's count does), and always naming deck's own
+// tmux buffer -- the SPEC §11.8 load-bearing half -- never the best-
+// effort OSC 52 clipboard hop, which this confirmation deliberately says
+// nothing about.
+func selectionCopyConfirmation(text string) string {
+	lines := strings.Count(text, "\n") + 1
+	if lines > 1 {
+		return fmt.Sprintf("Copied %d bytes (%d lines) to deck's own tmux buffer", len(text), lines)
+	}
+	return fmt.Sprintf("Copied %d bytes to deck's own tmux buffer", len(text))
 }
 
 // selectionCloseSGR is the background-only reset (SGR 49, "default

@@ -251,6 +251,15 @@ func TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer(t *tes
 	if afterRelease.attachError != "" {
 		t.Fatalf("commit reported an error: %q", afterRelease.attachError)
 	}
+	if afterRelease.selectionCopyNote == "" {
+		t.Fatalf("a successful copy set no confirmation (task 207)")
+	}
+	if !strings.Contains(afterRelease.selectionCopyNote, "5 bytes") {
+		t.Fatalf("confirmation %q does not name the copied size (5 bytes, for %q)", afterRelease.selectionCopyNote, "HELLO")
+	}
+	if !strings.Contains(afterRelease.selectionCopyNote, "tmux buffer") {
+		t.Fatalf("confirmation %q does not say the copy went to deck's own tmux buffer", afterRelease.selectionCopyNote)
+	}
 
 	out, err := exec.Command("tmux", "-L", socket, "show-buffer", "-b", tmux.SelectionBufferName).CombinedOutput()
 	if err != nil {
@@ -258,6 +267,62 @@ func TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer(t *tes
 	}
 	if got := strings.TrimRight(string(out), "\n"); got != "HELLO" {
 		t.Fatalf("tmux selection buffer = %q, want %q", got, "HELLO")
+	}
+}
+
+// TestFailedInteractiveSelectionCopySetsNoConfirmation is task 207's own
+// negative case, the twin of
+// TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer
+// above: the SAME drag over the SAME grid, but m.tmuxClient points at a
+// tmux socket with no server behind it at all, so
+// tmux.Client.SetSelectionBuffer's own load-buffer fails. The existing
+// failure message must still fire, unchanged, and no confirmation must
+// appear alongside it -- a failed copy is not a partial success.
+func TestFailedInteractiveSelectionCopySetsNoConfirmation(t *testing.T) {
+	previous := oscClipboardWriter
+	oscClipboardWriter = io.Discard
+	defer func() { oscClipboardWriter = previous }()
+
+	socket := selectionTestSocket("dragfail")
+	newBareSelectionSession(t, socket, "dragfailtarget", 80, 24)
+
+	sess, err := interactive.Start(context.Background(), tmux.Client{Socket: socket}, "dragfailtarget", 80, 24, func(context.Context) ([]byte, error) {
+		return []byte("HELLO WORLD"), nil
+	})
+	if err != nil {
+		t.Fatalf("interactive.Start: %v", err)
+	}
+	t.Cleanup(func() { _ = sess.Close() })
+
+	m := mouseTestModel([]store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}})
+	m.width, m.height = 100, 30
+	m.interactive = true
+	m.interactiveGrid = sess
+	// A socket with no tmux server running at all -- SetSelectionBuffer's
+	// own load-buffer call fails, exercising commitInteractiveSelection's
+	// error path without touching tmux.Client.SetSelectionBuffer itself.
+	m.tmuxClient = tmux.Client{Socket: selectionTestSocket("dragfail-noserver")}
+	layout := m.computeLayout()
+	baseX := layout.Sidebar.Width + 2
+
+	pressX, pressY := baseX+0, 1
+	releaseX := baseX + 4
+
+	updated, _ := m.Update(press(pressX, pressY))
+	afterPress := updated.(Model)
+	updated, _ = afterPress.Update(motion(releaseX, pressY))
+	afterMotion := updated.(Model)
+	if !afterMotion.interactiveSelectDragged {
+		t.Fatalf("a motion event after the press did not mark the selection dragged")
+	}
+	updated, _ = afterMotion.Update(release(releaseX, pressY))
+	afterRelease := updated.(Model)
+
+	if !strings.HasPrefix(afterRelease.attachError, "Cannot copy selection: ") {
+		t.Fatalf("failed copy set attachError %q, want the unchanged \"Cannot copy selection: ...\" prefix", afterRelease.attachError)
+	}
+	if afterRelease.selectionCopyNote != "" {
+		t.Fatalf("a failed copy set a confirmation %q, want none", afterRelease.selectionCopyNote)
 	}
 }
 

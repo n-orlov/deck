@@ -283,6 +283,15 @@ type Model struct {
 	collapsedGroups map[string]bool
 	attachError     string
 	resumeNote      string
+	// selectionCopyNote is the drag-to-copy success counterpart to
+	// attachError's failure message (task 207, steering 018's "adjacent"
+	// item): commitInteractiveSelection sets it on a successful
+	// SetSelectionBuffer write, naming what was copied and that it went to
+	// deck's own tmux buffer, and clears it on every other outcome (a
+	// failed copy, a click that commits nothing, or the next press) so a
+	// stale confirmation from an earlier drag never lingers over a later
+	// one.
+	selectionCopyNote string
 	// undoSessionID/undoSessionName track the session killed by the most
 	// recent x, so u can undo it (requirement 22) within DECK_UNDO_MS
 	// without depending on it still being the current selection -- "undo"
@@ -3326,6 +3335,18 @@ func (m Model) resumeNoteLines(width int) []string {
 	return wrapText(m.resumeNote, width)
 }
 
+// selectionCopyNoteLines is task 207's wrapped selectionCopyNote line set,
+// the drag-to-copy success counterpart to attachErrorLines above --
+// reserved and rendered exactly the same way, so a successful copy's
+// confirmation never pushes the frame off screen any more than a failed
+// one's error does.
+func (m Model) selectionCopyNoteLines(width int) []string {
+	if m.selectionCopyNote == "" {
+		return nil
+	}
+	return wrapText(m.selectionCopyNote, width)
+}
+
 // undoNoteLines is requirement 22's transient toast: visible for exactly
 // DECK_UNDO_MS after a successful x, naming the killed session and stating
 // that u undoes it, then gone once undoSessionID is cleared (by u itself or
@@ -3431,7 +3452,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -3493,6 +3514,7 @@ func (m Model) mainView() string {
 	}
 	lines = append(lines, m.attachErrorLines(width)...)
 	lines = append(lines, m.resumeNoteLines(width)...)
+	lines = append(lines, m.selectionCopyNoteLines(width)...)
 	lines = append(lines, m.undoNoteLines(width)...)
 	lines = append(lines, m.deleteUndoNoteLines(width)...)
 	lines = append(lines, m.archiveUndoNoteLines(width)...)
