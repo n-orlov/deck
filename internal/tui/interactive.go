@@ -317,6 +317,14 @@ func (m Model) previewContentSize() (width, height int) {
 // contentHeight, exactly like every other previewBodyLines branch.
 func (m Model) interactiveBodyLines(contentWidth, contentHeight int) []string {
 	lines, _ := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
+	// R93/task 206: mark an in-progress drag-to-copy selection, if any,
+	// before the not-repainted check below -- highlightInProgressSelection
+	// only ever adds self-closing SGR spans around existing content, so
+	// interactiveGridIsBlank's own ANSI-stripping still sees the same
+	// blank-or-not verdict either way, and applying it here (rather than
+	// after fitLines) keeps viewRow == this slice's own index, the exact
+	// row space interactiveGrid.AbsoluteRow/SelectionHighlightRange use.
+	lines = m.highlightInProgressSelection(lines, contentHeight)
 	// The not-repainted announcement (PRD II-49) only ever applies to the
 	// LIVE view: scrolled-back history, if any exists at all, is by
 	// definition real content that once appeared on screen, so it is never

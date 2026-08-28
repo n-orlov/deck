@@ -1,0 +1,3 @@
+ok  	github.com/n-orlov/deck/internal/interactive	11.387s
+ok  	github.com/n-orlov/deck/internal/tui	1.053s
+ok  	github.com/n-orlov/deck/internal/theme	0.005s

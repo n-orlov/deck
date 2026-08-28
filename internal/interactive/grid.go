@@ -951,6 +951,62 @@ func (s *Session) AbsoluteRow(offset, height, viewRow int) int {
 	return start + viewRow
 }
 
+// SelectionHighlightRange is AbsoluteRow's sibling for steer 018 / SPEC
+// §11.8's "an in-progress selection is visible" (task 206, R93): for
+// viewRow -- the SAME view-relative row RenderRows(offset, height) places
+// on screen, and AbsoluteRow's own third parameter -- it names the
+// column range [startCol, endCol] (inclusive) that a linear selection
+// running from (fromCol, fromRow) to (toCol, toRow) -- already in the
+// SAME absolute row space AbsoluteRow/SelectedText both use, exactly as
+// commitInteractiveSelection (internal/tui/interactive_select.go)
+// converts a drag's anchor/current cells through AbsoluteRow before
+// calling SelectedText -- highlights on that row, and ok reports whether
+// viewRow carries any highlight at all.
+//
+// Membership is resolved by calling AbsoluteRow itself for viewRow -- the
+// SAME conversion a caller already used to turn fromRow/toRow into
+// absolute coordinates in the first place -- rather than a second,
+// independently derived row-window arithmetic that could silently drift
+// from RenderRows' own. The endpoint swap and the partial-first-row/
+// partial-last-row column bounds are the identical rule SelectedText's
+// own doc comment describes (full row 0..width-1 except the first
+// selected row's tail from fromCol and the last selected row's head up to
+// toCol), so the highlighted range and the copied text can never disagree
+// (SPEC §11.8: "it covers exactly the run SelectedText would return").
+func (s *Session) SelectionHighlightRange(offset, height, viewRow, fromCol, fromRow, toCol, toRow int) (startCol, endCol int, ok bool) {
+	if fromRow > toRow || (fromRow == toRow && fromCol > toCol) {
+		fromCol, fromRow, toCol, toRow = toCol, toRow, fromCol, fromRow
+	}
+	abs := s.AbsoluteRow(offset, height, viewRow)
+	if abs < fromRow || abs > toRow {
+		return 0, 0, false
+	}
+	width := s.Grid().Width()
+	if width <= 0 {
+		return 0, 0, false
+	}
+	clampCol := func(c int) int {
+		if c < 0 {
+			return 0
+		}
+		if c >= width {
+			return width - 1
+		}
+		return c
+	}
+	startCol, endCol = 0, width-1
+	if abs == fromRow {
+		startCol = clampCol(fromCol)
+	}
+	if abs == toRow {
+		endCol = clampCol(toCol)
+	}
+	if startCol > endCol {
+		return 0, 0, false
+	}
+	return startCol, endCol, true
+}
+
 // SelectedText answers steer 017 item 3 / SPEC §11.8's drag-to-copy
 // selection (task 216): the PLAIN (unstyled) text of the linear,
 // reading-order run from (fromCol, fromRow) to (toCol, toRow), in the

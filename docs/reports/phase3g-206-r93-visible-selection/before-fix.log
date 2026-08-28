@@ -1,0 +1,7 @@
+# github.com/n-orlov/deck/internal/interactive [github.com/n-orlov/deck/internal/interactive.test]
+internal/interactive/selection_test.go:160:29: s.SelectionHighlightRange undefined (type *Session has no field or method SelectionHighlightRange)
+internal/interactive/selection_test.go:192:19: s.SelectionHighlightRange undefined (type *Session has no field or method SelectionHighlightRange)
+internal/interactive/selection_test.go:195:28: s.SelectionHighlightRange undefined (type *Session has no field or method SelectionHighlightRange)
+internal/interactive/selection_test.go:199:19: s.SelectionHighlightRange undefined (type *Session has no field or method SelectionHighlightRange)
+FAIL	github.com/n-orlov/deck/internal/interactive [build failed]
+FAIL
