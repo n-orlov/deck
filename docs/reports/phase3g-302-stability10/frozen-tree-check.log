@@ -9,3 +9,10 @@ exit status: 0
 
 # launch sha recorded at launch (artifacts/stability-302-launch-sha.txt):
 d0e36e4eb5448e1e3315756aecddea675d898c64
+
+# post-commit re-check (report commit b222875, documentation only):
+$ git rev-parse HEAD
+b2228757d8a852bb30947db30c283f0045888577
+
+$ git diff --stat d0e36e4..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum ; echo "exit status: $?"
+exit status: 0
