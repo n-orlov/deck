@@ -1,0 +1,6 @@
+$ ci/run.sh go test ./cmd/deck/ -run TestDeckBinaryEmptyHelpAndQuitThroughPTY -count=1 -v
+=== RUN   TestDeckBinaryEmptyHelpAndQuitThroughPTY
+--- PASS: TestDeckBinaryEmptyHelpAndQuitThroughPTY (0.73s)
+PASS
+ok  	github.com/n-orlov/deck/cmd/deck	0.731s
+exit status: 0

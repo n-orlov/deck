@@ -419,7 +419,22 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	if _, err := terminal.Write([]byte("?")); err != nil {
 		t.Fatal(err)
 	}
-	waitForScreen(t, output, done, "DECK_TMUX_SOCKET")
+	// helpView()'s alt-screen frame is ~46KB at this width/height -- far
+	// bigger than one PTY read, so io.Copy into `output` lands it across
+	// many separate reads spread over real wall-clock time (observed:
+	// docs/reports/phase3g-303-help-pty-tail-sync/red-before-run-33.log).
+	// "DECK_TMUX_SOCKET" (Runtime controls, well before the end of the
+	// overlay) can already be in the buffer while the LAST few KB -- the
+	// Mouse section and its closing "q quits deck." line -- are still in
+	// flight; under load that tail can lag past this test's poll tick,
+	// and capturing output.String() right then truncates the very
+	// assertions this test makes about that tail (e.g. "copies it into
+	// deck's own tmux buffer", "system clipboard via OSC 52"). Wait for
+	// the overlay's own last rendered line -- helpView()'s closing
+	// "? closes help; Esc closes help; q quits deck." (internal/tui/tui.go)
+	// -- so the capture below is synchronised on the full frame having
+	// actually arrived, not merely started.
+	waitForScreen(t, output, done, "q quits deck.")
 	// The released PTY shows the actionable footer before help opens; the
 	// companion lifecycle PTY test exercises n, a, attachment, and x.
 	// Help itself must never advertise a later-phase command.
