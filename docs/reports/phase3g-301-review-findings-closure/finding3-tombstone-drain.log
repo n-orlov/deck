@@ -1,0 +1,4 @@
+$ ci/run.sh go test -count=1 ./cmd/deck/ ./internal/store/
+ok  	github.com/n-orlov/deck/cmd/deck	7.874s
+ok  	github.com/n-orlov/deck/internal/store	2.517s
+exit status: 0
