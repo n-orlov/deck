@@ -1,0 +1,4 @@
+# GREEN (after): unmutated tree, full internal/tui package.
+# command: ci/run.sh go test -count=1 ./internal/tui/
+ok  	github.com/n-orlov/deck/internal/tui	1.102s
+# exit status: 0

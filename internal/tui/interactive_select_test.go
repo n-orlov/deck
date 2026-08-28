@@ -153,6 +153,51 @@ func TestBeginInteractiveSelectionScope(t *testing.T) {
 	}
 }
 
+// renderedScreenRows renders view into a real terminal emulator of the
+// model's own size and returns what each screen row actually SHOWS: cell
+// contents only, with every escape sequence already consumed by the
+// emulator and trailing padding trimmed. Task 207's confirmation is
+// asserted through this rather than against Model.selectionCopyNote alone,
+// so a confirmation the model holds but mainView never renders (or one the
+// layout reserves no room for, pushing it off the emulator's grid) fails
+// the test instead of passing it.
+func renderedScreenRows(t *testing.T, m Model, view string) []string {
+	t.Helper()
+	term := renderSettingsToEmulator(t, view, m.width, m.height)
+	rows := make([]string, 0, m.height)
+	for y := 0; y < m.height; y++ {
+		var row strings.Builder
+		for x := 0; x < m.width; x++ {
+			cell := term.CellAt(x, y)
+			if cell == nil {
+				row.WriteString(" ")
+				continue
+			}
+			row.WriteString(cell.Content)
+		}
+		rows = append(rows, strings.TrimRight(row.String(), " "))
+	}
+	return rows
+}
+
+// screenRowContaining returns the first rendered row that contains every
+// one of substrings, or "" with ok=false when no single row does.
+func screenRowContaining(rows []string, substrings ...string) (string, bool) {
+	for _, row := range rows {
+		all := true
+		for _, want := range substrings {
+			if !strings.Contains(row, want) {
+				all = false
+				break
+			}
+		}
+		if all {
+			return row, true
+		}
+	}
+	return "", false
+}
+
 // TestClickOverInteractivePreviewWithoutMotionCommitsNothing proves the
 // stated exception's own boundary (SPEC §11.8: "a click over the preview
 // does nothing; a drag selects"): a press immediately followed by a
@@ -260,6 +305,16 @@ func TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer(t *tes
 	if !strings.Contains(afterRelease.selectionCopyNote, "tmux buffer") {
 		t.Fatalf("confirmation %q does not say the copy went to deck's own tmux buffer", afterRelease.selectionCopyNote)
 	}
+	// ...and it is on SCREEN, not merely in the model: one rendered row of
+	// the real frame names both the copied size and deck's own tmux buffer.
+	rows := renderedScreenRows(t, afterRelease, afterRelease.View())
+	row, ok := screenRowContaining(rows, "5 bytes", "tmux buffer")
+	if !ok {
+		t.Fatalf("no rendered row confirms the copy (want one naming %q and %q); frame:\n%s", "5 bytes", "tmux buffer", strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(row, afterRelease.selectionCopyNote) {
+		t.Fatalf("rendered confirmation row %q does not carry the model's own confirmation %q", row, afterRelease.selectionCopyNote)
+	}
 
 	out, err := exec.Command("tmux", "-L", socket, "show-buffer", "-b", tmux.SelectionBufferName).CombinedOutput()
 	if err != nil {
@@ -323,6 +378,18 @@ func TestFailedInteractiveSelectionCopySetsNoConfirmation(t *testing.T) {
 	}
 	if afterRelease.selectionCopyNote != "" {
 		t.Fatalf("a failed copy set a confirmation %q, want none", afterRelease.selectionCopyNote)
+	}
+	// On screen: the unchanged failure message is rendered, and nothing
+	// anywhere in the frame confirms a copy that did not happen.
+	rows := renderedScreenRows(t, afterRelease, afterRelease.View())
+	if _, ok := screenRowContaining(rows, "Cannot copy selection:"); !ok {
+		t.Fatalf("no rendered row shows the failure message; frame:\n%s", strings.Join(rows, "\n"))
+	}
+	if row, ok := screenRowContaining(rows, "tmux buffer"); ok {
+		t.Fatalf("a failed copy rendered a confirmation row %q, want none", row)
+	}
+	if row, ok := screenRowContaining(rows, "Copied"); ok {
+		t.Fatalf("a failed copy rendered a confirmation row %q, want none", row)
 	}
 }
 

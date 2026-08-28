@@ -1,0 +1,43 @@
+# MUTATION (red): the mainView append of selectionCopyNoteLines deleted, i.e. the
+# confirmation held by the model but never rendered. Worktree .scratch-207 at 7e7b0be
+# with THIS commit's internal/tui/interactive_select_test.go copied in.
+# command: ci/run.sh sh -c 'cd .scratch-207 && go vet ./internal/tui/ && go test -count=1 -v -run "TestFailedInteractiveSelectionCopySetsNoConfirmation|TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer" ./internal/tui/'
+# exit status: 1 (vet clean; the success test fails, the failure test still passes)
+
+=== RUN   TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer
+    interactive_select_test.go:313: no rendered row confirms the copy (want one naming "5 bytes" and "tmux buffer"); frame:
+        ╭ deck — sessions ─────────────────┬  a1 interactive 61x26 fitted — Ctrl+Q to leave  ──────────────╮
+        │ > a1                             │                                                             … │
+        │   created 20693d ago             │                                                             … │
+        │                                  │ HELLO WORLD                                                   │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        ╰──────────────────────────────────┴───────────────────────────────────────────────────────────────╯
+        keystrokes forward to the live pane · Ctrl+Q leave interactive mode
+--- FAIL: TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer (0.02s)
+=== RUN   TestFailedInteractiveSelectionCopySetsNoConfirmation
+--- PASS: TestFailedInteractiveSelectionCopySetsNoConfirmation (0.02s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.054s
+FAIL
