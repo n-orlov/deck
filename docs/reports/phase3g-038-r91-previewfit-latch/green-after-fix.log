@@ -1,0 +1,4 @@
+=== RUN   TestR91NoLivePaneReturnDoesNotLatchTheFittedSession
+--- PASS: TestR91NoLivePaneReturnDoesNotLatchTheFittedSession (0.01s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.008s

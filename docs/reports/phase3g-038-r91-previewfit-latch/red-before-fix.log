@@ -1,0 +1,6 @@
+=== RUN   TestR91NoLivePaneReturnDoesNotLatchTheFittedSession
+    zz_r91_latch_evidence_test.go:51: previewFitSessionID = "s1" after a no-live-pane return, want empty: nothing was resized, so this session must stay eligible for a real fit once its pane becomes live again (R91)
+--- FAIL: TestR91NoLivePaneReturnDoesNotLatchTheFittedSession (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.005s
+FAIL
