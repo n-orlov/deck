@@ -1,0 +1,275 @@
+# Criterion (a) grep evidence — captured 2026-08-28T15:43:16Z, HEAD ab34cb4
+# Every command below is run verbatim from the repository root and its WHOLE
+# output is reproduced. ':[0-9]*:[[:space:]]*//' drops pure-comment hits so what
+# remains is on-screen text; internal/tui/settings.go hits are left visible on
+# purpose (R86 puts §11.5's settings takeover out of scope) and README.md says so.
+
+## A1 — every dialog/overlay footer and closing legend (product code only)
+$ grep -rn --include='*.go' 'Esc cancels\|Esc closes\|Esc reverts\|closes detail\|closes help\|Enter archives\|Enter deletes' internal/tui/ | grep -v '_test.go' | grep -v ':[0-9]*:[[:space:]]*//'
+
+internal/tui/theme_picker.go:162:		lines := wrapText("Theme picker: no themes available (no built-ins embedded and no user themes discovered) -- Esc closes.", width)
+internal/tui/theme_picker.go:173:	header := fmt.Sprintf("Theme picker: %s (%d of %d)%sLeft/Right or Up/Down changes%sEnter selects%sEsc reverts",
+internal/tui/env_editor.go:197:		return "Enter saves this key into the session's own env; Esc cancels this edit."
+internal/tui/env_editor.go:203:	return fmt.Sprintf("j/k select a key, Enter edits it, %s; Esc closes.", revealHint)
+internal/tui/event_log.go:74:	fmt.Fprintf(&b, "\nNewest first, up to the most recent %d events. Secret-shaped payload\nvalues mask the same way the env editor's do. Esc closes.\n", maxEventLogRows)
+internal/tui/event_log.go:192:	colorFooterLine(fmt.Sprintf("\nNewest first, up to the most recent %d events. Secret-shaped payload\nvalues mask the same way the env editor's do. Esc closes.", maxEventLogRows))
+internal/tui/tui.go:4574:	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+internal/tui/tui.go:4646:	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+internal/tui/tui.go:4718:	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+internal/tui/tui.go:4783:	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+internal/tui/tui.go:4872:	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+internal/tui/tui.go:4939:	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+internal/tui/tui.go:5132:	b.WriteString("\nEnter archives · Esc cancels\n")
+internal/tui/tui.go:5200:	colorFooterLine("Enter archives · Esc cancels")
+internal/tui/tui.go:5269:	b.WriteString("\nEnter deletes · Esc cancels\n")
+internal/tui/tui.go:5337:	colorFooterLine("Enter deletes · Esc cancels")
+internal/tui/tui.go:5360:	bulkDeleteSubmitText           = "Enter deletes all · Esc cancels"
+internal/tui/tui.go:5660:	b.WriteString("\n" + m.glyph("r renames · i or Esc closes detail", "r renames - i or Esc closes detail") + "\n")
+internal/tui/tui.go:6634:	b.WriteString("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels\n")
+internal/tui/tui.go:6818:	colorFooterLine("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels")
+internal/tui/tui.go:7014:    reopen; Esc cancels an edit in progress, or closes the dialog otherwise
+internal/tui/tui.go:7017:    secret-shaped values mask the same way the env editor's do; Esc closes
+internal/tui/tui.go:7029:  , open/close settings (edit config.toml's keys); Esc closes, prompting to
+internal/tui/tui.go:7032:    Enter selects, Esc reverts byte-for-byte
+internal/tui/tui.go:7038:  ? open/close help; Esc closes help
+internal/tui/tui.go:7056:  ↑/↓ changes field; ↵ advances or submits; Esc cancels
+internal/tui/tui.go:7135:                            nothing (Esc cancels)
+internal/tui/tui.go:7152:? closes help; Esc closes help; q quits deck.
+internal/tui/rename.go:174:	b.WriteString("\nType a new name · Enter confirms · Esc cancels\n")
+internal/tui/rename.go:254:	colorFooterLine("Type a new name · Enter confirms · Esc cancels")
+
+(exit status: 0 — output above is complete)
+
+## A1b — every styled footer site (colorFooterLine is the one themed-footer helper): the styled twin of each plain footer in A1
+$ grep -rn --include='*.go' 'colorFooterLine(' internal/tui/ | grep -v '_test.go'
+
+internal/tui/event_log.go:192:	colorFooterLine(fmt.Sprintf("\nNewest first, up to the most recent %d events. Secret-shaped payload\nvalues mask the same way the env editor's do. Esc closes.", maxEventLogRows))
+internal/tui/tui.go:4646:	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+internal/tui/tui.go:4783:	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+internal/tui/tui.go:4939:	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+internal/tui/tui.go:5200:	colorFooterLine("Enter archives · Esc cancels")
+internal/tui/tui.go:5337:	colorFooterLine("Enter deletes · Esc cancels")
+internal/tui/tui.go:5541:	tail = colorFooterLine(tail, plainTail[1])
+internal/tui/tui.go:6818:	colorFooterLine("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels")
+internal/tui/rename.go:254:	colorFooterLine("Type a new name · Enter confirms · Esc cancels")
+
+(exit status: 0 — output above is complete)
+
+## A1c — the bulk-delete footer constants, incl. the scrollable variant A1's literals cannot see
+$ grep -rn --include='*.go' 'bulkDeleteSubmitText' internal/tui/ | grep -v '_test.go' | grep -v ':[0-9]*:[[:space:]]*//'
+
+internal/tui/tui.go:5360:	bulkDeleteSubmitText           = "Enter deletes all · Esc cancels"
+internal/tui/tui.go:5361:	bulkDeleteSubmitTextScrollable = bulkDeleteSubmitText + " · PgUp/PgDn scrolls"
+internal/tui/tui.go:5383:	submit := bulkDeleteSubmitText
+internal/tui/tui.go:5385:		submit = bulkDeleteSubmitTextScrollable
+
+(exit status: 0 — output above is complete)
+
+## A2 — every on-screen string that names up/down (arrows or words)
+$ grep -rn --include='*.go' '↑/↓\|up/down\|Up/Down' internal/tui/ | grep -v '_test.go' | grep -v ':[0-9]*:[[:space:]]*//'
+
+internal/tui/theme_picker.go:173:	header := fmt.Sprintf("Theme picker: %s (%d of %d)%sLeft/Right or Up/Down changes%sEnter selects%sEsc reverts",
+internal/tui/help_style.go:56:	"↑/↓": true, "j/k": true, "↵": true, "a": true, "Y": true, "n": true,
+internal/tui/tui.go:3637:	{"↑/↓", "up/down", "", nil},
+internal/tui/tui.go:6625:		b.WriteString("  candidates (up/down selects, enter or tab accepts, esc closes):\n")
+internal/tui/tui.go:6809:		colorWhole(theme.Hint, "  candidates (up/down selects, enter or tab accepts, esc closes):")
+internal/tui/tui.go:6919:  ↑/↓ or j/k select a session; as the selection settles (coalesced
+internal/tui/tui.go:6933:  PgUp/PgDn page up/down through the list, one page at a time; while ?
+internal/tui/tui.go:6937:    pages share no line; ↑/↓ or j/k there move one line at a time, and
+internal/tui/tui.go:7056:  ↑/↓ changes field; ↵ advances or submits; Esc cancels
+internal/tui/tui.go:7074:  Up/Down or j/k         move within the focused list
+internal/tui/tui.go:7085:  Left/Right or Up/Down or Space   change the previewed theme
+internal/tui/tui.go:7122:  click a sidebar row       select it (like ↑/↓); the preview follows on
+internal/tui/tui.go:7127:                            (like ↑/↓/PgUp/PgDn)
+internal/tui/tui.go:7129:                            detail view by one line (like ↑/↓ or j/k);
+internal/tui/settings.go:133:			"costs only the create modal's cwd prefill, up/down recent-cycling and " +
+internal/tui/settings.go:1523:		return truncateToWidth("type to search - up/down select - enter jump - esc cancel", width)
+internal/tui/settings.go:1529:		return truncateToWidth("up/down move - enter edit/add - - remove - r reveal/mask - esc back to fields", width)
+internal/tui/settings.go:1531:	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
+
+(exit status: 0 — output above is complete)
+
+## A3 — every string that names Ctrl+P / Ctrl+N (comments kept: they state the same contract)
+$ grep -rn --include='*.go' 'Ctrl+P\|Ctrl+N' internal/tui/ | grep -v '_test.go'
+
+internal/tui/tui.go:109:	// currently cycling through (task 009), fetched once when Ctrl+P/Ctrl+N
+internal/tui/tui.go:120:	// state from the moment before the first "Ctrl+P" started a cycle, so
+internal/tui/tui.go:121:	// pressing "Ctrl+N" back past the most recent entry restores exactly
+internal/tui/tui.go:5951:// per-field key set (task 009, moved onto Ctrl+P/Ctrl+N by task 025):
+internal/tui/tui.go:5952:// Ctrl+P/Ctrl+N cycle recents shell-history style. delta is +1 for
+internal/tui/tui.go:5953:// "Ctrl+P" (older) and -1 for "Ctrl+N" (newer, eventually exiting the
+internal/tui/tui.go:5956:// The first "Ctrl+P" snapshots both the recent_cwds list itself (so it
+internal/tui/tui.go:5958:// plus its prefilled/last-used flags) so "Ctrl+N" can restore it exactly
+internal/tui/tui.go:5962:// "Ctrl+N" with no cycle in progress, or a store with no history at all,
+internal/tui/tui.go:5985:		// Ran "Ctrl+N" back past the most recent entry: exit the cycle and
+internal/tui/tui.go:5986:		// restore exactly what was there before the first "Ctrl+P".
+internal/tui/tui.go:5994:		// "Ctrl+P" at the oldest entry stays there rather than wrapping --
+internal/tui/tui.go:6129:			// recent_cwds (Ctrl+P/Ctrl+N, below): the three per-field key sets
+internal/tui/tui.go:6158:		// 009, moved off up/down onto Ctrl+P/Ctrl+N by task 025 once ↑/↓
+internal/tui/tui.go:6162:		// every other field's Ctrl+P/Ctrl+N stays a no-op here.
+internal/tui/tui.go:6500:	help := "the session's cwd; must exist and be a directory; Ctrl+P/Ctrl+N cycles recent history; right/end completes a shown directory match"
+
+(exit status: 0 — output above is complete)
+
+## A4 — every on-screen string literal that names tab
+$ grep -rni --include='*.go' '"[^"]*\btab\b[^"]*"' internal/tui/ | grep -v '_test.go' | grep -v ':[0-9]*:[[:space:]]*//'
+
+internal/tui/tui.go:6092:		case "tab":
+internal/tui/tui.go:6509:			return fmt.Sprintf("%d matches \u2014 tab to list ", count) + help
+internal/tui/tui.go:6625:		b.WriteString("  candidates (up/down selects, enter or tab accepts, esc closes):\n")
+internal/tui/tui.go:6809:		colorWhole(theme.Hint, "  candidates (up/down selects, enter or tab accepts, esc closes):")
+internal/tui/settings.go:134:			"tab completion candidates (§11.7) the next time it opens. It never " +
+internal/tui/settings.go:233:	case "tab", "left", "right":
+internal/tui/settings.go:630:	case "tab":
+internal/tui/settings.go:1526:		return truncateToWidth("type to edit - tab switch key/value - enter on value saves the entry - esc cancels", width)
+internal/tui/settings.go:1531:	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
+
+(exit status: 0 — output above is complete)
+
+## A5 — the create candidate-list caption
+$ grep -rn --include='*.go' 'candidates (' internal/tui/ | grep -v '_test.go'
+
+internal/tui/tui.go:6625:		b.WriteString("  candidates (up/down selects, enter or tab accepts, esc closes):\n")
+internal/tui/tui.go:6809:		colorWhole(theme.Hint, "  candidates (up/down selects, enter or tab accepts, esc closes):")
+internal/tui/settings.go:134:			"tab completion candidates (§11.7) the next time it opens. It never " +
+
+(exit status: 0 — output above is complete)
+
+## A6 — createCWDHelp's own text, plus its ambiguous-match branch
+$ sed -n '6499,6510p' internal/tui/tui.go
+
+func (m Model) createCWDHelp() string {
+	help := "the session's cwd; must exist and be a directory; Ctrl+P/Ctrl+N cycles recent history; right/end completes a shown directory match"
+	// Ambiguous-match counting (task 011, requirement 15) only applies
+	// while this field is actually focused and being typed into, exactly
+	// like createCWDDisplayValue's ghost: "the cursor is at end of field"
+	// only means something during an edit of THIS field, so another
+	// field's rendering of this same row never shows a stale count left
+	// over from before the user tabbed away.
+	if m.createField == 1 {
+		if count, ok := createCWDAmbiguousMatchCount(m.createCWD); ok {
+			return fmt.Sprintf("%d matches \u2014 tab to list ", count) + help
+		}
+
+(exit status: 0 — output above is complete)
+
+## A7 — negative control: nothing outside settings.go advertises tab/shift+tab as field navigation
+$ grep -rn --include='*.go' 'Tab/Shift+Tab\|Tab or Shift+Tab\|shift+tab\|[Tt]ab.*field' internal/tui/ | grep -v '_test.go' | grep -v ':[0-9]*:[[:space:]]*//' | grep -v 'internal/tui/settings.go'
+
+
+(exit status: 1 — grep exits 1 when nothing matched: the empty output above IS the assertion)
+
+## A8 — what the contract actually gates on: every dialogFields literal in the tree
+$ grep -rn -A5 --include='*.go' 'Fields: dialogFields{' internal/tui/ | grep -v '_test.go'
+
+--
+internal/tui/tui.go:4525:		Fields: dialogFields{Cycle: cycle},
+internal/tui/tui.go-4526-		Cancel: func() {
+internal/tui/tui.go-4527-			m.profileSwitching = false
+internal/tui/tui.go-4528-			m.profileSwitchNote = ""
+internal/tui/tui.go-4529-		},
+internal/tui/tui.go-4530-		Submit: func() tea.Cmd {
+--
+internal/tui/tui.go:4679:		Fields: dialogFields{Cycle: func(delta int) {
+internal/tui/tui.go-4680-			m.pinValue = cycleOption(resumeModeOptions, m.pinValue, delta)
+internal/tui/tui.go-4681-		}},
+internal/tui/tui.go-4682-		Cancel: func() {
+internal/tui/tui.go-4683-			m.pinning = false
+internal/tui/tui.go-4684-			m.pinNote = ""
+--
+internal/tui/tui.go:4817:		Fields: dialogFields{Cycle: func(delta int) {
+internal/tui/tui.go-4818-			m.restartChoiceValue = cycleOption(restartChoiceOptions, m.restartChoiceValue, delta)
+internal/tui/tui.go-4819-		}},
+internal/tui/tui.go-4820-		Cancel: func() {
+internal/tui/tui.go-4821-			m.restartChoosing = false
+internal/tui/tui.go-4822-			m.restartChoiceNote = ""
+--
+internal/tui/tui.go:4970:		Fields: dialogFields{Cycle: func(delta int) {
+internal/tui/tui.go-4971-			m.deletePurgeValue = cycleOption(deletePurgeOptions, m.deletePurgeValue, delta)
+internal/tui/tui.go-4972-		}},
+internal/tui/tui.go-4973-		Cancel: func() {
+internal/tui/tui.go-4974-			m.deleteConfirming = false
+internal/tui/tui.go-4975-			m.deleteNote = ""
+--
+internal/tui/tui.go:6144:		Fields: dialogFields{
+internal/tui/tui.go-6145-			Count:          createFieldCount,
+internal/tui/tui.go-6146-			Index:          &m.createField,
+internal/tui/tui.go-6147-			Cycle:          m.cycleCreateField,
+internal/tui/tui.go-6148-			SpaceTypesText: func() bool { return createFieldIsText(m.createField) },
+internal/tui/tui.go-6149-		},
+--
+internal/tui/rename.go:90:		Fields: dialogFields{SpaceTypesText: func() bool { return true }},
+internal/tui/rename.go-91-		Cancel: func() {
+internal/tui/rename.go-92-			m.renaming = false
+internal/tui/rename.go-93-			m.renameValue, m.renamePrefilled, m.renameNote = "", false, ""
+internal/tui/rename.go-94-		},
+internal/tui/rename.go-95-		Submit: m.submitRename,
+
+(exit status: 0 — output above is complete)
+
+## A9 — applyDialogContract's up/down case: it moves a field only when Count > 1
+$ sed -n '78,95p' internal/tui/dialog_contract.go
+
+		if c.Submit == nil {
+			return nil, false
+		}
+		return c.Submit(), true
+	case "down":
+		if c.Fields.Count <= 1 || c.Fields.Index == nil {
+			return nil, false
+		}
+		*c.Fields.Index = (*c.Fields.Index + 1) % c.Fields.Count
+		return nil, true
+	case "up":
+		if c.Fields.Count <= 1 || c.Fields.Index == nil {
+			return nil, false
+		}
+		*c.Fields.Index = (*c.Fields.Index - 1 + c.Fields.Count) % c.Fields.Count
+		return nil, true
+	case "left":
+		if c.Fields.Cycle == nil {
+
+(exit status: 0 — output above is complete)
+
+## A10 — the ? overlay's own keymap lines for the create dialog and the overlay arrow exception
+$ sed -n '7041,7056p' internal/tui/tui.go
+
+Create dialog fields
+  Name                the display name; also the source of the tmux slug
+  Working directory    the session's cwd; must exist and be a directory
+  Agent               shell, claude, or pi; which adapter launches it
+  Permission profile  how much the agent may do without asking (safe, plan,
+                      edits, yolo); an unsupported profile for the chosen
+                      agent degrades visibly instead of silently
+  Launch args         extra argv appended after the adapter's own argv
+  Env                 session-level environment variables (highest priority
+                      in PATH resolution)
+  Pre-launch command  runs in the pane before the agent starts; the SPEC's
+                      intended use is loading secrets into the pane's
+                      environment without deck ever storing or logging them
+  Login shell         run the pane via $SHELL -lc instead of execing the
+                      agent argv directly
+  ↑/↓ changes field; ↵ advances or submits; Esc cancels
+
+(exit status: 0 — output above is complete)
+
+$ sed -n '6933,6938p' internal/tui/tui.go
+
+  PgUp/PgDn page up/down through the list, one page at a time; while ?
+    help, E the event log or i the detail view covers the list, the
+    same keys instead page that overlay's own content once it grows
+    taller than the frame -- a whole page per press, so consecutive
+    pages share no line; ↑/↓ or j/k there move one line at a time, and
+    with mouse reporting on a wheel notch over the overlay does the same
+
+(exit status: 0 — output above is complete)
+
+$ sed -n '7150,7153p' internal/tui/tui.go
+
+  copy text while deck is running
+
+? closes help; Esc closes help; q quits deck.
+`
+
+(exit status: 0 — output above is complete)
+

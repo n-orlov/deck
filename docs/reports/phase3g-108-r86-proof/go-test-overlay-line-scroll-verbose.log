@@ -1,3 +1,4 @@
+# re-run on the second pass at 2026-08-28T15:45:58Z, HEAD ab34cb4 (docs-only changes since the first run)
 === RUN   TestScrollableOverlaysScrollOneLineWithArrows
 === RUN   TestScrollableOverlaysScrollOneLineWithArrows/help_overlay
 === RUN   TestScrollableOverlaysScrollOneLineWithArrows/detail_view
@@ -10,7 +11,7 @@
 === RUN   TestScrollableOverlaysScrollOneLineWithJK/help_overlay
 === RUN   TestScrollableOverlaysScrollOneLineWithJK/detail_view
 === RUN   TestScrollableOverlaysScrollOneLineWithJK/event_log
---- PASS: TestScrollableOverlaysScrollOneLineWithJK (0.03s)
+--- PASS: TestScrollableOverlaysScrollOneLineWithJK (0.02s)
     --- PASS: TestScrollableOverlaysScrollOneLineWithJK/help_overlay (0.00s)
     --- PASS: TestScrollableOverlaysScrollOneLineWithJK/detail_view (0.00s)
     --- PASS: TestScrollableOverlaysScrollOneLineWithJK/event_log (0.00s)
@@ -23,4 +24,5 @@
     --- PASS: TestScrollableOverlaysStillPageWithPgDn/detail_view (0.00s)
     --- PASS: TestScrollableOverlaysStillPageWithPgDn/event_log (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/internal/tui	0.085s
+ok  	github.com/n-orlov/deck/internal/tui	0.083s
+exit=0
