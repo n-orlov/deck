@@ -1,0 +1,4 @@
+=== RUN   TestInjectEnvRefusesARetainedDeadShellPane
+--- PASS: TestInjectEnvRefusesARetainedDeadShellPane (0.06s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	0.067s
