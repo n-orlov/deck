@@ -188,6 +188,30 @@ var renameFooterKeyTokens = map[string]bool{
 	"Esc":   true,
 }
 
+// renderRenameFieldRow renders the rename sub-dialog's single "New
+// name:" field. Unlike detailField (which self-resets each half and is
+// explicitly documented there as never composing under a shared
+// selection background), this field is the ONE field the rename dialog
+// has, so it is always the focused field whenever the dialog is showing
+// -- SPEC.md:1355's "focused field carries the same selection treatment a
+// selected list row does" therefore applies unconditionally here, the
+// same way task 016 applied it to the create modal's currently-focused
+// row (renderCreateRowSegments, tui.go). The label/value foregrounds are
+// opened via settingsRenderRowOpen (settings.go) -- which opens each
+// segment's colour but never closes it -- and the whole composed string
+// is wrapped in exactly one bgColorToken(theme.Selection, ...) reset at
+// the end; a per-segment colorToken reset would double as clearing that
+// outer background the instant the label's own text ended
+// (foregroundSGR's own doc comment, theme_color.go), which is why this
+// cannot reuse detailField's plain self-resetting halves.
+func (m Model) renderRenameFieldRow() string {
+	segs := []settingsRowSegment{
+		{Text: "New name:  ", Tok: theme.Hint},
+		{Text: m.renameValue, Tok: theme.Text},
+	}
+	return m.bgColorToken(theme.Selection, m.settingsRenderRowOpen(segs))
+}
+
 // styledRenameBody re-derives renameBody's exact structure -- same
 // title/field/explanation/footer/note order -- but colours each finished
 // PHYSICAL line rather than the logical one, exactly like
@@ -223,7 +247,7 @@ func (m Model) styledRenameBody() string {
 
 	colorWhole(theme.Title, fmt.Sprintf("Rename %s", session.Name))
 	out = append(out, "")
-	out = append(out, m.detailField("New name:  ", m.renameValue))
+	out = append(out, m.renderRenameFieldRow())
 	out = append(out, "")
 	colorWhole(theme.Dimmed, fmt.Sprintf("This changes only the display name. The tmux session stays named\n%q; it is never renamed, so a rename can never move or disturb a\nlive pane's identity.", "deck_"+session.Slug))
 	out = append(out, "")
