@@ -100,3 +100,44 @@ func TestRenameViewCarriesSectionTokens(t *testing.T) {
 		t.Fatalf("rename dialog lost its plain visible text once escapes are stripped:\n%s", stripANSI(view))
 	}
 }
+
+// TestRenameViewFocusedFieldGetsSelectionBackground is task 105's own
+// success criterion (F18, SPEC.md:1355): the rename sub-dialog's single
+// field -- "New name" -- is always the focused field whenever the dialog
+// is open (there is nothing else to tab to), so it must carry the same
+// selection background a focused create-modal row does
+// (TestCreateViewFocusedFieldGetsSelectionBackground, create_view_theme_test.go),
+// read per-cell off a real vt.Emulator grid rather than grepped from raw
+// escape bytes. This is the regression test for renderRenameFieldRow
+// (rename.go): before that change, detailField's own doc comment said
+// plainly that neither dialog it serves composes its label/value under a
+// shared selection background, and reverting to it here turns this
+// assertion red -- see docs/reports/phase3g-105-rename-selection/ for the
+// quoted failure.
+func TestRenameViewFocusedFieldGetsSelectionBackground(t *testing.T) {
+	m := task021RenameModel(t)
+	selectionHex := tokenHex(t, m, theme.Selection)
+
+	view := m.View()
+	term := renderSettingsToEmulator(t, view, m.width, m.height)
+
+	nameRow := findRowContaining(t, term, "New name:")
+	nameCol := findCol(t, term, nameRow, "New name:")
+	if bg, ok := cellBgHex(t, term, nameCol, nameRow); !ok || bg != selectionHex {
+		t.Fatalf("focused New name row label background = %q ok=%v, want selection token %s", bg, ok, selectionHex)
+	}
+
+	valueCol := findCol(t, term, nameRow, "alpha")
+	if bg, ok := cellBgHex(t, term, valueCol, nameRow); !ok || bg != selectionHex {
+		t.Fatalf("focused New name row value background = %q ok=%v, want selection token %s", bg, ok, selectionHex)
+	}
+
+	// The title line one row above must NOT carry the selection
+	// background -- proof the background is scoped to the field row, not
+	// leaked across the whole dialog.
+	titleRow := findRowContaining(t, term, "Rename alpha")
+	titleCol := findCol(t, term, titleRow, "Rename")
+	if bg, ok := cellBgHex(t, term, titleCol, titleRow); ok && bg == selectionHex {
+		t.Fatalf("title row carries the selection background %s -- selection must not leak past the New name field", bg)
+	}
+}

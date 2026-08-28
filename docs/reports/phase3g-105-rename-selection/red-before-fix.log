@@ -1,0 +1,6 @@
+=== RUN   TestRenameViewFocusedFieldGetsSelectionBackground
+    rename_theme_test.go:127: focused New name row label background = "" ok=false, want selection token #26324b
+--- FAIL: TestRenameViewFocusedFieldGetsSelectionBackground (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.004s
+FAIL
