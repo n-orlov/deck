@@ -1,0 +1,17 @@
+ok  	github.com/n-orlov/deck/cmd/deck	7.447s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.796s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.773s
+ok  	github.com/n-orlov/deck/features	319.369s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.025s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.210s
+ok  	github.com/n-orlov/deck/internal/interactive	11.402s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	4.592s
+ok  	github.com/n-orlov/deck/internal/store	2.432s
+ok  	github.com/n-orlov/deck/internal/theme	0.006s
+ok  	github.com/n-orlov/deck/internal/tmux	19.394s
+ok  	github.com/n-orlov/deck/internal/tui	1.068s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
