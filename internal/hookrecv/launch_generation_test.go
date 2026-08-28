@@ -3,6 +3,7 @@ package hookrecv
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -91,6 +92,67 @@ func TestSupersededLaunchGenerationDropsTheWholeHookClass(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestSupersededHookRecordsADistinctDeclinedEventKindAndReason is task 032:
+// a superseded hook's stored event must be distinguishable, from its own
+// kind/reason columns alone, from the plain applied event of the same hook
+// name -- "declined and why", not the same kind a hook that DID apply would
+// have written. The row must be exactly as untouched as
+// TestSupersededLaunchGenerationDropsTheWholeHookClass already established;
+// this test's own value is the distinct kind/reason assertion on top of that.
+func TestSupersededHookRecordsADistinctDeclinedEventKindAndReason(t *testing.T) {
+	db := newHookStore(t)
+	const id = "declined-row"
+	const conversationID = "conversation-declined"
+	createHookSession(t, db, id, "claude", conversationID)
+	if _, err := db.DB().Exec(`UPDATE sessions SET status = 'running', status_reason = 'before', status_source = 'hook', status_at = 7, last_message = 'before message', launch_lease_owner = '4242@boot#gen-current', launch_lease_until = 0 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(fmt.Sprintf(`{"hook_event_name":"Stop","session_id":%q,"last_assistant_message":"from the dead pane"}`, conversationID))
+	result, err := Receive(context.Background(), db, raw, id, "gen-killed", 20)
+	if err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+	if !result.Superseded {
+		t.Fatalf("result.Superseded = false, want true: %#v", result)
+	}
+
+	// The row is untouched: still the pre-hook status/reason/source/at/message.
+	row, err := db.GetSession(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != "running" || row.StatusReason != "before" || row.StatusSource != "hook" || row.StatusAt != 7 || row.LastMessage != "before message" {
+		t.Fatalf("superseded hook reached the row: %#v", row)
+	}
+
+	// The stored event's kind and reason both say this was declined, and the
+	// reason names why (the mismatched launch generations); neither collides
+	// with what an applied "Stop" hook would have written (kind "stop",
+	// reason "" since Stop has no ReasonField).
+	var kind, eventReason, payload string
+	if err := db.DB().QueryRow(`SELECT kind, reason, payload FROM events WHERE session_id = ? ORDER BY seq DESC LIMIT 1`, id).Scan(&kind, &eventReason, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if kind == "stop" || kind != "stop.superseded" {
+		t.Fatalf("event kind = %q, want a distinct declined kind (not the plain applied %q)", kind, "stop")
+	}
+	if eventReason == "" || !strings.Contains(eventReason, "gen-current") || !strings.Contains(eventReason, "gen-killed") {
+		t.Fatalf("event reason = %q, want it to say why (naming both launch generations)", eventReason)
+	}
+	if payload != string(raw) {
+		t.Fatalf("event payload = %q, want the original hook payload preserved: %q", payload, string(raw))
+	}
+}
+
+func containsGeneration(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // TestSupersededSessionStartDoesNotMoveTheConversationID keeps requirement
