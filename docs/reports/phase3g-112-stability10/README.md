@@ -1,9 +1,11 @@
 # Phase 3g — task 112: `ci/stability.sh 10` at the final code commit, real rate published
 
 **Rate: 9/10. Script exit status: 1.** Ten runs commissioned, ten run, none
-re-run and none relabelled. The one failing run (run 7) failed a real-product
-scenario that is neither F2 nor F22; its root cause is analysed in §4 and named
-plainly rather than folded into either existing flake.
+re-run and none relabelled. The one failing run (run 7) failed a scenario that
+is neither F2 nor F22; its root cause — an assertion with no barrier between
+the `u` keystroke and the database read it checks, racing an undo the product
+writes asynchronously by construction — is established from the committed log
+and the code it names in §4, and not folded into either existing flake.
 
 ## 1. What was run, where, and at which sha
 
@@ -92,7 +94,8 @@ package lines (`run-1.log` … `run-6.log`, `run-8.log` … `run-10.log`, 894
 bytes each — a fully green `go test -p=1 -count=1 ./...` prints one line per
 package and nothing else). Run 7 is verbose and large (1,028,062 bytes)
 because `go test` dumps a failing package's full captured stdout, including a
-goroutine stack dump from a SIGQUIT sent to a hung client process; it still
+goroutine stack dump from the SIGQUIT that teardown sends to any client still
+running when a scenario ends (§4 — the client was idle, not hung); it still
 shows 13 `ok` lines (12 fully-green packages plus `features` itself, which
 `go test` reports as `FAIL` rather than `ok`, so the count is one short of
 the other nine runs' 14 by design, not by omission).
@@ -117,7 +120,7 @@ sent (input timeline):
 skipped)` (`run-7.log:5068-5069`) — exactly one real scenario failure in the
 whole `features` package this run.
 
-**What the scenario does** (`features/filter.feature:107-133`,
+**What the scenario does** (`features/filter.feature:107-136`,
 `@requirement-33-dd-reaches-and-tombstones-an-archived-row`): it starts a
 client with `DECK_DELETE_GRACE_MS=200` (a real-wall-clock 200 ms delete-grace
 window — `features/kill_delete_undo_test.go:257-271`), archives a session,
@@ -132,29 +135,106 @@ sent at `17:28:38.179` and the undo keystroke `u` was sent at `17:28:38.195`
 case of the undo arriving after the window legitimately expired. The
 `deleted_at` value the failing assertion reports, `1787938118179`, is exactly
 `17:28:38.179` in unix milliseconds — the timestamp the *original* `dd`
-confirmation wrote, unchanged. So `u` never took effect at all: `deleted_at`
-still holds the value the first tombstone wrote, 16 ms before `u` was sent.
+confirmation wrote, unchanged. So at the instant the assertion read the row,
+`u` had not yet taken effect: `deleted_at` still held the value the first
+tombstone wrote, 16 ms before `u` was sent.
 
-**The client hung.** The log's own diagnostic line — `surviving deck client:
-hung deck client killed after 1s` — says the harness sent `u`, waited for a
-response, got none, and killed the client with SIGQUIT after a 1 s liveness
-timeout (the SIGQUIT goroutine dump that follows in the raw log, `run-7.log`
-lines ~5030 onward, is the runtime's own dump at the moment of the kill, not
-evidence of what caused the hang — every visible goroutine is idle/parked
-GC/runtime machinery, not a deadlocked stack in product code). So the root
-cause is: **the deck client stopped responding to input for over a second
-immediately after confirming the tombstone dialog**, before it ever processed
-the `u` keystroke — not a logic bug in the undo path itself (the assertion
-never got a chance to exercise that path), and not a case of the 200 ms grace
-window expiring before `u` arrived (it did not: `u` was sent 16 ms after the
-tombstone, `deleted_at` is unchanged from that same instant). This is a
-client responsiveness/scheduling failure under host load (§3's load trace
-shows this run's window sat within the same 2–8 range as the other nine, so
-this is not attributable to an unusually loaded host either) whose specific
-mechanism (event-loop starvation, a blocking store call, GC pause, or
-something else) this report does not diagnose further, per the standing rule
-against re-running to chase or fix a stability-measurement result. It is
-reported as observed, once, from this one run's evidence.
+**Root cause: the assertion has no barrier between the keystroke and the
+database read, and the undo it waits for is written asynchronously.** Four
+facts in the tree at `9f61e21` compose into the race, each one checkable
+without re-running anything:
+
+1. **The keystroke step returns as soon as the byte is in the PTY buffer.**
+   `clientPressesUndo` (`features/kill_delete_undo_test.go:315-325`) is
+   `return client.Send("u")` and nothing else, and `Send`
+   (`features/pty_driver_test.go:383-389`) records the byte and returns
+   `d.terminal.Write`'s error — it does not, and cannot, wait for the client to
+   read, handle or act on it.
+2. **The step in between is not a barrier.** The only step separating `presses
+   u` from the database read is `Then deck client "A" screen contains
+   "filter-dd-archived"` (`features/filter.feature:129`), which resolves to
+   `clientScreenContains` → `clientScreenContainsBefore`
+   (`features/assertions_test.go:105-107,156-171`) → `WaitForFrame`
+   (`features/pty_driver_test.go:470-485`). `WaitForFrame` tests the *current*
+   frame first and returns immediately if the substring is already there — and
+   `filter-dd-archived` was already on screen before `u` was ever sent: the
+   raw capture's last renders before the failure carry the filter's own status
+   line, `Filter "filter-dd-archived" in force (1 matching) — / to change, Esc
+   to clear` (`grep -c 'in force (1 matching)' run-7.log` → `6`; the quotes
+   appear backslash-escaped in the log because the whole raw capture is one
+   `%q`-quoted Go string). So this step passes on its first poll, waiting for
+   no render and proving nothing about `u`.
+3. **The product's undo is asynchronous by design.** `u`'s delete-undo branch
+   (`internal/tui/tui.go:2663-2672`) clears the in-model trio
+   (`deleteUndoSessionID`/`Name`, bumping `deleteUndoGeneration`) and returns a
+   `tea.Cmd` closure; the `restoreSvc` call that clears `deleted_at` in SQLite
+   runs on bubbletea's command goroutine and reports back later as
+   `sessionRestored` (`internal/tui/tui.go:1923`). Even a perfectly responsive
+   client therefore commits the undo some time *after* it accepts the byte.
+4. **The database probe reads once and never retries.** `sessionDeletedAt`
+   (`features/kill_delete_undo_test.go:420-435`) opens the observed database,
+   runs one `SELECT deleted_at FROM sessions WHERE name = ?`, and returns; the
+   `is not tombstoned` assertion built on it
+   (`features/kill_delete_undo_test.go:448-457`) has no poll loop and no
+   deadline, unlike the screen assertions, which all poll
+   (`features/pty_driver_test.go:470-485`).
+
+**The competing `u` affordance on screen is not the explanation.** The frame
+at the time carried two undo toasts at once — `Deleted — press u to undo` and
+`Killed and archived — press u to unarchive (agent stays stopped)` — so it is
+fair to ask whether `u` went to the archive window instead. It cannot have:
+the `u` handler checks the kill trio, the batch-kill window, then the
+delete-undo trio, and reaches the archive window only when all of those are
+empty (`internal/tui/tui.go:2620-2700`, whose own comment pins that order),
+and the immediately preceding step `Then deck client "A" screen contains
+"press u to undo"` (`features/filter.feature:126`) passed, which is exactly
+the render that proves `deleteUndoSessionID` was still set
+(`internal/tui/tui.go:3360-3369`). So `u` took the delete-undo branch, and the
+branch it took is asynchronous.
+
+So the scenario reads the row microseconds-to-milliseconds after writing `u`
+into the PTY (the input timeline above runs at a ~16 ms cadence), and what it
+asserts — "the undo has landed in SQLite" — is something it never waits for.
+Nine runs won that race; run 7 lost it. The failure is a missing
+synchronisation in the scenario's own step definitions, not a demonstration
+that the undo path is broken: the assertion as written cannot tell "the undo
+did not happen" from "the undo has not happened *yet*".
+
+**The `hung deck client` line is teardown's signature for "the client was
+still alive", not evidence of a hang.** `ScenarioHarness.Close`
+(`features/lifecycle_test.go:399-403`) calls `client.Stop(time.Second)` on
+every client it owns, and `ScreenDriver.Stop`
+(`features/pty_driver_test.go:580-613`) waits for the process to *exit*,
+SIGQUITs it when it has not, and returns exactly `hung deck client killed
+after 1s`. Nothing in that path ever asks the client to quit, so any client
+still running at teardown produces this line. This scenario quits its client
+in its own last step, `And deck client "A" exits cleanly`
+(`features/filter.feature:136`) — which never ran, because the failure at
+`filter.feature:130` aborted the scenario six steps early (exactly the `6
+skipped` the log's own step tally reports, `run-7.log:5069`). The line is a
+consequence of the failure, not its cause.
+
+**The goroutine dump agrees: the client was idle, not stuck.** In the dump the
+raw capture preserved, goroutine 1 is parked in bubbletea's `eventLoop`
+`select` (`bubbletea@v1.3.10/tea.go:384`) — no `Update` in flight — and the
+input reader, goroutine 15, is parked in `EpollWait`
+(`cancelreader@v0.2.2/cancelreader_linux.go:134`) with nothing left to read,
+meaning the `u` byte had already been drained from the PTY. No frame in the
+captured portion of the dump is in `github.com/n-orlov/deck/internal` code at
+all, and `Cannot restore` — the note the model renders when `restoreSvc`
+returns an error (`internal/tui/tui.go:1923-1926`) — appears nowhere in
+`run-7.log` (`grep -c "Cannot restore" run-7.log` → `0`).
+
+**What this one observation does not establish**, stated so nothing later
+over-reads it: the dump is truncated mid-stack after goroutine 110 (the raw
+capture is bounded), so it is not a complete goroutine census; and because
+teardown removed the scenario's `DECK_HOME`, there is no post-mortem read
+proving the restore did commit a moment later. What is established is the
+race, from the four cited code paths, and that the failing assertion cannot
+distinguish it from a real defect. Giving that step a real barrier (polling
+the row the way every screen assertion polls the frame) is a follow-up task,
+not this measurement's business; per the standing rules the run is published
+as observed and is not re-run.
 
 **This is not F2 and not F22.** F2 is `internal/theme`'s (actually
 `internal/tui`'s) `TestGoldenMinimumFrame` settle flake; F22 is
@@ -210,7 +290,7 @@ in every run once that package's output becomes visible.
 
 | path | what it is |
 |---|---|
-| [run-1.log](run-1.log) … [run-10.log](run-10.log) | each run's own `go test -p=1 -count=1 ./...` output, copied verbatim from the script's `/tmp/deck-stability.nivvKL/run-N.log`. Nine are 894 bytes (fully green, compact); run-7.log is 1,028,062 bytes (full verbose dump of the one failing package, including a runtime goroutine dump from the SIGQUIT that killed the hung client). |
+| [run-1.log](run-1.log) … [run-10.log](run-10.log) | each run's own `go test -p=1 -count=1 ./...` output, copied verbatim from the script's `/tmp/deck-stability.nivvKL/run-N.log`. Nine are 894 bytes (fully green, compact); run-7.log is 1,028,062 bytes (full verbose dump of the one failing package, including a runtime goroutine dump from the SIGQUIT teardown sent to the client the aborted scenario left running — §4). |
 | [stability-summary.log](stability-summary.log) | the script's own combined `summary.log`: the ten `=== RUN n ===` / `=== RUN n: PASS\|FAIL ===` marker pairs interleaved with each run's package lines, ending in `9/10 passed`. |
 | [loadavg-trace.log](loadavg-trace.log) | `/proc/loadavg` every 5 s for the whole 3725 s (744 samples), each line `<unix> <1min> <5min> <15min> <procs> <lastpid>`. |
 
@@ -227,12 +307,15 @@ passed`, script exit status `1`, at code sha `9f61e21` from commit `a3f45a0`.
 
 This does **not** meet the phase's "green means ten consecutive times" bar
 (standing rules, "Green means"). The gap is real and is reported as found: one
-run in ten hit a genuine client hang immediately after a dialog confirmation
-under a short (200 ms) delete-grace window, in `features/filter.feature`'s
-`@requirement-33-dd-reaches-and-tombstones-an-archived-row` scenario — a
-failure mode not previously catalogued as F2 or F22, root-caused to the best
-extent this one observation supports in §4, and left as a new finding for a
-future task rather than fixed here or hidden by a re-run.
+run in ten lost a race the scenario itself never synchronises —
+`features/filter.feature`'s
+`@requirement-33-dd-reaches-and-tombstones-an-archived-row` reads `deleted_at`
+straight out of SQLite a few milliseconds after writing `u` into the client's
+PTY, while the undo that clears it is written asynchronously on bubbletea's
+command goroutine (§4's four cited code paths). It is a failure mode not
+previously catalogued as F2 or F22, root-caused in §4 to a missing barrier in
+the scenario's own step definitions, and left as a new finding for a future
+task rather than fixed here or hidden by a re-run.
 
 Two limits on what this measures, stated so no later report over-reads it:
 
