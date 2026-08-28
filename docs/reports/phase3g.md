@@ -14,12 +14,15 @@ the red before the fix and the green after, from the evidence directory captured
 it. Written incrementally by task 038 from the tree at task 037's HEAD (`cc36cfa`);
 sections are not re-derived once written.
 
-**One requirement's evidence gap is disclosed rather than hidden.** R86's fixing
+**Two requirements' evidence gaps are disclosed rather than hidden.** R86's fixing
 tasks (025, 026) did not produce a dedicated evidence directory at their own
-implementation time, so its red/green quote in this report was produced retroactively
-by task 038, by the identical revert-and-reproduce method, and is labelled as such —
-see the [R86 section](#r86--updown-navigate-dialog-fields-tab-is-completion-only-tasks-025-026)
-and its own `docs/reports/phase3g-038-r86-dialog-arrow-nav/README.md`.
+implementation time, and task 035 committed no test that fails without R91's fix, so
+both of those red/green quotes were produced retroactively by task 038, by the
+identical revert-and-reproduce method, and are labelled as such — see the
+[R86 section](#r86--updown-navigate-dialog-fields-tab-is-completion-only-tasks-025-026)
+with `docs/reports/phase3g-038-r86-dialog-arrow-nav/README.md`, and the
+[R91 section](#r91--previewfits-spent-fit-and-the-sigwinch-re-baseline-it-licenses-tasks-034-035)
+with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
 
 - Sections: [R76](#r76--the-reconcile-repairs-a-terminal-row-with-a-live-pane-tasks-001-002) ·
   [R77](#r77--a-deleted-sessions-name-is-reusable-tasks-003-006) ·
@@ -173,7 +176,7 @@ end and fixes `filter.go`'s "mutually exclusive" comment, which the reachable
 the delete confirm names the archived fact).
 
 Tests: `internal/store/tombstone_test.go` (refusal wording, and
-`TestSoftDeleteAndRestoreRoundTripOnAnArchivedRow` walking tombstone →
+`TestDDOnAnArchivedRowIsReachableAndReapsCleanly` walking tombstone →
 `ListArchivedSessions` exclusion → restore-with-`archived_at`-intact → reap, all four
 consequences task 008 names); `features/filter.feature` (the same round trip through
 real keystrokes: `/` finds the archived row, `dd` tombstones it, `u` returns it to the
@@ -510,7 +513,7 @@ Fix: the guard now calls `TMux.HasLivePane` — R69's "has a live pane" notion, 
 rather than a second liveness definition invented for injection — and the refusal
 names what happened and the restart-to-apply route out.
 
-Tests: `internal/service/inject_test.go`
+Tests: `internal/service/inject_retained_corpse_test.go`
 (`TestInjectEnvRefusesARetainedDeadShellPane`); `features/environment.feature`.
 
 **Red** (`inject.go` stashed, test kept),
@@ -655,9 +658,37 @@ Tests: `internal/tui/preview_fit_overlap_test.go` (pre-existing R63 tests, unaff
 none of their literals set `noLivePane`); the same seven exact-count sites in
 `features/preview.feature` and `features/interactive_sigwinch_budget.feature`.
 
-**Every one of the 7 predicted counts matched exactly** — this is the R91-specific
-form of "red/green": the *prediction itself*, written before the fix, is what would
-have gone wrong if the fix had moved a count, and none did.
+**Red before the fix, green after** — retroactively captured by task 038, a disclosed
+deviation from the "captured at implementation time" rule: task 035 committed no test
+that fails without its fix, so no implementation-time red existed for the latch itself.
+Task 038 reverted `internal/tui/tui.go` to `9d6c22a^`'s content and ran a throwaway
+evidence harness (removed again in the same iteration, source preserved verbatim as
+`docs/reports/phase3g-038-r91-previewfit-latch/zz_r91_latch_evidence_test.go.txt`) that
+names no field the fix added, so it compiles either side of it; it runs the fit closure
+for real against a non-existent tmux socket — the genuine no-live-pane return — and
+hands the resulting `previewFitDone` to `Model.Update`.
+
+**Red**, `docs/reports/phase3g-038-r91-previewfit-latch/red-before-fix.log`:
+```
+    zz_r91_latch_evidence_test.go:51: previewFitSessionID = "s1" after a no-live-pane
+    return, want empty: nothing was resized, so this session must stay eligible for a
+    real fit once its pane becomes live again (R91)
+--- FAIL: TestR91NoLivePaneReturnDoesNotLatchTheFittedSession (0.00s)
+```
+
+**Green** (committed `tui.go`), same directory's `green-after-fix.log`:
+```
+--- PASS: TestR91NoLivePaneReturnDoesNotLatchTheFittedSession (0.01s)
+ok  	github.com/n-orlov/deck/internal/tui	0.008s
+```
+
+That harness is **not** in the suite: R91's real residual gap is that nothing committed
+fails if the `noLivePane` guard is removed again (promoting the harness into
+`internal/tui/preview_fit_overlap_test.go` is a follow-up worth a task).
+
+The count side of R91 — the part the PRD's SIGWINCH licence turns on — held too:
+**every one of the 7 predicted counts matched exactly**, and the *prediction itself*,
+written before the fix, is what would have gone wrong if the fix had moved a count.
 `docs/reports/phase3g-035-previewfit-no-live-pane-latch/features-preview-sigwinch-green.log`:
 ```
 15 scenarios (15 passed)
@@ -682,7 +713,9 @@ still load-bearing, not merely unexercised, after this fix.
 Green: `ci/run.sh go test -count=1 ./internal/tui/` (`internal-tui-tests.log`).
 
 Evidence: [`phase3g-034-previewfit-derivation/`](phase3g-034-previewfit-derivation/),
-[`phase3g-035-previewfit-no-live-pane-latch/`](phase3g-035-previewfit-no-live-pane-latch/).
+[`phase3g-035-previewfit-no-live-pane-latch/`](phase3g-035-previewfit-no-live-pane-latch/),
+[`phase3g-038-r91-previewfit-latch/`](phase3g-038-r91-previewfit-latch/) (the retroactive
+red/green pair and its disclosure).
 
 ## R92 — R75's release-failure fallback is exercised (tasks 036, 037)
 
@@ -767,7 +800,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R88 | met | 029 | `f9c6fc4` | yes |
 | R89 | met | 030–031 | `6718823`, `f70b773`, `8ddf869`, `ce22192` | yes |
 | R90 | met | 032–033 | `99fc4a3`, `ab14d19`, `ca43907` | not required (read-gap quoted anyway) |
-| R91 | met | 034–035 | `c93f811`, `9d6c22a` | yes (prediction-form) |
+| R91 | met | 034–035 | `c93f811`, `9d6c22a` | yes (retroactive, disclosed; plus the count prediction) |
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
 
 "Partial"/"not done" rows are not claims of completion; they are carried forward to

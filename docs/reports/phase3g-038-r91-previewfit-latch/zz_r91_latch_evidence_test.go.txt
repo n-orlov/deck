@@ -1,0 +1,60 @@
+package tui
+
+import (
+	"testing"
+	"time"
+)
+
+// TestR91NoLivePaneReturnDoesNotLatchTheFittedSession is a task-038 EVIDENCE
+// harness for R91, not a suite test: it exists only long enough to capture the
+// red-before-fix / green-after-fix pair the phase 3g report owes for R91, and
+// is removed again in the same iteration (its source is preserved verbatim in
+// docs/reports/phase3g-038-r91-previewfit-latch/).
+//
+// It deliberately names no field added by the fix (9d6c22a), so it compiles
+// against the pre-fix internal/tui/tui.go as well: the whole point is that the
+// SAME test can be run either side of the fix.
+//
+// Route: previewFitModel wires a tmux client whose socket does not exist, so
+// running the fit closure for real takes previewFit's no-live-pane/read-error
+// return -- the exact branch R91 is about -- with no tmux and no pty needed.
+// The message that comes back is then handed to Update, and the assertion is
+// that the session did NOT get latched into previewFitSessionID: a later tick
+// (pane now live again, row still selected) must still be able to fit.
+func TestR91NoLivePaneReturnDoesNotLatchTheFittedSession(t *testing.T) {
+	m := previewFitModel(t)
+
+	updated, cmd := m.Update(previewTick(time.Now()))
+	m = updated.(Model)
+	cmds := previewTickCmds(t, cmd)
+	if len(cmds) != 2 {
+		t.Fatalf("first previewTick returned %d commands, want 2 (reschedule + one passive fit)", len(cmds))
+	}
+
+	// Run the fit closure for real. The socket does not exist, so
+	// client.PreviewPane fails and previewFit takes its no-live-pane return.
+	msg := cmds[1]()
+	done, ok := msg.(previewFitDone)
+	if !ok {
+		t.Fatalf("the fit closure produced %T, want previewFitDone", msg)
+	}
+	if done.sessionID != "s1" {
+		t.Fatalf("previewFitDone.sessionID = %q, want %q", done.sessionID, "s1")
+	}
+
+	updated, _ = m.Update(done)
+	m = updated.(Model)
+	if m.previewFitInFlight != "" {
+		t.Fatalf("previewFitInFlight = %q after previewFitDone landed, want empty", m.previewFitInFlight)
+	}
+	if m.previewFitSessionID != "" {
+		t.Fatalf("previewFitSessionID = %q after a no-live-pane return, want empty: nothing was resized, so this session must stay eligible for a real fit once its pane becomes live again (R91)", m.previewFitSessionID)
+	}
+
+	// The consequence that makes the latch a defect rather than bookkeeping:
+	// the next tick, with the row still selected, must issue a fit again.
+	_, cmd = m.Update(previewTick(time.Now()))
+	if got := previewTickCmds(t, cmd); len(got) != 2 {
+		t.Fatalf("the tick after a no-live-pane return returned %d commands, want 2 (reschedule + a fresh passive fit): the session lost fit eligibility permanently (R91)", len(got))
+	}
+}
