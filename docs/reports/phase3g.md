@@ -1042,3 +1042,11 @@ scenario's assertion to a store read or otherwise account for R76.
 | 106 | R84 | `57a6882`, `0219e42` | `internal/theme/contrast_test.go` `TestThemedDialogTokensClearContrastFloor` | `docs/reports/phase3g-106-contrast-floor/` |
 | 107 | R82/R83 | `02e64a5` | `internal/tui/dialog_degradation_net_test.go` `TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII`, `TestRenameFieldRowTruncationReemitsItsOwnReset` | `docs/reports/phase3g-107-dialog-degradation-net/` |
 | 108 | R86 | `ab34cb4`, `860c412` | `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_bindings_parity_test.go`, `internal/tui/overlay_line_scroll_test.go` | `docs/reports/phase3g-108-r86-proof/` |
+
+Every sha and every local evidence link cited anywhere in this file is swept
+mechanically — 64 distinct shas through `git cat-file -e`, 29 markdown links and 33
+backtick-quoted evidence paths through `os.path.exists`, both commands and their whole
+output checked in at
+[`phase3g-109-report-update/`](phase3g-109-report-update/). The one deliberately
+non-resolving string is R86's glob `phase3g-02[56]-*/`, which names a directory that was
+never produced; that absence is the disclosure, not a broken link.
