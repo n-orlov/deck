@@ -392,8 +392,14 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 	if err := client.Send("n"); err != nil {
 		return nil, nil, err
 	}
-	if err := client.WaitForFrame(ctx, false, "Create shell session"); err != nil {
-		return nil, nil, err
+	// ensureCreateModalAgent waits on the title-independent Agent row and
+	// leaves the Agent field already reading kind, whatever agent task 024's
+	// "(last used)" pre-selection put there -- unlike a literal wait for
+	// "Create shell session", which hangs the whole scenario timeout once a
+	// non-shell agent was created earlier in it (the CRITICAL FINDING; this
+	// scenario creates two claude sessions in a row).
+	if err := ensureCreateModalAgent(ctx, client, kind); err != nil {
+		return nil, nil, fmt.Errorf("position create modal on agent %q: %w", kind, err)
 	}
 	if err := client.Send(name); err != nil {
 		return nil, nil, err
@@ -403,14 +409,12 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 		return nil, nil, err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := cycleCreateFieldToValue(ctx, client, kind, createAgentOptionsOrder); err != nil {
-		return nil, nil, fmt.Errorf("cycle Agent field to %q: %w", kind, err)
-	}
-	// Move onto the Permission profile field (↓, task 025), then cycle right
-	// until it reads profile. Options depend on the now-selected agent, so
-	// read them from the current frame rather than hard-coding claude/pi's
-	// lists here.
-	if err := client.Send("\x1b[B"); err != nil {
+	// Working directory -> Agent (already kind) -> Permission profile (↓,
+	// task 025); no cycling needed on Agent since ensureCreateModalAgent
+	// already put it there. Cycle right on Permission profile until it reads
+	// profile -- its options depend on the now-selected agent, so read them
+	// from the current frame rather than hard-coding claude/pi's lists here.
+	if err := client.Send("\x1b[B\x1b[B"); err != nil {
 		return nil, nil, err
 	}
 	time.Sleep(50 * time.Millisecond)
