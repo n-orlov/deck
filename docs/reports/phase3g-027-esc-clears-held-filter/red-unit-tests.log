@@ -1,0 +1,12 @@
+=== RUN   TestEscClearsAFilterHeldInForceWithoutReopeningTheField
+    filter_test.go:293: top-level esc left a held query in force: "alpha-agent"
+--- FAIL: TestEscClearsAFilterHeldInForceWithoutReopeningTheField (0.00s)
+=== RUN   TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter
+--- PASS: TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter (0.00s)
+=== RUN   TestEscOnTheHelpOverlayClosesItWithoutTouchingAHeldFilter
+--- PASS: TestEscOnTheHelpOverlayClosesItWithoutTouchingAHeldFilter (0.00s)
+=== RUN   TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter
+--- PASS: TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.015s
+FAIL

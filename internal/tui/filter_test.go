@@ -256,6 +256,122 @@ func TestFilterStatesItIsInForceOnScreen(t *testing.T) {
 	}
 }
 
+// TestEscClearsAFilterHeldInForceWithoutReopeningTheField proves task
+// 027: once `enter` has closed the `/` text field with a query still
+// applied (m.filtering == false, m.filterQuery != ""), a plain top-level
+// Esc -- pressed directly, with the field never reopened -- discards that
+// held query and restores the unfiltered list, the same outcome Esc gives
+// while the field itself still has focus (TestFilterEscClearsBackToThe
+// FullList above), reached through the top-level switch in tui.go instead
+// of updateFilter's own esc case.
+func TestEscClearsAFilterHeldInForceWithoutReopeningTheField(t *testing.T) {
+	model := newFilterTestModel(filterTestSessions())
+	got, _ := model.Update(key("/"))
+	model = got.(Model)
+	for _, r := range "alpha-agent" {
+		got, _ = model.Update(key(string(r)))
+		model = got.(Model)
+	}
+	got, _ = model.Update(key("enter"))
+	model = got.(Model)
+	if model.filtering {
+		t.Fatal("setup failed: enter left the filter field open")
+	}
+	if model.filterQuery != "alpha-agent" {
+		t.Fatalf("setup failed: enter did not keep the query in force: %q", model.filterQuery)
+	}
+	if rowLine(model.View(), "beta-agent") != "" {
+		t.Fatal("setup failed: filter did not narrow the list before the top-level Esc")
+	}
+
+	// The field is NOT reopened here -- this is the whole point of the
+	// scenario: Esc reaches tui.go's top-level switch, not updateFilter's.
+	got, _ = model.Update(key("esc"))
+	model = got.(Model)
+
+	if model.filterQuery != "" {
+		t.Fatalf("top-level esc left a held query in force: %q", model.filterQuery)
+	}
+	view := model.View()
+	for _, name := range []string{"alpha-agent", "beta-agent", "gamma-agent"} {
+		if rowLine(view, name) == "" {
+			t.Fatalf("top-level esc did not restore row %q to the full list:\n%s", name, view)
+		}
+	}
+}
+
+// TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter proves the "one press
+// never clears two things at once" half of task 027: with BOTH a mark set
+// and a held filter query in force, a plain top-level Esc clears the
+// mark set (task 112's own contract) and leaves the filter untouched --
+// never both in the same press.
+func TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter(t *testing.T) {
+	model := newFilterTestModel(filterTestSessions())
+	model.filterQuery = "alpha-agent"
+	model.sessions = model.filteredSessions()
+	model.selected = 0
+
+	got, _ := model.Update(key("m"))
+	model = got.(Model)
+	if len(model.marked) != 1 {
+		t.Fatalf("setup failed: m did not mark the selected row: %#v", model.marked)
+	}
+
+	got, _ = model.Update(key("esc"))
+	model = got.(Model)
+
+	if len(model.marked) != 0 {
+		t.Fatalf("esc did not clear the mark set: %#v", model.marked)
+	}
+	if model.filterQuery != "alpha-agent" {
+		t.Fatalf("esc on a marked set also cleared the held filter query, clearing two things at once: %q", model.filterQuery)
+	}
+}
+
+// TestEscOnTheHelpOverlayClosesItWithoutTouchingAHeldFilter is the
+// "overlay" half of the same "never clears two things at once" rule:
+// updateHelpView intercepts Esc before tui.go's top-level switch is ever
+// reached, so closing the help overlay must never also discard a filter
+// query already held in force.
+func TestEscOnTheHelpOverlayClosesItWithoutTouchingAHeldFilter(t *testing.T) {
+	model := newFilterTestModel(filterTestSessions())
+	model.filterQuery = "alpha-agent"
+	model.sessions = model.filteredSessions()
+	model.help = true
+
+	got, _ := model.Update(key("esc"))
+	model = got.(Model)
+
+	if model.help {
+		t.Fatal("esc did not close the help overlay")
+	}
+	if model.filterQuery != "alpha-agent" {
+		t.Fatalf("esc closing the help overlay also cleared a held filter query, clearing two things at once: %q", model.filterQuery)
+	}
+}
+
+// TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter is the
+// "dialog" half of the same rule: updateRenameDialog intercepts Esc
+// before the top-level switch too, so cancelling it must never also
+// discard a filter query already held in force.
+func TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter(t *testing.T) {
+	model := newFilterTestModel(filterTestSessions())
+	model.filterQuery = "alpha-agent"
+	model.sessions = model.filteredSessions()
+	model.renaming = true
+	model.renameValue = "new-name"
+
+	got, _ := model.Update(key("esc"))
+	model = got.(Model)
+
+	if model.renaming {
+		t.Fatal("esc did not close the rename dialog")
+	}
+	if model.filterQuery != "alpha-agent" {
+		t.Fatalf("esc closing the rename dialog also cleared a held filter query, clearing two things at once: %q", model.filterQuery)
+	}
+}
+
 // TestFilterFrameBudgetAccountsForTheStatusLine is requirement 30's own
 // rule (every transient message counted in computeLayout's reserved rows)
 // applied to this task's new status line: with the filter in force at
