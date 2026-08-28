@@ -374,7 +374,12 @@ Feature: The `,` settings takeover (requirement 48)
     When deck client "A" creates shell session "clear-recent-seed" with a fresh working directory labelled "clear-recent-seed"
     And deck client "A" opens the create modal
     Then deck client "A" screen contains the directory labelled "clear-recent-seed"
-    And deck client "A" screen contains "(last used)"
+    # "(last used) " also prefixes the Agent field's help (R85, task 024,
+    # internal/tui/tui.go:6486-6516) with the identical literal, so this
+    # must pin the cwd row's own help text, not just the shared prefix, or
+    # it is satisfied by the Agent row regardless of whether the cwd
+    # prefill it is actually about is present.
+    And deck client "A" screen contains "(last used) the session's cwd"
     When deck client "A" closes the create modal
     And deck client "A" sends ","
     And deck client "A" sends "j"
@@ -399,7 +404,11 @@ Feature: The `,` settings takeover (requirement 48)
     When deck client "A" sends ""
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" opens the create modal
-    Then deck client "A" screen does not contain "(last used)"
+    # Same disambiguation as above: the Agent row can legitimately still
+    # say "(last used)" here (its own last-used memory is untouched by
+    # clearing recent cwds), so the bare literal would pass even if the
+    # cwd prefill this scenario is actually testing had not been cleared.
+    Then deck client "A" screen does not contain "(last used) the session's cwd"
     And deck client "A" screen does not contain the directory labelled "clear-recent-seed"
     When deck client "A" closes the create modal
     And deck client "A" creates shell session "clear-recent-after" with a fresh working directory labelled "clear-recent-after"
