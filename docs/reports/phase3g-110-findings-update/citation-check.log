@@ -1,0 +1,27 @@
+$ for sha in ea6ce4b 045a6e6 fe79040 57a6882 0219e42 51b7f17 89682e5 2549406; do \
+    git cat-file -e "$sha" && echo "$sha ok"; done
+ea6ce4b ok
+045a6e6 ok
+fe79040 ok
+57a6882 ok
+0219e42 ok
+51b7f17 ok
+89682e5 ok
+2549406 ok
+
+$ for f in docs/reports/phase3g-105-rename-selection/README.md \
+           docs/reports/phase3g-104-title-independent-waits/README.md \
+           docs/reports/phase3g-106-contrast-floor/README.md \
+           docs/reports/phase3g-101-agent-wait-wrap/README.md \
+           docs/reports/phase3g-102-clear-recents-label/README.md \
+           docs/reports/phase3g-103-hook-sessionend-repair/README.md \
+           features/settings.feature internal/service/reconcile.go; do \
+    test -e "$f" && echo "$f ok"; done
+docs/reports/phase3g-105-rename-selection/README.md ok
+docs/reports/phase3g-104-title-independent-waits/README.md ok
+docs/reports/phase3g-106-contrast-floor/README.md ok
+docs/reports/phase3g-101-agent-wait-wrap/README.md ok
+docs/reports/phase3g-102-clear-recents-label/README.md ok
+docs/reports/phase3g-103-hook-sessionend-repair/README.md ok
+features/settings.feature ok
+internal/service/reconcile.go ok
