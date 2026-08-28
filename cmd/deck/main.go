@@ -98,6 +98,16 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		return 0
 	}
 	client := tmux.Client{Socket: settings.Socket, Mouse: settings.TmuxMouse}
+	// PRD R89/task 030: reclaim any interactive pipe a PRIOR deck process
+	// leaked by dying somewhere SIGKILL cannot be caught -- disarms the
+	// stale `pipe-pane`, restores the claimed window's geometry byte-exact
+	// (SPEC §11.9) and releases ownership, then removes the leaked FIFO/temp
+	// dir. Same best-effort shape as the tombstone sweep just below: a
+	// failure here must never stop deck from starting, since this is a
+	// backlog catch-up, not part of any promise made at open time.
+	if _, err := tmux.ReclaimLeakedInteractivePipes(context.Background()); err != nil {
+		fmt.Fprintln(stderr, "deck interactive pipe reclaim:", err)
+	}
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
 	registry.Register(agent.NewClaude())
