@@ -1,0 +1,3 @@
+$ ci/run.sh go test -count=1 ./internal/service/
+ok  	github.com/n-orlov/deck/internal/service	4.628s
+exit status: 0
