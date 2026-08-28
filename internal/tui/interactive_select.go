@@ -2,10 +2,15 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"strings"
+	"unicode/utf8"
 
 	osc52 "github.com/aymanbagabas/go-osc52/v2"
+
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // oscClipboardWriter is where the drag-to-copy selection's best-effort
@@ -233,4 +238,108 @@ func (m Model) commitInteractiveSelection() Model {
 	writeOSCClipboardBestEffort(text)
 	m.attachError = ""
 	return m
+}
+
+// selectionCloseSGR is the background-only reset (SGR 49, "default
+// background colour") highlightInProgressSelection/highlightRangeSGR pair
+// with theme.Selection's own opening sequence: closing with a bare reset
+// (\x1b[0m) would also clear whatever FOREGROUND colour the pane's own
+// content already carries at that point in the row (the agent's own
+// syntax-highlighting, say), which a selection highlight must leave alone
+// -- only the background changes while a drag is in progress. Built via
+// fmt.Sprintf (never a written-out digit-literal escape sequence) for the
+// reason theme_color.go's own dynamic SGR construction is: this package's
+// TestNoColorLiterals forbids a hardcoded non-zero SGR code, since 49 is
+// not itself a colour selection but the guard cannot tell that from a
+// digit literal alone.
+var selectionCloseSGR = fmt.Sprintf("\x1b[%dm", 49)
+
+// highlightInProgressSelection marks the drag-to-copy selection's cells
+// (SPEC §11.8: "From the press until the release, the selected cells are
+// marked with the selection token ... and the marking clears when the
+// release commits the copy") while a drag is in progress
+// (m.interactiveSelecting -- set true by beginInteractiveSelection on
+// press, set false by commitInteractiveSelection on release, so this is
+// automatically a no-op the instant a release commits the copy, with no
+// separate clearing step of its own). It resolves the selection's
+// per-row column range through the SAME m.interactiveScrollOffset and
+// interactiveGrid.AbsoluteRow conversion commitInteractiveSelection uses
+// (via interactive.Session.SelectionHighlightRange, AbsoluteRow's own
+// sibling) -- never a second, independently derived row space -- and
+// applies theme.Selection as a BACKGROUND-only span (selectionCloseSGR)
+// over exactly those columns of each already-rendered row, leaving
+// whatever foreground colour the pane's own content carries untouched.
+// It is a no-op (rows returned unchanged) once the drag ends, if there is
+// no grid to resolve AbsoluteRow against, or if colour is disabled
+// (NO_COLOR / DECK_COLOR=0), matching colorToken's own gating -- a
+// selection with no visible marking is still a selection, just an
+// invisible one under those settings, exactly like every other themed
+// surface in this package.
+func (m Model) highlightInProgressSelection(lines []string, contentHeight int) []string {
+	if !m.interactiveSelecting || m.interactiveGrid == nil {
+		return lines
+	}
+	openSeq, ok := m.backgroundSGR(theme.Selection)
+	if !ok {
+		return lines
+	}
+	grid := m.interactiveGrid
+	offset := m.interactiveScrollOffset
+	fromCol, anchorRow := m.interactiveSelectAnchorCol, m.interactiveSelectAnchorRow
+	toCol, curRow := m.interactiveSelectCurrentCol, m.interactiveSelectCurrentRow
+	fromRow := grid.AbsoluteRow(offset, contentHeight, anchorRow)
+	toRow := grid.AbsoluteRow(offset, contentHeight, curRow)
+
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		startCol, endCol, sel := grid.SelectionHighlightRange(offset, contentHeight, i, fromCol, fromRow, toCol, toRow)
+		if !sel {
+			out[i] = line
+			continue
+		}
+		out[i] = highlightRangeSGR(line, startCol, endCol, openSeq, selectionCloseSGR)
+	}
+	return out
+}
+
+// highlightRangeSGR wraps the display columns [startCol, endCol]
+// (inclusive) of one already-rendered preview row in openSeq/closeSeq,
+// walking the row exactly like panel.go's stringWidth/truncateToWidth do
+// (every CSI/OSC escape byte passed through untouched at zero columns via
+// ansiEscapeLen, every printable rune's own cellWidth spent against the
+// running column count) so the insertion point never lands mid-escape or
+// mid-glyph. A span still open when the row ends is closed there, so a
+// highlight reaching a row's own last column never bleeds into whatever
+// the caller appends next (padTrunc's own padding, the panel border).
+func highlightRangeSGR(line string, startCol, endCol int, openSeq, closeSeq string) string {
+	if startCol > endCol {
+		return line
+	}
+	var out strings.Builder
+	col := 0
+	opened := false
+	for i := 0; i < len(line); {
+		if line[i] == 0x1b {
+			n := ansiEscapeLen(line, i)
+			out.WriteString(line[i : i+n])
+			i += n
+			continue
+		}
+		switch {
+		case !opened && col >= startCol && col <= endCol:
+			out.WriteString(openSeq)
+			opened = true
+		case opened && col > endCol:
+			out.WriteString(closeSeq)
+			opened = false
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		out.WriteString(line[i : i+size])
+		col += cellWidth(r)
+		i += size
+	}
+	if opened {
+		out.WriteString(closeSeq)
+	}
+	return out.String()
 }

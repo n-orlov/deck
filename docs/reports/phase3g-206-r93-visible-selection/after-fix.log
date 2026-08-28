@@ -1,0 +1,6 @@
+=== RUN   TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows
+--- PASS: TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows (0.00s)
+=== RUN   TestSelectionHighlightRangeReportsNoHighlightOutsideSelectedRows
+--- PASS: TestSelectionHighlightRangeReportsNoHighlightOutsideSelectedRows (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/interactive	0.003s

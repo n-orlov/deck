@@ -3,6 +3,8 @@ package interactive
 import (
 	"strings"
 	"testing"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // newSelectionTestSession builds a bare *Session around a fresh Grid with
@@ -113,6 +115,89 @@ func TestSelectedTextReachesIntoScrollback(t *testing.T) {
 	got := s.SelectedText(0, 0, 4, 0)
 	if !strings.HasPrefix(got, "LINE") {
 		t.Fatalf("SelectedText(0,0,4,0) = %q, want a line starting with LINE (oldest scrollback row)", got)
+	}
+}
+
+// TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows is
+// task 206's own agreement property (steer 018 / SPEC §11.8: "it covers
+// exactly the run SelectedText would return"): for a drag spanning three
+// wrapped rows, the cells SelectionHighlightRange marks -- read back
+// directly off the grid through the SAME ScrollbackCellAt/CellAt split
+// SelectedText itself uses, never SelectedText's own output reparsed --
+// must reproduce SelectedText's return value byte for byte once each
+// row's own trailing spaces are trimmed the same way. This is checked at
+// the cell level, never against a golden frame or an escape-code
+// assertion, so it proves the highlighted set and the copied set are the
+// same set, not merely that both exist.
+func TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows(t *testing.T) {
+	s := newSelectionTestSession(t, 10, 3)
+	if _, err := s.grid.Write([]byte("ABCDEFGHIJ\r\nKLMNOPQRST\r\nUVWXYZ")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	const offset, height = 0, 3
+	// Anchor at column 7 of view row 0, release at column 2 of view row
+	// 2 -- the same reversed-column shape
+	// TestSelectedTextAcrossRowsIsLinearNotRectangular already proves is
+	// linear, not rectangular, for SelectedText alone.
+	const anchorCol, anchorViewRow = 7, 0
+	const curCol, curViewRow = 2, 2
+
+	fromRow := s.AbsoluteRow(offset, height, anchorViewRow)
+	toRow := s.AbsoluteRow(offset, height, curViewRow)
+	want := s.SelectedText(anchorCol, fromRow, curCol, toRow)
+
+	g := s.Grid()
+	sbLen := g.ScrollbackLen()
+	cellAt := func(x, i int) *uv.Cell {
+		if i < sbLen {
+			return g.ScrollbackCellAt(x, i)
+		}
+		return g.CellAt(x, i-sbLen)
+	}
+
+	var rows []string
+	for viewRow := 0; viewRow < height; viewRow++ {
+		startCol, endCol, ok := s.SelectionHighlightRange(offset, height, viewRow, anchorCol, fromRow, curCol, toRow)
+		if !ok {
+			continue
+		}
+		abs := s.AbsoluteRow(offset, height, viewRow)
+		var b strings.Builder
+		for x := startCol; x <= endCol; x++ {
+			if c := cellAt(x, abs); c != nil {
+				b.WriteString(c.Content)
+			}
+		}
+		rows = append(rows, strings.TrimRight(b.String(), " "))
+	}
+	got := strings.Join(rows, "\n")
+	if got != want {
+		t.Fatalf("highlighted cells joined = %q, SelectedText(%d,%d,%d,%d) = %q, want them equal", got, anchorCol, fromRow, curCol, toRow, want)
+	}
+}
+
+// TestSelectionHighlightRangeReportsNoHighlightOutsideSelectedRows proves
+// ok is false for a view row whose absolute row falls outside
+// [fromRow, toRow] -- a row above the anchor or below the release gets no
+// highlight at all, not a zero-width one.
+func TestSelectionHighlightRangeReportsNoHighlightOutsideSelectedRows(t *testing.T) {
+	s := newSelectionTestSession(t, 10, 3)
+	if _, err := s.grid.Write([]byte("ABCDEFGHIJ\r\nKLMNOPQRST\r\nUVWXYZ")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	const offset, height = 0, 3
+	// Selection confined to view row 1 only (columns 2-5).
+	fromRow := s.AbsoluteRow(offset, height, 1)
+	toRow := fromRow
+	if _, _, ok := s.SelectionHighlightRange(offset, height, 0, 2, fromRow, 5, toRow); ok {
+		t.Fatalf("view row 0: want no highlight, got one")
+	}
+	startCol, endCol, ok := s.SelectionHighlightRange(offset, height, 1, 2, fromRow, 5, toRow)
+	if !ok || startCol != 2 || endCol != 5 {
+		t.Fatalf("view row 1: SelectionHighlightRange = (%d,%d,%v), want (2,5,true)", startCol, endCol, ok)
+	}
+	if _, _, ok := s.SelectionHighlightRange(offset, height, 2, 2, fromRow, 5, toRow); ok {
+		t.Fatalf("view row 2: want no highlight, got one")
 	}
 }
 
