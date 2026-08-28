@@ -55,6 +55,15 @@ type Service struct {
 	// cwd is promoted. It is caller-supplied, never assumed, so a zero value
 	// means exactly what store.PromoteRecentCwd documents: keep nothing.
 	RecentCwdLimit int
+
+	// LeaseReleaser overrides the narrow store seam Resume uses to release a
+	// launch lease once its attempt concludes (R75, issue #11); see
+	// LaunchLeaseReleaser. Left nil -- true for every production caller and
+	// every existing test, none of which set it -- Resume falls back to
+	// Store itself, which already satisfies the interface. A test substitutes
+	// a different implementation here to exercise the release-failure
+	// fallback without touching any other store operation.
+	LeaseReleaser LaunchLeaseReleaser
 }
 
 // promoteRecentCwd moves cwd to the front of the §11.7 directory history on
