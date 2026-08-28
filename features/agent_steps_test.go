@@ -554,7 +554,10 @@ func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want stri
 		return fmt.Errorf("wait for the create modal to open: %w", err)
 	}
 	marker := "Agent: " + want + " (left/right cycles"
-	if strings.Contains(client.Frame(false), marker) {
+	matchesMarker := func(frame string) bool {
+		return strings.Contains(dewrapCreateModalAgentRow(frame), marker)
+	}
+	if matchesMarker(client.Frame(false)) {
 		return nil
 	}
 	// Name -> Working directory -> Agent (↑/↓ move between fields, task 025).
@@ -563,7 +566,7 @@ func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want stri
 	}
 	time.Sleep(50 * time.Millisecond)
 	for attempt := 0; attempt <= len(createAgentOptionsOrder); attempt++ {
-		if strings.Contains(client.Frame(false), marker) {
+		if matchesMarker(client.Frame(false)) {
 			break
 		}
 		if err := client.Send("\x1b[C"); err != nil { // right arrow
@@ -571,7 +574,7 @@ func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want stri
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if err := client.WaitForFrame(ctx, false, marker); err != nil {
+	if _, err := client.WaitForFrameFunc(ctx, false, matchesMarker); err != nil {
 		return fmt.Errorf("cycle the create modal's Agent field to %q: %w", want, err)
 	}
 	// Back up to Name, which is where every caller starts typing.
@@ -579,6 +582,48 @@ func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want stri
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "> Name:")
+}
+
+// dewrapCreateModalAgentRow undoes the dialog box's own word-wrap on the
+// Agent field's row before ensureCreateModalAgent matches against it.
+// createFieldRows wraps every field's "value (left/right cycles: ...)"
+// hint onto the dialog's fixed content width, and that width is itself
+// clamped as low as 26 columns by the [26,80] viewport clamp
+// (kill_delete_undo.feature's "width is 80% of the viewport clamped to
+// [26,80]" scenario forces exactly this) -- narrow enough that "Agent: "
+// and its value land on one grid row while "(left/right cycles" lands on
+// the next. A plain substring wait across the joined frame can never match
+// there because NormalizeFrame's row join is a literal "\n", which sits
+// right in the middle of the literal. This finds the row containing
+// "Agent: ", strips that row's and the following row's dialog-box
+// border/padding, and joins what is left with a single space --
+// reconstructing the same logical line createFieldRows produced before the
+// box wrapped it, so the Agent value itself still has to appear right
+// after "Agent: " and right before "(left/right cycles" to match.
+func dewrapCreateModalAgentRow(frame string) string {
+	lines := strings.Split(frame, "\n")
+	for i, line := range lines {
+		if !strings.Contains(line, "Agent: ") {
+			continue
+		}
+		joined := stripDialogBoxBorder(line)
+		if i+1 < len(lines) {
+			joined += " " + stripDialogBoxBorder(lines[i+1])
+		}
+		return joined
+	}
+	return frame
+}
+
+// stripDialogBoxBorder removes one grid row's dialog-box border characters
+// ("| ... |") and the padding immediately inside them, leaving just the
+// field text createFieldRows produced. Used only by
+// dewrapCreateModalAgentRow.
+func stripDialogBoxBorder(line string) string {
+	s := strings.TrimSpace(line)
+	s = strings.TrimPrefix(s, "|")
+	s = strings.TrimSuffix(s, "|")
+	return strings.TrimSpace(s)
 }
 
 // startNamedClientWithSlowReconcile gives stale-frame race scenarios a
