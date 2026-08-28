@@ -81,9 +81,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// instead of a single bounded pass, so a backlog bigger than one batch
 	// finishes draining in that SAME open/startup cycle (review finding 3,
 	// R79) rather than needing an extra real hour per leftover batch.
-	if _, err := db.SweepTombstones(context.Background(), settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
-		fmt.Fprintln(stderr, "deck tombstone sweep:", err)
-	}
+	preFrameTombstoneSweep(context.Background(), db, settings, stderr)
 
 	logger, err := audit.New(settings.Paths, settings.Clock)
 	if err != nil {
@@ -129,25 +127,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// an hour -- settings is captured once here, so a sort_order-shaped
 	// restart-to-apply: a save changes config.toml immediately, but this already
 	// running client keeps enforcing the OLD window until deck restarts.
-	tuiReconcile := func(ctx context.Context) error {
-		if err := sessions.ReconcileWithProbes(ctx, settings.StaleAfter); err != nil {
-			return err
-		}
-		if err := db.EnforceEventRetention(ctx, settings.EventRetentionDays, settings.Clock.Now().UnixMilli()); err != nil {
-			return err
-		}
-		// Same tick carries task 010's sweep, so "on store open and thereafter
-		// at most once an hour" holds for a long-running client too:
-		// Store.SweepTombstones throttles internally, so all but one call an
-		// hour is a single ui_state SELECT. DrainExpiredTombstones (review
-		// finding 3, R79) chains as many SweepTombstones batches as the store
-		// itself reports remain, so a backlog abandoned across a prior crash or
-		// long-dead process finishes draining on the FIRST tick after store
-		// open -- still the same open/startup cycle -- instead of one bounded
-		// batch per real hour; once caught up, the hourly throttle re-engages
-		// exactly as before for anything that arrives afterwards.
-		return db.DrainExpiredTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli())
-	}
+	tuiReconcile := newTUIReconcile(db, sessions, settings)
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename, sessions.Unarchive)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
 	// dependency that needs the raw tmux.Client itself rather than one more
@@ -186,6 +166,48 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// preFrameTombstoneSweep is task 010's store-open call site, extracted so
+// task 214's cmd/deck integration test can invoke this EXACT production
+// pre-first-frame startup sweep rather than duplicating it or calling
+// Store.SweepTombstones from a test-owned loop. It reaps at most one bounded
+// batch before returning, so the work here cannot grow with the size of the
+// backlog; newTUIReconcile's reconcile callback (the first tick after this
+// call, per settings.Reconcile) then drains any remainder within the same
+// open/startup cycle (review finding 3, R79). A sweep failure must not stop
+// deck from starting -- this is a best-effort backlog catch-up, not part of
+// any user-visible promise made at open time -- so it is reported and
+// stepped over.
+func preFrameTombstoneSweep(ctx context.Context, db *store.Store, settings config.Settings, stderr io.Writer) {
+	if _, err := db.SweepTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
+		fmt.Fprintln(stderr, "deck tombstone sweep:", err)
+	}
+}
+
+// newTUIReconcile builds the exact reconcile callback/helper cmd/deck wires
+// into the TUI, extracted (task 214) so the same integration test can drive
+// it directly instead of calling Store.DrainExpiredTombstones on its own.
+// It performs liveness+probe reconciliation, then R62's throttled event
+// retention (steer 3e-001 §6.4/§7), then task 010's tombstone sweep: Store.
+// SweepTombstones throttles internally, so all but one call an hour is a
+// single ui_state SELECT. DrainExpiredTombstones (review finding 3, R79)
+// chains as many SweepTombstones batches as the store itself reports remain,
+// so a backlog abandoned across a prior crash or long-dead process finishes
+// draining on the FIRST tick after store open -- still the same open/startup
+// cycle -- instead of one bounded batch per real hour; once caught up, the
+// hourly throttle re-engages exactly as before for anything that arrives
+// afterwards.
+func newTUIReconcile(db *store.Store, sessions service.Service, settings config.Settings) func(context.Context) error {
+	return func(ctx context.Context) error {
+		if err := sessions.ReconcileWithProbes(ctx, settings.StaleAfter); err != nil {
+			return err
+		}
+		if err := db.EnforceEventRetention(ctx, settings.EventRetentionDays, settings.Clock.Now().UnixMilli()); err != nil {
+			return err
+		}
+		return db.DrainExpiredTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli())
+	}
 }
 
 // startClockStepTrigger makes SIGUSR1 the on-demand DECK_CLOCK_STEP trigger for

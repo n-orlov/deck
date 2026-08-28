@@ -1,0 +1,6 @@
+=== RUN   TestStartupContinuationDrainsTombstoneBacklogThroughProductionWiring
+    tombstone_startup_continuation_test.go:143: expired tombstones after the first startup tick = 50, want 0 (the whole backlog must drain within the same open/startup cycle, review finding 3/R79)
+--- FAIL: TestStartupContinuationDrainsTombstoneBacklogThroughProductionWiring (0.17s)
+FAIL
+FAIL	github.com/n-orlov/deck/cmd/deck	0.177s
+FAIL
