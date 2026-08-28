@@ -46,16 +46,40 @@ func droppedHookTestStore(t *testing.T) (*store.Store, string) {
 	return db, id
 }
 
-// TestEventLogDisplaysTheDroppedHookKindAndReason is R90/task 033's `E`
-// half: the event log renders event.Kind/event.Reason for every row
-// unconditionally, so a superseded hook's distinct
-// "<baseKind>.superseded" kind and its "declined: ..." reason (task 032)
-// must already be visible without any special-casing -- this proves that
-// stays true rather than merely being asserted by inspection.
-func TestEventLogDisplaysTheDroppedHookKindAndReason(t *testing.T) {
-	db, _ := droppedHookTestStore(t)
-	model := eventLogTestModelWithRowsLoaded(t, db)
+// TestEventLogDisplaysTheDroppedHookKindAndReasonAfterPressingE is
+// R90/task 033's `E` half, driven through the real key: pressing "E"
+// opens the log and dispatches loadEventLog as a tea.Cmd (R61 -- the
+// store read never happens inline in View()), and once that reply lands
+// the frame shows the superseded hook's distinct "<baseKind>.superseded"
+// kind and its "declined: ..." reason (task 032). Going through Update
+// rather than setting eventLogOpen directly is what makes this a claim
+// about the `E` key a reader can press, not about a helper.
+func TestEventLogDisplaysTheDroppedHookKindAndReasonAfterPressingE(t *testing.T) {
+	db, id := droppedHookTestStore(t)
+	session, err := db.GetSession(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	model := New(db, config.Settings{}, "")
+	model.width, model.height = 100, 40
+	model.sessions = []store.Session{session}
+	model.selected = 0
+
+	updated, cmd := model.Update(key("E"))
+	model = updated.(Model)
+	if !model.eventLogOpen {
+		t.Fatalf("pressing \"E\" did not open the event log")
+	}
+	if cmd == nil {
+		t.Fatal("pressing \"E\" did not dispatch the event log fetch")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+
 	view := model.View()
+	if !strings.Contains(view, "Event log") {
+		t.Fatalf("pressing \"E\" did not render the event log:\n%s", view)
+	}
 	if !strings.Contains(view, "stop.superseded") {
 		t.Fatalf("event log missing the dropped hook's distinct kind:\n%s", view)
 	}
