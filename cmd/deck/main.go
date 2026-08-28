@@ -76,9 +76,12 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// best-effort backlog catch-up, not part of any user-visible promise made
 	// at open time -- so it is reported and stepped over. It reaps at most one
 	// bounded batch before returning, so the work here cannot grow with the
-	// size of the backlog; tuiReconcile's hourly passes below drain any
-	// remainder once the first frame is up.
-	if err := db.SweepTombstones(context.Background(), settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
+	// size of the backlog; tuiReconcile's very first tick below (a fraction of
+	// a second later, per settings.Reconcile) then calls db.DrainExpiredTombstones
+	// instead of a single bounded pass, so a backlog bigger than one batch
+	// finishes draining in that SAME open/startup cycle (review finding 3,
+	// R79) rather than needing an extra real hour per leftover batch.
+	if _, err := db.SweepTombstones(context.Background(), settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
 		fmt.Fprintln(stderr, "deck tombstone sweep:", err)
 	}
 
@@ -136,10 +139,14 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		// Same tick carries task 010's sweep, so "on store open and thereafter
 		// at most once an hour" holds for a long-running client too:
 		// Store.SweepTombstones throttles internally, so all but one call an
-		// hour is a single ui_state SELECT, and the one that does run reaps a
-		// single bounded batch -- a backlog drains one batch per hourly pass
-		// instead of stalling a tick.
-		return db.SweepTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli())
+		// hour is a single ui_state SELECT. DrainExpiredTombstones (review
+		// finding 3, R79) chains as many SweepTombstones batches as the store
+		// itself reports remain, so a backlog abandoned across a prior crash or
+		// long-dead process finishes draining on the FIRST tick after store
+		// open -- still the same open/startup cycle -- instead of one bounded
+		// batch per real hour; once caught up, the hourly throttle re-engages
+		// exactly as before for anything that arrives afterwards.
+		return db.DrainExpiredTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli())
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename, sessions.Unarchive)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
