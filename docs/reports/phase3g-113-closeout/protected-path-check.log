@@ -1,0 +1,16 @@
+$ git log --oneline 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+(exit 0; empty output above means PASS)
+
+$ git merge-base --is-ancestor 2eed8de 1cfbd5a && echo "2eed8de: ancestor of run base 1cfbd5a (pre-existing, operator)"
+2eed8de: ancestor of run base 1cfbd5a (pre-existing, operator)
+
+$ git merge-base --is-ancestor a03527c 1cfbd5a && echo "a03527c: ancestor of run base 1cfbd5a (pre-existing, operator)"
+a03527c: ancestor of run base 1cfbd5a (pre-existing, operator)
+
+$ git log --oneline -1 2eed8de
+2eed8de spec: amend §7, §9.2, §9.3, §11.3, §11.4, §11.7 and add §11.10 ahead of the field-backlog phase (operator)
+$ git log --oneline -1 a03527c
+a03527c plan: defer Codex to last, cut Phase 3g, and state that the spec moves before the PRD (operator)
+
+$ git log --format=%H 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md | wc -l
+0

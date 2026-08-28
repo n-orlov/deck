@@ -19,22 +19,22 @@ tasks (025, 026) did not produce a dedicated evidence directory at their own
 implementation time, and task 035 committed no test that fails without R91's fix, so
 both of those red/green quotes were produced retroactively by task 038, by the
 identical revert-and-reproduce method, and are labelled as such — see the
-[R86 section](#r86--updown-navigate-dialog-fields-tab-is-completion-only-tasks-025-026)
+[R86 section](#r86---navigate-dialog-fields-tab-is-completion-only-tasks-025-026)
 with `docs/reports/phase3g-038-r86-dialog-arrow-nav/README.md`, and the
 [R91 section](#r91--previewfits-spent-fit-and-the-sigwinch-re-baseline-it-licenses-tasks-034-035)
 with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
 
 - Sections: [R76](#r76--the-reconcile-repairs-a-terminal-row-with-a-live-pane-tasks-001-002) ·
-  [R77](#r77--a-deleted-sessions-name-is-reusable-tasks-003-006) ·
-  [R78](#r78--an-archived-row-keeps-its-name-and-dd-frees-it-tasks-007-009) ·
-  [R79](#r79--a-tombstone-that-outlives-its-process-is-reaped-at-the-next-store-open-tasks-010-011) ·
-  [R80](#r80--the-footer-lists-only-what-the-current-selection-will-accept-tasks-012-013) ·
-  [R81](#r81--the-footers-fixed-set-is-curated-tasks-014-015) ·
-  [R82](#r82--dialogs-are-themed-tasks-016-021) ·
-  [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-80x24-tasks-016-018-022) ·
+  [R77](#r77--a-deleted-sessions-name-is-reusable-tasks-003006) ·
+  [R78](#r78--an-archived-row-keeps-its-name-and-dd-frees-it-tasks-007009) ·
+  [R79](#r79--a-tombstone-that-outlives-its-process-is-reaped-at-the-next-store-open-tasks-010011) ·
+  [R80](#r80--the-footer-lists-only-what-the-current-selection-will-accept-tasks-012013) ·
+  [R81](#r81--the-footers-fixed-set-is-curated-tasks-014015) ·
+  [R82](#r82--dialogs-are-themed-tasks-016021) ·
+  [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-8024-tasks-016-018-022) ·
   [R84](#r84--the-contrast-floor-covers-the-pairs-a-dialog-actually-uses-task-106) ·
   [R85](#r85--the-create-modal-opens-on-the-last-used-agent-task-024) ·
-  [R86](#r86--updown-navigate-dialog-fields-tab-is-completion-only-tasks-025-026) ·
+  [R86](#r86---navigate-dialog-fields-tab-is-completion-only-tasks-025-026) ·
   [R87](#r87--esc-clears-a-filter-held-in-force-tasks-027-028) ·
   [R88](#r88--inject-refuses-a-retained-dead-pane-task-029) ·
   [R89](#r89--the-interactive-pipe-leaks-nothing-on-abnormal-exit-tasks-030-031) ·
@@ -438,7 +438,7 @@ and `features-go-test.log`
 (`ci/run.sh env DECK_GODOG_PATHS=dialogs.feature,environment.feature,create_session.feature go test ./features/ -run TestFeatures -count=1`),
 both exit 0. Evidence:
 [`phase3g-107-dialog-degradation-net/`](phase3g-107-dialog-degradation-net/). This also
-satisfies [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-80x24-tasks-016-018-022)'s
+satisfies [R83](#r83--the-three-dialogs-that-draw-past-the-frame-at-8024-tasks-016-018-022)'s
 same net, which the R83 section below records.
 
 ## R83 — the three dialogs that draw past the frame at 80×24 (tasks 016, 018, 022)
@@ -461,7 +461,7 @@ Evidence: [`phase3g-038-r83-dialog-frame-bound/`](phase3g-038-r83-dialog-frame-b
 three dialogs run by name; captured by task 038 at `e02ef08` against the unmodified
 tree, green-only, as its README states. No red is owed (R83 is not one of the eight).
 
-**Task 022's net is superseded by task 107 (see the [R82](#r82--dialogs-are-themed-tasks-016-021)
+**Task 022's net is superseded by task 107 (see the [R82](#r82--dialogs-are-themed-tasks-016021)
 section above for the full description).** `02e64a5`'s
 `TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII` and
 `TestRenameFieldRowTruncationReemitsItsOwnReset`
