@@ -1,11 +1,14 @@
 package features
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,6 +25,8 @@ func registerClaudeHookStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the scenario working directory contains no deck state$`, scenarioWorkingDirectoryContainsNoDeckState)
 	sc.Step(`^fake Claude session "([^"]+)" fires "([^"]+)" for itself using (injected|conversation) identity:$`, fakeClaudeFiresForSelf)
 	sc.Step(`^fake Claude session "([^"]+)" fires "([^"]+)" for session "([^"]+)" using conversation identity:$`, fakeClaudeFiresForSession)
+	sc.Step(`^fake Claude session "([^"]+)" exits its pane cleanly$`, fakeClaudeExitsPaneCleanly)
+	sc.Step(`^the released deck _hook receives "([^"]+)" for session "([^"]+)" using (injected|conversation) identity:$`, releasedHookFiresForSession)
 	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatus)
 	sc.Step(`^session "([^"]+)" has one "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasOneEventPayloadField)
 	sc.Step(`^session "([^"]+)" has an audited "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasAuditedEventPayloadField)
@@ -150,6 +155,111 @@ func fakeClaudeFires(ctx context.Context, emitter, event, target, identity strin
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// fakeClaudeExitsPaneCleanly sends this fixture's "exit" pane command, which
+// ends its runCommands loop and, via the long-running wrapper's exec, this
+// process, with status 0. Under deck's server-wide remain-on-exit=failed a
+// zero-exit pane is destroyed rather than retained, and since a scenario
+// session always occupies its tmux session's only window/pane, the whole
+// "deck_<slug>" session disappears with it. It polls for that disappearance
+// rather than returning as soon as send-keys completes, so a caller that
+// immediately fires a hook afterward is guaranteed a genuinely dead pane
+// underneath it, not a race against the exit still landing.
+func fakeClaudeExitsPaneCleanly(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	request, err := json.Marshal(map[string]any{"command": "exit"})
+	if err != nil {
+		return err
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "-l", string(request)); err != nil {
+		return fmt.Errorf("send exit command to fake Claude pane %q: %w", target, err)
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
+		return fmt.Errorf("submit exit command to fake Claude pane %q: %w", target, err)
+	}
+	return privateSessionDoesNotExist(ctx, target)
+}
+
+// releasedHookFiresForSession delivers a hook straight to the released deck
+// _hook subcommand, exactly as a real Claude hook subprocess does: it is a
+// one-shot invocation independent of whatever the interactive pane is doing
+// (or whether it still exists at all), never a send-keys into any pane. This
+// is the correct route once a scenario has driven the target's own pane to a
+// genuine, confirmed death (fakeClaudeExitsPaneCleanly above) -- delivering
+// through the dead pane is impossible, and delivering through some other
+// still-live pane would misrepresent which process the hook came from.
+// Identity is supplied the same way releasedHookForSession (assertions_test.go)
+// already does for the single-purpose "released running/waiting hook" steps:
+// DECK_SESSION_ID (and, when the row's own launch took a lease, its current
+// DECK_LAUNCH_GENERATION) stand in for the pane environment a real hook
+// subprocess would have inherited.
+func releasedHookFiresForSession(ctx context.Context, event, target, identity string, table *godog.Table) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	payload := make(map[string]any)
+	for _, row := range table.Rows {
+		if len(row.Cells) != 2 {
+			return fmt.Errorf("hook payload row has %d cells, want key and value", len(row.Cells))
+		}
+		payload[row.Cells[0].Value] = row.Cells[1].Value
+	}
+	if identity == "conversation" {
+		conversationID, err := sessionConversationID(h, target)
+		if err != nil {
+			return err
+		}
+		if conversationID == "" {
+			return fmt.Errorf("target session %q has no conversation identity", target)
+		}
+		payload["session_id"] = conversationID
+	} else if identity != "injected" {
+		return fmt.Errorf("invalid hook identity %q", identity)
+	}
+	if _, exists := payload["hook_event_name"]; !exists {
+		payload["hook_event_name"] = event
+	}
+	request, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	targetID, err := sessionIDByName(h, target)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	var leaseOwner string
+	err = db.QueryRowContext(ctx, `SELECT COALESCE(launch_lease_owner, '') FROM sessions WHERE id = ?`, targetID).Scan(&leaseOwner)
+	db.Close()
+	if err != nil {
+		return fmt.Errorf("resolve launch lease owner for session %q: %w", target, err)
+	}
+	env := []string{"DECK_SESSION_ID=" + targetID}
+	if _, generation, found := strings.Cut(leaseOwner, "#"); found && generation != "" {
+		env = append(env, "DECK_LAUNCH_GENERATION="+generation)
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(commandCtx, h.Binary, "_hook")
+	cmd.Env = append(os.Environ(), h.Environment(env...)...)
+	cmd.Stdin = bytes.NewReader(request)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("released deck _hook for session %q event %q: %w: %s", target, event, err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantReason, wantMessage, acknowledgedText, epochText string) error {

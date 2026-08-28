@@ -422,6 +422,16 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixture
 			if err := fireResumePair(stdout, stderr, commands, request); err != nil {
 				return err
 			}
+		case "exit":
+			// Ends this loop (and, via the caller's exec-replaced wrapper
+			// script, this process) with a clean status 0 exit -- the
+			// pane-side control a scenario reaches for when it needs this
+			// fixture's own tmux pane to actually disappear (deck's
+			// remain-on-exit=failed destroys a zero-exit pane and, with it,
+			// the session), rather than merely posing a terminal status
+			// while the pane a real hook subprocess is independent of stays
+			// alive underneath it.
+			return nil
 		default:
 			return fmt.Errorf("unknown command %q", request.Command)
 		}
@@ -809,6 +819,10 @@ It invokes that event's command from --settings with the payload on stdin and wi
 this process's injected environment; it never calls deck _hook directly. A fixture
 command has the form {"command":"fixture","name":"claude/running.txt"} and copies
 that file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
+An exit command has the form {"command":"exit"} and ends the loop (and, via
+the wrapper's exec, this process) with a clean status 0 exit -- the pane-side
+control for a scenario that needs this fixture's own tmux pane to actually
+disappear rather than merely pose a terminal status while the pane stays alive.
 A resume command has the form {"command":"resume","old_session_id":"<uuid>",
 "new_session_id":"<uuid, optional>"} and fires SessionEnd reason=resume for
 old_session_id immediately followed by SessionStart reason=resume for
