@@ -129,9 +129,17 @@ func TestSelectedTextReachesIntoScrollback(t *testing.T) {
 // the cell level, never against a golden frame or an escape-code
 // assertion, so it proves the highlighted set and the copied set are the
 // same set, not merely that both exist.
+//
+// The run is GENUINELY wrapped rather than newline-separated: one 25-byte
+// write containing no CR and no LF at all, which this 10-column grid's own
+// emulator wraps over three rows (10 + 10 + 5), so the multi-row shape
+// under test is the one long agent output actually produces. The whole
+// render path's own half of this property (that those cells are what the
+// frame really highlights, so a no-op renderer cannot pass) lives in
+// internal/tui's TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns.
 func TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows(t *testing.T) {
 	s := newSelectionTestSession(t, 10, 3)
-	if _, err := s.grid.Write([]byte("ABCDEFGHIJ\r\nKLMNOPQRST\r\nUVWXYZ")); err != nil {
+	if _, err := s.grid.Write([]byte("ABCDEFGHIJKLMNOPQRSTUVWXY")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	const offset, height = 0, 3

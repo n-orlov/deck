@@ -1,0 +1,9 @@
+$ ci/run.sh sh -c "cd .scratch-206b && go test -count=1 -run TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns ./internal/tui/"
+# worktree .scratch-206b = HEAD b249992 + task 206 tests, with Model.highlightInProgressSelection mutated to a NO-OP (returns lines unchanged); vet-clean, so this is a behavioural red, not a compile error
+--- FAIL: TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns (0.03s)
+    interactive_select_highlight_test.go:226: highlighted cells = ""
+        SelectedText     = "abcdefghij\nabcdefghijabcdefghijabcdefghijabcdefghij\nabcdef"
+        the marked set and the copied set must be the same set
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.032s
+FAIL
