@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/n-orlov/deck/internal/store"
@@ -28,8 +29,21 @@ func (s Service) Rename(ctx context.Context, sessionID, newName string) (store.S
 	if trimmed == "" {
 		return store.Session{}, errors.New("new name is required")
 	}
+	// SPEC §9.2 (R77): if this name (or its slug) is held only by a
+	// tombstoned row, RenameSession reaps that row inside its own
+	// transaction, exactly like CreateSession does for CreateShell/
+	// CreateAgent. Note the holders now, remove their files only after
+	// that commit -- a rename that is refused (a live or archived holder)
+	// must leave a still-restorable session's scrollback untouched.
+	reapedHolders, err := s.tombstonedNameHolders(ctx, trimmed)
+	if err != nil {
+		return store.Session{}, err
+	}
 	if err := s.Store.RenameSession(ctx, sessionID, trimmed, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
+	}
+	if err := s.reapedHolderFiles(ctx, reapedHolders); err != nil {
+		return store.Session{}, fmt.Errorf("clean up the session reaped by reusing name %q: %w", trimmed, err)
 	}
 	return s.Store.GetSession(ctx, sessionID)
 }

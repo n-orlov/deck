@@ -1,0 +1,6 @@
+=== RUN   TestRenameOntoATombstonedNameCleansUpThatSessionsFiles
+--- PASS: TestRenameOntoATombstonedNameCleansUpThatSessionsFiles (0.05s)
+=== RUN   TestRefusedRenameKeepsLiveAndArchivedHoldersFiles
+--- PASS: TestRefusedRenameKeepsLiveAndArchivedHoldersFiles (0.06s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	0.115s
