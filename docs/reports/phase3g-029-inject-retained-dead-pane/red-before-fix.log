@@ -1,0 +1,6 @@
+=== RUN   TestInjectEnvRefusesARetainedDeadShellPane
+    inject_retained_corpse_test.go:117: refusal = "inject environment key \"INJECT_TARGET\" into session \"dead-shell-pane\": send keys to session \"dead-shell-pane\": no live pane", want it to say a stopped/error row cannot take an injection
+--- FAIL: TestInjectEnvRefusesARetainedDeadShellPane (0.06s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.067s
+FAIL

@@ -48,12 +48,20 @@ func (s Service) InjectEnv(ctx context.Context, sessionID string) (store.Session
 	if session.Slug == "" {
 		return session, nil, errors.New("inject requires a durable session slug")
 	}
-	live, err := s.TMux.Exists(ctx, session.Slug)
+	// R88: this must be R69's "has a live pane" notion (HasLivePane), not
+	// mere has-session existence (Exists). A retained dead pane (deck's
+	// server runs remain-on-exit failed, so a pane that exits non-zero is
+	// kept together with its session -- issue #6's trap) makes Exists
+	// report true forever, which would let this fall through into the
+	// SendKeys loop below over a corpse; HasLivePane correctly reports
+	// false for it, so the refusal fires here, before any tmux command is
+	// attempted against the dead pane at all.
+	live, err := s.TMux.HasLivePane(ctx, session.Slug)
 	if err != nil {
 		return session, nil, fmt.Errorf("check live pane for session %q: %w", session.Name, err)
 	}
 	if !live {
-		return session, nil, fmt.Errorf("cannot inject environment into session %q: it has no live pane (use r to resume it)", session.Name)
+		return session, nil, fmt.Errorf("cannot inject environment into session %q: a stopped or error row has no live pane, so it cannot take an injection (restart it instead -- SPEC \u00a76.4's restart-to-apply route)", session.Name)
 	}
 	keys, err := s.Store.DirtyEnvKeys(ctx, sessionID)
 	if err != nil {
