@@ -95,7 +95,11 @@ type Result struct {
 	Orphan    bool
 	// Superseded means the hook named a launch generation that is not the
 	// one the row currently holds, so its status write was recorded as an
-	// event but deliberately never applied (issue #11, R74).
+	// event but deliberately never applied (issue #11, R74). The stored
+	// event's own kind and reason columns say so too: supersededEventKind
+	// and supersededReason are what Receive writes for it, distinct from
+	// the plain mapping.Kind/payload-reason an applied hook of the same
+	// event name would get.
 	Superseded bool
 }
 
@@ -145,6 +149,30 @@ func supersededLaunch(rowGeneration, hookGeneration string) bool {
 	return hookGeneration != rowGeneration
 }
 
+// supersededEventKind names the stored event for a hook supersededLaunch has
+// declined, distinct from the plain mapping.Kind an applied hook of the same
+// event name gets. ".superseded" keeps the base kind visible (so a reader
+// scanning for e.g. every "stop" event still finds it with a LIKE/prefix
+// query) while making it unambiguous, from the kind column alone, that this
+// row's write never reached the session.
+func supersededEventKind(baseKind string) string {
+	return baseKind + ".superseded"
+}
+
+// supersededReason explains, in the stored event's own reason column, why a
+// superseded hook's status write was declined: the launch generation it
+// named is not the row's current one, so it came from a pane deck has
+// already replaced (see supersededLaunch for the token-absent cases this
+// covers). The original payload -- including whatever reason field the hook
+// itself carried -- is untouched in the event's payload column, so nothing
+// is lost by overwriting the reason column with this explanation instead.
+func supersededReason(rowGeneration, hookGeneration string) string {
+	if hookGeneration == "" {
+		return fmt.Sprintf("declined: hook carries no launch generation, row is on %q", rowGeneration)
+	}
+	return fmt.Sprintf("declined: hook launch generation %q does not match row launch generation %q", hookGeneration, rowGeneration)
+}
+
 // Receive maps and persists one already-framed JSON hook object. Session
 // resolution follows SPEC §8.1 exactly: payload conversation id first, then
 // the deck row id injected into the pane environment. Shell rows are resolved
@@ -168,6 +196,10 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 	if !ok {
 		return Result{}, fmt.Errorf("unsupported hook event %q", p.EventName)
 	}
+	// eventKind is what actually gets persisted as the event's kind column; it
+	// stays mapping.Kind unless supersededLaunch below declines the write, in
+	// which case it is overridden to supersededEventKind's distinct name.
+	eventKind := mapping.Kind
 
 	reason := payloadField(p, mapping.ReasonField)
 	var allowedFrom []string
@@ -203,6 +235,8 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		// is never wrong even momentarily and nothing has to repair it after.
 		result.Superseded = true
 		allowedFrom = noCurrentStatusMatches
+		eventKind = supersededEventKind(mapping.Kind)
+		reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
 	}
 	if !result.Superseded && p.EventName == "SessionStart" && p.ConversationID != "" && p.ConversationID != session.ConversationID {
 		// Requirement 44: the row deck already owns follows the live
@@ -221,7 +255,7 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		Reason:                 reason,
 		Source:                 "hook",
 		At:                     at,
-		EventKind:              mapping.Kind,
+		EventKind:              eventKind,
 		Payload:                string(raw),
 		LastMessage:            payloadField(p, mapping.MessageField),
 		AllowedCurrentStatuses: allowedFrom,
