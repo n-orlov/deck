@@ -1722,42 +1722,90 @@ const tombstoneSweepBatchRows = 200
 //
 // A pass reaps at most tombstoneSweepBatchRows rows, oldest tombstone
 // first, in a single transaction, and then returns: one batch never blocks
-// the caller. A backlog larger than one batch is therefore drained one
-// batch per pass -- correctness (a row past its grace window is gone)
-// never depends on a single call doing unbounded work on the store-open
-// path.
-func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, now int64) error {
+// the caller.
+//
+// The bool return (review finding 3, R79) reports whether, after this
+// batch, at least one MORE row is still older than deleteGrace -- i.e.
+// whether the backlog is bigger than one batch and a caller must call
+// again to finish draining it. The hourly throttle stamp is deliberately
+// written only once that bool comes back false: a backlog larger than one
+// batch must not silently wait out a real hour, once per leftover batch,
+// before it is safe to continue -- so as long as a pass leaves rows
+// behind, the NEXT call (whenever it comes, even moments later) is still
+// treated as "never run" and performs its own batch immediately. Only
+// once a pass actually catches the backlog up to cutoff does the throttle
+// engage for a genuinely fresh hour. DrainExpiredTombstones below is the
+// production continuation built on this; a caller that only wants the
+// traditional single bounded batch (deck's own pre-first-frame store-open
+// call) simply ignores the bool.
+func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, now int64) (bool, error) {
 	if deleteGrace < 0 {
-		return errors.New("delete grace window must not be negative")
+		return false, errors.New("delete grace window must not be negative")
 	}
 	if now <= 0 {
-		return errors.New("tombstone sweep timestamp is required")
+		return false, errors.New("tombstone sweep timestamp is required")
 	}
 	lastRunRaw, err := s.getUIState(ctx, tombstoneSweepLastRunKey, "0")
 	if err != nil {
-		return fmt.Errorf("read tombstone sweep throttle: %w", err)
+		return false, fmt.Errorf("read tombstone sweep throttle: %w", err)
 	}
 	lastRun, err := strconv.ParseInt(lastRunRaw, 10, 64)
 	if err != nil {
 		lastRun = 0
 	}
 	if lastRun != 0 && now-lastRun < tombstoneSweepMinInterval.Milliseconds() {
-		return nil
+		return false, nil
 	}
 	cutoff := now - deleteGrace.Milliseconds()
 	ids, err := s.tombstonesOlderThan(ctx, cutoff, tombstoneSweepBatchRows)
 	if err != nil {
-		return fmt.Errorf("list expired tombstones: %w", err)
+		return false, fmt.Errorf("list expired tombstones: %w", err)
 	}
 	if len(ids) > 0 {
 		if err := s.reapTombstoneBatch(ctx, ids, now); err != nil {
-			return err
+			return false, err
 		}
 	}
-	if err := s.setUIState(ctx, tombstoneSweepLastRunKey, strconv.FormatInt(now, 10)); err != nil {
-		return fmt.Errorf("write tombstone sweep throttle: %w", err)
+	remaining, err := s.tombstonesOlderThan(ctx, cutoff, 1)
+	if err != nil {
+		return false, fmt.Errorf("check remaining expired tombstones: %w", err)
 	}
-	return nil
+	if len(remaining) > 0 {
+		return true, nil
+	}
+	if err := s.setUIState(ctx, tombstoneSweepLastRunKey, strconv.FormatInt(now, 10)); err != nil {
+		return false, fmt.Errorf("write tombstone sweep throttle: %w", err)
+	}
+	return false, nil
+}
+
+// DrainExpiredTombstones is the continuation SweepTombstones' own doc
+// promises (review finding 3, R79): it calls SweepTombstones repeatedly,
+// driven ENTIRELY by its reported remainder -- never by a count this
+// function or its caller computed -- until the whole backlog older than
+// deleteGrace is gone or the hourly throttle genuinely has nothing left
+// to do. Each individual call still reaps at most one
+// tombstoneSweepBatchRows batch; this only chains those calls back to
+// back within the SAME open/startup cycle, so a backlog bigger than one
+// batch no longer needs an extra real hour per leftover batch to finish
+// draining. now is forwarded unchanged to every call in the chain -- this
+// never calls time.Now() itself. cmd/deck's tick caller (the
+// hourly-throttled tuiReconcile closure, which already runs every
+// settings.Reconcile tick) is the intended production caller: deck's
+// pre-first-frame store-open call keeps calling plain SweepTombstones
+// instead, so that call stays bounded to exactly one batch and this drain
+// happens moments later, still as part of the same startup, once the
+// first tick fires.
+func (s *Store) DrainExpiredTombstones(ctx context.Context, deleteGrace time.Duration, now int64) error {
+	for {
+		more, err := s.SweepTombstones(ctx, deleteGrace, now)
+		if err != nil {
+			return err
+		}
+		if !more {
+			return nil
+		}
+	}
 }
 
 // tombstonesOlderThan returns up to limit ids of rows tombstoned strictly

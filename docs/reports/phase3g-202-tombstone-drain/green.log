@@ -1,0 +1,4 @@
+$ ci/run.sh go test -count=1 ./internal/store/ ./internal/tui/ ./cmd/deck/
+ok  	github.com/n-orlov/deck/internal/store	3.025s
+ok  	github.com/n-orlov/deck/internal/tui	1.571s
+ok  	github.com/n-orlov/deck/cmd/deck	7.529s

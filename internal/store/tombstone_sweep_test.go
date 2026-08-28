@@ -33,7 +33,7 @@ func TestSweepTombstonesReapsExpiredLeavesFresh(t *testing.T) {
 		t.Fatalf("soft delete fresh: %v", err)
 	}
 
-	if err := st.SweepTombstones(ctx, sweepGrace, now); err != nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, now); err != nil {
 		t.Fatalf("SweepTombstones: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestSweepTombstonesThrottlesToAtMostOnceAnHour(t *testing.T) {
 	if err := st.SoftDeleteSession(ctx, first.ID, cutoffAtFirstRun-1); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
-	if err := st.SweepTombstones(ctx, sweepGrace, firstRun); err != nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, firstRun); err != nil {
 		t.Fatalf("first SweepTombstones: %v", err)
 	}
 	if _, err := st.GetSession(ctx, first.ID); err == nil {
@@ -98,7 +98,7 @@ func TestSweepTombstonesThrottlesToAtMostOnceAnHour(t *testing.T) {
 	if err := st.SoftDeleteSession(ctx, second.ID, cutoffAtSecondRun-1); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
-	if err := st.SweepTombstones(ctx, sweepGrace, secondRun); err != nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, secondRun); err != nil {
 		t.Fatalf("second (throttled) SweepTombstones: %v", err)
 	}
 	if _, err := st.GetSession(ctx, second.ID); err != nil {
@@ -109,7 +109,7 @@ func TestSweepTombstonesThrottlesToAtMostOnceAnHour(t *testing.T) {
 	// through again, and the row seeded above (already expired since the
 	// second call) is finally reaped.
 	thirdRun := firstRun + 61*time.Minute.Milliseconds()
-	if err := st.SweepTombstones(ctx, sweepGrace, thirdRun); err != nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, thirdRun); err != nil {
 		t.Fatalf("third SweepTombstones: %v", err)
 	}
 	if _, err := st.GetSession(ctx, second.ID); err == nil {
@@ -126,7 +126,7 @@ func TestSweepTombstonesIsCheapNoOpInsideInterval(t *testing.T) {
 	ctx := context.Background()
 
 	const firstRun int64 = 1_700_000_000_000
-	if err := st.SweepTombstones(ctx, sweepGrace, firstRun); err != nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, firstRun); err != nil {
 		t.Fatalf("first SweepTombstones: %v", err)
 	}
 	lastRunAfterFirst, err := st.getUIState(ctx, tombstoneSweepLastRunKey, "0")
@@ -139,7 +139,7 @@ func TestSweepTombstonesIsCheapNoOpInsideInterval(t *testing.T) {
 	if err := st.SoftDeleteSession(ctx, expired.ID, secondRun-sweepGrace.Milliseconds()-1); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
-	if err := st.SweepTombstones(ctx, sweepGrace, secondRun); err != nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, secondRun); err != nil {
 		t.Fatalf("throttled SweepTombstones: %v", err)
 	}
 
@@ -189,7 +189,7 @@ func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
 			t.Fatalf("soft delete: %v", err)
 		}
 
-		if err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
+		if _, err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
 			t.Fatalf("SweepTombstones: %v", err)
 		}
 
@@ -220,7 +220,7 @@ func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
 			t.Fatalf("soft delete: %v", err)
 		}
 
-		if err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
+		if _, err := st.SweepTombstones(ctx, sweepGrace, frozenNow); err != nil {
 			t.Fatalf("SweepTombstones: %v", err)
 		}
 
@@ -251,35 +251,33 @@ func TestSweepTombstonesRejectsInvalidArgs(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
 
-	if err := st.SweepTombstones(ctx, -time.Second, 1_700_000_000_000); err == nil {
+	if _, err := st.SweepTombstones(ctx, -time.Second, 1_700_000_000_000); err == nil {
 		t.Fatal("SweepTombstones(deleteGrace<0) = nil error, want an error")
 	}
-	if err := st.SweepTombstones(ctx, sweepGrace, 0); err == nil {
+	if _, err := st.SweepTombstones(ctx, sweepGrace, 0); err == nil {
 		t.Fatal("SweepTombstones(now=0) = nil error, want an error")
 	}
 }
 
-// TestSweepTombstonesReapsOneBoundedBatchPerCall pins the bound that keeps
-// the store-open caller cheap: one call reaps at most
-// tombstoneSweepBatchRows rows and returns, however big the backlog is, so
-// the pass before deck's first frame can never grow with the number of
-// abandoned tombstones. The remainder is not lost -- it is drained by the
-// following hourly passes, oldest tombstone first -- and a tombstone still
-// inside the grace window survives every one of them.
+// TestSweepTombstonesReapsOneBoundedBatchPerCall pins two things together
+// (review finding 3, R79): the store-open, pre-first-frame call is STILL
+// bounded to exactly one batch (whatever the backlog's real size), but the
+// backlog as a whole no longer survives that same open/startup cycle --
+// task 202 replaces the old assertion that a >2-batch backlog needed
+// separate real-hour-spaced passes to finish (which pinned the very defect
+// review finding 3 flagged) with the store's own reported remainder
+// driving DrainExpiredTombstones, the production continuation
+// cmd/deck's tick caller uses, to completion at essentially the SAME `now`
+// -- no hour jumps manufactured by this test's own clock.
 func TestSweepTombstonesReapsOneBoundedBatchPerCall(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
 
 	const now int64 = 1_700_000_000_000
 	cutoff := now - sweepGrace.Milliseconds()
-	// Passes 2 and 3 each sit an hour on, so their cutoffs move forward with
-	// them: the control row has to be inside the grace window measured
-	// against the LAST pass, not just the first, to prove no pass reaped it.
-	secondRun := now + 61*time.Minute.Milliseconds()
-	thirdRun := secondRun + 61*time.Minute.Milliseconds()
 
 	// More than 2x tombstoneSweepBatchRows (200), so the backlog needs three
-	// passes: 200, 200, 50.
+	// batches to drain: 200, 200, 50.
 	const expiredCount = 450
 	// deleted_at descends with i, so the HIGHEST i is the oldest tombstone
 	// and must be reaped first.
@@ -290,8 +288,12 @@ func TestSweepTombstonesReapsOneBoundedBatchPerCall(t *testing.T) {
 			t.Fatalf("soft delete %q: %v", id, err)
 		}
 	}
+	// Fresh control row stays inside the grace window measured against `now`
+	// itself: every call below (the first bounded batch AND the drain that
+	// follows it) is driven at this SAME now, so one cutoff protects it
+	// throughout the whole open/startup cycle, not just the first pass.
 	fresh := createTombstoneTestSession(t, st, ctx, "sweep-batch-fresh")
-	if err := st.SoftDeleteSession(ctx, fresh.ID, thirdRun-sweepGrace.Milliseconds()+1); err != nil {
+	if err := st.SoftDeleteSession(ctx, fresh.ID, cutoff+1); err != nil {
 		t.Fatalf("soft delete fresh: %v", err)
 	}
 
@@ -304,12 +306,18 @@ func TestSweepTombstonesReapsOneBoundedBatchPerCall(t *testing.T) {
 		return n
 	}
 
-	// Pass 1 (the store-open one): exactly one batch, no more.
-	if err := st.SweepTombstones(ctx, sweepGrace, now); err != nil {
-		t.Fatalf("first SweepTombstones: %v", err)
+	// The pre-first-frame call (deck's store-open call site): exactly one
+	// bounded batch, no more -- and it must say so via its own reported
+	// remainder, not leave the caller to guess from the row count.
+	more, err := st.SweepTombstones(ctx, sweepGrace, now)
+	if err != nil {
+		t.Fatalf("first (frame-blocking) SweepTombstones: %v", err)
+	}
+	if !more {
+		t.Fatal("first SweepTombstones reported no remainder, want true: a 450-row backlog is bigger than one 200-row batch")
 	}
 	if got, want := countExpiredTombstones(), expiredCount-tombstoneSweepBatchRows; got != want {
-		t.Fatalf("expired tombstones after one pass = %d, want %d (one call must reap exactly one bounded batch of %d and return, never the whole %d-row backlog)", got, want, tombstoneSweepBatchRows, expiredCount)
+		t.Fatalf("expired tombstones after the frame-blocking call = %d, want %d (one call must reap exactly one bounded batch of %d and return, never the whole %d-row backlog)", got, want, tombstoneSweepBatchRows, expiredCount)
 	}
 	// Oldest first: the highest indices went, the lowest ones stayed.
 	if _, err := st.GetSession(ctx, "sweep-batch-expired-"+strconv.Itoa(expiredCount-1)); err == nil {
@@ -319,18 +327,16 @@ func TestSweepTombstonesReapsOneBoundedBatchPerCall(t *testing.T) {
 		t.Fatalf("the newest expired tombstone was reaped in the first pass, want it left for a later one: %v", err)
 	}
 
-	// Passes 2 and 3, each an hour on: the backlog drains, one batch at a time.
-	if err := st.SweepTombstones(ctx, sweepGrace, secondRun); err != nil {
-		t.Fatalf("second SweepTombstones: %v", err)
-	}
-	if got, want := countExpiredTombstones(), expiredCount-2*tombstoneSweepBatchRows; got != want {
-		t.Fatalf("expired tombstones after two passes = %d, want %d", got, want)
-	}
-	if err := st.SweepTombstones(ctx, sweepGrace, thirdRun); err != nil {
-		t.Fatalf("third SweepTombstones: %v", err)
+	// The startup/tick caller's own continuation: DrainExpiredTombstones
+	// keeps calling SweepTombstones -- driven purely by ITS reported
+	// remainder, never by a batch count this test computed -- until the
+	// whole backlog above is gone, all within the SAME open/startup cycle
+	// (same `now`, no hour jumps).
+	if err := st.DrainExpiredTombstones(ctx, sweepGrace, now); err != nil {
+		t.Fatalf("DrainExpiredTombstones: %v", err)
 	}
 	if got := countExpiredTombstones(); got != 0 {
-		t.Fatalf("expired tombstones after three passes = %d, want 0 (the backlog must drain across passes, not be dropped)", got)
+		t.Fatalf("expired tombstones after DrainExpiredTombstones = %d, want 0 (the whole backlog must drain within the same open/startup cycle, review finding 3/R79)", got)
 	}
 	if _, err := st.GetSession(ctx, fresh.ID); err != nil {
 		t.Fatalf("fresh tombstone was swept up, want it left alone: %v", err)
