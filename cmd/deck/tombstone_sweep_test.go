@@ -107,7 +107,16 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForScreen(t, output1, done1, "Create shell session")
-	if _, err := terminal1.Write([]byte(sessionName + "\t" + cwd + "\r")); err != nil {
+	// Field navigation is ↓, not tab (task 025): tab left in this driver typed
+	// the cwd into the Name field instead, which both broke the name the store
+	// assertions below check for and made the delete confirm's own line wrap.
+	// The short settle keeps the name and the ↓ out of one PTY read burst, the
+	// same way features/*_test.go's own create drivers do.
+	if _, err := terminal1.Write([]byte(sessionName)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(75 * time.Millisecond)
+	if _, err := terminal1.Write([]byte("\x1b[B" + cwd + "\r")); err != nil {
 		t.Fatal(err)
 	}
 	waitForScreen(t, output1, done1, "starting")
@@ -259,7 +268,11 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForScreen(t, output3, done3, "Create shell session")
-	if _, err := terminal3.Write([]byte(sessionName + "\t" + cwd + "\r")); err != nil {
+	if _, err := terminal3.Write([]byte(sessionName)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(75 * time.Millisecond)
+	if _, err := terminal3.Write([]byte("\x1b[B" + cwd + "\r")); err != nil {
 		t.Fatal(err)
 	}
 	waitForScreen(t, output3, done3, "starting")

@@ -1,0 +1,7 @@
+ok  	github.com/n-orlov/deck/internal/tmux	19.395s
+--- FAIL: TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern (6.87s)
+    render_test.go:175: Start: arm pipe-pane before seed capture: wait for pipe-pane's job to connect to /tmp/deck-interactive-pipe-4203353830/pane.fifo: timed out after 5s waiting for pipe-pane's job to open the fifo
+FAIL
+FAIL	github.com/n-orlov/deck/internal/interactive	15.334s
+ok  	github.com/n-orlov/deck/cmd/deck	6.306s
+FAIL

@@ -434,7 +434,10 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// names every one of those keys, since absence from the footer is never
 	// absence from the keymap).
 	help := output.String()
-	if !strings.Contains(help, "up/down - n new - ? help - q quit") {
+	// `,` is part of §11.3's fixed set (SPEC.md:1307 -- settings has no other
+	// visible entry point), which task 014 added to footerKeyLegend; this
+	// literal was left behind at that commit.
+	if !strings.Contains(help, "up/down - n new - , settings - ? help - q quit") {
 		t.Errorf("released footer does not list the implemented action map:\n%s", help)
 	}
 	if strings.Contains(help, "up/down - Enter interactive - a attach") {
