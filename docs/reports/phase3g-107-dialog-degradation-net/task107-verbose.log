@@ -1,0 +1,68 @@
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/create_modal
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/create_modal/initial_state
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/create_modal/with_a_validation_error
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/env_editor
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/env_editor/initial_state
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/env_editor/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/bulk_delete_confirm
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/bulk_delete_confirm/initial_state
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/bulk_delete_confirm/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm/keep_chosen
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm/purge_chosen,_path_resolved
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/archive_confirm
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/archive_confirm/live_row
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/archive_confirm/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/profile_picker
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/profile_picker/initial_candidate
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/profile_picker/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/pin_conversation
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/pin_conversation/initial_candidate
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/pin_conversation/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/restart-or-inject
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/restart-or-inject/initial_candidate
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/restart-or-inject/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/rename
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/rename/prefilled_value
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/rename/with_a_failure_note
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/event_log
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/event_log/populated
+=== RUN   TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/event_log/read_error
+--- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII (0.04s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/create_modal (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/create_modal/initial_state (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/create_modal/with_a_validation_error (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/env_editor (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/env_editor/initial_state (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/env_editor/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/bulk_delete_confirm (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/bulk_delete_confirm/initial_state (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/bulk_delete_confirm/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm/keep_chosen (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm/purge_chosen,_path_resolved (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/delete/purge_confirm/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/archive_confirm (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/archive_confirm/live_row (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/archive_confirm/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/profile_picker (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/profile_picker/initial_candidate (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/profile_picker/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/pin_conversation (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/pin_conversation/initial_candidate (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/pin_conversation/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/restart-or-inject (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/restart-or-inject/initial_candidate (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/restart-or-inject/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/rename (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/rename/prefilled_value (0.00s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/rename/with_a_failure_note (0.00s)
+    --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/event_log (0.04s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/event_log/populated (0.02s)
+        --- PASS: TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII/event_log/read_error (0.02s)
+=== RUN   TestRenameFieldRowTruncationReemitsItsOwnReset
+--- PASS: TestRenameFieldRowTruncationReemitsItsOwnReset (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.052s
