@@ -1,0 +1,4 @@
+=== parallel suite invocation start 19:48:40.848 ===
+command: ci/run.sh go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	303.304s
+=== parallel suite invocation end 19:53:45.112 exit=0 ===

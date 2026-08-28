@@ -62,23 +62,44 @@ the failure shape a genuinely-wrong assertion should produce, and not a silent p
 edit was reverted immediately after capturing this log (`git checkout -- features/filter.feature`);
 it is not part of the committed diff.
 
-### Green: 20 consecutive targeted runs, ≥5 under real scheduling pressure
+### Green: 20 consecutive targeted runs, all 20 under real scheduling pressure
 
-Command (repeated 20 times, ~6s each):
+Command (repeated 20 times, ~6.5s each):
 
 ```
 ci/run.sh env DECK_GODOG_PATHS=filter.feature go test ./features/ -run TestFeatures -count=1
 ```
 
-All 20 runs exited 0 (`20-consecutive-runs.log`). A full `ci/run.sh go test -p=1 -count=1 ./...`
-whole-suite run was started in the background immediately before the loop and was still executing
-(inside its own `features` package run, per the baseline's ~316s figure) for the entire 124s the 20
-targeted runs took (19:36:33–19:38:37 vs. the parallel suite's own start at 19:36:32, confirmed still
-running via `ps` at +178s elapsed) — so every one of the 20 runs, not merely 5, ran with the second
-suite invocation's CPU/scheduling pressure live on the same host.
+Captured by the committed harness `parallel-pressure-runs.sh`, which is what produced both logs and
+re-runs the whole exercise unattended from the repository root. It starts a **second suite
+invocation** — `ci/run.sh go test ./features/ -run TestFeatures -count=1`, i.e. the whole godog suite
+over every feature file — in the background first, and only then executes the 20 targeted runs, so
+the scheduling pressure of the failing stability run is live on the host throughout.
+
+Overlap is established by the logs alone, not by narrative:
+
+- `parallel-suite.log` is the second invocation's own output, bracketed by its wall-clock start and
+  end: started `19:48:40.848`, ended `19:53:45.112`, `ok github.com/n-orlov/deck/features 303.304s`,
+  `exit=0`.
+- `20-consecutive-runs.log` header records that invocation's shell pid (`17594`), its sibling
+  container id (`aebe2c4de218`) and that container's `docker inspect` `StartedAt`
+  (`2026-08-28T19:48:41.153471769Z`) plus its `Cmd`.
+- every one of the 20 run blocks carries its own `start=`/`end=` timestamps, its exit code, a
+  `docker ps` snapshot of this run's sibling containers taken at the end of that run — in which
+  container `aebe2c4de218` is still listed and ageing (`started=41 seconds ago`, `About a minute
+  ago`, ...) — a `ps -p 17594` liveness check, and the derived `OVERLAP=yes/no` verdict.
+- runs 1–20 span `19:48:41.895`–`19:50:57.824`, entirely inside the parallel invocation's
+  `19:48:40.848`–`19:53:45.112` window.
+
+Final line of `20-consecutive-runs.log`: `SUMMARY green=20/20 overlapped=20/20
+parallel_suite_exit=0`. So all 20 runs passed and all 20 — not merely the 5 required — overlapped the
+second suite invocation, which itself passed. Host: `Linux 7.0.12-201.fc44.x86_64`, `nproc: 28`,
+tree at `54fd6e0` (the two dirty files the header reports are this harness script and this README).
 
 ## Files touched
 
 - `features/kill_delete_undo_test.go` — the fix (shared `waitForSessionColumnState` helper,
   `sessionRowCount` accessor, four+one call sites converted).
 - `features/godog_test.go` — untouched (`defaultTags` unchanged).
+- `parallel-pressure-runs.sh` — the evidence harness for the green run above (report-local, not
+  product or test code).
