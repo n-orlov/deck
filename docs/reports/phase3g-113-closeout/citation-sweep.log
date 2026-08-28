@@ -1,0 +1,14 @@
+reports scanned: 2
+  docs/reports/phase3g.md
+  docs/reports/phase3g-findings.md
+
+distinct shas cited: 65
+sha resolution failures: 0
+
+distinct link targets cited: 42
+link resolution failures: 0
+
+distinct same-document anchors cited: 27
+anchor resolution failures: 0
+
+CITATION SWEEP: PASS - every cited sha resolves, every cited path exists, every same-document anchor resolves
