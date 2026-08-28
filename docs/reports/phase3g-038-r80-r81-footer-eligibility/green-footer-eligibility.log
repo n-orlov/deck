@@ -1,0 +1,41 @@
+=== RUN   TestFooterEntriesNameOnlyBoundKeysViaSourceParse
+--- PASS: TestFooterEntriesNameOnlyBoundKeysViaSourceParse (0.00s)
+=== RUN   TestFooterEntryEligibilityMatchesRealPredicate
+--- PASS: TestFooterEntryEligibilityMatchesRealPredicate (0.00s)
+=== RUN   TestFooterFixedSetMatchesSpecAndExcludesRareKeys
+--- PASS: TestFooterFixedSetMatchesSpecAndExcludesRareKeys (0.02s)
+=== RUN   TestFooterKeyLegendReflectsEligibility
+=== RUN   TestFooterKeyLegendReflectsEligibility/live_row:_kill,_restart,_attach_and_interactive_eligible,_resume_is_not
+=== RUN   TestFooterKeyLegendReflectsEligibility/live_agent_row:_P_and_p_stay_out_of_the_footer_even_though_the_agent_has_them
+=== RUN   TestFooterKeyLegendReflectsEligibility/the_eligible_one_of_A/U_shows,_never_both:_A_on_an_unarchived_row,_U_on_an_archived_one
+=== RUN   TestFooterKeyLegendReflectsEligibility/,_(settings)_is_a_global_key:_present_with_sessions_and_without
+=== RUN   TestFooterKeyLegendReflectsEligibility/stopped_row:_resume_eligible,_kill/restart/attach/interactive_are_not
+=== RUN   TestFooterKeyLegendReflectsEligibility/archived_row:_eligibility_follows_status,_not_the_archive_flag
+=== RUN   TestFooterKeyLegendReflectsEligibility/attention-pending_row_(waiting):_kill_and_restart_eligible,_resume_is_not
+=== RUN   TestFooterKeyLegendReflectsEligibility/marked_set:_x_asks_the_marked_rows,_not_the_selected_one
+=== RUN   TestFooterKeyLegendReflectsEligibility/empty_list:_every_per-row_key_disappears
+--- PASS: TestFooterKeyLegendReflectsEligibility (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/live_row:_kill,_restart,_attach_and_interactive_eligible,_resume_is_not (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/live_agent_row:_P_and_p_stay_out_of_the_footer_even_though_the_agent_has_them (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/the_eligible_one_of_A/U_shows,_never_both:_A_on_an_unarchived_row,_U_on_an_archived_one (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/,_(settings)_is_a_global_key:_present_with_sessions_and_without (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/stopped_row:_resume_eligible,_kill/restart/attach/interactive_are_not (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/archived_row:_eligibility_follows_status,_not_the_archive_flag (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/attention-pending_row_(waiting):_kill_and_restart_eligible,_resume_is_not (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/marked_set:_x_asks_the_marked_rows,_not_the_selected_one (0.00s)
+    --- PASS: TestFooterKeyLegendReflectsEligibility/empty_list:_every_per-row_key_disappears (0.00s)
+=== RUN   TestFooterLineSharesLineWithLongStatusReason
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/short_reason:_both_halves_in_full
+    footer_legend_test.go:304: 200-col full legend: "↑/↓ · Y acknowledge · n new · r resume · dd delete · A archive · , settings · i detail · ? help · q quit"
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/80_columns,_short_reason
+    footer_legend_test.go:327: 80-col stopped-row footer (77 cells): "stopped · resumable    ↑/↓ · Y acknowledge · n new · r resume · dd delete · …"
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/80_columns,_§11.3's_long_reason
+    footer_legend_test.go:349: 80-col long-reason footer (76 cells): "error · pane failed after the stale f…    ↑/↓ · ↵ interactive · a attach · …"
+=== RUN   TestFooterLineSharesLineWithLongStatusReason/80_columns,_empty_list:_the_reason_goes_with_the_rows
+--- PASS: TestFooterLineSharesLineWithLongStatusReason (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/short_reason:_both_halves_in_full (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/80_columns,_short_reason (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/80_columns,_§11.3's_long_reason (0.00s)
+    --- PASS: TestFooterLineSharesLineWithLongStatusReason/80_columns,_empty_list:_the_reason_goes_with_the_rows (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.036s

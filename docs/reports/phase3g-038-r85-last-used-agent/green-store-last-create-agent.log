@@ -1,0 +1,4 @@
+=== RUN   TestLastCreateAgentAccessorsDegradeToDocumentedDefaults
+--- PASS: TestLastCreateAgentAccessorsDegradeToDocumentedDefaults (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.025s
