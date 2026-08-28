@@ -13,6 +13,30 @@ import (
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
+// LaunchLeaseReleaser is the narrow store seam Resume needs to release a
+// launch lease once its own attempt concludes (R75, issue #11): only the one
+// UPDATE, none of GetSession, AcquireLaunchLease or any of the other store
+// operations Resume and the rest of Service depend on. *store.Store already
+// satisfies it as it stands, so every existing caller (cmd/deck, the
+// features harness, every internal/service test) keeps building a Service
+// with a concrete *store.Store Store field and compiles unchanged; a test
+// substitutes a different implementation via Service.LeaseReleaser to make
+// the release call itself fail, without a test-only branch, an env knob, or
+// any other change to product code.
+type LaunchLeaseReleaser interface {
+	ReleaseLaunchLease(ctx context.Context, sessionID, heldOwner string) (bool, error)
+}
+
+// leaseReleaser resolves the seam Resume's deferred release uses: the
+// caller-supplied override if one was given, otherwise Store itself, which
+// already satisfies LaunchLeaseReleaser.
+func (s Service) leaseReleaser() LaunchLeaseReleaser {
+	if s.LeaseReleaser != nil {
+		return s.LeaseReleaser
+	}
+	return s.Store
+}
+
 // ResumeOutcome distinguishes a resume that launched a pane, a genuine
 // launch-lease loser, and a row that became non-leasable before the attempt.
 type ResumeOutcome int
@@ -182,7 +206,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	// it R74's generation) stays on the row, because the row must go on naming
 	// which launch is current for as long as that pane can still send hooks.
 	defer func() {
-		if _, releaseErr := s.Store.ReleaseLaunchLease(ctx, session.ID, lease.HeldBy); releaseErr != nil {
+		if _, releaseErr := s.leaseReleaser().ReleaseLaunchLease(ctx, session.ID, lease.HeldBy); releaseErr != nil {
 			// A lease that cannot be released is not a failed launch and must
 			// not change the verdict the user is given for one. The §9.3 TTL is
 			// still the backstop, so the row becomes leasable again within the
