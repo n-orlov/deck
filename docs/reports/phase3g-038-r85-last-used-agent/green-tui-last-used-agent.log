@@ -1,0 +1,14 @@
+=== RUN   TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue
+--- PASS: TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue (0.02s)
+=== RUN   TestCreateModalOpensOnLastCreateAgentLabelled
+--- PASS: TestCreateModalOpensOnLastCreateAgentLabelled (0.02s)
+=== RUN   TestCreateModalOpensWithoutLabelWhenNoLastCreateAgent
+--- PASS: TestCreateModalOpensWithoutLabelWhenNoLastCreateAgent (0.02s)
+=== RUN   TestCyclingAgentFieldClearsLastUsedLabel
+--- PASS: TestCyclingAgentFieldClearsLastUsedLabel (0.02s)
+=== RUN   TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent
+--- PASS: TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent (0.02s)
+=== RUN   TestSuccessfulCreatePersistsLastCreateAgent
+--- PASS: TestSuccessfulCreatePersistsLastCreateAgent (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.131s

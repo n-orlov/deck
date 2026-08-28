@@ -1,0 +1,29 @@
+# R84 absence check, run by task 038 at HEAD e02ef08
+# each required pair per SPEC.md §11.6 / PRD R84, grepped in internal/theme/contrast_test.go
+ABSENT   hint/surface
+ABSENT   key/surface
+ABSENT   error/surface
+PRESENT  text/selection
+ABSENT   dimmed/selection
+ABSENT   key/selection
+ABSENT   hint/selection
+ABSENT   error/selection
+ABSENT   text/selectionidle
+ABSENT   dimmed/selectionidle
+ABSENT   key/selectionidle
+
+# every pair label the file does declare:
+"/background"
+"/surface"
+"badge/surface"
+"badge_warn/surface"
+"dimmed/surface"
+"hint/background"
+"text/background"
+"text/selection"
+"text/surface"
+"title/background"
+"title/surface"
+
+# last commit touching the file (state of record for R84's unmet criterion):
+7033e12 tui: alternate sidebar row background stripe using theme.Surface (084)

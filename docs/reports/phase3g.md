@@ -184,8 +184,14 @@ archived pool, a second `dd` plus grace-window expiry reaps it).
 
 Green at `cc36cfa`: `ci/run.sh go test -count=1 ./internal/store/` and
 `ci/run.sh env DECK_GODOG_PATHS=filter.feature go test ./features/ -run TestFeatures -count=1`
-(covered by task 040's whole-suite run; no dedicated per-task log directory exists for
-R78, since it is not one of the eight naive-test-trap requirements).
+(covered by task 040's whole-suite run).
+
+Evidence: [`phase3g-038-r78-archived-name-dd/`](phase3g-038-r78-archived-name-dd/) —
+tasks 007–009 left no per-task directory, so its two green logs
+(`green-store-archived.log`, `green-filter-feature.log`) were captured by task 038 at
+`e02ef08` against the unmodified tree; that directory's README says so up front and
+claims no implementation-time red/green pair (none is owed: R78 is not one of the
+eight).
 
 ## R79 — a tombstone that outlives its process is reaped at the next store open (tasks 010–011)
 
@@ -266,6 +272,12 @@ across live/stopped/archived/attention-pending/marked/empty-list rows, plus the
 
 Green at `cc36cfa`: `ci/run.sh go test -count=1 ./internal/tui/` (covered by task 040's
 whole-suite run).
+
+Evidence: [`phase3g-038-r80-r81-footer-eligibility/`](phase3g-038-r80-r81-footer-eligibility/)
+— `green-footer-eligibility.log`, the presence/absence and width cases run by name;
+captured by task 038 at `e02ef08` against the unmodified tree (tasks 012–013 left no
+directory of their own), disclosed as green-only confirmation in that README. No red is
+owed: R80 is not one of the eight.
 
 ## R81 — the footer's fixed set is curated (tasks 014–015)
 
@@ -378,6 +390,12 @@ at any mark count).
 Tests: the same per-dialog `*_theme_test.go` files listed under R82 assert the ≤24-line
 bound at 80×24 and PgUp/PgDn reachability directly.
 
+Evidence: [`phase3g-038-r83-dialog-frame-bound/`](phase3g-038-r83-dialog-frame-bound/) —
+`green-80x24-bounds.log`, the frame-budget and submit-line-reachability tests of all
+three dialogs run by name; captured by task 038 at `e02ef08` against the unmodified
+tree, green-only, as its README states. No red is owed (R83 is not one of the eight),
+and nothing there covers task 022's still-missing net.
+
 **Task 022 — "net the themed dialogs against `NO_COLOR`, `DECK_ASCII` and width
 accounting" — is `pending`, not yet started.** The bounding itself is in the tree and
 covered by the dialogs' own theme tests; what is not yet done is the cross-dialog
@@ -393,6 +411,24 @@ report does not claim that net exists.
 `internal/theme/contrast_test.go`'s coverage. This report makes no claim that R84 is
 met; it is recorded here only so the requirement has a section, per this report's own
 structural criterion.
+
+**There is no fixing sha for R84, because nothing was implemented.** The sha of record
+for the unmet state is **`7033e12`** (`tui: alternate sidebar row background stripe
+using theme.Surface (084)`, Phase 3) — the last commit to touch
+`internal/theme/contrast_test.go`, whose pair list is exactly what R84 asks to grow. No
+sha in Phase 3g's range touches that file; `git log --oneline 1cfbd5a..e02ef08 --
+internal/theme/contrast_test.go` is empty.
+
+Test that would carry it: `internal/theme/contrast_test.go`'s `contrastChecks()` /
+`sessionRowSurfaceChecks()` (the two pair tables `TestBuiltinContrastFloor` and
+`TestSessionRowTokensClearContrastFloorOnSurface` iterate) — neither declares any of the
+pairs above.
+
+Evidence: [`phase3g-038-r84-contrast-floor-absent/`](phase3g-038-r84-contrast-floor-absent/)
+— deliberately evidence of *absence*: `missing-pairs-absence-check.log` greps the file
+for each pair R84 names and prints `ABSENT` for ten of the eleven (only requirement 30's
+older `text/selection` is `PRESENT`), then lists every pair label the file does declare.
+Captured by task 038 at `e02ef08`; reproduce with the command in the log's header.
 
 ## R85 — the create modal opens on the last used agent (task 024)
 
@@ -412,6 +448,12 @@ re-derivation, no store read in the render path).
 
 Green at `cc36cfa`: `ci/run.sh go test -count=1 ./internal/store/ ./internal/tui/`
 (covered by task 040's whole-suite run).
+
+Evidence: [`phase3g-038-r85-last-used-agent/`](phase3g-038-r85-last-used-agent/) —
+`green-tui-last-used-agent.log` (all six create-modal cases) and
+`green-store-last-create-agent.log` (`ui_state` persistence and defaults); captured by
+task 038 at `e02ef08` against the unmodified tree, green-only, as its README states.
+Task 024 left no directory of its own and no red is owed: R85 is not one of the eight.
 
 ## R86 — `↑`/`↓` navigate dialog fields; `tab` is completion only (tasks 025, 026)
 
@@ -516,12 +558,26 @@ names what happened and the restart-to-apply route out.
 Tests: `internal/service/inject_retained_corpse_test.go`
 (`TestInjectEnvRefusesARetainedDeadShellPane`); `features/environment.feature`.
 
-**Red** (`inject.go` stashed, test kept),
-`docs/reports/phase3g-029-inject-retained-dead-pane/red-before-fix.log`: fails on the
-message-content assertion — the refusal that surfaces is tmux's own generic wrapped
-message, not the crafted one naming the restart route.
+**Red** (`inject.go` stashed, test kept), captured at implementation time in
+`docs/reports/phase3g-029-inject-retained-dead-pane/red-before-fix.log` — it fails on the
+message-content assertion, because the refusal that surfaces is tmux's own generic
+wrapped message, not the crafted one naming the restart route:
+```
+=== RUN   TestInjectEnvRefusesARetainedDeadShellPane
+    inject_retained_corpse_test.go:117: refusal = "inject environment key \"INJECT_TARGET\" into session \"dead-shell-pane\": send keys to session \"dead-shell-pane\": no live pane", want it to say a stopped/error row cannot take an injection
+--- FAIL: TestInjectEnvRefusesARetainedDeadShellPane (0.06s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.067s
+FAIL
+```
 
-**Green**, `green-after-fix.log`: passes.
+**Green** (same directory, `green-after-fix.log`, the fix restored), verbatim:
+```
+=== RUN   TestInjectEnvRefusesARetainedDeadShellPane
+--- PASS: TestInjectEnvRefusesARetainedDeadShellPane (0.06s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	0.067s
+```
 
 Full criterion, both green at `cc36cfa`: `ci/run.sh go test -count=1 ./internal/service/`;
 `ci/run.sh env DECK_GODOG_PATHS=environment.feature go test ./features/ -run TestFeatures -count=1`.
@@ -748,6 +804,12 @@ test's own ability to compile, not demonstrate a behavioural regression.
 
 Green at `cc36cfa`: `ci/run.sh go test -count=1 ./internal/service/`;
 `ci/run.sh env DECK_GODOG_PATHS=lease_race.feature go test ./features/ -run TestFeatures -count=1`.
+
+Evidence: [`phase3g-038-r92-lease-release-failure/`](phase3g-038-r92-lease-release-failure/)
+— `green-lease-release-failure.log`, the seam-driven test run by name; captured by task
+038 at `e02ef08` against the unmodified tree, green-only (no red is owed, per the
+paragraph above), as its README states.
+
 (`cc36cfa` also converges `positionCreateModalOnProfileField` onto task 024's
 `ensureCreateModalAgent` helper — needed because `lease_race.feature` creates two
 claude sessions in one scenario, the same convergence gap R90's evidence flagged; only
@@ -778,7 +840,8 @@ assertion can observe the pre-repair `stopped` text. This is exactly R76 doing i
 against a scenario written before R76 existed to contradict it — a genuine interaction
 between two requirements, not a flaw in either one alone. Not fixed by task 038 (out of
 scope for a report-writing task); recorded here and due for
-`docs/reports/phase3g-findings.md` (task 039) and a follow-up task to rewrite the
+`docs/reports/phase3g-findings.md` (task 039's deliverable, not yet written at
+`e02ef08`) and a follow-up task to rewrite the
 scenario's assertion to a store read or otherwise account for R76.
 
 ## Per-requirement table
@@ -793,7 +856,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R81 | met | 014–015 | `7dbe5c5`, `3498b3e` | not required |
 | R82 | **partial** | 016 (skipped), 017–020, 021 (failed) | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad` | not required |
 | R83 | **partial** | 016, 018, 022 (pending) | see R82 row | not required |
-| R84 | **not done** | 023 (pending) | none | not required |
+| R84 | **not done** | 023 (pending) | none — state of record `7033e12` | not required |
 | R85 | met | 024 | `9991689` | not required |
 | R86 | met | 025–026 | `a337671`, `17b7bb9`, `8cff03b` | yes (retroactive, disclosed) |
 | R87 | met | 027–028 | `f3f3d26`, `3d749bb` | yes |
@@ -804,4 +867,5 @@ scenario's assertion to a store read or otherwise account for R76.
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
 
 "Partial"/"not done" rows are not claims of completion; they are carried forward to
-`docs/reports/phase3g-findings.md` (task 039) and the close-out (task 042).
+`docs/reports/phase3g-findings.md` (task 039's deliverable, not yet written at
+`e02ef08`) and the close-out (task 042).

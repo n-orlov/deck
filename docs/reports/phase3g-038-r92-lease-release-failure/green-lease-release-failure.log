@@ -1,0 +1,4 @@
+=== RUN   TestResumeAuditsAndStaysTTLBoundedWhenReleasingTheLaunchLeaseFails
+--- PASS: TestResumeAuditsAndStaysTTLBoundedWhenReleasingTheLaunchLeaseFails (0.09s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	0.094s

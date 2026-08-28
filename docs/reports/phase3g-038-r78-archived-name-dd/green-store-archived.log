@@ -1,0 +1,8 @@
+=== RUN   TestCreateSessionRefusesArchivedNameHolder
+--- PASS: TestCreateSessionRefusesArchivedNameHolder (0.02s)
+=== RUN   TestRenameSessionRefusesLiveAndArchivedHolders
+--- PASS: TestRenameSessionRefusesLiveAndArchivedHolders (0.02s)
+=== RUN   TestDDOnAnArchivedRowIsReachableAndReapsCleanly
+--- PASS: TestDDOnAnArchivedRowIsReachableAndReapsCleanly (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.064s
