@@ -1,0 +1,6 @@
+=== RUN   TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow
+--- PASS: TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow (0.56s)
+=== RUN   TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow
+--- PASS: TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow (0.56s)
+PASS
+ok  	github.com/n-orlov/deck/cmd/deck	1.125s

@@ -1,0 +1,9 @@
+=== RUN   TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow
+    interactive_cleanup_test.go:272: pipe-pane is still armed for "deck_leaky-tmp-testdeckbinarysigtermmidinteractivedisarmspipeandrestoreswindow51377380-003" after deck exited, want disarmed
+--- FAIL: TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow (0.65s)
+=== RUN   TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow
+    interactive_cleanup_test.go:314: pipe-pane is still armed for "deck_leaky-tmp-testdeckbinarypanicmidinteractivedisarmspipeandrestoreswindow2522093460-003" after deck exited, want disarmed
+--- FAIL: TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow (0.63s)
+FAIL
+FAIL	github.com/n-orlov/deck/cmd/deck	1.285s
+FAIL
