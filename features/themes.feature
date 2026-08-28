@@ -38,9 +38,33 @@ Feature: theme rendering end-to-end (requirement 49)
       | tok49-run    | target  | running  |
       | tok49-idle   | target  | idle     |
       | tok49-start  | agent   | starting |
-      | tok49-stop   | target  | stopped  |
       | tok49-err    | target  | error    |
       | tok49-arch   | target  | archived |
+
+  @requirement-49-themes
+  Scenario: a built-in theme colours the stopped status token, read per cell from a real client
+    # Split out of the Scenario Outline above because "stopped" cannot be
+    # posed by writing the state database directly while the target's tmux
+    # pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # stopped row paired with a live pane as an invariant violation and
+    # repairs a shell row straight back to "running" on the very next
+    # reconcile tick, so the word never renders (task 040 item 3, the same
+    # self-heal task 040 items 1/2 hit elsewhere). A genuine clean exit
+    # removes the pane first, so the word this asserts is the real
+    # tmux.session_gone transition, not a raced fake one.
+    Given the scenario's config.toml selects theme "empire"
+    And a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "tok49-stop" is started with colour enabled
+    And deck client "tok49-stop" creates shell session "anchor"
+    Then within one configured reconcile interval deck client "tok49-stop" screen contains "running"
+    And deck client "tok49-stop" creates shell session "target"
+    And deck client "tok49-stop" creates claude session "agent" with permission profile "safe"
+    And deck client "tok49-stop" selects session "anchor"
+    When shell session "target" exits with status zero
+    Then within one configured reconcile interval deck client "tok49-stop" screen contains "stopped"
+    And deck client "tok49-stop" text "stopped" has foreground token "stopped"
+    And deck client "tok49-stop" exits cleanly
 
   @requirement-49-themes
   Scenario: a built-in theme colours border_focus/border, selection/selection_idle, title, group and key/hint chrome, read per cell from a real client
