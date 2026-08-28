@@ -1,0 +1,15 @@
+=== RUN   TestFeatures/a_fit_is_skipped_below_the_7-inner-row_floor,_and_retried_once_the_panel_grows_back_above_it
+
+  Scenario: a fit is skipped below the 7-inner-row floor, and retried once the panel grows back above it # preview.feature:134
+    Given a long-running fake "claude" binary is on PATH for future deck clients                         # agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients
+    And deck client "maker" is started with preview fit disabled                                         # preview_test.go:25 -> github.com/n-orlov/deck/features.startNamedClientWithPreviewFitDisabled
+    And deck client "maker" creates shell session "alpha"                                                # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "maker" creates claude session "beacon" with permission profile "safe"               # agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile
+    And within one configured reconcile interval deck client "maker" screen contains "running"           # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    And deck client "maker" exits cleanly                                                                # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+    And deck client "solo" is started with terminal size 100x9                                           # resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize
+    And deck client "solo" terminal is resized to 100x20                                                 # resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient
+    When deck client "solo" selects session "beacon"                                                     # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    Then deck client "solo" has never been taller than 9 rows                                            # preview_test.go:26 -> github.com/n-orlov/deck/features.clientHasNeverBeenTallerThan
+    after scenario hook failed: deck client "solo" has been 20 rows tall at some point, want never more than 9: a taller frame licenses the very passive fit this scenario asserts never happened, so the assertion below would be racing that fit rather than observing its absence (task 028, finding F1)
+[... surviving-client goroutine dump elided; not relevant to this demonstration ...]

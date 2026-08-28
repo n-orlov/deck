@@ -1030,7 +1030,20 @@ type uiStatePersisted struct{ err error }
 // it returned: passive fit is stated as best-effort in the spec itself, so
 // there is no error state to surface to the user, only a settled/
 // unsettled one, which previewFitSessionID (set from sessionID here) is.
-type previewFitDone struct{ sessionID string }
+//
+// noLivePane (task 035) is true ONLY for the closure's no-live-pane return
+// (PreviewPane found no pane to fit at all -- stopped, starting, archived,
+// or reaped between List and capture). That case never touched the
+// window, so it must not be recorded as "settled" the way a real fit
+// attempt is: the zero value (false) is deliberately the "treat as
+// settled" case, matching every OTHER return path (the tmux.SessionName
+// failure and the real FitWindowToPane call) and every pre-existing test
+// that constructs previewFitDone{sessionID: ...} without naming this
+// field.
+type previewFitDone struct {
+	sessionID  string
+	noLivePane bool
+}
 
 type sessionResumed struct {
 	session store.Session
@@ -1505,7 +1518,15 @@ func (m *Model) previewFit() tea.Cmd {
 			// selection changes again -- the same best-effort treatment
 			// capturePreview's own previewCaptured{err} gives a transport
 			// failure (it does not spam attachError every tick either).
-			return previewFitDone{sessionID: sessionID}
+			//
+			// noLivePane: true (task 035) -- nothing was resized here, so
+			// this return must NOT latch previewFitSessionID the way a
+			// real fit attempt does. Without this, a session that has no
+			// live pane right now permanently loses eligibility for every
+			// future fit for the rest of the model's lifetime, even after
+			// its pane later becomes live again while the row stays (or is
+			// re-)selected -- see docs/reports/phase3g-034-previewfit-derivation.
+			return previewFitDone{sessionID: sessionID, noLivePane: true}
 		}
 		windowTarget, err := tmux.SessionName(slug)
 		if err != nil {
@@ -2190,7 +2211,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	case previewFitDone:
-		m.previewFitSessionID = msg.sessionID
+		// Task 035: a no-live-pane return must NOT latch previewFitSessionID
+		// -- nothing was resized, so this session must stay eligible for a
+		// real fit once its pane later becomes live again while the row
+		// stays (or is re-)selected. Every OTHER return path (the real fit,
+		// and the pre-existing tmux.SessionName failure path, both left
+		// unchanged by this task) keeps latching exactly as before.
+		if !msg.noLivePane {
+			m.previewFitSessionID = msg.sessionID
+		}
 		// Cleared unconditionally, not only when it matches the session
 		// reported: at most one fit is ever outstanding (previewFit refuses
 		// to schedule a second while previewFitInFlight is set), and an
