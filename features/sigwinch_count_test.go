@@ -53,6 +53,31 @@ func TestSigwinchCountDistinguishesTwoFromThree(t *testing.T) {
 
 	countPath := filepath.Join(home, "log", "fake-claude-sigwinch-count")
 
+	// Wait for cmd/fake-claude/main.go's startSizeRecorder to have observably
+	// run past its own recordSize(path) call (the fixture's initial 80x24
+	// entry in fake-claude-sizes.log) before sending the first real SIGWINCH.
+	// startSizeRecorder calls signal.Notify(signals, syscall.SIGWINCH)
+	// unconditionally on the very next line after that write, with no
+	// intervening syscall that could stall it further, so this proves the
+	// handler is installed (or as good as installed) rather than merely
+	// hoping it is. Without this wait, the "before any resize" check below
+	// passed trivially (readSigwinchCount treats a not-yet-created counter
+	// file as 0, so it matched "want 0" immediately, before the fixture's
+	// process had even started) and gave the caller no synchronisation at
+	// all: under enough scheduling contention (ci/stability.sh, task 507's own
+	// measurements at rates around 1/10-2/20) the very first resize's kernel
+	// SIGWINCH could arrive before the fixture ever called signal.Notify, so
+	// it was delivered to the default (ignored) disposition and lost for
+	// good -- no later wait can recover a signal the kernel already handled
+	// by discarding -- leaving "sigwinch count after 1st resize = 0" exactly
+	// as reproduced in docs/reports/phase3g-507-sigwinch-startup-race/.
+	sizesPath := filepath.Join(home, "log", "fake-claude-sizes.log")
+	if got, err := waitForRecordedSizes(sizesPath, "80x24"); err != nil {
+		t.Fatal(err)
+	} else if got != "80x24" {
+		t.Fatalf("initial recorded size = %q, want %q (fake-claude's SIGWINCH handler may not be installed yet)", got, "80x24")
+	}
+
 	// Before any resize, the count must be exactly 0: a hard-coded or stale
 	// counter would pass every later assertion in this test by accident.
 	if got, err := waitForSigwinchCount(countPath, 0); err != nil {
