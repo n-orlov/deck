@@ -73,7 +73,13 @@ Feature: the seven §7 status tokens colour the sidebar's status word (task 014)
 
   @requirement-status-tokens
   Scenario: the error status token colours the error status word
-    When the state database session "tok-target" has status "error" 5 seconds ago
+    # "error" cannot be posed by writing the state database directly while
+    # tok-target's tmux pane is still alive, for the same reason "stopped"
+    # above cannot: SPEC section 7's self-heal repairs a bare error row with
+    # a live pane back to "running" on the very next reconcile tick (task
+    # 703, review finding 1's fallout). A genuine nonzero pane exit reaches
+    # a durable "error" instead -- the real tmux.pane_dead transition.
+    When shell session "tok-target" exits with status 1
     Then within one configured reconcile interval deck client "A" screen contains "error"
     And deck client "A" text "error" has foreground token "error"
     And deck client "A" exits cleanly
@@ -87,7 +93,8 @@ Feature: the seven §7 status tokens colour the sidebar's status word (task 014)
 
   @requirement-status-tokens
   Scenario: statuses never borrow each other's colour
-    When the state database session "tok-target" has status "error" 5 seconds ago
+    # Same genuine nonzero-exit route as the error scenario above (task 703).
+    When shell session "tok-target" exits with status 1
     Then within one configured reconcile interval deck client "A" screen contains "error"
     And deck client "A" text "error" does not have foreground token "running"
     And deck client "A" text "error" does not have foreground token "waiting"

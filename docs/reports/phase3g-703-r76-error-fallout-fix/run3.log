@@ -1,0 +1,435 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The attention sort, workspace grouping/collapse, and `space` (requirement 40)
+  SPEC §11 requirements 28-32: sessions render in exactly one attention-driven
+  order (waiting oldest-first, then error, running, starting, idle, stopped),
+  grouped by workspace with collapsible headers, and `space` walks whatever
+  needs attention from the one shared source the sort and the collapsed
+  strip's count also use, without ever writing a session's status.
+=== RUN   TestFeatures/sessions_render_in_the_full_waiting/error/running/starting/idle/stopped_order,_ties_broken_oldest-first
+
+  [1;37mBackground:[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                                    [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+
+  [1;37mScenario:[0m sessions render in the full waiting/error/running/starting/idle/stopped order, ties broken oldest-first [1;30m# attention_sort.feature:14[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "s-idle"[0m                                                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "s-error"[0m                                                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "s-waiting-new"[0m                                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "s-waiting-old"[0m                                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "s-running"[0m                                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "s-agent" with permission profile "safe"[0m                             [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "s-stopped"[0m                                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mshell session "s-stopped" exits with status zero[0m                                                            [1;30m# crash_test.go:22 -> github.com/n-orlov/deck/features.shellSessionExitsZero[0m
+    [32mAnd[0m [32mshell session "s-error" exits with status 1[0m                                                                 [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.shellSessionExitsWithNonzeroStatus[0m
+    [32mAnd[0m [32mthe state database session "s-idle" has status "idle" 50 seconds ago[0m                                        [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "s-waiting-new" has status "waiting" 10 seconds ago[0m                              [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "s-waiting-old" has status "waiting" 90 seconds ago[0m                              [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "waiting"[0m                         [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" row "s-error" contains "error"[0m                     [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mAnd[0m [32mdeck client "A" screen shows sessions in this order:[0m                                                        [1;30m# attention_sort_test.go:26 -> github.com/n-orlov/deck/features.clientShowsSessionsInOrder[0m
+      | [36ms-waiting-old[0m |
+      | [36ms-waiting-new[0m |
+      | [36ms-error[0m       |
+      | [36ms-running[0m     |
+      | [36ms-agent[0m       |
+      | [36ms-idle[0m        |
+      | [36ms-stopped[0m     |
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_sidebar_groups_sessions_by_workspace,_with_a_header_per_group,_and_a_keyboard_toggle_can_collapse_one
+
+  [1;37mScenario:[0m the sidebar groups sessions by workspace, with a header per group, and a keyboard toggle can collapse one [1;30m# attention_sort.feature:49[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "grp-a-1"[0m                                                              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "grp-a-2"[0m                                                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "grp-b-1"[0m                                                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "grp-b-1" has workspace "second-workspace"[0m                                         [1;30m# attention_sort_test.go:23 -> github.com/n-orlov/deck/features.setSessionWorkspace[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "second-workspace"[0m                  [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "grp-a-1"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "grp-a-2"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "grp-b-1"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" selects session "grp-b-1"[0m                                                                    [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" sends "c"[0m                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen stops containing "grp-b-1"[0m                                                            [1;30m# preview_test.go:39 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "second-workspace"[0m                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "grp-a-1"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "grp-a-2"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/collapsing_and_expanding_the_sidebar's_only_workspace_group_round-trips_via_two_`c`_presses
+
+  [1;37mScenario:[0m collapsing and expanding the sidebar's only workspace group round-trips via two `c` presses [1;30m# attention_sort.feature:67[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "solo-a"[0m                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "solo-b"[0m                                                  [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" selects session "solo-a"[0m                                                        [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" sends "c"[0m                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen stops containing "solo-a"[0m                                               [1;30m# preview_test.go:39 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mAnd[0m [32mdeck client "A" screen stops containing "solo-b"[0m                                                [1;30m# preview_test.go:39 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mWhen[0m [32mdeck client "A" sends "c"[0m                                                                      [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "solo-a"[0m                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "solo-b"[0m                                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/g_and_G_jump_to_the_first_and_last_visible_row,_skipping_a_collapsed_group's_hidden_rows
+
+  [1;37mScenario:[0m g and G jump to the first and last visible row, skipping a collapsed group's hidden rows    [1;30m# attention_sort.feature:80[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "gg-a-1"[0m                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "gg-a-2"[0m                                                  [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "gg-b-1"[0m                                                  [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "gg-b-1" has workspace "gg-second-workspace"[0m                         [1;30m# attention_sort_test.go:23 -> github.com/n-orlov/deck/features.setSessionWorkspace[0m
+    [32mAnd[0m [32mthe state database session "gg-a-1" has status "waiting" 20 seconds ago[0m                         [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "gg-a-2" has status "idle" 10 seconds ago[0m                            [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "gg-second-workspace"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" selects session "gg-b-1"[0m                                                       [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" sends "g"[0m                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" has session "gg-a-1" selected[0m                                                  [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" sends "G"[0m                                                                      [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" has session "gg-b-1" selected[0m                                                  [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" selects session "gg-b-1"[0m                                                       [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" sends "c"[0m                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen stops containing "gg-b-1"[0m                                               [1;30m# preview_test.go:39 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mWhen[0m [32mdeck client "A" selects session "gg-a-2"[0m                                                       [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" sends "G"[0m                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" has session "gg-a-2" selected[0m                                                  [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention
+
+  [1;37mScenario:[0m the collapsed strip's attention count matches the sort's own notion of attention        [1;30m# attention_sort.feature:102[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cnt-wait"[0m                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cnt-err"[0m                                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cnt-idle"[0m                                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cnt-run"[0m                                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "cnt-wait" has status "waiting" 5 seconds ago[0m                    [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mshell session "cnt-err" exits with status 1[0m                                                 [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.shellSessionExitsWithNonzeroStatus[0m
+    [32mAnd[0m [32mthe state database session "cnt-idle" has status "idle" 5 seconds ago[0m                       [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" row "cnt-wait" contains "waiting"[0m [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" row "cnt-err" contains "error"[0m     [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" row "cnt-idle" contains "idle"[0m     [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mWhen[0m [32mdeck client "A" sends "|"[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "|"[0m                                                                   [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "|"[0m                                                                   [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" collapsed strip shows attention count 2[0m                                    [1;30m# attention_sort_test.go:27 -> github.com/n-orlov/deck/features.clientCollapsedStripShowsAttentionCount[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/`space`_walks_only_what_needs_attention,_wraps,_and_changes_no_session's_status
+
+  [1;37mScenario:[0m `space` walks only what needs attention, wraps, and changes no session's status  [1;30m# attention_sort.feature:123[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "sp-1"[0m                                        [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "sp-2"[0m                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "sp-3"[0m                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "sp-1" has status "waiting" 5 seconds ago[0m                 [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mshell session "sp-2" exits with status 1[0m                                             [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.shellSessionExitsWithNonzeroStatus[0m
+    [32mAnd[0m [32mthe state database session "sp-3" has status "idle" 1 seconds ago[0m                    [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "waiting"[0m  [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" row "sp-2" contains "error"[0m [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mAnd[0m [32mdeck client "A" selects session "sp-1"[0m                                               [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mthe state database status rows are captured as "before-space"[0m                        [1;30m# attention_sort_test.go:28 -> github.com/n-orlov/deck/features.captureStatusRowsAs[0m
+    [32mWhen[0m [32mdeck client "A" sends " "[0m                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" has session "sp-2" selected[0m                                         [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" sends " "[0m                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" has session "sp-1" selected[0m                                         [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mthe state database status rows still match "before-space"[0m                            [1;30m# attention_sort_test.go:29 -> github.com/n-orlov/deck/features.statusRowsStillMatch[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m the seven §7 status tokens colour the sidebar's status word (task 014)
+  SPEC §11.6 declares one theme token per §7 status (waiting, running, idle,
+  starting, stopped, error, archived); the sidebar's rendered status word
+  and its unseen-attention glyph must be coloured from that session's own
+  status token, never borrowed from another status. This asserts each of
+  the seven independently, per-cell, against the default theme's real
+  authored colour for that token, on a REAL running deck client (not the
+  swatch emulator requirement 4's harness steps paint) — the render path
+  this task actually changed.
+  
+  An "anchor" session stays selected throughout so the preview panel never
+  shows the "target" session's own status placeholder copy (e.g. "Session
+  is archived. No live preview to show.") alongside the sidebar row: that
+  placeholder text is plain, uncoloured copy, and if it ever collided with
+  the coloured status word substring the per-cell assertion below would
+  see a mix of coloured and uncoloured cells for the same substring and
+  fail for the wrong reason.
+=== RUN   TestFeatures/the_waiting_status_token_colours_the_waiting_status_word
+
+  [1;37mBackground:[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m            [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started with colour enabled[0m                                      [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "tok-anchor"[0m                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "tok-target"[0m                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "tok-agent" with permission profile "safe"[0m   [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" selects session "tok-anchor"[0m                                        [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+
+  [1;37mScenario:[0m the waiting status token colours the waiting status word                        [1;30m# status_theme.feature:30[0m
+    [32mWhen[0m [32mthe state database session "tok-target" has status "waiting" 5 seconds ago[0m         [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "waiting"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "waiting" has foreground token "waiting"[0m                       [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_running_status_token_colours_the_running_status_word
+
+  [1;37mScenario:[0m the running status token colours the running status word                        [1;30m# status_theme.feature:37[0m
+    [32mWhen[0m [32mthe state database session "tok-target" has status "running" 5 seconds ago[0m         [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "running" has foreground token "running"[0m                       [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_idle_status_token_colours_the_idle_status_word
+
+  [1;37mScenario:[0m the idle status token colours the idle status word                              [1;30m# status_theme.feature:44[0m
+    [32mWhen[0m [32mthe state database session "tok-target" has status "idle" 5 seconds ago[0m            [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "idle"[0m    [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "idle" has foreground token "idle"[0m                             [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_starting_status_token_colours_the_starting_status_word
+
+  [1;37mScenario:[0m the starting status token colours the starting status word                       [1;30m# status_theme.feature:51[0m
+    [32mWhen[0m [32mthe state database session "tok-agent" has status "starting" 5 seconds ago[0m          [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "starting"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "starting" has foreground token "starting"[0m                      [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_stopped_status_token_colours_the_stopped_status_word
+
+  [1;37mScenario:[0m the stopped status token colours the stopped status word                        [1;30m# status_theme.feature:58[0m
+    [32mWhen[0m [32mshell session "tok-target" exits with status zero[0m                                  [1;30m# crash_test.go:22 -> github.com/n-orlov/deck/features.shellSessionExitsZero[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "stopped"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "stopped" has foreground token "stopped"[0m                       [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_error_status_token_colours_the_error_status_word
+
+  [1;37mScenario:[0m the error status token colours the error status word                            [1;30m# status_theme.feature:75[0m
+    [32mWhen[0m [32mshell session "tok-target" exits with status 1[0m                                     [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.shellSessionExitsWithNonzeroStatus[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "error"[0m   [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "error" has foreground token "error"[0m                           [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_archived_status_token_colours_the_archived_status_word
+
+  [1;37mScenario:[0m the archived status token colours the archived status word                       [1;30m# status_theme.feature:88[0m
+    [32mWhen[0m [32mthe state database session "tok-target" has status "archived" 5 seconds ago[0m         [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "archived"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "archived" has foreground token "archived"[0m                      [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/statuses_never_borrow_each_other's_colour
+
+  [1;37mScenario:[0m statuses never borrow each other's colour                                       [1;30m# status_theme.feature:95[0m
+    [32mWhen[0m [32mshell session "tok-target" exits with status 1[0m                                     [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.shellSessionExitsWithNonzeroStatus[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "error"[0m   [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" text "error" does not have foreground token "running"[0m               [1;30m# cell_attributes_test.go:51 -> github.com/n-orlov/deck/features.textDoesNotHaveForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" text "error" does not have foreground token "waiting"[0m               [1;30m# cell_attributes_test.go:51 -> github.com/n-orlov/deck/features.textDoesNotHaveForegroundToken[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+[1;37mFeature:[0m theme rendering end-to-end (requirement 49)
+  SPEC §11.6 declares a fixed set of theme tokens (the seven §7 status
+  tokens plus the chrome/list/footer tokens task 021 wired) and the
+  discovery/fallback/live-preview contract task 024's first-paint notice
+  and task 025's `t` picker implement. This file is requirement 49's own
+  end-to-end proof, through the released deck binary (never a bare
+  emulator or an internal/tui unit test in isolation, both already
+  covered elsewhere): a built-in theme applied and read back per cell
+  across every one of those tokens; a user theme discovered from the
+  scenario's own themes directory (the same on-disk layout as
+  $XDG_CONFIG_HOME/deck/themes -- see internal/theme/loader.go's
+  ThemesDir); an unknown name falling back AND saying so on first paint;
+  `t` previewing a theme live on the real list and reverting byte-for-byte
+  (by colour, since Frame's own cell-grid text carries none) on esc;
+  DECK_COLOR_DEPTH=16's quantised palette; NO_COLOR's monochrome,
+  glyph-only status; and the frame's geometry staying identical across
+  every built-in.
+=== RUN   TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client
+
+  [1;37mScenario Outline:[0m a built-in theme colours each of the seven §7 status tokens, read per cell from a real client [1;30m# themes.feature:21[0m
+    [36mGiven[0m [36mthe scenario's config.toml selects theme "empire"[0m                                                       [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [36mAnd[0m [36ma long-running fake "claude" binary is on PATH for future deck clients[0m                                    [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" is started with colour enabled[0m                                                       [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" creates shell session "anchor"[0m                                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [36mThen[0m [36mwithin one configured reconcile interval deck client "[0m[1;36m<name>[0m[36m" screen contains "running"[0m                  [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" creates shell session "target"[0m                                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" creates claude session "agent" with permission profile "safe"[0m                        [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" selects session "anchor"[0m                                                             [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [36mWhen[0m [36mthe state database session "[0m[1;36m<subject>[0m[36m" has status "[0m[1;36m<status>[0m[36m" 5 seconds ago[0m                               [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [36mThen[0m [36mwithin one configured reconcile interval deck client "[0m[1;36m<name>[0m[36m" screen contains "[0m[1;36m<status>[0m[36m"[0m                 [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" text "[0m[1;36m<status>[0m[36m" has foreground token "[0m[1;36m<status>[0m[36m"[0m                                      [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [36mAnd[0m [36mdeck client "[0m[1;36m<name>[0m[36m" exits cleanly[0m                                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+    [1;37mExamples:[0m
+      | [36mname[0m        | [36msubject[0m | [36mstatus[0m   |
+      | [32mtok49-wait[0m  | [32mtarget[0m  | [32mwaiting[0m  |
+=== RUN   TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#01
+      | [32mtok49-run[0m   | [32mtarget[0m  | [32mrunning[0m  |
+=== RUN   TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#02
+      | [32mtok49-idle[0m  | [32mtarget[0m  | [32midle[0m     |
+=== RUN   TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#03
+      | [32mtok49-start[0m | [32magent[0m   | [32mstarting[0m |
+=== RUN   TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#04
+      | [32mtok49-arch[0m  | [32mtarget[0m  | [32marchived[0m |
+=== RUN   TestFeatures/a_built-in_theme_colours_the_error_status_token,_read_per_cell_from_a_real_client
+
+  [1;37mScenario:[0m a built-in theme colours the error status token, read per cell from a real client       [1;30m# themes.feature:44[0m
+    [32mGiven[0m [32mthe scenario's config.toml selects theme "empire"[0m                                         [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                      [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "tok49-err" is started with colour enabled[0m                                      [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mAnd[0m [32mdeck client "tok49-err" creates shell session "anchor"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "tok49-err" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "tok49-err" creates shell session "target"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "tok49-err" creates claude session "agent" with permission profile "safe"[0m       [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "tok49-err" selects session "anchor"[0m                                            [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mshell session "target" exits with status 1[0m                                                 [1;30m# crash_test.go:23 -> github.com/n-orlov/deck/features.shellSessionExitsWithNonzeroStatus[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "tok49-err" screen contains "error"[0m   [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "tok49-err" text "error" has foreground token "error"[0m                           [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "tok49-err" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_built-in_theme_colours_the_stopped_status_token,_read_per_cell_from_a_real_client
+
+  [1;37mScenario:[0m a built-in theme colours the stopped status token, read per cell from a real client      [1;30m# themes.feature:69[0m
+    [32mGiven[0m [32mthe scenario's config.toml selects theme "empire"[0m                                          [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                       [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" is started with colour enabled[0m                                      [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" creates shell session "anchor"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "tok49-stop" screen contains "running"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" creates shell session "target"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" creates claude session "agent" with permission profile "safe"[0m       [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" selects session "anchor"[0m                                            [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mshell session "target" exits with status zero[0m                                               [1;30m# crash_test.go:22 -> github.com/n-orlov/deck/features.shellSessionExitsZero[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "tok49-stop" screen contains "stopped"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" text "stopped" has foreground token "stopped"[0m                       [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "tok49-stop" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_built-in_theme_colours_border_focus/border,_selection/selection_idle,_title,_group_and_key/hint_chrome,_read_per_cell_from_a_real_client
+
+  [1;37mScenario:[0m a built-in theme colours border_focus/border, selection/selection_idle, title, group and key/hint chrome, read per cell from a real client [1;30m# themes.feature:94[0m
+    [32mGiven[0m [32mthe scenario's config.toml selects theme "empire"[0m                                                                                            [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32mdeck client "chrome" is started with colour enabled[0m                                                                                            [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mThen[0m [32mdeck client "chrome" text "deck" has foreground token "title"[0m                                                                                 [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" cell at row 0 column 0 has foreground token "border_focus"[0m                                                                [1;30m# cell_attributes_test.go:39 -> github.com/n-orlov/deck/features.cellHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" cell at row 0 column 99 has foreground token "border"[0m                                                                     [1;30m# cell_attributes_test.go:39 -> github.com/n-orlov/deck/features.cellHasForegroundToken[0m
+    [32mWhen[0m [32mdeck client "chrome" creates shell session "grp-one"[0m                                                                                          [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "chrome" creates shell session "grp-two"[0m                                                                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "chrome" text "Enter" has foreground token "key"[0m                                                                                  [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" text "attach" has foreground token "hint"[0m                                                                                 [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mWhen[0m [32mthe state database session "grp-two" has workspace "req49-beta-workspace"[0m                                                                     [1;30m# attention_sort_test.go:23 -> github.com/n-orlov/deck/features.setSessionWorkspace[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "chrome" screen contains "req49-beta-workspace"[0m                                          [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "chrome" text "req49-beta-workspace" has foreground token "group"[0m                                                                  [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" text "grp-two" has background token "selection"[0m                                                                           [1;30m# cell_attributes_test.go:52 -> github.com/n-orlov/deck/features.textHasBackgroundToken[0m
+    [32mWhen[0m [32mdeck client "chrome" sends ","[0m                                                                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "chrome" text "General" has background token "selection"[0m                                                                          [1;30m# cell_attributes_test.go:52 -> github.com/n-orlov/deck/features.textHasBackgroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" text "Allow Yolo" has background token "selection_idle"[0m                                                                   [1;30m# cell_attributes_test.go:52 -> github.com/n-orlov/deck/features.textHasBackgroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" cell at row 0 column 0 has foreground token "border_focus"[0m                                                                [1;30m# cell_attributes_test.go:39 -> github.com/n-orlov/deck/features.cellHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "chrome" cell at row 0 column 99 has foreground token "border"[0m                                                                     [1;30m# cell_attributes_test.go:39 -> github.com/n-orlov/deck/features.cellHasForegroundToken[0m
+    [32mWhen[0m [32mdeck client "chrome" sends ""[0m                                                                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "chrome" screen contains "deck - sessions"[0m                                                                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "chrome" exits cleanly[0m                                                                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_user_theme_placed_in_the_scenario's_own_themes_directory_(the_$XDG_CONFIG_HOME/deck/themes_layout)_is_discovered_and_applied_on_a_real_client
+
+  [1;37mScenario:[0m a user theme placed in the scenario's own themes directory (the $XDG_CONFIG_HOME/deck/themes layout) is discovered and applied on a real client [1;30m# themes.feature:127[0m
+    [32mGiven[0m [32mthe scenario writes user theme file "req49-user.toml" into its themes directory with:[0m                                                             [1;30m# theme_pin_test.go:37 -> github.com/n-orlov/deck/features.scenarioWritesUserThemeFile[0m
+      [36m"""[0m
+      [36mname = "req49-user"[0m
+      [36mappearance = "dark"[0m
+      [36m[0m
+      [36m[colors][0m
+      [36mbackground        = "#000000"[0m
+      [36msurface           = "#000000"[0m
+      [36mborder            = "#000000"[0m
+      [36mborder_focus      = "#000000"[0m
+      [36mselection         = "#000000"[0m
+      [36mselection_idle    = "#000000"[0m
+      [36mtitle             = "#ff00ff"[0m
+      [36mtext              = "#111111"[0m
+      [36mdimmed            = "#000000"[0m
+      [36mhint              = "#000000"[0m
+      [36mkey               = "#000000"[0m
+      [36maccent            = "#000000"[0m
+      [36mgroup             = "#000000"[0m
+      [36msearch_match      = "#000000"[0m
+      [36mbadge             = "#000000"[0m
+      [36mbadge_warn        = "#000000"[0m
+      [36mwaiting           = "#000000"[0m
+      [36mrunning           = "#000000"[0m
+      [36midle              = "#000000"[0m
+      [36mstarting          = "#000000"[0m
+      [36mstopped           = "#000000"[0m
+      [36merror             = "#000000"[0m
+      [36marchived          = "#000000"[0m
+      [36m"""[0m
+    [32mAnd[0m [32mthe scenario's config.toml selects theme "req49-user"[0m                                                                                               [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32mdeck client "user-theme" is started with colour enabled[0m                                                                                             [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mThen[0m [32mdeck client "user-theme" text "deck" has foreground "#ff00ff"[0m                                                                                      [1;30m# cell_attributes_test.go:26 -> github.com/n-orlov/deck/features.textHasForeground[0m
+    [32mAnd[0m [32mdeck client "user-theme" exits cleanly[0m                                                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_unknown_theme_name_falls_back_to_the_default_AND_says_so_on_the_very_first_painted_frame
+
+  [1;37mScenario:[0m an unknown theme name falls back to the default AND says so on the very first painted frame [1;30m# themes.feature:164[0m
+    [32mGiven[0m [32mthe scenario's config.toml selects theme "does-not-exist-49"[0m                                  [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32mdeck client "fallback" is started with colour enabled[0m                                           [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mThen[0m [32mdeck client "fallback" screen contains "does-not-exist-49"[0m                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "fallback" screen contains "not found; using default theme"[0m                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "fallback" text "deck" has foreground token "title"[0m                                 [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "fallback" exits cleanly[0m                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/`t`_previews_a_theme_live_on_the_real_list_and_reverts_to_the_exact_original_colour_on_esc
+
+  [1;37mScenario:[0m `t` previews a theme live on the real list and reverts to the exact original colour on esc [1;30m# themes.feature:173[0m
+    [32mGiven[0m [32mdeck client "picker" is started with colour enabled[0m                                          [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mThen[0m [32mdeck client "picker" text "deck" has foreground token "title"[0m                                 [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mWhen[0m [32mdeck client "picker" sends "t"[0m                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "picker" screen contains "Theme picker:"[0m                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "picker" sends " "[0m                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "picker" text "deck" does not have foreground token "title"[0m                       [1;30m# cell_attributes_test.go:51 -> github.com/n-orlov/deck/features.textDoesNotHaveForegroundToken[0m
+    [32mWhen[0m [32mdeck client "picker" sends ""[0m                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "picker" text "deck" has foreground token "title"[0m                                 [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "picker" screen contains "deck - sessions"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "picker" exits cleanly[0m                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/DECK_COLOR_DEPTH=16_renders_the_quantised_reference-palette_colour_for_a_real_client
+
+  [1;37mScenario:[0m DECK_COLOR_DEPTH=16 renders the quantised reference-palette colour for a real client [1;30m# themes.feature:186[0m
+    [32mGiven[0m [32mdeck client "depth16" is started with colour enabled and colour depth "16"[0m             [1;30m# color_depth_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColourDepth[0m
+    [32mThen[0m [32mdeck client "depth16" text "deck" has the quantised ANSI colour for token "title"[0m       [1;30m# color_depth_test.go:22 -> github.com/n-orlov/deck/features.textHasQuantisedANSIColourForToken[0m
+    [32mAnd[0m [32mdeck client "depth16" exits cleanly[0m                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/NO_COLOR_renders_every_theme_monochrome,_with_a_session's_status_carried_by_its_glyph_alone
+
+  [1;37mScenario:[0m NO_COLOR renders every theme monochrome, with a session's status carried by its glyph alone        [1;30m# themes.feature:192[0m
+    [32mGiven[0m [32ma long-running fake "claude" binary is on PATH for future deck clients[0m                               [1;30m# agent_steps_test.go:29 -> github.com/n-orlov/deck/features.longRunningFakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "mono49" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "mono49" creates claude session "mono49 session" with permission profile "safe"[0m           [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mfake Claude session "mono49 session" fires "SessionStart" for itself using injected identity:[0m          [1;30m# status_claude_hooks_test.go:26 -> github.com/n-orlov/deck/features.fakeClaudeFiresForSelf[0m
+      | [36msource[0m | [36mfresh[0m |
+    [32mAnd[0m [32mfake Claude session "mono49 session" fires "Notification" for itself using injected identity:[0m          [1;30m# status_claude_hooks_test.go:26 -> github.com/n-orlov/deck/features.fakeClaudeFiresForSelf[0m
+      | [36mnotification_type[0m | [36mpermission_prompt[0m |
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "mono49" row "mono49 session" contains "waiting"[0m [1;30m# status_probe_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsWithinReconcile[0m
+    [32mAnd[0m [32mdeck client "mono49" frame has no colour anywhere[0m                                                      [1;30m# color_depth_test.go:21 -> github.com/n-orlov/deck/features.clientFrameHasNoColourAnywhere[0m
+    [32mAnd[0m [32mdeck client "mono49" exits cleanly[0m                                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_frame's_geometry_is_identical_across_every_built-in_theme_--_only_colour_differs
+
+  [1;37mScenario:[0m the frame's geometry is identical across every built-in theme -- only colour differs [1;30m# themes.feature:205[0m
+    [32mGiven[0m [32mthe scenario's config.toml selects theme "daylight"[0m                                    [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32mdeck client "geom-daylight" is started with colour enabled[0m                               [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mThen[0m [32mdeck client "geom-daylight" text "deck" has foreground token "title"[0m                    [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mWhen[0m [32mthe scenario's config.toml selects theme "empire"[0m                                       [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32mdeck client "geom-empire" is started with colour enabled[0m                                 [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mThen[0m [32mdeck client "geom-empire" text "deck" has foreground token "title"[0m                      [1;30m# cell_attributes_test.go:50 -> github.com/n-orlov/deck/features.textHasForegroundToken[0m
+    [32mAnd[0m [32mdeck client "geom-daylight" screen text matches deck client "geom-empire" screen text[0m    [1;30m# theme_frame_geometry_test.go:24 -> github.com/n-orlov/deck/features.clientScreenTextMatchesOtherClientScreenText[0m
+    [32mWhen[0m [32mdeck client "geom-daylight" exits cleanly[0m                                               [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "geom-empire" exits cleanly[0m                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+28 scenarios ([32m28 passed[0m)
+338 steps ([32m338 passed[0m)
+31.494067379s
+--- PASS: TestFeatures (31.50s)
+    --- PASS: TestFeatures/sessions_render_in_the_full_waiting/error/running/starting/idle/stopped_order,_ties_broken_oldest-first (1.83s)
+    --- PASS: TestFeatures/the_sidebar_groups_sessions_by_workspace,_with_a_header_per_group,_and_a_keyboard_toggle_can_collapse_one (1.20s)
+    --- PASS: TestFeatures/collapsing_and_expanding_the_sidebar's_only_workspace_group_round-trips_via_two_`c`_presses (0.85s)
+    --- PASS: TestFeatures/g_and_G_jump_to_the_first_and_last_visible_row,_skipping_a_collapsed_group's_hidden_rows (1.72s)
+    --- PASS: TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention (1.15s)
+    --- PASS: TestFeatures/`space`_walks_only_what_needs_attention,_wraps,_and_changes_no_session's_status (1.19s)
+    --- PASS: TestFeatures/the_waiting_status_token_colours_the_waiting_status_word (1.32s)
+    --- PASS: TestFeatures/the_running_status_token_colours_the_running_status_word (1.32s)
+    --- PASS: TestFeatures/the_idle_status_token_colours_the_idle_status_word (1.35s)
+    --- PASS: TestFeatures/the_starting_status_token_colours_the_starting_status_word (1.26s)
+    --- PASS: TestFeatures/the_stopped_status_token_colours_the_stopped_status_word (1.30s)
+    --- PASS: TestFeatures/the_error_status_token_colours_the_error_status_word (1.30s)
+    --- PASS: TestFeatures/the_archived_status_token_colours_the_archived_status_word (1.30s)
+    --- PASS: TestFeatures/statuses_never_borrow_each_other's_colour (1.31s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client (1.28s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#01 (1.27s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#02 (1.29s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#03 (1.25s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#04 (1.33s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_the_error_status_token,_read_per_cell_from_a_real_client (1.31s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_the_stopped_status_token,_read_per_cell_from_a_real_client (1.29s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_border_focus/border,_selection/selection_idle,_title,_group_and_key/hint_chrome,_read_per_cell_from_a_real_client (0.71s)
+    --- PASS: TestFeatures/a_user_theme_placed_in_the_scenario's_own_themes_directory_(the_$XDG_CONFIG_HOME/deck/themes_layout)_is_discovered_and_applied_on_a_real_client (0.39s)
+    --- PASS: TestFeatures/an_unknown_theme_name_falls_back_to_the_default_AND_says_so_on_the_very_first_painted_frame (0.38s)
+    --- PASS: TestFeatures/`t`_previews_a_theme_live_on_the_real_list_and_reverts_to_the_exact_original_colour_on_esc (0.47s)
+    --- PASS: TestFeatures/DECK_COLOR_DEPTH=16_renders_the_quantised_reference-palette_colour_for_a_real_client (0.40s)
+    --- PASS: TestFeatures/NO_COLOR_renders_every_theme_monochrome,_with_a_session's_status_carried_by_its_glyph_alone (1.05s)
+    --- PASS: TestFeatures/the_frame's_geometry_is_identical_across_every_built-in_theme_--_only_colour_differs (0.50s)
+PASS
+ok  	github.com/n-orlov/deck/features	31.532s

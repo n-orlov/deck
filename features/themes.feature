@@ -38,8 +38,32 @@ Feature: theme rendering end-to-end (requirement 49)
       | tok49-run    | target  | running  |
       | tok49-idle   | target  | idle     |
       | tok49-start  | agent   | starting |
-      | tok49-err    | target  | error    |
       | tok49-arch   | target  | archived |
+
+  @requirement-49-themes
+  Scenario: a built-in theme colours the error status token, read per cell from a real client
+    # Split out of the Scenario Outline above for the same reason "stopped"
+    # already is: "error" cannot be posed by writing the state database
+    # directly while target's tmux pane is still alive either -- SPEC
+    # section 7's self-heal repairs a bare error row with a live pane back
+    # to "running" on the very next reconcile tick (task 703, review
+    # finding 1's fallout), the same way it repairs a raced "stopped" write.
+    # A genuine nonzero pane exit is instead collected and killed by
+    # reconcile before the row is ever read back, so the terminal "error"
+    # this asserts is the real tmux.pane_dead transition, not a raced fake
+    # one.
+    Given the scenario's config.toml selects theme "empire"
+    And a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "tok49-err" is started with colour enabled
+    And deck client "tok49-err" creates shell session "anchor"
+    Then within one configured reconcile interval deck client "tok49-err" screen contains "running"
+    And deck client "tok49-err" creates shell session "target"
+    And deck client "tok49-err" creates claude session "agent" with permission profile "safe"
+    And deck client "tok49-err" selects session "anchor"
+    When shell session "target" exits with status 1
+    Then within one configured reconcile interval deck client "tok49-err" screen contains "error"
+    And deck client "tok49-err" text "error" has foreground token "error"
+    And deck client "tok49-err" exits cleanly
 
   @requirement-49-themes
   Scenario: a built-in theme colours the stopped status token, read per cell from a real client
