@@ -1,0 +1,3 @@
+$ ci/run.sh go test -count=1 ./internal/tmux/ (run 1/3)
+ok  	github.com/n-orlov/deck/internal/tmux	19.510s
+exit=0
