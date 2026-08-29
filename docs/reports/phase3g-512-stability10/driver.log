@@ -1,11 +1,11 @@
 === RUN 1 ===
-=== RUN 1: PASS (exit 0) ===
+=== RUN 1: FAIL (exit 1) ===
 === RUN 2 ===
 === RUN 2: PASS (exit 0) ===
 === RUN 3 ===
 === RUN 3: PASS (exit 0) ===
 === RUN 4 ===
-=== RUN 4: PASS (exit 0) ===
+=== RUN 4: FAIL (exit 1) ===
 === RUN 5 ===
 === RUN 5: PASS (exit 0) ===
 === RUN 6 ===
@@ -18,5 +18,5 @@
 === RUN 9: PASS (exit 0) ===
 === RUN 10 ===
 === RUN 10: PASS (exit 0) ===
-full per-run logs and combined summary log kept in: /tmp/deck-stability.VRvJVc
-10/10 passed
+full per-run logs and combined summary log kept in: /tmp/deck-stability.eovHWP
+8/10 passed

@@ -15,96 +15,129 @@ measured substance:
   report 891 714 bytes.
 
 This directory redoes the capture with the launcher issued **verbatim**, and
-every size/line-count claim below is checked against the committed file in
-the same command that states it. It supersedes `docs/reports/
-phase3g-505-stability10/` for the same reason round 2 there superseded its
-own round 1: execution-shape integrity, not because either directory's
-numbers were found untrue. `phase3g-505-stability10/` is left as-is.
+every size/line-count claim below is checked against the committed file in the
+same shell call that states it. It supersedes
+`docs/reports/phase3g-505-stability10/` for the same reason round 2 there
+superseded its own round 1: execution-shape integrity, not because either
+directory's numbers were found untrue. `phase3g-505-stability10/` is left
+exactly as it stands, unedited.
+
+An earlier round of *this* task (commit `05f85dd`, 10/10) was itself rejected
+on the same class of residual — its launch shell call also ran `echo` and
+`date -u`, and two of its polls added `echo`/`cat` — so the capture published
+below replaces it in this same directory. Its numbers were not disputed
+either; the measurement was simply redone under a clean shape.
 
 ## Launch
 
-- **Launch commit** (`git rev-parse HEAD`, captured in the same shell call as
-  the launch below): `bfa3aad39966349d53989500a58837147060d600`.
-- **Launch command**, issued verbatim, no added redirection anywhere in the
-  pipeline:
+- **Launch commit** (`git rev-parse HEAD`, printed by the same shell call that
+  issued the launch line below, with nothing else in that call):
+  `05f85dd54007702a9e4ea2a35150554ead146343`.
+- **Launch command**, the only other thing in that shell call, issued
+  byte-for-byte as prescribed with no added redirection anywhere in the
+  pipeline and no extra file:
 
   ```
   nohup sh -c 'timeout 7200 ci/stability.sh 10 > /run/ralphd/artifacts/stability-512.log 2>&1; s=$?; printf "%s\n" "$s" > /run/ralphd/artifacts/stability-512.exitstatus' &
   ```
 
-- **No stray artifact was created**: `ls /run/ralphd/artifacts/ | grep 512`
-  after completion lists exactly `stability-512.log` and
-  `stability-512.exitstatus` — no `stability-512.nohup` or any other
-  unexpected file, unlike the round that produced 505's rejected report.
+- **No stray artifact was created.** After the driver exited,
+  `ls /run/ralphd/artifacts/ | grep 512` lists exactly two files —
+  `stability-512.exitstatus` and `stability-512.log` — and nothing else: no
+  `stability-512.nohup` sentinel of the kind that sank 505's report, and no
+  `nohup.out` anywhere in the worktree (`git status --porcelain` after the run
+  showed only the modified files in this directory).
 - Between the launch and the driver exiting, the only commands issued were
-  the prescribed polls: `sleep 300; grep '^=== RUN'
-  /run/ralphd/artifacts/stability-512.log`, repeated. Nothing else touched
-  the machine while the suite ran.
-- **Script exit status** (captured with `s=$?` in the same shell call that
-  ran it, never through a pipe): `0` — see `script.exitstatus`
-  (`cat script.exitstatus` reads `0`).
-- Wall clock: launched 2026-08-29 09:24:52 UTC (the shell call that captured
-  `git rev-parse HEAD` and launched the driver); `stability-512.exitstatus`'s
-  mtime is 2026-08-29 10:24:53 UTC, so the ten runs took **60m01s** end to
-  end. Those two timestamps are the only wall-clock facts claimed here;
-  no committed file records per-run start/end times.
+  four polls of the form `sleep N; grep '^=== RUN'
+  /run/ralphd/artifacts/stability-512.log` (N = 1500, 1500, 780, 45) — no
+  `echo`, no `cat`, no `ls`, no reading a per-run log, no editing, nothing
+  else touched the machine while the suite ran.
+- **Script exit status** (captured with `s=$?` in the same shell call that ran
+  the script, never through a pipe): `1`, because two of the ten runs failed.
+  It is committed here as `script.exitstatus`, which is 2 bytes
+  (`wc -c script.exitstatus` = 2: the digit and its newline) and reads `1`.
+
+Wall clock, from the two timestamps that exist: the shell call immediately
+preceding the launch call printed `date -u` = 2026-08-29 10:31:39 UTC, and
+`/run/ralphd/artifacts/stability-512.exitstatus` has mtime 2026-08-29
+11:32:18 UTC, so the ten runs took roughly **60m39s** end to end. `driver.log`
+carries no timestamps, so no per-run wall clock can be read from the committed
+evidence.
 
 ## Observed rate, quoted verbatim from `summary.log`
 
 ```
-full per-run logs and combined summary log kept in: /tmp/deck-stability.VRvJVc
-10/10 passed
+full per-run logs and combined summary log kept in: /tmp/deck-stability.eovHWP
+8/10 passed
 ```
 
-**10/10.** Every one of the ten runs' `go test -p=1 -count=1 ./...` exited 0
-with no `--- FAIL` line in any per-run log (`grep -l FAIL run-*.log` in this
-directory matches nothing).
+**8/10.** This is published as measured; it is not rounded up, and it does
+**not** close review finding 1, whose gate is 10/10 at the final code commit
+(task 507). Runs 1 and 4 failed; runs 2, 3, 5, 6, 7, 8, 9 and 10 passed.
 
 ## Per-run PASS/FAIL table
 
 PASS/FAIL comes from `driver.log`'s `=== RUN n: PASS/FAIL (exit N) ===`
-markers, cross-checked against each `run-N.log`'s own `ok` package lines (no
-`FAIL` line appears in any of the ten). `driver.log` carries no timestamps,
-so no per-run wall clock can be read from it; the time column is instead each
-run's own summed package test time, derived from that run's tracked
-`run-N.log` (`go test -p=1` runs packages serially, so the sum is the run's
-test time excluding that run's container start and Go build).
+markers, cross-checked against each `run-N.log`'s own package result lines.
+`driver.log` carries no timestamps, so the time column is instead each run's
+own summed package test time, derived from that run's committed `run-N.log`
+(`go test -p=1` runs packages serially, so the sum is that run's test time
+excluding its container start and Go build).
 
-| Run | Result | Test time, summed from `run-N.log`'s package durations | Per-run log  |
-|-----|--------|----------------------------------------------------------|--------------|
-| 1   | PASS   | 357.7s (5m57s)                                            | `run-1.log`  |
-| 2   | PASS   | 356.1s (5m56s)                                            | `run-2.log`  |
-| 3   | PASS   | 358.5s (5m58s)                                            | `run-3.log`  |
-| 4   | PASS   | 354.8s (5m54s)                                            | `run-4.log`  |
-| 5   | PASS   | 359.1s (5m59s)                                            | `run-5.log`  |
-| 6   | PASS   | 356.8s (5m56s)                                            | `run-6.log`  |
-| 7   | PASS   | 358.9s (5m58s)                                            | `run-7.log`  |
-| 8   | PASS   | 356.4s (5m56s)                                            | `run-8.log`  |
-| 9   | PASS   | 356.8s (5m56s)                                            | `run-9.log`  |
-| 10  | PASS   | 356.8s (5m56s)                                            | `run-10.log` |
+| Run | Result | Failing test (file:line)                                              | Test time, summed from `run-N.log` | Per-run log  |
+|-----|--------|-----------------------------------------------------------------------|------------------------------------|--------------|
+| 1   | FAIL   | `TestSigwinchCountDistinguishesTwoFromThree` (`features/sigwinch_count_test.go:89`) | 359.6s (5m59.6s) | `run-1.log`  |
+| 2   | PASS   | —                                                                     | 359.6s (5m59.6s)                   | `run-2.log`  |
+| 3   | PASS   | —                                                                     | 359.1s (5m59.1s)                   | `run-3.log`  |
+| 4   | FAIL   | `TestSigwinchCountDistinguishesTwoFromThree` (`features/sigwinch_count_test.go:89`) | 359.5s (5m59.5s) | `run-4.log`  |
+| 5   | PASS   | —                                                                     | 355.3s (5m55.3s)                   | `run-5.log`  |
+| 6   | PASS   | —                                                                     | 358.0s (5m58.0s)                   | `run-6.log`  |
+| 7   | PASS   | —                                                                     | 364.6s (6m04.6s)                   | `run-7.log`  |
+| 8   | PASS   | —                                                                     | 360.2s (6m00.2s)                   | `run-8.log`  |
+| 9   | PASS   | —                                                                     | 362.2s (6m02.2s)                   | `run-9.log`  |
+| 10  | PASS   | —                                                                     | 356.0s (5m56.0s)                   | `run-10.log` |
 
-Those ten sums total 3571.9s (59m32s), 29s short of the 60m01s end-to-end
+Those ten sums total 3594.1s (59m54.1s), 45s short of the ~60m39s end-to-end
 elapsed above; the residue is the ten `--rm` sibling containers' start-up and
-Go build time, which no tracked log records per run.
+Go build time, which no committed log records per run.
 
 Integrity check on the committed evidence: prefixing each `run-N.log` with its
-`=== RUN n ===` marker, appending its `=== RUN n: PASS (exit 0) ===` marker
-and then the two tally lines (`full per-run logs and combined summary log
-kept in: ...` and `10/10 passed`) reproduces `summary.log` **byte for byte**
-(`wc -c summary.log` reads **9464 bytes**, verified by reconstructing it into
-a scratch file and running `cmp` against the committed `summary.log` — exit
-status 0), so the ten per-run logs here are exactly the ten runs the driver
-labelled.
+`=== RUN n ===` marker, appending its own `=== RUN n: PASS (exit 0) ===` /
+`=== RUN n: FAIL (exit 1) ===` marker and then the two tally lines
+(`full per-run logs and combined summary log kept in: ...` and `8/10 passed`)
+reproduces `summary.log` **byte for byte** — reconstructed into a scratch file
+and compared with `cmp`, exit status 0, in the same shell call that measured
+`wc -c summary.log` = **1 773 967 bytes** and `wc -l summary.log` = **10 200
+lines**. So the ten per-run logs committed here are exactly the ten runs the
+driver labelled. `driver.log`, the driver's own stdout, is 523 bytes and 22
+lines by `wc -c`/`wc -l` in that same call.
 
-## No failures this round
+## The two failures
 
-No run failed. `TestSigwinchCountDistinguishesTwoFromThree`
-(`features/sigwinch_count_test.go:89`), the flake 505 named at roughly 1-in-10
-across both its rounds, did not recur in these ten runs — consistent with a
-low-probability race, not evidence it is fixed. This is still a **finding for
-tasks 506/509/511**: this measurement does not license a claim that it is
-resolved, only that it did not reproduce this time. All ten runs (1–10) show
-every package `ok` with no `--- FAIL` line anywhere in their log.
+Both failing runs failed in the same place, with the same assertion:
+
+```
+--- FAIL: TestSigwinchCountDistinguishesTwoFromThree (2.18s)
+    sigwinch_count_test.go:89: sigwinch count after 1st resize = 0, want exactly 1 before sending the 2nd
+FAIL
+FAIL	github.com/n-orlov/deck/features	308.941s
+```
+
+- **Run 1** — `TestSigwinchCountDistinguishesTwoFromThree`,
+  `features/sigwinch_count_test.go:89` (the `t.Fatalf` guarding that the first
+  resize's SIGWINCH is observably recorded before the second is raised); log
+  `run-1.log`, `--- FAIL` at line 5004, package line
+  `FAIL github.com/n-orlov/deck/features` at line 5007.
+- **Run 4** — the same test at the same `features/sigwinch_count_test.go:89`,
+  reported at 2.15s; log `run-4.log`, `--- FAIL` at line 5004.
+
+No other test or scenario failed in either run: each of `run-1.log` and
+`run-4.log` contains exactly one `--- FAIL` line, and the eight passing runs
+contain none. This is the same flake task 505 named — 505 saw it twice in its
+own twenty runs, this task's earlier round saw it zero times in ten, and this
+round saw it twice in ten. Its disposition (fix, or record as an open finding)
+belongs to tasks 506/509/511; nothing here licenses a claim that it is fixed,
+and nothing here licenses weakening or skipping the test.
 
 ## Frozen-tree proof
 
@@ -112,31 +145,40 @@ No code commit landed between the launch and this report:
 
 ```
 $ git rev-parse HEAD
-bfa3aad39966349d53989500a58837147060d600
-$ git diff bfa3aad39966349d53989500a58837147060d600..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum
+05f85dd54007702a9e4ea2a35150554ead146343
+$ git diff 05f85dd54007702a9e4ea2a35150554ead146343..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum
 <empty>
 ```
 
+The diff was measured with `| wc -c` = 0 after the driver exited, and this
+task's own commit adds only files under this directory.
+
 ## Named skips (unchanged from 505)
 
-- `features/godog_test.go`'s `defaultTags`: `~@real-agents && ~@nightly`.
-- Three packages have no test files and print `?   ... [no test files]`:
-  `internal/notify`, `internal/search`, `internal/unit`.
+- `features/godog_test.go`'s `defaultTags`: `~@real-agents && ~@nightly` —
+  `@real-agents` and `@nightly` scenarios are therefore not part of these ten
+  runs. `defaultTags` was not edited by this task.
+- Three packages have no test files and print `?   ... [no test files]` in
+  every run: `internal/notify`, `internal/search`, `internal/unit`.
 - The harness self-test `TestGodogRejectsUndefinedAndFailedSteps` deliberately
-  injects a step failure inside its own subtest in every run (present in every
-  `run-N.log`'s `features` package output); this is a self-test proving the
-  harness rejects undefined/failed steps, not a product failure, and every
-  run's package-level `ok github.com/n-orlov/deck/features` line confirms the
-  package as a whole still passed.
+  injects a step failure inside its own subtest in every run (visible in the
+  `features` package output of the failing runs' verbose logs as
+  `Scenario: error binding` / `deliberate step failure`). It is a self-test
+  proving the harness rejects undefined and failed steps, not a product
+  failure; the passing runs' `ok github.com/n-orlov/deck/features` line
+  confirms the package still passes with it present.
 
 ## Relationship to 505
 
-505's round 2 (`docs/reports/phase3g-505-stability10/`, launch sha `d863538`)
-measured 9/10 at an earlier point of the same frozen tree lineage, with the
-same sole failure at the same file:line recurring across both of its rounds.
-This directory's 10/10 does not overwrite or contradict that: the sigwinch
-count race is a known low-probability flake (505's evidence: 2 hits in 20
-total runs, round 1 + round 2 combined), and ten more clean runs are within
-the variance a ~1-in-10 flake produces, not proof it stopped occurring.
-Task 506/509/511 are where its disposition (fixed / documented as an open
-finding) belongs, not here.
+`docs/reports/phase3g-505-stability10/` (round 2, launch sha `d863538`)
+measured **9/10** at an earlier point of the same frozen-tree lineage, with
+`TestSigwinchCountDistinguishesTwoFromThree` as its sole failure — the same
+test at the same file:line as both failures here. This directory supersedes it
+as the measurement of record for execution-shape integrity only; 505's 9/10 is
+not contradicted, and 505's own report is left untouched.
+
+Across everything measured on this tree the sigwinch-count race stands at 4
+hits in 40 runs (505 round 1 and round 2: 2/20; this task's earlier round:
+0/10; this round: 2/10) — a low-probability race whose rate is stable enough
+that neither a 10/10 nor an 8/10 round should be read as it appearing or
+disappearing.
