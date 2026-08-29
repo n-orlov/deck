@@ -83,18 +83,25 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		if present {
 			pane, crashed := crashedPane(observed)
 			if !crashed {
+				// A live, non-dead pane paired with a stopped or bare-error row
+				// is SPEC §7's invariant violation regardless of whether
+				// terminal (below) also holds for this row: terminal excludes
+				// a hook/probe error row with no pane-exit verdict on purpose
+				// (it still owns :188's session-absent branch, unmodified), so
+				// the repair gets its own test instead of nesting inside
+				// terminal and silently skipping that row.
+				if session.Status == "stopped" || session.Status == "error" {
+					if err := s.repairTerminalRowWithLivePane(ctx, session); err != nil {
+						return err
+					}
+					continue
+				}
 				if terminal {
 					// A user-sourced starting row (between the durable create and
 					// the tmux launch) is not an invariant violation, only a
 					// transient window this pass takes no verdict from; it
 					// resolves on its own via tmuxLaunchObservation once the
-					// launch is observed. Only stopped/error are the terminal
-					// statuses SPEC §7 calls a live pane a contradiction of.
-					if session.Status == "stopped" || session.Status == "error" {
-						if err := s.repairTerminalRowWithLivePane(ctx, session); err != nil {
-							return err
-						}
-					}
+					// launch is observed.
 					continue
 				}
 				// Shells have no higher-quality signal or probe, so a live pane is
