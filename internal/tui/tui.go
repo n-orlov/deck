@@ -1585,15 +1585,19 @@ func canUnarchive(session store.Session) bool {
 	return session.ArchivedAt != 0
 }
 
-// footerArchiveEligible reports whether A may act on session at all: only
-// a row that is not already archived, mirroring canUnarchive's complement
-// so the two never both accept the same row. This is the single R80/review-
-// finding-2 definition of A's eligibility -- both the footer's curated A/U
-// slot (task 014, SPEC §11.3: "the eligible one of A/U") and the `A` key
+// canArchive reports whether A may act on session at all: only a row that
+// is not already archived, mirroring canUnarchive's complement so the two
+// never both accept the same row. This is the single R80/review-finding-2
+// definition of A's eligibility -- both the footer's curated A/U slot
+// (task 014, SPEC §11.3: "the eligible one of A/U") and the `A` key
 // handler (case "A" below) consult this exact function, never a parallel
 // copy of its logic, so "the footer offers A" and "pressing A does
-// something" can never disagree about the same row.
-func footerArchiveEligible(session store.Session) bool {
+// something" can never disagree about the same row. The name says nothing
+// about the footer on purpose: the predicate belongs to the action, not to
+// one of its two callers (it used to be named for the footer while the
+// handler still had a second, always-true predicate of its own -- the very
+// parallel definition finding 2 rejected).
+func canArchive(session store.Session) bool {
 	return session.ArchivedAt == 0
 }
 
@@ -2576,12 +2580,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// footerArchiveEligible is review finding 2/R80's single A
-			// eligibility definition, shared with the footer: a row that is
-			// already archived writes nothing and opens no confirm here,
-			// exactly as the footer already refuses to offer A for it --
-			// and the refusal names U, the only route back for that row.
-			if !footerArchiveEligible(m.sessions[m.selected]) {
+			// canArchive is review finding 2/R80's single A eligibility
+			// definition, shared with the footer: a row that is already
+			// archived writes nothing and opens no confirm here, exactly as
+			// the footer already refuses to offer A for it -- and the
+			// refusal names U, the only route back for that row. This is a
+			// call to the footer's own predicate by name, never a local
+			// copy of `ArchivedAt == 0`: archive_eligibility_test.go's
+			// source parse fails if this case stops naming it.
+			if !canArchive(m.sessions[m.selected]) {
 				m.attachError = "Cannot archive: session is already archived; press U to unarchive"
 				return m, nil
 			}
@@ -3682,7 +3689,7 @@ var footerLegend = []footerKeyHint{
 	// a budget, and a rarely-pressed per-row action loses it to dd, the
 	// A/U reversal and , (settings has no other visible entry point).
 	{"dd", "dd", "delete", func(m Model) bool { return footerRowEligible(m, true, canDelete) }},
-	{"A", "A", "archive", func(m Model) bool { return footerRowEligible(m, false, footerArchiveEligible) }},
+	{"A", "A", "archive", func(m Model) bool { return footerRowEligible(m, false, canArchive) }},
 	{"U", "U", "unarchive", func(m Model) bool { return footerRowEligible(m, false, canUnarchive) }},
 	{",", ",", "settings", nil},
 	{"i", "i", "detail", func(m Model) bool { return footerRowEligible(m, false, canShowDetail) }},

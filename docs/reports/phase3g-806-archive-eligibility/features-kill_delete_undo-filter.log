@@ -1,1 +1,2 @@
-ok  	github.com/n-orlov/deck/features	37.436s
+$ ci/run.sh env DECK_GODOG_PATHS=kill_delete_undo.feature,filter.feature go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	37.434s

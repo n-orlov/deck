@@ -1,0 +1,50 @@
+# mutation B: case "A" drops the eligibility check entirely (the pre-806 shape:
+#   the handler consulted an always-true predicate, so A always opened the confirm).
+$ ci/run.sh go test -count=1 -v -run 'TestArchiveKey' ./internal/tui/
+=== RUN   TestArchiveKeyOpensAConfirmAndWritesNothing
+--- PASS: TestArchiveKeyOpensAConfirmAndWritesNothing (0.00s)
+=== RUN   TestArchiveKeyStatesItIsUnavailableWhenUnwired
+--- PASS: TestArchiveKeyStatesItIsUnavailableWhenUnwired (0.00s)
+=== RUN   TestArchiveKeyOnAnArchivedRowRefusesAndNamesU
+    archive_eligibility_test.go:62: A on an archived row opened the archive confirm dialog
+--- FAIL: TestArchiveKeyOnAnArchivedRowRefusesAndNamesU (0.00s)
+=== RUN   TestArchiveKeyHandlerCallsTheFooterPredicateByName
+    archive_eligibility_test.go:161: case "A" in tui.go's list-mode key switch does not call canArchive(), the predicate footerLegend's own A entry names: the footer and the key handler must consult one definition of A's eligibility (review finding 2/R80, SPEC §11.3), never two that merely agree.
+        case "A" arm (comments stripped):
+        		case "A":
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			if m.archiveSvc == nil || len(m.sessions) == 0 {
+        				if len(m.sessions) > 0 {
+        					m.attachError = "Archiving is unavailable"
+        				}
+        				return m, nil
+        			}
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			
+        			m.archiveConfirming = true
+        			m.archiveNote = ""
+        			return m, nil
+--- FAIL: TestArchiveKeyHandlerCallsTheFooterPredicateByName (0.00s)
+=== RUN   TestArchiveKeyEligibilityMatchesFooterPredicate
+--- PASS: TestArchiveKeyEligibilityMatchesFooterPredicate (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.006s
+FAIL
