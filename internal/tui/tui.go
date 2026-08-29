@@ -1567,14 +1567,20 @@ func canAcknowledge(session store.Session) bool {
 	return true
 }
 
-// canKill reports whether x may act on session. Used by the batch (marked
-// set) path, which silently skips an already-stopped row rather than
-// erroring (a batch action naming rows that need nothing done would be
-// noise). The single-row path deliberately does NOT call this: it defers
-// the already-stopped refusal to the service's own verdict instead of a
-// locally read Status, because remain-on-exit can leave a stopped row
-// with a live tmux pane still needing a kill (#6) -- see the comment on
-// case "x" below.
+// canKill reports whether x may act on session: any row that is not
+// already stopped. Both the footer's x slot and the single-row key
+// handler (case "x" below) consult this exact function -- the handler
+// used to defer to the service's own verdict instead, back when a
+// stopped row could still be hiding a live tmux pane under
+// `remain-on-exit failed` (#6). That gap is closed on the reconcile side
+// now: internal/service/reconcile.go's crashed-pane collect-on-sight
+// (reconcile.go:68-79) tears down a dead pane's tmux session regardless
+// of the stored status, and repairTerminalRowWithLivePane (SPEC §7,
+// reconcile.go:215-235) corrects a stopped-or-error row that still has a
+// genuinely live pane back to a non-terminal status. Either way a row this
+// predicate reads as stopped has already had its corpse collected or its
+// row repaired by the time the UI sees it, so canKill no longer needs a
+// live service round trip to be trustworthy.
 func canKill(session store.Session) bool {
 	return session.Status != "stopped"
 }
@@ -2531,15 +2537,30 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			session := m.sessions[m.selected]
-			// The already-stopped refusal is the SERVICE's verdict, not a
-			// status read here: under `remain-on-exit failed` a row can read
-			// stopped while tmux still retains its dead pane, and refusing
-			// on status alone left that session's name held with no in-app
-			// way to free it (#6). service.Kill refuses only when the row is
-			// stopped AND no tmux session exists, and its error message is
-			// the same wording this key used to render locally, so a
-			// genuinely stopped row still shows "Cannot kill: session is
-			// already stopped" (via the sessionKilled branch).
+			// Task 807 (review finding 2): the single-row path now consults
+			// the same canKill the footer's x slot already used, instead of
+			// deferring the already-stopped refusal to the service's own
+			// verdict. That deferral existed only because a stopped row
+			// could still be hiding a live tmux pane under `remain-on-exit
+			// failed` (#6); the reconcile side has since closed that gap for
+			// good: reconcile.go's crashed-pane collect-on-sight
+			// (reconcile.go:68-79) collects and kills a dead pane's tmux
+			// session regardless of the stored status, and
+			// repairTerminalRowWithLivePane (SPEC §7, reconcile.go:215-235)
+			// corrects a stopped/error row that still has a genuinely live
+			// pane back to a non-terminal status before the row is ever read
+			// here. So a row canKill reads as stopped has already had its
+			// corpse collected or its status repaired -- there is no longer a
+			// retained corpse for a locally-read Status to miss, and no kill
+			// command needs to reach the service to say so. The wording
+			// matches service.Kill's own refusal (kill.go) so a genuinely
+			// stopped row still shows "Cannot kill: session is already
+			// stopped" via the sessionKilled branch.
+			if !canKill(session) {
+				return m, func() tea.Msg {
+					return sessionKilled{session: session, err: errors.New("session is already stopped")}
+				}
+			}
 			return m, func() tea.Msg {
 				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
 			}

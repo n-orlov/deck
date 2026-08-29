@@ -1,0 +1,11 @@
+=== RUN   TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow
+=== RUN   TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow/stopped_row_dispatches_no_kill_command
+    kill_key_eligibility_test.go:50: kill dispatched = true, want false
+=== RUN   TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow/live_row_dispatches_a_kill_command
+--- FAIL: TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow (0.00s)
+    --- FAIL: TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow/stopped_row_dispatches_no_kill_command (0.00s)
+    --- PASS: TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow/live_row_dispatches_a_kill_command (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.003s
+FAIL
+1
