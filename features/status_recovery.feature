@@ -55,7 +55,19 @@ Feature: Status recovery chain (requirements 43-47)
     And deck client "A" is started
     When deck client "A" creates claude session "recoverable" with permission profile "safe"
     And the state database session "recoverable"'s status is forced to "error" from tmux as a stale launch-failure verdict
-    Then the state database session "recoverable" is "error" from "tmux" with killed_by_user=0
+    # This forced tmux-sourced error sits on a row whose pane is still live --
+    # exactly SPEC section 7's self-heal precondition (requirement 76, tasks
+    # 001/002), so Reconcile repairs it to "starting" from "tmux" within one
+    # tick, the same route the "dup pane" scenario above already proves this
+    # repair with. Asserting the raw forced "error" here with no wait races
+    # that repair and loses at this scenario's reconcile cadence -- wait for
+    # the repair first, on the SPEC-mandated route, per this approach's R76
+    # design ruling (docs/reports/phase3g-805-stale-tmux-verdict/README.md).
+    Then within one configured reconcile interval the state database session "recoverable" is "starting" from "tmux" with killed_by_user=0
+    # requirement 45's own point survives the repair: a stale lower-precedence
+    # (tmux) verdict -- now "starting" rather than "error", but still tmux-
+    # sourced and still lower precedence than a hook -- must not block the
+    # later hook below from landing.
     When fake Claude session "recoverable" fires "Stop" for itself using conversation identity:
       | last_assistant_message | recovered after stale tmux verdict |
     Then within one configured reconcile interval deck client "A" screen contains "idle"
