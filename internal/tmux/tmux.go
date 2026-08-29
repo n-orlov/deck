@@ -252,16 +252,20 @@ func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
 	// rather than via a separate set-environment call issued afterwards.
 	// The previous code ran set-environment in a follow-up loop once
 	// new-session had already returned; when Command exits essentially
-	// instantly (e.g. a failing pre_launch, crash.feature:46), tmux can
-	// tear the session back down before that follow-up call reaches it,
-	// which surfaced as "no such session" and aborted the whole create
-	// (reproduced from the natural route and with a plain tmux CLI repro,
-	// about 1/300 under load). -e is available because deck's documented
-	// minimum tmux is 3.2 and -e was added in 3.0. There is deliberately
-	// no fallback/tolerance here: an -e failure still fails Create exactly
-	// as before, it just cannot lose the environment-mirroring race
-	// against the pane's own command anymore because there is no longer a
-	// second, later call for that race to have a window in.
+	// instantly (e.g. a failing pre_launch, crash.feature:46), the
+	// reconciler goroutine (reconcile.go) can observe the dead pane and
+	// Kill the very same session on its next tick before that follow-up
+	// loop finishes -- independent of tmux's own remain-on-exit, which
+	// only decides whether the pane is retained, never whether deck's own
+	// reconciler leaves the session alone. That surfaced as "no such
+	// session" and aborted the whole create; see
+	// docs/reports/phase3g-501-create-env-race/ for the red/green repro.
+	// -e is available because deck's documented minimum tmux is 3.2 and -e
+	// was added in 3.0. There is deliberately no fallback/tolerance here:
+	// an -e failure still fails Create exactly as before, it just cannot
+	// lose the environment-mirroring race against a concurrent reconciler
+	// anymore because there is no longer a second, later call for that
+	// race to have a window in.
 	args := []string{"new-session", "-d", "-s", name}
 	for key, value := range pairs(env) {
 		args = append(args, "-e", key+"="+value)
