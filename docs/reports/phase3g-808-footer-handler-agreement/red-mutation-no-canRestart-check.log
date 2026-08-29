@@ -1,0 +1,92 @@
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/R
+    footer_handler_agreement_test.go:267: stopped row, key "R": footer advertised=false (legend="↑/↓ · Y acknowledge · n new · r resume · dd delete · A archive · , settings · i detail · ? help · q quit") but the handler acted=true -- the footer and the key handler must share exactly one eligibility definition (SPEC §11.3)
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/R
+    footer_handler_agreement_test.go:267: archived row, key "R": footer advertised=false (legend="↑/↓ · Y acknowledge · n new · r resume · dd delete · U unarchive · , settings · i detail · ? help · q quit") but the handler acted=true -- the footer and the key handler must share exactly one eligibility definition (SPEC §11.3)
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/dd
+--- FAIL: TestFooterHandlerAgreementAcrossEveryRowClass (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/r (0.00s)
+    --- FAIL: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/r (0.00s)
+    --- FAIL: TestFooterHandlerAgreementAcrossEveryRowClass/archived/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/dd (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.006s
+FAIL
+EXIT=1

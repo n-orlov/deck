@@ -1,0 +1,9 @@
+--- FAIL: TestFooterHandlerAgreementAcrossEveryRowClass (0.00s)
+    --- FAIL: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/R (0.00s)
+        footer_handler_agreement_test.go:267: stopped row, key "R": footer advertised=false (legend="↑/↓ · Y acknowledge · n new · r resume · dd delete · A archive · , settings · i detail · ? help · q quit") but the handler acted=true -- the footer and the key handler must share exactly one eligibility definition (SPEC §11.3)
+    --- FAIL: TestFooterHandlerAgreementAcrossEveryRowClass/archived/R (0.00s)
+        footer_handler_agreement_test.go:267: archived row, key "R": footer advertised=false (legend="↑/↓ · Y acknowledge · n new · r resume · dd delete · U unarchive · , settings · i detail · ? help · q quit") but the handler acted=true -- the footer and the key handler must share exactly one eligibility definition (SPEC §11.3)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	1.062s
+FAIL
+EXIT=1
