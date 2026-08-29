@@ -45,9 +45,26 @@ Feature: Claude hook status truth
     When deck client "A" attaches to and detaches from its selected agent
     Then the state database session "hook truth" is "running" from "user" with acknowledged=1, notify_epoch=2, and 2 attached events
 
+    # StopFailure's own hook write lands its 'error' status durably as far
+    # as the hook write itself is concerned, but this pane stays alive for
+    # the UserPromptSubmit retry that follows, so unlike the driven-to-death
+    # panes above there is no window in which 'error' is observable here: the
+    # released deck _hook subcommand's post-hook liveness pass
+    # (cmd/deck/main.go's runHook -> ReconcileWithin) runs synchronously, in
+    # the same subprocess invocation, immediately after the hook's own write
+    # and before that subprocess ever returns control to the fake Claude
+    # pane's send-keys. SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane, R76) is
+    # unconditional and finds this 'error' row paired with the still-live,
+    # non-crashed 'hook truth' pane -- an invariant violation it repairs on
+    # that very same pass: the row lands on the neutral 'starting' a fresh
+    # pane always begins at, tmux-sourced, with the corrected-row reason, one
+    # notify_epoch tick (leaving the 'error' attention status spends one),
+    # and every other field untouched. The hook's own event is still audited
+    # in full below.
     When fake Claude session "hook truth" fires "StopFailure" for itself using injected identity:
       | error_type | tool_failure |
-    Then the state database session "hook truth" has hook status "error", reason "tool_failure", message "permission granted; work is complete", acknowledged 0, and notify_epoch 2
+    Then the state database session "hook truth" is repaired to "starting" from "tmux" with reason "tmux pane is alive; terminal row corrected", message "permission granted; work is complete", acknowledged 0, and notify_epoch 3
     And session "hook truth" has one "stop_failure" event with payload field "error_type" equal to "tool_failure"
 
     When fake Claude session "hook truth" fires "UserPromptSubmit" for itself using injected identity:
