@@ -1231,5 +1231,8 @@ report by reference: everything below is stated and evidenced there, not here.
   (`phase3g-findings.md` §4).
 - **Delivery log** (§3): Phase 3g is recorded in [`../DELIVERY-LOG.md`](../DELIVERY-LOG.md) with
   task 111's whole-suite result (green at `9f61e21`, 311/311) and task 112's stability rate
-  (9/10, root-caused), each with its log path, plus R82's published-*partial* status and the
-  known open regression above.
+  (9/10, root-caused), each with its log path, plus — as approach 01's close-out then stood —
+  R82's *partial* status and the known open regression above. That R82 line is historical only:
+  R82 was resolved afterwards by task 105 (`ea6ce4b`, finding
+  [F18](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)), as the dialog
+  table above records; `../DELIVERY-LOG.md`'s own text still carries the older wording.
