@@ -1266,6 +1266,15 @@ that primary commit's own sha as the final commit of this close-out's authorship
 > immediately after; commit B's own sha cannot be named here for the same reason commit
 > A's couldn't be named inside itself, and is not needed to satisfy this criterion, which
 > asks only for "this commit's own sha as the final commit" — commit A's, quoted above.
+>
+> **Addendum, second part (commit C).** Clause (f) below was re-cited after this section's
+> first validation pass, by a third commit — **`628309b`**, "docs: cite a sha and tracked
+> evidence in every close-out exceptional-status row, and file F35 for the undelivered
+> delivery-log half (task 607)" — which also filed finding
+> [F35](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) and added the
+> tracked evidence bundle [`phase3g-607-closeout/`](phase3g-607-closeout/). `628309b` is the
+> final substantive commit of this close-out's authorship; this line naming it is landed by a
+> fourth, tiny commit, for the same reason commit A could not name itself.
 
 ```
 $ git diff --stat b0a4e7d..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum; echo "exit=$?"
@@ -1350,19 +1359,19 @@ as an open residual.
 | 210 | 03 | pending | Sweep: one whole-suite run at the post-work head | superseded through 305/508; delivered by task 604, `b4c90ca` — [`phase3g-604-fullsuite/`](phase3g-604-fullsuite/) |
 | 211 | 03 | pending | Sweep: `ci/stability.sh 10` at 10/10 (finding 1's gate) | superseded through 304/505; delivered at `b0a4e7d` by task 507's round 3 — [`phase3g-507-stability10/round3/`](phase3g-507-stability10/round3/) — closed by citation task 605, `2bad935` — [`phase3g-605-stability-gate/`](phase3g-605-stability-gate/) |
 | 212 | 03 | pending | Re-verify the run's guards at the final code sha | superseded through 308/510; delivered by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/) |
-| 213 | 03 | pending | Write the close-out section against the true final sha | superseded through 309/511; delivered by this task, 607: `3faafa7` (this section) and `8545366` (its (a) addendum), corrected by the follow-up commit named in the (a) addendum below — evidence [`phase3g-607-closeout/`](phase3g-607-closeout/) |
+| 213 | 03 | pending | Write the close-out section against the true final sha | superseded through 309/511; delivered by this task, 607: `3faafa7` (this section) and `8545366` (its (a) addendum), corrected by `628309b` — evidence [`phase3g-607-closeout/`](phase3g-607-closeout/) |
 | 303 | 04 | in-progress | Synchronise every scenario task 302 recorded as failing | `6524ece` (help-overlay PTY tail race) and `157bb52` (SIGWINCH inter-resize pacing) — [`phase3g-303-help-pty-tail-sync/`](phase3g-303-help-pty-tail-sync/), [`phase3g-303-sigwinch-count-pace/`](phase3g-303-sigwinch-count-pace/) |
 | 304 | 04 | pending | Establish review finding 1's gate: 10/10 on the final tree | superseded by 505; delivered at `b0a4e7d` by task 507's round 3 — [`phase3g-507-stability10/round3/`](phase3g-507-stability10/round3/) — closed by citation task 605, `2bad935` — [`phase3g-605-stability-gate/`](phase3g-605-stability-gate/) |
 | 305 | 04 | pending | Sweep: one whole-suite run at the final code sha | superseded by 508; delivered by task 604, `b4c90ca` — [`phase3g-604-fullsuite/`](phase3g-604-fullsuite/) |
 | 306 | 04 | pending | Record approach 03/04's work, including a new R93 section | task 504, `af288eb` — [`phase3g-504-report-update/`](phase3g-504-report-update/) |
 | 307 | 04 | pending | Bring `phase3g-findings.md` up to date at approach-04 state | task 506, `7fa6f89` (F28 disposition) — [`phase3g-506-sigwinch-disposition/`](phase3g-506-sigwinch-disposition/) — plus task 601, `34ca8ce` (F29–F32) and task 602, `2058c08` (F33/F34), whose delivered artefact is the tracked findings report itself, [`phase3g-findings.md`](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) |
 | 308 | 04 | pending | Re-verify the run's guards, scoped to the run range | superseded by 510; delivered by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/) |
-| 309 | 04 | pending | Write the close-out against the true final sha, update delivery log | superseded by 511; close-out half delivered by this task, 607: `3faafa7`, `8545366` and the correction commit named in the (a) addendum below — evidence [`phase3g-607-closeout/`](phase3g-607-closeout/); the delivery-log half is **undelivered**, carried as open residual finding [F35](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) |
+| 309 | 04 | pending | Write the close-out against the true final sha, update delivery log | superseded by 511; close-out half delivered by this task, 607: `3faafa7`, `8545366` and `628309b` — evidence [`phase3g-607-closeout/`](phase3g-607-closeout/); the delivery-log half is **undelivered**, carried as open residual finding [F35](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) |
 | 505 | 05 | failed | Measure `ci/stability.sh 10` at the post-fix tree | delivered a real, if launcher-imprecise, 9/10 measurement (`bfa3aad`) naming the one sigwinch failure — [`phase3g-505-stability10/`](phase3g-505-stability10/) (both rounds, kept unedited) — wholly superseded by task 507's clean 10/10 round 3 at `b0a4e7d` — [`phase3g-507-stability10/round3/`](phase3g-507-stability10/round3/) — so no residual is live |
 | 508 | 05 | skipped | Sweep the whole suite once, every exclusion named | delivered in substance at `550a265`/`898a54e`/`b5a228d` (exact-launcher log at `8f8e214`) — [`phase3g-508-fullsuite/`](phase3g-508-fullsuite/); the one unmet clause (one log with both the exact launcher and the verbose tally) is a `go test` stdout-buffering constraint, recorded as finding F34 by task 602, `2058c08`, and superseded cleanly by task 604's single-launcher, `tail -5`-only sweep, `b4c90ca` |
 | 509 | 05 | pending | Bring `phase3g-findings.md` up to date at approach-05 state | task 601, `34ca8ce` (F29–F32) + task 602, `2058c08` (F33/F34); the delivered artefact is the tracked findings report itself, [`phase3g-findings.md`](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why), and those rows rest on the tracked evidence directories [`phase3g-501-create-env-race/`](phase3g-501-create-env-race/), [`phase3g-502-attention-count-sync/`](phase3g-502-attention-count-sync/), [`phase3g-503-attach-scroll-sync/`](phase3g-503-attach-scroll-sync/), [`phase3g-507-sigwinch-startup-race/`](phase3g-507-sigwinch-startup-race/) and [`phase3g-508-fullsuite/`](phase3g-508-fullsuite/) |
 | 510 | 05 | pending | Re-verify the run's guards at the current sha | delivered by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/) |
-| 511 | 05 | pending | Write the close-out against the true final sha, update delivery log | close-out half delivered by this task, 607: `3faafa7`, `8545366` and the correction commit named in the (a) addendum below — evidence [`phase3g-607-closeout/`](phase3g-607-closeout/); the delivery-log half is **undelivered**, carried as open residual finding [F35](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) |
+| 511 | 05 | pending | Write the close-out against the true final sha, update delivery log | close-out half delivered by this task, 607: `3faafa7`, `8545366` and `628309b` — evidence [`phase3g-607-closeout/`](phase3g-607-closeout/); the delivery-log half is **undelivered**, carried as open residual finding [F35](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) |
 
 ### (g) The four review findings of the last review pass
 

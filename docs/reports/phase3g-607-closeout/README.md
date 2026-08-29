@@ -17,7 +17,7 @@ whose close-out scope task 607 itself delivered. Those rows point here.
 |---|---|
 | `3faafa7` | the close-out section itself — clauses (a)–(g), and the section-list link |
 | `8545366` | the (a) addendum naming `3faafa7` (a commit cannot quote its own sha) |
-| this bundle's own commit, named in the section's (a) addendum | clause (f)'s evidence-and-residual correction: every delivered row now names a tracked evidence directory as well as its sha(s), the three task-607 rows point at this directory, and the delivery-log half that is genuinely undelivered points at open residual finding F35 instead of at a pending task |
+| `628309b` | clause (f)'s evidence-and-residual correction: every delivered row now names a tracked evidence directory as well as its sha(s), the three task-607 rows point at this directory, and the delivery-log half that is genuinely undelivered points at open residual finding F35 instead of at a pending task |
 
 The correction was made because the first validation pass of task 607 found clause (f)
 under-cited in exactly nine rows: 213, 309 and 511 named no sha and no evidence path at all
@@ -54,15 +54,16 @@ It checks five things, and exits non-zero if any of them fails:
 
 ## Captured output
 
-[`verify.log`](verify.log) — the checker's own output at this bundle's commit, with
+[`verify.log`](verify.log) — the checker's own output, re-captured at the addendum commit that
+names `628309b` in the section's (a) block, with
 [`verify.exitstatus`](verify.exitstatus) (`0`) captured in the same shell call:
 
 ```
-OK   1a: '## Close-out (approach 06)' at line 1241, 136 lines
+OK   1a: '## Close-out (approach 06)' at line 1241, 145 lines
 OK   1b: heading slug == anchor #close-out-approach-06
 OK   1c: linked from the file's own section list at line(s) 47
-OK    2: 45 quoted shas checked, 0 unresolved
-OK    3: 60 link targets checked, 0 unresolved
+OK    2: 46 quoted shas checked, 0 unresolved
+OK    3: 62 link targets checked, 0 unresolved
 OK    4: 29 (f) rows checked, 0 weak
 OK   5: git diff --stat b0a4e7d..HEAD over *.go *.feature *.sh *.toml go.mod go.sum is empty (exit 0)
 
