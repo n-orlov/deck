@@ -20,6 +20,7 @@ const crashFixtureName = "colored-crash.txt"
 func registerCrashStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a crash-tail fixture and long-running fake Claude are configured$`, configureCrashFixture)
 	sc.Step(`^shell session "([^"]+)" exits with status zero$`, shellSessionExitsZero)
+	sc.Step(`^shell session "([^"]+)" exits with status ([1-9][0-9]*)$`, shellSessionExitsWithNonzeroStatus)
 	sc.Step(`^fake Claude session "([^"]+)" renders the colored crash-tail fixture$`, renderColoredCrashFixture)
 	sc.Step(`^the state database session "([^"]+)" is cleanly stopped without a crash artifact$`, databaseSessionCleanlyStopped)
 	sc.Step(`^the state database session "([^"]+)" has a sanitized last-200-line crash artifact$`, databaseSessionHasCrashArtifact)
@@ -68,6 +69,41 @@ func shellSessionExitsZero(ctx context.Context, name string) error {
 	}
 	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
 		return fmt.Errorf("submit clean exit to shell %q: %w", name, err)
+	}
+	return nil
+}
+
+// shellSessionExitsWithNonzeroStatus is shellSessionExitsZero's counterpart
+// for a genuine crash: it sends the shell built-in "exit <code>" (code > 0)
+// into the pane exactly the same way, so the pane's own process really exits
+// non-zero. deck's remain-on-exit=failed then retains the dead pane until
+// the next reconcile observes it, captures the crash tail, writes a real
+// tmux-sourced "error" with pane_exit_status set, and kills the session --
+// the genuine tmux.pane_dead route (SPEC.md:536-566) a scenario needing a
+// durable "error" row on what was a shell session must use instead of
+// writing status="error" into the state database directly: since task 701,
+// that raw write is a bare error with no pane-exit verdict, and SPEC section
+// 7's self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+// repairs it back to "running" on the very next reconcile tick because the
+// pane is still alive underneath it (task 703's fix for review finding 1's
+// fallout, mirroring the precedent already documented in this same file for
+// "exits with status zero"/stopped and in status_theme.feature/themes.feature
+// for stopped).
+func shellSessionExitsWithNonzeroStatus(ctx context.Context, name string, code int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "-l", fmt.Sprintf("exit %d", code)); err != nil {
+		return fmt.Errorf("send crash exit %d to shell %q: %w", code, name, err)
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
+		return fmt.Errorf("submit crash exit %d to shell %q: %w", code, name, err)
 	}
 	return nil
 }

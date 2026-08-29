@@ -20,11 +20,21 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     And deck client "A" creates claude session "s-agent" with permission profile "safe"
     And deck client "A" creates shell session "s-stopped"
     And shell session "s-stopped" exits with status zero
+    # "error" cannot be posed by writing the state database directly while
+    # s-error's tmux pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs a shell row straight back to "running" on the very next
+    # reconcile tick (task 703, review finding 1's fallout), exactly as it
+    # already does for a raced "stopped" write above. A genuine nonzero
+    # pane exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition.
+    And shell session "s-error" exits with status 1
     And the state database session "s-idle" has status "idle" 50 seconds ago
-    And the state database session "s-error" has status "error" 40 seconds ago
     And the state database session "s-waiting-new" has status "waiting" 10 seconds ago
     And the state database session "s-waiting-old" has status "waiting" 90 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "s-error" contains "error"
     And deck client "A" screen shows sessions in this order:
       | s-waiting-old  |
       | s-waiting-new  |
@@ -95,7 +105,10 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     And deck client "A" creates shell session "cnt-idle"
     And deck client "A" creates shell session "cnt-run"
     And the state database session "cnt-wait" has status "waiting" 5 seconds ago
-    And the state database session "cnt-err" has status "error" 5 seconds ago
+    # "error" cannot be posed by a raw state-database write while cnt-err's
+    # pane is alive -- see the order scenario above (task 703). A genuine
+    # nonzero pane exit reaches a durable "error" instead.
+    And shell session "cnt-err" exits with status 1
     And the state database session "cnt-idle" has status "idle" 5 seconds ago
     Then within one configured reconcile interval deck client "A" row "cnt-wait" contains "waiting"
     And within one configured reconcile interval deck client "A" row "cnt-err" contains "error"
@@ -112,9 +125,16 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     And deck client "A" creates shell session "sp-2"
     And deck client "A" creates shell session "sp-3"
     And the state database session "sp-1" has status "waiting" 5 seconds ago
-    And the state database session "sp-2" has status "error" 3 seconds ago
+    # "error" cannot be posed by a raw state-database write while sp-2's pane
+    # is alive -- see the order scenario above (task 703). A genuine nonzero
+    # pane exit reaches a durable "error" instead, and the explicit wait
+    # below (rather than relying on the timing of the "waiting" check, which
+    # names a different session) makes sure sp-2 has actually reached it
+    # before the walk starts.
+    And shell session "sp-2" exits with status 1
     And the state database session "sp-3" has status "idle" 1 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "sp-2" contains "error"
     And deck client "A" selects session "sp-1"
     And the state database status rows are captured as "before-space"
     When deck client "A" sends " "
