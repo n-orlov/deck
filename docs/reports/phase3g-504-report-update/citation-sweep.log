@@ -1,0 +1,16 @@
+$ python3 docs/reports/phase3g-113-closeout/citation_sweep.py
+reports scanned: 2
+  docs/reports/phase3g.md
+  docs/reports/phase3g-findings.md
+
+distinct shas cited: 91
+sha resolution failures: 0
+
+distinct link targets cited: 53
+link resolution failures: 0
+
+distinct same-document anchors cited: 29
+anchor resolution failures: 0
+
+CITATION SWEEP: PASS - every cited sha resolves, every cited path exists, every same-document anchor resolves
+exit status: 0

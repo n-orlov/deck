@@ -284,6 +284,23 @@ ok  	github.com/n-orlov/deck/internal/service	4.739s
 ok  	github.com/n-orlov/deck/cmd/deck	6.084s
 ```
 
+**Review finding 3, closed by tasks 202 and 214.** Independent review found this
+fix's own bound left a genuine residual: `Store.SweepTombstones` stamped its
+hourly throttle after a single bounded batch even when the backlog was bigger
+than one batch, so a real backlog left over from store-open took a further
+real *hour* per leftover batch instead of finishing within the same
+open/startup cycle. Task 202 (`dd90a28`, `a46514e`) gave `SweepTombstones` a
+second return value reporting whether rows remain, added
+`DrainExpiredTombstones` to loop on that value, and wired it into
+`cmd/deck`'s reconcile tick (the store-open call site stays a single bounded
+pass, unchanged in shape). Task 214 (`6a01fe7`) then pinned the real
+`cmd/deck` startup/tick continuation end to end, closing the one gap task
+202's own criteria could not reach directly — see the per-requirement table's
+R79 row and
+[the tasks 201–503 table](#tasks-201-202-203-204-214-301-302-303-501-502-and-503-approaches-03-05-testscenario-and-evidence-path-per-sha)
+below for the sha/test/evidence detail, including the operator ruling task
+202's status rests on.
+
 ## R80 — the footer lists only what the current selection will accept (tasks 012–013)
 
 `SPEC.md` §11.3. Not one of the eight red/green-quoted requirements. **Implementing
@@ -1002,6 +1019,79 @@ paragraph above), as its README states.
 claude sessions in one scenario, the same convergence gap R90's evidence flagged; only
 this one further call site, not the full ~19-site sweep.)
 
+## R93 — an in-progress drag-to-copy selection is visible on screen (tasks 205–207)
+
+New requirement this approach, from a direct operator ruling (steering 018, 2026-08-28,
+filed as github.com/n-orlov/deck issue #18): a drag-to-copy selection in the interactive
+preview must be visible from press to release, the way tmux's own `MouseDragEnd1Pane`
+gesture is. The gesture already worked end to end since task 216 (Phase 3d) — only the
+visual feedback was missing — and `SPEC.md` had no requirement covering it at all, so
+this is a genuine spec omission rather than a regression in 216's work.
+
+**SPEC amendment, its own code-free commit, under steering 018's explicit licence to
+touch the otherwise-protected `SPEC.md`: `b69b5ba`** (task 205) — amends §11.8's
+"Selection and copy" paragraph: the in-progress selection is marked with the
+`selection` theme token from press to release, the marking is linear (matching
+`SelectedText`'s own run, never rectangular), and it clears when the release commits
+the copy.
+
+**Implementing shas:**
+
+- **`b249992`** (task 206) — `internal/interactive/grid.go`'s
+  `Session.SelectionHighlightRange` (resolves a view row's membership through
+  `AbsoluteRow` itself, never a second, independently derived row window) and
+  `internal/tui/interactive_select.go`'s `highlightInProgressSelection`/
+  `highlightRangeSGR`, wired into the interactive preview's single grid-draw call site
+  (`internal/tui/interactive.go`'s `interactiveBodyLines`, right after `RenderRows`).
+  New tests in `internal/interactive/selection_test.go`:
+  `TestSelectionHighlightRangeAgreesWithSelectedTextAcrossWrappedRows` (the
+  anchor/current highlight and `SelectedText`'s own run agree byte-for-byte across a
+  wrapped multi-row drag) and `TestSelectionHighlightRangeReportsNoHighlightOutsideSelectedRows`.
+- **`c3a5a06`** (task 206) — proves that same agreement through the real render path
+  (`Model.View()` through a real `vt.Emulator`, a real `tea.MouseMsg` press/motion/release
+  sequence and a real tmux pane), not just the grid helper in isolation, so a no-op or
+  broken renderer cannot pass. New test:
+  `internal/tui/interactive_select_highlight_test.go`'s
+  `TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns`. Mutation evidence
+  committed alongside: neutering the render call to a no-op
+  (`mutation-renderer-noop.log`) and mutating the highlight range rectangular
+  (`mutation-rectangular.log`) both go red.
+- **`7e7b0be`** (task 207, the adjacent confirmation steering 018 licensed if it fit in
+  one task) — `selectionCopyNote`, the success counterpart to the pre-existing
+  `attachError` failure message; with the in-progress highlight cleared the instant a
+  release commits the copy, a copy that worked and a copy that never happened were
+  otherwise indistinguishable on screen. New test:
+  `internal/tui/interactive_select_test.go`'s
+  `TestFailedInteractiveSelectionCopySetsNoConfirmation`; the pre-existing
+  `TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer` is extended to
+  assert the confirmation text.
+- **`a0bf89e`** (task 207) — round 1 of validation was right to reject the test, not the
+  implementation: both cases above read `Model.selectionCopyNote` directly and rendered
+  nothing, so a confirmation the model holds but `mainView` never appends would still
+  have passed. Both cases now render `View()` into a real terminal emulator and assert
+  on rendered cell contents instead (`renderedScreenRows`/`screenRowContaining`
+  helpers) — the success case needs one screen row naming both the copied size and
+  deck's own tmux buffer, the failure case needs the unchanged "Cannot copy selection:
+  ..." message on screen with no confirmation row anywhere in the frame.
+  `mutation-unrendered-note.log` is the committed red once `mainView`'s append of the
+  note is removed; `targeted-suite-tui.log` is the green on the real tree.
+
+Linear-only, never rectangular (the standing rule this requirement singles out): pinned
+by `c3a5a06`'s `mutation-rectangular.log` going red on a rectangular mutation. Passive
+preview and the OSC 52 clipboard defect stay out of scope and untouched across all four
+shas — `internal/tui/interactive_select.go`'s `oscClipboardWriter`/
+`writeOSCClipboardBestEffort`/`SetSelectionBuffer` call sites carry no diff, and no
+`internal/theme/builtin/*.toml` file or `internal/tui/panel.go` changed (the highlight is
+a background-only span using the existing `text/selection` contrast-floor entry, never a
+new token pairing).
+
+Tests: `internal/interactive/selection_test.go`, `internal/tui/interactive_select_highlight_test.go`,
+`internal/tui/interactive_select_test.go`.
+
+Evidence: [`phase3g-206-r93-visible-selection/`](phase3g-206-r93-visible-selection/)
+(tasks 205–206) and [`phase3g-207-copy-confirmation/`](phase3g-207-copy-confirmation/)
+(task 207).
+
 ## Known open regression, discovered by task 002's own evidence, not fixed here
 
 `features/status_recovery.feature`'s "`r` on a session whose tmux session already
@@ -1038,7 +1128,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R76 | met | 001, 002, 103 | `89fcffc`, `15e33c6`, `904419c`, `51b7f17` | yes |
 | R77 | met | 003–006 | `b80a4bd`, `70162d4`, `be3df32`, `31510ab`, `c791a6a` | yes (task 003 leg) |
 | R78 | met | 007–009 | `47166c8`, `e699c31`, `3247a7a` | not required |
-| R79 | met | 010–011 | `c987953`, `e475660`, `8276450`, `e45bf2e` | yes |
+| R79 | met (review finding 3 closed by 202, 214) | 010–011, 202, 214 | `c987953`, `e475660`, `8276450`, `e45bf2e`, `dd90a28`, `a46514e`, `6a01fe7` | yes |
 | R80 | met | 012–013 | `f5977d4`, `745a25b`, `f9611b7`, `ebbc3fd` | not required |
 | R81 | met | 014–015 | `7dbe5c5`, `3498b3e` | not required |
 | R82 | **met (resolved by task 203; F27; 021's own gap closed by 105)** | 016 (skipped), 017–020, 021 (failed), 105, 107, 203 | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad`,`ea6ce4b`,`02e64a5` | yes (105, 203; retroactive not needed) |
@@ -1052,6 +1142,7 @@ scenario's assertion to a store read or otherwise account for R76.
 | R90 | met | 032–033 | `99fc4a3`, `ab14d19`, `ca43907` | not required (read-gap quoted anyway) |
 | R91 | met | 034–035 | `c93f811`, `9d6c22a` | yes (retroactive, disclosed; plus the count prediction) |
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
+| R93 | met | 205–207 | `b69b5ba`, `b249992`, `c3a5a06`, `7e7b0be`, `a0bf89e` | yes (retroactive on 207's round 1; disclosed) |
 
 R82's task-016 residual is resolved (task 203; F27, per the PRD's own
 `SPEC.md`-wins precedence rule) and carried in
@@ -1070,6 +1161,36 @@ R82's task-016 residual is resolved (task 203; F27, per the PRD's own
 | 107 | R82/R83 | `02e64a5` | `internal/tui/dialog_degradation_net_test.go` `TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII`, `TestRenameFieldRowTruncationReemitsItsOwnReset` | `docs/reports/phase3g-107-dialog-degradation-net/` |
 | 108 | R86 | `ab34cb4`, `860c412` | `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_bindings_parity_test.go`, `internal/tui/overlay_line_scroll_test.go` | `docs/reports/phase3g-108-r86-proof/` |
 | 203 | R82 (F27) | (working-tree only; no product sha — assertion-scope finding) | `features/create_cwd_ghost_test.go` `clientCWDFieldShowsGhostText`; `create_cwd_ghost.feature`, `create_session.feature` | `docs/reports/phase3g-203-r82-assertion-conflict/` |
+
+### Tasks 201, 202, 203, 204, 214, 301, 302, 303, 501, 502 and 503 (approaches 03-05), test/scenario and evidence path per sha
+
+One row per task, in task-id order. 203's row duplicates the one above (it belongs to
+both this table's task list and R82's F27 closure); every other row is new to this
+report.
+
+| task | sha(s) | test/scenario (file) | evidence path |
+|---|---|---|---|
+| 201 | `7e3261c`, `248d257` | `internal/service/rename_reuse_test.go` `TestRenameOntoATombstonedNameCleansUpThatSessionsFiles`, `TestRefusedRenameKeepsLiveAndArchivedHoldersFiles` | `docs/reports/phase3g-201-rename-reuse-cleanup/` |
+| 202 | `dd90a28`, `a46514e` | `internal/store/tombstone_sweep_test.go` `TestSweepTombstonesReapsOneBoundedBatchPerCall` (rewritten in place, per operator ruling `001-202.md`) | `docs/reports/phase3g-202-tombstone-drain/` |
+| 203 | `3e883d7` | `features/create_cwd_ghost_test.go` `clientCWDFieldShowsGhostText`; `create_cwd_ghost.feature`, `create_session.feature` | `docs/reports/phase3g-203-r82-assertion-conflict/` |
+| 204 | `54fd6e0`, `e5ad762` | `features/kill_delete_undo_test.go` `waitForSessionColumnState`; `filter.feature`'s `@requirement-33-dd-reaches-and-tombstones-an-archived-row` scenario | `docs/reports/phase3g-204-async-db-assert-sync/` |
+| 214 | `6a01fe7` | `cmd/deck/tombstone_startup_continuation_test.go` | `docs/reports/phase3g-214-tombstone-continuation/` |
+| 301 | `bdc1879` | re-derivable citation-only closure of review findings 2, 3, 4 (no new test; re-runs `internal/service/rename_reuse_test.go`, `cmd/deck/tombstone_startup_continuation_test.go`/`internal/store`, and the `create_cwd_ghost.feature`/`create_session.feature` pair) | `docs/reports/phase3g-301-review-findings-closure/` |
+| 302 | `d0e36e4`, `b222875`, `52c5107` | `ci/stability.sh 10` measured at the frozen code tree (the observed rate itself is out of scope for this section — see tasks 507/508/511) | `docs/reports/phase3g-302-stability10/` |
+| 303 | `6524ece`, `157bb52` | `cmd/deck/main_test.go` `TestDeckBinaryEmptyHelpAndQuitThroughPTY`; `features/sigwinch_count_test.go` `TestSigwinchCountDistinguishesTwoFromThree` | `docs/reports/phase3g-303-help-pty-tail-sync/`, `docs/reports/phase3g-303-sigwinch-count-pace/` |
+| 501 | `97f8832`, `19fff8d` | `internal/tmux/create_env_race_test.go` `TestCreateSurvivesInstantExitEnvironmentMirroring`, `TestCreateStillFailsOnGenuineEnvironmentError` | `docs/reports/phase3g-501-create-env-race/` |
+| 502 | `306d57a`, `3f23287` | `features/attention_sort.feature`'s "the collapsed strip's attention count matches the sort's own notion of attention" scenario | `docs/reports/phase3g-502-attention-count-sync/` |
+| 503 | `9f7c239`, `739fb7b` | `features/attach_scroll.feature`'s "a wheel notch scrolls an attached pane's scrollback and leaves the shell's input line untouched" scenario | `docs/reports/phase3g-503-attach-scroll-sync/` |
+
+Task 202's row shows the sha(s) actually landed; its status, however, rests on
+operator ruling `001-202.md` (steering 019), which replaced 202's own
+`successCriteria` with the bar the run's own verifier had already confirmed
+point by point, after 202's original criteria demanded a `cmd/deck`-level
+integration test that does not exist as a seam. The one property that
+replacement bar could not itself confirm — a committed test driving `cmd/deck`'s
+real startup/tick continuation end to end, not `Store.DrainExpiredTombstones`
+directly — was named as a residual and carried into task 214, which closed it
+(`6a01fe7`, `cmd/deck/tombstone_startup_continuation_test.go`).
 
 Every sha and every local evidence link cited anywhere in this file is swept
 mechanically — 64 distinct shas through `git cat-file -e`, 29 markdown links and 33
