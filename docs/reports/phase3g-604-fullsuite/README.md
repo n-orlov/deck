@@ -1,22 +1,50 @@
 # Phase 3g — task 604: one whole-suite sweep at the current sha, every exclusion named
 
+## Why this bundle was re-run once (correction, not a rewrite)
+
+A first sweep for this task ran at sha `2f0ef61` and was also exit `0`, but its
+report claimed polling had used only `sleep N; tail -5 …` while the actual
+polls had used `tail -10` and `tail -20` — a false statement about how the
+evidence was collected, and a deviation from the polling procedure this task
+mandates verbatim. The evidence below is therefore a **fresh** sweep at the
+current sha, launched with the mandated launcher and polled with nothing but
+`sleep N; tail -5 …`, with the poll commands quoted exactly as issued. The
+first run's log, exit status and launch sha are kept unedited in
+[`superseded-2f0ef61/`](superseded-2f0ef61/) so the record shows both runs;
+nothing was amended or force-pushed.
+
 ## Launch
 
 Launched exactly as the standing rules mandate, backgrounded and never blocked
-on, from a clean tree at the sha this task started from:
+on, from a clean tree at the sha this iteration started from:
 
 ```
 $ git rev-parse HEAD
-2f0ef617c8bac0d8913f572c3610e8f51d96adb9
+b4c90ca9c5065593ef1b1a6a263ac83f0e97957e
 $ git status --short
 (clean)
 $ nohup sh -c 'timeout 2400 ci/run.sh go test -p=1 -count=1 ./... > /run/ralphd/artifacts/suite-604.log 2>&1; s=$?; printf "%s\n" "$s" > /run/ralphd/artifacts/suite-604.exitstatus' &
 ```
 
-Polled only with `sleep N; tail -5 /run/ralphd/artifacts/suite-604.log`, never
-blocked on. Wall time ~9m40s from launch to the exit-status file appearing;
-`features` alone 314.943s, in line with the approach-06 baseline measurement
-(330.3s / 9m45s at `b5a228d`).
+(The `/run/ralphd/...` paths are outside this repository and not part of the
+record; they appear only inside the quoted command. The files they name are
+committed here as `full-suite.log` and `full-suite.exitstatus`.)
+
+Polled with exactly three commands, each `sleep N; tail -5` on that log and
+nothing else — no `tail -10`, no `tail -20`, no blocking wait:
+
+```
+$ sleep 300; tail -5 /run/ralphd/artifacts/suite-604.log     # 3 cmd/ packages done, features still running
+$ sleep 300; tail -5 /run/ralphd/artifacts/suite-604.log     # log complete through internal/unit
+$ sleep 60;  tail -5 /run/ralphd/artifacts/suite-604.log     # same tail; then read the exitstatus file and `date -u`
+```
+
+Wall time **6m02s**, from the launch timestamp `2026-08-29 17:00:51Z` to the
+mtime of the exit-status file, `2026-08-29 17:06:53Z`; `features` alone
+312.810s. That is faster than the approach-06 baseline measurement (9m45s /
+330.3s features at `b5a228d`) because the toolchain sibling reused the warm
+shared build cache here; the per-package sum in the log (≈364s) accounts for
+the wall time on its own.
 
 **Captured exit status: `0`**, read from
 [`full-suite.exitstatus`](full-suite.exitstatus), written by the same `sh -c`
@@ -27,22 +55,22 @@ Full unedited log, 17 lines (one per package): [`full-suite.log`](full-suite.log
 (`grep -c '^FAIL\|--- FAIL' full-suite.log` = 0):
 
 ```
-ok  	github.com/n-orlov/deck/cmd/deck	7.639s
-ok  	github.com/n-orlov/deck/cmd/fake-claude	0.793s
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.776s
-ok  	github.com/n-orlov/deck/features	314.943s
+ok  	github.com/n-orlov/deck/cmd/deck	7.625s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.791s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.779s
+ok  	github.com/n-orlov/deck/features	312.810s
 ok  	github.com/n-orlov/deck/internal/agent	0.005s
 ok  	github.com/n-orlov/deck/internal/audit	0.018s
-ok  	github.com/n-orlov/deck/internal/config	0.030s
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.104s
-ok  	github.com/n-orlov/deck/internal/interactive	11.139s
+ok  	github.com/n-orlov/deck/internal/config	0.025s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.101s
+ok  	github.com/n-orlov/deck/internal/interactive	11.112s
 ?   	github.com/n-orlov/deck/internal/notify	[no test files]
 ?   	github.com/n-orlov/deck/internal/search	[no test files]
-ok  	github.com/n-orlov/deck/internal/service	4.166s
-ok  	github.com/n-orlov/deck/internal/store	2.336s
+ok  	github.com/n-orlov/deck/internal/service	4.137s
+ok  	github.com/n-orlov/deck/internal/store	2.376s
 ok  	github.com/n-orlov/deck/internal/theme	0.005s
-ok  	github.com/n-orlov/deck/internal/tmux	19.446s
-ok  	github.com/n-orlov/deck/internal/tui	1.125s
+ok  	github.com/n-orlov/deck/internal/tmux	19.526s
+ok  	github.com/n-orlov/deck/internal/tui	1.089s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
 ```
 
@@ -50,14 +78,14 @@ The launch sha is also committed verbatim as [`launch-sha.txt`](launch-sha.txt).
 
 ## The exercised tree equals the phase's final code tree
 
-The launch sha, `2f0ef61`, is a docs-only commit on top of the final *code*
-commit `b0a4e7d` (approaches 06's reporting-tail commits 601–603 touch only
+The launch sha, `b4c90ca`, is a docs-only commit on top of the final *code*
+commit `b0a4e7d` (approach 06's reporting-tail commits 601–604 touch only
 `docs/`). Two empty diffs, restricted to product/test/build file patterns,
 prove it — both re-run after this report's own commit lands, still empty,
 since this report is itself docs-only:
 
 ```
-$ git diff --stat 2f0ef617c8bac0d8913f572c3610e8f51d96adb9..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum
+$ git diff --stat b4c90ca9c5065593ef1b1a6a263ac83f0e97957e..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum
 (empty)
 $ git diff --stat b0a4e7d..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum
 (empty)
@@ -168,7 +196,7 @@ here since nothing about the toolchain changed.
 ## Net
 
 The whole suite is green (exit `0`, 17/17 packages accounted for, no `FAIL`)
-at the sha this task started from, and that sha's code tree is proven
+at the sha this iteration started from, and that sha's code tree is proven
 identical to the phase's final code tree by two empty `git diff --stat`s. Every
 exclusion is named above. Because the run is exit 0, no fresh
 `ci/stability.sh 10` is triggered by this task — the final code tree has not
