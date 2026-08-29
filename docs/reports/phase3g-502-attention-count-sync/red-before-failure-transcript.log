@@ -1,0 +1,51 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The attention sort, workspace grouping/collapse, and `space` (requirement 40)
+  SPEC §11 requirements 28-32: sessions render in exactly one attention-driven
+  order (waiting oldest-first, then error, running, starting, idle, stopped),
+  grouped by workspace with collapsible headers, and `space` walks whatever
+  needs attention from the one shared source the sort and the collapsed
+  strip's count also use, without ever writing a session's status.
+=== RUN   TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention
+
+  [1;37mScenario:[0m the collapsed strip's attention count matches the sort's own notion of attention [1;30m# attention_sort.feature:92[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cnt-wait"[0m                                    [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cnt-err"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cnt-idle"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cnt-run"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "cnt-wait" has status "waiting" 5 seconds ago[0m             [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "cnt-err" has status "error" 5 seconds ago[0m                [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "cnt-idle" has status "idle" 5 seconds ago[0m                [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "waiting"[0m  [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mWhen[0m [32mdeck client "A" sends "|"[0m                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "|"[0m                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "|"[0m                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [31mThen[0m [31mdeck client "A" collapsed strip shows attention count 2[0m                             [1;30m# attention_sort_test.go:27 -> github.com/n-orlov/deck/features.clientCollapsedStripShowsAttentionCount[0m
+    [1;31mafter scenario hook failed: deck client "A" collapsed strip attention count = 1, want 2:
++--+-----------------------------------------------------------------------------------------------+
+| >| $                                                                                             |
+| 1|                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+|  |                                                                                               |
+
+... [goroutine dump from the harness's forced-kill of the hung deck client omitted; not part of the assertion failure] ...
+
+    godog_test.go:39: godog feature suite failed
+--- FAIL: TestFeatures (7.49s)
+    --- FAIL: TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention (7.43s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	7.510s
+FAIL
