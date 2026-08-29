@@ -1,0 +1,3 @@
+$ ci/run.sh go test -run TestCreateRacesConcurrentReconcilerKill -count=300 ./internal/tmux/
+ok  	github.com/n-orlov/deck/internal/tmux	5.565s
+exit=0

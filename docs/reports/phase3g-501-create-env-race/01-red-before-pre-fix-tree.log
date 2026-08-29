@@ -1,0 +1,65 @@
+$ ci/run.sh sh -c 'cd .scratch-501 && go test -run TestCreateRacesConcurrentReconcilerKill -count=20 -v ./internal/tmux/'
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076486634982 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.03s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076512872105 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.03s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076538296141 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076561774447 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076585272730 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076608416126 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076629621440 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076649995372 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076674908089 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076695985702 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076716596448 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076738714894 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076759978625 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: set environment for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076782424167 set-environment -t deck_reconciler_race DECK_RACE_B two: exit status 1: no such session: deck_reconciler_race
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: set environment for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076804398784 set-environment -t deck_reconciler_race DECK_RACE_B two: exit status 1: no such session: deck_reconciler_race
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076827074652 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076851718968 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076871537813 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076893597832 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+=== RUN   TestCreateRacesConcurrentReconcilerKill
+    reconciler_race_test.go:76: create session racing a concurrent reconciler kill: list panes for session "deck_reconciler_race": tmux -L deck-reconciler-race-98-1787971076910955016 list-panes -t deck_reconciler_race -F #{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}: exit status 1: no current target
+--- FAIL: TestCreateRacesConcurrentReconcilerKill (0.02s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tmux	0.447s
+FAIL
+exit status: 1

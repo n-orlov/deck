@@ -1,0 +1,3 @@
+$ ci/run.sh env DECK_GODOG_PATHS=crash.feature go test ./features/ -run TestFeatures -count=1 (run 2/3)
+ok  	github.com/n-orlov/deck/features	5.896s
+exit=0

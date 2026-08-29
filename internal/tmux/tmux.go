@@ -246,19 +246,33 @@ func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
 	if err := c.Bootstrap(ctx); err != nil {
 		return Session{}, err
 	}
-	args := []string{"new-session", "-d", "-s", name, "-c", launch.CWD, "--", "env"}
+	// The session's own environment table (task 501) is mirrored via
+	// new-session's own -e, one flag per variable, so it lands as part of
+	// this single new-session call -- atomically with session creation --
+	// rather than via a separate set-environment call issued afterwards.
+	// The previous code ran set-environment in a follow-up loop once
+	// new-session had already returned; when Command exits essentially
+	// instantly (e.g. a failing pre_launch, crash.feature:46), tmux can
+	// tear the session back down before that follow-up call reaches it,
+	// which surfaced as "no such session" and aborted the whole create
+	// (reproduced from the natural route and with a plain tmux CLI repro,
+	// about 1/300 under load). -e is available because deck's documented
+	// minimum tmux is 3.2 and -e was added in 3.0. There is deliberately
+	// no fallback/tolerance here: an -e failure still fails Create exactly
+	// as before, it just cannot lose the environment-mirroring race
+	// against the pane's own command anymore because there is no longer a
+	// second, later call for that race to have a window in.
+	args := []string{"new-session", "-d", "-s", name}
+	for key, value := range pairs(env) {
+		args = append(args, "-e", key+"="+value)
+	}
+	args = append(args, "-c", launch.CWD, "--", "env")
 	for key, value := range pairs(env) {
 		args = append(args, key+"="+value)
 	}
 	args = append(args, launch.Command...)
 	if _, err := c.run(ctx, args...); err != nil {
 		return Session{}, fmt.Errorf("create session %q: %w", name, err)
-	}
-	for key, value := range pairs(env) {
-		if _, err := c.run(ctx, "set-environment", "-t", name, key, value); err != nil {
-			_ = c.Kill(ctx, launch.Slug)
-			return Session{}, fmt.Errorf("set environment for session %q: %w", name, err)
-		}
 	}
 	return c.session(ctx, name)
 }
