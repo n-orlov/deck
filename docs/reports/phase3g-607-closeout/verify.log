@@ -1,0 +1,9 @@
+OK   1a: '## Close-out (approach 06)' at line 1241, 136 lines
+OK   1b: heading slug == anchor #close-out-approach-06
+OK   1c: linked from the file's own section list at line(s) 47
+OK    2: 45 quoted shas checked, 0 unresolved
+OK    3: 60 link targets checked, 0 unresolved
+OK    4: 29 (f) rows checked, 0 weak
+OK   5: git diff --stat b0a4e7d..HEAD over *.go *.feature *.sh *.toml go.mod go.sum is empty (exit 0)
+
+ALL CHECKS PASSED
