@@ -1,0 +1,127 @@
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.90s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.80s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+    sigwinch_count_test.go:89: sigwinch count after 1st resize = 0, want exactly 1 before sending the 2nd
+--- FAIL: TestSigwinchCountDistinguishesTwoFromThree (2.84s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.85s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.87s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.78s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+    sigwinch_count_test.go:89: sigwinch count after 1st resize = 0, want exactly 1 before sending the 2nd
+--- FAIL: TestSigwinchCountDistinguishesTwoFromThree (2.81s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.86s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.85s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.89s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+    sigwinch_count_test.go:89: sigwinch count after 1st resize = 0, want exactly 1 before sending the 2nd
+--- FAIL: TestSigwinchCountDistinguishesTwoFromThree (3.13s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.17s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.19s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.12s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.92s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.04s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.02s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.02s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.14s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.90s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.33s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.30s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.05s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.03s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.38s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.29s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.26s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.08s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.05s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.36s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.09s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.13s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.09s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.07s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.95s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.75s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.27s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.90s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.06s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.12s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.62s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.27s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.30s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.00s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.10s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.24s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+    sigwinch_count_test.go:89: sigwinch count after 1st resize = 0, want exactly 1 before sending the 2nd
+--- FAIL: TestSigwinchCountDistinguishesTwoFromThree (3.20s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.90s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.06s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.02s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.38s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.10s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.17s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.35s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.11s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.21s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.18s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.11s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.09s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (1.07s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	74.391s
+FAIL
