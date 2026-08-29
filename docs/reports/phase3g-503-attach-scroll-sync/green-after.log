@@ -1,0 +1,20 @@
+=== run 1 ===
+$ ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	4.785s
+exit status: 0
+=== run 2 ===
+$ ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	4.923s
+exit status: 0
+=== run 3 ===
+$ ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	4.819s
+exit status: 0
+=== run 4 ===
+$ ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	4.809s
+exit status: 0
+=== run 5 ===
+$ ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1
+ok  	github.com/n-orlov/deck/features	4.899s
+exit status: 0
