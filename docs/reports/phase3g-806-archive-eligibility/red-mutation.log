@@ -1,0 +1,8 @@
+=== RUN   TestArchiveKeyOnAnArchivedRowRefusesAndNamesU
+    archive_eligibility_test.go:50: A on an archived row opened the archive confirm dialog
+--- FAIL: TestArchiveKeyOnAnArchivedRowRefusesAndNamesU (0.00s)
+=== RUN   TestArchiveKeyEligibilityMatchesFooterPredicate
+--- PASS: TestArchiveKeyEligibilityMatchesFooterPredicate (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.007s
+FAIL

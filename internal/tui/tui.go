@@ -1579,28 +1579,20 @@ func canKill(session store.Session) bool {
 	return session.Status != "stopped"
 }
 
-// canArchive reports whether A may act on session. Archiving accepts any
-// row (a live one is killed first, in the same action), so this is
-// always true.
-func canArchive(session store.Session) bool {
-	return true
-}
-
 // canUnarchive reports whether U may act on session: only a row that is
 // actually archived.
 func canUnarchive(session store.Session) bool {
 	return session.ArchivedAt != 0
 }
 
-// footerArchiveEligible reports whether the footer's curated A/U slot
-// (task 014, SPEC §11.3: "the eligible one of A/U") should show A for
-// session: only a row that is not already archived, mirroring
-// canUnarchive's complement so the two never both show for the same row.
-// It is footer-only -- canArchive above answers a different question (may
-// the A key act on this row at all, which it always does) and stays
-// unconditionally true for the key handler; §11.3's "A on a row that is
-// already archived" refusal is a footer-display rule, not a change to
-// what pressing A itself does.
+// footerArchiveEligible reports whether A may act on session at all: only
+// a row that is not already archived, mirroring canUnarchive's complement
+// so the two never both accept the same row. This is the single R80/review-
+// finding-2 definition of A's eligibility -- both the footer's curated A/U
+// slot (task 014, SPEC §11.3: "the eligible one of A/U") and the `A` key
+// handler (case "A" below) consult this exact function, never a parallel
+// copy of its logic, so "the footer offers A" and "pressing A does
+// something" can never disagree about the same row.
 func footerArchiveEligible(session store.Session) bool {
 	return session.ArchivedAt == 0
 }
@@ -2584,7 +2576,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if !canArchive(m.sessions[m.selected]) {
+			// footerArchiveEligible is review finding 2/R80's single A
+			// eligibility definition, shared with the footer: a row that is
+			// already archived writes nothing and opens no confirm here,
+			// exactly as the footer already refuses to offer A for it --
+			// and the refusal names U, the only route back for that row.
+			if !footerArchiveEligible(m.sessions[m.selected]) {
+				m.attachError = "Cannot archive: session is already archived; press U to unarchive"
 				return m, nil
 			}
 			m.archiveConfirming = true

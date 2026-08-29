@@ -1,0 +1,6 @@
+=== RUN   TestArchiveKeyOnAnArchivedRowRefusesAndNamesU
+--- PASS: TestArchiveKeyOnAnArchivedRowRefusesAndNamesU (0.00s)
+=== RUN   TestArchiveKeyEligibilityMatchesFooterPredicate
+--- PASS: TestArchiveKeyEligibilityMatchesFooterPredicate (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.008s
