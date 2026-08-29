@@ -1,51 +1,114 @@
-run 1 exit=0
-run 2 exit=0
-run 3 exit=0
-run 4 exit=0
-run 5 exit=0
-run 6 exit=0
-run 7 exit=0
-run 8 exit=1
-run 9 exit=0
-run 10 exit=0
-run 11 exit=1
-run 12 exit=0
-run 13 exit=0
-run 14 exit=0
-run 15 exit=0
-run 16 exit=0
-run 17 exit=0
-run 18 exit=0
-run 19 exit=0
-run 20 exit=0
-run 21 exit=0
-run 22 exit=0
-run 23 exit=0
-run 24 exit=1
-run 25 exit=1
-run 26 exit=0
-run 27 exit=0
-run 28 exit=0
-run 29 exit=0
-run 30 exit=1
-run 31 exit=0
-run 32 exit=0
-run 33 exit=0
-run 34 exit=0
-run 35 exit=0
-run 36 exit=0
-run 37 exit=0
-run 38 exit=0
-run 39 exit=0
-run 40 exit=0
-run 41 exit=0
-run 42 exit=0
-run 43 exit=0
-run 44 exit=0
-run 45 exit=0
-run 46 exit=0
-run 47 exit=0
-run 48 exit=1
-run 49 exit=0
-run 50 exit=0
-fails=6 / 50
+task 502 red-before capture (unmodified route)
+tree under test: git worktree --detach at 19fff8d (parent of the fix commit 306d57a), path /workspace/.scratch-502
+wait step under test (pre-fix): Then within one configured reconcile interval deck client "A" screen contains "waiting"
+narrowing applied BEFORE load: Go -run subtest filter selecting only the one scenario
+load: 12 concurrent `yes >/dev/null` processes in the job container, started before run 1, killed by PID after run 100
+exact complete command, identical for every run below (exit status captured in the same shell, never after a pipe):
+  ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'
+per-run stdout+stderr: /tmp/502red/run<N>.log; failing runs copied into this directory
+----
+load pids: 66221 66222 66223 66224 66225 66226 66227 66228 66229 66230 66231 66232
+run 1: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 2: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 3: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 4: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 5: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 6: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 7: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 8: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 9: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 10: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 11: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 12: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 13: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 14: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 15: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 16: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 17: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 18: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 19: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 20: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 21: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 22: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 23: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 24: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 25: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 26: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 27: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 28: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 29: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 30: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 31: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 32: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 33: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 34: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 35: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 36: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 37: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 38: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 39: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 40: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 41: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 42: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 43: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 44: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 45: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 46: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 47: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 48: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 49: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 50: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 51: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 52: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 53: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 54: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 55: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 56: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 57: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 58: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 59: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 60: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 61: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 62: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 63: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 64: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 65: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 66: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 67: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 68: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 69: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 70: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 71: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 72: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 73: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 74: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 75: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 76: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 77: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 78: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 79: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 80: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 81: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 82: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 83: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 84: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 85: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 86: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 87: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 88: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 89: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 90: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 91: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 92: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 93: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 94: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 95: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=1
+run 96: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 97: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 98: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 99: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+run 100: cmd=`ci/run.sh sh -c 'cd .scratch-502 && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'` exit=0
+----
+fails=8 / 100
+first failing run: 13
+DONE fails=8/100

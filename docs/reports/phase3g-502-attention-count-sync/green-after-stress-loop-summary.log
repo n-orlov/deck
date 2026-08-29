@@ -1,81 +1,134 @@
-run 1 exit=0
-run 2 exit=0
-run 3 exit=0
-run 4 exit=1
-run 5 exit=0
-run 6 exit=0
-run 7 exit=0
-run 8 exit=0
-run 9 exit=0
-run 10 exit=0
-run 11 exit=0
-run 12 exit=0
-run 13 exit=0
-run 14 exit=0
-run 15 exit=0
-run 16 exit=0
-run 17 exit=0
-run 18 exit=0
-run 19 exit=0
-run 20 exit=0
-run 21 exit=0
-run 22 exit=0
-run 23 exit=0
-run 24 exit=1
-run 25 exit=0
-run 26 exit=0
-run 27 exit=0
-run 28 exit=0
-run 29 exit=0
-run 30 exit=0
-run 31 exit=0
-run 32 exit=0
-run 33 exit=0
-run 34 exit=0
-run 35 exit=0
-run 36 exit=0
-run 37 exit=0
-run 38 exit=0
-run 39 exit=0
-run 40 exit=0
-run 41 exit=1
-run 42 exit=0
-run 43 exit=0
-run 44 exit=0
-run 45 exit=1
-run 46 exit=0
-run 47 exit=0
-run 48 exit=0
-run 49 exit=0
-run 50 exit=0
-run 51 exit=0
-run 52 exit=0
-run 53 exit=0
-run 54 exit=0
-run 55 exit=0
-run 56 exit=1
-run 57 exit=0
-run 58 exit=0
-run 59 exit=0
-run 60 exit=0
-run 61 exit=0
-run 62 exit=0
-run 63 exit=0
-run 64 exit=0
-run 65 exit=0
-run 66 exit=1
-run 67 exit=0
-run 68 exit=0
-run 69 exit=0
-run 70 exit=0
-run 71 exit=0
-run 72 exit=1
-run 73 exit=0
-run 74 exit=0
-run 75 exit=0
-run 76 exit=0
-run 77 exit=0
-run 78 exit=0
-run 79 exit=0
-run 80 exit=0
-fails=7 / 80
+task 502 stress confirmation at the post-fix tree (HEAD 306d57a working tree, unmodified code),
+same narrowing and same 12x synthetic load as the red-before capture. This is NOT the required
+green-after check (that is green-after-required-5x-*.log); it deliberately over-loads the box to
+see what is left. Exit status captured in the same shell as each command.
+exact complete command, identical for every run below:
+  ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v
+per-run stdout+stderr was written to /tmp/502red/stress<N>.log; the failure signature of each
+failing run is quoted at the end of this file.
+----
+run 1: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 2: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 3: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 4: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 5: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 6: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 7: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 8: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 9: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 10: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 11: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 12: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 13: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 14: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 15: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 16: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 17: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 18: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 19: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 20: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 21: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 22: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 23: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 24: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 25: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 26: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 27: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 28: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 29: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 30: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 31: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 32: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 33: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 34: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 35: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 36: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 37: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 38: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 39: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 40: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 41: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 42: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 43: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 44: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 45: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 46: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 47: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 48: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 49: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 50: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 51: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 52: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 53: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 54: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 55: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 56: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 57: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 58: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 59: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 60: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 61: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 62: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 63: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 64: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 65: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 66: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 67: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 68: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 69: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 70: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 71: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 72: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 73: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 74: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 75: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 76: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 77: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=0
+run 78: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 79: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+run 80: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v` exit=1
+----
+fails=36 / 80 (runs: 13 14 15 18 23 24 26 30 34 35 36 37 38 39 40 41 43 44 45 46 47 48 51 56 59 62 66 67 68 71 72 73 74 78 79 80)
+--- failure signatures (ANSI stripped, one line per failing run) ---
+run 13: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 14: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 15: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 18: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 23: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 24: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 26: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 30: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 34: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 35: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 36: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 37: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 38: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 39: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 40: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 41: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 43: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 44: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 45: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 46: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 47: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 48: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 51: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 56: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 59: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 62: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 66: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 67: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 68: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 71: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 72: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 73: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 74: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 78: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 79: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+run 80: client "A" row "cnt-err" did not contain "error" within reconcile interval | final rendered cnt-err row: |   cnt-err running                |
+runs whose failure was the count assertion itself (message `collapsed strip attention count = N,
+want 2`): 0 / 80 -- verified with `grep -ac "collapsed strip attention count = " stress*.log`, which
+matched no run; the pre-fix symptom never recurs, the scenario now fails earlier and louder instead.
+every failing run above failed at the `row "cnt-err" contains "error"` wait, with cnt-err
+rendered as `running` -- the overwrite documented in mechanism-diag-postfix-under-load-clobber.log.
+DONE

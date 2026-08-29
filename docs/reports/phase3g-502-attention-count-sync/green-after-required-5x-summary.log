@@ -1,3 +1,8 @@
+task 502 green-after: the required check, five consecutive runs at the report commit's tree
+(no synthetic load, unmodified environment). Exit status captured in the same shell as each command.
+exact complete command, identical for every run:
+  ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1
+----
 run 1: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
 run 2: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
 run 3: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0

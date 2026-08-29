@@ -1,0 +1,26 @@
+task 502 mechanism evidence B: the same overwrite, on the POST-fix tree, under the same 12x
+synthetic load - it now surfaces at the row wait instead of at the count assertion.
+tree: git worktree --detach at 306d57a (post-fix) plus mechanism-diag-instrumentation.diff
+load: 12 concurrent `yes >/dev/null`; first failure at loop run 11 of at most 80
+exact complete command:
+  ci/run.sh sh -c 'cd .scratch-502fixdiag && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'
+captured exit status of that command: 1
+----
+    [1;31mafter scenario hook failed: client "A" row "cnt-err" did not contain "error" within reconcile interval
+DIAGDUMP name|status|status_source|status_reason|status_at:
+  cnt-err|running|tmux|tmux pane is alive|1787982614513
+  cnt-idle|idle|feature-test||1787982609512
+  cnt-run|running|tmux|tmux pane is alive|1787982614517
+  cnt-wait|waiting|feature-test||1787982609498
+
+--
+raw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): "\x1b]11;?\x1b\\\x1b[6n\x1b[?25l\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l\x1b[?2004h\x1b[?1002h\x1b[?1
+DIAGDUMP name|status|status_source|status_reason|status_at:
+  cnt-err|running|tmux|tmux pane is alive|1787982614513
+  cnt-idle|idle|feature-test||1787982609512
+  cnt-run|running|tmux|tmux pane is alive|1787982614517
+  cnt-wait|waiting|feature-test||1787982609498
+----
+Same durable overwrite (cnt-err running/tmux). This is the residual PRODUCT-level lost update
+described in the README, not a helper timeout margin: the row never showed "error" because
+the row no longer said "error".
