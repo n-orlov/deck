@@ -42,6 +42,8 @@ with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
   [R91](#r91--previewfits-spent-fit-and-the-sigwinch-re-baseline-it-licenses-tasks-034-035) ·
   [R92](#r92--r75s-release-failure-fallback-is-exercised-tasks-036-037) ·
   [known open regression](#known-open-regression-discovered-by-task-002s-own-evidence-not-fixed-here) ·
+  [review finding 1](#review-finding-1--r76s-error-branch-and-its-scenario-fallout-tasks-701-702-703-802805) ·
+  [review finding 2](#review-finding-2--r80s-one-definition-per-action-tasks-806808) ·
   [table](#per-requirement-table) ·
   [close-out](#close-out-task-113) ·
   [close-out (approach 06)](#close-out-approach-06)
@@ -1126,15 +1128,208 @@ scope for a report-writing task); recorded here and due for
 `e02ef08`) and a follow-up task to rewrite the
 scenario's assertion to a store read or otherwise account for R76.
 
+## Review finding 1 — R76's error branch and its scenario fallout (tasks 701, 702, 703, 802–805)
+
+Review finding 1 (against `d266346`) is the ruling this approach's R76 work is built on
+(restated in full as finding F36 in `docs/reports/phase3g-findings.md`, task 801,
+`794313f`): `SPEC.md` names `error` explicitly as an invariant-violation status exactly
+like `stopped`, but `internal/service/reconcile.go`'s pre-existing repair
+(`89fcffc`/`15e33c6`, task 001) sat inside the `terminal` expression, which a bare
+hook/probe `error` row (no `PaneExitStatus`) never satisfies — that row was never
+repaired. This section records finding 1's closure: the repair fix itself, the fallout
+it produces across `./features/`, which scenarios were re-pointed onto the post-repair
+state, and which one scenario remains open.
+
+### The fix (task 701): sha `89edd3c`
+
+`internal/service/reconcile.go`'s repair decision becomes its own status test
+(`session.Status == "stopped" || session.Status == "error"`), evaluated independently
+of `terminal`. Test: `internal/service/reconcile_bare_error_repair_test.go`'s
+`TestReconcileRepairsBareErrorRowWithLivePane`. **Red/green pair: yes**, same
+directory — `red-pre-fix.log`/`.exitstatus` (RED, the repair call nested inside
+`terminal`) against `green-post-fix.log`/`.exitstatus` (GREEN), both produced by a
+`git stash` revert-and-reproduce around the unmodified new test. Evidence directory:
+[`phase3g-701-r76-bare-error/`](phase3g-701-r76-bare-error/) (7 tracked files).
+
+### The fallout enumerated, no scenario touched (task 702): sha `608e030`
+
+Read-only: a whole-`./features/` run at `89edd3c` turned up exactly 9 red scenarios,
+all the same shape (a bare `error` write — direct-DB, probe-sourced, or a genuine
+`StopFailure` hook — onto a still-live pane, now correctly repaired before the
+scenario's own assertion observes it); full file:line and Go-subtest-name table in
+[`phase3g-702-r76-error-fallout/README.md`](phase3g-702-r76-error-fallout/README.md).
+**No red/green pair belongs to this task** — it made no code or scenario change
+(`git diff --stat 89edd3c..HEAD -- '*.go' '*.feature'` empty, confirmed in the report
+itself); its own `features-suite.log`/`.exitstatus` (exit `1`) is this finding's "red",
+reused by every scenario fix below. Evidence directory:
+[`phase3g-702-r76-error-fallout/`](phase3g-702-r76-error-fallout/) (5 tracked files).
+
+### 7 of 9 fixed by a genuine route (task 703): shas `5ea9475`, `2094b83`
+
+Six scenarios (`attention_sort.feature` ×3, `status_theme.feature` ×2,
+`themes.feature` ×1) re-pointed from a raw `has status "error"` DB write onto a
+genuine nonzero pane exit (`shell session "X" exits with status N`,
+`features/crash_test.go`'s `shellSessionExitsWithNonzeroStatus`), which durably
+removes the row from the live-pane repair's reach via crash-collection instead. One
+more (`interactive_scroll.feature`) re-pointed the same assertion onto a longer,
+derived poll window (`clientRowContainsAcrossSeveralProbeCycles`, four full
+probe/repair cycles instead of one reconcile interval), since that scenario's probed
+`error` really does recur, just not within a single tick. **Red/green pair: yes** —
+red is task 702's own `features-suite.log` (exit 1, naming all 9 by Go subtest name);
+green is this task's 3 consecutive runs each of `attention_sort.feature`,
+`status_theme.feature` and `themes.feature` together (`run1.log`–`run3.log`) and of
+`interactive_scroll.feature` (`interactive-scroll-run1.log`–`run3.log`), plus
+two whole-suite regression checks (`full-features-suite.log`,
+`full-features-suite-after-interactive-scroll-fix.log`, both exit 1, naming exactly
+the scenarios still left red). Evidence directory:
+[`phase3g-703-r76-error-fallout-fix/`](phase3g-703-r76-error-fallout-fix/) (17
+tracked files).
+
+### The `status_claude_hooks.feature` leg fixed (task 803): sha `bedb65a`
+
+The remaining `StopFailure` block's `Then` assertion re-points from the unreachable
+raw `error` verdict onto the deterministic post-repair tuple (`starting`/`tmux`,
+reason "tmux pane is alive; terminal row corrected", `acknowledged=0`,
+`notify_epoch=3`), via a new step (`databaseSessionIsRepairedTo`) that checks the
+caller-supplied `status_source` instead of hard-coding `"hook"`. Scenario:
+`features/status_claude_hooks.feature`'s "Every declared Claude hook maps to honest
+status through both identity routes". **Red/green pair: yes**, same directory —
+`pre-change-red.log`/`.exitstatus` (RED, quoting exactly the post-repair tuple this
+task then asserts) against `post-change-run1.log`–`run3.log` (GREEN, 3 consecutive
+runs). Evidence directory:
+[`phase3g-803-hook-truth-stopfailure/`](phase3g-803-hook-truth-stopfailure/) (9
+tracked files).
+
+### `features/sort_order.feature`'s six latent races fixed (task 804): sha `46dad5e`
+
+All six raw `has status "error"` writes (`ord-bravo` ×5, `gso-ab` ×1) replaced with
+`shell session "X" exits with status 1`, plus an explicit reconcile-interval wait
+before each order/group assertion. **Red/green pair: yes** —
+`pre-change-red.log`/`.exitstatus` (RED, reproduced in a throwaway `git worktree` at
+the pre-change commit `bedb65a`, with one extra wait step forcing the repair to land
+first, never touching the live tree) against `run1.log`–`run5.log` (GREEN, 5
+consecutive runs). Evidence directory:
+[`phase3g-804-sort-order-error-route/`](phase3g-804-sort-order-error-route/) (13
+tracked files).
+
+### `features/status_recovery.feature`'s stale-tmux-verdict scenario fixed (task 805): sha `4651653`
+
+The "row at error from a stale tmux launch-failure verdict recovers on the next hook"
+scenario's assertion re-points from the raw forced `error`/`tmux` value (read with no
+wait at all) onto a wait for the mandated repair (`starting`/`tmux`) before the later
+hook fires. **Red/green pair: yes** — `red-worktree-trial.log` (RED, reproduced in a
+throwaway `git worktree` at the pre-change commit `46dad5e`, forcing the reconcile
+tick to land first) against `green-run-1.log`–`green-run-5.log` (GREEN, 5 consecutive
+runs). Evidence directory:
+[`phase3g-805-stale-tmux-verdict/`](phase3g-805-stale-tmux-verdict/) (12 tracked
+files). This is a *different* `status_recovery.feature` scenario from F20's "dup
+pane" one (the [known open
+regression](#known-open-regression-discovered-by-task-002s-own-evidence-not-fixed-here)
+above) — F20 stays open and unfixed, exactly as the standing rules require.
+
+### Left open, verbatim: `status_attach.feature:18` (task 802)
+
+Task 802 set out to re-point this same scenario's ("attach acknowledges a live error
+without replacing its verdict") status-field assertions the same way 803/804/805 did,
+while keeping its own `!`-marker assertions unweakened. **That combination is
+unsatisfiable as written**: the repair runs synchronously inside the same `deck _hook`
+subprocess that writes the hook-sourced error, before the subprocess returns, so
+there is no window in which the raw error is ever durably observable for a later step
+to race — re-pointing the status field and keeping the marker assertion are mutually
+exclusive (full derivation in task 802's own `unsatisfiableReason` in `tasks.json`).
+Task 802 is **`skipped`, not completed**, and carries **no fixing sha** —
+`git log 1cfbd5a..HEAD -- features/status_attach.feature` is empty, confirming the
+file is untouched by this run. The scenario remains red at HEAD, exactly as task 702
+first found it. **No tracked red/green pair exists for this one**: the trial-edit
+diagnostic that proved the mechanism was saved outside the repository
+(`/run/ralphd/artifacts/phase3g-802-unsatisfiable/`, disclosed there as untracked, not
+repository evidence) and is not cited here as such — `docs/reports/phase3g-802-live-error-attach/`
+exists on disk but is empty and untracked (`git ls-files` returns nothing for it). The
+last repository-tracked confirmation that this scenario is still red is task 703's own
+`full-features-suite-after-interactive-scroll-fix.log` (exit 1), which names it
+explicitly as one of the two scenarios that task left unfixed.
+
+## Review finding 2 — R80's one-definition-per-action (tasks 806–808)
+
+Review finding 2: `A` and `x` each had (or risked) two separate eligibility
+definitions — one the footer consults to decide whether to *show* the key, one the
+key handler consults to decide whether to *act* on it — free to drift apart. This
+section records what closed each half, and names precisely what did not land.
+
+### `A`: shared `canArchive` predicate (task 806, status **failed** — landed in code, not accepted as written): shas `41ae9cd`, `b7a3a81`
+
+`canArchive` (`session.ArchivedAt == 0`) became the one predicate both
+`footerLegend`'s `A` entry and `case "A"` call by name; the old always-true
+handler-only predicate and the old footer-only-named predicate are both gone
+(`grep -rn footerArchiveEligible internal/` has no match). Tests, all in the new
+`internal/tui/archive_eligibility_test.go`: `TestArchiveKeyOnAnArchivedRowRefusesAndNamesU`
+(behavioural), `TestArchiveKeyHandlerCallsTheFooterPredicateByName` (structural
+source-parse, closes the "inlined-but-identical" hole the first pass, `41ae9cd`, left
+open), `TestArchiveKeyEligibilityMatchesFooterPredicate`. **Red/green pairs: yes**,
+several, same directory — `red-mutation-inlined-copy.log` and
+`red-mutation-no-check.log` (RED, two separate mutations: the handler stops calling
+`canArchive` by name but stays behaviourally identical; the handler drops the check
+entirely) against `green-mutations-reverted.log` (GREEN, both reverted); plus the
+first pass's own `red-mutation.log`/`green-mutation-reverted.log`. Evidence directory:
+[`phase3g-806-archive-eligibility/`](phase3g-806-archive-eligibility/) (15 tracked
+files).
+
+**What did not land**: task 806 exhausted its tier ladder at 3 validation attempts
+and is recorded `failed`, not `completed` — its own success criteria required the two
+pre-existing footer tests (`internal/tui/footer_legend_test.go`,
+`internal/tui/footer_bindings_parity_test.go`) to show **no change beyond an added
+case**, and the landed commits instead rename the shared predicate identifier inside
+both files (a `footerPredicateByName` map key and one comment word), which the task's
+own `validationNotes` (in `tasks.json`) quote and attribute to `git diff
+4651653..HEAD`. No follow-up task exists yet to close that specific gap (checked
+against the current 801–815 task list: none). The functional fix — one shared,
+correctly-named predicate, refusing `A` on an archived row with both new tests green —
+is in the tree and pushed to the `origin` remote's `main`; the literal "existing
+tests unedited" criterion is the piece that did not land. Do not read the `failed`
+status as evidence the predicate itself is missing or broken:
+`TestFooterHandlerAgreementAcrossEveryRowClass` (task 808, below) independently
+exercises the same `A` key across all six row classes and passes.
+
+### `x`: single-row handler now consults `canKill` (task 807, validated): sha `b434079`
+
+`case "x"`'s single-row (no-marks) branch now calls `canKill(session)` before
+dispatching, returning the same `"already stopped"` wording `service.Kill` used to
+produce so `features/kill_delete_undo.feature:17`'s existing assertion is unedited.
+Test: `internal/tui/kill_key_eligibility_test.go`'s
+`TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow`. **Red/green pair: yes**,
+same directory — `red-mutation-no-cankill-check.log`/`red-mutation-full-package.log`
+(RED, the `canKill` guard removed) against `green-mutation-reverted.log` (GREEN).
+Evidence directory: [`phase3g-807-kill-eligibility/`](phase3g-807-kill-eligibility/)
+(6 tracked files).
+
+### The cross-key agreement matrix (task 808, validated): shas `33e7935`, `fdf4507`
+
+`internal/tui/footer_handler_agreement_test.go`'s
+`TestFooterHandlerAgreementAcrossEveryRowClass` drives the real key handler for all
+ten eligibility-gated footer keys (`Y`, `x`, `r`, `R`, `A`, `U`, `dd`, and — added by
+the second commit after validation found the first round covered only seven of ten
+gated entries — `↵`, `a`, `i`) across six row classes (60 subtests), asserting the
+handler acted if and only if the real rendered footer legend advertised the key.
+`TestFooterHandlerAgreementCoversEveryEligibilityGatedFooterKey` parses
+`footerLegend`'s own source and fails if any gated entry lacks a press/observe pair,
+so the matrix cannot go stale by omission. **Red/green pairs: yes**, two, same
+directory — `red-mutation-no-canRestart-check.log` (RED, `case "R"`'s `!canRestart`
+guard removed) against `green-mutation-reverted-full-package.log` (GREEN); and
+`red-mutation-no-canReachPane-check.log` (RED, `attachSelected`'s `!canReachPane`
+guard removed, added after the first validation round) against
+`green-mutation-reverted-canReachPane-check.log` (GREEN). Evidence directory:
+[`phase3g-808-footer-handler-agreement/`](phase3g-808-footer-handler-agreement/) (8
+tracked files).
+
 ## Per-requirement table
 
 | req | status | tasks | shas | red/green quoted |
 |---|---|---|---|---|
-| R76 | met | 001, 002, 103 | `89fcffc`, `15e33c6`, `904419c`, `51b7f17` | yes |
+| R76 | met (review finding 1 closed by 701; one scenario left open, task 802 unsatisfiable — see [section](#review-finding-1--r76s-error-branch-and-its-scenario-fallout-tasks-701-702-703-802805)) | 001, 002, 103, 701, 702, 703, 802 (skipped), 803, 804, 805 | `89fcffc`, `15e33c6`, `904419c`, `51b7f17`, `89edd3c`, `608e030`, `5ea9475`, `2094b83`, `bedb65a`, `46dad5e`, `4651653` | yes |
 | R77 | met | 003–006 | `b80a4bd`, `70162d4`, `be3df32`, `31510ab`, `c791a6a` | yes (task 003 leg) |
 | R78 | met | 007–009 | `47166c8`, `e699c31`, `3247a7a` | not required |
 | R79 | met (review finding 3 closed by 202, 214) | 010–011, 202, 214 | `c987953`, `e475660`, `8276450`, `e45bf2e`, `dd90a28`, `a46514e`, `6a01fe7` | yes |
-| R80 | met | 012–013 | `f5977d4`, `745a25b`, `f9611b7`, `ebbc3fd` | not required |
+| R80 | met (review finding 2: `x`/matrix closed by 807/808; `A` functionally landed by 41ae9cd/b7a3a81 but task 806 itself `failed` on a residual criterion — see [section](#review-finding-2--r80s-one-definition-per-action-tasks-806808)) | 012–013, 806 (failed), 807, 808 | `f5977d4`, `745a25b`, `f9611b7`, `ebbc3fd`, `41ae9cd`, `b7a3a81`, `b434079`, `33e7935`, `fdf4507` | not required |
 | R81 | met | 014–015 | `7dbe5c5`, `3498b3e` | not required |
 | R82 | **met (resolved by task 203; F27; 021's own gap closed by 105)** | 016 (skipped), 017–020, 021 (failed), 105, 107, 203 | `cdb927b`,`adb7db4`,`5cc1b45`,`8c3351a`,`26a5b47`,`f33d67a`,`7f1a780`,`103d430`,`62c3abe`,`1c8cbad`,`ea6ce4b`,`02e64a5` | yes (105, 203; retroactive not needed) |
 | R83 | met (net closed by 107) | 016, 018, 101, 107 | see R82 row, plus `2549406` | not required |
