@@ -134,7 +134,7 @@ var footerPredicateByName = map[string]func(store.Session) bool{
 	"canDelete":             canDelete,
 	"canReachPane":          canReachPane,
 	"canShowDetail":         canShowDetail,
-	"footerArchiveEligible": footerArchiveEligible,
+	"canArchive":            canArchive,
 	"canUnarchive":          canUnarchive,
 }
 

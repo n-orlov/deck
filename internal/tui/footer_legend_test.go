@@ -72,7 +72,7 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 	t.Run("the eligible one of A/U shows, never both: A on an unarchived row, U on an archived one", func(t *testing.T) {
 		// SPEC §11.3: "A on a row that is already archived, U on one that
 		// is not" are exactly the cases the footer never lists; the two
-		// entries share footerArchiveEligible/canUnarchive, which are exact
+		// entries share canArchive/canUnarchive, which are exact
 		// complements of ArchivedAt, so exactly one of A/U shows per row.
 		unarchived := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running"}}, 0, nil)
 		legend := unarchived.footerKeyLegend()
