@@ -139,10 +139,81 @@ func clientFillsAttachedPaneWithScrollback(ctx context.Context, name string) err
 	if err := client.WaitForFrame(ctx, false, lastLine); err != nil {
 		return err
 	}
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if err := waitForAutomaticRenameToRender(ctx, name, h.Socket); err != nil {
+		return err
+	}
 	// Let the pane settle at its live tail before the scenario captures its
 	// "before" baseline, so that baseline is the pane at rest, not mid-scroll.
 	time.Sleep(100 * time.Millisecond)
 	return nil
+}
+
+// waitForAutomaticRenameToRender closes task 503's race (docs/reports/
+// phase3g-503-attach-scroll-sync/README.md): tmux's window_name (the field
+// the status line actually renders) is a CACHED value that tmux's own
+// automatic-rename hook only refreshes on specific internal events (a job
+// or process-table change) -- it is not recomputed merely because a client
+// left copy-mode. #{pane_current_command}, by contrast, is read live from
+// /proc at query time (proven in this task's own diagnostic,
+// docs/reports/phase3g-503-attach-scroll-sync/README.md: right after
+// cancelling copy-mode, #{pane_current_command} already reported "sh" while
+// #{window_name} was still stably reporting the copy-mode-only placeholder
+// "[tmux]" -- stable for a full 300ms poll window, not merely lagging by a
+// few milliseconds, because nothing was scheduled to re-check it). Waiting
+// LONGER for window_name to "settle" on ground truth cannot fix that --
+// there is nothing pending to settle, the hook simply never re-ran -- which
+// is why this task's own first attempt at exactly that (a quiet-window
+// settle check on window_name, superseded by this function) still failed
+// under load. This function sidesteps automatic-rename's own timing
+// entirely: it reads the live, authoritative pane_current_command and
+// explicitly renames the window to match, which (proven experimentally,
+// same report) pushes the change to the client's pty immediately, the same
+// way any other tmux command that changes window state does -- never a
+// sleep, never hoping some unrelated later event forces the flush as a
+// side effect (which is exactly how this raced before: the scenario's own
+// wheel-scroll gesture happened to be that unrelated forcing event, making
+// the failure depend on scheduling, not on anything the scenario itself
+// controls).
+func waitForAutomaticRenameToRender(ctx context.Context, name, socket string) error {
+	command, windowID, err := paneCurrentCommandAndWindow(ctx, socket)
+	if err != nil {
+		return err
+	}
+	if out, err := exec.CommandContext(ctx, "tmux", "-L", socket, "rename-window", "-t", windowID, command).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux -L %s rename-window -t %s %q: %w: %s", socket, windowID, command, err, strings.TrimSpace(string(out)))
+	}
+	client, err := mouseSynthesisClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	_, err = client.WaitForFrameFunc(ctx, false, func(frame string) bool {
+		return strings.Contains(frame, command+"*")
+	})
+	if err != nil {
+		return fmt.Errorf("waiting for window name %q to reach client %q's own frame: %w", command, name, err)
+	}
+	return nil
+}
+
+// paneCurrentCommandAndWindow reads the real tmux server's own live
+// #{pane_current_command} together with the id of the window it belongs
+// to, for this scenario's single window -- never the harness's own screen
+// emulator, same ground-truth discipline as waitForCopyModeQueueToDrain/
+// copyCursorLine below.
+func paneCurrentCommandAndWindow(ctx context.Context, socket string) (command, windowID string, err error) {
+	out, err := exec.CommandContext(ctx, "tmux", "-L", socket, "list-panes", "-a", "-F", "#{pane_current_command}|#{window_id}").CombinedOutput()
+	if err != nil {
+		return "", "", fmt.Errorf("tmux -L %s list-panes -F #{pane_current_command}|#{window_id}: %w: %s", socket, err, strings.TrimSpace(string(out)))
+	}
+	fields := strings.SplitN(strings.TrimSpace(string(out)), "|", 2)
+	if len(fields) != 2 {
+		return "", "", fmt.Errorf("tmux -L %s list-panes -F #{pane_current_command}|#{window_id}: unexpected output %q", socket, string(out))
+	}
+	return fields[0], fields[1], nil
 }
 
 func clientScrollsWheelUpNTimesAt(ctx context.Context, name string, times, col, row int) error {
@@ -220,6 +291,17 @@ func clientExitsCopyModeOnAttachedPane(ctx context.Context, name string) error {
 	if err := client.WaitForFrameGone(ctx, false, attachScrollTopMarker); err != nil {
 		stillInMode, checkErr := paneStillInCopyMode(ctx, h.Socket)
 		return fmt.Errorf("%w\nDIAGNOSTIC real tmux pane_in_mode after cancel: stillInMode=%v checkErr=%v", err, stillInMode, checkErr)
+	}
+	// Cancelling copy-mode is itself an automatic-rename trigger, but
+	// tmux's window_name is a CACHED field (see waitForAutomaticRenameToRender
+	// above): #{pane_current_command} already reports the shell's name the
+	// instant copy-mode is gone, while #{window_name} -- what the status
+	// line actually renders -- can go on reporting copy-mode's own
+	// placeholder name indefinitely, because nothing is scheduled to
+	// re-check it. Close that same gap here, before the byte-identical
+	// comparison that follows.
+	if err := waitForAutomaticRenameToRender(ctx, name, h.Socket); err != nil {
+		return err
 	}
 	// Give the pane's post-cancel redraw a moment to settle before the
 	// scenario's byte-identical frame comparison, mirroring
