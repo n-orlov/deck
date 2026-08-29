@@ -1,0 +1,23 @@
+$ git -C .scratch-303-sigwinch rev-parse HEAD   # pre-fix code, frozen at task 302 measurement head + task 303's 1st fix
+6524ece75c7de9a28e0e9d3b730928336cc675c4
+
+$ ci/run.sh sh -c 'cd .scratch-303-sigwinch && for i in $(seq 1 80); do ( yes > /dev/null & ); done; sleep 1; for i in $(seq 1 200); do go test ./features/ -run TestSigwinchCountDistinguishesTwoFromThree -count=1 -v > /tmp/sigattempt-$i.log 2>&1; rc=$?; if [ "$rc" != "0" ]; then echo "REAL FAILURE at attempt $i (status=$rc)"; echo "--- log ---"; cat /tmp/sigattempt-$i.log; break; fi; done; echo LOOP-DONE'
+  (80 background "yes" loops inside the same sibling container the test runs
+   in raise CPU contention enough to widen the scheduling gap between the
+   fixture's SIGWINCH-count goroutine draining its capacity-1 notification
+   channel and the next resize's kernel-level SIGWINCH being raised -- the
+   same class of contention a ci/stability.sh run's later iterations
+   experience, see task 302 run 2. Host-level "yes" contention outside the
+   sibling container (~80, then ~730, over ~130 attempts) did NOT reproduce
+   it; contention generated INSIDE the same container as the test did,
+   at attempt 158.)
+
+REAL FAILURE at attempt 158 (status=1)
+--- log ---
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+    sigwinch_count_test.go:80: sigwinch count after 2 resizes = 1, want exactly 2
+--- FAIL: TestSigwinchCountDistinguishesTwoFromThree (3.19s)
+FAIL
+FAIL	github.com/n-orlov/deck/features	3.252s
+FAIL
+LOOP-DONE

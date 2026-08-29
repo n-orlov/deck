@@ -67,12 +67,28 @@ func TestSigwinchCountDistinguishesTwoFromThree(t *testing.T) {
 		}
 	}
 
-	// Two real resizes, individually paced so each one's SIGWINCH has time
-	// to land and be recorded before the next is sent.
+	// Two real resizes, synchronised on the fixture's own observed count
+	// rather than a fixed sleep: startSizeRecorder's SIGWINCH channel is
+	// buffered to capacity 1 (cmd/fake-claude/main.go), and a standard Unix
+	// signal is not queued by the kernel either, so a second SIGWINCH raised
+	// before the first has been drained by the fixture's goroutine can be
+	// coalesced away entirely -- the process only ever observes one. A fixed
+	// 50ms sleep between resizes assumed that goroutine would always have
+	// drained the first signal by then; under enough scheduling contention
+	// (ci/stability.sh's later iterations, task 302 run 2) it sometimes has
+	// not, and the second resize's SIGWINCH is the one that vanishes,
+	// leaving the count at 1 forever -- waiting longer afterwards cannot
+	// recover a signal the kernel/runtime already dropped. Waiting for the
+	// count to observably reach 1 before raising the second resize closes
+	// that window: it does not fire until the first SIGWINCH is proven to
+	// have already been drained and recorded.
 	resize(81, 24)
-	time.Sleep(50 * time.Millisecond)
+	if got, err := waitForSigwinchCount(countPath, 1); err != nil {
+		t.Fatal(err)
+	} else if got != 1 {
+		t.Fatalf("sigwinch count after 1st resize = %d, want exactly 1 before sending the 2nd", got)
+	}
 	resize(82, 25)
-	time.Sleep(50 * time.Millisecond)
 
 	if got, err := waitForSigwinchCount(countPath, 2); err != nil {
 		t.Fatal(err)

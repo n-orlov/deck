@@ -1,0 +1,7 @@
+$ ci/run.sh go test ./features/ -run TestSigwinchCountDistinguishesTwoFromThree -count=1 -v
+exit status: 0
+---
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.24s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.251s
