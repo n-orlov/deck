@@ -1,0 +1,35 @@
+task 502 mechanism evidence A: what the count assertion was reading, dumped from the state DB
+at the moment the assertion gave up (after its own 5s poll).
+tree: git worktree --detach at 19fff8d (pre-fix) plus mechanism-diag-instrumentation.diff
+load: 12 concurrent `yes >/dev/null`; first failure at loop run 27 of at most 80
+exact complete command:
+  ci/run.sh sh -c 'cd .scratch-502diag && env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run "TestFeatures/the_collapsed_strip.s_attention_count_matches_the_sort.s_own_notion_of_attention" -count=1 -v'
+captured exit status of that command: 1
+----
+    [1;31mafter scenario hook failed: deck client "A" collapsed strip attention count = 1, want 2:
+DIAGDUMP name|status|status_source|status_at:
+  cnt-err|running|tmux|tmux pane is alive|1787982546951
+  cnt-idle|idle|feature-test||1787982541947
+  cnt-run|running|tmux|tmux pane is alive|1787982546952
+  cnt-wait|waiting|feature-test||1787982541933
+
+--
+    suite.go:640: after scenario hook failed: deck client "A" collapsed strip attention count = 1, want 2:
+        DIAGDUMP name|status|status_source|status_at:
+          cnt-err|running|tmux|tmux pane is alive|1787982546951
+          cnt-idle|idle|feature-test||1787982541947
+          cnt-run|running|tmux|tmux pane is alive|1787982546952
+          cnt-wait|waiting|feature-test||1787982541933
+        
+--
+      [31mError: [0m[1;31mafter scenario hook failed: deck client "A" collapsed strip attention count = 1, want 2:
+DIAGDUMP name|status|status_source|status_at:
+  cnt-err|running|tmux|tmux pane is alive|1787982546951
+  cnt-idle|idle|feature-test||1787982541947
+  cnt-run|running|tmux|tmux pane is alive|1787982546952
+  cnt-wait|waiting|feature-test||1787982541933
+
+----
+cnt-err is durably status=running source=tmux reason="tmux pane is alive": the scenario's
+own UPDATE ... SET status='error' was overwritten, which is why the assertion's 5s poll never
+recovers. cnt-wait/cnt-idle still carry their feature-test writes.

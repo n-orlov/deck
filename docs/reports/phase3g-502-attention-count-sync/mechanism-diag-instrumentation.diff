@@ -1,0 +1,113 @@
+task 502 mechanism diagnostic: the instrumentation applied to the two THROWAWAY worktrees
+(features/ test code only, never committed to main; the red-before capture itself used the
+unmodified route with none of this applied). Reproduce with:
+  git worktree add --detach .scratch-502diag 19fff8d      # pre-fix, then apply the first diff
+  git worktree add --detach .scratch-502fixdiag 306d57a   # post-fix, then apply the second diff
+===== pre-fix tree (19fff8d) =====
+diff --git a/features/attention_sort_test.go b/features/attention_sort_test.go
+index fcd3b33..633cff4 100644
+--- a/features/attention_sort_test.go
++++ b/features/attention_sort_test.go
+@@ -267,7 +267,7 @@ func clientCollapsedStripShowsAttentionCount(ctx context.Context, clientName str
+ 			}
+ 		}
+ 		if time.Now().After(deadline) {
+-			return fmt.Errorf("%w:\n%s", lastErr, lastFrame)
++			return fmt.Errorf("%w:\nDIAGDUMP name|status|status_source|status_at:\n%s\n%s", lastErr, diagStatusDump(ctx), lastFrame)
+ 		}
+ 		select {
+ 		case <-ctx.Done():
+@@ -353,3 +353,37 @@ func statusRowsStillMatch(ctx context.Context, label string) error {
+ 	}
+ 	return nil
+ }
++
++// diagStatusDump is scratch-tree-only diagnostic instrumentation for task
++// 502's mechanism evidence. NEVER committed.
++func diagStatusDump(ctx context.Context) string {
++	h, err := assertionHarness(ctx)
++	if err != nil {
++		return "harness: " + err.Error()
++	}
++	db, err := openObservedDatabase(h)
++	if err != nil {
++		return "open: " + err.Error()
++	}
++	defer db.Close()
++	rows, err := db.QueryContext(ctx, `SELECT name, status, status_source, status_reason, status_at FROM sessions ORDER BY name`)
++	if err != nil {
++		return "query: " + err.Error()
++	}
++	defer rows.Close()
++	var b strings.Builder
++	for rows.Next() {
++		var name, status, source string
++		var reason *string
++		var at int64
++		if err := rows.Scan(&name, &status, &source, &reason, &at); err != nil {
++			return "scan: " + err.Error()
++		}
++		r := ""
++		if reason != nil {
++			r = *reason
++		}
++		fmt.Fprintf(&b, "  %s|%s|%s|%s|%d\n", name, status, source, r, at)
++	}
++	return b.String()
++}
+===== post-fix tree (306d57a) =====
+diff --git a/features/attention_sort_test.go b/features/attention_sort_test.go
+index fcd3b33..a22bba3 100644
+--- a/features/attention_sort_test.go
++++ b/features/attention_sort_test.go
+@@ -353,3 +353,37 @@ func statusRowsStillMatch(ctx context.Context, label string) error {
+ 	}
+ 	return nil
+ }
++
++// diagStatusDump is scratch-tree-only diagnostic instrumentation for task
++// 502's mechanism evidence. NEVER committed.
++func diagStatusDump(ctx context.Context) string {
++	h, err := assertionHarness(ctx)
++	if err != nil {
++		return "harness: " + err.Error()
++	}
++	db, err := openObservedDatabase(h)
++	if err != nil {
++		return "open: " + err.Error()
++	}
++	defer db.Close()
++	rows, err := db.QueryContext(ctx, `SELECT name, status, status_source, status_reason, status_at FROM sessions ORDER BY name`)
++	if err != nil {
++		return "query: " + err.Error()
++	}
++	defer rows.Close()
++	var b strings.Builder
++	for rows.Next() {
++		var name, status, source string
++		var reason *string
++		var at int64
++		if err := rows.Scan(&name, &status, &source, &reason, &at); err != nil {
++			return "scan: " + err.Error()
++		}
++		r := ""
++		if reason != nil {
++			r = *reason
++		}
++		fmt.Fprintf(&b, "  %s|%s|%s|%s|%d\n", name, status, source, r, at)
++	}
++	return b.String()
++}
+diff --git a/features/status_probe_test.go b/features/status_probe_test.go
+index eecfbf2..55367c7 100644
+--- a/features/status_probe_test.go
++++ b/features/status_probe_test.go
+@@ -252,7 +252,7 @@ func clientRowContainsWithinReconcile(ctx context.Context, clientName, rowName,
+ 			}
+ 		}
+ 		if time.Now().After(deadline) {
+-			return fmt.Errorf("client %q row %q did not contain %q within reconcile interval\nframe:\n%s", clientName, rowName, want, client.Frame(false))
++			return fmt.Errorf("client %q row %q did not contain %q within reconcile interval\nDIAGDUMP name|status|status_source|status_reason|status_at:\n%s\nframe:\n%s", clientName, rowName, want, diagStatusDump(ctx), client.Frame(false))
+ 		}
+ 		time.Sleep(10 * time.Millisecond)
+ 	}

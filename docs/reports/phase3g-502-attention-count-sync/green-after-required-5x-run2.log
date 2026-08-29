@@ -1,1 +1,6 @@
-ok  	github.com/n-orlov/deck/features	7.979s
+task 502 green-after required run 2
+exact complete command:
+  ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1
+captured exit status: 0
+----
+ok  	github.com/n-orlov/deck/features	7.713s
