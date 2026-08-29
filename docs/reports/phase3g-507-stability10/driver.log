@@ -13,10 +13,10 @@
 === RUN 7 ===
 === RUN 7: PASS (exit 0) ===
 === RUN 8 ===
-=== RUN 8: FAIL (exit 1) ===
+=== RUN 8: PASS (exit 0) ===
 === RUN 9 ===
 === RUN 9: PASS (exit 0) ===
 === RUN 10 ===
 === RUN 10: PASS (exit 0) ===
-full per-run logs and combined summary log kept in: /tmp/deck-stability.7I8BRr
-9/10 passed
+full per-run logs and combined summary log kept in: /tmp/deck-stability.VkUAuu
+10/10 passed
