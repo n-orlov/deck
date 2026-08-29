@@ -52,10 +52,12 @@ primitive (`waitForAutomaticRenameToRender`, `features/attach_scroll_test.go
 
 1. **Before the baseline** (`clientFillsAttachedPaneWithScrollback`,
    `features/attach_scroll_test.go:123-151`): a just-attached window's name
-   can still be a transient value from session creation (observed both as
-   literal `"tmux"` and, in a later capture under heavier load, `"env"` —
-   see `docs/reports/phase3g-503-attach-scroll-sync/red-before.log`) when
-   the shell has already taken over the pane.
+   can still be a transient value from session creation (observed as literal
+   `"tmux"` in the narrowed reproduction —
+   `docs/reports/phase3g-503-attach-scroll-sync/red-before.log` — and as
+   `"env"` in the earlier whole-feature capture,
+   `docs/reports/phase3g-503-attach-scroll-sync/red-before-whole-feature-first-capture.log`)
+   when the shell has already taken over the pane.
 2. **After cancelling copy-mode, before the final compare**
    (`clientExitsCopyModeOnAttachedPane`, `features/attach_scroll_test.go
    :276-311`): the diagnostic case above — `window_name` stuck on the
@@ -119,26 +121,64 @@ require and task 406 shows a sleep cannot deliver.
 
 ## Red before
 
-Reproduced against the unmodified pre-fix tree (`git stash` back to the
-tree as of `3f23287`), with 24 background `yes >/dev/null` processes
-raising load average to ~20–28, running the exact deliverable command:
+`docs/reports/phase3g-503-attach-scroll-sync/red-before.log` is the
+authoritative red-before capture. It is **narrowed to this one scenario
+before any load is applied**, and every run in it carries the exact command
+it ran and its own exit status, recorded in the same shell invocation as the
+run (`/tmp/red503.sh`'s loop appends `$ <command>` before each run and
+`exit status: $?` immediately after it).
+
+The route is unmodified: a detached `git worktree` at `3f23287` — the parent
+of this task's fix commit `9f7c239` — never a hand-edited tree. The exact
+command, identical for every run in the log:
 
 ```
-$ ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1
+$ ci/run.sh sh -c 'cd .scratch-503b && env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run "TestFeatures/a_wheel_notch_scrolls_an_attached_pane.s_scrollback_and_leaves_the_shell.s_input_line_untouched" -count=1 -v'
 ```
 
-- run 1: exit 0
-- run 2: **exit 1** — `client "A" frame changed after gesture, want unchanged from captured
-  "before-wheel-scroll"`, diff isolated to the status line's window-name
-  field: `want` shows `[deck_atta0:env*  ...]`, `got` shows
-  `[deck_atta0:sh*  ...]` — i.e. the baseline was captured while `window_name`
-  still reported a stale automatic-rename value (`"env"`, one more example of
-  the same transient-value class as `"tmux"`), and something later forced
-  tmux to flush the real value (`"sh"`).
+The `-run` selector pins the run to `attach_scroll.feature:11` alone: the
+feature file's sibling requirement-49 scenario reports `undefined` and never
+executes, so each run's verdict is this scenario's verdict and nothing else
+(`2 scenarios (1 failed, 1 undefined)` in the failing run's godog summary).
 
-Full captured output (trimmed of the harness's own unrelated SIGQUIT
-goroutine dump, noted inline) is in
-`docs/reports/phase3g-503-attach-scroll-sync/red-before.log`.
+Sequence in the log:
+
+- **narrowed, no load** — `exit status: 0` (log line 38). Narrowing is
+  established as green *before* load is introduced, so the failure that
+  follows is attributable to the race under load, not to the narrowing.
+- **load applied** — 24 background `yes > /dev/null` processes, PIDs captured
+  at spawn and later killed by PID; `/proc/loadavg` recorded in the log at
+  `10.85` when load started and `13.72` when it stopped (log lines 41, 746).
+- **under load, run 1** — `exit status: 0` (line 76)
+- **under load, run 2** — `exit status: 0` (line 111)
+- **under load, run 3** — **`exit status: 1`** (line 743): `after scenario
+  hook failed: client "A" frame changed after gesture, want unchanged from
+  captured "before-wheel-scroll"`, failing at
+  `Then deck client "A" frame still matches the captured "before-wheel-scroll" frame`
+  (`mouse_synthesis_test.go:122 -> clientFrameStillMatchesCaptured`), with
+  `--- FAIL: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched`.
+  The whole-frame diff is isolated to one field of the status line:
+  `want` renders `[deck_atta0:tmux*  ... ]`, `got` renders
+  `[deck_atta0:sh*  ... ]` — the baseline was captured while `window_name`
+  still held the stale session-creation value `"tmux"`, and a later,
+  unrelated tmux event flushed the real value `"sh"` to the client between
+  the two frames. That is transition 1 of the mechanism above, verbatim.
+
+The loop stops at the first failure by design, so the log ends there; the
+reproduction rate on this attempt was 1 in 3 loaded runs (a prior sweep of
+the same narrowed command on the *fixed* tree under the same load was 30/30
+green, recorded under "Green after" below).
+
+An earlier, weaker capture is kept for the record at
+`docs/reports/phase3g-503-attach-scroll-sync/red-before-whole-feature-first-capture.log`:
+it runs the whole feature file rather than this scenario alone (its summary
+reads `2 scenarios (1 passed, 1 failed)`) and its command and exit statuses
+live in this README instead of in the log itself. It reproduces the same
+failure — there with the stale name `"env"` instead of `"tmux"` — under 24×
+`yes` load on the same unmodified `3f23287` route, via
+`ci/run.sh env DECK_GODOG_PATHS=attach_scroll.feature go test ./features/ -run TestFeatures -count=1`
+(run 1 exit 0, run 2 exit 1). It is superseded by, not part of, the
+narrowed evidence above.
 
 ## Green after
 
