@@ -1,4 +1,4 @@
-# Phase 3g — task 703: 6 of task 702's 9 red scenarios fixed by a genuine route (3 left, documented)
+# Phase 3g — task 703: 7 of task 702's 9 red scenarios fixed by a genuine route (2 left, documented)
 
 ## Sha this bundle starts and ends at
 
@@ -8,13 +8,16 @@ $ git rev-parse HEAD          # before this task's commit
 ```
 
 Task 702 (`608e030`) enumerated the 9 scenarios `./features/` turned red after task 701
-(R76's bare-hook/probe-error repair fix), without editing any scenario. This task fixes
-**6 of those 9** by routing each one through a genuine state transition instead of the
-raw-DB/live-pane pattern task 701's repair now (correctly) undoes. The remaining 3 need
-a different, larger fix (a real client-restart around the vulnerable window, not just a
-step substitution) and are left red, fully diagnosed below, for a follow-up task. Nothing
-was deleted, skipped, or weakened to get there: every scenario below still asserts the
-exact same word/token/order/count it always did; only *how the state is produced* changed.
+(R76's bare-hook/probe-error repair fix), without editing any scenario. Across two
+iterations this task fixes **7 of those 9** by routing each one through a genuine state
+transition (6) or a deliberately-derived, longer-but-still-bounded observation window (1)
+instead of the raw-DB/live-pane pattern, or too-short single-tick assumption, that task
+701's repair now exposes. The remaining 2 (`status_attach.feature:18`,
+`status_claude_hooks.feature:6`) need a different, larger fix and are left red, fully
+re-diagnosed below with the earlier (incorrect) hypothesis corrected, for a follow-up
+task. Nothing was deleted, skipped, or weakened to get there: every scenario below still
+asserts the exact same word/token/order/count/status field it always did; only *how the
+state is produced*, or *how long the assertion is willing to wait for it*, changed.
 
 ## The invariant this task works around, restated
 
@@ -109,61 +112,165 @@ proving godog's own `Strict` rejection still works — exactly as task 702's rep
 already explained for the same lines; that Go test itself is not in the package's
 failing set, only `TestFeatures` is.)
 
-## Not fixed yet: 3 scenarios (#4, #5, #6), and why they need a different fix
+## Not fixed yet: 2 scenarios (#5, #6), and why the earlier hypothesis for them was wrong
 
-All three remaining scenarios fire a genuine hook (or probe) `error`/`stopped` write onto
-a pane that **must stay alive afterward** for a later step in the same scenario (a
-follow-up hook fired by send-keys into the same pane, or a client attaching to it) — so
-"drive the pane to a real exit first" (this task's fix for the other 6) does not apply;
-it would kill the very pane later steps still need.
+Both remaining scenarios fire a genuine `StopFailure` Claude hook onto a pane that **must
+stay alive afterward** for a later step in the same scenario (`status_claude_hooks.feature`
+fires `UserPromptSubmit` through the same pane afterward; `status_attach.feature` attaches
+to it) — so "drive the pane to a real exit first" (this task's fix for #1/2/3/7/8/9) does
+not apply; it would kill the very pane later steps still need. "Widen the observation
+window" (this task's fix for #4, above) does not apply either, and re-deriving why matters
+more than just recording the negative result, because the first pass at this task's own
+report guessed the wrong mechanism for these two:
 
-- **`interactive_scroll.feature:86`** — the probe writes `error`/`source=probe` on a
-  genuinely live, rendering Claude pane; the scenario then needs the *next* probe
-  sample (`sampled`) to read correctly, so the pane must stay alive and keep being
-  probed. `stale_after` in this scenario's shared config (`configureAttachScrollProbeScenario`)
-  is 1s against a 250ms reconcile tick, so the natural cycle is repair (~250ms) → next
-  probe eligible (~1s) → `sampled` (~250ms) → repair again, oscillating with a period of
-  about 1.25s; the assertion's own poll window (`scenarioReconcileInterval + 250ms` ≈
-  500ms) is shorter than that period, so it can land on either phase depending on when
-  the probe-status write happens to fall in the cycle. A genuine fix needs either a
-  scenario-specific longer poll (several full cycles, so `sampled` is still a real,
-  required observation, just given enough repetitions of the real cycle to reappear) or
-  a probe/repair-immune way to pose the same fact; not attempted this task.
-- **`status_attach.feature:18`** and **`status_claude_hooks.feature:6`** — a genuine
-  Claude `StopFailure` hook (fired by send-keys into the still-running fake-claude pane,
-  exactly as a real hook subprocess would from a real Claude turn failure) writes
-  `error`/`source=hook`/`tool_failure`; the very next reconcile tick's self-heal repairs
-  it (to `starting`) because the pane is still alive and not crashed — and in both
-  scenarios a *later* step needs that same pane still alive (`status_claude_hooks.feature`
-  fires `UserPromptSubmit` through the same pane afterward; `status_attach.feature`
-  attaches to it). Slowing down reconcile (`DECK_RECONCILE_MS`, already used by
-  `launch_lease.feature` for an analogous race) is the closest existing tool, but both
-  scenarios also rely on the *default-speed* reconcile loop elsewhere (to observe other
-  hook-driven `waiting`/`idle` screen text) via the same client, so a blanket slowdown
-  would just move the race to a different assertion, not remove it. A genuine fix likely
-  needs the vulnerable window to run with *no* fast-reconciling client attached at all
-  (e.g. closing the observing client before the `StopFailure` hook and reopening — or
-  opening a second, slow-reconcile client only for that one moment — before any
-  fast-reconciling client is running again), which is a larger, more structural change
-  than a one-line step substitution; not attempted this task so as not to rush a
-  structural change to a scenario under the one-task-per-iteration rule.
+- **The earlier hypothesis (recorded by the previous iteration, now corrected):** that the
+  race was against the *observing client's own* periodic `ReconcileWithProbes` tick, the
+  same mechanism #4 turned out to have, and that closing/reopening the observing client
+  around the vulnerable window (or slowing its reconcile loop) would give the assertion a
+  chance to win it.
+- **What `internal/agent/claude.go:122` and `cmd/deck/main.go`'s `runHook` actually show:**
+  deck injects `<deck executable> _hook` as the *Claude hook command itself* — the fake
+  Claude fixture's `fireHook` (`cmd/fake-claude/main.go`) runs it exactly the way a real
+  Claude hook subprocess would, as a synchronous child process. `runHook` (`cmd/deck/main.go`)
+  writes the hook's own status via `hookrecv.Receive`, then — for every hook except
+  `SessionEnd` — immediately calls `liveness.ReconcileWithin` *in the same subprocess
+  invocation, before it returns*. That call re-reads the row it just wrote, finds the
+  paired pane still live and not crashed, and self-heals it back to `starting` — all
+  within the one `deck _hook` process the `StopFailure` event itself runs. There is no
+  client involved, no ticker to race, and no window: by the time the hook subprocess (and
+  therefore `fakeClaudeFires`'s send-keys step) returns control to the test, the repair has
+  already happened. Confirmed empirically, not just by reading the code: both scenarios
+  fail identically and deterministically on every one of 3 consecutive runs each (below),
+  always with the exact same corrected-row message
+  (`reason "tmux pane is alive; terminal row corrected"`), never intermittently — the
+  signature of a same-process sequential effect, not a timing race with any observable
+  spread.
+- **Why this means the fix is not a step substitution or a longer poll:** unlike #4 (a
+  client-driven probe tick, genuinely racing another client-driven repair tick, so a longer
+  window gives the assertion more *independent* tries), here the write and its own undo are
+  two statements in the same sequential Go call graph, with nothing external between them
+  to observe. No amount of polling after the hook call returns can ever see the pre-repair
+  value, because it no longer exists once the call returns. The only way to keep the error
+  status observable while the pane stays alive is to prevent that same-process
+  `ReconcileWithin` from running at all for this one hook delivery — and `runHook`
+  performs it unconditionally for every non-`SessionEnd` event, with no seam a black-box
+  scenario can reach without either (a) a test-only branch in product code (forbidden,
+  R8) or (b) a structural rewrite of how the hook is delivered that does not go through
+  the released `deck _hook` subcommand's ordinary post-hook liveness pass at all — which is
+  a genuine, larger investigation (is there a legitimate way to fire a real `StopFailure`
+  hook without the delivering process itself performing a liveness pass immediately after?
+  is the reviewer-approved R76 self-heal, which is unconditional by design, actually meant
+  to make a live-pane hook error permanently unobservable through this route, and if so is
+  this scenario's own premise obsolete and due a SPEC-level finding rather than a step
+  fix?) that the one-task-per-iteration rule says not to rush under this task.
 
-These 3 are left exactly as task 702 found them (still red, still asserting the same
+### Evidence the corrected diagnosis is accurate: 3 consecutive identical failures, each
+
+```
+$ ci/run.sh env DECK_GODOG_PATHS=status_claude_hooks.feature go test ./features/ -run TestFeatures -count=1
+$ ci/run.sh env DECK_GODOG_PATHS=status_attach.feature go test ./features/ -run TestFeatures -count=1
+```
+
+Both commands were run 3 times each (not committed as separate log files — the exact same
+single-line failure message repeats verbatim on every run, so a single representative run
+of each is quoted here instead of 6 near-duplicate logs):
+
+```
+session "hook truth" = status "starting" source "tmux" reason "tmux pane is alive; terminal row corrected" ...
+session "failed prompt" = status "starting" source "tmux" reason "tmux pane is alive; terminal row corrected" ...
+```
+
+These 2 are left exactly as task 702 found them (still red, still asserting the same
 things); no assertion was touched, weakened, or removed in either of them by this task.
+
+## Fixed: interactive_scroll.feature (#4)
+
+### The mechanism: the same assertion, a longer, deliberately-derived window
+
+`interactive_scroll.feature:112`'s `within one configured reconcile interval deck client
+"B" row "ig-claude" contains "sampled"` used the same generic, single-reconcile-interval
+poll every other `within one configured reconcile interval` step uses
+(`clientRowContainsWithinReconcile`, `features/status_probe_test.go`) — correct for a
+plain client-driven state change, but this scenario's probed `error` status is written by
+client A or B's own `ReconcileWithProbes` tick and *then repaired by the very next
+reconcile tick of either attached client* (SPEC §7's self-heal, task 701), because the
+underlying Claude pane is deliberately kept genuinely alive and non-crashed throughout.
+With `stale_after` at 1s (`configureAttachScrollProbeScenario`,
+`features/attach_scroll_test.go`) against a ~250ms reconcile ticker running independently
+in *each* of the two attached clients, the row oscillates error → repaired-to-starting →
+(1s later) re-probed-to-error → repaired again, with only the fraction of each ~1.25s
+cycle between a probe write and whichever client's reconcile tick lands next (which can be
+as little as a few milliseconds, since A and B's tickers are not phase-locked) actually
+rendering `"sampled"`/`"error"` text. A single reconcile-interval-plus-250ms poll window
+(~500ms) can land entirely inside a `"starting"` phase and see nothing, with nothing having
+gone wrong — the assertion was simply not given enough *tries* at a real, recurring event.
+
+The fix (`features/interactive_scroll_test.go`'s new `clientRowContainsAcrossSeveralProbeCycles`,
+wired to a new step text `within several probe/repair cycles deck client "X" row "Y"
+contains "Z"`, used only by this one scenario) keeps the exact same text/row check as the
+original step, with a deadline of `4 * (attachScrollProbeStaleAfter + scenarioReconcileInterval)`
+(a named constant shared with `configureAttachScrollProbeScenario`, not a re-typed literal)
+— four full oscillation periods instead of one partial reconcile interval, so the row gets
+several independent chances to be caught mid-error instead of needing the very first one.
+No product code changed; no assertion text weakened; the same real probe write and the same
+real self-heal repair produce the same real, transient `"sampled"` text this step always
+required, just observed with a bound sized to the real period the product itself creates.
+
+### Evidence: 3 consecutive green runs
+
+```
+$ ci/run.sh env DECK_GODOG_PATHS=interactive_scroll.feature go test ./features/ -run TestFeatures -count=1
+```
+
+| Run | Exit status (file) | Scenarios | Steps |
+|---|---|---|---|
+| 1 | [`interactive-scroll-run1.exitstatus`](interactive-scroll-run1.exitstatus) = `0` | `4 passed` | all passed |
+| 2 | [`interactive-scroll-run2.exitstatus`](interactive-scroll-run2.exitstatus) = `0` | `4 passed` | all passed |
+| 3 | [`interactive-scroll-run3.exitstatus`](interactive-scroll-run3.exitstatus) = `0` | `4 passed` | all passed |
+
+Full unedited logs: [`interactive-scroll-run1.log`](interactive-scroll-run1.log),
+[`interactive-scroll-run2.log`](interactive-scroll-run2.log),
+[`interactive-scroll-run3.log`](interactive-scroll-run3.log) — each shows
+`--- PASS: TestFeatures/scrolling_the_interactive_grid's_own_scrollback_never_flips_the_session's_badge,_and_the_probe_reads_the_pane's_live_bottom,_not_the_scrolled-back_view`.
+
+### Regression check: the whole `./features/` suite, once, after this fix
+
+```
+$ nohup sh -c 'timeout 1800 ci/run.sh go test -count=1 ./features/ > full-features-suite-after-interactive-scroll-fix.log 2>&1; echo $? > full-features-suite-after-interactive-scroll-fix.exitstatus' &
+```
+
+**Captured exit status: `1`** (expected — the 2 scenarios this task still does not fix are
+still red), read from
+[`full-features-suite-after-interactive-scroll-fix.exitstatus`](full-features-suite-after-interactive-scroll-fix.exitstatus).
+Full unedited log:
+[`full-features-suite-after-interactive-scroll-fix.log`](full-features-suite-after-interactive-scroll-fix.log).
+Its own summary line: `311 scenarios (309 passed, 2 failed)`, and by name
+(`grep -n '^[0-9]* scenarios\|--- FAIL'`) they are precisely #5 and #6 — nothing else
+regressed:
+
+```
+--- FAIL: TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict
+--- FAIL: TestFeatures/Every_declared_Claude_hook_maps_to_honest_status_through_both_identity_routes
+```
 
 ## No unrelated file touched
 
 ```
 $ git diff --stat 608e030..HEAD -- '*.go' '*.feature'
- features/attention_sort.feature | 26 +++++++++++++++++++++++---
- features/crash_test.go          | 36 ++++++++++++++++++++++++++++++++++++
- features/status_theme.feature   | 11 +++++++++--
- features/themes.feature         | 26 +++++++++++++++++++++++++-
- 4 files changed, 93 insertions(+), 6 deletions(-)
+ features/attach_scroll_test.go      |  9 ++++++-
+ features/attention_sort.feature     | 26 +++++++++++++++++---
+ features/crash_test.go              | 36 +++++++++++++++++++++++++++
+ features/interactive_scroll.feature |  2 +-
+ features/interactive_scroll_test.go | 49 +++++++++++++++++++++++++++++++++++++
+ features/status_theme.feature       | 11 +++++++++--
+ features/themes.feature             | 26 +++++++++++++++++++-
+ 7 files changed, 151 insertions(+), 8 deletions(-)
 ```
 
 `features/godog_test.go` is untouched (not in the diff above). No scenario, `Then`/`And`
 assertion, or Examples row was deleted from any of these files — one Examples row moved
 into its own `Scenario` (mirroring the file's own pre-existing pattern for `stopped`),
-and each remaining edit swaps one `Given`/`When` producer step for another that reaches
-the exact same asserted word/state through a real pane exit instead of a raw DB write.
+each of 6 remaining edits swaps one `Given`/`When` producer step for another that reaches
+the exact same asserted word/state through a real pane exit instead of a raw DB write, and
+one edit (#4) swaps one poll step for another that checks the exact same text in the exact
+same row over a longer, deliberately-derived window instead of a single reconcile tick.

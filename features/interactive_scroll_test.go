@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -24,6 +25,54 @@ func registerInteractiveScrollSteps(sc *godog.ScenarioContext) {
 	// requirement 52 (task 069): scrolling the grid's own bounded
 	// scrollback must never leak into what deck reports for the session.
 	sc.Step(`^probe fixture agents for interactive-scroll are configured$`, configureAttachScrollProbeScenario)
+	sc.Step(`^within several probe/repair cycles deck client "([^"]+)" row "([^"]+)" contains "([^"]+)"$`, clientRowContainsAcrossSeveralProbeCycles)
+}
+
+// clientRowContainsAcrossSeveralProbeCycles is
+// features/status_probe_test.go's clientRowContainsWithinReconcile widened
+// for this scenario's own oscillation, not a weaker assertion: it still
+// requires the exact same text in the exact same row, only over a longer,
+// deliberately-derived window. SPEC §7's self-heal (task 701) repairs any
+// error/stopped row paired with a live, non-crashed pane on the very next
+// reconcile tick of *any* attached client, hook, or probe pass -- including
+// the probe write this scenario's own "the state database session ... has
+// probe status \"error\"" step just observed. So once client B's own
+// independent ~250ms reconcile ticker (features/lifecycle_test.go's
+// scenarioReconcileInterval) notices that write, it repairs the row back to
+// "starting" before staleAfter (configureAttachScrollProbeScenario's own
+// attachScrollProbeStaleAfter, features/attach_scroll_test.go) elapses again
+// and makes the row probe-eligible once more -- an oscillation with a
+// period of roughly attachScrollProbeStaleAfter+scenarioReconcileInterval,
+// of which only the fraction between a probe write and whichever attached
+// client's reconcile tick lands next (as little as a few ms, since A and
+// B's tickers run independently and are not phase-locked) actually renders
+// "sampled"/"error" text at all. A single reconcile-interval window can
+// therefore fall entirely inside a "starting" phase and see nothing, with
+// nothing having gone wrong; waiting across several whole cycles instead of
+// one gives the row several independent chances to be caught mid-error
+// rather than requiring the very first one to land inside that narrow
+// slice.
+func clientRowContainsAcrossSeveralProbeCycles(ctx context.Context, clientName, rowName, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(4 * (attachScrollProbeStaleAfter + scenarioReconcileInterval))
+	for {
+		for _, line := range strings.Split(client.Frame(false), "\n") {
+			if strings.Contains(line, rowName) && strings.Contains(line, want) {
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("client %q row %q did not contain %q across several probe/repair cycles\nframe:\n%s", clientName, rowName, want, client.Frame(false))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // clientTypesNumberedLoopIntoInteractivePane types a shell for-loop that
