@@ -1,0 +1,12 @@
+diff --git a/features/sort_order.feature b/features/sort_order.feature
+index 0224365..de4a6da 100644
+--- a/features/sort_order.feature
++++ b/features/sort_order.feature
+@@ -36,6 +36,7 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
+     And the state database session "ord-charlie" has status "idle" 10 seconds ago
+     And the state database session "ord-delta" has status "waiting" 30 seconds ago
+     Then within one configured reconcile interval deck client "A" screen contains "waiting"
++    And after one configured reconcile interval deck client "A" screen still contains "waiting"
+     And deck client "A" screen shows sessions in this order:
+       | ord-delta   |
+       | ord-bravo   |
