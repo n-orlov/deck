@@ -1,17 +1,17 @@
-ok  	github.com/n-orlov/deck/cmd/deck	7.345s
-ok  	github.com/n-orlov/deck/cmd/fake-claude	0.793s
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.768s
-ok  	github.com/n-orlov/deck/features	304.478s
-ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/cmd/deck	7.333s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.780s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.767s
+ok  	github.com/n-orlov/deck/features	308.651s
+ok  	github.com/n-orlov/deck/internal/agent	0.004s
 ok  	github.com/n-orlov/deck/internal/audit	0.018s
-ok  	github.com/n-orlov/deck/internal/config	0.028s
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.236s
-ok  	github.com/n-orlov/deck/internal/interactive	10.992s
+ok  	github.com/n-orlov/deck/internal/config	0.025s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.061s
+ok  	github.com/n-orlov/deck/internal/interactive	11.004s
 ?   	github.com/n-orlov/deck/internal/notify	[no test files]
 ?   	github.com/n-orlov/deck/internal/search	[no test files]
-ok  	github.com/n-orlov/deck/internal/service	4.220s
-ok  	github.com/n-orlov/deck/internal/store	2.740s
-ok  	github.com/n-orlov/deck/internal/theme	0.003s
-ok  	github.com/n-orlov/deck/internal/tmux	19.333s
-ok  	github.com/n-orlov/deck/internal/tui	1.190s
+ok  	github.com/n-orlov/deck/internal/service	4.164s
+ok  	github.com/n-orlov/deck/internal/store	2.445s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/tmux	19.304s
+ok  	github.com/n-orlov/deck/internal/tui	1.027s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
