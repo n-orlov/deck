@@ -375,7 +375,7 @@ render time):
 | bulk delete confirm | 018 | `26a5b47`, `f33d67a`, `7f1a780` | done |
 | archive / delete-purge confirms | 019 | `103d430` | done |
 | profile picker, pin conversation, restart-or-inject | 020 | `62c3abe` | done |
-| rename dialog, event log | 021 | `1c8cbad` | **partial — task failed, see below** |
+| rename dialog, event log | 021 | `1c8cbad`; task 105 (`ea6ce4b`) | **resolved (task 105, F18), see below** |
 
 Tests, one file per dialog, each pinning "plain body free of SGR bytes, styled body
 line-for-line identical once ANSI-stripped, per-cell token checks off a real emulator
@@ -394,11 +394,13 @@ sole dimmed thing on screen. `cdb927b` (theming, bounding) and `adb7db4` (keepin
 ghost out of the measured strings) both landed; what did **not** land is a way to keep
 that one PTY step's assertion scope unchanged, since narrowing it to the cwd field's
 own rows is itself an edit to a pre-existing assertion. Full reproduction:
-`/run/ralphd/artifacts/task016-unsatisfiable/README.md` and its
-`original-step-vs-themed-modal.log` (the pre-016 step, replayed against the themed
-modal at `adb7db4`: `step error: client "A" has a dimmed-token cell " " at row 3
-column 2, want no ghost text anywhere on screen` — row 3 is the Name field's help
-line, not the ghost). The create modal **is** themed and bounded in the tree; only the
+[`phase3g-203-r82-assertion-conflict/original-assertion-red.log`](phase3g-203-r82-assertion-conflict/original-assertion-red.log) —
+the same original whole-grid assertion, restored verbatim and re-run red at task 203's
+tree (`step error: client "A" has a dimmed-token cell " " at row 3 column 2, want no
+ghost text anywhere on screen` — row 3 is the Name field's help line, not the ghost).
+(The original task-016 reproduction also lives at
+`/run/ralphd/artifacts/task016-unsatisfiable/README.md`, outside this repository, not
+part of the record.) The create modal **is** themed and bounded in the tree; only the
 literal "byte-unchanged" half of the criterion is what could not also hold.
 
 **Resolved by task 203, per finding [F27](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
@@ -426,7 +428,9 @@ edit are reverted — so the narrowed scan still catches a real ghost regression
 not vacuously green. `create_cwd_ghost.feature` and `create_session.feature` both pass
 targeted after the revert.
 
-**Task 021 is `failed`, not `validated`, after 3 validation attempts.** `1c8cbad`
+**Task 021 ran `failed`, not `validated`, after 3 validation attempts at the time** —
+this is the historical approach-01 state described below, now resolved (see next
+paragraph). `1c8cbad`
 themes both the rename dialog and the event log, and `ci/run.sh go test -count=1
 ./internal/tui/` plus `event_log.feature` are green — but validation found a residual
 gap the criterion also implied: the rename dialog's always-focused "New name" field
@@ -437,7 +441,7 @@ create modal's own focused field). The recorded follow-up (not yet its own task)
 `theme.Selection` to the rename dialog's focused field, with a rendered-grid assertion
 that a New-name cell carries that background, plain text still byte-identical.
 
-**Resolved by task 105, implementing sha `ea6ce4b`.** A new `renderRenameFieldRow`
+**Resolved by task 105 (finding [F18](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)), implementing sha `ea6ce4b`.** A new `renderRenameFieldRow`
 composes the "New name" label (`theme.Hint`) and value (`theme.Text`) via
 `settingsRenderRowOpen` (which opens each segment's foreground but never closes it) and
 wraps the whole result in one `bgColorToken(theme.Selection, ...)` — the same shape
