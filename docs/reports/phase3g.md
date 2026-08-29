@@ -1260,8 +1260,12 @@ follows the identical shape: task 607's primary commit lands everything else in 
 section, and the addendum immediately below — landed by a second, tiny commit — names
 that primary commit's own sha as the final commit of this close-out's authorship.
 
-> **Addendum (commit B).** Task 607's primary commit ("commit A" above) is
-> `PENDING-FILLED-BY-COMMIT-B`.
+> **Addendum (commit B).** Task 607's primary commit ("commit A" above), which lands
+> everything else in this section, is **`3faafa7`** — "docs: write the phase close-out
+> section against the final sha b0a4e7d (task 607)". This addendum is commit B, landed
+> immediately after; commit B's own sha cannot be named here for the same reason commit
+> A's couldn't be named inside itself, and is not needed to satisfy this criterion, which
+> asks only for "this commit's own sha as the final commit" — commit A's, quoted above.
 
 ```
 $ git diff --stat b0a4e7d..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum; echo "exit=$?"
