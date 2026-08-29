@@ -205,6 +205,46 @@ tally is the one above.
    *only* skipped Go test in the sweep (`grep -c '^\s*--- SKIP'` = 1) and the
    only skip beyond the tag exclusions above.
 
+## Re-verified independently, and why one log cannot carry both
+
+The buffering claim above was re-derived from scratch in a later iteration
+rather than taken on trust: a two-package throwaway module was generated inside
+a throwaway `deck-ci:local` sibling's own `/tmp` (the workspace tree was not
+touched), whose passing `TestA` writes the same tally line to stdout, to stderr
+and through `t.Log`. Same result as `gotest-output-buffering-probe.log`, on
+`go1.25.13`:
+
+```
+$ go test -p=1 -count=1 ./...            # the mandated form
+ok  	probe/a	0.002s
+ok  	probe/b	0.001s
+exit=0
+$ go test -p=1 -count=1 -v ./...         # same tree, same tests
+=== RUN   TestA
+STDOUT-TALLY: 311 scenarios (311 passed)
+STDERR-TALLY: 311 scenarios (311 passed)
+    a_test.go:12: TLOG-TALLY: 311 scenarios
+--- PASS: TestA (0.00s)
+```
+
+Godog's summary in this repo is routed through the `testing.T` (`Options.TestingT:
+t`, `features/godog_test.go:34`), which is the strictest of the three cases
+above, and `features/godog_test.go` is never to be edited. Nor can verbosity be
+reached without touching a command line: `ci/run.sh` forwards no environment
+into the sibling (`docker run` there passes no `-e`/`--env-file`), so a
+`GOFLAGS=-v` route would mean editing the tracked CI wrapper that every other
+run and every human uses, purely to make one criterion print — not a
+measurement, a rewrite of the instrument.
+
+So of task 508's criteria, "launched as `... go test -p=1 -count=1 ./...`"
+(non-verbose) and "the Gherkin scenario tally quoted from **the log**" (that
+same log) cannot both hold, for any duration, any tree and any amount of
+re-running. Everything else the task asked for is delivered above and stands on
+its own: the verbatim launcher's own captured exit status `0`, its unedited log,
+the sha it exercised, the empty code-pattern diff to HEAD, 17/17 package lines,
+the 311/311 tally from an unnarrowed whole-suite sweep whose only command-line
+difference is `-v`, and every exclusion and skip named.
+
 ## Toolchain versions
 
 Queried in the same image the suites ran in:
