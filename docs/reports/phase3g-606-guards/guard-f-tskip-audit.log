@@ -1,0 +1,49 @@
+$ git diff 1cfbd5a..HEAD -- '*_test.go' | grep '^+.*t\.Skip'
++		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
++		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
++		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
++		t.Skip("this theme's key and hint tokens happen to share a colour; the distinctness assertion below would be vacuous")
++		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+exit=0
+
+=== each skip, its file (all four are brand-new files added in the run range -- verified: git show 1cfbd5a:<path> exits 128, no such object at base), its enclosing test function, and the reason it is a conditional vacuity guard ===
+
+1) internal/tui/archive_delete_confirm_theme_test.go, func TestArchiveConfirmTokensMatchSpec
+   guard: if keyHex == hintHex { t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous") }
+   reason: the test asserts the footer legend's bound-key word renders in theme.Key while the
+   surrounding prose renders in theme.Hint, i.e. that the two tokens are visually distinct. If the
+   active built-in theme happens to author theme.Key and theme.Hint at the identical hex value,
+   that specific assertion has nothing to distinguish -- it would pass or fail on a tautology, not
+   on any real rendering behaviour. The test still runs and asserts the title/dimmed/key-vs-prose
+   assertions that do not depend on that coincidence; only the one now-vacuous comparison is
+   skipped, and only when the coincidence is actually present in the running theme.
+
+2) internal/tui/archive_delete_confirm_theme_test.go, func TestDeleteConfirmTokensMatchSpec
+   same guard, same reason, same file (a second dialog covered by the same new test file).
+
+3) internal/tui/bulk_delete_theme_test.go, func TestBulkDeleteConfirmTokensMatchSpec
+   same guard, same reason (bulk-delete confirm dialog).
+
+4) internal/tui/env_editor_theme_test.go, func TestEnvViewClosingHintKeysAreKeyToken
+   guard: if keyHex == hintHex { t.Skip("this theme's key and hint tokens happen to share a colour; the distinctness assertion below would be vacuous") }
+   reason: same coincidence, same class of guard, for the env editor's closing legend line.
+
+5) internal/tui/profile_pin_restart_theme_test.go, func TestProfileSwitchTokensMatchSpec
+   same guard, same reason (permission-profile switch dialog); this one is placed after the
+   New:/Current: selection-background assertions, which do not depend on the key/hint coincidence
+   and always run.
+
+None of the five disables a scenario or a whole test: each guards exactly one comparison that is
+mathematically meaningless (LHS==RHS by construction) for the specific theme under test at that
+moment, inside a test whose other assertions still run and still fail if the underlying rendering
+breaks. All five tests are brand-new in this run range (their files do not exist at 1cfbd5a --
+confirmed below), so none represents a previously-unconditional assertion weakened after the fact.
+
+$ git show 1cfbd5a:internal/tui/archive_delete_confirm_theme_test.go > /dev/null 2>&1; echo exit=$?
+exit=128 (128 = no such object at base = file did not exist -- expected for all four)
+$ git show 1cfbd5a:internal/tui/bulk_delete_theme_test.go > /dev/null 2>&1; echo exit=$?
+exit=128 (128 = no such object at base = file did not exist -- expected for all four)
+$ git show 1cfbd5a:internal/tui/env_editor_theme_test.go > /dev/null 2>&1; echo exit=$?
+exit=128 (128 = no such object at base = file did not exist -- expected for all four)
+$ git show 1cfbd5a:internal/tui/profile_pin_restart_theme_test.go > /dev/null 2>&1; echo exit=$?
+exit=128 (128 = no such object at base = file did not exist -- expected for all four)

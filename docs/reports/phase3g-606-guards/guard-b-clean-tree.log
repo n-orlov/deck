@@ -1,0 +1,10 @@
+$ git status --porcelain
+exit=0
+
+Captured with this task's own in-progress docs/reports/phase3g-606-guards/
+directory moved out of the working tree for the duration of the command (a
+verifier checking out sha 2bad935 fresh, before this task's own commit
+lands, has no such directory at all and needs no such workaround). Once this
+task's commit lands, docs/reports/phase3g-606-guards/ is tracked content,
+not an untracked/dirty path, so the same command run against the final
+commit is also expected to print nothing.

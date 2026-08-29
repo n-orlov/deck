@@ -1,0 +1,44 @@
+$ git archive 1cfbd5a -- features/ | tar -x -C /tmp/base_1cfbd5a   # base tree materialised for counting only, not part of the repo
+
+$ grep -rEc "^\s*Scenario( Outline)?:" /tmp/base_1cfbd5a/features/*.feature | awk -F: "{s+=\$2} END{print s}"
+290
+exit=0
+
+$ grep -rE "^\s*Scenario( Outline)?:" features/*.feature | wc -l   # HEAD
+296
+exit=0
+
+=== per-file breakdown, base (1cfbd5a) vs HEAD, every changed feature file ===
+attention_sort.feature: base=6 head=6
+create_cwd_ghost.feature: base=6 head=6
+create_cwd_tab.feature: base=3 head=3
+create_session.feature: base=15 head=16
+dialogs.feature: base=23 head=23
+filter.feature: base=5 head=7
+interactive_pipe_leak.feature: base=0(new file) head=1
+settings.feature: base=16 head=16
+status_claude_hooks.feature: base=3 head=3
+status_recovery.feature: base=4 head=4
+status_theme.feature: base=8 head=8
+terminal_repair_field_route.feature: base=0(new file) head=1
+themes.feature: base=8 head=9
+
+=== feature files present at HEAD but not at base (new files) ===
+21a22
+> interactive_pipe_leak.feature
+50a52
+> terminal_repair_field_route.feature
+diff_exit=1  (1 = differences found, expected: two new files)
+
+=== tag diff on files whose scenario count did NOT change, to rule out retagging masking additions/removals ===
+$ git diff 1cfbd5a..HEAD -- features/attention_sort.feature features/create_cwd_ghost.feature features/create_cwd_tab.feature features/dialogs.feature features/settings.feature features/status_claude_hooks.feature features/status_recovery.feature features/status_theme.feature | grep -E "^[+-]\s*@"
+exit=1 (1 = grep found no matching lines, i.e. no tag added/removed on these files -- expected)
+
+=== delta accounting ===
+base total 290, HEAD total 296, delta +6
+create_session.feature: +1 (15->16)
+filter.feature: +2 (5->7)
+interactive_pipe_leak.feature: +1 (new file, 0->1)
+terminal_repair_field_route.feature: +1 (new file, 0->1)
+themes.feature: +1 (8->9)
+sum of per-file deltas = 1+2+1+1+1 = 6, matches base/HEAD total delta; every file with a changed count only increased, none decreased -- no scenario was deleted or retagged out of the counted set
