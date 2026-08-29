@@ -1,0 +1,7 @@
+--- FAIL: TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow (0.00s)
+    --- FAIL: TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow/stopped_row_dispatches_no_kill_command (0.00s)
+        kill_key_eligibility_test.go:50: kill dispatched = true, want false
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	1.046s
+FAIL
+1
