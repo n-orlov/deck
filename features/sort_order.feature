@@ -32,10 +32,20 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    And the state database session "ord-bravo" has status "error" 40 seconds ago
+    # "error" cannot be posed by writing the state database directly
+    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs it straight back to "running" on the very next reconcile tick
+    # (task 703, review finding 1's fallout) -- exactly the race this
+    # fixture's error tier must not be exposed to. A genuine nonzero pane
+    # exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "ord-bravo" contains "error"
     And deck client "A" screen shows sessions in this order:
       | ord-delta   |
       | ord-bravo   |
@@ -60,10 +70,20 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    And the state database session "ord-bravo" has status "error" 40 seconds ago
+    # "error" cannot be posed by writing the state database directly
+    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs it straight back to "running" on the very next reconcile tick
+    # (task 703, review finding 1's fallout) -- exactly the race this
+    # fixture's error tier must not be exposed to. A genuine nonzero pane
+    # exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "ord-bravo" contains "error"
     And deck client "A" screen shows sessions in this order:
       | ord-bravo   |
       | ord-delta   |
@@ -88,10 +108,30 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    And the state database session "ord-bravo" has status "error" 40 seconds ago
+    # "error" cannot be posed by writing the state database directly
+    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs it straight back to "running" on the very next reconcile tick
+    # (task 703, review finding 1's fallout) -- exactly the race this
+    # fixture's error tier must not be exposed to. A genuine nonzero pane
+    # exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "ord-bravo" contains "error"
+    # sort_order = activity ranks purely by status_at descending, so
+    # ord-bravo's genuine crash (whose status_at otherwise lands wherever
+    # the crash-collecting reconcile tick actually ran, in real wall-clock
+    # time) must still be pinned to this fixture's engineered age. By this
+    # point ord-bravo's pane is already dead and gone -- reconcile's
+    # crash-collection already killed it (repairTerminalRowWithLivePane's
+    # own doc comment) -- so this raw status_at-only write (status and
+    # status_source untouched) can never race a live-pane repair the way a
+    # raw status write would (task 804).
+    And the state database session "ord-bravo" has status_at 40 seconds ago
     And deck client "A" screen shows sessions in this order:
       | ord-charlie |
       | ord-alpha   |
@@ -116,10 +156,20 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    And the state database session "ord-bravo" has status "error" 40 seconds ago
+    # "error" cannot be posed by writing the state database directly
+    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs it straight back to "running" on the very next reconcile tick
+    # (task 703, review finding 1's fallout) -- exactly the race this
+    # fixture's error tier must not be exposed to. A genuine nonzero pane
+    # exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "ord-bravo" contains "error"
     And deck client "A" screen shows sessions in this order:
       | ord-alpha   |
       | ord-bravo   |
@@ -146,10 +196,20 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    And the state database session "ord-bravo" has status "error" 40 seconds ago
+    # "error" cannot be posed by writing the state database directly
+    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs it straight back to "running" on the very next reconcile tick
+    # (task 703, review finding 1's fallout) -- exactly the race this
+    # fixture's error tier must not be exposed to. A genuine nonzero pane
+    # exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "ord-bravo" contains "error"
     And deck client "A" screen shows sessions in this order:
       | ord-delta   |
       | ord-bravo   |
@@ -220,10 +280,20 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "gso-ba" has workspace "gso-beta-ws"
     And the state database session "gso-bb" has workspace "gso-beta-ws"
     And the state database session "gso-bb" has status "waiting" 40 seconds ago
-    And the state database session "gso-ab" has status "error" 30 seconds ago
+    # "error" cannot be posed by writing the state database directly
+    # while "gso-ab"'s pane is still alive: SPEC section 7's self-heal
+    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
+    # bare error row paired with a live pane as an invariant violation and
+    # repairs it straight back to "running" on the very next reconcile tick
+    # (task 703, review finding 1's fallout) -- exactly the race this
+    # fixture's error tier must not be exposed to. A genuine nonzero pane
+    # exit is instead collected and killed by reconcile, which is what
+    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    And shell session "gso-ab" exits with status 1
     And the state database session "gso-ba" has status "running" 20 seconds ago
     And the state database session "gso-aa" has status "idle" 10 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    And within one configured reconcile interval deck client "A" row "gso-ab" contains "error"
     And deck client "A" screen shows sessions in this order:
       | gso-ba      |
       | gso-bb      |
