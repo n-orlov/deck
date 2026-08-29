@@ -26,6 +26,7 @@ import (
 // creation and reconcile never revisits it.
 func registerSortOrderSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has created_at ([0-9]+) seconds ago$`, setSessionCreatedAtSecondsAgo)
+	sc.Step(`^the state database session "([^"]+)" has status_at ([0-9]+) seconds ago$`, setSessionStatusAtSecondsAgo)
 }
 
 func setSessionCreatedAtSecondsAgo(ctx context.Context, name string, secondsAgo int) error {
@@ -44,6 +45,42 @@ func setSessionCreatedAtSecondsAgo(ctx context.Context, name string, secondsAgo 
 		return fmt.Errorf("set session %q created_at %ds ago: %w", name, secondsAgo, err)
 	}
 	if err := requireOneRowAffected(result, "set session %q created_at %ds ago", name, secondsAgo); err != nil {
+		return err
+	}
+	return nil
+}
+
+// setSessionStatusAtSecondsAgo poses sort_order = activity's own comparator
+// key (StatusAt) at an exact age without touching status or status_source,
+// the way setSessionStatusSecondsAgo (features/attention_sort_test.go) does
+// for both together. task 804's sort_order.feature error rows reach "error"
+// via a genuine nonzero pane exit (features/crash_test.go's
+// shellSessionExitsWithNonzeroStatus) instead of a raw status write, since a
+// raw "error" write on a still-live pane is the exact invariant violation
+// internal/service.reconcile's repairTerminalRowWithLivePane repairs back to
+// "running" on the very next tick (task 703, review finding 1's fallout).
+// That genuine route settles status_at at whatever real wall-clock moment
+// reconcile's crash collection actually runs, which the activity scenario's
+// engineered relative ages cannot tolerate; by the time this step is ever
+// used the row's pane is already dead and collected (crash collection kills
+// it as part of recording the crash), so this raw, status-preserving write
+// can never race that live-pane repair the way a raw status write would.
+func setSessionStatusAtSecondsAgo(ctx context.Context, name string, secondsAgo int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	at := time.Now().Add(-time.Duration(secondsAgo) * time.Second).UnixMilli()
+	result, err := db.ExecContext(ctx, `UPDATE sessions SET status_at = ? WHERE name = ?`, at, name)
+	if err != nil {
+		return fmt.Errorf("set session %q status_at %ds ago: %w", name, secondsAgo, err)
+	}
+	if err := requireOneRowAffected(result, "set session %q status_at %ds ago", name, secondsAgo); err != nil {
 		return err
 	}
 	return nil
