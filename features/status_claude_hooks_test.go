@@ -28,6 +28,7 @@ func registerClaudeHookStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^fake Claude session "([^"]+)" exits its pane cleanly$`, fakeClaudeExitsPaneCleanly)
 	sc.Step(`^the released deck _hook receives "([^"]+)" for session "([^"]+)" using (injected|conversation) identity:$`, releasedHookFiresForSession)
 	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatus)
+	sc.Step(`^the state database session "([^"]+)" is repaired to "([^"]+)" from "([^"]+)" with reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionIsRepairedTo)
 	sc.Step(`^session "([^"]+)" has one "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasOneEventPayloadField)
 	sc.Step(`^session "([^"]+)" has an audited "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasAuditedEventPayloadField)
 	sc.Step(`^deck client "([^"]+)" kills session "([^"]+)"$`, clientKillsNamedSession)
@@ -287,6 +288,44 @@ func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantRea
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("session %q = status %q source %q reason %q message %q acknowledged=%d epoch=%d; want %q hook %q %q %d %d", name, status, source, reason, message, acknowledged, epoch, wantStatus, wantReason, wantMessage, wantAcknowledged, wantEpoch)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// databaseSessionIsRepairedTo asserts the state SPEC §7's self-heal
+// (internal/service.Service.repairTerminalRowWithLivePane, R76) leaves behind
+// once a hook's own terminal write ("error", here) has already been
+// corrected by the synchronous post-hook reconcile pass that runs inside the
+// same "deck _hook" subprocess invocation (cmd/deck/main.go's runHook), before
+// the hook ever returns to its caller. Unlike databaseSessionHasHookStatus,
+// this does not require status_source "hook": the repair is tmux-sourced by
+// definition, and asserting that source is the whole point of this step.
+func databaseSessionIsRepairedTo(ctx context.Context, name, wantStatus, wantSource, wantReason, wantMessage string, acknowledgedText, epochText string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	wantAcknowledged, _ := strconv.Atoi(acknowledgedText)
+	wantEpoch, _ := strconv.Atoi(epochText)
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		var status, source, reason, message string
+		var acknowledged, epoch int
+		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
+		if err != nil {
+			return fmt.Errorf("observe repaired status for session %q: %w", name, err)
+		}
+		if status == wantStatus && source == wantSource && reason == wantReason && message == wantMessage && acknowledged == wantAcknowledged && epoch == wantEpoch {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q = status %q source %q reason %q message %q acknowledged=%d epoch=%d; want %q from %q %q %q %d %d", name, status, source, reason, message, acknowledged, epoch, wantStatus, wantSource, wantReason, wantMessage, wantAcknowledged, wantEpoch)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
