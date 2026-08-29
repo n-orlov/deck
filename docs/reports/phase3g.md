@@ -43,7 +43,8 @@ with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
   [R92](#r92--r75s-release-failure-fallback-is-exercised-tasks-036-037) ·
   [known open regression](#known-open-regression-discovered-by-task-002s-own-evidence-not-fixed-here) ·
   [table](#per-requirement-table) ·
-  [close-out](#close-out-task-113)
+  [close-out](#close-out-task-113) ·
+  [close-out (approach 06)](#close-out-approach-06)
 
 ## Tool versions
 
@@ -1236,3 +1237,136 @@ report by reference: everything below is stated and evidenced there, not here.
   R82 was resolved afterwards by task 105 (`ea6ce4b`, finding
   [F18](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)), as the dialog
   table above records; `../DELIVERY-LOG.md`'s own text still carries the older wording.
+
+## Close-out (approach 06)
+
+This section closes the reporting tail (approach 06, tasks 601–608) against the phase's
+final state. It supersedes nothing above — task 113's close-out (§ above) and the
+R76–R93 sections stand as the record of what each approach actually delivered — this
+section adds the final-sha attestation, the two suite gates, the guard re-verification,
+an account of every approach this run spent, and (per (f) below) a table of every task
+from approaches 01–05 that ended in a non-`completed` status, read from the archived
+per-approach state at `/run/ralphd/approaches/NN/tasks.json` (outside this repository,
+not part of the tracked record — quoted here rather than linked, as that task requires).
+
+### (a) Final shas and the empty code-diff
+
+The phase's **final code sha is `b0a4e7d`**: every commit after it is docs-only. This
+section's own primary commit cannot quote its own hash inside itself (a commit's sha is
+a function of its content, so it cannot contain itself) — the same regress phase 3f's
+task 038 close-out named and stopped one level down, by committing the report first and
+recording that commit's sha in an immediately-following addendum commit. This section
+follows the identical shape: task 607's primary commit lands everything else in this
+section, and the addendum immediately below — landed by a second, tiny commit — names
+that primary commit's own sha as the final commit of this close-out's authorship.
+
+> **Addendum (commit B).** Task 607's primary commit ("commit A" above) is
+> `PENDING-FILLED-BY-COMMIT-B`.
+
+```
+$ git diff --stat b0a4e7d..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum; echo "exit=$?"
+exit=0
+```
+
+Empty, as it has been at every re-check since `b0a4e7d`: no product code, feature file,
+CI script, TOML or Go module file has changed since the phase's final code commit.
+
+### (b) Review finding 1's stability gate
+
+[Task 605's stability-gate note](phase3g-605-stability-gate/README.md) closes review
+finding 1 **by citation** of task 507's round-3 measurement rather than a re-run, per
+this run's standing rule against re-rolling an already-held gate. Quoted verbatim from
+[`phase3g-507-stability10/round3/summary.log`](phase3g-507-stability10/round3/summary.log):
+
+```
+10/10 passed
+```
+
+launched at commit `16186e3` (script exit status `0`, 10 `PASS (exit 0)` lines, 0 `FAIL`
+lines), with the code-diff proof that `16186e3` and `b0a4e7d` are code-identical:
+`git diff --stat 16186e3..HEAD` and `git diff --stat b0a4e7d..HEAD`, both over the same
+code-pattern set, both empty. **10/10 passed, never rounded.**
+
+### (c) The whole-suite sweep
+
+[Task 604's whole-suite report](phase3g-604-fullsuite/README.md) — fresh sweep at launch
+sha `b4c90ca`, captured exit status **`0`** (`docs/reports/phase3g-604-fullsuite/full-suite.exitstatus`),
+17/17 Go packages accounted for (14 `ok`, 3 `[no test files]`: `internal/notify`,
+`internal/search`, `internal/unit`), no `FAIL` anywhere, both `defaultTags` exclusions
+(`~@real-agents`, `~@nightly`) named, and the Gherkin tally quoted from task 508's
+committed `-v` companion log: **311 scenarios (311 passed), 3523 steps (3523 passed)**.
+
+### (d) Guard re-verification
+
+[Task 606's guard bundle](phase3g-606-guards/README.md) re-verifies, at starting sha
+`2bad935`, all seven guards this run tracks: the run-range protected-path audit (exactly
+`b69b5ba`, and nothing else, over `1cfbd5a..HEAD`), a clean tree, `HEAD == origin/main`,
+`godog_test.go`'s `defaultTags` byte-unchanged, the scenario-count delta fully accounted
+for, every run-range `t.Skip` addition enumerated, and a re-implemented, fenced-code-aware
+citation sweep over both phase3g reports with zero unresolved citations after disposition.
+
+### (e) Every approach this run spent
+
+| approach | task-id range | commit-subject convention | example commit |
+|---|---|---|---|
+| 01 | `0NN` (001–042) | `<area>: <why> (task 0NN)` | `89fcffc` — "service,store: repair a terminal row with a live pane in Reconcile (task 001)" |
+| 02 | `1NN` (101–113) | `<area>: <why> (task 1NN)` | `2549406` — "features: dewrap the create-modal Agent-field wait's box-wrapped row (task 101)" |
+| 03 | `2NN` (201–214) | `<area>: <why> (task 2NN)` | `7e3261c` — "service: clean up a reaped tombstoned holder's files on rename too (task 201)" |
+| 04 | `3NN` (301–309) | `<area>: <why> (task 3NN)` | `bdc1879` — "docs: re-derivable evidence bundle closing review findings 2, 3, 4 at HEAD (task 301)" |
+| 05 | `5NN` (501–512) | `<area>: <why> (task 5NN)` | `97f8832` — "tmux: mirror Create's session environment via new-session -e, not a racing set-environment follow-up (task 501)" |
+| 06 | `6NN` (601–608) | `<area>: <why> (task 6NN)` | `34ca8ce` — "docs: add F29–F32 findings rows for approach 04/05's 501/502/503/507 discoveries (task 601)" |
+
+Every approach used the same suffix convention, `(task NNN)`, distinguished only by the
+numeric range — never a different prefix word — which is why every standing-rules and
+report citation in this run names the task id alongside the sha.
+
+### (f) Every approach 01–05 task that ended in a non-`completed` status
+
+Read from the archived per-approach state (`/run/ralphd/approaches/NN/tasks.json`,
+outside this repository, quoted rather than linked). Every row below names either the
+sha(s) and tracked evidence directory that delivered the task's scope, or the findings
+row (in [`phase3g-findings.md`](phase3g-findings.md)) that carries an undelivered piece
+as an open residual.
+
+| task | approach | archived status | title | delivered by |
+|---|---|---|---|---|
+| 016 | 01 | skipped | Theme and bound the create modal | `cdb927b` + `adb7db4`; the one unmet clause (assertion left unchanged) is the `SPEC.md`-vs-PRD contradiction resolved as finding F27 by task 203 (`3e883d7`) — [`phase3g-203-r82-assertion-conflict/`](phase3g-203-r82-assertion-conflict/) |
+| 021 | 01 | failed | Theme the rename dialog and the event log | `1c8cbad`; the residual clause (focused-field selection background) closed by task 105 (`ea6ce4b`), finding F18 — [`phase3g-105-rename-selection/`](phase3g-105-rename-selection/) |
+| 022 | 01 | pending | Net themed dialogs against `NO_COLOR`/`DECK_ASCII`/width | task 107, `02e64a5` — [`phase3g-107-dialog-degradation-net/`](phase3g-107-dialog-degradation-net/) |
+| 023 | 01 | pending | Extend the contrast floor to the pairs a dialog uses | task 106, `57a6882`, `0219e42` — [`phase3g-106-contrast-floor/`](phase3g-106-contrast-floor/) |
+| 026 | 01 | skipped | Update dialog text for new keys, prove overlays keep line scroll | `8cff03b` + task 108, `ab34cb4`, `860c412` — [`phase3g-108-r86-proof/`](phase3g-108-r86-proof/) |
+| 038 | 01 | skipped | Write `docs/reports/phase3g.md` | delivered incrementally: task 038's own `9ee8672`/`e02ef08`/`050ca9f`, folded forward by task 109 (`28b0ada`) — [`phase3g-109-report-update/`](phase3g-109-report-update/) — and every later reporting task through this section |
+| 040 | 01 | in-progress | Run the whole suite green at the final code commit | superseded through 111/210/305/508; delivered at record by task 604, `b4c90ca` (exit `0`) — [`phase3g-604-fullsuite/`](phase3g-604-fullsuite/) |
+| 041 | 01 | pending | Run `ci/stability.sh 10` and publish the real rate | superseded through 112/211/304/302/505; the 10/10 gate is established at `b0a4e7d` by task 507's round 3, closed by citation in task 605, `2bad935` — [`phase3g-507-stability10/round3/`](phase3g-507-stability10/round3/) |
+| 042 | 01 | pending | Close out: protected-path audit, citation sweeps, delivery log | delivered by task 113, `df7a35e`/`70fdea0` — [`phase3g-113-closeout/`](phase3g-113-closeout/); re-verified run-range-scoped by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/); delivery-log finalization is task 608's own remit |
+| 113 | 02 | skipped | Close the phase out: protected-path audit, citation sweeps, delivery log | delivered in substance at `df7a35e`/`70fdea0` — [`phase3g-113-closeout/`](phase3g-113-closeout/); the one unsatisfiable clause (claiming only two shas ever touch protected paths) is superseded by task 606's run-range-scoped, exact-count restatement (30 pre-base commits) — [`phase3g-606-guards/guard-a-protected-paths.log`](phase3g-606-guards/guard-a-protected-paths.log) |
+| 202 | 03 | awaiting-validation | Drain the whole expired-tombstone backlog (review finding 3, R79) | `dd90a28`, `a46514e`; the one property the replacement bar could not confirm was carried into task 214, `6a01fe7` — [`phase3g-202-tombstone-drain/`](phase3g-202-tombstone-drain/), [`phase3g-214-tombstone-continuation/`](phase3g-214-tombstone-continuation/); process recorded as finding F33 in `phase3g-findings.md` |
+| 208 | 03 | pending | Record approach 03's work in `phase3g.md` | task 504, `af288eb` — [`phase3g-504-report-update/`](phase3g-504-report-update/) |
+| 209 | 03 | pending | Bring `phase3g-findings.md` up to date at approach-03 state | task 110, `961e9cc` (F18–F26), and the task-202 planning lesson finally as finding F33, task 602, `2058c08` |
+| 210 | 03 | pending | Sweep: one whole-suite run at the post-work head | superseded through 305/508; delivered by task 604, `b4c90ca` — [`phase3g-604-fullsuite/`](phase3g-604-fullsuite/) |
+| 211 | 03 | pending | Sweep: `ci/stability.sh 10` at 10/10 (finding 1's gate) | superseded through 304/505; delivered at `b0a4e7d` by task 507's round 3, closed by citation task 605, `2bad935` |
+| 212 | 03 | pending | Re-verify the run's guards at the final code sha | superseded through 308/510; delivered by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/) |
+| 213 | 03 | pending | Write the close-out section against the true final sha | superseded through 309/511; delivered by this task, 607 (this section) |
+| 303 | 04 | in-progress | Synchronise every scenario task 302 recorded as failing | `6524ece` (help-overlay PTY tail race) and `157bb52` (SIGWINCH inter-resize pacing) — [`phase3g-303-help-pty-tail-sync/`](phase3g-303-help-pty-tail-sync/), [`phase3g-303-sigwinch-count-pace/`](phase3g-303-sigwinch-count-pace/) |
+| 304 | 04 | pending | Establish review finding 1's gate: 10/10 on the final tree | superseded by 505; delivered at `b0a4e7d` by task 507's round 3, closed by citation task 605, `2bad935` |
+| 305 | 04 | pending | Sweep: one whole-suite run at the final code sha | superseded by 508; delivered by task 604, `b4c90ca` — [`phase3g-604-fullsuite/`](phase3g-604-fullsuite/) |
+| 306 | 04 | pending | Record approach 03/04's work, including a new R93 section | task 504, `af288eb` — [`phase3g-504-report-update/`](phase3g-504-report-update/) |
+| 307 | 04 | pending | Bring `phase3g-findings.md` up to date at approach-04 state | task 506, `7fa6f89` (F28 disposition) + task 601, `34ca8ce` (F29–F32) + task 602, `2058c08` (F33/F34) |
+| 308 | 04 | pending | Re-verify the run's guards, scoped to the run range | superseded by 510; delivered by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/) |
+| 309 | 04 | pending | Write the close-out against the true final sha, update delivery log | superseded by 511; close-out delivered by this task, 607 (this section); delivery log is task 608's remit |
+| 505 | 05 | failed | Measure `ci/stability.sh 10` at the post-fix tree | delivered a real, if launcher-imprecise, 9/10 measurement (`bfa3aad`) naming the one sigwinch failure; wholly superseded by task 507's clean 10/10 round 3 at `b0a4e7d` — no residual live |
+| 508 | 05 | skipped | Sweep the whole suite once, every exclusion named | delivered in substance at `550a265`/`898a54e`/`b5a228d` (exact-launcher log at `8f8e214`) — [`phase3g-508-fullsuite/`](phase3g-508-fullsuite/); the one unmet clause (one log with both the exact launcher and the verbose tally) is a `go test` stdout-buffering constraint, recorded as finding F34 by task 602, `2058c08`, and superseded cleanly by task 604's single-launcher, `tail -5`-only sweep, `b4c90ca` |
+| 509 | 05 | pending | Bring `phase3g-findings.md` up to date at approach-05 state | task 601, `34ca8ce` (F29–F32) + task 602, `2058c08` (F33/F34) |
+| 510 | 05 | pending | Re-verify the run's guards at the current sha | delivered by task 606, `e36112a` — [`phase3g-606-guards/`](phase3g-606-guards/) |
+| 511 | 05 | pending | Write the close-out against the true final sha, update delivery log | close-out delivered by this task, 607 (this section); delivery log is task 608's remit |
+
+### (g) The four review findings of the last review pass
+
+| finding | what it required | closing sha(s) | tracked evidence |
+|---|---|---|---|
+| 1 | `ci/stability.sh 10` at 10/10 on the final code tree | measured at `b0a4e7d` by task 507's round 3 (launch `16186e3`), closed by citation in task 605, `2bad935` | [`phase3g-507-stability10/round3/`](phase3g-507-stability10/round3/), [`phase3g-605-stability-gate/`](phase3g-605-stability-gate/) |
+| 2 | R77's rename-path post-commit filesystem cleanup | `7e3261c` (task 201), re-verified at HEAD by task 301, `bdc1879` | [`phase3g-201-rename-reuse-cleanup/`](phase3g-201-rename-reuse-cleanup/), [`phase3g-301-review-findings-closure/`](phase3g-301-review-findings-closure/) |
+| 3 | R79's whole expired-tombstone backlog drained within the open/startup cycle | `dd90a28`, `a46514e` (task 202) plus `6a01fe7` (task 214), re-verified by task 301, `bdc1879` | [`phase3g-202-tombstone-drain/`](phase3g-202-tombstone-drain/), [`phase3g-214-tombstone-continuation/`](phase3g-214-tombstone-continuation/), [`phase3g-301-review-findings-closure/`](phase3g-301-review-findings-closure/) |
+| 4 | R82's unchanged-PTY-assertion condition vs. `SPEC.md`'s dimmed-help requirement | `3e883d7` (task 203), filed as finding F27, re-verified by task 301, `bdc1879` | [`phase3g-203-r82-assertion-conflict/`](phase3g-203-r82-assertion-conflict/), [`phase3g-301-review-findings-closure/`](phase3g-301-review-findings-closure/) |
+
+All four review findings are closed by sha and tracked evidence, none by assertion alone.
