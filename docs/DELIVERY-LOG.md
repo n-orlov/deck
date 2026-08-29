@@ -506,68 +506,84 @@ started at the *lowest* 1-minute loadavg of the ten). The whole suite is green a
 ([log](reports/phase3f-032-fullsuite/go-test-p1-count1-all.log)) and 360s / 306 scenarios at
 `e47cb35`, `defaultTags` untouched in both.
 
-**Phase 3g** — `prds/phase3g-field-backlog.md`, run `deck-phase3g`, 2026-08-27 to 2026-08-28. Seventeen
-requirements, **R76–R92**, the operator's field backlog against the Phase 3f build; `SPEC.md` was
-amended first (`2eed8de`, plan change `a03527c`, both pre-existing operator commits and ancestors of
-the run's own base `1cfbd5a`) so every requirement has a spec authority. Evidence:
-[`docs/reports/phase3g.md`](reports/phase3g.md) (per-requirement, with revert-and-reproduce proofs for
-the eight requirements the PRD named a naive-test trap — R76, R77, R79, R86, R87, R88, R89, R91) and
-[`docs/reports/phase3g-findings.md`](reports/phase3g-findings.md) (spec contradictions actually met,
-what the PRD got wrong, and defects found and deliberately not fixed). Commits run `1cfbd5a..HEAD`.
-The phase took two approaches: the first (tasks 001–092, unprefixed `(task 0NN)` subjects) landed
-34 of 42 tasks and closed sixteen of the seventeen requirements outright, leaving R82 **partial**
-(task 016's create-modal theming pass was itself unsatisfiable — a pre-existing PTY assertion could
-not survive full §11.6 theming — and task 021's residual, the rename dialog's focused field missing
-its `theme.Selection` background, was a real gap); the second approach (tasks 101–113, `(task 1NN)`
-subjects so the two ranges stay distinguishable in `git log`) closed that gap (`ea6ce4b`, task 105)
-and the phase's dialog/footer/report-hygiene residue, then ran the two closing suite-determinism
-gates and this close-out.
+**Phase 3g** — `prds/phase3g-field-backlog.md`, run `deck-phase3g`, 2026-08-27 to 2026-08-28. Eighteen
+requirements, **R76–R93**, the operator's field backlog against the Phase 3f build plus one
+mid-run addition. `SPEC.md` was amended twice for this run: first (`2eed8de`, plan change
+`a03527c`, both pre-existing operator commits and ancestors of the run's own base `1cfbd5a`) so
+R76–R92 each have a spec authority going in, then again mid-run (`b69b5ba`, task 205) to add
+R93's own §11.8 "in-progress selection" clause, under an explicit operator licence (steering 018,
+github.com/n-orlov/deck issue #18) to touch that one otherwise-protected section for exactly this
+addition. Evidence: [`docs/reports/phase3g.md`](reports/phase3g.md) (per-requirement, with
+revert-and-reproduce proofs for the eight requirements the PRD named a naive-test trap — R76,
+R77, R79, R86, R87, R88, R89, R91 — plus R93's own retroactive proof) and
+[`docs/reports/phase3g-findings.md`](reports/phase3g-findings.md) (spec contradictions actually
+met, what the PRD got wrong, and defects found and deliberately not fixed). Commits run
+`1cfbd5a..HEAD`, ending at **final code sha `b0a4e7d`** — every commit after it is docs-only. The
+phase spent six approaches, distinguished only by their task-id range and each using the same
+`<area>: <why> (task NNN)` commit-subject convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and
+R83–R92 outright and left two gaps in R82; 02 (`1NN`, tasks 101–113) closed one of those gaps and
+the phase's dialog/footer/report-hygiene residue; 03 (`2NN`, tasks 201–214) closed the three
+independent-review findings from that review pass; 04 (`3NN`, tasks 301–309) re-synchronised the
+scenarios review found still racing; 05 (`5NN`, tasks 501–512) fixed three more races found under
+load and drove the stability gate toward 10/10; 06 (`6NN`, tasks 601–608, this entry among them)
+is the reporting tail that closes the gates by citation, re-verifies every guard and writes this
+close-out.
 
-**The two suite-determinism gates, both run once, neither re-run to improve the number.** The whole
-suite is green at the final code commit `9f61e21`: `ci/run.sh go test -p=1 -count=1 ./...`, exit 0,
-every package `ok` or `[no test files]`, features package **311 scenarios, 311 passed, 0 failed**
-(task 111, [log](reports/phase3g-111-fullsuite/full-suite.log),
-[report](reports/phase3g-111-fullsuite/README.md)) — up from the pre-fix state of record `b6cbbc7`'s
-3 failing scenarios (F24–F26, fixed by tasks 101–103). `ci/stability.sh 10` at that same code sha is
-**9/10, script exit status 1**, ten runs commissioned, ten run, none re-run and none relabelled
-(task 112, [summary log](reports/phase3g-112-stability10/stability-summary.log),
-[run 7's log](reports/phase3g-112-stability10/run-7.log),
-[report](reports/phase3g-112-stability10/README.md)). Run 7's failure is **not** F2 and **not**
-F22 (Phase 3f's two standing, out-of-scope flakes) — it is root-caused to an unsynchronised
-assertion in `features/filter.feature`'s dd/undo scenario racing the product's own asynchronous undo
-write (`internal/tui/tui.go:2663-2672`), established from the committed log and the code it names
-rather than blamed on host load, and left open as a candidate follow-up rather than claimed fixed.
+**The two suite-determinism gates, both closed by citation of a measurement already held at the
+final code tree, neither re-run to move a number.** The whole suite is green at the final code sha
+`b0a4e7d`: `ci/run.sh go test -p=1 -count=1 ./...`, captured exit status **`0`**, 17/17 Go packages
+accounted for (14 `ok`, 3 `[no test files]`), 311 Gherkin scenarios (311 passed), swept once at the
+docs-only descendant `b4c90ca`, whose empty code-pattern diff back to `b0a4e7d` proves the tree is
+identical (task 604, [report](reports/phase3g-604-fullsuite/README.md),
+[exit status](reports/phase3g-604-fullsuite/full-suite.exitstatus)). `ci/stability.sh 10` at that
+same final code sha is **10/10 passed, script exit status 0** — task 507's round 3, quoted
+verbatim from [`phase3g-507-stability10/round3/summary.log`](reports/phase3g-507-stability10/round3/summary.log)
+and closed by citation rather than a re-run in task 605's own note
+([report](reports/phase3g-605-stability-gate/README.md)), backed by an empty code-pattern diff
+from the measurement's launch commit `16186e3` all the way to `HEAD`.
 
-**One requirement is published partial, not rounded up to met.** R82 (dialogs are themed) is
-**partial**: task 016's own create-modal theming pass reported its success criteria unsatisfiable
-(a pre-existing PTY assertion could not survive full §11.6 theming), and the report of that
-unsatisfiability stands as delivered; task 021's separate residual gap — the rename dialog's focused
-field never got the `theme.Selection` background §11.4 requires — was closed later, by task 105
-(`ea6ce4b`). The per-requirement table in `docs/reports/phase3g.md` carries the distinction; nothing
-else in the seventeen is less than fully met. **One pre-existing scenario is a known, disclosed, open
-regression, not fixed here**: `features/status_recovery.feature`'s "already-running, never an error"
-scenario races R76's own repair (the scenario's fake `SessionEnd` fires into a still-live pane, which
-R76 now self-heals before the scenario's frame-read assertion can observe the pre-repair text) — a
-genuine interaction between two requirements, recorded in `docs/reports/phase3g.md`'s own "known open
-regression" section, out of scope for a report-writing task to fix.
+**R82 (dialogs are themed) is resolved, not partial.** Task 016's own create-modal theming pass
+reported its success criteria unsatisfiable (a pre-existing PTY assertion could not survive full
+§11.6 theming), and that unsatisfiability was itself a genuine `SPEC.md`-vs-PRD contradiction
+rather than a standing-rule collision — resolved by task 203, per the PRD's own precedence rule
+that `SPEC.md` wins (finding
+[F27](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)). Task 021's
+separate residual gap — the rename dialog's focused field never got the `theme.Selection`
+background §11.4 requires — was closed by task 105, `ea6ce4b` (finding
+[F18](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)). The
+per-requirement table in `docs/reports/phase3g.md` carries both closures; nothing in the eighteen
+requirements is less than fully met.
 
-**Close-out** (task 113): `docs/reports/phase3g-113-closeout/`. Protected-path audit **by sha, never
-by author or committer** (the run's own git identity and the operator's are the same string in this
-repo) — `git log --oneline 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md` is empty, and of
-the two shas the standing rules name as pre-authorised, only `2eed8de` actually touches a protected
-path (`SPEC.md`); `a03527c` touches only `docs/PLAN.md`, outside the protected set, so it is a
-vacuous member of the allow-list rather than a second real touch. A citation sweep run over both
-aggregator reports (`citation_sweep.py`) found and fixed eight previously-uncaught broken
-same-document anchor links in `docs/reports/phase3g.md`'s own table of contents — GitHub's heading
-slugger collapses an en dash between adjacent digits (`003–006`) to no separator at all rather than
-a hyphen, and drops the `×`/`↑`/`↓` glyphs in two more headings without substituting text, so the
-hand-written anchors guessing a hyphen or a spelled-out word did not resolve; corrected without
-moving any heading text, the same class of fix task 110 made in `phase3g-findings.md`. The sweep's
-known false-positive class (`prds/phase3g-field-backlog.md`'s own "Reports" section: "a sweep that
-greps a report's own prose for citations will flag the report describing itself") does not fire in
-this sweep, because it checks resolution, not keyword presence — the place it legitimately fires in
-this tree is `docs/reports/phase3g-findings.md` §4, whose own F2-recurrence grep excludes its own
-file for exactly that reason.
+**Four items are named open, never claimed fixed, exactly as this run's own standing rules
+require.** A genuine, durable lost update in `internal/service/reconcile.go`'s unconditional
+shell-liveness promotion, discovered while fixing a scenario-side synchronisation symptom in
+`attention_sort.feature` (finding
+[F31](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why), part of the
+F29–F32 cluster task 601 filed): diagnosed and measured (36/80 failures under synthetic load, 0 of
+them on the count assertion itself) but not fixed, because no requirement in this plan covers that
+promotion policy and a product change there would invalidate the already-held 10/10 gate. Two
+standing Phase 3f flakes, out of scope by this run's own rules and not reproduced by any tracked
+log this phase: `TestGoldenMinimumFrame`'s settle flake, F2
+([disposition](reports/phase3g-findings.md#4-f2--the-golden-frame-settle-flake-no-recurrence-found)),
+and `internal/interactive`'s `ByteArrivalPattern` connect-budget flake, F22
+([row](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)). And the
+`status_recovery.feature` dup-pane scenario's race against R76's own reconcile repair, first
+disclosed by task 002's evidence and carried as finding F20
+([row](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)) — its
+original scenario-level symptom was rewritten onto a store read by task 040, but the underlying
+interaction between R76's self-heal and any scenario that poses a terminal write into a still-live
+pane is a standing one, named here rather than declared closed.
+
+**Close-out.** [Task 113's original close-out](reports/phase3g-113-closeout/README.md) covered
+approaches 01–02's protected-path audit and citation sweeps; approach 06's own
+[close-out section](reports/phase3g.md#close-out-approach-06) (task 607) supersedes it against the
+phase's true final state — the final-sha attestation, both gates above, the seven-guard
+re-verification (task 606, [report](reports/phase3g-606-guards/README.md)), every approach this
+run spent with its task-id range, and a table of every approach 01–05 task that ended in a
+non-`completed` status naming, for each, the sha(s) and tracked evidence directory (or open
+finding) that actually delivered its scope. This paragraph is the delivery-log half that table's
+rows 042, 309 and 511 point at; its own undelivered state was carried as open residual finding F35
+until this commit, which closes it.
 
 ## Other milestones
 
