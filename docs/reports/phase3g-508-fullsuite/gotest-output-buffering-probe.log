@@ -1,0 +1,18 @@
+go version go1.25.13 linux/amd64
+=== a passing package prints STDOUT/STDERR/t.Log; run the mandated non-verbose form ===
+$ go test -p=1 -count=1 ./...
+ok  	probe/a	0.002s
+ok  	probe/b	0.002s
+=== same tree, verbose ===
+$ go test -p=1 -count=1 -v ./...
+=== RUN   TestA
+STDOUT-TALLY: 311 scenarios (311 passed)
+STDERR-TALLY: 311 scenarios (311 passed)
+    a_test.go:3: TLOG-TALLY: 311 scenarios
+--- PASS: TestA (0.00s)
+PASS
+ok  	probe/a	0.002s
+=== RUN   TestB
+--- PASS: TestB (0.00s)
+PASS
+ok  	probe/b	0.002s
