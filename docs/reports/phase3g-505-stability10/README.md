@@ -16,9 +16,14 @@ tmux/godog flake fixes are landed and nothing else has changed since.
   nohup sh -c 'timeout 7200 ci/stability.sh 10 > /run/ralphd/artifacts/stability-505.log 2>&1; s=$?; printf "%s\n" "$s" > /run/ralphd/artifacts/stability-505.exitstatus' &
   ```
 
-- Wall clock: started 2026-08-29 06:56:47 UTC, finished 2026-08-29 07:59:26
-  UTC — 62m39s for 10 runs (~62 min, under the ~70–80 min the standing notes
-  estimate).
+- Wall clock: started 2026-08-29 06:56:47 UTC (the shell call that captured
+  `git rev-parse HEAD` and launched the driver), **finished 2026-08-29
+  07:57:31 UTC** — the moment the driver wrote its last line to
+  `/run/ralphd/artifacts/stability-505.log` and the wrapper wrote
+  `stability-505.exitstatus`. Elapsed: **60m44s** for 10 runs, under the
+  ~70–80 min the standing notes estimate. (An earlier revision of this file
+  said "finished 07:59:26 UTC — 62m39s"; 07:59:26 was only when the polling
+  shell next looked, not when the run ended. See **Corrections** below.)
 - **Script exit status** (captured with `s=$?` in the same shell call that
   launched it, never through a pipe): `1` — see `script.exitstatus` in this
   directory. A non-zero script exit is expected and correct whenever any of
@@ -36,23 +41,32 @@ gate (10/10 required); it is the honest measurement at this tree.
 
 ## Per-run PASS/FAIL table
 
-| Run | Result | Wall (from driver.log timestamps) | Per-run log |
-|-----|--------|-----------------------------------|-------------|
-| 1   | PASS   | ~6 min                            | `run-1.log` |
-| 2   | PASS   | ~6 min                            | `run-2.log` |
-| 3   | PASS   | ~6 min                            | `run-3.log` |
-| 4   | PASS   | ~6 min                            | `run-4.log` |
-| 5   | **FAIL** | ~6 min                          | `run-5.log` |
-| 6   | PASS   | ~6 min                            | `run-6.log` |
-| 7   | PASS   | ~7 min                            | `run-7.log` |
-| 8   | PASS   | ~6 min                            | `run-8.log` |
-| 9   | PASS   | ~6 min                            | `run-9.log` |
-| 10  | PASS   | ~6 min                            | `run-10.log` |
+PASS/FAIL comes from `driver.log`'s `=== RUN n: PASS/FAIL (exit N) ===`
+markers, cross-checked against each `run-N.log`'s own `ok`/`FAIL` package
+lines. **`driver.log` carries no timestamps**, so no per-run wall clock can be
+read from it; the time column below is instead each run's own summed package
+test time, derived from that run's tracked `run-N.log` (`go test -p=1` runs
+packages serially, so the sum is the run's test time excluding per-run
+container start and build):
 
-Source: `driver.log` in this directory (the top-level `=== RUN n: PASS/FAIL
-(exit N) ===` markers from `ci/stability.sh`'s own stdout, captured by the
-launch command above) cross-checked against each `run-N.log`'s own `ok`/`FAIL`
-package lines.
+| Run | Result | Test time, summed from `run-N.log`'s package durations | Per-run log |
+|-----|--------|--------------------------------------------------------|-------------|
+| 1   | PASS   | 359.7s (5m59s)                                         | `run-1.log` |
+| 2   | PASS   | 355.9s (5m55s)                                         | `run-2.log` |
+| 3   | PASS   | 355.5s (5m55s)                                         | `run-3.log` |
+| 4   | PASS   | 356.5s (5m56s)                                         | `run-4.log` |
+| 5   | **FAIL** | 362.6s (6m02s)                                       | `run-5.log` |
+| 6   | PASS   | 364.0s (6m04s)                                         | `run-6.log` |
+| 7   | PASS   | 366.8s (6m06s)                                         | `run-7.log` |
+| 8   | PASS   | 365.5s (6m05s)                                         | `run-8.log` |
+| 9   | PASS   | 363.7s (6m03s)                                         | `run-9.log` |
+| 10  | PASS   | 363.7s (6m03s)                                         | `run-10.log` |
+
+Those ten sums total 3613.9s (60m14s), which is 30s short of the 60m44s
+end-to-end elapsed above — the residue is the ten `--rm` sibling containers'
+start-up and Go build time, which no tracked log records per run. Nothing
+here is a claim about when an individual run started or ended: that is not
+recoverable from the committed evidence.
 
 ## The one real failure
 
@@ -119,6 +133,38 @@ itself** (only `TestSigwinchCountDistinguishesTwoFromThree` gets a `--- FAIL:`
 line in run 5). In the 9 PASS runs this self-test still executes every time
 (it is unconditional) but its output is not visible because Go suppresses a
 passing package's captured stdout without `-v`.
+
+## Corrections after validation attempt 1
+
+The first revision of this README (commit `16c3697`) was accurate about the
+measurement itself — rate, exit status, the single named failure, the frozen
+tree — but overstated two things about *timing*, and the iteration that
+produced it deviated from the prescribed execution shape. All three are
+recorded here rather than quietly edited away; the follow-up commit that adds
+this section changes no log file and no measured number.
+
+1. **End time and elapsed were wrong.** "finished 07:59:26 UTC — 62m39s" was
+   the poll time at which the completed run was *noticed*. The driver's own
+   last write to `/run/ralphd/artifacts/stability-505.log`, and the wrapper's
+   write of `stability-505.exitstatus`, both landed at 07:57:31 UTC, so the
+   run took 60m44s, not 62m39s. Corrected above.
+2. **The per-run wall column cited a source that does not exist.** It said
+   "from driver.log timestamps"; `driver.log` has no timestamps (see it in
+   this directory — it is RUN markers and the tally line only). The column is
+   replaced above with per-run test time summed from each tracked `run-N.log`,
+   which is genuinely derivable from committed evidence, and the table now
+   states plainly that per-run start/end times are not recoverable.
+3. **Execution-shape deviation during the active run.** The criteria pin this
+   task to a run-only iteration (launch, then poll with `grep '^=== RUN' …`).
+   While runs 6–10 were still pending, that iteration additionally read
+   `ci/stability.sh`, listed `/tmp/deck-stability.*`, and grepped/sed'd run 5's
+   log to identify its failure. Those are read-only commands on the job
+   container and no evidence here depends on them, but they are extra load on
+   the machine measuring a timing-sensitive suite, i.e. exactly what the
+   run-only rule exists to exclude. The 9/10 stands as the measurement of
+   record and is not re-run to chase a better number (the standing rules
+   forbid that); a future round should treat the poll loop as the only
+   permitted command until the driver exits.
 
 ## Files in this directory
 
