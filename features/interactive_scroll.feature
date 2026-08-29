@@ -109,7 +109,7 @@ Feature: Interactive mode's own bounded scrollback (Part II, requirement 51)
     When deck client "A" sends shift+pgup 3 times
     Then deck client "A" screen contains "Do you want to proceed?"
     And the state database session "ig-claude" has probe status "error" with reason "api error"
-    And within one configured reconcile interval deck client "B" row "ig-claude" contains "sampled"
+    And within several probe/repair cycles deck client "B" row "ig-claude" contains "sampled"
     When deck client "A" sends shift+pgdown 3 times
     Then deck client "A" screen does not contain "Do you want to proceed?"
     And deck client "A" screen contains "API Error"

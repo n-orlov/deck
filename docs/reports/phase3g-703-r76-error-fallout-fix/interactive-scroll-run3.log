@@ -1,0 +1,113 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m Interactive mode's own bounded scrollback (Part II, requirement 51)
+  The grid keeps its own bounded scrollback, and the wheel and
+  Shift+PgUp/PgDn scroll it (docs/reports/phase3b.md's II-51 section,
+  internal/interactive.ScrollbackMaxLines). This proves the scrolling
+  itself against a real tmux pane, real deck client and real terminal
+  input, not merely the internal RenderRows/offset arithmetic
+  internal/interactive's own unit tests already cover: content genuinely
+  scrolled off the live screen becomes visible again once scrolled back
+  to, by both input methods, and disappears again once scrolled back down
+  to the live view.
+=== RUN   TestFeatures/Shift+PgUp/PgDn_scroll_the_interactive_grid's_own_scrollback
+
+  [1;37mScenario:[0m Shift+PgUp/PgDn scroll the interactive grid's own scrollback                                           [1;30m# interactive_scroll.feature:14[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "scroll-target"[0m                                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "scroll-target"[0m                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" selects session "scroll-target"[0m                                                            [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                                   [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "A" types a 60-line numbered loop labelled "INTERACTIVE_SCROLL_LINE" into the interactive pane[0m [1;30m# interactive_scroll_test.go:18 -> github.com/n-orlov/deck/features.clientTypesNumberedLoopIntoInteractivePane[0m
+    [32mThen[0m [32mdeck client "A" screen contains "INTERACTIVE_SCROLL_LINE_60"[0m                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "INTERACTIVE_SCROLL_LINE_1 "[0m                                       [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" sends shift+pgup 3 times[0m                                                                  [1;30m# interactive_scroll_test.go:20 -> github.com/n-orlov/deck/features.clientSendsShiftPgUpNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains "INTERACTIVE_SCROLL_LINE_1 "[0m                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends shift+pgdown 3 times[0m                                                                [1;30m# interactive_scroll_test.go:21 -> github.com/n-orlov/deck/features.clientSendsShiftPgDownNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "INTERACTIVE_SCROLL_LINE_1 "[0m                                      [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "INTERACTIVE_SCROLL_LINE_60"[0m                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                   [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_mouse_wheel_over_the_preview_panel_scrolls_the_interactive_grid's_own_scrollback
+
+  [1;37mScenario:[0m the mouse wheel over the preview panel scrolls the interactive grid's own scrollback                     [1;30m# interactive_scroll.feature:33[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "wheel-scroll-target"[0m                                                 [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "wheel-scroll-target"[0m                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" selects session "wheel-scroll-target"[0m                                                        [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                                     [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "A" types a 60-line numbered loop labelled "WHEEL_SCROLL_LINE" into the interactive pane[0m         [1;30m# interactive_scroll_test.go:18 -> github.com/n-orlov/deck/features.clientTypesNumberedLoopIntoInteractivePane[0m
+    [32mThen[0m [32mdeck client "A" screen contains "WHEEL_SCROLL_LINE_60"[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "WHEEL_SCROLL_LINE_1 "[0m                                               [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" scrolls the interactive wheel up 20 times over the line containing "WHEEL_SCROLL_LINE_60"[0m   [1;30m# interactive_scroll_test.go:22 -> github.com/n-orlov/deck/features.clientScrollsInteractiveWheelUpOverLineContaining[0m
+    [32mThen[0m [32mdeck client "A" screen contains "WHEEL_SCROLL_LINE_1 "[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" scrolls the interactive wheel down 20 times over the line containing "WHEEL_SCROLL_LINE_1 "[0m [1;30m# interactive_scroll_test.go:23 -> github.com/n-orlov/deck/features.clientScrollsInteractiveWheelDownOverLineContaining[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "WHEEL_SCROLL_LINE_1 "[0m                                              [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                     [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/typing_while_scrolled_back_snaps_the_view_back_to_the_live_bottom
+
+  [1;37mScenario:[0m typing while scrolled back snaps the view back to the live bottom                               [1;30m# interactive_scroll.feature:51[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "scroll-snap-target"[0m                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "scroll-snap-target"[0m                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" selects session "scroll-snap-target"[0m                                                [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                            [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "A" types a 60-line numbered loop labelled "SNAP_SCROLL_LINE" into the interactive pane[0m [1;30m# interactive_scroll_test.go:18 -> github.com/n-orlov/deck/features.clientTypesNumberedLoopIntoInteractivePane[0m
+    [32mThen[0m [32mdeck client "A" screen contains "SNAP_SCROLL_LINE_60"[0m                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends shift+pgup 3 times[0m                                                           [1;30m# interactive_scroll_test.go:20 -> github.com/n-orlov/deck/features.clientSendsShiftPgUpNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains "SNAP_SCROLL_LINE_1 "[0m                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" types "echo AFTER_SNAP" and Enter into the interactive pane[0m                        [1;30m# interactive_scroll_test.go:19 -> github.com/n-orlov/deck/features.clientTypesTextAndEnterIntoInteractivePane[0m
+    [32mThen[0m [32mdeck client "A" screen contains "AFTER_SNAP"[0m                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "SNAP_SCROLL_LINE_1 "[0m                                       [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                            [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/scrolling_the_interactive_grid's_own_scrollback_never_flips_the_session's_badge,_and_the_probe_reads_the_pane's_live_bottom,_not_the_scrolled-back_view
+
+  [1;37mScenario:[0m scrolling the interactive grid's own scrollback never flips the session's badge, and the probe reads the pane's live bottom, not the scrolled-back view [1;30m# interactive_scroll.feature:86[0m
+    [32mGiven[0m [32mprobe fixture agents for interactive-scroll are configured[0m                                                                                                [1;30m# interactive_scroll_test.go:27 -> github.com/n-orlov/deck/features.configureAttachScrollProbeScenario[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "ig-claude" with permission profile "safe"[0m                                                                          [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "ig-claude"[0m                                                                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                                                                                    [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mAnd[0m [32mfake agent session "ig-claude" renders golden fixture "claude/waiting.txt"[0m                                                                                  [1;30m# status_probe_test.go:21 -> github.com/n-orlov/deck/features.renderGoldenFixture[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Do you want to proceed?"[0m                                                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mfake agent session "ig-claude" renders these exact golden fixtures:[0m                                                                                        [1;30m# status_probe_test.go:22 -> github.com/n-orlov/deck/features.renderGoldenFixtures[0m
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/running.txt[0m |
+      | [36mclaude/error.txt[0m   |
+    [32mThen[0m [32mdeck client "A" screen contains "API Error"[0m                                                                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "Do you want to proceed?"[0m                                                                                           [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" sends shift+pgup 3 times[0m                                                                                                                   [1;30m# interactive_scroll_test.go:20 -> github.com/n-orlov/deck/features.clientSendsShiftPgUpNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Do you want to proceed?"[0m                                                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "ig-claude" has probe status "error" with reason "api error"[0m                                                                     [1;30m# status_probe_test.go:26 -> github.com/n-orlov/deck/features.databaseSessionProbeStatus[0m
+    [32mAnd[0m [32mwithin several probe/repair cycles deck client "B" row "ig-claude" contains "sampled"[0m                                                                       [1;30m# interactive_scroll_test.go:28 -> github.com/n-orlov/deck/features.clientRowContainsAcrossSeveralProbeCycles[0m
+    [32mWhen[0m [32mdeck client "A" sends shift+pgdown 3 times[0m                                                                                                                 [1;30m# interactive_scroll_test.go:21 -> github.com/n-orlov/deck/features.clientSendsShiftPgDownNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "Do you want to proceed?"[0m                                                                                          [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "API Error"[0m                                                                                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                                                                    [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                                                               [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                                                                                               [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+4 scenarios ([32m4 passed[0m)
+68 steps ([32m68 passed[0m)
+8.228216703s
+--- PASS: TestFeatures (8.23s)
+    --- PASS: TestFeatures/Shift+PgUp/PgDn_scroll_the_interactive_grid's_own_scrollback (1.63s)
+    --- PASS: TestFeatures/the_mouse_wheel_over_the_preview_panel_scrolls_the_interactive_grid's_own_scrollback (1.56s)
+    --- PASS: TestFeatures/typing_while_scrolled_back_snaps_the_view_back_to_the_live_bottom (1.57s)
+    --- PASS: TestFeatures/scrolling_the_interactive_grid's_own_scrollback_never_flips_the_session's_badge,_and_the_probe_reads_the_pane's_live_bottom,_not_the_scrolled-back_view (3.43s)
+PASS
+ok  	github.com/n-orlov/deck/features	8.244s

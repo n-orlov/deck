@@ -34,6 +34,13 @@ func registerAttachScrollSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" attached pane shows "([^"]+)"$`, clientAttachedPaneShowsText)
 }
 
+// attachScrollProbeStaleAfter is the stale_after configureAttachScrollProbeScenario
+// writes below, named so a caller that needs to reason about the resulting
+// probe/repair oscillation period (features/interactive_scroll_test.go's
+// clientRowContainsAcrossSeveralProbeCycles) shares the one source of truth
+// instead of re-typing the duration.
+const attachScrollProbeStaleAfter = time.Second
+
 // configureAttachScrollProbeScenario is requirement 49's own, deliberately
 // smaller cousin of features/status_probe_test.go's configureProbeScenario:
 // it needs a claude fixture that can render probe golden fixtures and a
@@ -56,7 +63,7 @@ func configureAttachScrollProbeScenario(ctx context.Context) error {
 		return err
 	}
 	fixtureDir := filepath.Join(root, "internal", "agent", "testdata", "probes")
-	config := fmt.Sprintf("stale_after = \"1s\"\n[env]\nFAKE_AGENT_FIXTURE_DIR = %q\n", fixtureDir)
+	config := fmt.Sprintf("stale_after = %q\n[env]\nFAKE_AGENT_FIXTURE_DIR = %q\n", attachScrollProbeStaleAfter.String(), fixtureDir)
 	return os.WriteFile(filepath.Join(h.Home, "config.toml"), []byte(config), 0o600)
 }
 
