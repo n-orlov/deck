@@ -1,6 +1,65 @@
 # Phase 3g task 507 — `ci/stability.sh 10` at the final code tree
 
-## Round 2 supersedes round 1 — 10/10
+## Round 3 is the authoritative measurement — 10/10, `round3/`
+
+Round 3 re-measures the same code tree as round 2 in an iteration that
+contained **nothing but the prescribed launch and its `grep` polls**. Round 2's
+numbers below are not disputed and its evidence is kept, but the iteration that
+produced them also did other work first (a `gofmt`/`vet` pass, targeted test
+runs, committing and pushing the fix `b0a4e7d`, and one aborted launch attempt
+with a stray `echo`), so it did not satisfy the task's "nothing else that
+iteration" requirement on the measurement's execution shape. Round 3 does.
+
+- **Launch commit** (`git rev-parse HEAD`, printed by the same shell call that
+  issued the launch line, with nothing else in that call):
+  `16186e38ed4a987fc8788bab8ef9192c4788fe5b`.
+- **Launch command**, the only other thing in that shell call, byte-for-byte as
+  prescribed:
+
+  ```
+  nohup sh -c 'timeout 7200 ci/stability.sh 10 > /run/ralphd/artifacts/stability-507.log 2>&1; s=$?; printf "%s\n" "$s" > /run/ralphd/artifacts/stability-507.exitstatus' &
+  ```
+
+- Between that launch and the driver exiting, the only commands issued were
+  three polls of the form `sleep N; grep '^=== RUN'
+  /run/ralphd/artifacts/stability-507.log` (N = 900, 1800, 1500) — no `echo`,
+  no `cat`, no `ls`, no per-run log read, no editing, no test run, nothing else
+  touched the machine while the suite ran. Everything in this section other than
+  the launch sha was read only after the third poll showed `=== RUN 10: PASS`.
+- **Result:** `10/10 passed` — the verbatim last line of `round3/summary.log`
+  and of `round3/driver.log`. All ten per-run labels read
+  `=== RUN i: PASS (exit 0)`; `grep -c 'PASS (exit 0)' round3/summary.log` = 10,
+  `grep -c FAIL round3/summary.log` = 0. **No failures, so there is no failure
+  log path to name.**
+- **Script exit status**, captured with `s=$?` in the same shell call that ran
+  the script and never through a pipe: `0`, committed as
+  `round3/script.exitstatus` (2 bytes: the digit and its newline).
+- **Tracked evidence:** `round3/run-1.log` … `round3/run-10.log` (the ten
+  per-run logs, one per run, each 894 bytes), `round3/summary.log` (192 lines,
+  9464 bytes, the script's own combined log), `round3/driver.log` (22 lines,
+  524 bytes, the launcher's captured stdout/stderr). All are files in this
+  repository, not paths that exist only on the measuring machine.
+- **Frozen-tree proof:** the launch sha *is* `HEAD` —
+  `git diff 16186e38ed4a987fc8788bab8ef9192c4788fe5b..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum`
+  is empty (no output at all), and `git status --porcelain` was empty at launch,
+  so the measured code tree is byte-identical to the phase's final code tree.
+  `16186e3` is itself a docs-only commit on top of the fix `b0a4e7d`, so this
+  round and round 2 measured the same code.
+- **Wall time:** the per-run log mtimes run `14:27` → `15:21` container-local,
+  i.e. ~6 minutes per run and ~60 minutes for the ten, consistent with the
+  70–80 minute budget the task allows.
+- **What the ten runs do and do not cover (unchanged from round 2, restated
+  here so this section stands alone):** every run is
+  `ci/run.sh go test -p=1 -count=1 ./...`, i.e. the whole module, with
+  `features/godog_test.go`'s `defaultTags` excluding `@real-agents` and
+  `@nightly` (`~@real-agents && ~@nightly`, unedited by this run), and with
+  `internal/notify`, `internal/search` and `internal/unit` reporting
+  `[no test files]` — visible verbatim in every per-run log. `features`'
+  harness self-test `TestGodogRejectsUndefinedAndFailedSteps` injects a
+  deliberate failing step on every run; it is part of a passing package and is
+  not a product failure.
+
+## Round 2 (superseded by round 3 on execution shape only) — 10/10
 
 Round 1 (below, kept for history — its numbers are not disputed) measured
 **9/10** at commit `7fa6f890`, with the sole failure the recurring
