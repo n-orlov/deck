@@ -1321,6 +1321,72 @@ guard removed, added after the first validation round) against
 [`phase3g-808-footer-handler-agreement/`](phase3g-808-footer-handler-agreement/) (8
 tracked files).
 
+### Citation check for both finding sections (task 809)
+
+The two finding sections above were written by `4c7bf2a`; this subsection is the
+citation check the task's criteria require, run against the tree at the follow-up
+docs-only commit that adds it (both commits touch only paths under `docs/`, confirmed
+by `git show --stat`). All three checks pass:
+
+- **Every sha cited in the two new sections resolves.** The 22 distinct short shas
+  appearing in the added text and in the rewritten R76/R80 table rows —
+  `89fcffc`, `15e33c6`, `904419c`, `51b7f17`, `d266346`, `794313f`, `89edd3c`,
+  `608e030`, `5ea9475`, `2094b83`, `bedb65a`, `46dad5e`, `4651653`, `f5977d4`,
+  `745a25b`, `f9611b7`, `ebbc3fd`, `41ae9cd`, `b7a3a81`, `b434079`, `33e7935`,
+  `fdf4507` — each pass `git cat-file -e <sha>^{commit}` (22 OK, 0 unresolvable).
+  Task 802 deliberately carries **no** sha, for the reason its own subsection gives.
+- **Every linked path is tracked.** Each of the ten markdown links in the added text
+  (`phase3g-701-r76-bare-error/`, `phase3g-702-r76-error-fallout/` and its
+  `README.md`, `phase3g-703-r76-error-fallout-fix/`,
+  `phase3g-803-hook-truth-stopfailure/`, `phase3g-804-sort-order-error-route/`,
+  `phase3g-805-stale-tmux-verdict/`, `phase3g-806-archive-eligibility/`,
+  `phase3g-807-kill-eligibility/`, `phase3g-808-footer-handler-agreement/`) is listed
+  non-empty by `git ls-files`, with the tracked-file counts quoted in each subsection
+  (7, 5, 17, 9, 13, 12, 15, 6, 8) matching `git ls-files | wc -l` for that directory
+  exactly. Every product/test path cited in prose (`internal/service/reconcile.go`,
+  `internal/service/reconcile_bare_error_repair_test.go`,
+  `internal/tui/archive_eligibility_test.go`,
+  `internal/tui/kill_key_eligibility_test.go`,
+  `internal/tui/footer_handler_agreement_test.go`,
+  `internal/tui/footer_legend_test.go`,
+  `internal/tui/footer_bindings_parity_test.go`, `features/crash_test.go`,
+  `features/sort_order.feature`, `features/status_recovery.feature`,
+  `features/status_claude_hooks.feature`, `features/kill_delete_undo.feature`,
+  `docs/reports/phase3g-findings.md`) is likewise tracked, and every bare log
+  filename cited (`red-pre-fix.log`, `green-post-fix.log`, `features-suite.log`,
+  `run1.log`–`run5.log`, `interactive-scroll-run1.log`, `full-features-suite.log`,
+  `full-features-suite-after-interactive-scroll-fix.log`, `pre-change-red.log`,
+  `post-change-run1.log`, `red-worktree-trial.log`, `green-run-1.log`,
+  `green-run-5.log`, `red-mutation.log`, `red-mutation-inlined-copy.log`,
+  `red-mutation-no-check.log`, `red-mutation-no-cankill-check.log`,
+  `red-mutation-full-package.log`, `red-mutation-no-canRestart-check.log`,
+  `red-mutation-no-canReachPane-check.log`, `green-mutation-reverted.log`,
+  `green-mutations-reverted.log`, `green-mutation-reverted-full-package.log`,
+  `green-mutation-reverted-canReachPane-check.log`) resolves to a tracked file inside
+  the evidence directory its own subsection names. The one non-repository path in the
+  added text (`/run/ralphd/artifacts/phase3g-802-unsatisfiable/`) is labelled
+  untracked and outside the repository at the sentence that cites it, and
+  `docs/reports/phase3g-802-live-error-attach/` is disclosed as empty and untracked
+  (`git ls-files` returns nothing for either). `citation_sweep.py` reports no new
+  unresolved citation beyond the two pre-existing ones it already documents
+  (`/run/ralphd/approaches/NN/tasks.json`, `9/10`).
+- **Both new sections appear in the document's own section list.**
+  `grep -n '^## ' docs/reports/phase3g.md` lists
+  `## Review finding 1 — R76's error branch and its scenario fallout (tasks 701, 702, 703, 802–805)`
+  and
+  `## Review finding 2 — R80's one-definition-per-action (tasks 806–808)`
+  between `## Known open regression, …` and `## Per-requirement table`, and the three
+  in-document anchors used above
+  (`#review-finding-1--r76s-error-branch-and-its-scenario-fallout-tasks-701-702-703-802805`,
+  `#review-finding-2--r80s-one-definition-per-action-tasks-806808`,
+  `#known-open-regression-discovered-by-task-002s-own-evidence-not-fixed-here`) are the
+  GitHub slugs of those headings.
+
+Neither finding section claims a closure task 802–808 did not deliver: task 802 is
+recorded `skipped`/unsatisfiable with no sha and its scenario still red, and task 806
+is recorded `failed` with the residual criterion it missed named explicitly, both in
+the subsections above and in the R76/R80 rows below.
+
 ## Per-requirement table
 
 | req | status | tasks | shas | red/green quoted |
