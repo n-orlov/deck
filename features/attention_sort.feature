@@ -97,7 +97,9 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     And the state database session "cnt-wait" has status "waiting" 5 seconds ago
     And the state database session "cnt-err" has status "error" 5 seconds ago
     And the state database session "cnt-idle" has status "idle" 5 seconds ago
-    Then within one configured reconcile interval deck client "A" screen contains "waiting"
+    Then within one configured reconcile interval deck client "A" row "cnt-wait" contains "waiting"
+    And within one configured reconcile interval deck client "A" row "cnt-err" contains "error"
+    And within one configured reconcile interval deck client "A" row "cnt-idle" contains "idle"
     When deck client "A" sends "|"
     And deck client "A" sends "|"
     And deck client "A" sends "|"

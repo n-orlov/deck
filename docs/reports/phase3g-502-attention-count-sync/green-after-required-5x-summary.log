@@ -1,0 +1,5 @@
+run 1: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
+run 2: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
+run 3: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
+run 4: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
+run 5: cmd=`ci/run.sh env DECK_GODOG_PATHS=attention_sort.feature go test ./features/ -run TestFeatures -count=1` exit=0
