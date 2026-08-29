@@ -1323,17 +1323,36 @@ tracked files).
 
 ### Citation check for both finding sections (task 809)
 
-The two finding sections above were written by `4c7bf2a`; this subsection is the
-citation check the task's criteria require, run against the tree at the follow-up
-docs-only commit that adds it (both commits touch only paths under `docs/`, confirmed
-by `git show --stat`). All three checks pass:
+The two finding sections above were written by `4c7bf2a`; `18063cf` added this
+subsection, and a third docs-only commit — the one that adds the paragraph you are
+reading — replaced its sha enumeration with the exhaustive one below. All three
+commits touch only paths under `docs/`, confirmed by `git show --stat`. All three
+checks pass, and each names the command that produces its result:
 
-- **Every sha cited in the two new sections resolves.** The 22 distinct short shas
-  appearing in the added text and in the rewritten R76/R80 table rows —
-  `89fcffc`, `15e33c6`, `904419c`, `51b7f17`, `d266346`, `794313f`, `89edd3c`,
-  `608e030`, `5ea9475`, `2094b83`, `bedb65a`, `46dad5e`, `4651653`, `f5977d4`,
-  `745a25b`, `f9611b7`, `ebbc3fd`, `41ae9cd`, `b7a3a81`, `b434079`, `33e7935`,
-  `fdf4507` — each pass `git cat-file -e <sha>^{commit}` (22 OK, 0 unresolvable).
+- **Every sha cited in the new text resolves — the enumeration is the extraction
+  command's output, not a hand-kept list.** The audited region is every line this
+  task's commits add to this file, and the tokens are read off it mechanically:
+
+  ```
+  git diff 4c7bf2a^..HEAD -- docs/reports/phase3g.md | grep '^+' \
+    | grep -oE '\b[0-9a-f]{7,40}\b' | sort -u
+  ```
+
+  with `HEAD` at this task's third and final commit. That yields **25** distinct
+  tokens, every one of which passes `git cat-file -e <sha>^{commit}` (25 OK, 0
+  unresolvable): `15e33c6`, `1cfbd5a`, `2094b83`, `33e7935`, `41ae9cd`, `4651653`,
+  `46dad5e`, `4c7bf2a`, `51b7f17`, `5ea9475`, `608e030`, `745a25b`, `794313f`,
+  `89edd3c`, `89fcffc`, `904419c`, `b434079`, `b7a3a81`, `bedb65a`, `d266346`,
+  `ebbc3fd`, `f5977d4`, `f9611b7`, `fdf4507`, `18063cf`. Twenty-two of those are the
+  fixing/context shas the finding sections and the rewritten R76/R80 table rows cite;
+  the remaining three name commits rather than fixes — `1cfbd5a` (this run's base sha,
+  cited in task 802's subsection as the range endpoint proving
+  `features/status_attach.feature` was never edited) and `4c7bf2a` plus `18063cf`
+  (this task's own first two docs commits). `18063cf`'s published enumeration listed
+  only the 22 fixing shas while calling itself the set of shas "appearing in the added
+  text", so it omitted `1cfbd5a` and `4c7bf2a`: that omission — not an unresolvable
+  sha — is the gap this paragraph closes, and the command above, re-run at the final
+  commit, is the authority over any list typed by hand.
   Task 802 deliberately carries **no** sha, for the reason its own subsection gives.
 - **Every linked path is tracked.** Each of the ten markdown links in the added text
   (`phase3g-701-r76-bare-error/`, `phase3g-702-r76-error-fallout/` and its
