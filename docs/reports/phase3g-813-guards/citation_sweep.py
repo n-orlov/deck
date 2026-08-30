@@ -66,6 +66,15 @@ Known false-positive classes, disclosed rather than silently filtered:
      that this identifier is untracked lives in phase3g-findings.md's own
      F33, not repeated at every citing sentence -- deliberate and
      accounted for once per the pair of reports, not per occurrence.
+  G. (task 1005, new) `composite-prd.md` in F40's "Reviewer re-run note" is
+     this run's own /run/ralphd/composite-prd.md, outside the repository --
+     same wording gap as class C's `tasks.json`/`notes.md`, disclosed here
+     rather than silently passed. `internal/service/reconcile_bare_error_repair_test.go`,
+     also in that same note, is a file the tree no longer contains: task
+     902's `a1ca33e` deleted it, and the note cites its former path
+     precisely to name what a reviewer would have to restore (via `git show
+     608e030:<path>`) to reproduce the now-intentional failure -- the
+     non-resolution is the evidence, not a broken link.
 """
 import re
 import subprocess
@@ -278,6 +287,21 @@ def main():
             "a `.md` suffix and no repeated disclosure at that exact sentence. The "
             "disclosure exists elsewhere in the same two-file record (findings.md F33), "
             "so the citation is deliberate and accounted for, not silently missing."
+        ),
+        "composite-prd.md": (
+            "class G -- F40's task-1005 'Reviewer re-run note' cites this run's own "
+            "/run/ralphd/composite-prd.md, outside this repository, for its SPEC.md-wins "
+            "rule (lines 21-23). Same wording gap as class C's tasks.json/notes.md: not "
+            "prefixed with /run/ralphd/ and not carrying the explicit 'outside this "
+            "repository' label at the exact citing sentence, disclosed here instead."
+        ),
+        "internal/service/reconcile_bare_error_repair_test.go": (
+            "class G -- F40's task-1005 note cites this exact former path of task 701's "
+            "test (introduced at 89edd3c, last present at 608e030) to name what a "
+            "reviewer restores to reproduce the now-intentional failure; task 902's "
+            "a1ca33e deleted the file, so it no longer exists anywhere in the tree for "
+            "this or any other base directory to find. The non-resolution IS the "
+            "evidence the note is pointing at, not a broken link."
         ),
     }
 

@@ -143,7 +143,7 @@ as specified, the same class of case F20 already documents for a raw state-datab
 write — not a spec contradiction, and not grounds to loosen or bypass the repair.
 Evidence: [`phase3g-103-hook-sessionend-repair/`](phase3g-103-hook-sessionend-repair/).
 
-**Tasks 901/902, the repair narrowed to spare a bare hook/probe `error`** (approach
+**Tasks 901–906, the repair narrowed to spare a bare hook/probe `error`** (approach
 09). `SPEC.md` §7 disagrees with itself about what the live-pane self-heal repair
 exists to fix, recorded as [F40 in
 `phase3g-findings.md`](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
@@ -168,9 +168,32 @@ evidence that the narrowing reopens exactly the two scenarios review finding 1
 named, without editing either scenario's assertions:
 [`docs/reports/phase3g-904-review-finding-1/`](phase3g-904-review-finding-1/) (task
 904) — three consecutive green runs of `status_attach.feature` and
-`status_probe.feature`, diff-empty against `1cfbd5a`. The repair is therefore **no
-longer unconditional over `error` rows**: only a pane-exit or `tmux`/`user`-sourced
-`error` qualifies, never a bare hook/probe one.
+`status_probe.feature`, diff-empty against `1cfbd5a`. **Sha `3156a1a`** (task 903)
+restores `features/status_claude_hooks.feature`'s `StopFailure` assertion to the
+hook's own verdict (`error`/`tool_failure`, `notify_epoch=2`) now that the narrowed
+repair no longer reaches it — `bedb65a` (task 803) had re-pointed that assertion
+onto the repair's post-repair state only because `89edd3c`'s then-unconditional
+repair reached it; three consecutive green runs are recorded in
+[`phase3g-903-hook-error-verdict/`](phase3g-903-hook-error-verdict/). **Shas
+`0ddc4bc`/`4b148cb`** (task 905, plus `6193cae`/`dc66d99` recording its green
+`./internal/service/`/`./internal/tui/` package logs) correct every remaining
+source comment across `internal/service/`, `internal/tui/`, `internal/store/`
+and `features/` that still described the live-pane repair as unconditional over
+`error` rows, so the narrowed behaviour and its own in-tree documentation agree.
+**Shas `205e61e`/`774f62c`** (task 906) wrote this R76
+paragraph, quoting F40's adopted rule word for word rather than paraphrasing
+it; the [per-requirement table row](#per-requirement-table) below is brought to
+the same narrowed rule, and to name tasks 901–906, by task 1005. The repair is
+therefore **no longer unconditional over `error`
+rows**: only a pane-exit or `tmux`/`user`-sourced `error` qualifies, never a bare
+hook/probe one.
+
+Both scenarios review finding 1 named (`status_attach.feature:18`,
+`status_probe.feature`'s stale-sampling scenario) pass unedited under this
+narrower rule; task 802's own literal combination — re-pointing the status field
+while keeping the marker assertion — remains recorded `skipped`/unsatisfiable in
+`tasks.json` for the reason its own subsection gives, but the underlying gap it
+targeted closes here, by the narrowing itself, not by any scenario edit.
 
 ## R77 — a deleted session's name is reusable (tasks 003–006)
 
@@ -1440,7 +1463,7 @@ the subsections above and in the R76/R80 rows below.
 
 | req | status | tasks | shas | red/green quoted |
 |---|---|---|---|---|
-| R76 | met (review finding 1 closed by 701; one scenario left open, task 802 unsatisfiable — see [section](#review-finding-1--r76s-error-branch-and-its-scenario-fallout-tasks-701-702-703-802805)) | 001, 002, 103, 701, 702, 703, 802 (skipped), 803, 804, 805 | `89fcffc`, `15e33c6`, `904419c`, `51b7f17`, `89edd3c`, `608e030`, `5ea9475`, `2094b83`, `bedb65a`, `46dad5e`, `4651653` | yes |
+| R76 | met — narrowed by tasks 901–906 per finding F40: repair a `stopped` row under a live pane whatever its source; repair an `error` row that carries a pane-exit verdict or a `tmux`/`user` source; never repair a hook- or probe-sourced `error` row that carries no pane-exit verdict. Review finding 1's two named scenarios (`status_attach.feature:18`, `status_probe.feature`'s stale-sampling scenario) pass unedited under this narrowed rule (task 904); no scenario is left open. Task 802's own literal combination stays recorded `skipped`/unsatisfiable in `tasks.json`, but the underlying gap it targeted closes by the narrowing itself, not by any scenario edit — see [section](#review-finding-1--r76s-error-branch-and-its-scenario-fallout-tasks-701-702-703-802805) and [F40](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) | 001, 002, 103, 701, 702, 703, 802 (skipped), 803, 804, 805, 901, 902, 903, 904, 905, 906 | `89fcffc`, `15e33c6`, `904419c`, `51b7f17`, `89edd3c`, `608e030`, `5ea9475`, `2094b83`, `bedb65a`, `46dad5e`, `4651653`, `c19bdde`, `a1ca33e`, `3156a1a`, `ebb9b26`, `0ddc4bc`, `4b148cb`, `6193cae`, `dc66d99`, `205e61e`, `774f62c` | yes |
 | R77 | met | 003–006 | `b80a4bd`, `70162d4`, `be3df32`, `31510ab`, `c791a6a` | yes (task 003 leg) |
 | R78 | met | 007–009 | `47166c8`, `e699c31`, `3247a7a` | not required |
 | R79 | met (review finding 3 closed by 202, 214) | 010–011, 202, 214 | `c987953`, `e475660`, `8276450`, `e45bf2e`, `dd90a28`, `a46514e`, `6a01fe7` | yes |
