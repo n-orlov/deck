@@ -537,7 +537,7 @@ Rules:
   |---|---|
   | session gone | `stopped` — clean exit, `/exit`, `exit` in a shell, or an explicit kill |
   | session present, pane dead, status ≠ 0 | `error` with `pane_exit_status`, plus a crash tail captured *before* the session is torn down |
-  | session present, pane alive | keep the current status — unless it is terminal, which is the invariant violation below |
+  | session present, pane alive | keep the current status — unless the row *denies* the live pane, which is the invariant violation below |
 
   This is what makes a crash tail capturable at all — with the tmux default
   (`remain-on-exit off`) the pane and session vanish on death and there is nothing left to
@@ -557,13 +557,23 @@ Rules:
   no TUI running nothing collects at all, which is the unattended gap stated below rather
   than a new one.
 
-  **A terminal row with a live pane is an invariant violation, and the same pass repairs it.**
-  A terminal status — `stopped`, `error` — claims there is nothing running here, and a live,
-  non-dead pane is direct evidence against it. So when the reconcile observes one under a
-  terminal row it **corrects the row from what it can observe** (the liveness and probe rules
-  above), records the correction as an event, and touches the pane not at all: the pane is the
-  part that is right. Dead-pane collection is decided first, so a corpse is still collected
-  rather than mistaken for a live contradiction.
+  **A terminal row that denies a live pane is an invariant violation, and the same pass
+  repairs it.** A `stopped` row — whatever wrote it — and an `error` row that carries a
+  `pane_exit_status` or whose source is `tmux` or `user` all claim the process is gone, and a
+  live, non-dead pane is direct evidence against that claim. So when the reconcile observes
+  one under such a row it **corrects the row from what it can observe** (the liveness and
+  probe rules above), records the correction as an event, and touches the pane not at all:
+  the pane is the part that is right. Dead-pane collection is decided first, so a corpse is
+  still collected rather than mistaken for a live contradiction.
+
+  **A hook- or probe-sourced `error` with no `pane_exit_status` is not a violation, and is
+  never repaired.** It is this section's own transition-table row — `running → error` on a
+  turn or API failure — and nothing about a failed turn implies the pane died: the pane
+  being alive is what that state *describes*, not evidence against it. Repairing it would
+  erase the one verdict the hook channel exists to deliver, milliseconds after it arrived
+  and before anything could observe it. Nor is such a row action-wedged the way the repaired
+  shapes are: kill, resume and the rest read it as the live session it is, and
+  `error → running` on the next prompt or a retry that succeeds is its ordinary exit.
 
   This is the one self-healing rule in §7, and it earns that exception because the alternative
   is a row that every action refuses. Resume declines — nothing needs launching, a pane is
@@ -1647,7 +1657,14 @@ over, so deck provides the selection itself rather than leaving the user a worse
 reading output in: **a drag beginning inside the preview selects, and releasing copies.** The
 gesture is tmux's, deliberately — a manager whose own view is the primary one cannot ask
 the user to leave it to copy a line. The selection is over the cells deck drew, which in
-§11.9's interactive mode includes the grid's own scrollback. The copy is written to a **tmux
+§11.9's interactive mode includes the grid's own scrollback. **An in-progress selection is
+visible.** From the press until the release, the selected cells are marked with the
+`selection` token — the same treatment a selected sidebar row carries (§11.3) — and the
+marking clears when the release commits the copy. A selection the user cannot see is a
+selection they cannot aim: the gesture is tmux's, and so is the feedback. **The marking is
+linear, not rectangular**, because the copy is: it covers exactly the run `SelectedText`
+would return for the same anchor and current cell, so what is highlighted and what is
+copied can never disagree. The copy is written to a **tmux
 buffer** on deck's own server, which always works and is what `tmux paste-buffer` reads;
 where the outer terminal permits it an **OSC 52** write additionally reaches the user's system
 clipboard, and that half is best-effort by nature — it depends on the terminal and on tmux's
