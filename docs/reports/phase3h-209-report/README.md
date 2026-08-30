@@ -12,10 +12,10 @@ still correct for the citations it covered).
 
 ```
 $ grep -o '`[^`]*`' docs/reports/phase3h.md | sort -u | wc -l
-124
+125
 ```
 
-124 unique backticked tokens: **44 sha tokens**, **46 path tokens**
+125 unique backticked tokens: **45 sha tokens**, **46 path tokens**
 (counting each token separately, so a `path` and a `path:line` token are two items) and
 **34 tokens that are neither** — code, prose, command, flag, glob and output
 fragments, each named explicitly below with the reason no `git cat-file`/`git ls-files`
@@ -49,110 +49,111 @@ check applies. The three counts add up to the enumeration total by construction.
 | 24 | `` `52e9045` `` | sha | task 205 |
 | 25 | `` `5326e39` `` | sha | task 015's second commit |
 | 26 | `` `5708f52` `` | sha | task 012 |
-| 27 | `` `67cefcd` `` | sha | R94 record/proof commit |
-| 28 | `` `68ac4cf` `` | sha | task 208's marker-accounting commit |
-| 29 | `` `7634895` `` | sha | R94 record/proof commit |
-| 30 | `` `79b56d9` `` | sha | task 204 |
-| 31 | `` `87bde8f` `` | sha | task 208 |
-| 32 | `` `8d6ed72` `` | sha | task 006 |
-| 33 | `` `9cd8f37` `` | sha | R94 record/proof commit |
-| 34 | `` `9cff1ea` `` | sha | task 207 |
-| 35 | `` `:14` `` | fragment | scenario-title line reference in prose, not a standalone path |
-| 36 | `` `?` `` | status | `go test`'s "no test files" marker, quoted from output |
-| 37 | `` `AllowedCurrentStatuses: []string{"starting"}` `` | code | Go literal fragment, not a path or sha |
-| 38 | `` `EventKind: "tmux.shell_live"` `` | code | Go literal fragment, not a path or sha |
-| 39 | `` `PASS (exit 0)` `` | status | stability-gate per-run status string |
-| 40 | `` `SPEC.md:1355` `` | path+line | base path `SPEC.md` is tracked; the `:1355` suffix is a line reference, not part of the tracked path — checked in its own block below |
-| 41 | `` `StatusUpdateInput` `` | code | Go identifier fragment |
-| 42 | `` `StopFailure` `` | code | Gherkin/Go identifier fragment |
-| 43 | `` `TestReconcileLosesInterleavedStatusWriteDuringShellPromotion` `` | code | Go test function name |
-| 44 | `` `Then` `` | keyword | Gherkin keyword |
-| 45 | `` `[no test files]` `` | status | `go test` output string, quoted |
-| 46 | `` `a24ff8d` `` | sha | operator's plan/PRD commit |
-| 47 | `` `a24ff8d..HEAD` `` | range | git revision range, not a single sha or a path; its named endpoint `a24ff8d` is checked as a sha above and `HEAD` is a ref |
-| 48 | `` `a53146a` `` | sha | R94 revert target (task 001) |
-| 49 | `` `a5f8f6b` `` | sha | named in the task 207 disposition prose (Phase 3g DELIVERY-LOG paragraph, now superseded) |
-| 50 | `` `afa55b8` `` | sha | R94 forward-revert (task 002) |
-| 51 | `` `b5e4178` `` | sha | task 013 |
-| 52 | `` `c176751` `` | sha | R94 revert target (task 001) |
-| 53 | `` `c69720f` `` | sha | task 015's first commit |
-| 54 | `` `c9e88cb` `` | sha | task 202 |
-| 55 | `` `ci/run.sh go test -p=1 -count=1 ./...` `` | command | full command line; its first word `ci/run.sh` is a tracked path, checked separately in the last section |
-| 56 | `` `ci/stability.sh` `` | path | tracked file, checked in its own block below |
-| 57 | `` `ci/stability.sh 10` `` | command | command-with-argument string, not itself a path |
-| 58 | `` `cwdFieldLabelEndCol` `` | code | Go identifier fragment |
-| 59 | `` `d578c03` `` | sha | task 004 |
-| 60 | `` `de90a5c` `` | sha | operator's §7 ruling commit |
-| 61 | `` `dimmed` `` | word | prose/token name |
-| 62 | `` `docs/DELIVERY-LOG.md` `` | path | tracked file, checked in its own block below |
-| 63 | `` `docs/reports/phase3g-findings.md` `` | path | tracked file, checked in its own block below |
-| 64 | `` `docs/reports/phase3g.md` `` | path | tracked file, checked in its own block below |
-| 65 | `` `docs/reports/phase3h-001-status-probe-revert/` `` | path (dir) | tracked directory, checked in its own block below |
-| 66 | `` `docs/reports/phase3h-002-narrow-repair/` `` | path (dir) | tracked directory, checked in its own block below |
-| 67 | `` `docs/reports/phase3h-003-r94-scenarios/` `` | path (dir) | tracked directory, checked in its own block below |
-| 68 | `` `docs/reports/phase3h-005-hint-token/` `` | path (dir) | tracked directory, checked in its own block below |
-| 69 | `` `docs/reports/phase3h-006-f31/` `` | path (dir) | tracked directory, checked in its own block below |
-| 70 | `` `docs/reports/phase3h-007-f31-guard/` `` | path (dir) | tracked directory, checked in its own block below |
-| 71 | `` `docs/reports/phase3h-008-fullsuite/` `` | path (dir) | tracked directory, checked in its own block below |
-| 72 | `` `docs/reports/phase3h-008-fullsuite/.exitstatus` `` | path | tracked file, checked in its own block below |
-| 73 | `` `docs/reports/phase3h-008-fullsuite/README.md` `` | path | tracked file, checked in its own block below |
-| 74 | `` `docs/reports/phase3h-009-fullsuite-verbose/` `` | path (dir) | tracked directory, checked in its own block below |
-| 75 | `` `docs/reports/phase3h-009-fullsuite-verbose/scenario-summary.txt` `` | path | tracked file, checked in its own block below |
-| 76 | `` `docs/reports/phase3h-010-stability10/` `` | path (dir) | tracked directory, checked in its own block below |
-| 77 | `` `docs/reports/phase3h-010-stability10/summary.log` `` | path | tracked file, checked in its own block below |
-| 78 | `` `docs/reports/phase3h-012-delivery-log/` `` | path (dir) | tracked directory, checked in its own block below |
-| 79 | `` `docs/reports/phase3h-013-report/` `` | path (dir) | tracked directory, checked in its own block below |
-| 80 | `` `docs/reports/phase3h-013-report/README.md` `` | path | tracked file, checked in its own block below |
-| 81 | `` `docs/reports/phase3h-015-guards/` `` | path (dir) | tracked directory, checked in its own block below |
-| 82 | `` `docs/reports/phase3h-201-gofmt/` `` | path (dir) | tracked directory, checked in its own block below |
-| 83 | `` `docs/reports/phase3h-202-fullsuite/` `` | path (dir) | tracked directory, checked in its own block below |
-| 84 | `` `docs/reports/phase3h-202-fullsuite/.exitstatus` `` | path | tracked file, checked in its own block below |
-| 85 | `` `docs/reports/phase3h-203-fullsuite-verbose/` `` | path (dir) | tracked directory, checked in its own block below |
-| 86 | `` `docs/reports/phase3h-203-fullsuite-verbose/verbose.log` `` | path | tracked file, checked in its own block below |
-| 87 | `` `docs/reports/phase3h-204-stability10/` `` | path (dir) | tracked directory, checked in its own block below |
-| 88 | `` `docs/reports/phase3h-204-stability10/README.md` `` | path | tracked file, checked in its own block below |
-| 89 | `` `docs/reports/phase3h-204-stability10/summary.log` `` | path | tracked file, checked in its own block below |
-| 90 | `` `docs/reports/phase3h-205-r76-disposition/` `` | path (dir) | tracked directory, checked in its own block below |
-| 91 | `` `docs/reports/phase3h-206-3g-findings-disposition/` `` | path (dir) | tracked directory, checked in its own block below |
-| 92 | `` `docs/reports/phase3h-207-delivery-log-3g/` `` | path (dir) | tracked directory, checked in its own block below |
-| 93 | `` `docs/reports/phase3h-208-delivery-log-3h/` `` | path (dir) | tracked directory, checked in its own block below |
-| 94 | `` `docs/reports/phase3h-209-report/` `` | path (dir) | tracked directory, checked in its own block below |
-| 95 | `` `docs/reports/phase3h-209-report/README.md` `` | path | tracked file, checked in its own block below |
-| 96 | `` `docs/reports/phase3h-findings.md` `` | path | tracked file, checked in its own block below |
-| 97 | `` `e686a97` `` | sha | task 008's original publish commit |
-| 98 | `` `ed469e4` `` | sha | task 014 |
-| 99 | `` `error` `` | word | status-value prose |
-| 100 | `` `f54873e` `` | sha | task 208 validation fix #2 |
-| 101 | `` `f700025` `` | sha | R94 forward-revert |
-| 102 | `` `fc358c0` `` | sha | task 203 |
-| 103 | `` `features/create_cwd_ghost.feature` `` | path | tracked file, checked in its own block below |
-| 104 | `` `features/create_cwd_ghost_test.go` `` | path | tracked file, checked in its own block below |
-| 105 | `` `features/filter.feature` `` | path | tracked file, checked in its own block below |
-| 106 | `` `features/status_attach.feature:18` `` | path+line | base path `features/status_attach.feature` is tracked; the `:18` suffix is a line reference, not part of the tracked path — checked in its own block below |
-| 107 | `` `features/status_claude_hooks.feature` `` | path | tracked file, checked in its own block below |
-| 108 | `` `features/status_claude_hooks.feature:6` `` | path+line | base path `features/status_claude_hooks.feature` is tracked; the `:6` suffix is a line reference, not part of the tracked path — checked in its own block below |
-| 109 | `` `features/status_probe.feature` `` | path | tracked file, checked in its own block below |
-| 110 | `` `git cat-file -e <sha>^{commit}` `` | template | command template with a placeholder, not a real sha or path |
-| 111 | `` `git ls-files --error-unmatch <path>` `` | template | command template with a placeholder, not a real sha or path |
-| 112 | `` `git rev-list a24ff8d..HEAD --count` `` | command | command line counting the phase's commit range, not a path or sha |
-| 113 | `` `hint` `` | word | prose/token name |
-| 114 | `` `internal/service/reconcile.go` `` | path | tracked file, checked in its own block below |
-| 115 | `` `internal/service/reconcile_live_error_precedence_test.go` `` | path | tracked file, checked in its own block below |
-| 116 | `` `ok` `` | word | `go test` output word |
-| 117 | `` `pane_exit_status` `` | code | field-name identifier |
-| 118 | `` `resolveScenarioTokenHex(ctx, "hint")` `` | code | Go code fragment |
-| 119 | `` `running` `` | word | status-value prose |
-| 120 | `` `running → error` `` | phrase | status-transition prose |
-| 121 | `` `stopped` `` | word | status-value prose |
-| 122 | `` `store.StatusUpdateInput` `` | code | Go code fragment |
-| 123 | `` `tmux` `` | word | status-source-value prose |
-| 124 | `` `user` `` | word | status-source-value prose |
+| 27 | `` `5b7c9e3` `` | sha | task 209's data commit correcting the delivery ledger |
+| 28 | `` `67cefcd` `` | sha | R94 record/proof commit |
+| 29 | `` `68ac4cf` `` | sha | task 208's marker-accounting commit |
+| 30 | `` `7634895` `` | sha | R94 record/proof commit |
+| 31 | `` `79b56d9` `` | sha | task 204 |
+| 32 | `` `87bde8f` `` | sha | task 208 |
+| 33 | `` `8d6ed72` `` | sha | task 006 |
+| 34 | `` `9cd8f37` `` | sha | R94 record/proof commit |
+| 35 | `` `9cff1ea` `` | sha | task 207 |
+| 36 | `` `:14` `` | fragment | scenario-title line reference in prose, not a standalone path |
+| 37 | `` `?` `` | status | `go test`'s "no test files" marker, quoted from output |
+| 38 | `` `AllowedCurrentStatuses: []string{"starting"}` `` | code | Go literal fragment, not a path or sha |
+| 39 | `` `EventKind: "tmux.shell_live"` `` | code | Go literal fragment, not a path or sha |
+| 40 | `` `PASS (exit 0)` `` | status | stability-gate per-run status string |
+| 41 | `` `SPEC.md:1355` `` | path+line | base path `SPEC.md` is tracked; the `:1355` suffix is a line reference, not part of the tracked path — checked in its own block below |
+| 42 | `` `StatusUpdateInput` `` | code | Go identifier fragment |
+| 43 | `` `StopFailure` `` | code | Gherkin/Go identifier fragment |
+| 44 | `` `TestReconcileLosesInterleavedStatusWriteDuringShellPromotion` `` | code | Go test function name |
+| 45 | `` `Then` `` | keyword | Gherkin keyword |
+| 46 | `` `[no test files]` `` | status | `go test` output string, quoted |
+| 47 | `` `a24ff8d` `` | sha | operator's plan/PRD commit |
+| 48 | `` `a24ff8d..HEAD` `` | range | git revision range, not a single sha or a path; its named endpoint `a24ff8d` is checked as a sha above and `HEAD` is a ref |
+| 49 | `` `a53146a` `` | sha | R94 revert target (task 001) |
+| 50 | `` `a5f8f6b` `` | sha | named in the task 207 disposition prose (Phase 3g DELIVERY-LOG paragraph, now superseded) |
+| 51 | `` `afa55b8` `` | sha | R94 forward-revert (task 002) |
+| 52 | `` `b5e4178` `` | sha | task 013 |
+| 53 | `` `c176751` `` | sha | R94 revert target (task 001) |
+| 54 | `` `c69720f` `` | sha | task 015's first commit |
+| 55 | `` `c9e88cb` `` | sha | task 202 |
+| 56 | `` `ci/run.sh go test -p=1 -count=1 ./...` `` | command | full command line; its first word `ci/run.sh` is a tracked path, checked separately in the last section |
+| 57 | `` `ci/stability.sh` `` | path | tracked file, checked in its own block below |
+| 58 | `` `ci/stability.sh 10` `` | command | command-with-argument string, not itself a path |
+| 59 | `` `cwdFieldLabelEndCol` `` | code | Go identifier fragment |
+| 60 | `` `d578c03` `` | sha | task 004 |
+| 61 | `` `de90a5c` `` | sha | operator's §7 ruling commit |
+| 62 | `` `dimmed` `` | word | prose/token name |
+| 63 | `` `docs/DELIVERY-LOG.md` `` | path | tracked file, checked in its own block below |
+| 64 | `` `docs/reports/phase3g-findings.md` `` | path | tracked file, checked in its own block below |
+| 65 | `` `docs/reports/phase3g.md` `` | path | tracked file, checked in its own block below |
+| 66 | `` `docs/reports/phase3h-001-status-probe-revert/` `` | path (dir) | tracked directory, checked in its own block below |
+| 67 | `` `docs/reports/phase3h-002-narrow-repair/` `` | path (dir) | tracked directory, checked in its own block below |
+| 68 | `` `docs/reports/phase3h-003-r94-scenarios/` `` | path (dir) | tracked directory, checked in its own block below |
+| 69 | `` `docs/reports/phase3h-005-hint-token/` `` | path (dir) | tracked directory, checked in its own block below |
+| 70 | `` `docs/reports/phase3h-006-f31/` `` | path (dir) | tracked directory, checked in its own block below |
+| 71 | `` `docs/reports/phase3h-007-f31-guard/` `` | path (dir) | tracked directory, checked in its own block below |
+| 72 | `` `docs/reports/phase3h-008-fullsuite/` `` | path (dir) | tracked directory, checked in its own block below |
+| 73 | `` `docs/reports/phase3h-008-fullsuite/.exitstatus` `` | path | tracked file, checked in its own block below |
+| 74 | `` `docs/reports/phase3h-008-fullsuite/README.md` `` | path | tracked file, checked in its own block below |
+| 75 | `` `docs/reports/phase3h-009-fullsuite-verbose/` `` | path (dir) | tracked directory, checked in its own block below |
+| 76 | `` `docs/reports/phase3h-009-fullsuite-verbose/scenario-summary.txt` `` | path | tracked file, checked in its own block below |
+| 77 | `` `docs/reports/phase3h-010-stability10/` `` | path (dir) | tracked directory, checked in its own block below |
+| 78 | `` `docs/reports/phase3h-010-stability10/summary.log` `` | path | tracked file, checked in its own block below |
+| 79 | `` `docs/reports/phase3h-012-delivery-log/` `` | path (dir) | tracked directory, checked in its own block below |
+| 80 | `` `docs/reports/phase3h-013-report/` `` | path (dir) | tracked directory, checked in its own block below |
+| 81 | `` `docs/reports/phase3h-013-report/README.md` `` | path | tracked file, checked in its own block below |
+| 82 | `` `docs/reports/phase3h-015-guards/` `` | path (dir) | tracked directory, checked in its own block below |
+| 83 | `` `docs/reports/phase3h-201-gofmt/` `` | path (dir) | tracked directory, checked in its own block below |
+| 84 | `` `docs/reports/phase3h-202-fullsuite/` `` | path (dir) | tracked directory, checked in its own block below |
+| 85 | `` `docs/reports/phase3h-202-fullsuite/.exitstatus` `` | path | tracked file, checked in its own block below |
+| 86 | `` `docs/reports/phase3h-203-fullsuite-verbose/` `` | path (dir) | tracked directory, checked in its own block below |
+| 87 | `` `docs/reports/phase3h-203-fullsuite-verbose/verbose.log` `` | path | tracked file, checked in its own block below |
+| 88 | `` `docs/reports/phase3h-204-stability10/` `` | path (dir) | tracked directory, checked in its own block below |
+| 89 | `` `docs/reports/phase3h-204-stability10/README.md` `` | path | tracked file, checked in its own block below |
+| 90 | `` `docs/reports/phase3h-204-stability10/summary.log` `` | path | tracked file, checked in its own block below |
+| 91 | `` `docs/reports/phase3h-205-r76-disposition/` `` | path (dir) | tracked directory, checked in its own block below |
+| 92 | `` `docs/reports/phase3h-206-3g-findings-disposition/` `` | path (dir) | tracked directory, checked in its own block below |
+| 93 | `` `docs/reports/phase3h-207-delivery-log-3g/` `` | path (dir) | tracked directory, checked in its own block below |
+| 94 | `` `docs/reports/phase3h-208-delivery-log-3h/` `` | path (dir) | tracked directory, checked in its own block below |
+| 95 | `` `docs/reports/phase3h-209-report/` `` | path (dir) | tracked directory, checked in its own block below |
+| 96 | `` `docs/reports/phase3h-209-report/README.md` `` | path | tracked file, checked in its own block below |
+| 97 | `` `docs/reports/phase3h-findings.md` `` | path | tracked file, checked in its own block below |
+| 98 | `` `e686a97` `` | sha | task 008's original publish commit |
+| 99 | `` `ed469e4` `` | sha | task 014 |
+| 100 | `` `error` `` | word | status-value prose |
+| 101 | `` `f54873e` `` | sha | task 208 validation fix #2 |
+| 102 | `` `f700025` `` | sha | R94 forward-revert |
+| 103 | `` `fc358c0` `` | sha | task 203 |
+| 104 | `` `features/create_cwd_ghost.feature` `` | path | tracked file, checked in its own block below |
+| 105 | `` `features/create_cwd_ghost_test.go` `` | path | tracked file, checked in its own block below |
+| 106 | `` `features/filter.feature` `` | path | tracked file, checked in its own block below |
+| 107 | `` `features/status_attach.feature:18` `` | path+line | base path `features/status_attach.feature` is tracked; the `:18` suffix is a line reference, not part of the tracked path — checked in its own block below |
+| 108 | `` `features/status_claude_hooks.feature` `` | path | tracked file, checked in its own block below |
+| 109 | `` `features/status_claude_hooks.feature:6` `` | path+line | base path `features/status_claude_hooks.feature` is tracked; the `:6` suffix is a line reference, not part of the tracked path — checked in its own block below |
+| 110 | `` `features/status_probe.feature` `` | path | tracked file, checked in its own block below |
+| 111 | `` `git cat-file -e <sha>^{commit}` `` | template | command template with a placeholder, not a real sha or path |
+| 112 | `` `git ls-files --error-unmatch <path>` `` | template | command template with a placeholder, not a real sha or path |
+| 113 | `` `git rev-list a24ff8d..HEAD --count` `` | command | command line counting the phase's commit range, not a path or sha |
+| 114 | `` `hint` `` | word | prose/token name |
+| 115 | `` `internal/service/reconcile.go` `` | path | tracked file, checked in its own block below |
+| 116 | `` `internal/service/reconcile_live_error_precedence_test.go` `` | path | tracked file, checked in its own block below |
+| 117 | `` `ok` `` | word | `go test` output word |
+| 118 | `` `pane_exit_status` `` | code | field-name identifier |
+| 119 | `` `resolveScenarioTokenHex(ctx, "hint")` `` | code | Go code fragment |
+| 120 | `` `running` `` | word | status-value prose |
+| 121 | `` `running → error` `` | phrase | status-transition prose |
+| 122 | `` `stopped` `` | word | status-value prose |
+| 123 | `` `store.StatusUpdateInput` `` | code | Go code fragment |
+| 124 | `` `tmux` `` | word | status-source-value prose |
+| 125 | `` `user` `` | word | status-source-value prose |
 
 No bare basename, no `/tmp` path and no untracked or deleted path appears among the path
 rows: every one is a repository-relative path (or a tracked directory with a trailing
 slash), and every check below exits 0.
 
-## Shas — one `git cat-file -e <sha>^{commit}` per token (44 items, all exit 0)
+## Shas — one `git cat-file -e <sha>^{commit}` per token (45 items, all exit 0)
 
 ```
 $ git cat-file -e 011b04b^{commit}; echo "exit:$?"
@@ -196,6 +197,8 @@ exit:0
 $ git cat-file -e 5326e39^{commit}; echo "exit:$?"
 exit:0
 $ git cat-file -e 5708f52^{commit}; echo "exit:$?"
+exit:0
+$ git cat-file -e 5b7c9e3^{commit}; echo "exit:$?"
 exit:0
 $ git cat-file -e 67cefcd^{commit}; echo "exit:$?"
 exit:0
@@ -245,7 +248,7 @@ $ git cat-file -e fc358c0^{commit}; echo "exit:$?"
 exit:0
 ```
 
-All 44 sha tokens exit 0.
+All 45 sha tokens exit 0.
 
 ## Paths — one `git ls-files --error-unmatch <path>` per token (46 items, all exit 0)
 
@@ -407,10 +410,10 @@ could not quote its own sha if it were (content-addressing):
 
 ```
 $ git rev-list a24ff8d..HEAD --count
-36
+37
 ```
 
-Of those, 36 are cited as sha tokens in `docs/reports/phase3h.md`. The
+Of those, 37 are cited as sha tokens in `docs/reports/phase3h.md`. The
 commits in the range that are *not* cited are exactly:
 
 ```
@@ -421,9 +424,9 @@ $ for c in $(git rev-list a24ff8d..HEAD); do grep -qF "$(git log -1 --format=%h 
 
 Nothing is unnamed: every commit of the phase that exists at generation time is cited in
 the report. The one commit necessarily outside this check is the one that carries this
-report itself; its sha is added to the table by the immediately following docs-only
-addendum, whose own sha is in turn recorded by task 211's guard report and task 212's
-close-out.
+report itself — task 209's addendum commit, which adds the data commit's sha to the
+table and cannot add its own; that sha is recorded by task 211's guard report and task
+212's close-out instead.
 
 Tasks 210–212 have no commit in this tree yet, so no sha is recorded for them — proved,
 not assumed:
