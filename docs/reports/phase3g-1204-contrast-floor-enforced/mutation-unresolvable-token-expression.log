@@ -1,0 +1,8 @@
+ok  	github.com/n-orlov/deck/internal/theme	0.005s
+--- FAIL: TestDialogSelectionRenderersComposeOnlyFloorTokens (0.02s)
+    dialog_selection_floor_completeness_test.go:297: R84 floor table (../theme/contrast_test.go dialogSelectionTokens): [Hint Text]
+    dialog_selection_floor_completeness_test.go:392: renderRenameFieldRow composes a settingsRowSegment whose Tok expression at rename.go:209:30 (*ast.CallExpr) cannot be statically resolved to a theme token -- this row is drawn over theme.Selection, so an unresolved token could be a pair R84's floor does not hold; extend resolveThemeTokens or use a literal theme.X
+    dialog_selection_floor_completeness_test.go:425: tokens composed over theme.Selection by dialog focused rows: [Hint Text]
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	1.308s
+FAIL

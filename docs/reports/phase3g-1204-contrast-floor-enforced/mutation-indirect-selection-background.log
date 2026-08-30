@@ -1,0 +1,8 @@
+ok  	github.com/n-orlov/deck/internal/theme	0.006s
+--- FAIL: TestDialogSelectionRenderersComposeOnlyFloorTokens (0.01s)
+    dialog_selection_floor_completeness_test.go:297: R84 floor table (../theme/contrast_test.go dialogSelectionTokens): [Hint Text]
+    dialog_selection_floor_completeness_test.go:425: tokens composed over theme.Selection by dialog focused rows: [Dimmed Hint Text]
+    dialog_selection_floor_completeness_test.go:430: a dialog composes theme.Dimmed over theme.Selection, but ../theme/contrast_test.go's dialogSelectionTokens (the table TestThemedDialogTokensClearContrastFloor walks) lists only [Hint Text] -- add it there so R84's contrast floor actually covers this pair
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	1.108s
+FAIL

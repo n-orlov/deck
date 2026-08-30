@@ -1,34 +1,34 @@
 --- FAIL: TestThemedDialogTokensClearContrastFloor (0.00s)
     --- FAIL: TestThemedDialogTokensClearContrastFloor/cobalt (0.00s)
-        contrast_test.go:324: cobalt   hint/surface         hex #8aa9c4/#12233d = 6.41:1   quant #7f7f7f/#000000 = 5.24:1
-        contrast_test.go:324: cobalt   key/surface          hex #ffd166/#12233d = 10.92:1   quant #ffff00/#000000 = 19.56:1
-        contrast_test.go:324: cobalt   error/surface        hex #ff5c5c/#12233d = 5.20:1   quant #ff0000/#000000 = 5.25:1
-        contrast_test.go:324: cobalt   hint/selection       hex #8aa9c4/#1c3a5e = 4.71:1   quant #7f7f7f/#000000 = 5.24:1
-        contrast_test.go:324: cobalt   text/selection       hex #d9e6f2/#1c3a5e = 9.11:1   quant #e5e5e5/#000000 = 16.67:1
-        contrast_test.go:324: cobalt   dimmed/selection     hex #5c7a99/#1c3a5e = 2.59:1   quant #7f7f7f/#000000 = 5.24:1
-        contrast_test.go:335: theme "cobalt" dimmed/selection: hex contrast 2.59:1 < 3.0:1 (fg=#5c7a99 bg=#1c3a5e)
+        contrast_test.go:328: cobalt   hint/surface         hex #8aa9c4/#12233d = 6.41:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:328: cobalt   key/surface          hex #ffd166/#12233d = 10.92:1   quant #ffff00/#000000 = 19.56:1
+        contrast_test.go:328: cobalt   error/surface        hex #ff5c5c/#12233d = 5.20:1   quant #ff0000/#000000 = 5.25:1
+        contrast_test.go:328: cobalt   hint/selection       hex #8aa9c4/#1c3a5e = 4.71:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:328: cobalt   text/selection       hex #d9e6f2/#1c3a5e = 9.11:1   quant #e5e5e5/#000000 = 16.67:1
+        contrast_test.go:328: cobalt   dimmed/selection     hex #5c7a99/#1c3a5e = 2.59:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:339: theme "cobalt" dimmed/selection: hex contrast 2.59:1 < 3.0:1 (fg=#5c7a99 bg=#1c3a5e)
     --- FAIL: TestThemedDialogTokensClearContrastFloor/empire (0.00s)
-        contrast_test.go:324: empire   hint/surface         hex #94a3b8/#172033 = 6.34:1   quant #7f7f7f/#000000 = 5.24:1
-        contrast_test.go:324: empire   key/surface          hex #d97706/#172033 = 5.11:1   quant #cdcd00/#000000 = 12.33:1
-        contrast_test.go:324: empire   error/surface        hex #ef4444/#172033 = 4.32:1   quant #ff0000/#000000 = 5.25:1
-        contrast_test.go:324: empire   hint/selection       hex #94a3b8/#26324b = 4.99:1   quant #7f7f7f/#000000 = 5.24:1
-        contrast_test.go:324: empire   text/selection       hex #cbd5e1/#26324b = 8.62:1   quant #e5e5e5/#000000 = 16.67:1
-        contrast_test.go:324: empire   dimmed/selection     hex #64748b/#26324b = 2.69:1   quant #7f7f7f/#000000 = 5.24:1
-        contrast_test.go:335: theme "empire" dimmed/selection: hex contrast 2.69:1 < 3.0:1 (fg=#64748b bg=#26324b)
+        contrast_test.go:328: empire   hint/surface         hex #94a3b8/#172033 = 6.34:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:328: empire   key/surface          hex #d97706/#172033 = 5.11:1   quant #cdcd00/#000000 = 12.33:1
+        contrast_test.go:328: empire   error/surface        hex #ef4444/#172033 = 4.32:1   quant #ff0000/#000000 = 5.25:1
+        contrast_test.go:328: empire   hint/selection       hex #94a3b8/#26324b = 4.99:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:328: empire   text/selection       hex #cbd5e1/#26324b = 8.62:1   quant #e5e5e5/#000000 = 16.67:1
+        contrast_test.go:328: empire   dimmed/selection     hex #64748b/#26324b = 2.69:1   quant #7f7f7f/#000000 = 5.24:1
+        contrast_test.go:339: theme "empire" dimmed/selection: hex contrast 2.69:1 < 3.0:1 (fg=#64748b bg=#26324b)
     --- FAIL: TestThemedDialogTokensClearContrastFloor/parchment (0.00s)
-        contrast_test.go:324: parchment hint/surface         hex #6b5a3c/#ece0c4 = 5.08:1   quant #7f7f7f/#e5e5e5 = 3.18:1
-        contrast_test.go:324: parchment key/surface          hex #7a3b12/#ece0c4 = 6.51:1   quant #cd0000/#e5e5e5 = 4.64:1
-        contrast_test.go:324: parchment error/surface        hex #a12f2f/#ece0c4 = 5.41:1   quant #cd0000/#e5e5e5 = 4.64:1
-        contrast_test.go:324: parchment hint/selection       hex #6b5a3c/#d8c79f = 3.99:1   quant #7f7f7f/#e5e5e5 = 3.18:1
-        contrast_test.go:324: parchment text/selection       hex #3b2a1a/#d8c79f = 8.22:1   quant #000000/#e5e5e5 = 16.67:1
-        contrast_test.go:324: parchment dimmed/selection     hex #8a7a5c/#d8c79f = 2.51:1   quant #7f7f7f/#e5e5e5 = 3.18:1
-        contrast_test.go:335: theme "parchment" dimmed/selection: hex contrast 2.51:1 < 3.0:1 (fg=#8a7a5c bg=#d8c79f)
-    contrast_test.go:353: SUMMARY cobalt     thinnest newly-covered pair dimmed/selection (hex)   = 2.59:1 (BELOW floor 3.0:1)
-    contrast_test.go:353: SUMMARY daylight   thinnest newly-covered pair hint/selection (quant)   = 3.18:1 (clears floor 3.0:1)
-    contrast_test.go:353: SUMMARY empire     thinnest newly-covered pair dimmed/selection (hex)   = 2.69:1 (BELOW floor 3.0:1)
-    contrast_test.go:353: SUMMARY matrix     thinnest newly-covered pair dimmed/selection (hex)   = 3.78:1 (clears floor 3.0:1)
-    contrast_test.go:353: SUMMARY parchment  thinnest newly-covered pair dimmed/selection (hex)   = 2.51:1 (BELOW floor 3.0:1)
+        contrast_test.go:328: parchment hint/surface         hex #6b5a3c/#ece0c4 = 5.08:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:328: parchment key/surface          hex #7a3b12/#ece0c4 = 6.51:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:328: parchment error/surface        hex #a12f2f/#ece0c4 = 5.41:1   quant #cd0000/#e5e5e5 = 4.64:1
+        contrast_test.go:328: parchment hint/selection       hex #6b5a3c/#d8c79f = 3.99:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:328: parchment text/selection       hex #3b2a1a/#d8c79f = 8.22:1   quant #000000/#e5e5e5 = 16.67:1
+        contrast_test.go:328: parchment dimmed/selection     hex #8a7a5c/#d8c79f = 2.51:1   quant #7f7f7f/#e5e5e5 = 3.18:1
+        contrast_test.go:339: theme "parchment" dimmed/selection: hex contrast 2.51:1 < 3.0:1 (fg=#8a7a5c bg=#d8c79f)
+    contrast_test.go:357: SUMMARY cobalt     thinnest newly-covered pair dimmed/selection (hex)   = 2.59:1 (BELOW floor 3.0:1)
+    contrast_test.go:357: SUMMARY daylight   thinnest newly-covered pair hint/selection (quant)   = 3.18:1 (clears floor 3.0:1)
+    contrast_test.go:357: SUMMARY empire     thinnest newly-covered pair dimmed/selection (hex)   = 2.69:1 (BELOW floor 3.0:1)
+    contrast_test.go:357: SUMMARY matrix     thinnest newly-covered pair dimmed/selection (hex)   = 3.78:1 (clears floor 3.0:1)
+    contrast_test.go:357: SUMMARY parchment  thinnest newly-covered pair dimmed/selection (hex)   = 2.51:1 (BELOW floor 3.0:1)
 FAIL
-FAIL	github.com/n-orlov/deck/internal/theme	0.006s
-ok  	github.com/n-orlov/deck/internal/tui	1.472s
+FAIL	github.com/n-orlov/deck/internal/theme	0.007s
+ok  	github.com/n-orlov/deck/internal/tui	1.563s
 FAIL

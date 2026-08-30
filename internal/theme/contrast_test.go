@@ -220,8 +220,12 @@ func dialogSurfaceChecks() []struct {
 // internal/tui that call bgColorToken(theme.Selection, ...) -- see
 // TestDialogSelectionRenderersComposeOnlyFloorTokens in internal/tui,
 // which enumerates both by AST and fails if either is ever made to
-// compose a token this slice does not list -- and both compose only a
-// field's label (hint) and its value (text) onto that background; no
+// compose a token this slice does not list. That test reads THIS
+// declaration out of this file's own AST rather than keeping a second
+// copy of the set, so the floor table and its completeness proof cannot
+// drift: renaming or emptying this variable fails that test outright.
+// Both sites compose only a field's label (hint) and its value (text)
+// onto that background; no
 // current dialog puts dimmed (per-field help), key (a footer keycap) or
 // error (a validation line) on theme.Selection, so R84's "every text
 // token" is, in practice, these two.
