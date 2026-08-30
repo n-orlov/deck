@@ -1,0 +1,6 @@
+=== RUN   TestReconcileRepairsBareErrorRowWithLivePane
+    reconcile_bare_error_repair_test.go:54: bare error row under a live pane was not repaired: status="error" source="hook" (store.Session{ID:"00000000-0000-4000-8000-000000000051", Name:"bare error, live pane", Slug:"bare-error-live-pane", CWD:"/tmp/TestReconcileRepairsBareErrorRowWithLivePane1754881804/002", Agent:"claude", CapturedPath:"/bin", Status:"error", StatusReason:"", StatusSource:"hook", StatusAt:1, CreatedAt:1, Workspace:"002", KilledByUser:false, PaneExitStatus:(*int)(nil), CrashTail:"", NotifyEpoch:0, LastMessage:"", Acknowledged:true, LaunchArgs:[]string{}, Env:map[string]string{}, PreLaunch:"", LoginShell:false, PermissionProfile:"safe", PermissionProfileReason:"", ConversationID:"", ResumePin:"", ResumeState:"auto", LaunchGeneration:"", LastProbeAt:0, EnvDirty:false, DeletedAt:0, ArchivedAt:0})
+--- FAIL: TestReconcileRepairsBareErrorRowWithLivePane (0.03s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.029s
+FAIL
