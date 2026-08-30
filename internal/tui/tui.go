@@ -6509,10 +6509,12 @@ func (m *Model) backspaceCreateField() {
 // never has anything to accept, on any OTHER field's rendering of this
 // same row.
 //
-// It exists so the ghost's §11.6 `dimmed` colouring can be applied where
-// the frame is drawn (styledCreateBody, which asks this for the cwd row
-// and colours exactly those trailing bytes) instead of inside the value
-// itself: colouring it here baked SGR bytes into the string
+// It exists so the ghost's own colouring (task 1203 moved it off the
+// sub-floor `dimmed` onto `hint`, which clears R84's 3.0:1 floor over
+// theme.Selection on every built-in) can be applied where the frame is
+// drawn (styledCreateBody, which asks this for the cwd row and colours
+// exactly those trailing bytes) instead of inside the value itself:
+// colouring it here baked SGR bytes into the string
 // createFieldRows returns, which createBody then interpolated into the
 // very body wrapDialogLines/dialogMaxScroll measure -- so an escape
 // sequence counted as display width and moved where a page boundary fell,
@@ -6530,7 +6532,7 @@ func (m Model) createCWDGhostSuffix() string {
 
 // createCWDDisplayValue is the cwd field's rendered value: m.createCWD
 // plus its ghost completion, both plain -- see createCWDGhostSuffix for
-// where the ghost's dimmed token is applied instead.
+// where the ghost's `hint` token is applied instead.
 func (m Model) createCWDDisplayValue() string {
 	return m.createCWD + m.createCWDGhostSuffix()
 }
@@ -6763,9 +6765,16 @@ func (m Model) styledCreateBody() string {
 	// colorLabelValue colours one field row's already-wrapped label/value
 	// line. ghost is the plain trailing suffix of plainLine that is a ghost
 	// completion rather than typed text (createCWDGhostSuffix; "" for every
-	// row but the focused cwd one): those bytes take `dimmed` while the
-	// typed part keeps `text`, which is how the ghost stays visibly
-	// provisional now that the suffix itself reaches here uncoloured.
+	// row but the focused cwd one): those bytes take `hint` while the typed
+	// part keeps `text`, which is how the ghost stays visibly provisional
+	// now that the suffix itself reaches here uncoloured. `hint`, not
+	// `dimmed`: this row's focused rendering composes every segment over
+	// theme.Selection (renderCreateRowSegments), and `dimmed` is the one
+	// dialogFocusedFieldTextTokens entry that sits below R84's 3.0:1 floor
+	// against Selection on cobalt/empire/parchment (internal/theme's
+	// dialogPairAllowlist) -- `hint` clears that floor on every built-in
+	// (both the authored hex and its 16-colour quantisation) while staying
+	// visually distinct from the typed segment's own `text` token.
 	colorLabelValue := func(labelPrefix, plainLine, ghost string, focused bool) {
 		lines := wrap(plainLine)
 		// ghostSpan[i] is how many TRAILING bytes of lines[i] belong to the
@@ -6805,7 +6814,7 @@ func (m Model) styledCreateBody() string {
 				segs = append(segs, settingsRowSegment{Text: typed, Tok: theme.Text})
 			}
 			if n > 0 {
-				segs = append(segs, settingsRowSegment{Text: value[len(value)-n:], Tok: theme.Dimmed})
+				segs = append(segs, settingsRowSegment{Text: value[len(value)-n:], Tok: theme.Hint})
 			}
 			if len(segs) == 0 {
 				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}

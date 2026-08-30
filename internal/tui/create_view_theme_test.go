@@ -177,26 +177,44 @@ func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
 	}
 }
 
-// TestCreateViewGhostRendersDimmedAtRenderTime is the other half: moving
-// the colour out of createFieldRows must not lose it. The ghost's cells
-// still render in the `dimmed` token, and the typed part of the same value
-// still renders in `text`, read per-cell off a real emulator grid.
-func TestCreateViewGhostRendersDimmedAtRenderTime(t *testing.T) {
+// TestCreateViewGhostRendersHintAtRenderTime is the other half: moving
+// the colour out of createFieldRows must not lose it. The cwd row is the
+// one this task (1203) focuses -- task016GhostModel leaves it focused
+// (m.createField == 1), so this row's background is theme.Selection
+// (renderCreateRowSegments), exactly the pair R84's contrast floor holds
+// every dialogFocusedFieldTextTokens entry to. The ghost's cells render in
+// the `hint` token (not the sub-floor `dimmed` this test used to assert,
+// before task 1203: `dimmed` measures 2.59:1 on cobalt, 2.69:1 on empire
+// and 2.51:1 on parchment over theme.Selection, all below the 3.0:1 floor,
+// while `hint` clears it on every built-in), and the typed part of the
+// same value still renders in `text` -- distinct from the ghost's `hint`,
+// read per-cell off a real emulator grid, so the ghost stays visually
+// distinguishable from what the user actually typed even though both now
+// clear the floor.
+func TestCreateViewGhostRendersHintAtRenderTime(t *testing.T) {
 	m, _ := task016GhostModel(t)
-	dimmedHex := tokenHex(t, m, theme.Dimmed)
+	hintHex := tokenHex(t, m, theme.Hint)
 	textHex := tokenHex(t, m, theme.Text)
+	if hintHex == textHex {
+		t.Fatalf("theme.Hint and theme.Text resolve to the same colour %s -- this test needs them visually distinct to be non-vacuous", hintHex)
+	}
 
 	view := m.createView()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 
 	row := findRowContaining(t, term, "que-directory/")
 	ghostCol := findCol(t, term, row, "que-directory/")
-	if fg, ok := cellFgHex(t, term, ghostCol, row); !ok || fg != dimmedHex {
-		t.Fatalf("ghost completion foreground = %q ok=%v, want dimmed token %s", fg, ok, dimmedHex)
+	ghostFg, ok := cellFgHex(t, term, ghostCol, row)
+	if !ok || ghostFg != hintHex {
+		t.Fatalf("ghost completion foreground = %q ok=%v, want hint token %s", ghostFg, ok, hintHex)
 	}
 	typedCol := ghostCol - 1 // the "i" of the typed ".../uni"
-	if fg, ok := cellFgHex(t, term, typedCol, row); !ok || fg != textHex {
-		t.Fatalf("typed cwd text foreground = %q ok=%v, want text token %s -- the dimmed span must cover the ghost only", fg, ok, textHex)
+	typedFg, ok := cellFgHex(t, term, typedCol, row)
+	if !ok || typedFg != textHex {
+		t.Fatalf("typed cwd text foreground = %q ok=%v, want text token %s -- the hint span must cover the ghost only", typedFg, ok, textHex)
+	}
+	if ghostFg == typedFg {
+		t.Fatalf("ghost segment foreground %s equals the typed segment's foreground %s -- the ghost must stay visually distinct from typed text", ghostFg, typedFg)
 	}
 }
 

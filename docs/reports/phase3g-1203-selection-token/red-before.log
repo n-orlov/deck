@@ -1,0 +1,6 @@
+=== RUN   TestCreateViewGhostRendersHintAtRenderTime
+    create_view_theme_test.go:209: ghost completion foreground = "#64748b" ok=true, want hint token #94a3b8
+--- FAIL: TestCreateViewGhostRendersHintAtRenderTime (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.004s
+FAIL
