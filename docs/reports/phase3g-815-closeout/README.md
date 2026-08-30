@@ -27,3 +27,18 @@ been pushed and before the addendum's own file changes exist in the worktree:
 `git status --porcelain` empty, and `git rev-parse HEAD` equal to
 `git log --oneline -1 origin/main`. See the close-out section's addendum
 paragraph for the exact sha this resolves to.
+
+## `addendum2-guard.log` and `addendum3-guard.log` (added by the later correction commits)
+
+The close-out section needed two prose corrections after its first addendum: one
+rewording bare path-like tokens the section's own first draft introduced (which the
+citation sweep flagged), and one removing tokens the correction itself
+reintroduced. Each landed as a normal follow-up commit — never an amend or a
+force-push — so each advanced the phase's final docs sha by one. These two logs run
+the identical `git status --porcelain` / `git rev-parse HEAD` /
+`git log --oneline -1 origin/main` triple at those later shas, captured before the
+commit that adds each log had touched the worktree, so the clean-tree and
+`HEAD == origin/main` pair is shown at each of them and not only at the first:
+`addendum2-guard.log` at the first correction, `addendum3-guard.log` at the phase's
+true final docs sha. The close-out section's second and third addendum paragraphs
+name the exact shas and say which claim each one corrects.

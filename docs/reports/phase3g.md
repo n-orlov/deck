@@ -1759,6 +1759,44 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > addendum (the same regress noted above); this is the last one this task needs,
 > since commit D adds no further fact requiring its own citation.
 
+> **Addendum, third part (commit F) — the true final sha, correcting the DOCS sha
+> stated above.** Two further docs commits landed after commit D: **`796d3ce`**
+> (commit D itself, "docs: name the wording-fix commit 7b3469c and re-show its
+> clean-tree/HEAD==origin/main pair as this close-out's true final sha (task 815)")
+> and **`3b0d799`** (commit E, "docs: remove bare path-like tokens the previous
+> addendum's own prose reintroduced, restoring the citation sweep's clean set (task
+> 815)"). Both are prose-only corrections to this very section; neither changes any
+> sha, rate, log path or outcome stated anywhere in it. Their existence does,
+> however, make the sentence above — "the final DOCS sha for the whole approach is
+> therefore `8a6f0d1`" — **stale as an absolute claim**, and this paragraph corrects
+> it rather than leaving the reader with a superseded number: `8a6f0d1` is the sha at
+> which this close-out's substance first landed, and **`3b0d799` is the phase's true
+> final DOCS sha** — the last commit of this approach carrying anything but this
+> paragraph's own self-naming correction. The final CODE sha is unchanged and remains
+> `fdf4507`. Re-run at `3b0d799`, before commit F's own file changes existed in the
+> worktree, and committed as
+> [`phase3g-815-closeout/addendum3-guard.log`](phase3g-815-closeout/addendum3-guard.log):
+>
+> ```
+> $ git status --porcelain
+> exit=0
+>
+> $ git rev-parse HEAD
+> 3b0d79930b61f7d5fc80fd9fbb76cdaf4567d472
+> exit=0
+>
+> $ git log --oneline -1 origin/main
+> 3b0d799 docs: remove bare path-like tokens the previous addendum's own prose reintroduced, restoring the citation sweep's clean set (task 815)
+> exit=0
+> ```
+>
+> Clean tree and local `HEAD == origin/main`, both at `3b0d799`. Commit F — this
+> paragraph plus that one log — is the last commit of task 815 and of approach 08; it
+> cannot contain its own sha, and it asserts no fact that would need one, so the
+> regress stops here by construction rather than by another addendum. Anyone
+> re-deriving the boundary runs the same three commands at `git rev-parse HEAD`: the
+> property, not the number, is what this section guarantees.
+
 ### (b) Task 811 — whole-suite sweep: does **not** meet its bar; no tracked evidence directory exists
 
 Task 811 required the mandated launcher's committed `.exitstatus` to read `0` at
