@@ -1,0 +1,11 @@
+$ git status --porcelain
+?? docs/reports/phase3g-815-closeout/
+exit=0
+
+$ git rev-parse HEAD
+9e6d525c71b899be163ed9129e6fa1884ea8b1fc
+exit=0
+
+$ git log --oneline -1 origin/main
+9e6d525 docs: rewrite the Phase 3g delivery-log paragraph to the true final state (task 814)
+exit=0
