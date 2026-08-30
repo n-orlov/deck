@@ -1,25 +1,44 @@
 # Task 003 — R94's three reverts hold, three named scenarios pass unedited
 
-HEAD at the time this report was written == `origin/main` == this commit's parent
-(`7634895`, task 002's proof-log commit). All commands below were run at that sha.
+The scenario logs below were produced at `7634895` (task 002's proof-log commit). Every
+`git` command quoted in this README was re-run at `67cefcd`, this report's first commit, and
+the output shown is that re-run's; the current commit is a docs-only child of it correcting
+the revert-sha block below. Nothing since `7634895` touches Go or feature files (`git log
+--oneline 7634895..HEAD -- '*.go' '*.feature'` prints nothing), so every proof and log here
+stands unchanged at `HEAD` == `origin/main`.
 
-## The three revert commit shas resolve
+## The three R94 revert commit shas resolve
+
+These are the three commits that *perform* the R94 reverts (not the commits being
+reverted):
 
 ```
 $ git cat-file -e f700025^{commit}; echo "exit: $?"
+exit: 0
+$ git cat-file -e 2f952da^{commit}; echo "exit: $?"
+exit: 0
+$ git cat-file -e afa55b8^{commit}; echo "exit: $?"
+exit: 0
+```
+
+- `f700025` — "features: forward-revert a53146a's stale-sampling re-pointing (task 001)" — R94
+  revert 1, landed by an earlier approach; reverts `a53146a`.
+- `2f952da` — "features: forward-revert c176751's StopFailure re-pointing (task 001)" — R94
+  revert 2, this plan's task 001; reverts `c176751`.
+- `afa55b8` — "service: forward-revert 0b7dce5 to restore the narrow live-pane repair (task
+  002)" — R94 revert 3, this plan's task 002; reverts `0b7dce5`.
+
+For completeness, the three *reverted* commits also resolve, and are the `<sha>^` bases used
+in the diff proofs below:
+
+```
+$ git cat-file -e a53146a^{commit}; echo "exit: $?"
 exit: 0
 $ git cat-file -e c176751^{commit}; echo "exit: $?"
 exit: 0
 $ git cat-file -e 0b7dce5^{commit}; echo "exit: $?"
 exit: 0
 ```
-
-- `f700025` — "features: forward-revert a53146a's stale-sampling re-pointing (task 001)" — R94
-  revert 1, landed by an earlier approach.
-- `c176751` — this plan's own task 001 revert target (R94 revert 2, `StopFailure`
-  re-pointing), forward-reverted at `2f952da`.
-- `0b7dce5` — this plan's own task 002 revert target (R94 revert 3, the narrow live-pane
-  repair), forward-reverted at `afa55b8`.
 
 ## The three revert proofs, at HEAD, with output
 
