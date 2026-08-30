@@ -6769,12 +6769,13 @@ func (m Model) styledCreateBody() string {
 	// part keeps `text`, which is how the ghost stays visibly provisional
 	// now that the suffix itself reaches here uncoloured. `hint`, not
 	// `dimmed`: this row's focused rendering composes every segment over
-	// theme.Selection (renderCreateRowSegments), and `dimmed` is the one
-	// dialogFocusedFieldTextTokens entry that sits below R84's 3.0:1 floor
-	// against Selection on cobalt/empire/parchment (internal/theme's
-	// dialogPairAllowlist) -- `hint` clears that floor on every built-in
-	// (both the authored hex and its 16-colour quantisation) while staying
-	// visually distinct from the typed segment's own `text` token.
+	// theme.Selection (renderCreateRowSegments), and `dimmed` was, before
+	// task 1203 moved this ghost off it, the one token that sat below
+	// R84's 3.0:1 floor against Selection on cobalt/empire/parchment --
+	// `hint` clears that floor on every built-in (both the authored hex
+	// and its 16-colour quantisation, internal/theme's
+	// TestThemedDialogTokensClearContrastFloor) while staying visually
+	// distinct from the typed segment's own `text` token.
 	colorLabelValue := func(labelPrefix, plainLine, ghost string, focused bool) {
 		lines := wrap(plainLine)
 		// ghostSpan[i] is how many TRAILING bytes of lines[i] belong to the
