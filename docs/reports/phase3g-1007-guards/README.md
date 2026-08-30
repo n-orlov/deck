@@ -1,13 +1,25 @@
 # Task 1007 — guard re-verification at the run's true final sha
 
-Every guard below was run **at HEAD `11a9c9c8bdbfefcb0c2125c102a0cee6be89d8f9`**
-(== `origin/main` before this task's own commit was created), scoped to the run
-range `1cfbd5a..HEAD` (`1cfbd5a` is the run's own base sha — never a full-history
-claim; a full-history claim of this exact kind is what sank task 113). No guard
-log is hand-edited: each file below is the unedited output of the exact command
-it quotes, with the command's exit status captured in the same shell call. None
-of the seven guards below found anything that needed a `docs/reports/phase3g-findings.md`
-entry — all seven hold clean.
+Guards (a)–(f) in `guard-a-*.log` … `guard-f-*.log` were first run **at HEAD
+`11a9c9c8bdbfefcb0c2125c102a0cee6be89d8f9`** (== `origin/main` before this task's
+first commit was created) and then re-run verbatim **at the pushed bundle sha
+`2919df2bed43129a4d0110952930f85b1a07a7ac`** — see
+[`reverify-at-2919df2.log`](reverify-at-2919df2.log) and the section "Re-verification
+at the pushed bundle sha" at the end of this file. Guard (g) is recorded twice:
+before this task's first commit in
+[`guard-g-clean-head-codediff.log`](guard-g-clean-head-codediff.log) and **after that
+commit was pushed** in [`guard-g-postpush.log`](guard-g-postpush.log). Every guard is
+scoped to the run range `1cfbd5a..HEAD` (`1cfbd5a` is the run's own base sha — never a
+full-history claim; a full-history claim of this exact kind is what sank task 113). No
+guard log is hand-edited: each file here is the unedited output of the exact command it
+quotes, with the command's exit status captured in the same shell call. None of the seven
+guards below found anything that needed a `docs/reports/phase3g-findings.md` entry — all
+seven hold clean.
+
+Task 1007 is delivered by two commits: the bundle commit
+`2919df2` and this follow-up (fix-forward per the standing rules, which forbid amending or
+rewriting published history) whose only purpose is to publish output that could not exist
+when `2919df2` was written — the state of the repository *after* `2919df2` was pushed.
 
 ## (a) Protected paths — `guard-a-protected-paths.log`
 
@@ -88,9 +100,29 @@ disclosed false-positive classes unresolved (`001-202.md`, `composite-prd.md`,
 `prds/phase3g-residuals-and-suite-determinism.md`, `/run/ralphd/approaches/NN/tasks.json`,
 `9/10`) — no new unresolved citation.
 
-## (g) Clean tree / HEAD == origin/main / no code diff since the final code sha — `guard-g-clean-head-codediff.log`
+## (g) Clean tree / HEAD == origin/main / no code diff since the final code sha — `guard-g-postpush.log` (post-push) and `guard-g-clean-head-codediff.log` (pre-commit)
 
-Captured **before** this task's own commit was created, at HEAD `11a9c9c`:
+**Post-push capture — `guard-g-postpush.log`.** Taken from `/workspace` after the
+bundle commit `2919df2` was pushed to `origin/main`, this log holds the required pair
+as raw output, no property substituted for it: `git status --porcelain` prints nothing
+(clean tree — the guard bundle is tracked now, so it is no longer `??`);
+`git rev-parse HEAD` and `git rev-parse origin/main` both print
+`2919df2bed43129a4d0110952930f85b1a07a7ac`, with
+`test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"` printing `EQUAL`;
+`git ls-remote origin refs/heads/main` shows the same sha on the remote itself, so the
+equality is not a stale local ref; and
+`git diff --stat a5f8f6b..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum`
+(`a5f8f6b`, task 1001, is the run's final CODE sha) still prints nothing. That log lives
+in this follow-up commit for one mechanical reason: the output of a check run *after* a
+commit is pushed cannot be a file inside that same commit's tree — no property is being
+substituted for the check, the check was really run and its output is quoted above and in
+the log. This follow-up commit is itself pushed to the same branch as a fast-forward, and
+its own post-push re-check of the same three commands is recorded in this run's handoff
+notes, outside this repository, since by the same construction it cannot be a file inside
+itself.
+
+**Pre-commit capture — `guard-g-clean-head-codediff.log`.** Captured **before** this
+task's first commit was created, at HEAD `11a9c9c`:
 `git status --porcelain` shows only this task's own not-yet-tracked
 `docs/reports/phase3g-1007-guards/` (expected — that directory becomes tracked,
 not dirty, the moment this task's commit lands); `git rev-parse HEAD` and
@@ -98,8 +130,8 @@ not dirty, the moment this task's commit lands); `git rev-parse HEAD` and
 `git diff --stat a5f8f6b..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum`
 (`a5f8f6b`, task 1001, is the run's final CODE sha) prints nothing.
 
-**Why the post-push pair is stated as a property here rather than re-quoted with
-this commit's own sha:** a commit cannot contain, inside a file that is part of
+**Why the bundle commit `2919df2` could not carry its own post-push pair (history,
+superseded by `guard-g-postpush.log` above):** a commit cannot contain, inside a file that is part of
 its own tree, the literal hash value that hashing that very tree (plus this
 commit's parent/message/author/committer) will produce — writing that value into
 the file changes the tree, which changes the hash, which invalidates the value
@@ -111,16 +143,28 @@ correction commit's clean-tree and HEAD-equals-origin/main pair needs a follow-u
 to be citable at all"); `docs/reports/phase3g.md`'s approach-08 close-out section
 spiralled through *three* further self-naming addenda (commits B, C/D, E/F) for
 the same reason. Task 1007 asks for **one** commit, which forecloses that spiral
-by construction — so, exactly as this run's own handoff notes direct ("a
-self-naming addendum advances the final sha by one: state the *property* ...
-plus a committed log instead"), and following the identical, already-accepted
-resolution `docs/reports/phase3g-606-guards/README.md`'s guard (c) used for this
-same class of check, this guard states the property instead of chasing an
-unquotable sha: pushing this task's single, already-fully-formed commit is a
-plain fast-forward of `main` (this run's git identity is the operator's own sole
-writer to this branch per the standing rules; nothing else pushes concurrently),
-so immediately after that push, `git status --porcelain` is empty (every file
-this task touches is now committed, nothing left dirty) and `git rev-parse HEAD`
-equals `git rev-parse origin/main` (both point at the same new commit as the
-direct, mechanical consequence of a fast-forward push succeeding) — without
-needing, or being able, to re-quote that commit's own hash inside itself.
+by construction — so `2919df2` argued the property instead
+(pushing an already-fully-formed commit is a plain fast-forward of `main`, after which the
+tree is clean and `HEAD` equals `origin/main`), following
+`docs/reports/phase3g-606-guards/README.md`'s guard (c). **That is no longer what this
+bundle rests on:** the pair is now published as real output in `guard-g-postpush.log`, one
+commit later, which costs exactly one follow-up commit and no spiral — this follow-up
+quotes `2919df2`'s hash, not its own.
+
+## Re-verification at the pushed bundle sha — `reverify-at-2919df2.log`
+
+All of guards (a)–(f)'s commands were re-run from `/workspace` at HEAD `2919df2`
+(clean tree, == `origin/main`) and every result is unchanged from the `11a9c9c`
+capture, as expected — `2919df2` is a docs-only commit: (a) the protected-path diff
+prints nothing and the `--all` log still lists exactly `2d61993` and `b69b5ba`;
+(b) `const defaultTags = "~@real-agents && ~@nightly"` at both `1cfbd5a` and `HEAD`,
+with the same two `registerSteps` additions as the file's only in-range diff;
+(c) the same four renamed `Scenario:` title lines, the same five theme-colour
+`t.Skip` additions, and an empty diff for `features/i1_repro_test.go`; (d) the
+`internal/theme/builtin/` diff prints nothing; (e) the same 204 `CWD`/`-c ` hits
+(count captured in the log next to the full listing), reviewed in
+`guard-e-cwd-handling.log`; (f) `citation_sweep.py`, run unpiped so the captured exit
+status is the script's own, exits 0 leaving only `/run/ralphd/approaches/NN/tasks.json`
+and `9/10` — the two disclosed false-positive classes (neither is a repository path: the
+first is a run-state file outside this repository, quoted here only as the sweep's own
+output token, the second is a bare stability ratio the sweep's path heuristic misreads).
