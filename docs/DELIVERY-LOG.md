@@ -643,10 +643,19 @@ promotion policy and a product change there would invalidate the (now-superseded
 a forced-interleaving regression test pins the pre-fix red at task 006 (`8d6ed72`,
 [`docs/reports/phase3h-006-f31/`](reports/phase3h-006-f31/README.md)) and the same test is
 green after task 007's guard
-([`docs/reports/phase3h-007-f31-guard/`](reports/phase3h-007-f31-guard/README.md)). F2,
-F20, F22 and F37 below are unaffected by this fix and stay exactly the out-of-scope, never-
-claimed-fixed items Phase 3h's own standing rules name; a recurrence in that phase's gate is
-reported with its log path, not fixed here.
+([`docs/reports/phase3h-007-f31-guard/`](reports/phase3h-007-f31-guard/README.md)). F2, F20, F22
+and F37 below are unaffected by this fix and every one of them stays open in Phase 3h's own record:
+they are exactly the out-of-scope, never-claimed-fixed items that phase's standing rules name, and a
+recurrence in its gate is reported with its committed log path, never fixed and never hidden here.
+F37's entry below needs reading precisely, because the two statements are about different halves of
+it and neither is withdrawn: 3g's own task 804 (`46dad5e`) fixed the *scenario* side —
+`features/sort_order.feature`'s six raw `error` writes were rerouted through a genuine nonzero pane
+exit, out of the repair's reach, so that file no longer races — while the *product* side F37 named,
+the unconditional live-pane repair that can win the reconcile tick and reorder a row, is untouched
+by task 804 and untouched by task 007's promotion guard above. That product-side mechanism is what
+Phase 3h leaves recorded open for F37, alongside F2, F20 and F22; it remains reproducible only under
+the tracked forced interleaving (`sh docs/reports/phase3g-810-findings/reproduce-f37.sh`), and Phase
+3h claims no fix for any part of it.
 
 Two standing Phase 3f flakes, out of scope by this run's own rules and not reproduced by any tracked
 log this phase: `TestGoldenMinimumFrame`'s settle flake, F2
@@ -661,9 +670,10 @@ restatement (`17b1649`) stopped that restatement contradicting itself, but the u
 interaction between R76's self-heal and any scenario that poses a terminal write into a still-live
 pane is a standing one, named here rather than declared closed. Task 810 also filed three findings
 of its own this wave: [F37](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
-(`features/sort_order.feature`'s six raw `error` writes racing F36's own repair — **fixed**, task
-804, `46dad5e`, with a one-command tracked reproducer of the pre-fix red,
-`sh docs/reports/phase3g-810-findings/reproduce-f37.sh`); the two genuinely open ones this
+(`features/sort_order.feature`'s six raw `error` writes racing F36's own repair — that scenario-side
+red **fixed**, task 804, `46dad5e`, with a one-command tracked reproducer of the pre-fix red,
+`sh docs/reports/phase3g-810-findings/reproduce-f37.sh`; the product-side repair mechanism the same
+finding named stays open, per the Phase 3h disposition above); the two genuinely open ones this
 paragraph's own gate section already used above,
 [F38](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) (a hook-sourced
 live-pane `error` has zero observable window for `status_attach.feature`'s scenario shape — not
