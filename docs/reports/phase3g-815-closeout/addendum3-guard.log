@@ -1,0 +1,10 @@
+$ git status --porcelain
+exit=0
+
+$ git rev-parse HEAD
+3b0d79930b61f7d5fc80fd9fbb76cdaf4567d472
+exit=0
+
+$ git log --oneline -1 origin/main
+3b0d799 docs: remove bare path-like tokens the previous addendum's own prose reintroduced, restoring the citation sweep's clean set (task 815)
+exit=0
