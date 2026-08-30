@@ -11,7 +11,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
   is typed or shown.
 
   @requirement-14-ghost-unique-match-right-accepts
-  Scenario: a unique directory match ghosts in the dimmed token and right accepts it with a trailing slash
+  Scenario: a unique directory match ghosts in the hint token and right accepts it with a trailing slash
     Given a scratch directory labelled "unique-right" exists
     And a directory named "uniqueprojright" exists in the scratch directory labelled "unique-right"
     And deck client "A" is started with colour enabled
@@ -19,7 +19,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     And deck client "A" types "cwd-ghost-right-session" as the session name
     And deck client "A" tabs to the cwd field
     And deck client "A" types the scratch directory labelled "unique-right" followed by "uniquep" into the cwd field
-    Then deck client "A" text "rojright/" has foreground token "dimmed"
+    Then deck client "A" text "rojright/" has foreground token "hint"
     And deck client "A" cwd field shows ghost text
     When deck client "A" presses "right" in the cwd field
     Then deck client "A" screen contains "uniqueprojright/"
@@ -69,7 +69,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     And deck client "A" types the scratch directory labelled "hidden-dir" followed by "" into the cwd field
     Then deck client "A" screen does not contain "hiddensecret"
     When deck client "A" sends "."
-    Then deck client "A" text "hiddensecret/" has foreground token "dimmed"
+    Then deck client "A" text "hiddensecret/" has foreground token "hint"
     When deck client "A" presses "right" in the cwd field
     And deck client "A" submits the create modal
     Then deck client "A" has session "cwd-ghost-hidden-session" selected
@@ -85,7 +85,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     And deck client "A" tabs to the cwd field
     And deck client "A" sends "~/uniquet"
     Then deck client "A" screen contains "~/uniquet"
-    And deck client "A" text "ildehome/" has foreground token "dimmed"
+    And deck client "A" text "ildehome/" has foreground token "hint"
     When deck client "A" presses "right" in the cwd field
     Then deck client "A" screen contains "~/uniquetildehome/"
     When deck client "A" submits the create modal
