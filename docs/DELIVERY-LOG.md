@@ -724,7 +724,7 @@ its verbose companion tallies **311 scenarios (311 passed)**, **3532 steps (3532
 ([`docs/reports/phase3h-203-fullsuite-verbose/README.md`](reports/phase3h-203-fullsuite-verbose/README.md));
 and the stability gate's own `docs/reports/phase3h-204-stability10/summary.log` final line reads,
 verbatim, **10/10 passed**, script exit **0**, zero recurrence of F2, F20, F22, F37 or the
-filter.feature dd/undo race across all ten runs
+`features/filter.feature` dd/undo race across all ten runs
 ([`docs/reports/phase3h-204-stability10/README.md`](reports/phase3h-204-stability10/README.md)).
 **The protected-path audit is operator-ruled satisfied** (steering 001, operator amendment
 001-211, 2026-08-30): the range `de90a5c..HEAD` over `SPEC.md`, `prds/`, `ci/Dockerfile`,

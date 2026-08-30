@@ -36,13 +36,17 @@ $ grep -o '`[^`]*`' /tmp/phase3h_para.txt | sort -u
 `docs/reports/phase3h-204-stability10/summary.log`
 `docs/reports/phase3h-findings.md`
 `docs/reports/phase3h.md`
+`features/filter.feature`
 `prds/`
 `prds/phase3h-suite-reconciliation.md`
 ```
 
-Every token is classifiable as either a resolvable sha (or a sha range, checked by both
-endpoints) or a tracked path — none is a `/tmp` path, a bare basename, a deleted file or a
-generated/untracked directory.
+Seventeen tokens. Every one is classifiable as either a resolvable sha (or a sha range, checked by
+both endpoints) or a tracked path — none is a `/tmp` path, a bare basename, a deleted file or a
+generated/untracked directory. In particular the out-of-scope stability race the paragraph names
+is cited by its full tracked path `features/filter.feature`, with its directory component, not by a
+directory-less basename (which `git ls-files --error-unmatch` rejects, since no such path is
+tracked at the repository root).
 
 | Token | Kind | Check | Result |
 |---|---|---|---|
@@ -62,6 +66,7 @@ generated/untracked directory.
 | `docs/reports/phase3h-203-fullsuite-verbose/README.md` | path | `git ls-files --error-unmatch docs/reports/phase3h-203-fullsuite-verbose/README.md` | tracked |
 | `docs/reports/phase3h-204-stability10/README.md` | path | `git ls-files --error-unmatch docs/reports/phase3h-204-stability10/README.md` | tracked |
 | `docs/reports/phase3h-204-stability10/summary.log` | path | `git ls-files --error-unmatch docs/reports/phase3h-204-stability10/summary.log` | tracked |
+| `features/filter.feature` | path | `git ls-files --error-unmatch features/filter.feature` | tracked |
 
 Run as one batch, quoted:
 
@@ -73,6 +78,7 @@ $ git ls-files --error-unmatch SPEC.md ci/Dockerfile ci/SPIKE.md prds/ \
     prds/phase3h-suite-reconciliation.md docs/reports/phase3h.md docs/reports/phase3h-findings.md \
     docs/reports/phase3h-202-fullsuite/README.md docs/reports/phase3h-203-fullsuite-verbose/README.md \
     docs/reports/phase3h-204-stability10/README.md docs/reports/phase3h-204-stability10/summary.log \
+    features/filter.feature \
     >/dev/null && echo ALL_PATHS_OK
 ALL_PATHS_OK
 ```
@@ -80,7 +86,7 @@ ALL_PATHS_OK
 ## One quoted check per enumerated token, run individually
 
 The batch above is a convenience; below is the required per-token evidence — every one of the
-sixteen tokens enumerated mechanically above gets its own command and its own verbatim output, in
+seventeen tokens enumerated mechanically above gets its own command and its own verbatim output, in
 the enumeration's own order. No token is covered by another token's check, and no token is
 spot-checked via a sibling path.
 
@@ -113,6 +119,8 @@ $ git ls-files --error-unmatch docs/reports/phase3h-findings.md
 docs/reports/phase3h-findings.md
 $ git ls-files --error-unmatch docs/reports/phase3h.md
 docs/reports/phase3h.md
+$ git ls-files --error-unmatch features/filter.feature
+features/filter.feature
 $ git ls-files --error-unmatch prds/
 prds/phase0-harness-and-skeleton.md
 prds/phase0b-harness-hardening.md
@@ -137,6 +145,72 @@ The directory token `prds/` is checked as itself (`git ls-files --error-unmatch 
 fifteen tracked files listed) — it is no longer substituted by, or spot-checked through, the
 single-file token `prds/phase3h-suite-reconciliation.md`, which carries its own separate check.
 Listing every token's command verbatim is deliberate: a reader can re-run the block line by line.
+
+## Path-like tokens the backtick scan alone would miss
+
+Backtick enumeration only finds what is already marked up as code. A second, independent scan
+enumerates every path-like token in the paragraph whether or not it is backticked, so that no path
+sits in bare prose without a check:
+
+```
+$ awk '/\*\*Phase 3h\*\*/,/^$/' docs/DELIVERY-LOG.md \
+    | grep -o -E '[A-Za-z0-9_./-]+\.(feature|go|md|log|toml|sh|db|json)' | sort -u
+SPEC.md
+ci/SPIKE.md
+docs/reports/phase3h-202-fullsuite/README.md
+docs/reports/phase3h-203-fullsuite-verbose/README.md
+docs/reports/phase3h-204-stability10/README.md
+docs/reports/phase3h-204-stability10/summary.log
+docs/reports/phase3h-findings.md
+docs/reports/phase3h.md
+features/filter.feature
+prds/phase3h-suite-reconciliation.md
+reports/phase3h-202-fullsuite/README.md
+reports/phase3h-203-fullsuite-verbose/README.md
+reports/phase3h-204-stability10/README.md
+reports/phase3h-findings.md
+reports/phase3h.md
+```
+
+Ten of the fifteen are the backticked citations already checked one-by-one above. This scan is what
+caught `features/filter.feature`: the paragraph's earlier wording named the out-of-scope stability
+race by a directory-less basename, which is not a tracked path, and it now names the tracked
+`features/filter.feature` instead. `ci/Dockerfile` and the three shas carry no matching extension
+and so appear only in the backtick enumeration, where each has its own check.
+
+The remaining five `reports/…` tokens are not citations: they are the *href halves* of the
+paragraph's five Markdown links, written relative to `docs/DELIVERY-LOG.md`'s own directory — the
+file's pre-existing convention (`grep -c '](reports/' docs/DELIVERY-LOG.md` → `38`, i.e. every
+earlier phase paragraph links the same way), so each resolves under `docs/`. Every token from the
+scan, resolved that way where it is a link href, is tracked — and the check is exhaustive rather
+than enumerated by hand, so an untracked one could not hide:
+
+```
+$ awk '/\*\*Phase 3h\*\*/,/^$/' docs/DELIVERY-LOG.md \
+    | grep -o -E '[A-Za-z0-9_./-]+\.(feature|go|md|log|toml|sh|db|json)' | sort -u \
+    | while read -r t; do \
+        if git ls-files --error-unmatch "$t" >/dev/null 2>&1; then echo "tracked       $t"; \
+        elif git ls-files --error-unmatch "docs/$t" >/dev/null 2>&1; then echo "tracked docs/ $t"; \
+        else echo "UNTRACKED     $t"; fi; done
+tracked       SPEC.md
+tracked       ci/SPIKE.md
+tracked       docs/reports/phase3h-202-fullsuite/README.md
+tracked       docs/reports/phase3h-203-fullsuite-verbose/README.md
+tracked       docs/reports/phase3h-204-stability10/README.md
+tracked       docs/reports/phase3h-204-stability10/summary.log
+tracked       docs/reports/phase3h-findings.md
+tracked       docs/reports/phase3h.md
+tracked       features/filter.feature
+tracked       prds/phase3h-suite-reconciliation.md
+tracked docs/ reports/phase3h-202-fullsuite/README.md
+tracked docs/ reports/phase3h-203-fullsuite-verbose/README.md
+tracked docs/ reports/phase3h-204-stability10/README.md
+tracked docs/ reports/phase3h-findings.md
+tracked docs/ reports/phase3h.md
+```
+
+No `UNTRACKED` line: every path the paragraph cites in prose, in backticks or as a link target
+exists in the index.
 
 ## The two range claims the paragraph makes, re-verified
 
@@ -201,5 +275,7 @@ $ git diff --stat a24ff8d..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
 
 - `docs/DELIVERY-LOG.md` gained one new paragraph, introduced by `**Phase 3h**`, immediately
   before `## Other milestones`.
-- Every sha and path token the paragraph cites resolves/is tracked, checked above.
+- Every sha and path token the paragraph cites resolves/is tracked, checked above — by backtick
+  enumeration (seventeen tokens, one command each) and by an independent path-like scan that also
+  covers bare prose and the Markdown links' href halves.
 - No protected path touched. No code touched (final code sha unchanged at `4b1d4dc`).
