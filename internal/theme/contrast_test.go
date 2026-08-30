@@ -214,21 +214,39 @@ func dialogSurfaceChecks() []struct {
 	}
 }
 
-// dialogFocusedFieldTextTokens is the exact token set R82 draws inside a
-// dialog's focused field row, over that row's selection background:
-// label -> hint, value -> text, per-field help -> dimmed, footer keys ->
-// key, validation -> error. This is deliberately NOT StatusTokens or
-// AllTokens minus the structural ones -- R84 names "every text token"
-// meaning the five roles a themed dialog's own field row actually
-// composes, matching task 038's absence check
-// (docs/reports/phase3g-038-r84-contrast-floor-absent/).
-var dialogFocusedFieldTextTokens = []Token{Text, Dimmed, Hint, Key, Error}
+// dialogSelectionTokens is the exact token set a themed dialog (R82)
+// actually composes over theme.Selection today: renderCreateRowSegments
+// (tui.go) and renderRenameFieldRow (rename.go) are the ONLY two sites in
+// internal/tui that call bgColorToken(theme.Selection, ...) -- see
+// TestDialogSelectionRenderersComposeOnlyFloorTokens in internal/tui,
+// which enumerates both by AST and fails if either is ever made to
+// compose a token this slice does not list -- and both compose only a
+// field's label (hint) and its value (text) onto that background; no
+// current dialog puts dimmed (per-field help), key (a footer keycap) or
+// error (a validation line) on theme.Selection, so R84's "every text
+// token" is, in practice, these two.
+//
+// text/selection is already hard-enforced (no allowlist) by
+// TestBuiltinContrastFloor's own contrastChecks; it is repeated here so
+// this table is self-contained for the pairs a themed dialog draws.
+//
+// theme.SelectionIdle is deliberately OUT of scope: per panel.go:134-139
+// and settings.go:1318, SelectionIdle only ever backs the sidebar's own
+// unfocused-panel selection marker and settings' own rows -- no dialog
+// draws any token over it, so a sub-floor SelectionIdle cell (several
+// exist, e.g. empire's 16-colour quantisation collapsing several
+// foreground tokens onto SelectionIdle's own #7f7f7f reference colour)
+// is not a pair this floor needs to hold, and is reported instead as a
+// finding (task 1208), alongside the sidebar's own pre-existing sub-floor
+// dimmed/selection marker (tui.go:4292) which sits outside R84's dialog
+// scope entirely.
+var dialogSelectionTokens = []Token{Hint, Text}
 
-// dialogSelectionChecks pairs every dialogFocusedFieldTextTokens entry
-// against bg (theme.Selection or theme.SelectionIdle -- the two
-// backgrounds a dialog's focused field row can carry, active vs. an
-// idle/unfocused panel still showing its own selection).
-func dialogSelectionChecks(label string, bg Token) []struct {
+// dialogSelectionChecks pairs every dialogSelectionTokens entry against
+// theme.Selection, the one background a dialog's focused field row
+// actually carries (see dialogSelectionTokens's own doc comment for why
+// SelectionIdle is excluded).
+func dialogSelectionChecks() []struct {
 	label string
 	fg    Token
 	bg    Token
@@ -237,113 +255,39 @@ func dialogSelectionChecks(label string, bg Token) []struct {
 		label string
 		fg    Token
 		bg    Token
-	}, 0, len(dialogFocusedFieldTextTokens))
-	for _, tok := range dialogFocusedFieldTextTokens {
+	}, 0, len(dialogSelectionTokens))
+	for _, tok := range dialogSelectionTokens {
 		checks = append(checks, struct {
 			label string
 			fg    Token
 			bg    Token
-		}{string(tok) + "/" + label, tok, bg})
+		}{string(tok) + "/selection", tok, Selection})
 	}
 	return checks
 }
 
-// dialogPairKey names one (built-in theme, pair, colour space) cell of
-// TestThemedDialogTokensClearContrastFloor's table, so a sub-floor cell
-// can be allowlisted individually instead of a whole theme being exempted.
-func dialogPairKey(theme, label, space string) string {
-	return theme + " " + label + " " + space
-}
-
-// dialogPairAllowlist is the explicit, measured list of the cells that
-// already sat below minContrastRatio when R84's coverage was added (task
-// 106) -- authored palette values this plan is forbidden to change (a
-// sub-floor pair is a finding for the operator, not a licence to recolour
-// a theme file: finding F23 in docs/reports/phase3g-findings.md and
-// docs/reports/phase3g-106-contrast-floor/).
-//
-// The value is the ratio measured then, to two decimals. It is pinned,
-// not merely tolerated, and every cell NOT listed here is hard-enforced
-// for every built-in, so this table cannot hide a regression:
-//   - an unlisted cell that drops below the floor fails;
-//   - a listed cell that drifts (worse OR better) by more than 0.01 fails,
-//     because the recorded ratio no longer describes the palette;
-//   - a listed cell that has reached the floor fails as a stale entry, so
-//     the allowlist shrinks only deliberately;
-//   - a listed cell naming a theme/pair/space this test does not cover
-//     fails as unmatched, so a typo cannot silently exempt a real cell.
-var dialogPairAllowlist = map[string]float64{
-	// cobalt: dimmed (a field's own help text) over the active selection.
-	"cobalt dimmed/selection hex": 2.59,
-	// empire: dimmed over both selection backgrounds, plus the 16-colour
-	// quantisation collapsing dimmed/hint/key/error onto SelectionIdle's
-	// own reference colour (#7f7f7f).
-	"empire dimmed/selection hex":       2.69,
-	"empire dimmed/selectionidle hex":   2.13,
-	"empire dimmed/selectionidle quant": 1.00,
-	"empire hint/selectionidle quant":   1.00,
-	"empire key/selectionidle quant":    2.35,
-	"empire error/selectionidle hex":    2.69,
-	"empire error/selectionidle quant":  1.00,
-	// parchment: dimmed over both selection backgrounds.
-	"parchment dimmed/selection hex":     2.51,
-	"parchment dimmed/selectionidle hex": 2.87,
-}
-
-// checkDialogPair enforces minContrastRatio for one cell of R84's table,
-// honouring dialogPairAllowlist exactly as that variable's comment
-// describes. It returns the allowlist key it covered, so the caller can
-// prove every allowlist entry matched a real cell.
-func checkDialogPair(t *testing.T, theme, label, space string, ratio float64, fg, bg string) string {
-	t.Helper()
-	key := dialogPairKey(theme, label, space)
-	want, known := dialogPairAllowlist[key]
-
-	switch {
-	case known && ratio >= minContrastRatio:
-		t.Errorf("theme %q %s (%s): %.2f:1 now clears the %.1f:1 floor -- stale dialogPairAllowlist entry (recorded %.2f:1), delete it",
-			theme, label, space, ratio, minContrastRatio, want)
-	case known && math.Abs(ratio-want) > 0.01:
-		t.Errorf("theme %q %s (%s): %.2f:1 (fg=%s bg=%s) drifted from the recorded %.2f:1 -- the palette moved; re-measure and update dialogPairAllowlist (never recolour a built-in to pass)",
-			theme, label, space, ratio, fg, bg, want)
-	case known:
-		t.Logf("FINDING theme %q %s: %s contrast %.2f:1 < %.1f:1 (fg=%s bg=%s) -- known sub-floor pair, allowlisted at its measured ratio and reported (F23), not silenced or recoloured, per R84",
-			theme, label, space, ratio, minContrastRatio, fg, bg)
-	case ratio < minContrastRatio:
-		t.Errorf("theme %q %s: %s contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
-			theme, label, space, ratio, minContrastRatio, fg, bg)
-	}
-	return key
-}
-
 // TestThemedDialogTokensClearContrastFloor is R84's own contrast
-// obligation (task 106): the pairs a themed dialog (R82) actually draws
-// that neither TestBuiltinContrastFloor nor
-// TestSessionRowTokensClearContrastFloorOnSurface cover --
-// hint/surface, key/surface, error/surface, and every one of a dialog's
-// focused-field text tokens (text, dimmed, hint, key, error) over both
-// theme.Selection and theme.SelectionIdle -- over both the theme's
-// authored hex palette and its 16-colour quantisation, exactly like the
-// two existing tests. This requirement pins what the PRD measured as
-// already true; a failing pair here is a finding to report, not a licence
-// to recolour a built-in theme.
+// obligation (task 106, tightened by task 1204): the pairs a themed
+// dialog (R82) actually draws that neither TestBuiltinContrastFloor nor
+// TestSessionRowTokensClearContrastFloorOnSurface cover -- hint/surface,
+// key/surface, error/surface (dialogSurfaceChecks), and hint/text over
+// theme.Selection (dialogSelectionChecks, see dialogSelectionTokens's own
+// doc comment for exactly which tokens and why SelectionIdle is out of
+// scope) -- over both the theme's authored hex palette and its 16-colour
+// quantisation, exactly like the two existing tests.
 //
 // The floor is hard-enforced for EVERY built-in, not just the reference
-// theme (matrix): the cells that were already sub-floor when this
-// coverage landed are listed individually, with their measured ratios, in
-// dialogPairAllowlist, and every other cell fails the suite the moment it
-// drops. See that variable's comment for what the allowlist can and
-// cannot absorb, docs/reports/phase3g-106-contrast-floor/ for the
-// measurements, and docs/reports/phase3g-findings.md (F23) for the
-// finding those sub-floor cells were reported as.
+// theme (matrix), with NO allowlist, tolerance table or log-only branch:
+// every cell in this table fails the suite (t.Errorf) the instant it
+// drops below minContrastRatio, full stop. A failing pair is a finding to
+// report (docs/reports/phase3g-findings.md, task 1208), never a licence
+// to recolour a built-in theme file.
 func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 	checks := dialogSurfaceChecks()
-	checks = append(checks, dialogSelectionChecks("selection", Selection)...)
-	checks = append(checks, dialogSelectionChecks("selectionidle", SelectionIdle)...)
+	checks = append(checks, dialogSelectionChecks()...)
 
 	thinnest := make(map[string]float64, len(Builtins()))
 	thinnestLabel := make(map[string]string, len(Builtins()))
-	covered := make(map[string]bool, len(Builtins())*len(checks)*2)
 
 	for _, th := range Builtins() {
 		th := th
@@ -387,8 +331,14 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 					min, minLabel = ratioQuant, chk.label+" (quant)"
 				}
 
-				covered[checkDialogPair(t, th.Name, chk.label, "hex", ratioHex, fgHex, bgHex)] = true
-				covered[checkDialogPair(t, th.Name, chk.label, "quant", ratioQuant, fgQ, bgQ)] = true
+				if ratioHex < minContrastRatio {
+					t.Errorf("theme %q %s: hex contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+						th.Name, chk.label, ratioHex, minContrastRatio, fgHex, bgHex)
+				}
+				if ratioQuant < minContrastRatio {
+					t.Errorf("theme %q %s: quantised contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+						th.Name, chk.label, ratioQuant, minContrastRatio, fgQ, bgQ)
+				}
 			}
 		})
 		thinnest[th.Name] = min
@@ -402,14 +352,6 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 		}
 		t.Logf("SUMMARY %-10s thinnest newly-covered pair %-24s = %.2f:1 (%s floor %.1f:1)",
 			th.Name, thinnestLabel[th.Name], thinnest[th.Name], status, minContrastRatio)
-	}
-
-	// An allowlist entry that matches no cell this test walks would be a
-	// silent exemption of whatever it was meant to name.
-	for key := range dialogPairAllowlist {
-		if !covered[key] {
-			t.Errorf("dialogPairAllowlist entry %q matches no (theme, pair, colour space) this test covers -- typo, or the pair/theme was renamed", key)
-		}
 	}
 }
 

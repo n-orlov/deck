@@ -182,7 +182,8 @@ func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
 // one this task (1203) focuses -- task016GhostModel leaves it focused
 // (m.createField == 1), so this row's background is theme.Selection
 // (renderCreateRowSegments), exactly the pair R84's contrast floor holds
-// every dialogFocusedFieldTextTokens entry to. The ghost's cells render in
+// every dialogSelectionTokens entry (internal/theme/contrast_test.go) to.
+// The ghost's cells render in
 // the `hint` token (not the sub-floor `dimmed` this test used to assert,
 // before task 1203: `dimmed` measures 2.59:1 on cobalt, 2.69:1 on empire
 // and 2.51:1 on parchment over theme.Selection, all below the 3.0:1 floor,
