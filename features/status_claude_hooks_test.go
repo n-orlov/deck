@@ -295,10 +295,16 @@ func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantRea
 
 // databaseSessionIsRepairedTo asserts the state SPEC §7's self-heal
 // (internal/service.Service.repairTerminalRowWithLivePane, R76) leaves behind
-// once a hook's own terminal write ("error", here) has already been
-// corrected by the synchronous post-hook reconcile pass that runs inside the
-// same "deck _hook" subprocess invocation (cmd/deck/main.go's runHook), before
-// the hook ever returns to its caller. Unlike databaseSessionHasHookStatus,
+// once it has fired: the tmux-sourced correction is applied synchronously by
+// the post-hook reconcile pass that runs inside the same "deck _hook"
+// subprocess invocation (cmd/deck/main.go's runHook), before the hook ever
+// returns to its caller. Currently unused: task 902 (per task 901's finding
+// F40) narrowed the repair so a hook's own bare "error" write -- this step's
+// original use, when task 701 still made the repair reach it unconditionally
+// -- is no longer touched by it at all, and task 903 reverted
+// status_claude_hooks.feature's StopFailure assertion back onto that
+// unrepaired hook verdict; no scenario in this file calls this step today.
+// Unlike databaseSessionHasHookStatus,
 // this does not require status_source "hook": the repair is tmux-sourced by
 // definition, and asserting that source is the whole point of this step.
 func databaseSessionIsRepairedTo(ctx context.Context, name, wantStatus, wantSource, wantReason, wantMessage string, acknowledgedText, epochText string) error {

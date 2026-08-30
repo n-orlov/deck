@@ -73,12 +73,14 @@ Feature: the seven §7 status tokens colour the sidebar's status word (task 014)
 
   @requirement-status-tokens
   Scenario: the error status token colours the error status word
-    # "error" cannot be posed by writing the state database directly while
-    # tok-target's tmux pane is still alive, for the same reason "stopped"
-    # above cannot: SPEC section 7's self-heal repairs a bare error row with
-    # a live pane back to "running" on the very next reconcile tick (task
-    # 703, review finding 1's fallout). A genuine nonzero pane exit reaches
-    # a durable "error" instead -- the real tmux.pane_dead transition.
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, for the same reason "stopped" above is: SPEC section 7's
+    # self-heal narrows to a stopped row, or an error row that itself
+    # already carries a pane-exit or tmux/user-sourced verdict, paired with
+    # a live pane (task 902, per task 901's finding F40) -- a bare
+    # hook/probe-sourced error with no such verdict is left alone. A genuine
+    # nonzero pane exit reaches a durable "error" instead -- the real
+    # tmux.pane_dead transition.
     When shell session "tok-target" exits with status 1
     Then within one configured reconcile interval deck client "A" screen contains "error"
     And deck client "A" text "error" has foreground token "error"

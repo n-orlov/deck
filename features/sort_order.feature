@@ -32,15 +32,16 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    # "error" cannot be posed by writing the state database directly
-    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs it straight back to "running" on the very next reconcile tick
-    # (task 703, review finding 1's fallout) -- exactly the race this
-    # fixture's error tier must not be exposed to. A genuine nonzero pane
-    # exit is instead collected and killed by reconcile, which is what
-    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). "ord-bravo"'s pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair) is what makes the row's "error" the real tmux.pane_dead
+    # transition (task 804).
     And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
@@ -70,15 +71,16 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    # "error" cannot be posed by writing the state database directly
-    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs it straight back to "running" on the very next reconcile tick
-    # (task 703, review finding 1's fallout) -- exactly the race this
-    # fixture's error tier must not be exposed to. A genuine nonzero pane
-    # exit is instead collected and killed by reconcile, which is what
-    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). "ord-bravo"'s pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair) is what makes the row's "error" the real tmux.pane_dead
+    # transition (task 804).
     And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
@@ -108,15 +110,16 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    # "error" cannot be posed by writing the state database directly
-    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs it straight back to "running" on the very next reconcile tick
-    # (task 703, review finding 1's fallout) -- exactly the race this
-    # fixture's error tier must not be exposed to. A genuine nonzero pane
-    # exit is instead collected and killed by reconcile, which is what
-    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). "ord-bravo"'s pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair) is what makes the row's "error" the real tmux.pane_dead
+    # transition (task 804).
     And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
@@ -156,15 +159,16 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    # "error" cannot be posed by writing the state database directly
-    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs it straight back to "running" on the very next reconcile tick
-    # (task 703, review finding 1's fallout) -- exactly the race this
-    # fixture's error tier must not be exposed to. A genuine nonzero pane
-    # exit is instead collected and killed by reconcile, which is what
-    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). "ord-bravo"'s pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair) is what makes the row's "error" the real tmux.pane_dead
+    # transition (task 804).
     And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
@@ -196,15 +200,16 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-charlie" has created_at 25 seconds ago
     And the state database session "ord-delta" has created_at 15 seconds ago
     And the state database session "ord-alpha" has status "running" 20 seconds ago
-    # "error" cannot be posed by writing the state database directly
-    # while "ord-bravo"'s pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs it straight back to "running" on the very next reconcile tick
-    # (task 703, review finding 1's fallout) -- exactly the race this
-    # fixture's error tier must not be exposed to. A genuine nonzero pane
-    # exit is instead collected and killed by reconcile, which is what
-    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). "ord-bravo"'s pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair) is what makes the row's "error" the real tmux.pane_dead
+    # transition (task 804).
     And shell session "ord-bravo" exits with status 1
     And the state database session "ord-charlie" has status "idle" 10 seconds ago
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
@@ -280,15 +285,16 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "gso-ba" has workspace "gso-beta-ws"
     And the state database session "gso-bb" has workspace "gso-beta-ws"
     And the state database session "gso-bb" has status "waiting" 40 seconds ago
-    # "error" cannot be posed by writing the state database directly
-    # while "gso-ab"'s pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs it straight back to "running" on the very next reconcile tick
-    # (task 703, review finding 1's fallout) -- exactly the race this
-    # fixture's error tier must not be exposed to. A genuine nonzero pane
-    # exit is instead collected and killed by reconcile, which is what
-    # makes the row's "error" the real tmux.pane_dead transition (task 804).
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). "gso-ab"'s pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair) is what makes the row's "error" the real tmux.pane_dead
+    # transition (task 804).
     And shell session "gso-ab" exits with status 1
     And the state database session "gso-ba" has status "running" 20 seconds ago
     And the state database session "gso-aa" has status "idle" 10 seconds ago
