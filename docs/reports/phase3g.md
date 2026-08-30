@@ -1686,7 +1686,7 @@ is cited with the exact clause it did or did not meet, not with its status word.
   empty — it matches exactly one line, `docs/reports/phase3g-810-findings/
   reproduce-f37.sh`, a docs-evidence reproduction script task 810 added, not product
   or CI code; task 812's report already disclosed this exact false positive and this
-  section repeats the disclosure rather than silently dropping the `.sh`/`.toml`
+  section repeats the disclosure rather than silently dropping the `'*.sh'`/`'*.toml'`
   globs.
 - **Final DOCS sha**: this close-out's own primary commit cannot quote its own hash
   inside itself — the same regress task 607's and task 813's close-outs each named and
@@ -1717,7 +1717,7 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > exit=0
 > ```
 >
-> Clean tree and local `HEAD` equal to `origin/main`, both at commit A — this
+> Clean tree and local `HEAD == origin/main`, both at commit A — this
 > close-out's own final code-and-docs boundary sha. The **final DOCS sha for the
 > whole approach is therefore `8a6f0d1`**, one commit short of
 > this addendum itself, for the same self-reference reason; the identical
@@ -1734,8 +1734,8 @@ same tracked directory naming every skip/exclusion. **Neither exists.**
 `git ls-files docs/reports/phase3g-811-fullsuite/` returns nothing — the directory
 was never created inside the repository. Task 811 ran the launcher exactly once,
 verbatim, backgrounded and polled, at HEAD `17b1649` (code state `fdf4507`), and
-measured exit status **`1`**, deterministically, on
-`TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict`
+measured exit status **`1`**, deterministically, on `TestFeatures`'s
+`attach_acknowledges_a_live_error_without_replacing_its_verdict`
 (`features/status_attach.feature:18`): 311 scenarios (310 passed, 1 failed), 3532
 steps (3526 passed, 1 failed, 5 skipped). The raw log, the exit-status file and a
 failure excerpt exist only outside this repository, at
@@ -1766,9 +1766,9 @@ non-blocking flakes are also named in
 `status_probe.feature`'s stale-sampling scenario (6/10 runs, same repair-timing
 mechanism, probe-sourced) and `attach_scroll.feature`'s wheel-notch scenario (1/10
 runs, an unrelated tmux status-line clock-tick artifact). Task 812 is recorded
-`skipped` (filed `unsatisfiable`): **the missing piece is the rate itself, `10/10`
-vs. the measured `0/10`** — the report and its evidence are complete and honest,
-not missing.
+`skipped` (filed `unsatisfiable`): **the missing piece is the rate itself,
+`10/10 passed` vs. the measured `0/10 passed`** — the report and its evidence are
+complete and honest, not missing.
 
 ### (d) Task 813 — guard bundle: meets six of seven guards; the seventh is unsatisfiable as written
 
@@ -1780,7 +1780,7 @@ clean tree — round 1 disclosed its own `??` residue honestly rather than hidin
 round 2 re-runs genuinely clean; (c) local `HEAD == origin/main`; (d)
 `git diff --stat 17b1649..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum`
 empty; (f) five `t.Skip(` additions across four new theme test files, all enumerated.
-All five of those are green, each with a `round2-*.log` re-run.
+All five of those are green, each with a re-run captured to a `round2-` prefixed log.
 
 **Guard (e) does not hold, and cannot, as the criteria state it.** The criteria
 require `git diff 1cfbd5a..HEAD -- features/godog_test.go` to be empty; it is not,
@@ -1813,8 +1813,8 @@ false "empty" clean-tree claim and an elided sweep output — that validation ca
   (exit 1, log committed).
 - **Task 814** (`9e6d525`): rewrote `../DELIVERY-LOG.md`'s Phase 3g paragraph to name
   all 8 approaches, R76–R93 plus both independent-review findings and their closures,
-  and quote task 812's `0/10 passed` rate verbatim (never rounded to `10/10` or called
-  "partial").
+  and quote task 812's `0/10 passed` rate verbatim (never rounded to `10/10 passed` or
+  called "partial").
 
 All six of these commits are docs-only: `git show --stat <sha>` for each touches
 only paths under `docs/`.
@@ -1826,7 +1826,7 @@ only paths under `docs/`.
 | clean tree at the true final sha | met, re-shown at commit A | addendum above, [`addendum-guard.log`](phase3g-815-closeout/addendum-guard.log) |
 | local `HEAD == origin/main` at the true final sha | met, re-shown at commit A | addendum above, [`addendum-guard.log`](phase3g-815-closeout/addendum-guard.log) |
 | task 811 (whole-suite sweep, exit 0) | **not met** — exit `1`, no tracked evidence directory | (b) above |
-| task 812 (`ci/stability.sh 10`, 10/10) | **not met** — `0/10`, script exit `1` | (c) above, [`phase3g-812-stability10/`](phase3g-812-stability10/) |
+| task 812 (`ci/stability.sh 10`, `10/10 passed`) | **not met** — `0/10 passed`, script exit `1` | (c) above, [`phase3g-812-stability10/`](phase3g-812-stability10/) |
 | task 813 guard (e) (`godog_test.go` diff empty) | **not met**, unsatisfiable as written; other six guards met | (d) above, [`phase3g-813-guards/`](phase3g-813-guards/) |
 | task 806 (footer/parity tests unedited) | **not met**, residual gap, no follow-up task filed | [review finding 2](#review-finding-2--r80s-one-definition-per-action-tasks-806808) |
 
