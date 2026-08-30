@@ -60,7 +60,7 @@ the single field `AllowedCurrentStatuses: []string{"starting"}` to the
 task 006's test green without disturbing §7's precedence rules or the three R94 scenarios —
 evidence at `docs/reports/phase3h-007-f31-guard/`.
 
-## R97 — the record matches the tree (tasks 008–014, 201–209; 210–212 pending)
+## R97 — the record matches the tree (tasks 008–015, 201–209; 210–212 not yet committed)
 
 ### Whole-suite sweep — original run, superseded (task 008)
 
@@ -120,13 +120,24 @@ that time. Task 014 (`ed469e4`) published the companion `docs/reports/phase3h-fi
 Both commits deliver this phase and belong in the traceability table alongside every other
 task; their earlier omission from it was found by review and is corrected here.
 
+### Guard re-verification at the then-final sha — superseded (task 015)
+
+Task 015 (`c69720f`, `5326e39`) re-verified the protected-path and push guards and published
+`docs/reports/phase3h-015-guards/`. Both commits deliver this phase and are recorded here;
+they were measured before task 201 changed the final code sha, so that guard report is
+**superseded history** — task 211 re-verifies every guard at the current final code sha
+`4b1d4dc`.
+
 ### Gofmt realignment forces both gates to re-run (task 201)
 
 Task 201 (`4b1d4dc`) restored `internal/service/reconcile.go` to gofmt-clean formatting: the
 `store.StatusUpdateInput` literal task 007's `2ccb1d3` added was gofmt-dirty from that commit
 until this one (a source-format regression, not a behaviour change). Because it touches a
 `*.go` path, it produces the new final code sha above and, per the standing rules, forces the
-whole-suite sweep, the verbose tally and the stability gate to re-run at the new sha.
+whole-suite sweep, the verbose tally and the stability gate to re-run at the new sha. Its
+gofmt-clean evidence was published by `1f47503` in `docs/reports/phase3h-201-gofmt/`, a
+docs-only commit that names task 201's own sha and therefore carries no task marker of its
+own; it too delivers this phase and is recorded in the table below.
 
 ### Gate re-run at the new final code sha (tasks 202–204)
 
@@ -183,9 +194,19 @@ gate results, the protected-path ruling and this report.
 
 This section, the final-code-sha block above and the per-requirement table below were
 brought current by task 209, whose own citation check is
-`docs/reports/phase3h-209-report/README.md`. Tasks 210 (`docs/reports/phase3h-findings.md`'s
-refresh), 211 (the guard re-verification report) and 212 (this report's close-out section)
-are **pending** as of this commit and are not yet cited by sha.
+`docs/reports/phase3h-209-report/README.md`. Task 209's first commit is `426fb3a`; review
+found that commit's table incomplete (it omitted `1f47503`, `c69720f`, `5326e39` and
+`426fb3a` itself), and this data commit is the correction. A commit cannot quote its own sha,
+so the immediately following docs-only addendum names this data commit's sha in the table's
+last row; the addendum's own sha is in turn named by task 211's guard report and task 212's
+close-out.
+
+Tasks 210 (`docs/reports/phase3h-findings.md`'s refresh), 211 (the guard re-verification
+report) and 212 (this report's close-out section) **have no commit in this tree yet** — the
+search for their task markers, quoted at this report's own sha in
+`docs/reports/phase3h-209-report/README.md`, comes back empty — so there is no sha to record
+for them and none is invented here. Each lands with its own commit, and task 212's close-out
+records all three shas.
 
 ## Per-requirement table
 
@@ -194,7 +215,19 @@ are **pending** as of this commit and are not yet cited by sha.
 | R94 | met | 001–003 | `f700025`, `2f952da`, `afa55b8`, `9cd8f37`, `357867e`, `67cefcd`, `7634895` | `docs/reports/phase3h-001-status-probe-revert/`, `docs/reports/phase3h-002-narrow-repair/`, `docs/reports/phase3h-003-r94-scenarios/` |
 | R95 | met | 004–005 | `d578c03`, `2c2ec30` | `docs/reports/phase3h-005-hint-token/` |
 | R96 | met | 006–007 | `8d6ed72`, `2ccb1d3` | `docs/reports/phase3h-006-f31/`, `docs/reports/phase3h-007-f31-guard/` |
-| R97 | met | 008–014, 201–209 (210–212 pending) | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852`, `4673fb9`, `b5e4178`, `ed469e4`, `4b1d4dc`, `c9e88cb`, `fc358c0`, `011b04b`, `79b56d9`, `52e9045`, `50960b9`, `9cff1ea`, `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf` | `docs/reports/phase3h-008-fullsuite/` (superseded), `docs/reports/phase3h-009-fullsuite-verbose/` (superseded), `docs/reports/phase3h-010-stability10/` (superseded), `docs/reports/phase3h-012-delivery-log/`, `docs/reports/phase3h-013-report/`, `docs/reports/phase3h-findings.md`, `docs/reports/phase3h-202-fullsuite/`, `docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3h-204-stability10/`, `docs/reports/phase3h-205-r76-disposition/`, `docs/reports/phase3h-206-3g-findings-disposition/`, `docs/reports/phase3h-207-delivery-log-3g/`, `docs/reports/phase3h-208-delivery-log-3h/` |
+| R97 | met | 008–015, 201–209 (210–212 have no commit yet) | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852`, `4673fb9`, `b5e4178`, `ed469e4`, `c69720f`, `5326e39`, `4b1d4dc`, `1f47503`, `c9e88cb`, `fc358c0`, `011b04b`, `79b56d9`, `52e9045`, `50960b9`, `9cff1ea`, `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf`, `426fb3a` | `docs/reports/phase3h-008-fullsuite/` (superseded), `docs/reports/phase3h-009-fullsuite-verbose/` (superseded), `docs/reports/phase3h-010-stability10/` (superseded), `docs/reports/phase3h-012-delivery-log/`, `docs/reports/phase3h-013-report/`, `docs/reports/phase3h-015-guards/` (superseded), `docs/reports/phase3h-findings.md`, `docs/reports/phase3h-201-gofmt/`, `docs/reports/phase3h-202-fullsuite/`, `docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3h-204-stability10/`, `docs/reports/phase3h-205-r76-disposition/`, `docs/reports/phase3h-206-3g-findings-disposition/`, `docs/reports/phase3h-207-delivery-log-3g/`, `docs/reports/phase3h-208-delivery-log-3h/`, `docs/reports/phase3h-209-report/` |
+
+### Delivery-commit completeness
+
+The four rows above name, between them, every commit of `a24ff8d..HEAD` that existed when this
+refresh was written: the R94 row's seven, the R95 row's two, the R96 row's two and the R97
+row's twenty-five — thirty-six in all, which is exactly `git rev-list a24ff8d..HEAD --count`
+at task 209's first commit `426fb3a`. Only this refresh's own two commits can fall outside that
+set, because neither can quote its own sha: the addendum immediately below adds the data
+commit's sha to the R97 row, and the addendum's own sha is recorded by task 211's guard report
+and task 212's close-out. The counts and the set comparison — which commits of the range the
+report does and does not cite — are run and quoted in
+`docs/reports/phase3h-209-report/README.md`.
 
 Every sha this report cites — the table's, plus the R94/R95/R96 revert-target shas
 `a53146a`, `c176751`, `0b7dce5`, the operator's ruling/plan shas `de90a5c`, `a24ff8d` and
