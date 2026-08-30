@@ -1,0 +1,28 @@
+=== (guard triple) captured OUTSIDE the workspace, before any new tracked file exists, to avoid the round-1 self-untracked artefact ===
+=== every command below was run from /workspace, in this order, output unedited ===
+
+$ git status --porcelain
+(exit code: 0 )
+
+$ git rev-parse HEAD
+e85b4e7fe4b0bdd0990f11fdcc2033e350828f6f
+(exit code: 0 )
+
+$ git rev-parse origin/main
+e85b4e7fe4b0bdd0990f11fdcc2033e350828f6f
+(exit code: 0 )
+
+$ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" && echo EQUAL || echo DIFFERENT
+EQUAL
+(exit code: 0 )
+
+$ git ls-remote origin refs/heads/main
+e85b4e7fe4b0bdd0990f11fdcc2033e350828f6f	refs/heads/main
+(exit code: 0 )
+
+$ git log --oneline -1
+e85b4e7 docs: publish the approach 10 close-out's post-push guard triple for commit d4a249a (task 1009)
+(exit code: 0 )
+
+$ git diff --stat a5f8f6b..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum
+(exit code: 0 )
