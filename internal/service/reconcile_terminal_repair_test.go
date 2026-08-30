@@ -15,9 +15,12 @@ import (
 )
 
 // TestReconcileRepairsTerminalRowWithLivePaneShell is SPEC §7's one
-// self-healing rule for a shell row: a terminal (stopped/error) status paired
-// with a live, non-dead pane is an invariant violation, not evidence a kill or
-// relaunch belongs here. deck's own shell-liveness rule is the only signal a
+// self-healing rule for a shell row: a stopped status (the case exercised
+// here), or an error status that itself carries a pane-exit or tmux/user-
+// sourced verdict, paired with a live, non-dead pane is an invariant
+// violation, not evidence a kill or relaunch belongs here. A bare hook- or
+// probe-sourced error row is excluded and is not repaired at all (finding F40,
+// task 901). deck's own shell-liveness rule is the only signal a
 // shell ever has, so the repair promotes straight to running, records the
 // correction as an event, and leaves the pane itself untouched -- no kill, no
 // respawn, no send-keys against it (proven here by the pane's PID and the

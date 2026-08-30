@@ -664,12 +664,19 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	// it cannot invent an agent's working state.
 	tmuxLaunchObservation := input.Status == "starting" && currentStatus == "starting" && currentSource == "user"
 	tmuxShellPromotion := input.Status == "running" && agent == "shell" && currentStatus == "starting"
-	// SPEC §7's one self-healing rule: a terminal row (stopped/error) paired
-	// with a live pane is an invariant violation the reconciler repairs from
-	// tmux liveness alone -- a shell promotes straight to running (its only
-	// rule), everything else resets to the neutral starting a fresh pane
-	// always begins at, since tmux still cannot fabricate an agent's working
-	// state even while repairing this violation.
+	// SPEC §7's one self-healing rule, as this gate sees it. Which rows are
+	// eligible is not decided here: reconcile.go's terminal-row branch repairs
+	// a stopped row always, but an error row only when it carries a pane-exit
+	// or tmux/user-sourced verdict. A bare hook- or probe-sourced error row is
+	// deliberately never repaired -- §7's running --turn or API failure--> error
+	// transition needs no pane death at all, so that row is the agent's own
+	// considered verdict (finding F40, task 901) -- and no repair write for one
+	// ever reaches this predicate. What the predicate does is admit the repair
+	// write that does arrive: it is from tmux liveness alone, so a shell
+	// promotes straight to running (its only rule) and everything else resets
+	// to the neutral starting a fresh pane always begins at, since tmux still
+	// cannot fabricate an agent's working state even while repairing this
+	// violation.
 	tmuxTerminalRepair := (currentStatus == "stopped" || currentStatus == "error") &&
 		((agent == "shell" && input.Status == "running") || (agent != "shell" && input.Status == "starting"))
 	// The repair is also the one tmux write allowed past the two terminal
