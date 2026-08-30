@@ -154,8 +154,13 @@ pane-exit verdict (a genuine, already-collected crash re-observed live) or a
 `tmux`- or `user`-sourced verdict (nothing outranks tmux liveness on those, per
 precedence); never repair a `hook`- or `probe`-sourced `error` row that carries no
 pane-exit verdict — that shape sits at precedence's top two tiers, and overwriting
-it is exactly what the measured `812` failure the finding quotes shows going wrong.
-**Implementing sha: `a1ca33e`** (task 902) narrows
+it is exactly what the measured `812` failure above shows going wrong.
+That rule is quoted word for word from F40, so its closing "above" is F40's own
+back-reference to the failure text that finding quotes,
+[`phase3g-812-stability10/README.md`](phase3g-812-stability10/README.md) line 120
+(`verdict = "starting"/"tmux" reason "tmux pane is alive; terminal row corrected",
+want "error"/"probe" reason "agent error"`), not to anything earlier in this
+document. **Implementing sha: `a1ca33e`** (task 902) narrows
 `internal/service/reconcile.go`'s trigger to this rule, replacing the test that
 pinned the old unconditional behaviour with two new tests (hook- and
 probe-sourced) proving a live-pane bare `error` row is left untouched. Scenario
