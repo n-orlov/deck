@@ -55,16 +55,19 @@ func setSessionCreatedAtSecondsAgo(ctx context.Context, name string, secondsAgo 
 // the way setSessionStatusSecondsAgo (features/attention_sort_test.go) does
 // for both together. task 804's sort_order.feature error rows reach "error"
 // via a genuine nonzero pane exit (features/crash_test.go's
-// shellSessionExitsWithNonzeroStatus) instead of a raw status write, since a
-// raw "error" write on a still-live pane is the exact invariant violation
-// internal/service.reconcile's repairTerminalRowWithLivePane repairs back to
-// "running" on the very next tick (task 703, review finding 1's fallout).
+// shellSessionExitsWithNonzeroStatus) instead of a raw status write, so the
+// row carries an actual pane-exit verdict and a genuine tmux.pane_dead
+// crash-collection event -- the fixture's error tier needs a real dead pane
+// either way, since a raw "error" write only risks internal/service.
+// reconcile's repairTerminalRowWithLivePane if it also carries a pane-exit
+// or tmux/user-sourced verdict (a bare hook/probe-sourced error is left
+// alone, finding F40, task 901), and a raw write here has neither.
 // That genuine route settles status_at at whatever real wall-clock moment
 // reconcile's crash collection actually runs, which the activity scenario's
 // engineered relative ages cannot tolerate; by the time this step is ever
 // used the row's pane is already dead and collected (crash collection kills
 // it as part of recording the crash), so this raw, status-preserving write
-// can never race that live-pane repair the way a raw status write would.
+// can never race that crash collection the way a raw status write would.
 func setSessionStatusAtSecondsAgo(ctx context.Context, name string, secondsAgo int) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {

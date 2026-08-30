@@ -1576,11 +1576,14 @@ func canAcknowledge(session store.Session) bool {
 // now: internal/service/reconcile.go's crashed-pane collect-on-sight
 // (reconcile.go:68-79) tears down a dead pane's tmux session regardless
 // of the stored status, and repairTerminalRowWithLivePane (SPEC §7,
-// reconcile.go:215-235) corrects a stopped-or-error row that still has a
-// genuinely live pane back to a non-terminal status. Either way a row this
-// predicate reads as stopped has already had its corpse collected or its
-// row repaired by the time the UI sees it, so canKill no longer needs a
-// live service round trip to be trustworthy.
+// reconcile.go:215-235) corrects a stopped row -- or an error row that
+// itself already carries a pane-exit or tmux/user-sourced verdict -- back to
+// a non-terminal status once it still has a genuinely live pane; a hook- or
+// probe-sourced error with no pane-exit verdict is left alone (finding F40,
+// task 901), since SPEC §7's transition table allows that error with no pane
+// death at all. Either way a row this predicate reads as stopped has already
+// had its corpse collected or its row repaired by the time the UI sees it,
+// so canKill no longer needs a live service round trip to be trustworthy.
 func canKill(session store.Session) bool {
 	return session.Status != "stopped"
 }
@@ -2547,9 +2550,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// (reconcile.go:68-79) collects and kills a dead pane's tmux
 			// session regardless of the stored status, and
 			// repairTerminalRowWithLivePane (SPEC §7, reconcile.go:215-235)
-			// corrects a stopped/error row that still has a genuinely live
-			// pane back to a non-terminal status before the row is ever read
-			// here. So a row canKill reads as stopped has already had its
+			// corrects a stopped row -- or an error row that itself already
+			// carries a pane-exit or tmux/user-sourced verdict -- that still has
+			// a genuinely live pane back to a non-terminal status before the row
+			// is ever read here (a hook- or probe-sourced error with no
+			// pane-exit verdict is left alone, finding F40, task 901). So a row canKill reads as stopped has already had its
 			// corpse collected or its status repaired -- there is no longer a
 			// retained corpse for a locally-read Status to miss, and no kill
 			// command needs to reach the service to say so. The wording

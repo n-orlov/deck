@@ -80,15 +80,14 @@ func shellSessionExitsZero(ctx context.Context, name string) error {
 // the next reconcile observes it, captures the crash tail, writes a real
 // tmux-sourced "error" with pane_exit_status set, and kills the session --
 // the genuine tmux.pane_dead route (SPEC.md:536-566) a scenario needing a
-// durable "error" row on what was a shell session must use instead of
-// writing status="error" into the state database directly: since task 701,
-// that raw write is a bare error with no pane-exit verdict, and SPEC section
-// 7's self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
-// repairs it back to "running" on the very next reconcile tick because the
-// pane is still alive underneath it (task 703's fix for review finding 1's
-// fallout, mirroring the precedent already documented in this same file for
-// "exits with status zero"/stopped and in status_theme.feature/themes.feature
-// for stopped).
+// durable "error" row with an actual crash tail and pane_exit_status on what
+// was a shell session must use instead of writing status="error" into the
+// state database directly: since task 902 (per task 901's finding F40), a
+// raw write like that carries neither a pane-exit verdict nor a tmux/user
+// source, so SPEC section 7's self-heal (internal/service.reconcile's
+// repairTerminalRowWithLivePane) leaves it alone rather than repairing it
+// back to "running" -- it is the crash tail and pane_exit_status themselves
+// this helper is really after, and no raw database write can produce either.
 func shellSessionExitsWithNonzeroStatus(ctx context.Context, name string, code int) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {

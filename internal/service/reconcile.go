@@ -221,9 +221,16 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 }
 
 // repairTerminalRowWithLivePane is SPEC §7's one self-healing rule: a
-// terminal status (stopped, error) paired with a live, non-dead pane is an
+// stopped row, or an error row that itself already carries a pane-exit or
+// tmux/user-sourced verdict, paired with a live, non-dead pane is an
 // invariant violation, not evidence to act on -- the pane is the part that
-// is right. It corrects the row from what liveness alone can observe: for a
+// is right. A hook- or probe-sourced error row with no pane-exit verdict is
+// deliberately excluded: SPEC §7's transition table allows running --turn or
+// API failure--> error with no pane death at all, so that row is the
+// agent's own considered verdict, not a contradiction tmux liveness gets to
+// overrule (finding F40, task 901); the caller (reconcile.go's terminal-row
+// branch above) is what enforces that narrower trigger before ever calling
+// this function. It corrects the row from what liveness alone can observe: for a
 // shell row that is exactly the §7 shell-liveness rule (a live pane always
 // means running, because a shell has no other signal, ever); for an agent
 // row liveness supplies no verdict at all, so the row is reset to the

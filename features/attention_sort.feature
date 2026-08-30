@@ -20,14 +20,15 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     And deck client "A" creates claude session "s-agent" with permission profile "safe"
     And deck client "A" creates shell session "s-stopped"
     And shell session "s-stopped" exits with status zero
-    # "error" cannot be posed by writing the state database directly while
-    # s-error's tmux pane is still alive: SPEC section 7's self-heal
-    # (internal/service.reconcile's repairTerminalRowWithLivePane) treats a
-    # bare error row paired with a live pane as an invariant violation and
-    # repairs a shell row straight back to "running" on the very next
-    # reconcile tick (task 703, review finding 1's fallout), exactly as it
-    # already does for a raced "stopped" write above. A genuine nonzero
-    # pane exit is instead collected and killed by reconcile, which is what
+    # "error" is posed here via a genuine pane exit, not a raw database
+    # write, so the row's PaneExitStatus is actually set: SPEC section 7's
+    # self-heal (internal/service.reconcile's repairTerminalRowWithLivePane)
+    # narrows to a stopped row, or an error row that itself already carries
+    # a pane-exit or tmux/user-sourced verdict, paired with a live pane -- a
+    # bare hook/probe-sourced error with no such verdict is left alone
+    # (finding F40, task 901). s-error's pane is genuinely dead by the time
+    # this step returns, so reconcile's crash-collection (not the live-pane
+    # repair, which already handled the "s-stopped" row above) is what
     # makes the row's "error" the real tmux.pane_dead transition.
     And shell session "s-error" exits with status 1
     And the state database session "s-idle" has status "idle" 50 seconds ago

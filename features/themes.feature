@@ -43,12 +43,14 @@ Feature: theme rendering end-to-end (requirement 49)
   @requirement-49-themes
   Scenario: a built-in theme colours the error status token, read per cell from a real client
     # Split out of the Scenario Outline above for the same reason "stopped"
-    # already is: "error" cannot be posed by writing the state database
-    # directly while target's tmux pane is still alive either -- SPEC
-    # section 7's self-heal repairs a bare error row with a live pane back
-    # to "running" on the very next reconcile tick (task 703, review
-    # finding 1's fallout), the same way it repairs a raced "stopped" write.
-    # A genuine nonzero pane exit is instead collected and killed by
+    # already is: "error" is posed here via a genuine pane exit, not a raw
+    # database write, since a bare hook/probe-sourced error with no
+    # pane-exit verdict is left alone by SPEC section 7's self-heal rather
+    # than being repaired (task 902, per task 901's finding F40) -- the
+    # narrowed rule still repairs a stopped row, or an error row that
+    # itself already carries a pane-exit or tmux/user-sourced verdict,
+    # paired with a live pane, the same way it repairs a raced "stopped"
+    # write. A genuine nonzero pane exit is instead collected and killed by
     # reconcile before the row is ever read back, so the terminal "error"
     # this asserts is the real tmux.pane_dead transition, not a raced fake
     # one.
