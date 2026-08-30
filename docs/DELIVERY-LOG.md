@@ -521,13 +521,24 @@ to add R93's own §11.8 "in-progress selection" clause, under an explicit operat
 present under the run harness's read-only `/config/amendments/` directory does (a path outside this
 repository), and the sole such ruling there (`001-202.md`) grants no protected-path exception.
 Approach 09's **`2d61993`** (task 909) forward-reverts exactly those
-nine §11.8 lines (`b69b5ba` itself stands unrewritten in published history; `git diff
-1cfbd5a..HEAD -- SPEC.md` empty at every commit since), so R93's shipped drag-selection behaviour
-now has **no SPEC authority anywhere in this tree** — it is specified only by the operator's own
+nine §11.8 lines (`b69b5ba` itself stands unrewritten in published history), so R93's shipped
+drag-selection behaviour briefly had no SPEC authority in this tree — a gap that did not stand:
+`git diff --stat 1cfbd5a..HEAD -- SPEC.md` is **not** empty, and `git log --oneline
+1cfbd5a..HEAD -- SPEC.md` lists exactly three touches to that path, newest first: `de90a5c`,
+`2d61993` and `b69b5ba` (task 205's original §11.8 amendment). **The operator landed §11.8's R93
+wording verbatim at `de90a5c`** (`git log --oneline -1 de90a5c -- SPEC.md` names it), so R93's
+shipped drag-selection behaviour **does have SPEC authority in this tree**, as of that commit —
+the opposite of what this paragraph used to claim about SPEC authority in this tree. The pre-`de90a5c`
+gap is preserved as history, not deleted: at the time, it was specified only by the operator's own
 wording, preserved verbatim in tracked
 [`docs/reports/phase3g-909-spec-restore/README.md`](reports/phase3g-909-spec-restore/README.md)
-and restated as finding **F41**; landing the amendment in `SPEC.md` itself is the operator's own
-act, outside this run. R76's reconcile repair itself was narrowed again by approach 09 (tasks
+and restated as finding **F41**; `de90a5c` predates this run's own base `a24ff8d` (it is `a24ff8d`'s
+own parent commit) and is the operator's own act, outside this run's own edits — this run's own
+protected-path guard (`git log --oneline a24ff8d..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md`
+empty) is untouched by it. **Phase 3h disposition (task 207, final code sha `4b1d4dc`): this
+paragraph corrects the two stale claims review named** — the SPEC-authority-gap claim was never
+withdrawn once `de90a5c` landed, and the `git diff 1cfbd5a..HEAD -- SPEC.md` empty claim was never
+true of the full range, only of the narrower sub-range ending at `2d61993`. R76's reconcile repair itself was narrowed again by approach 09 (tasks
 901–906, finding **F40**): it repairs a `stopped` row under a live pane whatever its source, and an
 `error` row that carries a pane-exit verdict or a `tmux`-/`user`-sourced verdict, but it deliberately
 never repairs a hook- or probe-sourced `error` row with no pane-exit verdict — narrower than
@@ -538,18 +549,21 @@ revert-and-reproduce proofs for the eight requirements the PRD named a naive-tes
 R79, R86, R87, R88, R89, R91 — plus R93's own retroactive proof, and dedicated sections for both
 original review findings) and [`docs/reports/phase3g-findings.md`](reports/phase3g-findings.md)
 (spec contradictions actually met, what the PRD got wrong, and defects found and deliberately not
-fixed). Commits run `1cfbd5a..HEAD`, ending at **final code sha `a5f8f6b`** (task 1001) — every
-commit after it is docs-only (`git diff --stat a5f8f6b..HEAD -- '*.go' '*.feature' '*.sh' '*.toml'
-go.mod go.sum` empty). The whole suite is green at that sha: the mandated, unnarrowed
-`ci/run.sh go test -p=1 -count=1 ./...` exits **`0`**
+fixed). Commits run `1cfbd5a..HEAD`, reaching `a5f8f6b` (task 1001).
+**This citation of `a5f8f6b` as Phase 3g's final code sha is superseded — 3g's true final code sha is `fdf4507`**, per the close-out paragraph below.
+The docs-only-after-it claim this section used to make does not hold across the full range: `git diff --stat a5f8f6b..HEAD -- '*.go' '*.feature'` is non-empty (tasks 1101–1204 and this run's own tasks 001–207 both touch code after it).
+At the time task 1002 ran, the whole suite measured green at that then-believed-final sha: the mandated, unnarrowed
+`ci/run.sh go test -p=1 -count=1 ./...` exited **`0`**
 ([`docs/reports/phase3g-1002-fullsuite/suite.log`](reports/phase3g-1002-fullsuite/suite.log),
 exit status in the sibling
-[`suite.log.exitstatus`](reports/phase3g-1002-fullsuite/suite.log.exitstatus), task 1002), and
-`ci/stability.sh 10` at that same sha `a5f8f6b` ends, verbatim from its own
+[`suite.log.exitstatus`](reports/phase3g-1002-fullsuite/suite.log.exitstatus), task 1002).
+**This is, again, a superseded final-code-sha citation of `a5f8f6b` — `fdf4507` is 3g's true final code sha**:
+`ci/stability.sh 10` at that same sha measured, verbatim from its own
 summary line, **`10/10 passed`**, with the script's own captured exit status **`0`**
 ([`docs/reports/phase3g-1003-stability10/summary.log`](reports/phase3g-1003-stability10/summary.log),
 exit status in [`script.exitstatus`](reports/phase3g-1003-stability10/script.exitstatus), task 1003;
-closed on citation, no re-run, by task 1004). The phase spent ten approaches, distinguished only
+originally closed on citation, no re-run, by task 1004 — both measurements are preserved here as
+history and superseded by the true final state recorded below). The phase spent ten approaches, distinguished only
 by their task-id range and each using the same `<area>: <why> (task NNN)` commit-subject
 convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and R83–R92 outright and R82 for every dialog
 but two; 02 (`1NN`, tasks 101–113) closed the rename dialog's focused-field theming (task 105,
