@@ -518,8 +518,9 @@ plan change `a03527c`, both pre-existing operator commits and ancestors of the r
 `1cfbd5a`) so R76–R92 each have a spec authority going in, then again mid-run (`b69b5ba`, task 205)
 to add R93's own §11.8 "in-progress selection" clause, under an explicit operator licence (steering
 018, github.com/n-orlov/deck issue #18) that finding 3 held does not bind this run — only a ruling
-present under read-only `/config/amendments/` does, and the sole such ruling (`001-202.md`) grants
-no protected-path exception. Approach 09's **`2d61993`** (task 909) forward-reverts exactly those
+present under the run harness's read-only `/config/amendments/` directory does (a path outside this
+repository), and the sole such ruling there (`001-202.md`) grants no protected-path exception.
+Approach 09's **`2d61993`** (task 909) forward-reverts exactly those
 nine §11.8 lines (`b69b5ba` itself stands unrewritten in published history; `git diff
 1cfbd5a..HEAD -- SPEC.md` empty at every commit since), so R93's shipped drag-selection behaviour
 now has **no SPEC authority anywhere in this tree** — it is specified only by the operator's own
@@ -544,16 +545,20 @@ go.mod go.sum` empty). The whole suite is green at that sha: the mandated, unnar
 ([`docs/reports/phase3g-1002-fullsuite/suite.log`](reports/phase3g-1002-fullsuite/suite.log),
 exit status in the sibling
 [`suite.log.exitstatus`](reports/phase3g-1002-fullsuite/suite.log.exitstatus), task 1002), and
-`ci/stability.sh 10` at the same sha is
-**10/10, script exit 0**, quoted verbatim from
-[`docs/reports/phase3g-1003-stability10/summary.log`](reports/phase3g-1003-stability10/summary.log)
-(closed on citation, no re-run, by task 1004). The phase spent ten approaches, distinguished only
+`ci/stability.sh 10` at that same sha `a5f8f6b` ends, verbatim from its own
+summary line, **`10/10 passed`**, with the script's own captured exit status **`0`**
+([`docs/reports/phase3g-1003-stability10/summary.log`](reports/phase3g-1003-stability10/summary.log),
+exit status in [`script.exitstatus`](reports/phase3g-1003-stability10/script.exitstatus), task 1003;
+closed on citation, no re-run, by task 1004). The phase spent ten approaches, distinguished only
 by their task-id range and each using the same `<area>: <why> (task NNN)` commit-subject
-convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and R83–R92 outright and left two gaps in R82;
-02 (`1NN`, tasks 101–113) closed one of those gaps and the phase's dialog/footer/report-hygiene
-residue; 03 (`2NN`, tasks 201–214) closed the three independent-review findings from that review
-pass; 04 (`3NN`, tasks 301–309) re-synchronised the scenarios review found still racing; 05 (`5NN`,
-tasks 501–512) fixed three more races found under load and drove the stability gate toward 10/10;
+convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and R83–R92 outright and R82 for every dialog
+but two; 02 (`1NN`, tasks 101–113) closed the rename dialog's focused-field theming (task 105,
+`ea6ce4b`, finding F18) and the phase's dialog/footer/report-hygiene residue; 03 (`2NN`, tasks
+201–214) closed the three independent-review findings from that review pass, among them the
+create-modal PTY-assertion conflict that had blocked task 016 (task 203, finding F27) — with those
+two closures R82 is fully met, as is every one of the eighteen requirements; 04 (`3NN`, tasks
+301–309) re-synchronised the scenarios review found still racing; 05 (`5NN`, tasks 501–512) fixed
+three more races found under load and drove the stability gate toward green;
 06 (`6NN`, tasks 601–608) was the reporting tail that closed the two suite-determinism gates by
 citation at then-final code sha `b0a4e7d` and wrote that wave's own close-out; 07 (`7NN`, tasks
 701–703) closed review finding 1 by making the repair reach a bare hook/probe `error` (task 701,
