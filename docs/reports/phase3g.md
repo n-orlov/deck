@@ -46,7 +46,8 @@ with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
   [review finding 2](#review-finding-2--r80s-one-definition-per-action-tasks-806808) ·
   [table](#per-requirement-table) ·
   [close-out](#close-out-task-113) ·
-  [close-out (approach 06)](#close-out-approach-06)
+  [close-out (approach 06)](#close-out-approach-06) ·
+  [close-out (approach 08)](#close-out-approach-08)
 
 ## Tool versions
 
@@ -1663,3 +1664,174 @@ as an open residual.
 | 4 | R82's unchanged-PTY-assertion condition vs. `SPEC.md`'s dimmed-help requirement | `3e883d7` (task 203), filed as finding F27, re-verified by task 301, `bdc1879` | [`phase3g-203-r82-assertion-conflict/`](phase3g-203-r82-assertion-conflict/), [`phase3g-301-review-findings-closure/`](phase3g-301-review-findings-closure/) |
 
 All four review findings are closed by sha and tracked evidence, none by assertion alone.
+
+## Close-out (approach 08)
+
+This section closes approach 08 (tasks 801–815) against the phase's true final state.
+It supersedes nothing above — the R76/R80 finding sections and the requirement rows
+stand as the record of what each task actually delivered — this section adds the
+final-sha attestation, an honest accounting of tasks 811/812/813 (none of which met
+their own completion bar), and the tasks 809/810/814 commits that carry the rest of
+this approach's reporting.
+
+**No closure is claimed on a task id alone below**: every one of 806, 811, 812 and 813
+is cited with the exact clause it did or did not meet, not with its status word.
+
+### (a) The phase's final shas
+
+- **Final CODE sha: `fdf4507`** — "tui: extend the footer/handler agreement matrix to
+  every gated footer key (task 808)". Every commit after it (809–815) is docs-only:
+  `git diff --stat fdf4507..HEAD -- '*.go' '*.feature' go.mod go.sum` is empty. The
+  wider glob this run's own guard commands use (`'*.sh' '*.toml'` added) is **not**
+  empty — it matches exactly one line, `docs/reports/phase3g-810-findings/
+  reproduce-f37.sh`, a docs-evidence reproduction script task 810 added, not product
+  or CI code; task 812's report already disclosed this exact false positive and this
+  section repeats the disclosure rather than silently dropping the `.sh`/`.toml`
+  globs.
+- **Final DOCS sha**: this close-out's own primary commit cannot quote its own hash
+  inside itself — the same regress task 607's and task 813's close-outs each named and
+  stopped one level down. See the addendum immediately below, which names it.
+
+> **Addendum (commit B).** This close-out's primary commit ("commit A" above), which
+> lands this section and
+> [`phase3g-815-closeout/README.md`](phase3g-815-closeout/README.md) plus
+> [`pre-commit-guard.log`](phase3g-815-closeout/pre-commit-guard.log), is
+> **`__CLOSEOUT_PRIMARY_SHA__`** — "__CLOSEOUT_PRIMARY_SUBJECT__". This paragraph is
+> commit B, landed immediately after; commit B's own sha cannot be named here for the
+> same reason commit A's couldn't be named inside itself. Re-run at commit A, before
+> commit B's own files existed in the worktree, and committed as
+> [`phase3g-815-closeout/addendum-guard.log`](phase3g-815-closeout/addendum-guard.log):
+>
+> ```
+> $ git status --porcelain
+> exit=0
+>
+> $ git rev-parse HEAD
+> __CLOSEOUT_PRIMARY_SHA__
+> exit=0
+>
+> $ git log --oneline -1 origin/main
+> __CLOSEOUT_PRIMARY_SHA_SHORT__ __CLOSEOUT_PRIMARY_SUBJECT__
+> exit=0
+> ```
+>
+> Clean tree and local `HEAD` equal to `origin/main`, both at commit A — this
+> close-out's own final code-and-docs boundary sha. The **final DOCS sha for the
+> whole approach is therefore `__CLOSEOUT_PRIMARY_SHA_SHORT__`**, one commit short of
+> this addendum itself, for the same self-reference reason; the identical
+> `git status --porcelain` / `git rev-parse HEAD` / `git log --oneline -1 origin/main`
+> triple, re-run at any later point, reproduces the same agreement, which is why this
+> section states the property and its command rather than chasing a sha it cannot
+> contain.
+
+### (b) Task 811 — whole-suite sweep: does **not** meet its bar; no tracked evidence directory exists
+
+Task 811 required the mandated launcher's committed `.exitstatus` to read `0` at
+`docs/reports/phase3g-811-fullsuite/full-suite.exitstatus`, and a `README.md` in that
+same tracked directory naming every skip/exclusion. **Neither exists.**
+`git ls-files docs/reports/phase3g-811-fullsuite/` returns nothing — the directory
+was never created inside the repository. Task 811 ran the launcher exactly once,
+verbatim, backgrounded and polled, at HEAD `17b1649` (code state `fdf4507`), and
+measured exit status **`1`**, deterministically, on
+`TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict`
+(`features/status_attach.feature:18`): 311 scenarios (310 passed, 1 failed), 3532
+steps (3526 passed, 1 failed, 5 skipped). The raw log, the exit-status file and a
+failure excerpt exist only outside this repository, at
+`/run/ralphd/artifacts/phase3g-811-unsatisfiable/` (labelled here, per this run's
+standing rule, as a path this report may name only inside a quoted command, never
+link) — they were never committed because the task's own bar (exit `0`) was never
+reached, and this run's standing rules forbid the two routes that could have forced
+it (weakening the scenario's assertions, or gating R76's repair). Task 811 is
+recorded `skipped` (filed `unsatisfiable`), not `completed`: **the missing piece is
+the entire tracked evidence directory and log**, not merely the number inside it.
+
+### (c) Task 812 — `ci/stability.sh 10`: does **not** meet its bar; fully tracked
+
+Task 812 required `10/10 passed` with script exit `0`. The measured rate, quoted
+verbatim from
+[`phase3g-812-stability10/summary.log`](phase3g-812-stability10/summary.log), is
+**`0/10 passed`**, script exit status **`1`**
+([`stability08.exitstatus`](phase3g-812-stability10/stability08.exitstatus)), at sha
+`17b1649` (code state `fdf4507`). Unlike task 811, this evidence **is** committed and
+tracked — `git ls-files docs/reports/phase3g-812-stability10/ | wc -l` lists 13
+files (`README.md`, `summary.log`, `run-1.log`–`run-10.log`,
+`stability08.exitstatus`). All ten runs failed on the same mechanism task 811 found:
+`attach_acknowledges_a_live_error_without_replacing_its_verdict` fails
+deterministically because R76's repair runs synchronously inside the same `deck _hook`
+subprocess, before the pre-repair status is ever externally observable. Two further,
+non-blocking flakes are also named in
+[`phase3g-812-stability10/README.md`](phase3g-812-stability10/README.md):
+`status_probe.feature`'s stale-sampling scenario (6/10 runs, same repair-timing
+mechanism, probe-sourced) and `attach_scroll.feature`'s wheel-notch scenario (1/10
+runs, an unrelated tmux status-line clock-tick artifact). Task 812 is recorded
+`skipped` (filed `unsatisfiable`): **the missing piece is the rate itself, `10/10`
+vs. the measured `0/10`** — the report and its evidence are complete and honest,
+not missing.
+
+### (d) Task 813 — guard bundle: meets six of seven guards; the seventh is unsatisfiable as written
+
+[`phase3g-813-guards/README.md`](phase3g-813-guards/README.md) (four pushed commits:
+`8eaf474` + `72c936d` round 1, `ddc0936` + `9e86f4c` round-2 correction and its
+addendum) re-verifies, at starting sha `b1dbfc4` (round 1) and `72c936d` (round 2):
+(a) protected paths — exactly `b69b5ba` over the run range and nothing else; (b)
+clean tree — round 1 disclosed its own `??` residue honestly rather than hiding it,
+round 2 re-runs genuinely clean; (c) local `HEAD == origin/main`; (d)
+`git diff --stat 17b1649..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum`
+empty; (f) five `t.Skip(` additions across four new theme test files, all enumerated.
+All five of those are green, each with a `round2-*.log` re-run.
+
+**Guard (e) does not hold, and cannot, as the criteria state it.** The criteria
+require `git diff 1cfbd5a..HEAD -- features/godog_test.go` to be empty; it is not,
+and cannot be made empty by any permitted work — commits `904419c` (task 002) and
+`6718823` (task 030), both inside the run range, each add one
+`register…Steps(sc)` line for a feature file the same commit adds, and removing
+either line leaves an undefined step, failing
+`TestGodogRejectsUndefinedAndFailedSteps`; deleting the commits is a forbidden
+history rewrite. The property this run's standing rules actually require —
+`defaultTags` byte-unchanged — **is** met and is what guard (e)'s log demonstrates
+instead of the literal empty-diff the criteria ask for. Task 813 is recorded
+`skipped` (filed `unsatisfiable` on this one clause): **the missing piece is guard
+(e)'s literal empty-diff wording**, not any of the other six guards, and not the
+bundle's own internal correctness (round 2 fixed the two round-1 defects — the
+false "empty" clean-tree claim and an elided sweep output — that validation caught).
+
+### (e) Tasks 809/810/814 — the rest of this approach's reporting, all `validated`
+
+- **Task 809** (`4c7bf2a`, `18063cf`, `89a5f31`): added the
+  [review finding 1](#review-finding-1--r76s-error-branch-and-its-scenario-fallout-tasks-701-702-703-802805)
+  and
+  [review finding 2](#review-finding-2--r80s-one-definition-per-action-tasks-806808)
+  sections above, then an exhaustive citation audit over every sha and path those
+  sections cite.
+- **Task 810** (`05f3033`, `17b1649`): filed F37/F38/F39 and the F2/F20/F22/F31 open
+  restatement in
+  [`phase3g-findings.md`](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why);
+  F37's red is a one-command tracked reproducer,
+  [`docs/reports/phase3g-810-findings/reproduce-f37.sh`](phase3g-810-findings/reproduce-f37.sh)
+  (exit 1, log committed).
+- **Task 814** (`9e6d525`): rewrote `../DELIVERY-LOG.md`'s Phase 3g paragraph to name
+  all 8 approaches, R76–R93 plus both independent-review findings and their closures,
+  and quote task 812's `0/10 passed` rate verbatim (never rounded to `10/10` or called
+  "partial").
+
+All six of these commits are docs-only: `git show --stat <sha>` for each touches
+only paths under `docs/`.
+
+### (f) Guard summary
+
+| guard | result | evidence |
+|---|---|---|
+| clean tree at the true final sha | met, re-shown at commit A | addendum above, [`addendum-guard.log`](phase3g-815-closeout/addendum-guard.log) |
+| local `HEAD == origin/main` at the true final sha | met, re-shown at commit A | addendum above, [`addendum-guard.log`](phase3g-815-closeout/addendum-guard.log) |
+| task 811 (whole-suite sweep, exit 0) | **not met** — exit `1`, no tracked evidence directory | (b) above |
+| task 812 (`ci/stability.sh 10`, 10/10) | **not met** — `0/10`, script exit `1` | (c) above, [`phase3g-812-stability10/`](phase3g-812-stability10/) |
+| task 813 guard (e) (`godog_test.go` diff empty) | **not met**, unsatisfiable as written; other six guards met | (d) above, [`phase3g-813-guards/`](phase3g-813-guards/) |
+| task 806 (footer/parity tests unedited) | **not met**, residual gap, no follow-up task filed | [review finding 2](#review-finding-2--r80s-one-definition-per-action-tasks-806808) |
+
+The phase's tests are green at the requirement level (R76–R93, both independent-review
+findings closed) but **not** at the whole-suite-and-stability gate this run's own
+standing rules define "green" by: the gate regressed after approach 06 because
+finding 1's repair is now correctly unconditional and permanently defeats
+`status_attach.feature`'s live-error scenario (F38). This is stated here exactly as
+task 814's delivery-log paragraph states it — no rounding, no "partial" euphemism.
+
