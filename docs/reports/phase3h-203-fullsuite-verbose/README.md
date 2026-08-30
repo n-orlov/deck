@@ -148,7 +148,10 @@ nothing failed.
 
 ## This report's own commit
 
-Published by the docs-only commit whose subject carries `(task 203)`; that commit's own sha is
-named in an immediately-following addendum commit (docs-only, no `(task 203)` marker, per the
-notes file's self-referential-sha convention — the marker stays on exactly one commit as this
-task's success criteria requires).
+This report (the three files above) was published by commit `fc358c0` (full sha
+`fc358c079ad263a0006437fb7592feef72c5fa2f` — resolve with `git log -1 --format=%H fc358c0` in a
+clone of this history), subject "docs: publish the verbose companion sweep's Gherkin tally at
+4b1d4dc (task 203)", the sole commit carrying the `(task 203)` marker. This present line is added
+by an immediately-following, docs-only addendum commit that carries no `(task 203)` marker (per
+the notes file's self-referential-sha convention: a commit cannot quote its own sha inside its own
+content, so naming it requires a following commit).
