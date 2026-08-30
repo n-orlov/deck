@@ -1,0 +1,10 @@
+$ git status --porcelain
+exit=0
+
+$ git rev-parse HEAD
+8a6f0d19f6409720384166b51bd00d0dd6969a2b
+exit=0
+
+$ git log --oneline -1 origin/main
+8a6f0d1 docs: write the approach 08 close-out section against the true final sha fdf4507, naming task 811/812/813's unmet bars verbatim (task 815)
+exit=0

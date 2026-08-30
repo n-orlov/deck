@@ -1696,10 +1696,12 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > lands this section and
 > [`phase3g-815-closeout/README.md`](phase3g-815-closeout/README.md) plus
 > [`pre-commit-guard.log`](phase3g-815-closeout/pre-commit-guard.log), is
-> **`__CLOSEOUT_PRIMARY_SHA__`** — "__CLOSEOUT_PRIMARY_SUBJECT__". This paragraph is
-> commit B, landed immediately after; commit B's own sha cannot be named here for the
-> same reason commit A's couldn't be named inside itself. Re-run at commit A, before
-> commit B's own files existed in the worktree, and committed as
+> **`8a6f0d1`** (`8a6f0d19f6409720384166b51bd00d0dd6969a2b`) — "docs: write the
+> approach 08 close-out section against the true final sha fdf4507, naming task
+> 811/812/813's unmet bars verbatim (task 815)". This paragraph is commit B, landed
+> immediately after; commit B's own sha cannot be named here for the same reason
+> commit A's couldn't be named inside itself. Re-run at commit A, before commit B's
+> own files existed in the worktree, and committed as
 > [`phase3g-815-closeout/addendum-guard.log`](phase3g-815-closeout/addendum-guard.log):
 >
 > ```
@@ -1707,17 +1709,17 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > exit=0
 >
 > $ git rev-parse HEAD
-> __CLOSEOUT_PRIMARY_SHA__
+> 8a6f0d19f6409720384166b51bd00d0dd6969a2b
 > exit=0
 >
 > $ git log --oneline -1 origin/main
-> __CLOSEOUT_PRIMARY_SHA_SHORT__ __CLOSEOUT_PRIMARY_SUBJECT__
+> 8a6f0d1 docs: write the approach 08 close-out section against the true final sha fdf4507, naming task 811/812/813's unmet bars verbatim (task 815)
 > exit=0
 > ```
 >
 > Clean tree and local `HEAD` equal to `origin/main`, both at commit A — this
 > close-out's own final code-and-docs boundary sha. The **final DOCS sha for the
-> whole approach is therefore `__CLOSEOUT_PRIMARY_SHA_SHORT__`**, one commit short of
+> whole approach is therefore `8a6f0d1`**, one commit short of
 > this addendum itself, for the same self-reference reason; the identical
 > `git status --porcelain` / `git rev-parse HEAD` / `git log --oneline -1 origin/main`
 > triple, re-run at any later point, reproduces the same agreement, which is why this
