@@ -1726,6 +1726,38 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > section states the property and its command rather than chasing a sha it cannot
 > contain.
 
+> **Addendum, second part (commit D).** A third commit landed after commit B —
+> **`7b3469c`** ("docs: reword four bare path-like tokens in the approach 08
+> close-out so the citation sweep's only unresolved items stay the two pre-existing
+> false positives (task 815)") — correcting six new bare path-like tokens (`.sh`,
+> `0/10`, `10/10`, a Go subtest name containing `/`, `origin/main`, a glob pattern)
+> that this section's own first draft introduced, which the citation sweep
+> (`docs/reports/phase3g-813-guards/citation_sweep.py`) flagged beyond the two
+> pre-existing false positives every earlier commit in this run already carries.
+> `7b3469c` touches only prose wording, no sha or fact stated above. This paragraph
+> is commit D, landed immediately after commit C (`7b3469c`) for the same
+> self-reference reason; re-run at `7b3469c`, before commit D's own file changes
+> existed in the worktree, and committed as
+> [`phase3g-815-closeout/addendum2-guard.log`](phase3g-815-closeout/addendum2-guard.log):
+>
+> ```
+> $ git status --porcelain
+> exit=0
+>
+> $ git rev-parse HEAD
+> 7b3469c362e099c8555a51b8ef1aae4562543785
+> exit=0
+>
+> $ git log --oneline -1 origin/main
+> 7b3469c docs: reword four bare path-like tokens in the approach 08 close-out so the citation sweep's only unresolved items stay the two pre-existing false positives (task 815)
+> exit=0
+> ```
+>
+> Clean tree and local `HEAD == origin/main`, both at `7b3469c`. The true final sha
+> of this task's own authorship keeps advancing by one with each self-naming
+> addendum (the same regress noted above); this is the last one this task needs,
+> since commit D adds no further fact requiring its own citation.
+
 ### (b) Task 811 — whole-suite sweep: does **not** meet its bar; no tracked evidence directory exists
 
 Task 811 required the mandated launcher's committed `.exitstatus` to read `0` at
