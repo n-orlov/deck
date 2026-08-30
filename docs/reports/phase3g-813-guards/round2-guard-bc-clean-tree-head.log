@@ -1,0 +1,10 @@
+$ git status --porcelain
+exit=0
+
+$ git rev-parse HEAD
+72c936df0cad67d5fe11338a1c8e5d57e2dbda51
+exit=0
+
+$ git log --oneline -1 origin/main
+72c936d docs: name this guard bundle's own final sha and re-show its clean-tree/HEAD==origin/main pair (task 813)
+exit=0
