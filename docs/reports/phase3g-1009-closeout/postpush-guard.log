@@ -1,0 +1,29 @@
+=== (guard triple) re-check taken AFTER task-1009's commit 1 (d4a249a) was pushed ===
+=== every command below was run from /workspace, in this order, output unedited ===
+
+$ git status --porcelain
+?? docs/reports/phase3g-1009-closeout/postpush-guard.log
+(exit code: 0 )
+
+$ git rev-parse HEAD
+d4a249a73f096d099fe8cef278012f60a96a9011
+(exit code: 0 )
+
+$ git rev-parse origin/main
+d4a249a73f096d099fe8cef278012f60a96a9011
+(exit code: 0 )
+
+$ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" && echo EQUAL || echo DIFFERENT
+EQUAL
+(exit code: 0 )
+
+$ git ls-remote origin refs/heads/main
+d4a249a73f096d099fe8cef278012f60a96a9011	refs/heads/main
+(exit code: 0 )
+
+$ git log --oneline -1
+d4a249a docs: write the approach 10 close-out section against the true final sha (task 1009)
+(exit code: 0 )
+
+$ git diff --stat a5f8f6b..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum
+(exit code: 0 )
