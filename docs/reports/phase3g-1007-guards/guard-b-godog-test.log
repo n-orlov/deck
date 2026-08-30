@@ -1,0 +1,28 @@
+$ git show 1cfbd5a:features/godog_test.go | grep "const defaultTags"
+const defaultTags = "~@real-agents && ~@nightly"
+
+$ git show HEAD:features/godog_test.go | grep "const defaultTags"
+const defaultTags = "~@real-agents && ~@nightly"
+
+$ git diff 1cfbd5a..HEAD -- features/godog_test.go
+diff --git a/features/godog_test.go b/features/godog_test.go
+index 24aa98d..2b380eb 100644
+--- a/features/godog_test.go
++++ b/features/godog_test.go
+@@ -119,6 +119,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
+ 	registerSortOrderSteps(sc)
+ 	registerNewSessionSelectionSteps(sc)
+ 	registerStatusRecoverySteps(sc)
++	registerTerminalRepairFieldRouteSteps(sc)
+ 	registerSettingsSteps(sc)
+ 	registerDialogsSteps(sc)
+ 	registerEnvEditorSteps(sc)
+@@ -138,6 +139,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
+ 	registerInteractiveScrollSteps(sc)
+ 	registerInteractiveSelectionSteps(sc)
+ 	registerInteractiveRetargetSteps(sc)
++	registerInteractivePipeLeakSteps(sc)
+ }
+ 
+ func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
+(exit code: 0 )

@@ -1,0 +1,2 @@
+$ git diff --stat 1cfbd5a..HEAD -- internal/theme/builtin/
+(exit code: 0 )

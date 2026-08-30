@@ -1,0 +1,82 @@
+=== (c) No scenario removed or retagged in 1cfbd5a..HEAD ===
+
+$ git diff --stat 1cfbd5a..HEAD -- "*.feature"
+ features/attention_sort.feature              | 31 ++++++++--
+ features/create_cwd_ghost.feature            |  1 +
+ features/create_cwd_tab.feature              |  5 +-
+ features/create_session.feature              | 35 +++++++++--
+ features/dialogs.feature                     |  9 ++-
+ features/filter.feature                      | 56 ++++++++++++++++++
+ features/interactive_pipe_leak.feature       | 33 +++++++++++
+ features/interactive_scroll.feature          |  2 +-
+ features/settings.feature                    | 13 +++-
+ features/sort_order.feature                  | 88 ++++++++++++++++++++++++++--
+ features/status_claude_hooks.feature         | 30 +++++++++-
+ features/status_recovery.feature             | 36 ++++++++++--
+ features/status_theme.feature                | 25 +++++++-
+ features/terminal_repair_field_route.feature | 24 ++++++++
+ features/themes.feature                      | 66 +++++++++++++++++++--
+ 15 files changed, 416 insertions(+), 38 deletions(-)
+
+--- Lines matching a removed Scenario/Scenario Outline/tag header (git diff -U0) ---
+$ git diff -U0 1cfbd5a..HEAD -- "*.feature" | grep -E "^-[^-].*(Scenario|@[A-Za-z])"
+-  Scenario: tab falls through to the next field when the segment already names the one candidate in full
+-  Scenario: up/down cycle the cwd field through recent_cwds history, shell-history style, showing "recent N/M"
+-  Scenario: create dialog -- tab moves focus between fields
+-  Scenario: r on a session whose tmux session already exists reports already-running, never an error
+
+--- Each hit reviewed: same-line rename (title text changed to match landed behaviour), not a removal ---
+1. create_cwd_tab.feature @requirement-16-tab-does-nothing-when-already-unique:
+   "tab falls through to the next field..." -> "tab does nothing, and does not
+   move focus, when the segment already names the one candidate in full".
+   Same requirement tag retained; scenario count for the file is unchanged
+   (3 -> 3). Title now matches the corrected (stronger) assertion added in
+   the same hunk (`screen does not contain "> Agent:"`).
+2. create_session.feature @requirement-13-cycle-recent:
+   "up/down cycle..." -> "Ctrl+P/Ctrl+N cycle...". Same requirement tag
+   retained. Reflects the key rebinding from up/down to ctrl+p/ctrl+n
+   already landed in this tree; body steps changed "up"/"down" to
+   "ctrl+p"/"ctrl+n" consistently. File's scenario count 15 -> 16 (one
+   scenario added elsewhere in the file, none removed).
+3. dialogs.feature (untagged scenario, both before and after -- confirmed
+   via `git show <sha>:features/dialogs.feature | grep -n -B2 <title>`):
+   "create dialog -- tab moves focus between fields" -> "create dialog --
+   up/down move focus between fields, and tab does not". Same scenario
+   position in file, file's total scenario count unchanged (23 -> 23);
+   title updated to match the landed keybinding change plus new
+   tab-does-not-move-focus assertions added in the same hunk.
+4. status_recovery.feature (untagged scenario both before and after):
+   "r on a session whose tmux session already exists reports
+   already-running, never an error" -> "r on a terminal row whose tmux
+   session already exists never reaches an error, however fast Reconcile's
+   self-heal lands". Same scenario position, file's scenario count
+   unchanged (4 -> 4); this is the R76/task-901-906 scenario update
+   documented in docs/reports/phase3g.md's R76 section and
+   docs/reports/phase3g-findings.md's F40 row (already landed and recorded,
+   not new work by task 1007). A commentary block explaining the
+   self-heal race replaces the old direct "already running" wait.
+
+=== Added t.Skip calls in 1cfbd5a..HEAD (*.go), each with its justification (the added skip message itself) ===
+$ git diff 1cfbd5a..HEAD -- "*.go" | grep -n "^diff --git\|^+.*t\.Skip"
+7949:diff --git a/internal/tui/archive_delete_confirm_theme_test.go b/internal/tui/archive_delete_confirm_theme_test.go
+8113:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+8183:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+--
+8416:diff --git a/internal/tui/bulk_delete_theme_test.go b/internal/tui/bulk_delete_theme_test.go
+8726:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+--
+10509:diff --git a/internal/tui/env_editor_theme_test.go b/internal/tui/env_editor_theme_test.go
+10793:+		t.Skip("this theme's key and hint tokens happen to share a colour; the distinctness assertion below would be vacuous")
+--
+13376:diff --git a/internal/tui/profile_pin_restart_theme_test.go b/internal/tui/profile_pin_restart_theme_test.go
+13583:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+
+All 5 additions are the conditional theme-colour skip named in the standing
+rules ("every conditional theme-colour t.Skip"): they fire only when a
+specific themes package palette happens to assign the same colour to a key
+token and a hint token, in which case the distinctness assertion the test
+is checking would be vacuously true rather than a real check, so the test
+skips itself rather than passing for the wrong reason. No other t.Skip was
+added in range (confirmed features/i1_repro_test.go, the pre-existing
+opt-in TestI1KeystrokeDropReproduction driver, is untouched by this diff
+range: git diff 1cfbd5a..HEAD -- features/i1_repro_test.go is empty).
