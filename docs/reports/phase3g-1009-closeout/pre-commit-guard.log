@@ -1,0 +1,16 @@
+=== pre-commit capture, before task 1009's first commit ===
+=== every command run from /workspace, output unedited, in this order ===
+
+$ git status --porcelain
+(exit code: 0 )
+
+$ git rev-parse HEAD
+a7c8d76dfbd9d298c338d53cb93d6d4278256313
+(exit code: 0 )
+
+$ git rev-parse origin/main
+a7c8d76dfbd9d298c338d53cb93d6d4278256313
+(exit code: 0 )
+
+$ git diff --stat a5f8f6b..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum
+(exit code: 0 )
