@@ -1,0 +1,28 @@
+godog scenario/step summary excerpt from ci/run.sh go test -p=1 -count=1 -v ./... (TestFeatures block, tail of features package output):
+
+    When deck client "A" exits cleanly                                                                # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+311 scenarios (311 passed)
+3532 steps (3532 passed)
+4m59.662776073s
+--- PASS: TestFeatures (299.67s)
+
+Full 17-package go test summary lines (ok / [no test files]):
+
+ok  	github.com/n-orlov/deck/cmd/deck	7.650s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.797s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.780s
+ok  	github.com/n-orlov/deck/features	316.233s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.029s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.188s
+ok  	github.com/n-orlov/deck/internal/interactive	11.147s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	4.331s
+ok  	github.com/n-orlov/deck/internal/store	2.418s
+ok  	github.com/n-orlov/deck/internal/theme	0.006s
+ok  	github.com/n-orlov/deck/internal/tmux	19.424s
+ok  	github.com/n-orlov/deck/internal/tui	1.387s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
