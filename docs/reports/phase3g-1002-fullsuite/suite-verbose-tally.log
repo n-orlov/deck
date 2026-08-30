@@ -1,31 +1,31 @@
 === RUN   TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd
---- PASS: TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd (0.45s)
+--- PASS: TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd (0.40s)
 === RUN   TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux
 === RUN   TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux/malformed
 === RUN   TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux/array
 === RUN   TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux/extra
---- PASS: TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux (0.45s)
+--- PASS: TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux (0.41s)
     --- PASS: TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux/malformed (0.00s)
     --- PASS: TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux/array (0.00s)
     --- PASS: TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux/extra (0.00s)
 === RUN   TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow
 --- PASS: TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow (0.57s)
 === RUN   TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow
---- PASS: TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow (0.63s)
+--- PASS: TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow (0.57s)
 === RUN   TestRunningClientSIGUSR1AdvancesSharedClock
 --- PASS: TestRunningClientSIGUSR1AdvancesSharedClock (0.00s)
 === RUN   TestDeckBinaryShellCreateAndSlugCollisionThroughPTY
---- PASS: TestDeckBinaryShellCreateAndSlugCollisionThroughPTY (1.07s)
+--- PASS: TestDeckBinaryShellCreateAndSlugCollisionThroughPTY (1.12s)
 === RUN   TestDeckBinaryRefreshesAllConcurrentClients
---- PASS: TestDeckBinaryRefreshesAllConcurrentClients (2.47s)
+--- PASS: TestDeckBinaryRefreshesAllConcurrentClients (2.48s)
 === RUN   TestDeckBinaryEmptyHelpAndQuitThroughPTY
 --- PASS: TestDeckBinaryEmptyHelpAndQuitThroughPTY (0.70s)
 === RUN   TestStartupContinuationDrainsTombstoneBacklogThroughProductionWiring
---- PASS: TestStartupContinuationDrainsTombstoneBacklogThroughProductionWiring (0.15s)
+--- PASS: TestStartupContinuationDrainsTombstoneBacklogThroughProductionWiring (0.14s)
 === RUN   TestAbandonedDDIsReapedAtNextStoreOpen
---- PASS: TestAbandonedDDIsReapedAtNextStoreOpen (1.06s)
+--- PASS: TestAbandonedDDIsReapedAtNextStoreOpen (1.08s)
 PASS
-ok  	github.com/n-orlov/deck/cmd/deck	7.556s
+ok  	github.com/n-orlov/deck/cmd/deck	7.476s
 === RUN   TestAcceptedClaudeFlagsProduceDeterministicTerminalRecord
 --- PASS: TestAcceptedClaudeFlagsProduceDeterministicTerminalRecord (0.00s)
 === RUN   TestRejectsInvalidUUIDsUnknownFlagsAndModes
@@ -63,11 +63,11 @@ ok  	github.com/n-orlov/deck/cmd/deck	7.556s
 --- PASS: TestRepaintModesProduceDistinguishingObservables (0.77s)
     --- PASS: TestRepaintModesProduceDistinguishingObservables/sigwinch_mode_repaints_immediately_on_SIGWINCH,_not_on_a_keystroke (0.16s)
     --- PASS: TestRepaintModesProduceDistinguishingObservables/keystroke_mode_ignores_SIGWINCH_until_the_next_byte_read_from_stdin (0.31s)
-    --- PASS: TestRepaintModesProduceDistinguishingObservables/never_mode_never_repaints,_whatever_arrives (0.31s)
+    --- PASS: TestRepaintModesProduceDistinguishingObservables/never_mode_never_repaints,_whatever_arrives (0.30s)
 === RUN   TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues
 --- PASS: TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/cmd/fake-claude	0.796s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.798s
 === RUN   TestAcceptedPiFlagsProduceDeterministicTerminalRecord
 --- PASS: TestAcceptedPiFlagsProduceDeterministicTerminalRecord (0.00s)
 === RUN   TestRejectsUnknownFlags
@@ -98,28 +98,28 @@ ok  	github.com/n-orlov/deck/cmd/fake-claude	0.796s
 === RUN   TestRepaintModesProduceDistinguishingObservables/sigwinch_mode_repaints_immediately_on_SIGWINCH,_not_on_a_keystroke
 === RUN   TestRepaintModesProduceDistinguishingObservables/keystroke_mode_ignores_SIGWINCH_until_the_next_byte_read_from_stdin
 === RUN   TestRepaintModesProduceDistinguishingObservables/never_mode_never_repaints,_whatever_arrives
---- PASS: TestRepaintModesProduceDistinguishingObservables (0.76s)
+--- PASS: TestRepaintModesProduceDistinguishingObservables (0.77s)
     --- PASS: TestRepaintModesProduceDistinguishingObservables/sigwinch_mode_repaints_immediately_on_SIGWINCH,_not_on_a_keystroke (0.16s)
-    --- PASS: TestRepaintModesProduceDistinguishingObservables/keystroke_mode_ignores_SIGWINCH_until_the_next_byte_read_from_stdin (0.30s)
+    --- PASS: TestRepaintModesProduceDistinguishingObservables/keystroke_mode_ignores_SIGWINCH_until_the_next_byte_read_from_stdin (0.31s)
     --- PASS: TestRepaintModesProduceDistinguishingObservables/never_mode_never_repaints,_whatever_arrives (0.30s)
 === RUN   TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues
 --- PASS: TestRepaintModeEnvironmentSelectsTheDedicatedFixtureAndRejectsUnknownValues (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.767s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.775s
 === RUN   TestBlackBoxAssertionsObserveRealSession
---- PASS: TestBlackBoxAssertionsObserveRealSession (0.89s)
+--- PASS: TestBlackBoxAssertionsObserveRealSession (0.92s)
 === RUN   TestTokenFormAssertionsResolveThroughPinnedThemeAndCanFail
 token-form assertions discriminate: accent=#00ff00
 --- PASS: TestTokenFormAssertionsResolveThroughPinnedThemeAndCanFail (0.00s)
 === RUN   TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth
---- PASS: TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth (0.54s)
+--- PASS: TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth (0.58s)
 === RUN   TestClientFrameHasNoColourAnywhereCanFail
     color_depth_no_colour_floor_test.go:53: clientFrameHasNoColourAnywhere correctly failed against a colour-enabled client: client "floor-proof" cell at row 0 column 0 has foreground #0d9488 under NO_COLOR, want none
---- PASS: TestClientFrameHasNoColourAnywhereCanFail (0.36s)
+--- PASS: TestClientFrameHasNoColourAnywhereCanFail (0.41s)
 === RUN   TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation
---- PASS: TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation (0.55s)
+--- PASS: TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation (0.60s)
 === RUN   TestCreateModalWarnsBeforeReusingADeletedSessionsName
---- PASS: TestCreateModalWarnsBeforeReusingADeletedSessionsName (0.58s)
+--- PASS: TestCreateModalWarnsBeforeReusingADeletedSessionsName (0.61s)
 === RUN   TestCellAttributeAssertionsCanFail
 --- PASS: TestCellAttributeAssertionsCanFail (0.00s)
 === RUN   TestNoFeatureFileUsesTheI16RedDemoStep
@@ -5444,319 +5444,319 @@ token-form assertions discriminate: accent=#00ff00
 
 311 scenarios ([32m311 passed[0m)
 3532 steps ([32m3532 passed[0m)
-5m0.010698643s
---- PASS: TestFeatures (300.02s)
-    --- PASS: TestFeatures/create_a_claude_session,_observe_its_facts,_then_resume_it (2.56s)
-    --- PASS: TestFeatures/R_restarts_a_running_claude_session_with_the_resume_argv,_preserving_its_conversation_id (0.92s)
-    --- PASS: TestFeatures/login_shell_marks_captured_path_advisory_in_the_row_and_its_detail (1.05s)
-    --- PASS: TestFeatures/the_launch_audit_records_environment_key_names_but_never_a_value,_across_create_and_resume (1.82s)
-    --- PASS: TestFeatures/R_restarts_a_claude_session,_recording_environment_key_names_in_the_launch_audit_but_never_a_value (1.07s)
-    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.29s)
-    --- PASS: TestFeatures/scrolling_an_attached_pane_never_flips_its_badge,_and_a_stale_probe_reads_the_pane's_live_bottom,_not_the_scrolled-back_view (2.36s)
-    --- PASS: TestFeatures/sessions_render_in_the_full_waiting/error/running/starting/idle/stopped_order,_ties_broken_oldest-first (1.85s)
-    --- PASS: TestFeatures/the_sidebar_groups_sessions_by_workspace,_with_a_header_per_group,_and_a_keyboard_toggle_can_collapse_one (1.27s)
-    --- PASS: TestFeatures/collapsing_and_expanding_the_sidebar's_only_workspace_group_round-trips_via_two_`c`_presses (0.89s)
-    --- PASS: TestFeatures/g_and_G_jump_to_the_first_and_last_visible_row,_skipping_a_collapsed_group's_hidden_rows (1.72s)
-    --- PASS: TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention (1.14s)
-    --- PASS: TestFeatures/`space`_walks_only_what_needs_attention,_wraps,_and_changes_no_session's_status (1.16s)
+5m2.028221047s
+--- PASS: TestFeatures (302.04s)
+    --- PASS: TestFeatures/create_a_claude_session,_observe_its_facts,_then_resume_it (2.57s)
+    --- PASS: TestFeatures/R_restarts_a_running_claude_session_with_the_resume_argv,_preserving_its_conversation_id (0.97s)
+    --- PASS: TestFeatures/login_shell_marks_captured_path_advisory_in_the_row_and_its_detail (1.09s)
+    --- PASS: TestFeatures/the_launch_audit_records_environment_key_names_but_never_a_value,_across_create_and_resume (1.89s)
+    --- PASS: TestFeatures/R_restarts_a_claude_session,_recording_environment_key_names_in_the_launch_audit_but_never_a_value (1.08s)
+    --- PASS: TestFeatures/a_wheel_notch_scrolls_an_attached_pane's_scrollback_and_leaves_the_shell's_input_line_untouched (1.32s)
+    --- PASS: TestFeatures/scrolling_an_attached_pane_never_flips_its_badge,_and_a_stale_probe_reads_the_pane's_live_bottom,_not_the_scrolled-back_view (2.38s)
+    --- PASS: TestFeatures/sessions_render_in_the_full_waiting/error/running/starting/idle/stopped_order,_ties_broken_oldest-first (1.86s)
+    --- PASS: TestFeatures/the_sidebar_groups_sessions_by_workspace,_with_a_header_per_group,_and_a_keyboard_toggle_can_collapse_one (1.21s)
+    --- PASS: TestFeatures/collapsing_and_expanding_the_sidebar's_only_workspace_group_round-trips_via_two_`c`_presses (0.86s)
+    --- PASS: TestFeatures/g_and_G_jump_to_the_first_and_last_visible_row,_skipping_a_collapsed_group's_hidden_rows (1.73s)
+    --- PASS: TestFeatures/the_collapsed_strip's_attention_count_matches_the_sort's_own_notion_of_attention (1.17s)
+    --- PASS: TestFeatures/`space`_walks_only_what_needs_attention,_wraps,_and_changes_no_session's_status (1.14s)
     --- PASS: TestFeatures/create_and_kill_propagate_and_surviving_clients_tolerate_a_peer_crash (1.19s)
-    --- PASS: TestFeatures/one_hook-driven_status_change_propagates_to_every_client (1.43s)
-    --- PASS: TestFeatures/a_live_client_reconciles_an_externally_killed_private_server (0.68s)
-    --- PASS: TestFeatures/a_shell_exit_zero_is_a_clean_stop_without_a_crash_artifact (0.64s)
-    --- PASS: TestFeatures/SIGKILL_captures_and_sanitizes_the_agent_pane_without_relaunching (1.35s)
-    --- PASS: TestFeatures/racing_clients_collect_one_corpse_idempotently (1.43s)
-    --- PASS: TestFeatures/a_failing_pre_launch_leaves_visible_evidence_without_attaching (1.20s)
-    --- PASS: TestFeatures/a_different_hook_detects_a_crash_while_no_TUI_is_running (1.12s)
-    --- PASS: TestFeatures/a_unique_directory_match_ghosts_in_the_dimmed_token_and_right_accepts_it_with_a_trailing_slash (0.66s)
-    --- PASS: TestFeatures/end_also_accepts_the_ghosted_completion (0.71s)
-    --- PASS: TestFeatures/a_same-named_file_never_becomes_a_ghost_candidate (0.59s)
-    --- PASS: TestFeatures/a_hidden_directory_is_a_candidate_only_when_the_segment_starts_with_a_dot (0.71s)
-    --- PASS: TestFeatures/a_leading_tilde_expands_for_scanning_without_being_rewritten_in_the_field (0.66s)
-    --- PASS: TestFeatures/several_matches_with_no_further_common_prefix_ghost_nothing_and_show_a_match_count (0.59s)
-    --- PASS: TestFeatures/tab_completes_to_the_longest_common_prefix_when_that_advances_the_text (0.62s)
-    --- PASS: TestFeatures/tab_lists_the_candidates_when_it_cannot_advance_the_text_further,_and_selecting_one_fills_the_field (0.78s)
-    --- PASS: TestFeatures/tab_does_nothing,_and_does_not_move_focus,_when_the_segment_already_names_the_one_candidate_in_full (0.60s)
-    --- PASS: TestFeatures/with_no_recent_cwds_history_the_cwd_field_pre-fills_with_the_directory_deck_started_in (0.40s)
-    --- PASS: TestFeatures/the_cwd_field_pre-fills_with_the_most_recent_recent_cwds_entry,_labelled_"last_used" (0.51s)
-    --- PASS: TestFeatures/typing_in_the_cwd_field_replaces_the_prefill_wholesale_rather_than_appending_to_it (0.60s)
-    --- PASS: TestFeatures/Ctrl+P/Ctrl+N_cycle_the_cwd_field_through_recent_cwds_history,_shell-history_style,_showing_"recent_N/M" (1.28s)
-    --- PASS: TestFeatures/an_empty_name_defaults_to_<workspace>-<MMDD-HHMM>_from_the_frozen_clock (0.53s)
-    --- PASS: TestFeatures/a_second_blank-name_create_in_the_same_directory_and_minute_gets_a_-2_collision_suffix (0.63s)
-    --- PASS: TestFeatures/the_create_modal_converges_on_the_shell_agent_even_after_a_non-shell_session_was_created_earlier (1.10s)
-    --- PASS: TestFeatures/submitting_a_name_that_already_exists_names_the_collision_and_keeps_the_modal_open (0.62s)
-    --- PASS: TestFeatures/submitting_a_name_that_collides_with_an_existing_slug_names_the_collision_and_keeps_the_modal_open (0.60s)
-    --- PASS: TestFeatures/submitting_a_working_directory_that_does_not_exist_names_it_and_keeps_the_modal_open (0.56s)
-    --- PASS: TestFeatures/submitting_a_working_directory_that_exists_but_is_a_file_names_it_and_keeps_the_modal_open (0.53s)
-    --- PASS: TestFeatures/a_malformed_env_entry_names_the_offending_entry_and_keeps_the_modal_open (0.88s)
-    --- PASS: TestFeatures/malformed_launch_args_JSON_names_the_problem_and_keeps_the_modal_open (0.83s)
-    --- PASS: TestFeatures/esc_abandons_the_create_modal,_creating_nothing (0.46s)
-    --- PASS: TestFeatures/a_succeeding_pre-launch_command,_typed_into_the_create_dialog,_runs_before_the_agent_starts (1.02s)
+    --- PASS: TestFeatures/one_hook-driven_status_change_propagates_to_every_client (1.45s)
+    --- PASS: TestFeatures/a_live_client_reconciles_an_externally_killed_private_server (0.71s)
+    --- PASS: TestFeatures/a_shell_exit_zero_is_a_clean_stop_without_a_crash_artifact (0.65s)
+    --- PASS: TestFeatures/SIGKILL_captures_and_sanitizes_the_agent_pane_without_relaunching (1.40s)
+    --- PASS: TestFeatures/racing_clients_collect_one_corpse_idempotently (1.46s)
+    --- PASS: TestFeatures/a_failing_pre_launch_leaves_visible_evidence_without_attaching (1.23s)
+    --- PASS: TestFeatures/a_different_hook_detects_a_crash_while_no_TUI_is_running (1.19s)
+    --- PASS: TestFeatures/a_unique_directory_match_ghosts_in_the_dimmed_token_and_right_accepts_it_with_a_trailing_slash (0.68s)
+    --- PASS: TestFeatures/end_also_accepts_the_ghosted_completion (0.70s)
+    --- PASS: TestFeatures/a_same-named_file_never_becomes_a_ghost_candidate (0.64s)
+    --- PASS: TestFeatures/a_hidden_directory_is_a_candidate_only_when_the_segment_starts_with_a_dot (0.75s)
+    --- PASS: TestFeatures/a_leading_tilde_expands_for_scanning_without_being_rewritten_in_the_field (0.69s)
+    --- PASS: TestFeatures/several_matches_with_no_further_common_prefix_ghost_nothing_and_show_a_match_count (0.68s)
+    --- PASS: TestFeatures/tab_completes_to_the_longest_common_prefix_when_that_advances_the_text (0.67s)
+    --- PASS: TestFeatures/tab_lists_the_candidates_when_it_cannot_advance_the_text_further,_and_selecting_one_fills_the_field (0.85s)
+    --- PASS: TestFeatures/tab_does_nothing,_and_does_not_move_focus,_when_the_segment_already_names_the_one_candidate_in_full (0.66s)
+    --- PASS: TestFeatures/with_no_recent_cwds_history_the_cwd_field_pre-fills_with_the_directory_deck_started_in (0.45s)
+    --- PASS: TestFeatures/the_cwd_field_pre-fills_with_the_most_recent_recent_cwds_entry,_labelled_"last_used" (0.58s)
+    --- PASS: TestFeatures/typing_in_the_cwd_field_replaces_the_prefill_wholesale_rather_than_appending_to_it (0.66s)
+    --- PASS: TestFeatures/Ctrl+P/Ctrl+N_cycle_the_cwd_field_through_recent_cwds_history,_shell-history_style,_showing_"recent_N/M" (1.34s)
+    --- PASS: TestFeatures/an_empty_name_defaults_to_<workspace>-<MMDD-HHMM>_from_the_frozen_clock (0.56s)
+    --- PASS: TestFeatures/a_second_blank-name_create_in_the_same_directory_and_minute_gets_a_-2_collision_suffix (0.67s)
+    --- PASS: TestFeatures/the_create_modal_converges_on_the_shell_agent_even_after_a_non-shell_session_was_created_earlier (1.16s)
+    --- PASS: TestFeatures/submitting_a_name_that_already_exists_names_the_collision_and_keeps_the_modal_open (0.68s)
+    --- PASS: TestFeatures/submitting_a_name_that_collides_with_an_existing_slug_names_the_collision_and_keeps_the_modal_open (0.68s)
+    --- PASS: TestFeatures/submitting_a_working_directory_that_does_not_exist_names_it_and_keeps_the_modal_open (0.58s)
+    --- PASS: TestFeatures/submitting_a_working_directory_that_exists_but_is_a_file_names_it_and_keeps_the_modal_open (0.55s)
+    --- PASS: TestFeatures/a_malformed_env_entry_names_the_offending_entry_and_keeps_the_modal_open (0.89s)
+    --- PASS: TestFeatures/malformed_launch_args_JSON_names_the_problem_and_keeps_the_modal_open (0.80s)
+    --- PASS: TestFeatures/esc_abandons_the_create_modal,_creating_nothing (0.45s)
+    --- PASS: TestFeatures/a_succeeding_pre-launch_command,_typed_into_the_create_dialog,_runs_before_the_agent_starts (1.07s)
     --- PASS: TestFeatures/recent_cwd_limit_bounds_the_cwd_field's_history_and_re-using_a_directory_does_not_duplicate_its_entry (1.13s)
     --- PASS: TestFeatures/deterministic_frames,_shared_clock_stepping,_and_generated_identifiers (1.29s)
-    --- PASS: TestFeatures/create_dialog_--_esc_after_altering_every_field_creates_no_session_and_touches_no_config (0.66s)
-    --- PASS: TestFeatures/create_dialog_--_every_field_is_reachable_by_keyboard_alone,_editable,_and_each_edit_is_visible (0.65s)
-    --- PASS: TestFeatures/create_dialog_--_enter_submits_a_valid_form (0.48s)
-    --- PASS: TestFeatures/create_dialog_--_↑/↓_move_focus_between_fields,_and_tab_does_not (0.56s)
+    --- PASS: TestFeatures/create_dialog_--_esc_after_altering_every_field_creates_no_session_and_touches_no_config (0.67s)
+    --- PASS: TestFeatures/create_dialog_--_every_field_is_reachable_by_keyboard_alone,_editable,_and_each_edit_is_visible (0.71s)
+    --- PASS: TestFeatures/create_dialog_--_enter_submits_a_valid_form (0.52s)
+    --- PASS: TestFeatures/create_dialog_--_↑/↓_move_focus_between_fields,_and_tab_does_not (0.52s)
     --- PASS: TestFeatures/create_dialog_--_in-dialog_validation_retains_the_typed_value_and_states_the_reason (0.49s)
-    --- PASS: TestFeatures/create_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.58s)
+    --- PASS: TestFeatures/create_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.56s)
     --- PASS: TestFeatures/create_dialog_--_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends (0.40s)
     --- PASS: TestFeatures/create_dialog_--_width_saturates_at_80_well_past_the_upper_clamp (0.41s)
-    --- PASS: TestFeatures/detail_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.66s)
-    --- PASS: TestFeatures/detail_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.12s)
-    --- PASS: TestFeatures/profile_switch_dialog_--_esc_after_altering_its_field_leaves_the_persisted_profile_untouched (0.94s)
-    --- PASS: TestFeatures/profile_switch_dialog_--_enter_submits_the_cycled_value (0.94s)
+    --- PASS: TestFeatures/detail_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.69s)
+    --- PASS: TestFeatures/detail_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.13s)
+    --- PASS: TestFeatures/profile_switch_dialog_--_esc_after_altering_its_field_leaves_the_persisted_profile_untouched (0.95s)
+    --- PASS: TestFeatures/profile_switch_dialog_--_enter_submits_the_cycled_value (0.98s)
     --- PASS: TestFeatures/profile_switch_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.11s)
-    --- PASS: TestFeatures/pin_dialog_--_esc_after_altering_its_field_leaves_the_persisted_resume_mode_untouched (0.94s)
-    --- PASS: TestFeatures/pin_dialog_--_enter_submits_the_cycled_value (0.96s)
-    --- PASS: TestFeatures/pin_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.11s)
-    --- PASS: TestFeatures/help_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.43s)
-    --- PASS: TestFeatures/help_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.69s)
-    --- PASS: TestFeatures/rename_dialog_--_reachable_only_from_inside_detail,_esc_after_altering_it_leaves_the_persisted_name_and_tmux_session_untouched (0.74s)
-    --- PASS: TestFeatures/rename_dialog_--_enter_submits_a_new_display_name_and_returns_to_detail,_without_ever_touching_the_tmux_session (0.73s)
-    --- PASS: TestFeatures/rename_dialog_--_a_top-level_r_does_not_open_it;_it_still_means_resume (0.93s)
-    --- PASS: TestFeatures/rename_dialog_--_in-dialog_validation_rejects_a_name_collision,_retaining_the_typed_value_and_stating_the_reason (1.07s)
-    --- PASS: TestFeatures/rename_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.86s)
-    --- PASS: TestFeatures/alpha,_beta_and_gamma_in_one_directory_keep_their_own_conversations (2.99s)
-    --- PASS: TestFeatures/a_key_set_in_two_layers_names_the_session_layer_as_the_winner,_and_PATH_names_captured_path (1.04s)
-    --- PASS: TestFeatures/esc_closes_the_env_editor_changing_nothing (0.67s)
+    --- PASS: TestFeatures/pin_dialog_--_esc_after_altering_its_field_leaves_the_persisted_resume_mode_untouched (0.92s)
+    --- PASS: TestFeatures/pin_dialog_--_enter_submits_the_cycled_value (0.93s)
+    --- PASS: TestFeatures/pin_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (1.09s)
+    --- PASS: TestFeatures/help_dialog_--_esc_changes_nothing_(it_has_no_fields_to_alter) (0.42s)
+    --- PASS: TestFeatures/help_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.68s)
+    --- PASS: TestFeatures/rename_dialog_--_reachable_only_from_inside_detail,_esc_after_altering_it_leaves_the_persisted_name_and_tmux_session_untouched (0.71s)
+    --- PASS: TestFeatures/rename_dialog_--_enter_submits_a_new_display_name_and_returns_to_detail,_without_ever_touching_the_tmux_session (0.72s)
+    --- PASS: TestFeatures/rename_dialog_--_a_top-level_r_does_not_open_it;_it_still_means_resume (0.94s)
+    --- PASS: TestFeatures/rename_dialog_--_in-dialog_validation_rejects_a_name_collision,_retaining_the_typed_value_and_stating_the_reason (1.03s)
+    --- PASS: TestFeatures/rename_dialog_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.85s)
+    --- PASS: TestFeatures/alpha,_beta_and_gamma_in_one_directory_keep_their_own_conversations (3.02s)
+    --- PASS: TestFeatures/a_key_set_in_two_layers_names_the_session_layer_as_the_winner,_and_PATH_names_captured_path (1.00s)
+    --- PASS: TestFeatures/esc_closes_the_env_editor_changing_nothing (0.64s)
     --- PASS: TestFeatures/committing_an_edit_writes_session_env,_marks_it_env_dirty,_mirrors_into_tmux,_and_leaves_the_live_pane's_own_environment_untouched (0.70s)
-    --- PASS: TestFeatures/R_kills_and_relaunches_the_pane_with_the_resume_argv,_applying_a_pending_env_edit_and_clearing_env_dirty (1.18s)
-    --- PASS: TestFeatures/R_offers_inject-instead_for_a_shell_session,_exporting_the_pending_edit_into_the_same_live_pane (1.15s)
-    --- PASS: TestFeatures/a_secret-shaped_key_opened_in_this_file's_own_env_editor_is_masked_by_default,_reveals_on_r,_re-masks_on_r_again,_and_never_leaks_to_screen_or_disk (1.14s)
-    --- PASS: TestFeatures/R's_restart_path_is_still_available_and_separately_provable_for_a_shell_session (1.18s)
-    --- PASS: TestFeatures/three_events_recorded_in_one_order_render_newest_first,_not_in_insertion_or_alphabetical_order (1.55s)
-    --- PASS: TestFeatures/a_secret-shaped_key's_value_in_a_payload_never_reaches_the_event_log's_screen_grid (0.43s)
-    --- PASS: TestFeatures/SIGKILL_targets_the_agent_process_and_retains_its_failed_pane (0.53s)
-    --- PASS: TestFeatures/accepted_argv_and_controlled_exit_statuses_are_observable_from_panes (0.49s)
-    --- PASS: TestFeatures//_filters_the_list_down_to_the_one_row_whose_name_matches (0.71s)
-    --- PASS: TestFeatures//_filters_the_list_down_to_the_one_row_whose_cwd_(and_its_default_workspace)_matches (0.68s)
-    --- PASS: TestFeatures/the_filter_is_the_only_route_back_to_a_row_hidden_by_A_archive (0.62s)
-    --- PASS: TestFeatures/the_whole_round_trip:_A_plus_its_confirm_hides_the_row,_/_finds_it,_U_and_r_bring_it_back_live_to_the_default_list (0.95s)
-    --- PASS: TestFeatures/dd_found_through_/_tombstones_an_archived_row,_u_returns_it_to_the_archived_pool_intact,_and_the_reap_removes_it (1.12s)
-    --- PASS: TestFeatures/U_inside_the_filter's_results_returns_the_archived_row_to_the_default_list (0.73s)
-    --- PASS: TestFeatures/esc_clears_a_filter_held_in_force_at_the_plain_list,_with_the_text_field_never_reopened (0.70s)
-    --- PASS: TestFeatures/default_feature_suite_is_wired (0.32s)
-    --- PASS: TestFeatures/a_private_tmux_server_can_be_removed (0.31s)
-    --- PASS: TestFeatures/a_directory's_fingerprint_is_byte-for-byte_and_stat-for-stat_identical_to_itself (0.30s)
-    --- PASS: TestFeatures/the_emulator_reads_foreground,_background,_bold,_dim_and_reverse_from_raw_SGR_bytes (0.32s)
-    --- PASS: TestFeatures/a_colour_assertion_fails_when_pointed_at_a_cell_of_a_different_colour (0.31s)
-    --- PASS: TestFeatures/a_real_deck_client's_own_coloured_chrome_is_readable_per_cell,_by_name_and_by_matched_text (0.36s)
+    --- PASS: TestFeatures/R_kills_and_relaunches_the_pane_with_the_resume_argv,_applying_a_pending_env_edit_and_clearing_env_dirty (1.13s)
+    --- PASS: TestFeatures/R_offers_inject-instead_for_a_shell_session,_exporting_the_pending_edit_into_the_same_live_pane (1.09s)
+    --- PASS: TestFeatures/a_secret-shaped_key_opened_in_this_file's_own_env_editor_is_masked_by_default,_reveals_on_r,_re-masks_on_r_again,_and_never_leaks_to_screen_or_disk (1.07s)
+    --- PASS: TestFeatures/R's_restart_path_is_still_available_and_separately_provable_for_a_shell_session (1.19s)
+    --- PASS: TestFeatures/three_events_recorded_in_one_order_render_newest_first,_not_in_insertion_or_alphabetical_order (1.71s)
+    --- PASS: TestFeatures/a_secret-shaped_key's_value_in_a_payload_never_reaches_the_event_log's_screen_grid (0.45s)
+    --- PASS: TestFeatures/SIGKILL_targets_the_agent_process_and_retains_its_failed_pane (0.51s)
+    --- PASS: TestFeatures/accepted_argv_and_controlled_exit_statuses_are_observable_from_panes (0.53s)
+    --- PASS: TestFeatures//_filters_the_list_down_to_the_one_row_whose_name_matches (0.67s)
+    --- PASS: TestFeatures//_filters_the_list_down_to_the_one_row_whose_cwd_(and_its_default_workspace)_matches (0.67s)
+    --- PASS: TestFeatures/the_filter_is_the_only_route_back_to_a_row_hidden_by_A_archive (0.59s)
+    --- PASS: TestFeatures/the_whole_round_trip:_A_plus_its_confirm_hides_the_row,_/_finds_it,_U_and_r_bring_it_back_live_to_the_default_list (0.92s)
+    --- PASS: TestFeatures/dd_found_through_/_tombstones_an_archived_row,_u_returns_it_to_the_archived_pool_intact,_and_the_reap_removes_it (1.07s)
+    --- PASS: TestFeatures/U_inside_the_filter's_results_returns_the_archived_row_to_the_default_list (0.74s)
+    --- PASS: TestFeatures/esc_clears_a_filter_held_in_force_at_the_plain_list,_with_the_text_field_never_reopened (0.71s)
+    --- PASS: TestFeatures/default_feature_suite_is_wired (0.34s)
+    --- PASS: TestFeatures/a_private_tmux_server_can_be_removed (0.32s)
+    --- PASS: TestFeatures/a_directory's_fingerprint_is_byte-for-byte_and_stat-for-stat_identical_to_itself (0.35s)
+    --- PASS: TestFeatures/the_emulator_reads_foreground,_background,_bold,_dim_and_reverse_from_raw_SGR_bytes (0.34s)
+    --- PASS: TestFeatures/a_colour_assertion_fails_when_pointed_at_a_cell_of_a_different_colour (0.35s)
+    --- PASS: TestFeatures/a_real_deck_client's_own_coloured_chrome_is_readable_per_cell,_by_name_and_by_matched_text (0.40s)
     --- PASS: TestFeatures/a_real_deck_client's_coloured_chrome_is_readable_by_naming_a_theme_token,_resolved_through_the_scenario's_pinned_theme (0.39s)
-    --- PASS: TestFeatures/the_screen_emulator_places_an_East-Asian-Wide_cell_without_splitting_it (0.35s)
+    --- PASS: TestFeatures/the_screen_emulator_places_an_East-Asian-Wide_cell_without_splitting_it (0.32s)
     --- PASS: TestFeatures/a_mid-scenario_terminal_resize_changes_the_grid_the_frame_is_read_from (0.41s)
-    --- PASS: TestFeatures/a_real_deck_client's_frame_fits_its_own_terminal_at_several_sizes (0.39s)
-    --- PASS: TestFeatures/a_real_deck_client's_frame_fits_its_own_terminal_at_several_sizes#01 (0.42s)
+    --- PASS: TestFeatures/a_real_deck_client's_frame_fits_its_own_terminal_at_several_sizes (0.40s)
+    --- PASS: TestFeatures/a_real_deck_client's_frame_fits_its_own_terminal_at_several_sizes#01 (0.38s)
     --- PASS: TestFeatures/a_real_deck_client's_frame_fits_its_own_terminal_at_several_sizes#02 (0.37s)
-    --- PASS: TestFeatures/the_frame-budget_check_is_discriminating,_not_a_check_that_always_passes (0.38s)
-    --- PASS: TestFeatures/a_bare_emulator's_overflow_by_height_or_by_width_fails_the_frame-budget_check (0.33s)
-    --- PASS: TestFeatures/an_attachError_or_resumeNote_message_never_pushes_the_frame_past_the_terminal's_own_budget (1.89s)
-    --- PASS: TestFeatures/an_attachError_or_resumeNote_message_never_pushes_the_frame_past_the_terminal's_own_budget#01 (1.88s)
-    --- PASS: TestFeatures/a_resumeNote_message_('starting_elsewhere')_never_pushes_the_frame_past_the_terminal's_own_budget (0.85s)
-    --- PASS: TestFeatures/SGR_mouse_reports_are_synthesized_for_click,_double-click,_wheel_and_drag (0.53s)
-    --- PASS: TestFeatures/DECK_MOUSE_overrides_the_default_mouse-reporting_setting (0.42s)
-    --- PASS: TestFeatures/DECK_MOUSE=0_disables_mouse_reporting (0.38s)
-    --- PASS: TestFeatures/a_fake_agent_records_its_initial_size_and_every_SIGWINCH-observed_size (0.48s)
-    --- PASS: TestFeatures/a_fake_agent_records_its_initial_size_and_every_SIGWINCH-observed_size#01 (0.48s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent (0.63s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#01 (0.64s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#02 (0.64s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#03 (0.64s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#04 (0.62s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#05 (0.65s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#06 (0.59s)
-    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#07 (0.59s)
+    --- PASS: TestFeatures/the_frame-budget_check_is_discriminating,_not_a_check_that_always_passes (0.39s)
+    --- PASS: TestFeatures/a_bare_emulator's_overflow_by_height_or_by_width_fails_the_frame-budget_check (0.34s)
+    --- PASS: TestFeatures/an_attachError_or_resumeNote_message_never_pushes_the_frame_past_the_terminal's_own_budget (1.90s)
+    --- PASS: TestFeatures/an_attachError_or_resumeNote_message_never_pushes_the_frame_past_the_terminal's_own_budget#01 (1.93s)
+    --- PASS: TestFeatures/a_resumeNote_message_('starting_elsewhere')_never_pushes_the_frame_past_the_terminal's_own_budget (0.90s)
+    --- PASS: TestFeatures/SGR_mouse_reports_are_synthesized_for_click,_double-click,_wheel_and_drag (0.58s)
+    --- PASS: TestFeatures/DECK_MOUSE_overrides_the_default_mouse-reporting_setting (0.40s)
+    --- PASS: TestFeatures/DECK_MOUSE=0_disables_mouse_reporting (0.43s)
+    --- PASS: TestFeatures/a_fake_agent_records_its_initial_size_and_every_SIGWINCH-observed_size (0.56s)
+    --- PASS: TestFeatures/a_fake_agent_records_its_initial_size_and_every_SIGWINCH-observed_size#01 (0.46s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent (0.67s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#01 (0.68s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#02 (0.72s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#03 (0.74s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#04 (0.67s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#05 (0.64s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#06 (0.62s)
+    --- PASS: TestFeatures/a_fake_agent_renders_a_preview_fixture_once_and_then_falls_silent#07 (0.60s)
     --- PASS: TestFeatures/sidebar_width_can_be_set_and_read_back_for_a_scenario (0.37s)
     --- PASS: TestFeatures/a_non-default_sidebar_width_actually_widens_deck's_own_rendered_sidebar (1.71s)
-    --- PASS: TestFeatures/a_config.toml_written_before_start-up_is_asserted_by_its_parsed_content_after_the_run (0.37s)
-    --- PASS: TestFeatures/the_config-file-content_assertion_fails_on_a_mismatch (0.31s)
-    --- PASS: TestFeatures/a_scenario_pins_a_built-in_theme_by_name_via_a_config.toml_it_writes_itself (0.32s)
+    --- PASS: TestFeatures/a_config.toml_written_before_start-up_is_asserted_by_its_parsed_content_after_the_run (0.38s)
+    --- PASS: TestFeatures/the_config-file-content_assertion_fails_on_a_mismatch (0.32s)
+    --- PASS: TestFeatures/a_scenario_pins_a_built-in_theme_by_name_via_a_config.toml_it_writes_itself (0.31s)
     --- PASS: TestFeatures/a_scenario_discovers_a_user_theme_it_writes_into_its_own_themes_directory (0.32s)
-    --- PASS: TestFeatures/an_unknown_theme_name_falls_back_to_the_default_rather_than_to_the_user_theme's_colours (0.33s)
-    --- PASS: TestFeatures/a_built-in_and_a_user_theme_paint_genuinely_different_colours_at_the_same_token,_proving_the_pinning_step_is_not_a_no-op (0.38s)
-    --- PASS: TestFeatures/NO_COLOR_renders_a_monochrome_frame_with_a_session's_status_carried_by_its_glyphs_alone (1.07s)
-    --- PASS: TestFeatures/DECK_COLOR_DEPTH=truecolor_forces_the_truecolour_render_path_from_a_real_pty (0.38s)
+    --- PASS: TestFeatures/an_unknown_theme_name_falls_back_to_the_default_rather_than_to_the_user_theme's_colours (0.35s)
+    --- PASS: TestFeatures/a_built-in_and_a_user_theme_paint_genuinely_different_colours_at_the_same_token,_proving_the_pinning_step_is_not_a_no-op (0.32s)
+    --- PASS: TestFeatures/NO_COLOR_renders_a_monochrome_frame_with_a_session's_status_carried_by_its_glyphs_alone (1.05s)
+    --- PASS: TestFeatures/DECK_COLOR_DEPTH=truecolor_forces_the_truecolour_render_path_from_a_real_pty (0.40s)
     --- PASS: TestFeatures/DECK_COLOR_DEPTH=16_renders_the_quantised_reference-palette_colour_from_a_real_pty (0.41s)
-    --- PASS: TestFeatures/An_uncontended_hook_store_write_stays_below_twenty_milliseconds (0.43s)
+    --- PASS: TestFeatures/An_uncontended_hook_store_write_stays_below_twenty_milliseconds (0.41s)
     --- PASS: TestFeatures/Session_end_performs_one_write_and_no_subsequent_work (0.42s)
-    --- PASS: TestFeatures/entering_interactive_mode_swaps_the_two_panels'_border_tokens_and_the_sidebar's_selected_row_to_selection_idle (1.25s)
-    --- PASS: TestFeatures/the_preview's_top_border_names_the_target_session_as_plain_screen_text,_legible_even_under_NO_COLOR (1.28s)
-    --- PASS: TestFeatures/the_chrome-compensated_fit_converges_on_a_split_window (0.36s)
-    --- PASS: TestFeatures/the_naive_pane-targeting_loop_never_converges_on_the_same_layout (0.45s)
-    --- PASS: TestFeatures/entering_touches_only_window-size,_only_in_the_window_scope,_and_exiting_restores_every_table_exactly (0.45s)
-    --- PASS: TestFeatures/SIGKILL_mid-interactive_leaks_pipe-pane_and_a_temp_dir;_the_next_start_reclaims_both (1.19s)
-    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_another_client_is_attached_to_the_session (1.13s)
-    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_the_preview_box_has_fewer_than_7_inner_rows (1.11s)
-    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_a_live_process_holds_the_window's_ownership (1.10s)
-    --- PASS: TestFeatures/interactive_mode_leaves_and_restores_the_window_when_the_terminal_shrinks_below_the_7-row_floor (1.11s)
-    --- PASS: TestFeatures/the_panel_announces_a_target_that_never_repaints,_even_after_typing (1.56s)
-    --- PASS: TestFeatures/the_panel_does_not_announce_a_working_target_that_repaints_on_resize (1.52s)
-    --- PASS: TestFeatures/Shift+PgUp/PgDn_scroll_the_interactive_grid's_own_scrollback (1.62s)
-    --- PASS: TestFeatures/the_mouse_wheel_over_the_preview_panel_scrolls_the_interactive_grid's_own_scrollback (1.49s)
-    --- PASS: TestFeatures/typing_while_scrolled_back_snaps_the_view_back_to_the_live_bottom (1.51s)
+    --- PASS: TestFeatures/entering_interactive_mode_swaps_the_two_panels'_border_tokens_and_the_sidebar's_selected_row_to_selection_idle (1.23s)
+    --- PASS: TestFeatures/the_preview's_top_border_names_the_target_session_as_plain_screen_text,_legible_even_under_NO_COLOR (1.23s)
+    --- PASS: TestFeatures/the_chrome-compensated_fit_converges_on_a_split_window (0.35s)
+    --- PASS: TestFeatures/the_naive_pane-targeting_loop_never_converges_on_the_same_layout (0.42s)
+    --- PASS: TestFeatures/entering_touches_only_window-size,_only_in_the_window_scope,_and_exiting_restores_every_table_exactly (0.42s)
+    --- PASS: TestFeatures/SIGKILL_mid-interactive_leaks_pipe-pane_and_a_temp_dir;_the_next_start_reclaims_both (1.15s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_another_client_is_attached_to_the_session (1.11s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_the_preview_box_has_fewer_than_7_inner_rows (1.07s)
+    --- PASS: TestFeatures/entering_interactive_mode_is_refused_while_a_live_process_holds_the_window's_ownership (1.07s)
+    --- PASS: TestFeatures/interactive_mode_leaves_and_restores_the_window_when_the_terminal_shrinks_below_the_7-row_floor (1.15s)
+    --- PASS: TestFeatures/the_panel_announces_a_target_that_never_repaints,_even_after_typing (1.55s)
+    --- PASS: TestFeatures/the_panel_does_not_announce_a_working_target_that_repaints_on_resize (1.53s)
+    --- PASS: TestFeatures/Shift+PgUp/PgDn_scroll_the_interactive_grid's_own_scrollback (1.57s)
+    --- PASS: TestFeatures/the_mouse_wheel_over_the_preview_panel_scrolls_the_interactive_grid's_own_scrollback (1.54s)
+    --- PASS: TestFeatures/typing_while_scrolled_back_snaps_the_view_back_to_the_live_bottom (1.55s)
     --- PASS: TestFeatures/scrolling_the_interactive_grid's_own_scrollback_never_flips_the_session's_badge,_and_the_probe_reads_the_pane's_live_bottom,_not_the_scrolled-back_view (2.41s)
-    --- PASS: TestFeatures/dragging_over_the_interactive_preview_copies_the_selected_text_to_deck's_own_tmux_buffer (1.24s)
-    --- PASS: TestFeatures/a_plain_click_(no_drag)_over_the_interactive_preview_commits_no_selection_at_all (1.25s)
-    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_nobody_attached (0.92s)
-    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_a_client_attached_throughout (1.02s)
-    --- PASS: TestFeatures/x_kills_without_confirmation_and_refuses_to_kill_an_already-stopped_row (0.60s)
-    --- PASS: TestFeatures/u_undoes_the_most_recent_kill_inside_its_DECK_UNDO_MS_window (0.75s)
-    --- PASS: TestFeatures/u_does_nothing_once_the_undo_window_has_expired (0.96s)
-    --- PASS: TestFeatures/a_single_d_shows_a_pending-delete_indicator_and_changes_nothing_in_the_store (0.56s)
-    --- PASS: TestFeatures/d_followed_by_any_other_key_performs_no_destructive_action (0.58s)
+    --- PASS: TestFeatures/dragging_over_the_interactive_preview_copies_the_selected_text_to_deck's_own_tmux_buffer (1.23s)
+    --- PASS: TestFeatures/a_plain_click_(no_drag)_over_the_interactive_preview_commits_no_selection_at_all (1.23s)
+    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_nobody_attached (0.89s)
+    --- PASS: TestFeatures/a_full_enter/exit_cycle_costs_exactly_two_SIGWINCH_with_a_client_attached_throughout (0.90s)
+    --- PASS: TestFeatures/x_kills_without_confirmation_and_refuses_to_kill_an_already-stopped_row (0.54s)
+    --- PASS: TestFeatures/u_undoes_the_most_recent_kill_inside_its_DECK_UNDO_MS_window (0.64s)
+    --- PASS: TestFeatures/u_does_nothing_once_the_undo_window_has_expired (0.90s)
+    --- PASS: TestFeatures/a_single_d_shows_a_pending-delete_indicator_and_changes_nothing_in_the_store (0.55s)
+    --- PASS: TestFeatures/d_followed_by_any_other_key_performs_no_destructive_action (0.55s)
     --- PASS: TestFeatures/the_second_d_opens_a_confirm_dialog_naming_what_survives,_esc_cancels_leaving_the_row_untombstoned (0.58s)
-    --- PASS: TestFeatures/submitting_the_confirm_dialog_kills_the_live_pane,_tombstones_the_row,_and_it_disappears_from_the_sidebar_immediately (0.59s)
-    --- PASS: TestFeatures/the_dd_confirm_dialog_obeys_the_§11.4_contract_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.77s)
-    --- PASS: TestFeatures/the_dd_confirm_dialog_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends (0.57s)
-    --- PASS: TestFeatures/the_dd_confirm_dialog_width_saturates_at_80_well_past_the_upper_clamp (0.58s)
-    --- PASS: TestFeatures/u_restores_a_deleted_row_inside_its_DECK_DELETE_GRACE_MS_window (0.62s)
-    --- PASS: TestFeatures/u_does_nothing_once_the_delete_grace_window_has_expired,_and_the_row_is_reaped (1.02s)
-    --- PASS: TestFeatures/reaping_a_deleted_session_removes_its_store_rows_and_deck's_own_per-session_files,_but_never_the_audit_log's_earlier_history (0.98s)
-    --- PASS: TestFeatures/killing_a_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.58s)
-    --- PASS: TestFeatures/undoing_a_kill_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.68s)
-    --- PASS: TestFeatures/dd_(delete)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.65s)
-    --- PASS: TestFeatures/undoing_a_delete_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.64s)
+    --- PASS: TestFeatures/submitting_the_confirm_dialog_kills_the_live_pane,_tombstones_the_row,_and_it_disappears_from_the_sidebar_immediately (0.56s)
+    --- PASS: TestFeatures/the_dd_confirm_dialog_obeys_the_§11.4_contract_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.69s)
+    --- PASS: TestFeatures/the_dd_confirm_dialog_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends (0.56s)
+    --- PASS: TestFeatures/the_dd_confirm_dialog_width_saturates_at_80_well_past_the_upper_clamp (0.54s)
+    --- PASS: TestFeatures/u_restores_a_deleted_row_inside_its_DECK_DELETE_GRACE_MS_window (0.56s)
+    --- PASS: TestFeatures/u_does_nothing_once_the_delete_grace_window_has_expired,_and_the_row_is_reaped (0.93s)
+    --- PASS: TestFeatures/reaping_a_deleted_session_removes_its_store_rows_and_deck's_own_per-session_files,_but_never_the_audit_log's_earlier_history (0.94s)
+    --- PASS: TestFeatures/killing_a_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.53s)
+    --- PASS: TestFeatures/undoing_a_kill_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.65s)
+    --- PASS: TestFeatures/dd_(delete)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.53s)
+    --- PASS: TestFeatures/undoing_a_delete_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.55s)
     --- PASS: TestFeatures/reaping_a_deleted_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.95s)
-    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (1.66s)
-    --- PASS: TestFeatures/archiving_an_already-stopped_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.87s)
-    --- PASS: TestFeatures/A_on_a_non-stopped_session_(kill-and-archive_as_one_action)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.52s)
-    --- PASS: TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (0.84s)
+    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (1.63s)
+    --- PASS: TestFeatures/archiving_an_already-stopped_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.85s)
+    --- PASS: TestFeatures/A_on_a_non-stopped_session_(kill-and-archive_as_one_action)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.55s)
+    --- PASS: TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (0.86s)
     --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.07s)
-    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.13s)
-    --- PASS: TestFeatures/both_the_undo_window_and_the_delete_grace_window_keep_advancing_while_DECK_CLOCK_is_frozen (0.96s)
-    --- PASS: TestFeatures/dd_without_purge_leaves_the_agent's_transcript_intact_through_delete_and_reap (1.99s)
-    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_removes_only_the_agent's_declared_transcript_file (1.65s)
-    --- PASS: TestFeatures/A_archives_an_already-stopped_session,_hidden_from_the_default_list_with_its_status_unchanged (0.85s)
-    --- PASS: TestFeatures/A_on_a_non-stopped_session_offers_kill_and_archive_as_one_action_instead_of_refusing (0.53s)
-    --- PASS: TestFeatures/A_on_a_running_session_opens_a_confirm_that_names_the_kill_and_writes_nothing_until_it_is_confirmed (1.04s)
-    --- PASS: TestFeatures/confirming_the_archive_dialog_lands_both_the_kill_and_the_archived_flag (0.51s)
-    --- PASS: TestFeatures/a_confirmed_archive_says_what_happened_and_u_puts_the_row_back_in_the_default_list (0.57s)
-    --- PASS: TestFeatures/m_marks_a_batch_by_session_id,_x_kills_every_marked_non-stopped_session,_and_one_u_undoes_the_whole_batch (1.91s)
-    --- PASS: TestFeatures/dd_on_a_marked_set_deletes_every_marked_session_and_one_u_restores_the_whole_batch (1.30s)
-    --- PASS: TestFeatures/esc_clears_the_mark_set_without_acting_on_it (1.10s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.18s)
+    --- PASS: TestFeatures/both_the_undo_window_and_the_delete_grace_window_keep_advancing_while_DECK_CLOCK_is_frozen (1.01s)
+    --- PASS: TestFeatures/dd_without_purge_leaves_the_agent's_transcript_intact_through_delete_and_reap (2.07s)
+    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_removes_only_the_agent's_declared_transcript_file (1.67s)
+    --- PASS: TestFeatures/A_archives_an_already-stopped_session,_hidden_from_the_default_list_with_its_status_unchanged (0.89s)
+    --- PASS: TestFeatures/A_on_a_non-stopped_session_offers_kill_and_archive_as_one_action_instead_of_refusing (0.57s)
+    --- PASS: TestFeatures/A_on_a_running_session_opens_a_confirm_that_names_the_kill_and_writes_nothing_until_it_is_confirmed (1.08s)
+    --- PASS: TestFeatures/confirming_the_archive_dialog_lands_both_the_kill_and_the_archived_flag (0.58s)
+    --- PASS: TestFeatures/a_confirmed_archive_says_what_happened_and_u_puts_the_row_back_in_the_default_list (0.58s)
+    --- PASS: TestFeatures/m_marks_a_batch_by_session_id,_x_kills_every_marked_non-stopped_session,_and_one_u_undoes_the_whole_batch (1.96s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_deletes_every_marked_session_and_one_u_restores_the_whole_batch (1.34s)
+    --- PASS: TestFeatures/esc_clears_the_mark_set_without_acting_on_it (1.06s)
     --- PASS: TestFeatures/a_live_in-TTL_lease_blocks_a_second_launch_and_the_row_stays_usable (1.36s)
-    --- PASS: TestFeatures/a_stale_stopped_row_reports_its_new_non-leasable_verdict_instead_of_a_lease_conflict (1.18s)
-    --- PASS: TestFeatures/a_lease_from_a_dead_process_is_breakable_and_the_row_stays_usable (0.88s)
-    --- PASS: TestFeatures/an_expired-TTL_lease_is_breakable_and_the_row_stays_usable (0.88s)
-    --- PASS: TestFeatures/auto_selects_side-by-side_at_and_above_80_columns,_stacked_below_it (0.36s)
-    --- PASS: TestFeatures/auto_selects_side-by-side_at_and_above_80_columns,_stacked_below_it#01 (0.37s)
-    --- PASS: TestFeatures/auto_selects_side-by-side_at_and_above_80_columns,_stacked_below_it#02 (0.37s)
-    --- PASS: TestFeatures/|_cycles_auto_->_side-by-side_->_stacked_->_collapsed_->_auto (0.49s)
-    --- PASS: TestFeatures/a_mid-scenario_resize_re-chooses_auto's_mode (0.43s)
-    --- PASS: TestFeatures/a_pinned_side-by-side_mode_falls_back_below_its_floors_and_returns_when_the_terminal_does (0.43s)
-    --- PASS: TestFeatures/<_and_>_clamp_sidebar_width_at_both_ends (8.31s)
-    --- PASS: TestFeatures/the_below-minimum_notice_lands_on_the_footer_line_and_only_there (0.42s)
-    --- PASS: TestFeatures/layout_mode_and_sidebar_width_persist_across_a_restart,_with_config.toml_unchanged (0.74s)
-    --- PASS: TestFeatures/three_clients_racing_resume_on_one_row_produce_exactly_one_launch (2.15s)
-    --- PASS: TestFeatures/a_single_click_on_a_sidebar_row_selects_it_and_enters_interactive_mode_on_the_same_press,_and_Ctrl+Q_returns_to_the_list (1.30s)
-    --- PASS: TestFeatures/a_double_click_on_a_sidebar_row_also_enters_interactive_mode,_and_its_second_press_lands_harmlessly_on_the_now-interactive_preview (0.86s)
+    --- PASS: TestFeatures/a_stale_stopped_row_reports_its_new_non-leasable_verdict_instead_of_a_lease_conflict (1.16s)
+    --- PASS: TestFeatures/a_lease_from_a_dead_process_is_breakable_and_the_row_stays_usable (0.91s)
+    --- PASS: TestFeatures/an_expired-TTL_lease_is_breakable_and_the_row_stays_usable (0.90s)
+    --- PASS: TestFeatures/auto_selects_side-by-side_at_and_above_80_columns,_stacked_below_it (0.37s)
+    --- PASS: TestFeatures/auto_selects_side-by-side_at_and_above_80_columns,_stacked_below_it#01 (0.38s)
+    --- PASS: TestFeatures/auto_selects_side-by-side_at_and_above_80_columns,_stacked_below_it#02 (0.35s)
+    --- PASS: TestFeatures/|_cycles_auto_->_side-by-side_->_stacked_->_collapsed_->_auto (0.48s)
+    --- PASS: TestFeatures/a_mid-scenario_resize_re-chooses_auto's_mode (0.39s)
+    --- PASS: TestFeatures/a_pinned_side-by-side_mode_falls_back_below_its_floors_and_returns_when_the_terminal_does (0.40s)
+    --- PASS: TestFeatures/<_and_>_clamp_sidebar_width_at_both_ends (8.20s)
+    --- PASS: TestFeatures/the_below-minimum_notice_lands_on_the_footer_line_and_only_there (0.40s)
+    --- PASS: TestFeatures/layout_mode_and_sidebar_width_persist_across_a_restart,_with_config.toml_unchanged (0.72s)
+    --- PASS: TestFeatures/three_clients_racing_resume_on_one_row_produce_exactly_one_launch (2.10s)
+    --- PASS: TestFeatures/a_single_click_on_a_sidebar_row_selects_it_and_enters_interactive_mode_on_the_same_press,_and_Ctrl+Q_returns_to_the_list (1.24s)
+    --- PASS: TestFeatures/a_double_click_on_a_sidebar_row_also_enters_interactive_mode,_and_its_second_press_lands_harmlessly_on_the_now-interactive_preview (0.83s)
     --- PASS: TestFeatures/a_click_on_the_sidebar's_empty_padding_below_the_last_row_selects_nothing_and_enters_nothing (0.80s)
-    --- PASS: TestFeatures/a_sidebar_click_on_a_different_row_while_interactive_re-targets_it,_restoring_the_old_session's_window (1.05s)
-    --- PASS: TestFeatures/a_sidebar_click_on_the_already-interactive_row_triggers_no_resize (1.24s)
-    --- PASS: TestFeatures/clicking_a_workspace_group's_header_collapses_only_that_group (0.67s)
-    --- PASS: TestFeatures/the_wheel_scrolls_the_sidebar's_view_without_changing_selection (1.29s)
-    --- PASS: TestFeatures/dragging_the_seam_adjusts_sidebar_width_live (0.54s)
-    --- PASS: TestFeatures/clicking,_double-clicking_or_scrolling_over_the_PASSIVE_preview_panel_does_nothing (0.81s)
-    --- PASS: TestFeatures/DECK_MOUSE=0_disables_every_mouse_gesture,_and_only_the_shortcut_is_lost (1.30s)
-    --- PASS: TestFeatures/creating_a_new_session_selects_its_row_immediately,_without_any_navigation_keystroke,_even_though_it_does_not_land_at_index_0 (0.82s)
-    --- PASS: TestFeatures/the_just-created_row's_auto-selection_is_one-shot_--_moving_away_with_k_survives_a_later_reconcile_tick (1.19s)
-    --- PASS: TestFeatures/the_scan_instrument_finds_an_unmasked_control_value_on_screen_and_on_disk (0.56s)
-    --- PASS: TestFeatures/a_secret-shaped_env_value_never_reaches_the_masked_screen_grid_or_any_file_except_the_state_database (1.12s)
-    --- PASS: TestFeatures/a_selected_row's_background_fills_every_content_column_on_both_lines,_even_with_a_truncating_name,_and_the_seam_stays_clear (0.93s)
-    --- PASS: TestFeatures/the_alternating_surface_stripe_fills_every_content_column_on_both_lines_of_a_non-selected_row (0.92s)
-    --- PASS: TestFeatures/claude_maps_every_declared_permission_profile_to_its_own_argv (1.82s)
-    --- PASS: TestFeatures/pi_maps_only_its_declared_permission_profiles_to_argv (1.49s)
-    --- PASS: TestFeatures/an_unsupported_profile_degrades_visibly_rather_than_lying (1.13s)
-    --- PASS: TestFeatures/yolo_is_unavailable_without_allow_yolo_enabled (0.77s)
-    --- PASS: TestFeatures/yolo_takes_effect_immediately_with_no_confirm_once_allow_yolo_is_enabled (0.98s)
-    --- PASS: TestFeatures/yolo_default_opens_the_create_modal_already_on_yolo_once_allow_yolo_is_enabled (0.68s)
-    --- PASS: TestFeatures/the_permission_profile_survives_a_resume (1.93s)
-    --- PASS: TestFeatures/capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,_across_selection,_mode,_sidebar-width_and_outer-terminal_changes (1.25s)
-    --- PASS: TestFeatures/preview_fit_does_not_resize_on_a_mode_switch,_sidebar-width_change_or_outer-terminal_resize_--_only_on_a_settled_selection_change (1.66s)
-    --- PASS: TestFeatures/a_settled_selection_fits_the_session's_window_to_exactly_the_panel's_own_content_box,_coalesced_across_repeated_revisits (3.54s)
-    --- PASS: TestFeatures/preview_fit_=_false_restores_the_wholly_passive_preview,_and_settling_never_resizes (2.41s)
-    --- PASS: TestFeatures/a_fit_is_skipped_below_the_7-inner-row_floor,_and_retried_once_the_panel_grows_back_above_it (2.40s)
-    --- PASS: TestFeatures/in_passive_preview,_a_live_pane_larger_than_the_panel_is_cropped_with_its_real_geometry_stated (0.56s)
-    --- PASS: TestFeatures/interactive_mode_states_the_fitted_geometry,_never_the_crop_form (1.24s)
-    --- PASS: TestFeatures/wide_glyphs_in_a_cropped_pane_never_shear_the_preview's_border (0.53s)
-    --- PASS: TestFeatures/a_coloured_pane's_SGR_escapes_never_shear_the_preview's_border (0.54s)
-    --- PASS: TestFeatures/clicking_or_scrolling_over_the_preview_panel_does_nothing (0.79s)
-    --- PASS: TestFeatures/an_error_row's_preview_shows_the_durable_crash_tail,_headed_by_copy_stating_it_is_not_live (1.06s)
-    --- PASS: TestFeatures/a_stopped_session's_preview_names_its_own_state_instead_of_showing_stale_bytes (0.62s)
-    --- PASS: TestFeatures/the_preview_is_suppressed_below_its_floor_and_the_sidebar_takes_the_space (0.56s)
-    --- PASS: TestFeatures/an_unknown_conversation_id_keeps_the_row_as_a_retained,_explained_error (1.89s)
-    --- PASS: TestFeatures/a_missing_cwd_keeps_the_row_as_a_retained,_explained_error (1.87s)
+    --- PASS: TestFeatures/a_sidebar_click_on_a_different_row_while_interactive_re-targets_it,_restoring_the_old_session's_window (1.01s)
+    --- PASS: TestFeatures/a_sidebar_click_on_the_already-interactive_row_triggers_no_resize (1.23s)
+    --- PASS: TestFeatures/clicking_a_workspace_group's_header_collapses_only_that_group (0.68s)
+    --- PASS: TestFeatures/the_wheel_scrolls_the_sidebar's_view_without_changing_selection (1.25s)
+    --- PASS: TestFeatures/dragging_the_seam_adjusts_sidebar_width_live (0.52s)
+    --- PASS: TestFeatures/clicking,_double-clicking_or_scrolling_over_the_PASSIVE_preview_panel_does_nothing (0.78s)
+    --- PASS: TestFeatures/DECK_MOUSE=0_disables_every_mouse_gesture,_and_only_the_shortcut_is_lost (1.31s)
+    --- PASS: TestFeatures/creating_a_new_session_selects_its_row_immediately,_without_any_navigation_keystroke,_even_though_it_does_not_land_at_index_0 (0.75s)
+    --- PASS: TestFeatures/the_just-created_row's_auto-selection_is_one-shot_--_moving_away_with_k_survives_a_later_reconcile_tick (1.16s)
+    --- PASS: TestFeatures/the_scan_instrument_finds_an_unmasked_control_value_on_screen_and_on_disk (0.50s)
+    --- PASS: TestFeatures/a_secret-shaped_env_value_never_reaches_the_masked_screen_grid_or_any_file_except_the_state_database (1.03s)
+    --- PASS: TestFeatures/a_selected_row's_background_fills_every_content_column_on_both_lines,_even_with_a_truncating_name,_and_the_seam_stays_clear (0.92s)
+    --- PASS: TestFeatures/the_alternating_surface_stripe_fills_every_content_column_on_both_lines_of_a_non-selected_row (0.87s)
+    --- PASS: TestFeatures/claude_maps_every_declared_permission_profile_to_its_own_argv (1.74s)
+    --- PASS: TestFeatures/pi_maps_only_its_declared_permission_profiles_to_argv (1.45s)
+    --- PASS: TestFeatures/an_unsupported_profile_degrades_visibly_rather_than_lying (1.09s)
+    --- PASS: TestFeatures/yolo_is_unavailable_without_allow_yolo_enabled (0.68s)
+    --- PASS: TestFeatures/yolo_takes_effect_immediately_with_no_confirm_once_allow_yolo_is_enabled (0.95s)
+    --- PASS: TestFeatures/yolo_default_opens_the_create_modal_already_on_yolo_once_allow_yolo_is_enabled (0.74s)
+    --- PASS: TestFeatures/the_permission_profile_survives_a_resume (1.92s)
+    --- PASS: TestFeatures/capturing_the_preview_never_attaches_a_tmux_client,_resizes_a_pane,_or_triggers_a_SIGWINCH,_across_selection,_mode,_sidebar-width_and_outer-terminal_changes (1.24s)
+    --- PASS: TestFeatures/preview_fit_does_not_resize_on_a_mode_switch,_sidebar-width_change_or_outer-terminal_resize_--_only_on_a_settled_selection_change (1.67s)
+    --- PASS: TestFeatures/a_settled_selection_fits_the_session's_window_to_exactly_the_panel's_own_content_box,_coalesced_across_repeated_revisits (3.55s)
+    --- PASS: TestFeatures/preview_fit_=_false_restores_the_wholly_passive_preview,_and_settling_never_resizes (2.43s)
+    --- PASS: TestFeatures/a_fit_is_skipped_below_the_7-inner-row_floor,_and_retried_once_the_panel_grows_back_above_it (2.37s)
+    --- PASS: TestFeatures/in_passive_preview,_a_live_pane_larger_than_the_panel_is_cropped_with_its_real_geometry_stated (0.59s)
+    --- PASS: TestFeatures/interactive_mode_states_the_fitted_geometry,_never_the_crop_form (1.28s)
+    --- PASS: TestFeatures/wide_glyphs_in_a_cropped_pane_never_shear_the_preview's_border (0.59s)
+    --- PASS: TestFeatures/a_coloured_pane's_SGR_escapes_never_shear_the_preview's_border (0.57s)
+    --- PASS: TestFeatures/clicking_or_scrolling_over_the_preview_panel_does_nothing (0.85s)
+    --- PASS: TestFeatures/an_error_row's_preview_shows_the_durable_crash_tail,_headed_by_copy_stating_it_is_not_live (1.10s)
+    --- PASS: TestFeatures/a_stopped_session's_preview_names_its_own_state_instead_of_showing_stale_bytes (0.68s)
+    --- PASS: TestFeatures/the_preview_is_suppressed_below_its_floor_and_the_sidebar_takes_the_space (0.58s)
+    --- PASS: TestFeatures/an_unknown_conversation_id_keeps_the_row_as_a_retained,_explained_error (1.86s)
+    --- PASS: TestFeatures/a_missing_cwd_keeps_the_row_as_a_retained,_explained_error (1.88s)
     --- PASS: TestFeatures/an_agent_binary_not_on_PATH_keeps_the_row_as_a_retained,_explained_error (1.89s)
-    --- PASS: TestFeatures/two_claude_sessions_in_one_cwd_keep_separate_conversation_ids (1.86s)
+    --- PASS: TestFeatures/two_claude_sessions_in_one_cwd_keep_separate_conversation_ids (1.88s)
     --- PASS: TestFeatures/the_seam_reads_border_focus_with_the_sidebar_focused,_border_focus_while_interactive,_and_plain_border_with_neither_focused (1.30s)
-    --- PASS: TestFeatures/every_category_and_its_schema-declared_fields_are_reachable,_including_the_honestly-unavailable_[notify]_entry (0.58s)
-    --- PASS: TestFeatures/a_toggle_and_a_bounded_integer_are_edited_in_place_and_ctrl+s_writes_config.toml_to_match_what_the_takeover_showed (0.60s)
-    --- PASS: TestFeatures/yolo_default_is_On_but_inert_while_allow_yolo_stays_off,_and_the_settings_row_itself_says_so_(steer_020_item_2) (0.50s)
-    --- PASS: TestFeatures/`/`_finds_a_field_only_its_description_mentions,_and_enter_jumps_both_lists_onto_it (0.52s)
-    --- PASS: TestFeatures/esc_with_an_unsaved_change_prompts_to_discard,_and_discarding_leaves_config.toml_exactly_as_it_was (0.53s)
-    --- PASS: TestFeatures/an_environment-overridden_field_is_labelled_honestly_and_a_save_never_pretends_the_running_value_moved (0.58s)
-    --- PASS: TestFeatures/saving_with_ctrl+s_and_no_edit_leaves_an_environment-overridden_flat_key's_own_file_value_untouched_(requirement_21) (0.55s)
+    --- PASS: TestFeatures/every_category_and_its_schema-declared_fields_are_reachable,_including_the_honestly-unavailable_[notify]_entry (0.63s)
+    --- PASS: TestFeatures/a_toggle_and_a_bounded_integer_are_edited_in_place_and_ctrl+s_writes_config.toml_to_match_what_the_takeover_showed (0.64s)
+    --- PASS: TestFeatures/yolo_default_is_On_but_inert_while_allow_yolo_stays_off,_and_the_settings_row_itself_says_so_(steer_020_item_2) (0.51s)
+    --- PASS: TestFeatures/`/`_finds_a_field_only_its_description_mentions,_and_enter_jumps_both_lists_onto_it (0.56s)
+    --- PASS: TestFeatures/esc_with_an_unsaved_change_prompts_to_discard,_and_discarding_leaves_config.toml_exactly_as_it_was (0.54s)
+    --- PASS: TestFeatures/an_environment-overridden_field_is_labelled_honestly_and_a_save_never_pretends_the_running_value_moved (0.61s)
+    --- PASS: TestFeatures/saving_with_ctrl+s_and_no_edit_leaves_an_environment-overridden_flat_key's_own_file_value_untouched_(requirement_21) (0.60s)
     --- PASS: TestFeatures/saving_an_edit_that_moves_away_from_an_env-overridden_field's_running_value_leaves_the_running_client_unaffected_(requirement_21_correction,_operator_steer_008-envoverride-applylive.md) (0.59s)
-    --- PASS: TestFeatures/the_[env]_table_states_its_restart-to-apply_scope_on_screen (0.49s)
-    --- PASS: TestFeatures/a_restart-to-apply_flat_key_states_so_in_its_own_on-screen_description,_not_only_its_Scope_label_(requirement_19) (0.53s)
-    --- PASS: TestFeatures/a_settings_takeover_save_of_ui.theme_changes_the_running_client's_own_render_live,_read_per_cell_(requirement_19) (0.55s)
-    --- PASS: TestFeatures/driving_every_key_the_takeover_binds_leaves_the_session_set_untouched (1.05s)
-    --- PASS: TestFeatures/the_mouse_cannot_cancel_the_takeover,_attach_the_session_it_covers,_or_change_the_selected_session_while_it_is_open_(requirement_24) (0.72s)
+    --- PASS: TestFeatures/the_[env]_table_states_its_restart-to-apply_scope_on_screen (0.51s)
+    --- PASS: TestFeatures/a_restart-to-apply_flat_key_states_so_in_its_own_on-screen_description,_not_only_its_Scope_label_(requirement_19) (0.57s)
+    --- PASS: TestFeatures/a_settings_takeover_save_of_ui.theme_changes_the_running_client's_own_render_live,_read_per_cell_(requirement_19) (0.57s)
+    --- PASS: TestFeatures/driving_every_key_the_takeover_binds_leaves_the_session_set_untouched (1.04s)
+    --- PASS: TestFeatures/the_mouse_cannot_cancel_the_takeover,_attach_the_session_it_covers,_or_change_the_selected_session_while_it_is_open_(requirement_24) (0.73s)
     --- PASS: TestFeatures/adding_an_[env]_entry_and_saving_with_ctrl+s_round-trips_through_config.toml,_preserving_keys_and_sections_the_takeover_does_not_understand_(requirement_17) (0.73s)
-    --- PASS: TestFeatures/discarding_an_unsaved_[env]_edit_leaves_config.toml_exactly_as_it_was_(requirement_17) (0.74s)
-    --- PASS: TestFeatures/settings_offers_clearing_the_recent-directory_history,_and_clearing_it_costs_only_the_prefill,_never_a_session (1.01s)
-    --- PASS: TestFeatures/a_live_shell_is_promoted_within_one_reconcile_interval (0.64s)
-    --- PASS: TestFeatures/a_live_unsignalled_agent_remains_starting (1.24s)
+    --- PASS: TestFeatures/discarding_an_unsaved_[env]_edit_leaves_config.toml_exactly_as_it_was_(requirement_17) (0.72s)
+    --- PASS: TestFeatures/settings_offers_clearing_the_recent-directory_history,_and_clearing_it_costs_only_the_prefill,_never_a_session (1.03s)
+    --- PASS: TestFeatures/a_live_shell_is_promoted_within_one_reconcile_interval (0.69s)
+    --- PASS: TestFeatures/a_live_unsignalled_agent_remains_starting (1.25s)
     --- PASS: TestFeatures/sort_order_defaults_to_attention_and_orders_by_the_waiting/error/running/idle_tiers (1.16s)
-    --- PASS: TestFeatures/sort_order_=_created_orders_by_created_at_descending,_newest_first (0.91s)
-    --- PASS: TestFeatures/sort_order_=_activity_orders_by_status_at_descending,_most_recently_changed_first (1.42s)
-    --- PASS: TestFeatures/sort_order_=_name_orders_case-insensitively_ascending (1.18s)
-    --- PASS: TestFeatures/cycling_sort_order_in_the_settings_takeover_and_saving_with_ctrl+s_keeps_the_same_session_selected_even_though_its_row_index_moves_(requirement_R53) (2.17s)
-    --- PASS: TestFeatures/group_by_workspace_(on_by_default)_composes_with_a_non-attention_sort_order_--_group_order_stays_attention-led,_rows_within_each_group_follow_the_chosen_order_(requirement_R53) (0.94s)
-    --- PASS: TestFeatures/attach_clears_waiting_and_acknowledges_it_in_one_transition (1.26s)
-    --- PASS: TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict (1.76s)
-    --- PASS: TestFeatures/Every_declared_Claude_hook_maps_to_honest_status_through_both_identity_routes (2.37s)
-    --- PASS: TestFeatures/A_pane-fired_hook_cannot_override_a_user-terminal_verdict (1.20s)
-    --- PASS: TestFeatures/A_pane-fired_hook_cannot_revive_a_process-crash_terminal_row (1.39s)
-    --- PASS: TestFeatures/Real_fake-agent_panes_render_the_complete_probe_golden_corpus (1.50s)
+    --- PASS: TestFeatures/sort_order_=_created_orders_by_created_at_descending,_newest_first (0.92s)
+    --- PASS: TestFeatures/sort_order_=_activity_orders_by_status_at_descending,_most_recently_changed_first (1.43s)
+    --- PASS: TestFeatures/sort_order_=_name_orders_case-insensitively_ascending (1.16s)
+    --- PASS: TestFeatures/cycling_sort_order_in_the_settings_takeover_and_saving_with_ctrl+s_keeps_the_same_session_selected_even_though_its_row_index_moves_(requirement_R53) (2.15s)
+    --- PASS: TestFeatures/group_by_workspace_(on_by_default)_composes_with_a_non-attention_sort_order_--_group_order_stays_attention-led,_rows_within_each_group_follow_the_chosen_order_(requirement_R53) (1.16s)
+    --- PASS: TestFeatures/attach_clears_waiting_and_acknowledges_it_in_one_transition (1.16s)
+    --- PASS: TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict (1.65s)
+    --- PASS: TestFeatures/Every_declared_Claude_hook_maps_to_honest_status_through_both_identity_routes (2.29s)
+    --- PASS: TestFeatures/A_pane-fired_hook_cannot_override_a_user-terminal_verdict (1.23s)
+    --- PASS: TestFeatures/A_pane-fired_hook_cannot_revive_a_process-crash_terminal_row (1.36s)
+    --- PASS: TestFeatures/Real_fake-agent_panes_render_the_complete_probe_golden_corpus (1.41s)
     --- PASS: TestFeatures/Stale_sampling_is_visible,_precedence-aware,_and_agent-only (2.57s)
-    --- PASS: TestFeatures/An_in-session_resume_pair_leaves_the_row_running_and_moves_conversation_id (0.89s)
-    --- PASS: TestFeatures/r_on_a_terminal_row_whose_tmux_session_already_exists_never_reaches_an_error,_however_fast_Reconcile's_self-heal_lands (1.35s)
-    --- PASS: TestFeatures/A_row_at_error_from_a_stale_tmux_launch-failure_verdict_recovers_on_the_next_hook (1.31s)
+    --- PASS: TestFeatures/An_in-session_resume_pair_leaves_the_row_running_and_moves_conversation_id (0.95s)
+    --- PASS: TestFeatures/r_on_a_terminal_row_whose_tmux_session_already_exists_never_reaches_an_error,_however_fast_Reconcile's_self-heal_lands (1.39s)
+    --- PASS: TestFeatures/A_row_at_error_from_a_stale_tmux_launch-failure_verdict_recovers_on_the_next_hook (1.34s)
     --- PASS: TestFeatures/A_session_the_user_killed_is_not_resurrected_by_a_late_hook (1.19s)
-    --- PASS: TestFeatures/the_waiting_status_token_colours_the_waiting_status_word (1.28s)
-    --- PASS: TestFeatures/the_running_status_token_colours_the_running_status_word (1.25s)
-    --- PASS: TestFeatures/the_idle_status_token_colours_the_idle_status_word (1.30s)
-    --- PASS: TestFeatures/the_starting_status_token_colours_the_starting_status_word (1.25s)
-    --- PASS: TestFeatures/the_stopped_status_token_colours_the_stopped_status_word (1.31s)
-    --- PASS: TestFeatures/the_error_status_token_colours_the_error_status_word (1.32s)
-    --- PASS: TestFeatures/the_archived_status_token_colours_the_archived_status_word (1.29s)
-    --- PASS: TestFeatures/statuses_never_borrow_each_other's_colour (1.32s)
-    --- PASS: TestFeatures/a_running_hook_cannot_undo_an_explicit_user_kill (1.24s)
+    --- PASS: TestFeatures/the_waiting_status_token_colours_the_waiting_status_word (1.33s)
+    --- PASS: TestFeatures/the_running_status_token_colours_the_running_status_word (1.36s)
+    --- PASS: TestFeatures/the_idle_status_token_colours_the_idle_status_word (1.45s)
+    --- PASS: TestFeatures/the_starting_status_token_colours_the_starting_status_word (1.32s)
+    --- PASS: TestFeatures/the_stopped_status_token_colours_the_stopped_status_word (1.36s)
+    --- PASS: TestFeatures/the_error_status_token_colours_the_error_status_word (1.40s)
+    --- PASS: TestFeatures/the_archived_status_token_colours_the_archived_status_word (1.37s)
+    --- PASS: TestFeatures/statuses_never_borrow_each_other's_colour (1.42s)
+    --- PASS: TestFeatures/a_running_hook_cannot_undo_an_explicit_user_kill (1.33s)
     --- PASS: TestFeatures/initialize_a_private_v2_WAL_database (0.39s)
-    --- PASS: TestFeatures/migrate_an_older_supported_database (0.42s)
-    --- PASS: TestFeatures/migrate_a_v1_database_in_place_without_recreating_a_session_row (0.44s)
-    --- PASS: TestFeatures/refuse_a_newer_database_without_corruption (0.33s)
-    --- PASS: TestFeatures/A_SessionEnd_hook_wedges_an_agent_row_while_its_pane_survives,_and_Reconcile_repairs_it_with_nobody_at_the_keyboard (1.41s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client (1.29s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#01 (1.28s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#02 (1.28s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#03 (1.24s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#04 (1.30s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_the_error_status_token,_read_per_cell_from_a_real_client (1.33s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_the_stopped_status_token,_read_per_cell_from_a_real_client (1.30s)
-    --- PASS: TestFeatures/a_built-in_theme_colours_border_focus/border,_selection/selection_idle,_title,_group_and_key/hint_chrome,_read_per_cell_from_a_real_client (0.69s)
-    --- PASS: TestFeatures/a_user_theme_placed_in_the_scenario's_own_themes_directory_(the_$XDG_CONFIG_HOME/deck/themes_layout)_is_discovered_and_applied_on_a_real_client (0.40s)
-    --- PASS: TestFeatures/an_unknown_theme_name_falls_back_to_the_default_AND_says_so_on_the_very_first_painted_frame (0.37s)
+    --- PASS: TestFeatures/migrate_an_older_supported_database (0.44s)
+    --- PASS: TestFeatures/migrate_a_v1_database_in_place_without_recreating_a_session_row (0.45s)
+    --- PASS: TestFeatures/refuse_a_newer_database_without_corruption (0.36s)
+    --- PASS: TestFeatures/A_SessionEnd_hook_wedges_an_agent_row_while_its_pane_survives,_and_Reconcile_repairs_it_with_nobody_at_the_keyboard (1.45s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client (1.28s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#01 (1.26s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#02 (1.30s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#03 (1.29s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_each_of_the_seven_§7_status_tokens,_read_per_cell_from_a_real_client#04 (1.33s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_the_error_status_token,_read_per_cell_from_a_real_client (1.30s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_the_stopped_status_token,_read_per_cell_from_a_real_client (1.31s)
+    --- PASS: TestFeatures/a_built-in_theme_colours_border_focus/border,_selection/selection_idle,_title,_group_and_key/hint_chrome,_read_per_cell_from_a_real_client (0.73s)
+    --- PASS: TestFeatures/a_user_theme_placed_in_the_scenario's_own_themes_directory_(the_$XDG_CONFIG_HOME/deck/themes_layout)_is_discovered_and_applied_on_a_real_client (0.43s)
+    --- PASS: TestFeatures/an_unknown_theme_name_falls_back_to_the_default_AND_says_so_on_the_very_first_painted_frame (0.40s)
     --- PASS: TestFeatures/`t`_previews_a_theme_live_on_the_real_list_and_reverts_to_the_exact_original_colour_on_esc (0.46s)
-    --- PASS: TestFeatures/DECK_COLOR_DEPTH=16_renders_the_quantised_reference-palette_colour_for_a_real_client (0.39s)
-    --- PASS: TestFeatures/NO_COLOR_renders_every_theme_monochrome,_with_a_session's_status_carried_by_its_glyph_alone (1.05s)
-    --- PASS: TestFeatures/the_frame's_geometry_is_identical_across_every_built-in_theme_--_only_colour_differs (0.47s)
+    --- PASS: TestFeatures/DECK_COLOR_DEPTH=16_renders_the_quantised_reference-palette_colour_for_a_real_client (0.41s)
+    --- PASS: TestFeatures/NO_COLOR_renders_every_theme_monochrome,_with_a_session's_status_carried_by_its_glyph_alone (1.07s)
+    --- PASS: TestFeatures/the_frame's_geometry_is_identical_across_every_built-in_theme_--_only_colour_differs (0.50s)
     --- PASS: TestFeatures/a_tilde-prefixed_working_directory_is_accepted_and_resolved (0.53s)
-    --- PASS: TestFeatures/~otheruser_is_rejected_with_a_stated_reason_rather_than_half-expanded (0.64s)
-    --- PASS: TestFeatures/private_server_options,_safe_naming,_and_slug_collisions (0.63s)
-    --- PASS: TestFeatures/missing_tmux_is_actionable (0.38s)
-    --- PASS: TestFeatures/old_tmux_is_actionable (0.40s)
-    --- PASS: TestFeatures/create,_attach,_kill,_and_retain_the_durable_shell_session (0.92s)
+    --- PASS: TestFeatures/~otheruser_is_rejected_with_a_stated_reason_rather_than_half-expanded (0.63s)
+    --- PASS: TestFeatures/private_server_options,_safe_naming,_and_slug_collisions (0.64s)
+    --- PASS: TestFeatures/missing_tmux_is_actionable (0.40s)
+    --- PASS: TestFeatures/old_tmux_is_actionable (0.39s)
+    --- PASS: TestFeatures/create,_attach,_kill,_and_retain_the_durable_shell_session (0.90s)
 === RUN   TestGodogRejectsUndefinedAndFailedSteps
 === RUN   TestGodogRejectsUndefinedAndFailedSteps/undefined
 [33mU[0m 1
@@ -5764,7 +5764,7 @@ token-form assertions discriminate: accent=#00ff00
 
 1 scenarios ([33m1 undefined[0m)
 1 steps ([33m1 undefined[0m)
-38.669µs
+32.19µs
 
 [33mYou can implement step definitions for undefined steps with these snippets:[0m
 [33m
@@ -5782,14 +5782,14 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 --- [31mFailed steps:[0m
 
-  [31mScenario: error binding[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed3098854791/001/failure.feature:2[0m
-    [31mGiven a failing step[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed3098854791/001/failure.feature:3[0m
+  [31mScenario: error binding[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed354046800/001/failure.feature:2[0m
+    [31mGiven a failing step[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed354046800/001/failure.feature:3[0m
       [31mError: [0m[1;31mdeliberate step failure[0m
 
 
 1 scenarios ([31m1 failed[0m)
 1 steps ([31m1 failed[0m)
-76.19µs
+62.278µs
 --- PASS: TestGodogRejectsUndefinedAndFailedSteps (0.00s)
     --- PASS: TestGodogRejectsUndefinedAndFailedSteps/undefined (0.00s)
     --- PASS: TestGodogRejectsUndefinedAndFailedSteps/failed (0.00s)
@@ -5798,40 +5798,40 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
     golden_frame_test.go:75: rendered frame sha256 67a48237fcb1b2f052a397d36f33d7b1511f2c634e0b7f8137f7ff391e5ab5b6 (1937 bytes, theme "empire", DECK_COLOR_DEPTH "truecolor")
 === RUN   TestGoldenMinimumFrame/run-2
     golden_frame_test.go:75: rendered frame sha256 67a48237fcb1b2f052a397d36f33d7b1511f2c634e0b7f8137f7ff391e5ab5b6 (1937 bytes, theme "empire", DECK_COLOR_DEPTH "truecolor")
---- PASS: TestGoldenMinimumFrame (2.14s)
+--- PASS: TestGoldenMinimumFrame (2.10s)
     --- PASS: TestGoldenMinimumFrame/run-1 (1.06s)
-    --- PASS: TestGoldenMinimumFrame/run-2 (1.08s)
+    --- PASS: TestGoldenMinimumFrame/run-2 (1.04s)
 === RUN   TestGoldenMinimumFrameRowCount
 --- PASS: TestGoldenMinimumFrameRowCount (0.00s)
 === RUN   TestI1KeystrokeDropReproduction
     i1_repro_test.go:37: opt-in reproduction driver for I-1 (task 004); set DECK_I1_REPRO=1 to run. See docs/reports/phase3d-i1-repro.log for a committed run.
 --- SKIP: TestI1KeystrokeDropReproduction (0.00s)
 === RUN   TestInputCountInstrumentCountsRealKeystrokesThroughARealPTY
---- PASS: TestInputCountInstrumentCountsRealKeystrokesThroughARealPTY (0.57s)
+--- PASS: TestInputCountInstrumentCountsRealKeystrokesThroughARealPTY (0.49s)
 === RUN   TestScenarioHarnessTeardownReportsLeaks
 === RUN   TestScenarioHarnessTeardownReportsLeaks/surviving_child
 === RUN   TestScenarioHarnessTeardownReportsLeaks/responding_socket
 === RUN   TestScenarioHarnessTeardownReportsLeaks/surviving_root
---- PASS: TestScenarioHarnessTeardownReportsLeaks (2.06s)
-    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_child (1.43s)
-    --- PASS: TestScenarioHarnessTeardownReportsLeaks/responding_socket (0.31s)
-    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_root (0.32s)
+--- PASS: TestScenarioHarnessTeardownReportsLeaks (2.23s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_child (1.44s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/responding_socket (0.40s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_root (0.39s)
 === RUN   TestScenarioHarnessSharesIsolationAndCleansUp
---- PASS: TestScenarioHarnessSharesIsolationAndCleansUp (0.41s)
+--- PASS: TestScenarioHarnessSharesIsolationAndCleansUp (0.40s)
 === RUN   TestMouseReportingEnablesSGRExtendedMode
---- PASS: TestMouseReportingEnablesSGRExtendedMode (0.36s)
+--- PASS: TestMouseReportingEnablesSGRExtendedMode (0.38s)
 === RUN   TestMouseReportingDisabledOnNormalQuit
---- PASS: TestMouseReportingDisabledOnNormalQuit (0.37s)
+--- PASS: TestMouseReportingDisabledOnNormalQuit (0.38s)
 === RUN   TestMouseReportingDisabledOnSignalledExit
 --- PASS: TestMouseReportingDisabledOnSignalledExit (0.39s)
 === RUN   TestMouseReportingDisabledOnPanic
---- PASS: TestMouseReportingDisabledOnPanic (0.40s)
+--- PASS: TestMouseReportingDisabledOnPanic (0.41s)
 === RUN   TestMouseFeatureNeverRegainsMillisecondsPass
 --- PASS: TestMouseFeatureNeverRegainsMillisecondsPass (0.00s)
 === RUN   TestMouseReportingReenabledAfterAttachDetachCycle
---- PASS: TestMouseReportingReenabledAfterAttachDetachCycle (1.86s)
+--- PASS: TestMouseReportingReenabledAfterAttachDetachCycle (1.88s)
 === RUN   TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled
---- PASS: TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled (1.90s)
+--- PASS: TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled (1.88s)
 === RUN   TestSGRMouseEncodesColumnsPastX10Ceiling
 === RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/press_at_column_224
 === RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/press_at_column_300
@@ -5871,7 +5871,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 === RUN   TestRequireRealClaudeHookFieldsIsStrictAboutUpstreamContract
 --- PASS: TestRequireRealClaudeHookFieldsIsStrictAboutUpstreamContract (0.00s)
 === RUN   TestSigwinchCountDistinguishesTwoFromThree
---- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.27s)
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.24s)
 === RUN   TestThemeChangesAttributesButNotFrameGeometry
 === RUN   TestThemeChangesAttributesButNotFrameGeometry/unicode
     theme_geometry_test.go:196: themes "cobalt" vs "daylight" differ in colour at 249 of 1920 cells
@@ -5883,9 +5883,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
     theme_geometry_test.go:196: themes "cobalt" vs "empire" differ in colour at 253 of 1920 cells
     theme_geometry_test.go:196: themes "cobalt" vs "matrix" differ in colour at 253 of 1920 cells
     theme_geometry_test.go:196: themes "cobalt" vs "parchment" differ in colour at 253 of 1920 cells
---- PASS: TestThemeChangesAttributesButNotFrameGeometry (1.85s)
-    --- PASS: TestThemeChangesAttributesButNotFrameGeometry/unicode (0.74s)
-    --- PASS: TestThemeChangesAttributesButNotFrameGeometry/ascii (0.75s)
+--- PASS: TestThemeChangesAttributesButNotFrameGeometry (1.86s)
+    --- PASS: TestThemeChangesAttributesButNotFrameGeometry/unicode (0.77s)
+    --- PASS: TestThemeChangesAttributesButNotFrameGeometry/ascii (0.78s)
 === RUN   TestReadTmuxOptionInScopeTreatsBothUnsetShapesAsNone
 --- PASS: TestReadTmuxOptionInScopeTreatsBothUnsetShapesAsNone (0.02s)
 === RUN   TestAssertTmuxOptionInScopeDistinguishesGlobalFromWindow
@@ -5895,7 +5895,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 === RUN   TestAssertTmuxOptionUnsetInScope
 --- PASS: TestAssertTmuxOptionUnsetInScope (0.02s)
 PASS
-ok  	github.com/n-orlov/deck/features	316.871s
+ok  	github.com/n-orlov/deck/features	319.088s
 === RUN   TestRegistry_RegisterAndLookup
 --- PASS: TestRegistry_RegisterAndLookup (0.00s)
 === RUN   TestRegistry_KindsIsStableAndSorted
@@ -6001,7 +6001,7 @@ ok  	github.com/n-orlov/deck/features	316.871s
 === RUN   TestPiTranscriptPathNoMatchingFileDegrades
 --- PASS: TestPiTranscriptPathNoMatchingFileDegrades (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/internal/agent	0.004s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
 === RUN   TestJSONLRecordsTransitionsAndLaunchAudit
 === PAUSE TestJSONLRecordsTransitionsAndLaunchAudit
 === RUN   TestDurationAdvancesWithFrozenWallClock
@@ -6014,16 +6014,16 @@ ok  	github.com/n-orlov/deck/internal/agent	0.004s
 === PAUSE TestSessionAuditRequiresSessionID
 === CONT  TestJSONLRecordsTransitionsAndLaunchAudit
 === CONT  TestHookStoreWriteAuditsFailedOrphanWrite
-=== CONT  TestSessionAuditRequiresSessionID
 === CONT  TestHookStoreWriteMeasuresOnlyCallbackWithMonotonicClock
 === CONT  TestDurationAdvancesWithFrozenWallClock
+=== CONT  TestSessionAuditRequiresSessionID
 --- PASS: TestJSONLRecordsTransitionsAndLaunchAudit (0.00s)
 --- PASS: TestSessionAuditRequiresSessionID (0.00s)
 --- PASS: TestHookStoreWriteAuditsFailedOrphanWrite (0.00s)
 --- PASS: TestHookStoreWriteMeasuresOnlyCallbackWithMonotonicClock (0.00s)
 --- PASS: TestDurationAdvancesWithFrozenWallClock (0.02s)
 PASS
-ok  	github.com/n-orlov/deck/internal/audit	0.019s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
 === RUN   TestPathsRespectDeckHomeAndXDG
 --- PASS: TestPathsRespectDeckHomeAndXDG (0.00s)
 === RUN   TestControlsAndClock
@@ -6067,43 +6067,43 @@ ok  	github.com/n-orlov/deck/internal/audit	0.019s
 === RUN   TestConfigFileEnvTable
 --- PASS: TestConfigFileEnvTable (0.00s)
 === RUN   TestConfigFileMalformedIsRejected
+=== RUN   TestConfigFileMalformedIsRejected/no_equals
+=== RUN   TestConfigFileMalformedIsRejected/bad_bool
 === RUN   TestConfigFileMalformedIsRejected/bad_stale_duration
 === RUN   TestConfigFileMalformedIsRejected/unterminated_section
 === RUN   TestConfigFileMalformedIsRejected/unquoted_env_value
 === RUN   TestConfigFileMalformedIsRejected/empty_key
-=== RUN   TestConfigFileMalformedIsRejected/no_equals
-=== RUN   TestConfigFileMalformedIsRejected/bad_bool
 --- PASS: TestConfigFileMalformedIsRejected (0.00s)
+    --- PASS: TestConfigFileMalformedIsRejected/no_equals (0.00s)
+    --- PASS: TestConfigFileMalformedIsRejected/bad_bool (0.00s)
     --- PASS: TestConfigFileMalformedIsRejected/bad_stale_duration (0.00s)
     --- PASS: TestConfigFileMalformedIsRejected/unterminated_section (0.00s)
     --- PASS: TestConfigFileMalformedIsRejected/unquoted_env_value (0.00s)
     --- PASS: TestConfigFileMalformedIsRejected/empty_key (0.00s)
-    --- PASS: TestConfigFileMalformedIsRejected/no_equals (0.00s)
-    --- PASS: TestConfigFileMalformedIsRejected/bad_bool (0.00s)
 === RUN   TestInvalidControlsAreRejected
-=== RUN   TestInvalidControlsAreRejected/DECK_ASCII
+=== RUN   TestInvalidControlsAreRejected/DECK_CLOCK
 === RUN   TestInvalidControlsAreRejected/DECK_RECONCILE_MS
 === RUN   TestInvalidControlsAreRejected/DECK_UNDO_MS
-=== RUN   TestInvalidControlsAreRejected/DECK_INTERACTIVE_MS
+=== RUN   TestInvalidControlsAreRejected/DECK_DELETE_GRACE_MS
 === RUN   TestInvalidControlsAreRejected/DECK_INTERACTIVE_TRANSPORT
 === RUN   TestInvalidControlsAreRejected/DECK_TMUX_SOCKET
-=== RUN   TestInvalidControlsAreRejected/DECK_MOUSE
-=== RUN   TestInvalidControlsAreRejected/DECK_CLOCK
 === RUN   TestInvalidControlsAreRejected/DECK_CLOCK_STEP
 === RUN   TestInvalidControlsAreRejected/DECK_PREVIEW_MS
-=== RUN   TestInvalidControlsAreRejected/DECK_DELETE_GRACE_MS
+=== RUN   TestInvalidControlsAreRejected/DECK_INTERACTIVE_MS
+=== RUN   TestInvalidControlsAreRejected/DECK_ASCII
+=== RUN   TestInvalidControlsAreRejected/DECK_MOUSE
 --- PASS: TestInvalidControlsAreRejected (0.00s)
-    --- PASS: TestInvalidControlsAreRejected/DECK_ASCII (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_CLOCK (0.00s)
     --- PASS: TestInvalidControlsAreRejected/DECK_RECONCILE_MS (0.00s)
     --- PASS: TestInvalidControlsAreRejected/DECK_UNDO_MS (0.00s)
-    --- PASS: TestInvalidControlsAreRejected/DECK_INTERACTIVE_MS (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_DELETE_GRACE_MS (0.00s)
     --- PASS: TestInvalidControlsAreRejected/DECK_INTERACTIVE_TRANSPORT (0.00s)
     --- PASS: TestInvalidControlsAreRejected/DECK_TMUX_SOCKET (0.00s)
-    --- PASS: TestInvalidControlsAreRejected/DECK_MOUSE (0.00s)
-    --- PASS: TestInvalidControlsAreRejected/DECK_CLOCK (0.00s)
     --- PASS: TestInvalidControlsAreRejected/DECK_CLOCK_STEP (0.00s)
     --- PASS: TestInvalidControlsAreRejected/DECK_PREVIEW_MS (0.00s)
-    --- PASS: TestInvalidControlsAreRejected/DECK_DELETE_GRACE_MS (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_INTERACTIVE_MS (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_ASCII (0.00s)
+    --- PASS: TestInvalidControlsAreRejected/DECK_MOUSE (0.00s)
 === RUN   TestUndoAndDeleteGraceDefaultWhenUnset
 --- PASS: TestUndoAndDeleteGraceDefaultWhenUnset (0.00s)
 === RUN   TestInteractiveMSDefaultsFromSchemaAndDeckEnvOverrides
@@ -6179,13 +6179,13 @@ ok  	github.com/n-orlov/deck/internal/audit	0.019s
 === RUN   TestWriteConfigFileEnvDropsRemovedKeyAddsNewKey
 --- PASS: TestWriteConfigFileEnvDropsRemovedKeyAddsNewKey (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/internal/config	0.026s
+ok  	github.com/n-orlov/deck/internal/config	0.035s
 === RUN   TestReceiveResolvesAnArchivedRowByBothKeys
---- PASS: TestReceiveResolvesAnArchivedRowByBothKeys (0.02s)
+--- PASS: TestReceiveResolvesAnArchivedRowByBothKeys (0.03s)
 === RUN   TestReceiveKeepsATombstonedRowsHookAnOrphan
 === RUN   TestReceiveKeepsATombstonedRowsHookAnOrphan/by_conversation_id
 === RUN   TestReceiveKeepsATombstonedRowsHookAnOrphan/by_injected_row_id
---- PASS: TestReceiveKeepsATombstonedRowsHookAnOrphan (0.02s)
+--- PASS: TestReceiveKeepsATombstonedRowsHookAnOrphan (0.04s)
     --- PASS: TestReceiveKeepsATombstonedRowsHookAnOrphan/by_conversation_id (0.00s)
     --- PASS: TestReceiveKeepsATombstonedRowsHookAnOrphan/by_injected_row_id (0.00s)
 === RUN   TestSupersededLaunchGenerationDropsTheWholeHookClass
@@ -6219,41 +6219,41 @@ ok  	github.com/n-orlov/deck/internal/config	0.026s
 === RUN   TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/hook_carries_no_token
 === RUN   TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/row_carries_no_token
 === RUN   TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/row_carries_no_token,_hook_does
---- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass (0.65s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/superseded_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/current_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/hook_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/row_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/row_carries_no_token,_hook_does (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/superseded_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/current_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/hook_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/row_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/row_carries_no_token,_hook_does (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/superseded_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/current_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/hook_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/row_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/row_carries_no_token,_hook_does (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/superseded_token (0.03s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/current_token (0.05s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/hook_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/row_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/row_carries_no_token,_hook_does (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/superseded_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/current_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/hook_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/row_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/row_carries_no_token,_hook_does (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/superseded_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/current_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/hook_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/row_carries_no_token (0.02s)
-    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/row_carries_no_token,_hook_does (0.02s)
+--- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass (1.07s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/superseded_token (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/current_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/hook_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/row_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionEnd/row_carries_no_token,_hook_does (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/superseded_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/current_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/hook_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/row_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Stop/row_carries_no_token,_hook_does (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/superseded_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/current_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/hook_carries_no_token (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/row_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/Notification/row_carries_no_token,_hook_does (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/superseded_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/current_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/hook_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/row_carries_no_token (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/SessionStart/row_carries_no_token,_hook_does (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/superseded_token (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/current_token (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/hook_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/row_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/UserPromptSubmit/row_carries_no_token,_hook_does (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/superseded_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/current_token (0.03s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/hook_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/row_carries_no_token (0.04s)
+    --- PASS: TestSupersededLaunchGenerationDropsTheWholeHookClass/StopFailure/row_carries_no_token,_hook_does (0.04s)
 === RUN   TestSupersededHookRecordsADistinctDeclinedEventKindAndReason
---- PASS: TestSupersededHookRecordsADistinctDeclinedEventKindAndReason (0.03s)
+--- PASS: TestSupersededHookRecordsADistinctDeclinedEventKindAndReason (0.04s)
 === RUN   TestSupersededSessionStartDoesNotMoveTheConversationID
---- PASS: TestSupersededSessionStartDoesNotMoveTheConversationID (0.02s)
+--- PASS: TestSupersededSessionStartDoesNotMoveTheConversationID (0.03s)
 === RUN   TestReceiveMappingTable
 === RUN   TestReceiveMappingTable/session_start_fresh
 === RUN   TestReceiveMappingTable/session_start_resumed
@@ -6267,19 +6267,19 @@ ok  	github.com/n-orlov/deck/internal/config	0.026s
 === RUN   TestReceiveMappingTable/API_failure
 === RUN   TestReceiveMappingTable/turn_failure
 === RUN   TestReceiveMappingTable/session_end
---- PASS: TestReceiveMappingTable (0.25s)
-    --- PASS: TestReceiveMappingTable/session_start_fresh (0.02s)
-    --- PASS: TestReceiveMappingTable/session_start_resumed (0.02s)
-    --- PASS: TestReceiveMappingTable/session_start_compacted (0.02s)
-    --- PASS: TestReceiveMappingTable/user_prompt (0.02s)
-    --- PASS: TestReceiveMappingTable/permission_notification (0.02s)
-    --- PASS: TestReceiveMappingTable/question_notification (0.03s)
-    --- PASS: TestReceiveMappingTable/needs_input_notification (0.02s)
-    --- PASS: TestReceiveMappingTable/idle_notification (0.02s)
-    --- PASS: TestReceiveMappingTable/stop (0.02s)
-    --- PASS: TestReceiveMappingTable/API_failure (0.02s)
-    --- PASS: TestReceiveMappingTable/turn_failure (0.02s)
-    --- PASS: TestReceiveMappingTable/session_end (0.02s)
+--- PASS: TestReceiveMappingTable (0.42s)
+    --- PASS: TestReceiveMappingTable/session_start_fresh (0.03s)
+    --- PASS: TestReceiveMappingTable/session_start_resumed (0.03s)
+    --- PASS: TestReceiveMappingTable/session_start_compacted (0.03s)
+    --- PASS: TestReceiveMappingTable/user_prompt (0.03s)
+    --- PASS: TestReceiveMappingTable/permission_notification (0.03s)
+    --- PASS: TestReceiveMappingTable/question_notification (0.04s)
+    --- PASS: TestReceiveMappingTable/needs_input_notification (0.03s)
+    --- PASS: TestReceiveMappingTable/idle_notification (0.04s)
+    --- PASS: TestReceiveMappingTable/stop (0.04s)
+    --- PASS: TestReceiveMappingTable/API_failure (0.03s)
+    --- PASS: TestReceiveMappingTable/turn_failure (0.03s)
+    --- PASS: TestReceiveMappingTable/session_end (0.04s)
 === RUN   TestReceiveHookAppliesOverAnyStaleSourceExceptStopped
 === RUN   TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_user
 === RUN   TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_tmux
@@ -6425,65 +6425,65 @@ ok  	github.com/n-orlov/deck/internal/config	0.026s
 === RUN   TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_tmux
 === RUN   TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_probe
 === RUN   TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_hook
---- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped (3.50s)
+--- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped (3.71s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_probe (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_starting/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_user (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_running/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_user (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_tmux (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_waiting/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_user (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_probe (0.04s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_idle/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_user (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_error/via_hook (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_user (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_tmux (0.03s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionStart/from_stopped/via_hook (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_user (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_tmux (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_probe (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_starting/via_hook (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_user (0.04s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_hook (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_probe (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_probe (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_running/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_user (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_waiting/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_user (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_idle/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_user (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_error/via_hook (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_user (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_tmux (0.04s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_probe (0.05s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/UserPromptSubmit/from_stopped/via_hook (0.04s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_starting/via_user (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_starting/via_tmux (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_starting/via_probe (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_starting/via_probe (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_starting/via_hook (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_running/via_user (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_running/via_tmux (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_running/via_probe (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_running/via_hook (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_waiting/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_waiting/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_waiting/via_tmux (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_waiting/via_probe (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_waiting/via_hook (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/Notification/from_idle/via_user (0.02s)
@@ -6531,101 +6531,101 @@ ok  	github.com/n-orlov/deck/internal/config	0.026s
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_running/via_probe (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_running/via_hook (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_user (0.02s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_probe (0.04s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_user (0.04s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_tmux (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_waiting/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_idle/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_error/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/StopFailure/from_stopped/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_starting/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_running/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_tmux (0.02s)
     --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_hook (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_user (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_tmux (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_probe (0.03s)
-    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_hook (0.03s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_waiting/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_idle/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_error/via_hook (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_user (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_tmux (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_probe (0.02s)
+    --- PASS: TestReceiveHookAppliesOverAnyStaleSourceExceptStopped/SessionEnd/from_stopped/via_hook (0.02s)
 === RUN   TestReceiveHookOverridesStaleTmuxLaunchFailure
 === RUN   TestReceiveHookOverridesStaleTmuxLaunchFailure/error_to_idle_via_Stop
 === RUN   TestReceiveHookOverridesStaleTmuxLaunchFailure/error_to_waiting_via_Notification
---- PASS: TestReceiveHookOverridesStaleTmuxLaunchFailure (0.07s)
-    --- PASS: TestReceiveHookOverridesStaleTmuxLaunchFailure/error_to_idle_via_Stop (0.03s)
-    --- PASS: TestReceiveHookOverridesStaleTmuxLaunchFailure/error_to_waiting_via_Notification (0.03s)
+--- PASS: TestReceiveHookOverridesStaleTmuxLaunchFailure (0.04s)
+    --- PASS: TestReceiveHookOverridesStaleTmuxLaunchFailure/error_to_idle_via_Stop (0.02s)
+    --- PASS: TestReceiveHookOverridesStaleTmuxLaunchFailure/error_to_waiting_via_Notification (0.02s)
 === RUN   TestReceiveDoesNotResurrectAUserKilledRow
---- PASS: TestReceiveDoesNotResurrectAUserKilledRow (0.03s)
+--- PASS: TestReceiveDoesNotResurrectAUserKilledRow (0.02s)
 === RUN   TestReceiveSessionEndReasonTaxonomy
 === RUN   TestReceiveSessionEndReasonTaxonomy/resume_is_not_an_end
 === RUN   TestReceiveSessionEndReasonTaxonomy/clear_is_not_an_end
 === RUN   TestReceiveSessionEndReasonTaxonomy/logout_is_a_real_end
---- PASS: TestReceiveSessionEndReasonTaxonomy (0.10s)
-    --- PASS: TestReceiveSessionEndReasonTaxonomy/resume_is_not_an_end (0.04s)
-    --- PASS: TestReceiveSessionEndReasonTaxonomy/clear_is_not_an_end (0.03s)
-    --- PASS: TestReceiveSessionEndReasonTaxonomy/logout_is_a_real_end (0.03s)
+--- PASS: TestReceiveSessionEndReasonTaxonomy (0.06s)
+    --- PASS: TestReceiveSessionEndReasonTaxonomy/resume_is_not_an_end (0.02s)
+    --- PASS: TestReceiveSessionEndReasonTaxonomy/clear_is_not_an_end (0.02s)
+    --- PASS: TestReceiveSessionEndReasonTaxonomy/logout_is_a_real_end (0.02s)
 === RUN   TestReceiveDoesNotReviveCleanStopOrProcessCrash
 === RUN   TestReceiveDoesNotReviveCleanStopOrProcessCrash/clean_stopped_row
 === RUN   TestReceiveDoesNotReviveCleanStopOrProcessCrash/process_crash_row
 --- PASS: TestReceiveDoesNotReviveCleanStopOrProcessCrash (0.07s)
-    --- PASS: TestReceiveDoesNotReviveCleanStopOrProcessCrash/clean_stopped_row (0.03s)
-    --- PASS: TestReceiveDoesNotReviveCleanStopOrProcessCrash/process_crash_row (0.03s)
+    --- PASS: TestReceiveDoesNotReviveCleanStopOrProcessCrash/clean_stopped_row (0.02s)
+    --- PASS: TestReceiveDoesNotReviveCleanStopOrProcessCrash/process_crash_row (0.05s)
 === RUN   TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity
---- PASS: TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity (0.03s)
+--- PASS: TestReceiveResolutionPrefersConversationThenUsesInjectedIdentity (0.02s)
 === RUN   TestReceiveSessionStartFollowsLiveConversation
---- PASS: TestReceiveSessionStartFollowsLiveConversation (0.03s)
+--- PASS: TestReceiveSessionStartFollowsLiveConversation (0.02s)
 === RUN   TestReceivePreservesUnresolvedPayloadAsOrphan
---- PASS: TestReceivePreservesUnresolvedPayloadAsOrphan (0.03s)
+--- PASS: TestReceivePreservesUnresolvedPayloadAsOrphan (0.02s)
 === RUN   TestReceiveRejectsShellTarget
---- PASS: TestReceiveRejectsShellTarget (0.03s)
+--- PASS: TestReceiveRejectsShellTarget (0.04s)
 === RUN   TestResumedRowAcceptsTheNewPanesFirstHook
 === RUN   TestResumedRowAcceptsTheNewPanesFirstHook/SessionStart
 === RUN   TestResumedRowAcceptsTheNewPanesFirstHook/UserPromptSubmit
---- PASS: TestResumedRowAcceptsTheNewPanesFirstHook (0.08s)
+--- PASS: TestResumedRowAcceptsTheNewPanesFirstHook (0.06s)
     --- PASS: TestResumedRowAcceptsTheNewPanesFirstHook/SessionStart (0.03s)
-    --- PASS: TestResumedRowAcceptsTheNewPanesFirstHook/UserPromptSubmit (0.05s)
+    --- PASS: TestResumedRowAcceptsTheNewPanesFirstHook/UserPromptSubmit (0.03s)
 PASS
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.978s
+ok  	github.com/n-orlov/deck/internal/hookrecv	5.684s
 === RUN   TestCaptureTransportNeverArmsPipePane
 --- PASS: TestCaptureTransportNeverArmsPipePane (0.12s)
 === RUN   TestCaptureTransportPicksUpNewContentByPolling
---- PASS: TestCaptureTransportPicksUpNewContentByPolling (0.05s)
+--- PASS: TestCaptureTransportPicksUpNewContentByPolling (0.04s)
 === RUN   TestCaptureTransportStatusStaysLive
 --- PASS: TestCaptureTransportStatusStaysLive (0.12s)
 === RUN   TestCaptureTransportNoticesDeadPaneAndClosesCleanly
 --- PASS: TestCaptureTransportNoticesDeadPaneAndClosesCleanly (0.05s)
 === RUN   TestStartStillDefaultsToTransportPipe
---- PASS: TestStartStillDefaultsToTransportPipe (0.03s)
+--- PASS: TestStartStillDefaultsToTransportPipe (0.02s)
 === RUN   TestOnlyComposedCellsReachTheOuterTerminal
 --- PASS: TestOnlyComposedCellsReachTheOuterTerminal (1.14s)
 === RUN   TestSessionStatusStaysLiveWithoutAnyDisplacementOrDisable
---- PASS: TestSessionStatusStaysLiveWithoutAnyDisplacementOrDisable (0.33s)
+--- PASS: TestSessionStatusStaysLiveWithoutAnyDisplacementOrDisable (0.32s)
 === RUN   TestSessionFallsBackToPassiveCaptureWhenPipeIsDisplaced
 --- PASS: TestSessionFallsBackToPassiveCaptureWhenPipeIsDisplaced (0.07s)
 === RUN   TestSessionReportsDisabledAndNeverStartsAFallbackWhenPipeIsDisabled
---- PASS: TestSessionReportsDisabledAndNeverStartsAFallbackWhenPipeIsDisabled (0.34s)
+--- PASS: TestSessionReportsDisabledAndNeverStartsAFallbackWhenPipeIsDisabled (0.33s)
 === RUN   TestArmingPipeAfterSeedCaptureLosesInterstitialBytes
 --- PASS: TestArmingPipeAfterSeedCaptureLosesInterstitialBytes (0.33s)
 === RUN   TestArmingPipeBeforeSeedCaptureDeliversInterstitialBytes
@@ -6661,27 +6661,27 @@ ok  	github.com/n-orlov/deck/internal/hookrecv	4.978s
 === RUN   TestRenderCoalescerNeverFiresWithoutADirtySignal
 --- PASS: TestRenderCoalescerNeverFiresWithoutADirtySignal (0.06s)
 === RUN   TestRenderCoalescerFiresAtMostOncePerIntervalRegardlessOfDirtyCallCount
-    render_test.go:60: 50 MarkDirty calls over 53.888926ms at a 20ms interval produced 2 renders
---- PASS: TestRenderCoalescerFiresAtMostOncePerIntervalRegardlessOfDirtyCallCount (0.12s)
+    render_test.go:60: 50 MarkDirty calls over 53.598607ms at a 20ms interval produced 2 renders
+--- PASS: TestRenderCoalescerFiresAtMostOncePerIntervalRegardlessOfDirtyCallCount (0.11s)
 === RUN   TestRenderCoalescerAtTwoIntervalSettingsGivesDifferentRenderCounts
     render_test.go:110: ~200ms of MarkDirty calls (2ms apart) at a 10ms interval: 20 renders; at a 100ms interval: 2 renders
 --- PASS: TestRenderCoalescerAtTwoIntervalSettingsGivesDifferentRenderCounts (0.67s)
 === RUN   TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern
     render_test.go:191: known pattern (40 lines, 12ms apart, ~480ms total), counted over 900ms:
-    render_test.go:192:   interval=1ms   (effectively per-read): 42 renders, 980.442µs total Render() cost
-    render_test.go:193:   interval=60ms  (SPEC default, coalesced): 9 renders, 298.075µs total Render() cost
+    render_test.go:192:   interval=1ms   (effectively per-read): 41 renders, 861.534µs total Render() cost
+    render_test.go:193:   interval=60ms  (SPEC default, coalesced): 9 renders, 234.914µs total Render() cost
     render_test.go:194:   interval=2s    (longer than the counting window, non-vacuous control): 0 renders, 0s total Render() cost
-    render_test.go:196:   measured ratio, per-read Render() cost / 60ms-coalesced Render() cost: 3.29x (PRD II-27 cites 1.99x from spike evidence unreachable in this container, per tasks.json's discovered.prdCorrections; this is this repository's own reproducible measurement of the same property, not a reproduction of that exact figure)
---- PASS: TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern (2.79s)
+    render_test.go:196:   measured ratio, per-read Render() cost / 60ms-coalesced Render() cost: 3.67x (PRD II-27 cites 1.99x from spike evidence unreachable in this container, per tasks.json's discovered.prdCorrections; this is this repository's own reproducible measurement of the same property, not a reproduction of that exact figure)
+--- PASS: TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern (2.78s)
 === RUN   TestRenderCostPerCallDominatesParsingCostPerCall
-    render_test.go:247: 2000 Write() calls: 45.36033ms total (22.68µs/call); 2000 Render() calls: 313.146624ms total (156.573µs/call); Render()/Write() per-call cost ratio: 6.90x
---- PASS: TestRenderCostPerCallDominatesParsingCostPerCall (0.36s)
+    render_test.go:247: 2000 Write() calls: 38.196398ms total (19.098µs/call); 2000 Render() calls: 336.992252ms total (168.496µs/call); Render()/Write() per-call cost ratio: 8.82x
+--- PASS: TestRenderCostPerCallDominatesParsingCostPerCall (0.38s)
 === RUN   TestTerminalQueryInPaneOutputNeverStallsSession
 === RUN   TestTerminalQueryInPaneOutputNeverStallsSession/da1
 === RUN   TestTerminalQueryInPaneOutputNeverStallsSession/dsr
 === RUN   TestTerminalQueryInPaneOutputNeverStallsSession/osc11
 --- PASS: TestTerminalQueryInPaneOutputNeverStallsSession (0.08s)
-    --- PASS: TestTerminalQueryInPaneOutputNeverStallsSession/da1 (0.03s)
+    --- PASS: TestTerminalQueryInPaneOutputNeverStallsSession/da1 (0.02s)
     --- PASS: TestTerminalQueryInPaneOutputNeverStallsSession/dsr (0.03s)
     --- PASS: TestTerminalQueryInPaneOutputNeverStallsSession/osc11 (0.03s)
 === RUN   TestRetireGridUnblocksItsReplyDrain
@@ -6693,18 +6693,18 @@ ok  	github.com/n-orlov/deck/internal/hookrecv	4.978s
 === RUN   TestReseedIntoSameGridCorruptsAfterTruncatedControlSequence
 --- PASS: TestReseedIntoSameGridCorruptsAfterTruncatedControlSequence (0.00s)
 === RUN   TestSessionResizeIntoFreshGridDoesNotCorrupt
---- PASS: TestSessionResizeIntoFreshGridDoesNotCorrupt (0.02s)
+--- PASS: TestSessionResizeIntoFreshGridDoesNotCorrupt (0.03s)
 === RUN   TestSessionResizeReplacesGridInstance
 --- PASS: TestSessionResizeReplacesGridInstance (0.02s)
 === RUN   TestSessionResizeRejectsNilSeed
 --- PASS: TestSessionResizeRejectsNilSeed (0.02s)
 === RUN   TestSessionResizeDuringLiveDrainIsRaceFree
---- PASS: TestSessionResizeDuringLiveDrainIsRaceFree (0.09s)
+--- PASS: TestSessionResizeDuringLiveDrainIsRaceFree (0.08s)
 === RUN   TestScrollbackStaysBoundedRegardlessOfInputVolume
---- PASS: TestScrollbackStaysBoundedRegardlessOfInputVolume (0.57s)
+--- PASS: TestScrollbackStaysBoundedRegardlessOfInputVolume (0.61s)
 === RUN   TestScrollbackMemoryDoesNotGrowWithoutBound
-    scrollback_test.go:132: docs/reports/phase3b.md II-51 measurement: baseline empty 120x40 grid HeapAlloc=6018848 bytes; after feeding exactly 2000 lines (the bound) HeapAlloc=33648352 bytes; after feeding 40x that many (80000 lines total, far more than the bound) HeapAlloc=34233040 bytes
---- PASS: TestScrollbackMemoryDoesNotGrowWithoutBound (2.00s)
+    scrollback_test.go:132: docs/reports/phase3b.md II-51 measurement: baseline empty 120x40 grid HeapAlloc=6048816 bytes; after feeding exactly 2000 lines (the bound) HeapAlloc=33692400 bytes; after feeding 40x that many (80000 lines total, far more than the bound) HeapAlloc=34246496 bytes
+--- PASS: TestScrollbackMemoryDoesNotGrowWithoutBound (2.27s)
 === RUN   TestRenderRowsMatchesLiveRenderAtZeroOffset
 --- PASS: TestRenderRowsMatchesLiveRenderAtZeroOffset (0.00s)
 === RUN   TestRenderRowsScrollsIntoScrollbackAndBack
@@ -6712,9 +6712,9 @@ ok  	github.com/n-orlov/deck/internal/hookrecv	4.978s
 === RUN   TestRenderRowsClampsOffsetToActualScrollbackLength
 --- PASS: TestRenderRowsClampsOffsetToActualScrollbackLength (0.00s)
 === RUN   TestBuildSeedReproducesInheritedSGRAcrossLinesWithZeroDifferingCells
---- PASS: TestBuildSeedReproducesInheritedSGRAcrossLinesWithZeroDifferingCells (0.32s)
+--- PASS: TestBuildSeedReproducesInheritedSGRAcrossLinesWithZeroDifferingCells (0.33s)
 === RUN   TestNaivePerLineResetVariantIsWrongInColour
---- PASS: TestNaivePerLineResetVariantIsWrongInColour (0.32s)
+--- PASS: TestNaivePerLineResetVariantIsWrongInColour (0.33s)
 === RUN   TestDroppingPreserveTrailingBlankLinesTrimsBackgroundStyledBlanks
 --- PASS: TestDroppingPreserveTrailingBlankLinesTrimsBackgroundStyledBlanks (0.33s)
 === RUN   TestBuildSeedFieldOrderAndPerFieldEscapes
@@ -6748,25 +6748,25 @@ ok  	github.com/n-orlov/deck/internal/hookrecv	4.978s
 === RUN   TestStalledGridWriteNeverBlocksAReseed
 --- PASS: TestStalledGridWriteNeverBlocksAReseed (0.00s)
 === RUN   TestConcurrentWritesAndReadsStayConsistent
---- PASS: TestConcurrentWritesAndReadsStayConsistent (0.00s)
+--- PASS: TestConcurrentWritesAndReadsStayConsistent (0.01s)
 PASS
-ok  	github.com/n-orlov/deck/internal/interactive	11.132s
+ok  	github.com/n-orlov/deck/internal/interactive	11.446s
 ?   	github.com/n-orlov/deck/internal/notify	[no test files]
 ?   	github.com/n-orlov/deck/internal/search	[no test files]
 === RUN   TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv
 --- PASS: TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv (0.05s)
 === RUN   TestCreateAgentPromotesCWDToRecentCwds
---- PASS: TestCreateAgentPromotesCWDToRecentCwds (0.04s)
+--- PASS: TestCreateAgentPromotesCWDToRecentCwds (0.05s)
 === RUN   TestCreateAgentDegradesUnsupportedProfileForPi
 --- PASS: TestCreateAgentDegradesUnsupportedProfileForPi (0.04s)
 === RUN   TestCreateAgentResolvesPATHInSPECOrder
 --- PASS: TestCreateAgentResolvesPATHInSPECOrder (0.04s)
 === RUN   TestCreateAgentRunsSucceedingPreLaunchBeforeTheAgent
---- PASS: TestCreateAgentRunsSucceedingPreLaunchBeforeTheAgent (0.06s)
+--- PASS: TestCreateAgentRunsSucceedingPreLaunchBeforeTheAgent (0.05s)
 === RUN   TestCreateAgentFailingPreLaunchNeverStartsTheAgent
 --- PASS: TestCreateAgentFailingPreLaunchNeverStartsTheAgent (0.55s)
 === RUN   TestCreateAgentLoginShellInvocationForm
---- PASS: TestCreateAgentLoginShellInvocationForm (0.04s)
+--- PASS: TestCreateAgentLoginShellInvocationForm (0.05s)
 === RUN   TestCreateAgentLoginShellStoresCapturedPathButMarksItAdvisory
 --- PASS: TestCreateAgentLoginShellStoresCapturedPathButMarksItAdvisory (0.05s)
 === RUN   TestCreateAgentShellHasNoInstrumentation
@@ -6778,13 +6778,13 @@ ok  	github.com/n-orlov/deck/internal/interactive	11.132s
 === RUN   TestArchiveRefusesEmptySessionID
 --- PASS: TestArchiveRefusesEmptySessionID (0.00s)
 === RUN   TestCreateShellReusingATombstonedNameCleansUpThatSessionsFiles
---- PASS: TestCreateShellReusingATombstonedNameCleansUpThatSessionsFiles (0.06s)
+--- PASS: TestCreateShellReusingATombstonedNameCleansUpThatSessionsFiles (0.05s)
 === RUN   TestCreateAgentReusingATombstonedNameCleansUpThatSessionsFiles
---- PASS: TestCreateAgentReusingATombstonedNameCleansUpThatSessionsFiles (0.05s)
+--- PASS: TestCreateAgentReusingATombstonedNameCleansUpThatSessionsFiles (0.06s)
 === RUN   TestRefusedCreateKeepsTheStillRestorableSessionsFiles
 --- PASS: TestRefusedCreateKeepsTheStillRestorableSessionsFiles (0.05s)
 === RUN   TestDeleteKillsLivePaneAndTombstonesPreservingCWDAndConversation
---- PASS: TestDeleteKillsLivePaneAndTombstonesPreservingCWDAndConversation (0.04s)
+--- PASS: TestDeleteKillsLivePaneAndTombstonesPreservingCWDAndConversation (0.05s)
 === RUN   TestDeleteRefusesEmptySessionID
 --- PASS: TestDeleteRefusesEmptySessionID (0.00s)
 === RUN   TestRestoreClearsTombstoneAndReturnsToListSessions
@@ -6796,61 +6796,61 @@ ok  	github.com/n-orlov/deck/internal/interactive	11.132s
 === RUN   TestReapRefusesEmptySessionID
 --- PASS: TestReapRefusesEmptySessionID (0.00s)
 === RUN   TestReapRemovesCapturesDirAndHistoryFile
---- PASS: TestReapRemovesCapturesDirAndHistoryFile (0.04s)
+--- PASS: TestReapRemovesCapturesDirAndHistoryFile (0.05s)
 === RUN   TestReapToleratesMissingCapturesDirAndHistoryFile
---- PASS: TestReapToleratesMissingCapturesDirAndHistoryFile (0.04s)
+--- PASS: TestReapToleratesMissingCapturesDirAndHistoryFile (0.05s)
 === RUN   TestReapLeavesEventsOutboxAndNotifyStateBehind
 --- PASS: TestReapLeavesEventsOutboxAndNotifyStateBehind (0.04s)
 === RUN   TestPurgeRemovesExactlyTheDeclaredPathAndIsANoOpOnEmpty
 --- PASS: TestPurgeRemovesExactlyTheDeclaredPathAndIsANoOpOnEmpty (0.02s)
 === RUN   TestSetSessionEnvPersistsMarksDirtyAndMirrorsToTmux
---- PASS: TestSetSessionEnvPersistsMarksDirtyAndMirrorsToTmux (0.05s)
+--- PASS: TestSetSessionEnvPersistsMarksDirtyAndMirrorsToTmux (0.06s)
 === RUN   TestSetSessionEnvOnANewKeyAddsItRatherThanRefusing
 --- PASS: TestSetSessionEnvOnANewKeyAddsItRatherThanRefusing (0.05s)
 === RUN   TestInjectEnvRefusesARetainedDeadShellPane
---- PASS: TestInjectEnvRefusesARetainedDeadShellPane (0.06s)
+--- PASS: TestInjectEnvRefusesARetainedDeadShellPane (0.08s)
 === RUN   TestResumeExportsCurrentLaunchGenerationToThePane
---- PASS: TestResumeExportsCurrentLaunchGenerationToThePane (0.08s)
+--- PASS: TestResumeExportsCurrentLaunchGenerationToThePane (0.10s)
 === RUN   TestResumeShellSessionCarriesNoLaunchGeneration
---- PASS: TestResumeShellSessionCarriesNoLaunchGeneration (0.06s)
+--- PASS: TestResumeShellSessionCarriesNoLaunchGeneration (0.07s)
 === RUN   TestResumeAuditsAndStaysTTLBoundedWhenReleasingTheLaunchLeaseFails
 --- PASS: TestResumeAuditsAndStaysTTLBoundedWhenReleasingTheLaunchLeaseFails (0.08s)
 === RUN   TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes
---- PASS: TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes (0.07s)
+--- PASS: TestResumeReleasesItsLaunchLeaseWhenTheLaunchCompletes (0.08s)
 === RUN   TestResumeStillRefusesALeaseHeldByADifferentLiveOwner
---- PASS: TestResumeStillRefusesALeaseHeldByADifferentLiveOwner (0.06s)
+--- PASS: TestResumeStillRefusesALeaseHeldByADifferentLiveOwner (0.07s)
 === RUN   TestPinnedResumeSurvivesRestartAndArgv
---- PASS: TestPinnedResumeSurvivesRestartAndArgv (0.05s)
+--- PASS: TestPinnedResumeSurvivesRestartAndArgv (0.07s)
 === RUN   TestFreshOnceStartsFreshConversationThenRevertsToAuto
---- PASS: TestFreshOnceStartsFreshConversationThenRevertsToAuto (0.06s)
+--- PASS: TestFreshOnceStartsFreshConversationThenRevertsToAuto (0.07s)
 === RUN   TestResumeModeDispatchesToPinAutoAndFreshOnce
---- PASS: TestResumeModeDispatchesToPinAutoAndFreshOnce (0.03s)
+--- PASS: TestResumeModeDispatchesToPinAutoAndFreshOnce (0.04s)
 === RUN   TestSetPermissionProfilePersistsAndDoesNotRelaunch
---- PASS: TestSetPermissionProfilePersistsAndDoesNotRelaunch (0.04s)
+--- PASS: TestSetPermissionProfilePersistsAndDoesNotRelaunch (0.05s)
 === RUN   TestSetPermissionProfileRefusesUnsupportedProfile
---- PASS: TestSetPermissionProfileRefusesUnsupportedProfile (0.04s)
+--- PASS: TestSetPermissionProfileRefusesUnsupportedProfile (0.07s)
 === RUN   TestClearRecentCwdsIsObservableAndNeverLeaksAPathIntoTheAuditLog
---- PASS: TestClearRecentCwdsIsObservableAndNeverLeaksAPathIntoTheAuditLog (0.04s)
+--- PASS: TestClearRecentCwdsIsObservableAndNeverLeaksAPathIntoTheAuditLog (0.05s)
 === RUN   TestReconcileNeverRepairsHookSourcedErrorWithLivePane
---- PASS: TestReconcileNeverRepairsHookSourcedErrorWithLivePane (0.02s)
+--- PASS: TestReconcileNeverRepairsHookSourcedErrorWithLivePane (0.04s)
 === RUN   TestReconcileNeverRepairsProbeSourcedErrorWithLivePane
---- PASS: TestReconcileNeverRepairsProbeSourcedErrorWithLivePane (0.02s)
+--- PASS: TestReconcileNeverRepairsProbeSourcedErrorWithLivePane (0.04s)
 === RUN   TestReconcileCollectsRetainedDeadPaneWhenRowAlreadyReadsStopped
---- PASS: TestReconcileCollectsRetainedDeadPaneWhenRowAlreadyReadsStopped (0.06s)
+--- PASS: TestReconcileCollectsRetainedDeadPaneWhenRowAlreadyReadsStopped (0.08s)
 === RUN   TestReconcileRepairsUserKilledRowWithLivePane
---- PASS: TestReconcileRepairsUserKilledRowWithLivePane (0.02s)
+--- PASS: TestReconcileRepairsUserKilledRowWithLivePane (0.04s)
 === RUN   TestReconcileRepairSpendsCrashVerdictOnLivePane
---- PASS: TestReconcileRepairSpendsCrashVerdictOnLivePane (0.02s)
+--- PASS: TestReconcileRepairSpendsCrashVerdictOnLivePane (0.03s)
 === RUN   TestReconcileRepairsTerminalRowWithLivePaneShell
---- PASS: TestReconcileRepairsTerminalRowWithLivePaneShell (0.06s)
+--- PASS: TestReconcileRepairsTerminalRowWithLivePaneShell (0.07s)
 === RUN   TestReconcileRepairsTerminalRowWithLivePaneAgent
---- PASS: TestReconcileRepairsTerminalRowWithLivePaneAgent (0.06s)
+--- PASS: TestReconcileRepairsTerminalRowWithLivePaneAgent (0.07s)
 === RUN   TestReconcileStillCollectsRetainedCorpseUnderTerminalRow
---- PASS: TestReconcileStillCollectsRetainedCorpseUnderTerminalRow (0.06s)
+--- PASS: TestReconcileStillCollectsRetainedCorpseUnderTerminalRow (0.07s)
 === RUN   TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer
---- PASS: TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer (0.06s)
+--- PASS: TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer (0.08s)
 === RUN   TestReconcilePromotesOnlyLiveStartingShell
---- PASS: TestReconcilePromotesOnlyLiveStartingShell (0.05s)
+--- PASS: TestReconcilePromotesOnlyLiveStartingShell (0.07s)
 === RUN   TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary
 === RUN   TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary/starting
 === RUN   TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary/running
@@ -6860,49 +6860,49 @@ ok  	github.com/n-orlov/deck/internal/interactive	11.132s
     --- PASS: TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary/running (0.00s)
     --- PASS: TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary/waiting (0.00s)
 === RUN   TestTUIProbeReconcileUsesWallClockStalenessAndHookPrecedence
---- PASS: TestTUIProbeReconcileUsesWallClockStalenessAndHookPrecedence (0.06s)
+--- PASS: TestTUIProbeReconcileUsesWallClockStalenessAndHookPrecedence (0.07s)
 === RUN   TestRecordedProbeLosesToHookThatBecomesFreshDuringClassification
---- PASS: TestRecordedProbeLosesToHookThatBecomesFreshDuringClassification (0.05s)
+--- PASS: TestRecordedProbeLosesToHookThatBecomesFreshDuringClassification (0.06s)
 === RUN   TestProbeReconcileNeverProbesShell
---- PASS: TestProbeReconcileNeverProbesShell (0.04s)
+--- PASS: TestProbeReconcileNeverProbesShell (0.06s)
 === RUN   TestProbeMissRecordsSampleAgeWithoutTouchingStatus
---- PASS: TestProbeMissRecordsSampleAgeWithoutTouchingStatus (0.04s)
+--- PASS: TestProbeMissRecordsSampleAgeWithoutTouchingStatus (0.06s)
 === RUN   TestReconcilerCapturesAndCollectsCrashFirstWriterOnly
---- PASS: TestReconcilerCapturesAndCollectsCrashFirstWriterOnly (0.06s)
+--- PASS: TestReconcilerCapturesAndCollectsCrashFirstWriterOnly (0.08s)
 === RUN   TestReconcileWithinBoundsAStalledTmuxCommand
---- PASS: TestReconcileWithinBoundsAStalledTmuxCommand (0.05s)
+--- PASS: TestReconcileWithinBoundsAStalledTmuxCommand (0.06s)
 === RUN   TestCrashTailStripsControlsAndKeepsLast200Lines
 --- PASS: TestCrashTailStripsControlsAndKeepsLast200Lines (0.00s)
 === RUN   TestRenameOntoATombstonedNameCleansUpThatSessionsFiles
 --- PASS: TestRenameOntoATombstonedNameCleansUpThatSessionsFiles (0.06s)
 === RUN   TestRefusedRenameKeepsLiveAndArchivedHoldersFiles
---- PASS: TestRefusedRenameKeepsLiveAndArchivedHoldersFiles (0.06s)
+--- PASS: TestRefusedRenameKeepsLiveAndArchivedHoldersFiles (0.07s)
 === RUN   TestRenameChangesNameLeavesSlugAndTmuxSessionUntouched
 --- PASS: TestRenameChangesNameLeavesSlugAndTmuxSessionUntouched (0.06s)
 === RUN   TestRenameRejectsBlankNameAndUnknownSession
---- PASS: TestRenameRejectsBlankNameAndUnknownSession (0.04s)
+--- PASS: TestRenameRejectsBlankNameAndUnknownSession (0.05s)
 === RUN   TestRestartKillsRelaunchesWithResumeArgvSameConversationIDAndClearsEnvDirty
---- PASS: TestRestartKillsRelaunchesWithResumeArgvSameConversationIDAndClearsEnvDirty (0.07s)
+--- PASS: TestRestartKillsRelaunchesWithResumeArgvSameConversationIDAndClearsEnvDirty (0.09s)
 === RUN   TestRestartRefusesAnAlreadyStoppedSession
 --- PASS: TestRestartRefusesAnAlreadyStoppedSession (0.05s)
 === RUN   TestResumeRefusesAnArchivedRowBeforeAnythingIsCreated
---- PASS: TestResumeRefusesAnArchivedRowBeforeAnythingIsCreated (0.04s)
+--- PASS: TestResumeRefusesAnArchivedRowBeforeAnythingIsCreated (0.06s)
 === RUN   TestRestartInheritsTheArchivedRefusalFromResume
---- PASS: TestRestartInheritsTheArchivedRefusalFromResume (0.05s)
+--- PASS: TestRestartInheritsTheArchivedRefusalFromResume (0.06s)
 === RUN   TestResumeMakesACrashedRowReconcilableAgain
---- PASS: TestResumeMakesACrashedRowReconcilableAgain (0.08s)
+--- PASS: TestResumeMakesACrashedRowReconcilableAgain (0.09s)
 === RUN   TestResumeLaunchesAdapterResumeArgvUnderLease
---- PASS: TestResumeLaunchesAdapterResumeArgvUnderLease (0.07s)
+--- PASS: TestResumeLaunchesAdapterResumeArgvUnderLease (0.08s)
 === RUN   TestResumeLosingLeaseCreatesNoTMuxSession
---- PASS: TestResumeLosingLeaseCreatesNoTMuxSession (0.05s)
+--- PASS: TestResumeLosingLeaseCreatesNoTMuxSession (0.06s)
 === RUN   TestResumeNonLeasableReturnsActualStatusAndReason
---- PASS: TestResumeNonLeasableReturnsActualStatusAndReason (0.05s)
+--- PASS: TestResumeNonLeasableReturnsActualStatusAndReason (0.06s)
 === RUN   TestResumeAdoptsAlreadyRunningTMuxSessionInsteadOfDuplicateError
---- PASS: TestResumeAdoptsAlreadyRunningTMuxSessionInsteadOfDuplicateError (0.05s)
+--- PASS: TestResumeAdoptsAlreadyRunningTMuxSessionInsteadOfDuplicateError (0.06s)
 === RUN   TestResumeSurfacesAGenuineNonDuplicateTMuxFailure
---- PASS: TestResumeSurfacesAGenuineNonDuplicateTMuxFailure (0.05s)
+--- PASS: TestResumeSurfacesAGenuineNonDuplicateTMuxFailure (0.06s)
 === RUN   TestResumeFailsOnUnknownConversationID
---- PASS: TestResumeFailsOnUnknownConversationID (0.03s)
+--- PASS: TestResumeFailsOnUnknownConversationID (0.04s)
 === RUN   TestResumeFailsOnMissingCWD
 --- PASS: TestResumeFailsOnMissingCWD (0.05s)
 === RUN   TestResumeFailsOnAgentBinaryNotOnPath
@@ -6910,51 +6910,51 @@ ok  	github.com/n-orlov/deck/internal/interactive	11.132s
 === RUN   TestResumeRelaunchesARowWhoseOnlyPaneIsARetainedCorpse
 --- PASS: TestResumeRelaunchesARowWhoseOnlyPaneIsARetainedCorpse (0.09s)
 === RUN   TestKillRemovesARetainedCorpseAndStillRefusesAGenuinelyGoneSession
---- PASS: TestKillRemovesARetainedCorpseAndStillRefusesAGenuinelyGoneSession (0.08s)
+--- PASS: TestKillRemovesARetainedCorpseAndStillRefusesAGenuinelyGoneSession (0.07s)
 === RUN   TestCreateShellPersistsLaunchesAndAudits
---- PASS: TestCreateShellPersistsLaunchesAndAudits (0.04s)
+--- PASS: TestCreateShellPersistsLaunchesAndAudits (0.05s)
 === RUN   TestCreateShellPromotesCWDToRecentCwds
 --- PASS: TestCreateShellPromotesCWDToRecentCwds (0.04s)
 === RUN   TestKillStopsSessionPreservesCWDAndRecordsTransition
---- PASS: TestKillStopsSessionPreservesCWDAndRecordsTransition (0.05s)
+--- PASS: TestKillStopsSessionPreservesCWDAndRecordsTransition (0.06s)
 === RUN   TestCreateShellRecordsCoherentFailureWhenTmuxCannotLaunch
 --- PASS: TestCreateShellRecordsCoherentFailureWhenTmuxCannotLaunch (0.05s)
 === RUN   TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow
---- PASS: TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow (0.11s)
+--- PASS: TestKilledLaunchsSessionEndAfterTheLeaseNeverStopsTheRow (0.13s)
 === RUN   TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator
---- PASS: TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator (0.08s)
+--- PASS: TestKilledLaunchsSessionEndBeforeTheLeaseIsNotTheDiscriminator (0.09s)
 PASS
-ok  	github.com/n-orlov/deck/internal/service	4.385s
+ok  	github.com/n-orlov/deck/internal/service	5.006s
 === RUN   TestArchiveSessionSetsArchivedAtAndHidesFromListSessions
 --- PASS: TestArchiveSessionSetsArchivedAtAndHidesFromListSessions (0.03s)
 === RUN   TestArchiveSessionLeavesStoppedStatusUnchanged
---- PASS: TestArchiveSessionLeavesStoppedStatusUnchanged (0.02s)
+--- PASS: TestArchiveSessionLeavesStoppedStatusUnchanged (0.04s)
 === RUN   TestArchiveSessionRejectsMissingSession
---- PASS: TestArchiveSessionRejectsMissingSession (0.02s)
+--- PASS: TestArchiveSessionRejectsMissingSession (0.03s)
 === RUN   TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow
---- PASS: TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow (0.03s)
+--- PASS: TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow (0.04s)
 === RUN   TestUnarchiveSessionClearsArchivedAtAndReturnsToListSessions
---- PASS: TestUnarchiveSessionClearsArchivedAtAndReturnsToListSessions (0.02s)
+--- PASS: TestUnarchiveSessionClearsArchivedAtAndReturnsToListSessions (0.04s)
 === RUN   TestUnarchiveSessionRejectsMissingSession
---- PASS: TestUnarchiveSessionRejectsMissingSession (0.02s)
+--- PASS: TestUnarchiveSessionRejectsMissingSession (0.03s)
 === RUN   TestListSessionsIncludingArchivedKeepsArchivedAndDropsTombstoned
---- PASS: TestListSessionsIncludingArchivedKeepsArchivedAndDropsTombstoned (0.02s)
+--- PASS: TestListSessionsIncludingArchivedKeepsArchivedAndDropsTombstoned (0.04s)
 === RUN   TestStoreDurabilityCrashHelper
 --- PASS: TestStoreDurabilityCrashHelper (0.00s)
 === RUN   TestStoreSurvivesProcessCrashMidTransaction
 === RUN   TestStoreSurvivesProcessCrashMidTransaction/atomic_transaction_killed_before_Commit_leaves_nothing_behind
 === RUN   TestStoreSurvivesProcessCrashMidTransaction/weakened_autocommit_path_killed_between_the_two_writes_leaves_an_inconsistent_partial_write
---- PASS: TestStoreSurvivesProcessCrashMidTransaction (0.09s)
+--- PASS: TestStoreSurvivesProcessCrashMidTransaction (0.08s)
     --- PASS: TestStoreSurvivesProcessCrashMidTransaction/atomic_transaction_killed_before_Commit_leaves_nothing_behind (0.04s)
     --- PASS: TestStoreSurvivesProcessCrashMidTransaction/weakened_autocommit_path_killed_between_the_two_writes_leaves_an_inconsistent_partial_write (0.04s)
 === RUN   TestEnforceEventRetentionDeletesOldOnesKeepingBoundaryAndRecentRows
---- PASS: TestEnforceEventRetentionDeletesOldOnesKeepingBoundaryAndRecentRows (0.11s)
+--- PASS: TestEnforceEventRetentionDeletesOldOnesKeepingBoundaryAndRecentRows (0.10s)
 === RUN   TestEnforceEventRetentionThrottlesToAtMostOnceAnHour
 --- PASS: TestEnforceEventRetentionThrottlesToAtMostOnceAnHour (0.02s)
 === RUN   TestEnforceEventRetentionRejectsNonPositiveWindow
 --- PASS: TestEnforceEventRetentionRejectsNonPositiveWindow (0.02s)
 === RUN   TestAcquireLaunchLeaseMintsAFreshGenerationPerLaunch
---- PASS: TestAcquireLaunchLeaseMintsAFreshGenerationPerLaunch (0.03s)
+--- PASS: TestAcquireLaunchLeaseMintsAFreshGenerationPerLaunch (0.02s)
 === RUN   TestLiveOwnerWithGenerationIsStillNotBreakable
 --- PASS: TestLiveOwnerWithGenerationIsStillNotBreakable (0.02s)
 === RUN   TestSplitOwnerGenerationHandlesPreR74Owners
@@ -6962,69 +6962,69 @@ ok  	github.com/n-orlov/deck/internal/service	4.385s
 === RUN   TestReleaseLaunchLeaseLetsTheSameOwnerLaunchAgainInsideTheTTL
 --- PASS: TestReleaseLaunchLeaseLetsTheSameOwnerLaunchAgainInsideTheTTL (0.02s)
 === RUN   TestReleaseLaunchLeaseDoesNotEndADifferentLiveOwnersLease
---- PASS: TestReleaseLaunchLeaseDoesNotEndADifferentLiveOwnersLease (0.03s)
+--- PASS: TestReleaseLaunchLeaseDoesNotEndADifferentLiveOwnersLease (0.02s)
 === RUN   TestReleaseLaunchLeaseRejectsMissingArguments
 --- PASS: TestReleaseLaunchLeaseRejectsMissingArguments (0.02s)
 === RUN   TestAcquireLaunchLeaseRequiresTimestamp
 --- PASS: TestAcquireLaunchLeaseRequiresTimestamp (0.02s)
 === RUN   TestAcquireLaunchLeaseFreshSucceeds
---- PASS: TestAcquireLaunchLeaseFreshSucceeds (0.03s)
+--- PASS: TestAcquireLaunchLeaseFreshSucceeds (0.02s)
 === RUN   TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable
 --- PASS: TestAcquireLaunchLeaseLiveOwnerInTTLIsNotBreakable (0.02s)
 === RUN   TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease
---- PASS: TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease (0.03s)
+--- PASS: TestAcquireLaunchLeaseNonStoppedIsDistinctFromHeldLease (0.02s)
 === RUN   TestAcquireLaunchLeaseExpiredTTLIsBreakable
---- PASS: TestAcquireLaunchLeaseExpiredTTLIsBreakable (0.03s)
+--- PASS: TestAcquireLaunchLeaseExpiredTTLIsBreakable (0.02s)
 === RUN   TestAcquireLaunchLeaseDeadPIDIsBreakable
---- PASS: TestAcquireLaunchLeaseDeadPIDIsBreakable (0.03s)
+--- PASS: TestAcquireLaunchLeaseDeadPIDIsBreakable (0.02s)
 === RUN   TestAcquireLaunchLeaseNeverWedgesTheRow
---- PASS: TestAcquireLaunchLeaseNeverWedgesTheRow (0.03s)
+--- PASS: TestAcquireLaunchLeaseNeverWedgesTheRow (0.02s)
 === RUN   TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict
---- PASS: TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict (0.03s)
+--- PASS: TestAcquireLaunchLeaseClearsTheReplacedPanesCrashVerdict (0.02s)
 === RUN   TestRenameSessionChangesNameOnlyEnforcesUniquenessAndRecordsEvent
 --- PASS: TestRenameSessionChangesNameOnlyEnforcesUniquenessAndRecordsEvent (0.02s)
 === RUN   TestRenameSessionRejectsEmptyInputs
---- PASS: TestRenameSessionRejectsEmptyInputs (0.03s)
+--- PASS: TestRenameSessionRejectsEmptyInputs (0.02s)
 === RUN   TestOpenInitializesPrivateV1WALStore
 --- PASS: TestOpenInitializesPrivateV1WALStore (0.02s)
 === RUN   TestOpenMigratesSupportedVersionZeroFixture
---- PASS: TestOpenMigratesSupportedVersionZeroFixture (0.06s)
+--- PASS: TestOpenMigratesSupportedVersionZeroFixture (0.04s)
 === RUN   TestOpenRefusesNewerFixtureWithoutMutation
---- PASS: TestOpenRefusesNewerFixtureWithoutMutation (0.03s)
+--- PASS: TestOpenRefusesNewerFixtureWithoutMutation (0.02s)
 === RUN   TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness
 --- PASS: TestCreateSessionIsTargetedAndEnforcesNameAndSlugUniqueness (0.02s)
 === RUN   TestStatusWritersRequireExplicitTimestamps
 --- PASS: TestStatusWritersRequireExplicitTimestamps (0.02s)
 === RUN   TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen
---- PASS: TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen (0.03s)
+--- PASS: TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen (0.02s)
 === RUN   TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull
---- PASS: TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull (0.03s)
+--- PASS: TestCreateSessionDefaultsLaunchArgsAndEnvToEmptyNotNull (0.02s)
 === RUN   TestCapturedPathAdvisoryReflectsLoginShellAndPersistsAcrossReopen
---- PASS: TestCapturedPathAdvisoryReflectsLoginShellAndPersistsAcrossReopen (0.03s)
+--- PASS: TestCapturedPathAdvisoryReflectsLoginShellAndPersistsAcrossReopen (0.02s)
 === RUN   TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows
---- PASS: TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows (0.03s)
+--- PASS: TestUpdateSessionStatusIsTargetedRecordsEventAndListsStoppedRows (0.02s)
 === RUN   TestSetConversationIDPermissionProfileAndResumeStateRecordEvents
 --- PASS: TestSetConversationIDPermissionProfileAndResumeStateRecordEvents (0.03s)
 === RUN   TestFreshOnceIsOneShotAndRevertsToAutoNotPinned
---- PASS: TestFreshOnceIsOneShotAndRevertsToAutoNotPinned (0.03s)
+--- PASS: TestFreshOnceIsOneShotAndRevertsToAutoNotPinned (0.02s)
 === RUN   TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically
 --- PASS: TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically (0.02s)
 === RUN   TestStatusTransitionEnforcesCallerPolicyInsideEventTransaction
 --- PASS: TestStatusTransitionEnforcesCallerPolicyInsideEventTransaction (0.02s)
 === RUN   TestStatusTransitionDoesNotReviveProcessCrashWithHook
---- PASS: TestStatusTransitionDoesNotReviveProcessCrashWithHook (0.03s)
+--- PASS: TestStatusTransitionDoesNotReviveProcessCrashWithHook (0.02s)
 === RUN   TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically
 --- PASS: TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically (0.02s)
 === RUN   TestStatusTransitionProtectsUserKillAndPersistsHookAndCrashFields
---- PASS: TestStatusTransitionProtectsUserKillAndPersistsHookAndCrashFields (0.03s)
+--- PASS: TestStatusTransitionProtectsUserKillAndPersistsHookAndCrashFields (0.02s)
 === RUN   TestRecordOrphanEventUsesNullSessionAndRequiresTimestamp
 --- PASS: TestRecordOrphanEventUsesNullSessionAndRequiresTimestamp (0.02s)
 === RUN   TestUIStateAccessorsDegradeToDocumentedDefaults
 --- PASS: TestUIStateAccessorsDegradeToDocumentedDefaults (0.02s)
 === RUN   TestLastCreateAgentAccessorsDegradeToDocumentedDefaults
---- PASS: TestLastCreateAgentAccessorsDegradeToDocumentedDefaults (0.03s)
+--- PASS: TestLastCreateAgentAccessorsDegradeToDocumentedDefaults (0.02s)
 === RUN   TestOpenMigratesV1FixtureToUIStateWithoutRecreatingSessionRow
---- PASS: TestOpenMigratesV1FixtureToUIStateWithoutRecreatingSessionRow (0.14s)
+--- PASS: TestOpenMigratesV1FixtureToUIStateWithoutRecreatingSessionRow (0.07s)
 === RUN   TestSlugContainsOnlyTmuxSafeASCII
 --- PASS: TestSlugContainsOnlyTmuxSafeASCII (0.00s)
 === RUN   TestListSessionsDefaultsWorkspaceToCWDBasename
@@ -7033,38 +7033,38 @@ ok  	github.com/n-orlov/deck/internal/service	4.385s
 === RUN   TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV1
 === RUN   TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV2
 === RUN   TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV3
---- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow (0.30s)
-    --- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV1 (0.09s)
-    --- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV2 (0.10s)
-    --- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV3 (0.11s)
+--- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow (0.24s)
+    --- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV1 (0.07s)
+    --- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV2 (0.08s)
+    --- PASS: TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow/fromV3 (0.09s)
 === RUN   TestPromoteRecentCwdOrdersMostRecentFirstByMonotonicSequence
 --- PASS: TestPromoteRecentCwdOrdersMostRecentFirstByMonotonicSequence (0.02s)
 === RUN   TestPromoteRecentCwdRepromotingExistingPathMovesToFrontWithoutDuplicating
---- PASS: TestPromoteRecentCwdRepromotingExistingPathMovesToFrontWithoutDuplicating (0.03s)
+--- PASS: TestPromoteRecentCwdRepromotingExistingPathMovesToFrontWithoutDuplicating (0.02s)
 === RUN   TestPromoteRecentCwdLimitZeroKeepsNothing
 --- PASS: TestPromoteRecentCwdLimitZeroKeepsNothing (0.02s)
 === RUN   TestPromoteRecentCwdEvictsBeyondCallerSuppliedLimit
---- PASS: TestPromoteRecentCwdEvictsBeyondCallerSuppliedLimit (0.03s)
+--- PASS: TestPromoteRecentCwdEvictsBeyondCallerSuppliedLimit (0.02s)
 === RUN   TestPromoteRecentCwdRejectsRelativePath
---- PASS: TestPromoteRecentCwdRejectsRelativePath (0.03s)
+--- PASS: TestPromoteRecentCwdRejectsRelativePath (0.02s)
 === RUN   TestClearRecentCwdsRemovesEveryEntryButNothingElse
 --- PASS: TestClearRecentCwdsRemovesEveryEntryButNothingElse (0.02s)
 === RUN   TestSetSessionEnvValueMergesMarksDirtyAndRecordsEventWithKeyOnly
---- PASS: TestSetSessionEnvValueMergesMarksDirtyAndRecordsEventWithKeyOnly (0.03s)
+--- PASS: TestSetSessionEnvValueMergesMarksDirtyAndRecordsEventWithKeyOnly (0.02s)
 === RUN   TestSetSessionEnvValueRejectsMissingSessionOrKey
 --- PASS: TestSetSessionEnvValueRejectsMissingSessionOrKey (0.02s)
 === RUN   TestClearEnvDirtyResetsFlagAndPersistsAcrossReopen
---- PASS: TestClearEnvDirtyResetsFlagAndPersistsAcrossReopen (0.03s)
+--- PASS: TestClearEnvDirtyResetsFlagAndPersistsAcrossReopen (0.02s)
 === RUN   TestClearEnvDirtyRejectsMissingSessionOrUnknownID
 --- PASS: TestClearEnvDirtyRejectsMissingSessionOrUnknownID (0.02s)
 === RUN   TestListEventsOrdersNewestFirstAndCapsAtLimit
---- PASS: TestListEventsOrdersNewestFirstAndCapsAtLimit (0.03s)
+--- PASS: TestListEventsOrdersNewestFirstAndCapsAtLimit (0.02s)
 === RUN   TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows
---- PASS: TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows (0.15s)
+--- PASS: TestOpenMigratesV4FixtureAddsEventsIndexesWithoutTouchingExistingRows (0.13s)
 === RUN   TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable
---- PASS: TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable (0.14s)
+--- PASS: TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable (0.16s)
 === RUN   TestSweepTombstonesReapsExpiredLeavesFresh
---- PASS: TestSweepTombstonesReapsExpiredLeavesFresh (0.03s)
+--- PASS: TestSweepTombstonesReapsExpiredLeavesFresh (0.02s)
 === RUN   TestSweepTombstonesThrottlesToAtMostOnceAnHour
 --- PASS: TestSweepTombstonesThrottlesToAtMostOnceAnHour (0.02s)
 === RUN   TestSweepTombstonesIsCheapNoOpInsideInterval
@@ -7072,27 +7072,27 @@ ok  	github.com/n-orlov/deck/internal/service	4.385s
 === RUN   TestSweepTombstonesHonoursFrozenClock
 === RUN   TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_past_leaves_a_row_the_real_clock_would_reap
 === RUN   TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_future_reaps_a_row_the_real_clock_would_keep
---- PASS: TestSweepTombstonesHonoursFrozenClock (0.05s)
-    --- PASS: TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_past_leaves_a_row_the_real_clock_would_reap (0.03s)
-    --- PASS: TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_future_reaps_a_row_the_real_clock_would_keep (0.03s)
+--- PASS: TestSweepTombstonesHonoursFrozenClock (0.04s)
+    --- PASS: TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_past_leaves_a_row_the_real_clock_would_reap (0.02s)
+    --- PASS: TestSweepTombstonesHonoursFrozenClock/clock_frozen_in_the_future_reaps_a_row_the_real_clock_would_keep (0.02s)
 === RUN   TestSweepTombstonesRejectsInvalidArgs
---- PASS: TestSweepTombstonesRejectsInvalidArgs (0.03s)
+--- PASS: TestSweepTombstonesRejectsInvalidArgs (0.02s)
 === RUN   TestSweepTombstonesReapsOneBoundedBatchPerCall
---- PASS: TestSweepTombstonesReapsOneBoundedBatchPerCall (0.14s)
+--- PASS: TestSweepTombstonesReapsOneBoundedBatchPerCall (0.15s)
 === RUN   TestSoftDeleteSessionTombstonesAndHidesFromListSessions
---- PASS: TestSoftDeleteSessionTombstonesAndHidesFromListSessions (0.03s)
+--- PASS: TestSoftDeleteSessionTombstonesAndHidesFromListSessions (0.02s)
 === RUN   TestRestoreSessionClearsTombstoneAndReturnsToListSessions
---- PASS: TestRestoreSessionClearsTombstoneAndReturnsToListSessions (0.03s)
+--- PASS: TestRestoreSessionClearsTombstoneAndReturnsToListSessions (0.02s)
 === RUN   TestReapSessionRequiresTombstoneAndCascadesEvents
---- PASS: TestReapSessionRequiresTombstoneAndCascadesEvents (0.03s)
+--- PASS: TestReapSessionRequiresTombstoneAndCascadesEvents (0.02s)
 === RUN   TestReapSessionRejectsMissingSession
---- PASS: TestReapSessionRejectsMissingSession (0.03s)
+--- PASS: TestReapSessionRejectsMissingSession (0.02s)
 === RUN   TestSoftDeleteAndRestoreRejectMissingSession
---- PASS: TestSoftDeleteAndRestoreRejectMissingSession (0.03s)
+--- PASS: TestSoftDeleteAndRestoreRejectMissingSession (0.02s)
 === RUN   TestRestoreSessionAfterReuseReapReportsHonestly
 --- PASS: TestRestoreSessionAfterReuseReapReportsHonestly (0.02s)
 === RUN   TestCreateSessionReapsTombstonedNameHolder
---- PASS: TestCreateSessionReapsTombstonedNameHolder (0.03s)
+--- PASS: TestCreateSessionReapsTombstonedNameHolder (0.02s)
 === RUN   TestCreateSessionReapsTombstonedSlugHolder
 --- PASS: TestCreateSessionReapsTombstonedSlugHolder (0.02s)
 === RUN   TestCreateSessionRefusesLiveNameHolder
@@ -7100,17 +7100,17 @@ ok  	github.com/n-orlov/deck/internal/service	4.385s
 === RUN   TestCreateSessionRefusesArchivedNameHolder
 --- PASS: TestCreateSessionRefusesArchivedNameHolder (0.02s)
 === RUN   TestRenameSessionReapsTombstonedNameHolder
---- PASS: TestRenameSessionReapsTombstonedNameHolder (0.03s)
+--- PASS: TestRenameSessionReapsTombstonedNameHolder (0.02s)
 === RUN   TestRenameSessionReapsTombstonedSlugHolder
 --- PASS: TestRenameSessionReapsTombstonedSlugHolder (0.02s)
 === RUN   TestRenameSessionRefusesLiveAndArchivedHolders
---- PASS: TestRenameSessionRefusesLiveAndArchivedHolders (0.02s)
+--- PASS: TestRenameSessionRefusesLiveAndArchivedHolders (0.04s)
 === RUN   TestTombstonedNameHoldersAndSessionRowExists
 --- PASS: TestTombstonedNameHoldersAndSessionRowExists (0.03s)
 === RUN   TestDDOnAnArchivedRowIsReachableAndReapsCleanly
---- PASS: TestDDOnAnArchivedRowIsReachableAndReapsCleanly (0.02s)
+--- PASS: TestDDOnAnArchivedRowIsReachableAndReapsCleanly (0.03s)
 PASS
-ok  	github.com/n-orlov/deck/internal/store	3.064s
+ok  	github.com/n-orlov/deck/internal/store	2.722s
 === RUN   TestBuiltinContrastFloor
 === RUN   TestBuiltinContrastFloor/cobalt
     contrast_test.go:87: cobalt   text/background      hex #d9e6f2/#0a1a2e = 13.79:1   quant #e5e5e5/#000000 = 16.67:1
@@ -7409,19 +7409,19 @@ ok  	github.com/n-orlov/deck/internal/store	3.064s
 === RUN   TestParseRoundTrips
 --- PASS: TestParseRoundTrips (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/theme	0.008s
 === RUN   TestSendKeysLiteralFailsAtTheRealCommandLengthCeiling
 --- PASS: TestSendKeysLiteralFailsAtTheRealCommandLengthCeiling (0.02s)
 === RUN   TestSendKeysLiteralFailureIsNotARGMAX
---- PASS: TestSendKeysLiteralFailureIsNotARGMAX (0.01s)
+--- PASS: TestSendKeysLiteralFailureIsNotARGMAX (0.02s)
 === RUN   TestSendKeysHexFailsAtTheRealArgCountCeiling
---- PASS: TestSendKeysHexFailsAtTheRealArgCountCeiling (0.15s)
+--- PASS: TestSendKeysHexFailsAtTheRealArgCountCeiling (0.18s)
 === RUN   TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesIntact
---- PASS: TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesIntact (0.03s)
+--- PASS: TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesIntact (0.10s)
 === RUN   TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall
---- PASS: TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall (0.02s)
+--- PASS: TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall (0.03s)
 === RUN   TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact
---- PASS: TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact (0.11s)
+--- PASS: TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact (0.14s)
 === RUN   TestCreateSurvivesInstantExitEnvironmentMirroring
 --- PASS: TestCreateSurvivesInstantExitEnvironmentMirroring (0.02s)
 === RUN   TestCreateStillFailsOnGenuineEnvironmentError
@@ -7445,11 +7445,11 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestIdentityDistinguishesSameLooksLikePaneIDAcrossSockets
 --- PASS: TestIdentityDistinguishesSameLooksLikePaneIDAcrossSockets (0.03s)
 === RUN   TestDispatcherRefusesWhenTargetIdentityBelongsToTheWrongSocket
---- PASS: TestDispatcherRefusesWhenTargetIdentityBelongsToTheWrongSocket (1.03s)
+--- PASS: TestDispatcherRefusesWhenTargetIdentityBelongsToTheWrongSocket (1.08s)
 === RUN   TestRestartedServerReissuesPaneIDAndDispatcherRefuses
 --- PASS: TestRestartedServerReissuesPaneIDAndDispatcherRefuses (1.04s)
 === RUN   TestCaptureIdentityReadsAllFiveFieldsFromARealPane
---- PASS: TestCaptureIdentityReadsAllFiveFieldsFromARealPane (0.01s)
+--- PASS: TestCaptureIdentityReadsAllFiveFieldsFromARealPane (0.02s)
 === RUN   TestCaptureIdentityRefusesADeadPaneAtEntry
 --- PASS: TestCaptureIdentityRefusesADeadPaneAtEntry (0.02s)
 === RUN   TestDispatcherSendDeliversToARealPaneAndCountsOneVerification
@@ -7511,7 +7511,7 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation/C-S-Left
 === RUN   TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation/C-S-Home
 === RUN   TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation/C-S-End
---- PASS: TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation (0.42s)
+--- PASS: TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation (0.38s)
     --- PASS: TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation/C-Up (0.02s)
     --- PASS: TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation/C-Down (0.02s)
     --- PASS: TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation/C-Right (0.02s)
@@ -7536,7 +7536,7 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys/Home
 === RUN   TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys/End
 --- PASS: TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys (0.63s)
-    --- PASS: TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys/Home (0.32s)
+    --- PASS: TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys/Home (0.31s)
     --- PASS: TestHomeAndEndEscapesMatchARealAttachedClientTypingTheSameKeys/End (0.31s)
 === RUN   TestSendKeysDashPayloadWithoutSeparatorIsSilentlyDiscarded
 --- PASS: TestSendKeysDashPayloadWithoutSeparatorIsSilentlyDiscarded (0.01s)
@@ -7547,9 +7547,9 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestSendKeysDoubledLiteralFlagWithoutSeparatorIsSilentlyDiscarded
 --- PASS: TestSendKeysDoubledLiteralFlagWithoutSeparatorIsSilentlyDiscarded (0.02s)
 === RUN   TestSendKeysInvalidHexByteIsSilentlyDiscarded
---- PASS: TestSendKeysInvalidHexByteIsSilentlyDiscarded (0.02s)
+--- PASS: TestSendKeysInvalidHexByteIsSilentlyDiscarded (0.01s)
 === RUN   TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero
---- PASS: TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero (0.01s)
+--- PASS: TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero (0.02s)
 === RUN   TestDispatcherSendLiteralDeliversADashPrefixedPayloadCorrectly
 --- PASS: TestDispatcherSendLiteralDeliversADashPrefixedPayloadCorrectly (0.02s)
 === RUN   TestDispatcherSendLiteralDeliversDoubleDashHelpCorrectly
@@ -7563,11 +7563,11 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestNoIgnoredExitStatusForInputDispatchIsNonVacuous
 --- PASS: TestNoIgnoredExitStatusForInputDispatchIsNonVacuous (0.00s)
 === RUN   TestPasteBufferAddsNoMarkersWithoutBracketedPasteModeEnabled
---- PASS: TestPasteBufferAddsNoMarkersWithoutBracketedPasteModeEnabled (0.22s)
+--- PASS: TestPasteBufferAddsNoMarkersWithoutBracketedPasteModeEnabled (0.24s)
 === RUN   TestSendKeysHexWithManualBracketMarkersDeliversTheWrongLineEndings
---- PASS: TestSendKeysHexWithManualBracketMarkersDeliversTheWrongLineEndings (0.23s)
+--- PASS: TestSendKeysHexWithManualBracketMarkersDeliversTheWrongLineEndings (0.22s)
 === RUN   TestDispatcherSendMultilineDeliversBracketedPasteWithCRLineEndings
---- PASS: TestDispatcherSendMultilineDeliversBracketedPasteWithCRLineEndings (0.45s)
+--- PASS: TestDispatcherSendMultilineDeliversBracketedPasteWithCRLineEndings (0.44s)
 === RUN   TestDispatcherSendMultilineDeletesTheBufferWhenPasteBufferFails
 --- PASS: TestDispatcherSendMultilineDeletesTheBufferWhenPasteBufferFails (0.05s)
 === RUN   TestClaimWindowOwnershipAcquiresOnAnUnclaimedWindow
@@ -7600,9 +7600,9 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestPaneDeadRejectsAnAbsentTarget
 --- PASS: TestPaneDeadRejectsAnAbsentTarget (0.01s)
 === RUN   TestPanePipeNeverClosesOnADeadPaneUnderRemainOnExitFailed
---- PASS: TestPanePipeNeverClosesOnADeadPaneUnderRemainOnExitFailed (1.54s)
+--- PASS: TestPanePipeNeverClosesOnADeadPaneUnderRemainOnExitFailed (1.53s)
 === RUN   TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads
---- PASS: TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads (0.32s)
+--- PASS: TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads (0.33s)
 === RUN   TestCapturePaneSeedAtomicRejectsInvalidPaneID
 --- PASS: TestCapturePaneSeedAtomicRejectsInvalidPaneID (0.00s)
 === RUN   TestSeparateInvocationsCanObserveHistorySizeChangeBetweenThem
@@ -7630,7 +7630,7 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane/wrap_flag
 === RUN   TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane/origin_flag
 === RUN   TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane/scroll_region_upper_and_lower
---- PASS: TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane (4.46s)
+--- PASS: TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane (4.44s)
     --- PASS: TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane/alternate_on (0.32s)
     --- PASS: TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane/cursor_x_and_cursor_y (0.32s)
     --- PASS: TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane/cursor_flag (0.32s)
@@ -7656,11 +7656,11 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF
 --- PASS: TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF (0.22s)
 === RUN   TestPanePipeCloseDisarmsAndPanePipeReturnsToZero
---- PASS: TestPanePipeCloseDisarmsAndPanePipeReturnsToZero (0.02s)
+--- PASS: TestPanePipeCloseDisarmsAndPanePipeReturnsToZero (0.03s)
 === RUN   TestPanePipeCloseIsIdempotentAndPanePipeStaysZero
 --- PASS: TestPanePipeCloseIsIdempotentAndPanePipeStaysZero (0.02s)
 === RUN   TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim
---- PASS: TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim (0.05s)
+--- PASS: TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim (0.06s)
 === RUN   TestReclaimLeakedInteractivePipesLeavesALiveOwnersClaimUntouched
 --- PASS: TestReclaimLeakedInteractivePipesLeavesALiveOwnersClaimUntouched (0.04s)
 === RUN   TestReclaimLeakedInteractivePipesRemovesADirWithNoUsableMetadata
@@ -7672,7 +7672,7 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestRestoreWindowGeometryDetachedResizesThenUnsets
 --- PASS: TestRestoreWindowGeometryDetachedResizesThenUnsets (0.04s)
 === RUN   TestReversedRestoreOrderLeavesWindowPinned
---- PASS: TestReversedRestoreOrderLeavesWindowPinned (0.08s)
+--- PASS: TestReversedRestoreOrderLeavesWindowPinned (0.09s)
 === RUN   TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch
 --- PASS: TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch (0.33s)
 === RUN   TestFreshClientAtThirdSizeGovernsWindowAfterExit
@@ -7680,25 +7680,25 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize
 --- PASS: TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize (0.06s)
 === RUN   TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin
---- PASS: TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin (0.04s)
+--- PASS: TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin (0.06s)
 === RUN   TestSendKeysConsumesExactlyOneTrailingSemicolonZeroCase
 --- PASS: TestSendKeysConsumesExactlyOneTrailingSemicolonZeroCase (0.03s)
 === RUN   TestSendKeysConsumesExactlyOneTrailingSemicolonOneCase
 --- PASS: TestSendKeysConsumesExactlyOneTrailingSemicolonOneCase (0.03s)
 === RUN   TestSendKeysConsumesExactlyOneTrailingSemicolonTwoCase
---- PASS: TestSendKeysConsumesExactlyOneTrailingSemicolonTwoCase (0.03s)
+--- PASS: TestSendKeysConsumesExactlyOneTrailingSemicolonTwoCase (0.02s)
 === RUN   TestSendKeysInteriorSemicolonIsUntouched
---- PASS: TestSendKeysInteriorSemicolonIsUntouched (0.03s)
+--- PASS: TestSendKeysInteriorSemicolonIsUntouched (0.02s)
 === RUN   TestDispatcherSendLiteralDeliversZeroTrailingSemicolons
---- PASS: TestDispatcherSendLiteralDeliversZeroTrailingSemicolons (0.03s)
+--- PASS: TestDispatcherSendLiteralDeliversZeroTrailingSemicolons (0.04s)
 === RUN   TestDispatcherSendLiteralDeliversOneTrailingSemicolon
---- PASS: TestDispatcherSendLiteralDeliversOneTrailingSemicolon (0.03s)
+--- PASS: TestDispatcherSendLiteralDeliversOneTrailingSemicolon (0.04s)
 === RUN   TestDispatcherSendLiteralDeliversTwoTrailingSemicolons
 --- PASS: TestDispatcherSendLiteralDeliversTwoTrailingSemicolons (0.04s)
 === RUN   TestDispatcherSendLiteralDeliversThreeTrailingSemicolons
---- PASS: TestDispatcherSendLiteralDeliversThreeTrailingSemicolons (0.04s)
+--- PASS: TestDispatcherSendLiteralDeliversThreeTrailingSemicolons (0.03s)
 === RUN   TestDispatcherSendLiteralLeavesInteriorSemicolonUntouched
---- PASS: TestDispatcherSendLiteralLeavesInteriorSemicolonUntouched (0.04s)
+--- PASS: TestDispatcherSendLiteralLeavesInteriorSemicolonUntouched (0.03s)
 === RUN   TestDispatcherSendLiteralDeliversAllSemicolonPayload
 --- PASS: TestDispatcherSendLiteralDeliversAllSemicolonPayload (0.03s)
 === RUN   TestPeelTrailingSemicolonsIsAFixedPointLoop
@@ -7720,7 +7720,7 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestPreviewPaneAndCapturePreviewRealTmux
 --- PASS: TestPreviewPaneAndCapturePreviewRealTmux (0.03s)
 === RUN   TestCapturePreviewNeverAttachesOrResizes
---- PASS: TestCapturePreviewNeverAttachesOrResizes (0.19s)
+--- PASS: TestCapturePreviewNeverAttachesOrResizes (0.21s)
 === RUN   TestCapturePaneRejectsUnsafeOrImplicitRange
 --- PASS: TestCapturePaneRejectsUnsafeOrImplicitRange (0.00s)
 === RUN   TestKillStillReportsRealCommandErrors
@@ -7736,13 +7736,13 @@ ok  	github.com/n-orlov/deck/internal/theme	0.004s
 === RUN   TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged
 --- PASS: TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged (0.02s)
 PASS
-ok  	github.com/n-orlov/deck/internal/tmux	19.283s
+ok  	github.com/n-orlov/deck/internal/tmux	19.476s
 === RUN   TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach
---- PASS: TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach (0.03s)
+--- PASS: TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach (0.02s)
 === RUN   TestAAcknowledgesErrorWithoutChangingVerdict
---- PASS: TestAAcknowledgesErrorWithoutChangingVerdict (0.03s)
+--- PASS: TestAAcknowledgesErrorWithoutChangingVerdict (0.02s)
 === RUN   TestYAcknowledgesOnlySelectedRowDurably
---- PASS: TestYAcknowledgesOnlySelectedRowDurably (0.03s)
+--- PASS: TestYAcknowledgesOnlySelectedRowDurably (0.02s)
 === RUN   TestArchiveKeyOpensAConfirmAndWritesNothing
 --- PASS: TestArchiveKeyOpensAConfirmAndWritesNothing (0.00s)
 === RUN   TestArchiveConfirmSubmitArchivesExactlyTheRowItNamed
@@ -7868,15 +7868,15 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue
 --- PASS: TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue (0.02s)
 === RUN   TestCreateModalOpensOnLastCreateAgentLabelled
---- PASS: TestCreateModalOpensOnLastCreateAgentLabelled (0.03s)
+--- PASS: TestCreateModalOpensOnLastCreateAgentLabelled (0.02s)
 === RUN   TestCreateModalOpensWithoutLabelWhenNoLastCreateAgent
 --- PASS: TestCreateModalOpensWithoutLabelWhenNoLastCreateAgent (0.02s)
 === RUN   TestCyclingAgentFieldClearsLastUsedLabel
---- PASS: TestCyclingAgentFieldClearsLastUsedLabel (0.03s)
+--- PASS: TestCyclingAgentFieldClearsLastUsedLabel (0.02s)
 === RUN   TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent
 --- PASS: TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent (0.02s)
 === RUN   TestSuccessfulCreatePersistsLastCreateAgent
---- PASS: TestSuccessfulCreatePersistsLastCreateAgent (0.03s)
+--- PASS: TestSuccessfulCreatePersistsLastCreateAgent (0.02s)
 === RUN   TestCreateModalLoginShellHelpStatesCapturedPathIsAdvisory
 --- PASS: TestCreateModalLoginShellHelpStatesCapturedPathIsAdvisory (0.00s)
 === RUN   TestCreateModalAgentFieldDerivesFromRegistry
@@ -8128,9 +8128,9 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestEventLogViewNeverReReadsTheStoreOnceOpen
 --- PASS: TestEventLogViewNeverReReadsTheStoreOnceOpen (0.02s)
 === RUN   TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload
---- PASS: TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload (0.03s)
+--- PASS: TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload (0.02s)
 === RUN   TestEventLogViewMasksSecretShapedPayloadValueButNotOrdinaryOnes
---- PASS: TestEventLogViewMasksSecretShapedPayloadValueButNotOrdinaryOnes (0.03s)
+--- PASS: TestEventLogViewMasksSecretShapedPayloadValueButNotOrdinaryOnes (0.02s)
 === RUN   TestEventLogOpensOnECapitalAndClosesOnEsc
 --- PASS: TestEventLogOpensOnECapitalAndClosesOnEsc (0.02s)
 === RUN   TestEventLogViewWithNoStoreStatesUnavailableRatherThanPanicking
@@ -8192,7 +8192,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestFooterEntryEligibilityMatchesRealPredicate
 --- PASS: TestFooterEntryEligibilityMatchesRealPredicate (0.00s)
 === RUN   TestFooterFixedSetMatchesSpecAndExcludesRareKeys
---- PASS: TestFooterFixedSetMatchesSpecAndExcludesRareKeys (0.01s)
+--- PASS: TestFooterFixedSetMatchesSpecAndExcludesRareKeys (0.02s)
 === RUN   TestFooterHandlerAgreementCoversEveryEligibilityGatedFooterKey
 --- PASS: TestFooterHandlerAgreementCoversEveryEligibilityGatedFooterKey (0.00s)
 === RUN   TestFooterHandlerAgreementAcrossEveryRowClass
@@ -8493,7 +8493,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestHelpKeysEntryKeycapRendersInKeyToken
 --- PASS: TestHelpKeysEntryKeycapRendersInKeyToken (0.01s)
 === RUN   TestHelpKeysEntryContinuationRendersInDimmedToken
---- PASS: TestHelpKeysEntryContinuationRendersInDimmedToken (0.00s)
+--- PASS: TestHelpKeysEntryContinuationRendersInDimmedToken (0.01s)
 === RUN   TestHelpNonKeysSectionBodyStaysUnstyled
 --- PASS: TestHelpNonKeysSectionBodyStaysUnstyled (0.00s)
 === RUN   TestHelpKeysEntriesAllGetKeycapStyling
@@ -8511,7 +8511,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether
 --- PASS: TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether (0.00s)
 === RUN   TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns
---- PASS: TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns (0.05s)
+--- PASS: TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns (0.04s)
 === RUN   TestPreviewCellAtSideBySideMapsContentBox
 --- PASS: TestPreviewCellAtSideBySideMapsContentBox (0.00s)
 === RUN   TestPreviewCellAtStackedMapsContentBox
@@ -8763,7 +8763,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestScrollableOverlaysStillPageWithPgDn/detail_view
 === RUN   TestScrollableOverlaysStillPageWithPgDn/event_log
 --- PASS: TestScrollableOverlaysStillPageWithPgDn (0.03s)
-    --- PASS: TestScrollableOverlaysStillPageWithPgDn/help_overlay (0.01s)
+    --- PASS: TestScrollableOverlaysStillPageWithPgDn/help_overlay (0.00s)
     --- PASS: TestScrollableOverlaysStillPageWithPgDn/detail_view (0.00s)
     --- PASS: TestScrollableOverlaysStillPageWithPgDn/event_log (0.00s)
 === RUN   TestWheelScrollsScrollableOverlaysByOneLine
@@ -8778,7 +8778,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestWheelInOverlayAgreesWithArrowKeys/help_overlay
 === RUN   TestWheelInOverlayAgreesWithArrowKeys/detail_view
 === RUN   TestWheelInOverlayAgreesWithArrowKeys/event_log
---- PASS: TestWheelInOverlayAgreesWithArrowKeys (0.03s)
+--- PASS: TestWheelInOverlayAgreesWithArrowKeys (0.02s)
     --- PASS: TestWheelInOverlayAgreesWithArrowKeys/help_overlay (0.00s)
     --- PASS: TestWheelInOverlayAgreesWithArrowKeys/detail_view (0.00s)
     --- PASS: TestWheelInOverlayAgreesWithArrowKeys/event_log (0.00s)
@@ -8795,7 +8795,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestClickInsideOverlayStillDoesNothing/help_overlay_(scrollable)
 === RUN   TestClickInsideOverlayStillDoesNothing/delete_confirm_(not_scrollable)
 === RUN   TestClickInsideOverlayStillDoesNothing/rename_dialog_(not_scrollable)
---- PASS: TestClickInsideOverlayStillDoesNothing (0.01s)
+--- PASS: TestClickInsideOverlayStillDoesNothing (0.00s)
     --- PASS: TestClickInsideOverlayStillDoesNothing/detail_view_(scrollable) (0.00s)
     --- PASS: TestClickInsideOverlayStillDoesNothing/help_overlay_(scrollable) (0.00s)
     --- PASS: TestClickInsideOverlayStillDoesNothing/delete_confirm_(not_scrollable) (0.00s)
@@ -9039,7 +9039,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.ascii
 === RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.mouse
 === RUN   TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.theme
---- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart (0.01s)
+--- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart (0.02s)
     --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/allow_yolo (0.00s)
     --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.ascii (0.00s)
     --- PASS: TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart/ui.mouse (0.00s)
@@ -9085,7 +9085,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.group_by_workspace
 === RUN   TestSettingsScopeParityMatchesSaveBehaviour/ui.sort_order
 === RUN   TestSettingsScopeParityMatchesSaveBehaviour/[env]
---- PASS: TestSettingsScopeParityMatchesSaveBehaviour (0.04s)
+--- PASS: TestSettingsScopeParityMatchesSaveBehaviour (0.06s)
     --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/allow_yolo (0.00s)
     --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/yolo_default (0.00s)
     --- PASS: TestSettingsScopeParityMatchesSaveBehaviour/stale_after (0.00s)
@@ -9105,7 +9105,7 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestSettingsScopeParityEnvOverrideExemption
 === RUN   TestSettingsScopeParityEnvOverrideExemption/ui.ascii
 === RUN   TestSettingsScopeParityEnvOverrideExemption/ui.mouse
---- PASS: TestSettingsScopeParityEnvOverrideExemption (0.00s)
+--- PASS: TestSettingsScopeParityEnvOverrideExemption (0.01s)
     --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.ascii (0.00s)
     --- PASS: TestSettingsScopeParityEnvOverrideExemption/ui.mouse (0.00s)
 === RUN   TestSettingsKeyOpensAndEscCloses
@@ -9289,11 +9289,11 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/none/none
 === RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/short
 === RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/wraps-at-w
-=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/wraps-at-w
 === RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/wraps-at-w
 === RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/none/none
-=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/wraps-at-w
 === RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/short
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/wraps-at-w
 === RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/short
 === RUN   TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/wraps-at-w
 === RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/none/none
@@ -9302,8 +9302,8 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/short
 === RUN   TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/wraps-at-w
 === RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/none/none
-=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/short
 === RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/wraps-at-w
+=== RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/short
 === RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/short
 === RUN   TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/wraps-at-w
 --- PASS: TestBelowMinimumFrameStaysWithinBudget (0.00s)
@@ -9325,11 +9325,11 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/none/none (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/short (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/attachError/wraps-at-w (0.00s)
-    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/wraps-at-w (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/79x40/resumeNote/wraps-at-w (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/none/none (0.00s)
-    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/wraps-at-w (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/short (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/attachError/wraps-at-w (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/short (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/100x30/resumeNote/wraps-at-w (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/none/none (0.00s)
@@ -9338,8 +9338,8 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/short (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/80x24/resumeNote/wraps-at-w (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/none/none (0.00s)
-    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/short (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/wraps-at-w (0.00s)
+    --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/attachError/short (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/short (0.00s)
     --- PASS: TestBelowMinimumFrameStaysWithinBudget/120x24/resumeNote/wraps-at-w (0.00s)
 === RUN   TestUnarchiveKeyActsOnAnArchivedRowFoundThroughTheFilter
@@ -9353,5 +9353,5 @@ ok  	github.com/n-orlov/deck/internal/tmux	19.283s
 === RUN   TestColouredPreviewKeepsFullFrameBordersColumnAligned
 --- PASS: TestColouredPreviewKeepsFullFrameBordersColumnAligned (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/internal/tui	1.205s
+ok  	github.com/n-orlov/deck/internal/tui	1.164s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
