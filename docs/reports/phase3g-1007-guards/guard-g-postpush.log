@@ -1,0 +1,29 @@
+=== (g) re-check taken AFTER the task-1007 bundle commit (2919df2) was pushed ===
+=== every command below was run from /workspace, in this order, output unedited ===
+
+$ git status --porcelain
+(exit code: 0 )
+
+$ git rev-parse HEAD
+2919df2bed43129a4d0110952930f85b1a07a7ac
+(exit code: 0 )
+
+$ git rev-parse origin/main
+2919df2bed43129a4d0110952930f85b1a07a7ac
+(exit code: 0 )
+
+$ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" && echo EQUAL || echo DIFFERENT
+EQUAL
+(exit code: 0 )
+
+$ git ls-remote origin refs/heads/main
+2919df2bed43129a4d0110952930f85b1a07a7ac	refs/heads/main
+(exit code: 0 )
+
+$ git log --oneline -1
+2919df2 docs: re-verify the run's guards at the true final sha and publish the bundle unedited (task 1007)
+(exit code: 0 )
+
+$ git diff --stat a5f8f6b..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum
+(exit code: 0 )
+
