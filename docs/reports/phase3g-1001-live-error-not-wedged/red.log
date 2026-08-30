@@ -1,0 +1,5 @@
+--- FAIL: TestLiveErrorRowIsNotWedgedByEligibilityPredicates (0.00s)
+    live_error_not_wedged_test.go:60: canKill refused a hook-sourced error row with no PaneExitStatus -- that would make the row wedged, contradicting finding F40
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	1.050s
+FAIL
