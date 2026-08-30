@@ -24,7 +24,6 @@ func registerProbeStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the probe event count for session "([^"]+)" is ([0-9]+)$`, probeEventCount)
 	sc.Step(`^the state database session "([^"]+)" has status "([^"]+)" from "([^"]+)"$`, databaseSessionStatusSource)
 	sc.Step(`^the state database session "([^"]+)" has probe status "([^"]+)" with reason "([^"]+)"$`, databaseSessionProbeStatus)
-	sc.Step(`^the state database session "([^"]+)" has status "([^"]+)" from "([^"]+)" with reason "([^"]+)"$`, databaseSessionStatusSourceReason)
 	sc.Step(`^session "([^"]+)" has one losing "([^"]+)" event$`, sessionHasOneLosingProbeEvent)
 	sc.Step(`^within one configured reconcile interval deck client "([^"]+)" row "([^"]+)" contains "([^"]+)"$`, clientRowContainsWithinReconcile)
 	sc.Step(`^the frozen clock advances across stale_after while a fresh hook races the next probe of "([^"]+)" from "([^"]+)"$`, raceFreshHookAgainstProbe)
@@ -180,18 +179,6 @@ func databaseSessionStatusSource(ctx context.Context, name, status, source strin
 
 func databaseSessionProbeStatus(ctx context.Context, name, status, reason string) error {
 	return waitForDatabaseVerdict(ctx, name, status, "probe", reason, true)
-}
-
-// databaseSessionStatusSourceReason is databaseSessionStatusSource widened
-// with a reason check, for a caller that needs the source AND reason
-// together rather than probe status's hardcoded source (task 1202): SPEC
-// §7's live-pane repair (SPEC.md:560-566, internal/service.reconcile's
-// repairTerminalRowWithLivePane) can supersede a probe-sourced terminal
-// verdict with its own "starting"/"tmux" row before any assertion ever
-// observes the probe write, so a scenario proving that precedence needs to
-// name the repair's own source and reason text, not just "probe".
-func databaseSessionStatusSourceReason(ctx context.Context, name, status, source, reason string) error {
-	return waitForDatabaseVerdict(ctx, name, status, source, reason, true)
 }
 
 func waitForDatabaseVerdict(ctx context.Context, name, wantStatus, wantSource, wantReason string, checkReason bool) error {
