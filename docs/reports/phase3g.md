@@ -2020,9 +2020,11 @@ longer defeats that scenario (task 904's evidence:
 
 ## Close-out (approach 10)
 
-This section closes approach 10 (tasks 1001–1009) against the phase's true final
-state. It supersedes nothing above — the R76 and R93 sections (brought current by
-tasks 1005 and 1006, cited below) and every requirement row stand as the record of
+This section closes approach 10 (tasks 1001–1009, plus one untracked fix-forward
+correction to this section's own wording and guard capture — see (a) and (b) below;
+it carries no task id because `tasks.json` was not writable by the agent that made
+it) against the phase's true final state. It supersedes nothing above — the R76 and R93 sections (brought current
+by tasks 1005 and 1006, cited below) and every requirement row stand as the record of
 what each task actually delivered. Approach 10's own remit was narrow by design: one
 licensed test commit (task 1001), then documentation and gate-closure only.
 
@@ -2037,7 +2039,7 @@ re-verifies it once more at the run's pushed sha.
 
 This task, unlike approach 08's close-out (`8a6f0d1`/`7b3469c`/`796d3ce`/`3b0d799`,
 four self-naming addenda chasing its own advancing sha) and following the lesson task
-1007 recorded for it, is delivered by **exactly two commits**, never a spiral: commit 1
+1007 recorded for it, is delivered by task 1009's own **two commits**: commit 1
 lands this section plus
 [`docs/reports/phase3g-1009-closeout/README.md`](phase3g-1009-closeout/README.md) and
 [`pre-commit-guard.log`](phase3g-1009-closeout/pre-commit-guard.log) (captured before
@@ -2045,18 +2047,32 @@ commit 1 existed); commit 2, the fix-forward follow-up, adds
 [`postpush-guard.log`](phase3g-1009-closeout/postpush-guard.log) — the same three
 checks (clean tree, `HEAD == origin/main`, empty code diff since `a5f8f6b`) run from
 `/workspace` **after commit 1 was pushed**, quoting commit 1's own sha rather than
-its own. That is what this section means by "states the guard properties rather than
-a self-naming sha": the property (clean tree / `HEAD == origin/main` / empty code
-diff, each re-derivable at any later point by re-running the same three commands) is
-what this close-out guarantees, not any one sha's continued freshness, and no third
-commit is needed to make it true.
+its own. Task 1009's own validation found that `postpush-guard.log` itself carries a
+defect: its `git status --porcelain` line was captured from inside `/workspace`
+*after* that same log file had been written to the working tree but before it was
+committed, so the line reads `?? .../postpush-guard.log` instead of blank — the
+capture named itself. A later, untracked fix-forward correction's own commit (no
+task id — `tasks.json` was not writable when it was made) adds
+[`postpush-guard-2.log`](phase3g-1009-closeout/postpush-guard-2.log), captured by
+redirecting the same three checks to a file **outside the workspace** before any new
+tracked file existed, then copying that unedited, genuinely-blank capture in; that is
+the guard evidence of record for the property this section claims — the defective
+`postpush-guard.log` is kept as the record of the defect, not silently corrected in
+place. That is what this section means by "states the guard properties rather than a
+self-naming sha": the property (clean tree / `HEAD == origin/main` / empty code diff,
+each re-derivable at any later point by re-running the same three commands) is what
+this close-out guarantees, not any one sha's continued freshness or any one commit's
+first attempt at capturing it.
 
 ### (b) Task-by-task outcome roll call (1001–1009)
 
-None of tasks 1001–1009 ended `failed`, `skipped` or `unsatisfiable` — every one is
-`validated` in `tasks.json` as of this section's own commit. Stated per task, with the
+Tasks 1001–1008 each reached `validated` in `tasks.json`. Stated per task, with the
 sha(s) that carry it and, where a validation round was rejected and redone, that
-history too (rejection is not a task outcome — the task's final, validated state is):
+history too (rejection is not a task outcome — the task's final, validated state is).
+Task 1009 is this section's own delivery; per (f) below, this section makes no claim
+about task 1009's or this run's own terminal status or verdict — that determination
+belongs to the harness, recorded in `tasks.json`, never to a report task 1009's own
+commits write:
 
 - **1001** `a5f8f6b` — new test file
   `internal/tui/live_error_not_wedged_test.go`, no production code touched, pinning
@@ -2090,7 +2106,14 @@ history too (rejection is not a task outcome — the task's final, validated sta
   [`phase3g-1007-guards/`](phase3g-1007-guards/).
 - **1008** `1a0d877` + `a7c8d76` (round 2, fixing three residues of round 1) — brings
   `docs/DELIVERY-LOG.md`'s Phase 3g paragraph to approach 10's state of record.
-- **1009** (this section's own two commits) — the close-out you are reading.
+- **1009** (this section's own two commits) — the close-out you are reading; a
+  later, untracked fix-forward correction (see
+  [`phase3g-1009-postpush-correction/`](phase3g-1009-postpush-correction/); no task
+  id — `tasks.json` was not writable by the agent that made it) reworded this (b)
+  so no task asserts its own terminal verdict, and replaced the defective round-2
+  guard capture named in (a) with
+  [`postpush-guard-2.log`](phase3g-1009-closeout/postpush-guard-2.log), captured
+  outside the workspace before any new tracked file existed.
 
 ### (c) What this close-out links, and why each is the gate of record
 
