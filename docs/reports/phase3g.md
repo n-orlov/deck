@@ -47,7 +47,8 @@ with `docs/reports/phase3g-038-r91-previewfit-latch/README.md`.
   [table](#per-requirement-table) ·
   [close-out](#close-out-task-113) ·
   [close-out (approach 06)](#close-out-approach-06) ·
-  [close-out (approach 08)](#close-out-approach-08)
+  [close-out (approach 08)](#close-out-approach-08) ·
+  [close-out (approach 10)](#close-out-approach-10)
 
 ## Tool versions
 
@@ -2017,3 +2018,185 @@ repair is narrowed back — see the [R76 section](#r76--the-reconcile-repairs-a-
 longer defeats that scenario (task 904's evidence:
 [`phase3g-904-review-finding-1/`](phase3g-904-review-finding-1/)).
 
+## Close-out (approach 10)
+
+This section closes approach 10 (tasks 1001–1009) against the phase's true final
+state. It supersedes nothing above — the R76 and R93 sections (brought current by
+tasks 1005 and 1006, cited below) and every requirement row stand as the record of
+what each task actually delivered. Approach 10's own remit was narrow by design: one
+licensed test commit (task 1001), then documentation and gate-closure only.
+
+### (a) The phase's final shas, and how this section's own guard properties are evidenced
+
+**Final CODE sha: `a5f8f6b`** — "tui: pin that a hook-sourced live error row is not
+eligibility-wedged (task 1001)". No commit after it touches any of the paths the
+command `git diff --stat a5f8f6b..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod
+go.sum` checks — that diff is empty at every later task's own HEAD; every task from
+1002 onward re-confirms it, and task 1007's guard bundle (linked in (c) below)
+re-verifies it once more at the run's pushed sha.
+
+This task, unlike approach 08's close-out (`8a6f0d1`/`7b3469c`/`796d3ce`/`3b0d799`,
+four self-naming addenda chasing its own advancing sha) and following the lesson task
+1007 recorded for it, is delivered by **exactly two commits**, never a spiral: commit 1
+lands this section plus
+[`docs/reports/phase3g-1009-closeout/README.md`](phase3g-1009-closeout/README.md) and
+[`pre-commit-guard.log`](phase3g-1009-closeout/pre-commit-guard.log) (captured before
+commit 1 existed); commit 2, the fix-forward follow-up, adds
+[`postpush-guard.log`](phase3g-1009-closeout/postpush-guard.log) — the same three
+checks (clean tree, `HEAD == origin/main`, empty code diff since `a5f8f6b`) run from
+`/workspace` **after commit 1 was pushed**, quoting commit 1's own sha rather than
+its own. That is what this section means by "states the guard properties rather than
+a self-naming sha": the property (clean tree / `HEAD == origin/main` / empty code
+diff, each re-derivable at any later point by re-running the same three commands) is
+what this close-out guarantees, not any one sha's continued freshness, and no third
+commit is needed to make it true.
+
+### (b) Task-by-task outcome roll call (1001–1009)
+
+None of tasks 1001–1009 ended `failed`, `skipped` or `unsatisfiable` — every one is
+`validated` in `tasks.json` as of this section's own commit. Stated per task, with the
+sha(s) that carry it and, where a validation round was rejected and redone, that
+history too (rejection is not a task outcome — the task's final, validated state is):
+
+- **1001** `a5f8f6b` — new test file
+  `internal/tui/live_error_not_wedged_test.go`, no production code touched, pinning
+  that `canKill`, `canReachPane` and `canRestart` all accept a hook-sourced `error`
+  row with no `PaneExitStatus` and only `canResume` declines it. Evidence:
+  [`phase3g-1001-live-error-not-wedged/`](phase3g-1001-live-error-not-wedged/).
+- **1002** `838fa74` (round 2, the validated state; round 1, `69cffd9`, was rejected
+  for disclosing a `tail -8` poll instead of the mandated `sleep 300; tail -5` form,
+  fixed by re-running the sweep the required way) — whole-suite launcher exit `0` at
+  `a5f8f6b`, 17/17 packages (14 `ok`, 3 `[no test files]`), `-v` tally 311 scenarios /
+  3532 steps. Evidence: [`phase3g-1002-fullsuite/`](phase3g-1002-fullsuite/).
+- **1003** `8566aaa` — `ci/stability.sh 10` at `a5f8f6b`, `10/10 passed`, script exit
+  `0`. Evidence: [`phase3g-1003-stability10/`](phase3g-1003-stability10/).
+- **1004** `8e9e84e` — closes the stability gate on task 1003's measurement without a
+  re-run, and names F2/F22 open rather than fixed. Evidence:
+  [`phase3g-1004-stability-gate/`](phase3g-1004-stability-gate/).
+- **1005** `39d7783` + `c5ac60e` (round 2, after validation found the round-1 R76
+  section still carried a stale task-802 "left open" claim) — brings the [R76
+  section](#r76--the-reconcile-repairs-a-terminal-row-with-a-live-pane-tasks-001-002)
+  and its [per-requirement table row](#per-requirement-table) to the narrowed rule
+  this tree ships, naming tasks 901–906 each with sha.
+- **1006** `11a9c9c` (re-verified clean in a later iteration after the committing
+  iteration died before reporting) — brings the [R93
+  section](#r93--an-in-progress-drag-to-copy-selection-is-visible-on-screen-tasks-205207)
+  to the state that `b69b5ba`'s `SPEC.md` §11.8 amendment was forward-reverted by
+  `2d61993`, so R93's shipped behaviour has no `SPEC.md` authority in this tree — the
+  protected-path record this section (d) below links.
+- **1007** `2919df2` (bundle; round 1 failed validation twice on guard (g) alone) +
+  `ffe9a4b` (round 2 follow-up, publishing guard (g)'s post-push pair as real output)
+  — re-verifies all seven of this run's standing guards at the pushed sha. Evidence:
+  [`phase3g-1007-guards/`](phase3g-1007-guards/).
+- **1008** `1a0d877` + `a7c8d76` (round 2, fixing three residues of round 1) — brings
+  `docs/DELIVERY-LOG.md`'s Phase 3g paragraph to approach 10's state of record.
+- **1009** (this section's own two commits) — the close-out you are reading.
+
+### (c) What this close-out links, and why each is the gate of record
+
+- **Whole-suite sweep**: task 1002's
+  [`suite.log`](phase3g-1002-fullsuite/suite.log) and
+  [`suite.log.exitstatus`](phase3g-1002-fullsuite/suite.log.exitstatus) (content
+  `0`) — the mandated launcher, run the mandated way, at `a5f8f6b`.
+- **Stability gate**: task 1003's
+  [`summary.log`](phase3g-1003-stability10/summary.log) and
+  [`script.exitstatus`](phase3g-1003-stability10/script.exitstatus) (content `0`) are
+  the gate of record — task 1004 closed the gate on that same measurement without a
+  re-run, so 1004 contributes no second measurement to supersede it, only the closure
+  record at [`phase3g-1004-stability-gate/README.md`](phase3g-1004-stability-gate/README.md).
+  `summary.log`'s own last line, quoted verbatim: `10/10 passed`.
+- **Guard bundle**: task 1007's
+  [`phase3g-1007-guards/`](phase3g-1007-guards/) (README + seven guard logs +
+  `guard-g-postpush.log` + `reverify-at-2919df2.log`) — all seven guards hold clean
+  at the pushed bundle sha `2919df2`, re-verified again by this task's own commit 2
+  (section (a) above) at a later HEAD.
+- **R76 record**: the [R76 section](#r76--the-reconcile-repairs-a-terminal-row-with-a-live-pane-tasks-001-002)
+  and its [table row](#per-requirement-table), brought current by task 1005.
+- **Protected-path / R93 record**: the [R93 section](#r93--an-in-progress-drag-to-copy-selection-is-visible-on-screen-tasks-205207)
+  and its [table row](#per-requirement-table), brought current by task 1006, and guard
+  (a) in task 1007's bundle, which independently confirms
+  `git diff 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md` is empty.
+
+### (d) Approach 09's tail (tasks 910–914) never ran — the equivalent gates this approach delivers instead
+
+Approach 09's plan chained its closing tasks
+`910 → 911 → 912 → 913 → 914` (whole-suite sweep → stability-10 → guard
+re-verification → delivery-log paragraph → close-out section), and task 910's own
+`dependsOn` list — `903, 904, 905, 907, 909` — included **task 907**, "Restore the
+pre-806 footer test sources while keeping the shared archive predicate", which ended
+`skipped` as genuinely unsatisfiable: its own four sub-criteria are pairwise
+contradictory (byte-for-byte restoring `internal/tui/footer_legend_test.go` to its
+pre-806 text forces the string `footerArchiveEligible` back into a file under
+`internal/`, directly contradicting the same task's `grep -rn footerArchiveEligible
+internal/` prints-nothing clause — full derivation in task 907's own
+`unsatisfiableReason` in `tasks.json`, outside this repository). Because 907 never
+reached a status other than `skipped`, and the scheduler never assigns a task whose
+`dependsOn` names a dead dependency, **tasks 910, 911, 912, 913 and 914 stayed
+`pending` for the remainder of approach 09 and were never executed** — no sweep, no
+stability measurement, no guard re-verification and no close-out section exist for
+approach 09 under any docs/reports/phase3g-91N-*-shaped path, because no task ever
+ran to produce one.
+
+Approach 10 is what supplies the equivalent gates at the tree's actual final state,
+task-for-task: task 1002 is 910's whole-suite sweep, task 1003 (closed by 1004) is
+911's stability-10 measurement, task 1007 is 912's guard re-verification, and this
+section is 914's close-out. (913's delivery-log paragraph is covered by task 1008,
+outside this approach's own numbering but delivering the same content.) None of
+these four approach-10 tasks depends on task 907 or on anything in approach 09's own
+`dependsOn` chain — they were scheduled and delivered against approach 10's own task
+graph, at approach 10's own final code sha `a5f8f6b`, not as a resumption of 910–914's
+abandoned chain.
+
+### (e) Open residuals — named, not rounded up
+
+This close-out asserts no closure for any of the following; each stands exactly as
+its own report or finding row already states it, cited rather than re-argued here:
+
+- **F2** — `TestGoldenMinimumFrame`'s settle flake. Out of scope per the standing
+  rules; no recurrence found this approach ([findings §4](phase3g-findings.md#4-f2--the-golden-frame-settle-flake-no-recurrence-found)).
+  Task 1004 confirms none of task 1003's ten stability logs mention it.
+- **F22** — `internal/interactive`'s `TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern`
+  connect-budget flake under multi-package load. Out of scope; pre-existing in the
+  test harness, not product code ([findings row](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)).
+  Task 1004 confirms none of task 1003's ten stability logs mention it either.
+- **F31** — `features/attention_sort.feature`'s collapsed-strip attention-count lost
+  update: `internal/service/reconcile.go`'s shell-liveness promotion carries neither
+  `ExpectedStatus` nor `AllowedCurrentStatuses`, so a write landing mid-reconcile can
+  still be repaired over. Deliberately left open, diagnosed not fixed, outside
+  R76–R93 ([findings row](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)).
+  Untouched by this approach.
+- **F39** — task 806's own "existing footer legend/parity tests unedited" clause and
+  its "no `footerArchiveEligible` identifier anywhere in `internal/`" clause are
+  mutually exclusive; task 806 stands `failed` on exactly this one-line-each rename
+  residual, not on the shared-`canArchive`-predicate fix itself, which landed
+  ([findings row](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)).
+  No task in this approach is scoped to resolve it.
+- **F40's recorded contradiction** — `SPEC.md`'s transition table (`:485`) and
+  status table (`:504`) read a live-pane `error` row as a normal, self-heal-eligible
+  state, while the self-heal paragraph's own wedge sentence (`:568-570`) — "a row
+  that every action refuses" — is false of that row once task 1001's test is applied
+  (`canKill`/`canReachPane`/`canRestart` all accept it). This approach's tree adopts
+  the narrower reading (task 902) rather than resolving the `SPEC.md`-internal
+  disagreement, which remains exactly that: a disagreement, recorded, not adjudicated
+  by this run ([findings row](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)).
+- **R80 / task 806's residual criterion** — see F39 above and [review finding
+  2](#review-finding-2--r80s-one-definition-per-action-tasks-806808); the per-requirement
+  table's R80 row already states R80 met only via 807/808 plus 806's functional (not
+  criterion-complete) landing.
+- **R93's missing `SPEC.md` authority** — task 1006's own record: `b69b5ba`'s
+  amendment is forward-reverted, so R93's shipped drag-selection behaviour is
+  specified only by the operator's own wording preserved in
+  [`phase3g-909-spec-restore/README.md`](phase3g-909-spec-restore/README.md) and
+  [F41](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why); landing
+  it in `SPEC.md` is the operator's own act, outside this run's protected-path
+  restriction.
+
+No other finding, requirement gap or task residual is claimed resolved or newly
+discovered by this section.
+
+### (f) No claim on this run's own terminal state
+
+This section states what tasks 1001–1009 delivered and what remains open; it makes no
+claim about this run's own overall completion, verdict, or whether every task in
+`tasks.json` has reached a terminal status — that determination belongs to the
+harness, not to a report this task's own commits write.
