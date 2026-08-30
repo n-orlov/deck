@@ -54,8 +54,9 @@ Feature: Sampled probe status truth
     And within one configured reconcile interval deck client "A" row "raced claude" contains "live"
     And the state database session "stale claude" has probe status "running" with reason "working indicator"
     And within one configured reconcile interval deck client "A" row "stale claude" contains "sampled"
-    And the state database session "sampled pi" has probe status "error" with reason "agent error"
-    And within one configured reconcile interval deck client "A" row "sampled pi" contains "sampled"
+    And the state database session "sampled pi" has status "starting" from "tmux" with reason "tmux pane is alive; terminal row corrected"
+    And the probe event count for session "sampled pi" is 1
+    And within one configured reconcile interval deck client "A" row "sampled pi" contains "starting"
     And the state database session "probe shell" has status "running" from "tmux"
     And the probe event count for session "probe shell" is 0
     And deck client "A" row "probe shell" does not contain "sampled"
