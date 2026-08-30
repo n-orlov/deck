@@ -32,6 +32,26 @@ This commit inserts one paragraph, immediately after the existing F31 discussion
 - F2, F20, F22 and F37 are explicitly left recorded open — unaffected by F31's fix, still the
   out-of-scope, never-claimed-fixed items this run's own standing rules name.
 
+## Follow-up: the F37 wording (same task, second commit)
+
+Validation of the first commit (`5708f52`) found the F37 statement contradictory: the disposition
+paragraph left F37 "recorded open" while the task-810 sentence later in the same paragraph said F37
+was **fixed** by task 804 (`46dad5e`). Both halves were true of different things, so neither was
+withdrawn — the wording was made precise instead, in two places and nothing else:
+
+- the disposition paragraph now says which half Phase 3h leaves open for F37: the *product*-side
+  mechanism (the unconditional live-pane repair that can win the reconcile tick and reorder a row),
+  untouched by task 804 and untouched by task 007's promotion guard, reproducible only under the
+  tracked forced interleaving `sh docs/reports/phase3g-810-findings/reproduce-f37.sh`. F2, F20 and
+  F22 stay open alongside it; Phase 3h claims no fix for any of the four.
+- the task-810 sentence now attributes task 804's fix to the *scenario*-side red it actually fixed
+  (`features/sort_order.feature`'s six raw `error` writes, rerouted through a genuine nonzero pane
+  exit) and points at the disposition paragraph for the open product-side half.
+
+This matches `docs/reports/phase3g-findings.md`'s own F37 row, which records exactly that fix and
+exactly that reroute. No claim of a Phase 3h fix for F2, F20, F22 or F37 appears anywhere in the
+paragraph.
+
 No other sentence in the paragraph was rewritten. `git show --stat HEAD` (this task's commit)
 touches only `docs/DELIVERY-LOG.md` and this report directory.
 
