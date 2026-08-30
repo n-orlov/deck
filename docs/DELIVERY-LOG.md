@@ -506,50 +506,81 @@ started at the *lowest* 1-minute loadavg of the ten). The whole suite is green a
 ([log](reports/phase3f-032-fullsuite/go-test-p1-count1-all.log)) and 360s / 306 scenarios at
 `e47cb35`, `defaultTags` untouched in both.
 
-**Phase 3g** — `prds/phase3g-field-backlog.md`, run `deck-phase3g`, 2026-08-27 to 2026-08-28. Eighteen
+**Phase 3g** — `prds/phase3g-field-backlog.md`, run `deck-phase3g`, 2026-08-27 to 2026-08-30. Eighteen
 requirements, **R76–R93**, the operator's field backlog against the Phase 3f build plus one
-mid-run addition, **plus two independent-review findings raised against the six-approach build**
+mid-run addition, **plus three independent-review findings raised against the six-approach build**
 (review at `d266346`): finding 1 — R76's reconcile repair did not reach a bare hook/probe-sourced
-`error` row with no `PaneExitStatus` — and finding 2 — R80's `A`/`x` actions each had (or risked)
-a footer-only eligibility definition diverging from the key handler's own. `SPEC.md` was amended
-twice for this run: first (`2eed8de`, plan change `a03527c`, both pre-existing operator commits and
-ancestors of the run's own base `1cfbd5a`) so R76–R92 each have a spec authority going in, then
-again mid-run (`b69b5ba`, task 205) to add R93's own §11.8 "in-progress selection" clause, under an
-explicit operator licence (steering 018, github.com/n-orlov/deck issue #18) to touch that one
-otherwise-protected section for exactly this addition. Evidence:
-[`docs/reports/phase3g.md`](reports/phase3g.md) (per-requirement, with revert-and-reproduce proofs
-for the eight requirements the PRD named a naive-test trap — R76, R77, R79, R86, R87, R88, R89,
-R91 — plus R93's own retroactive proof, and dedicated sections for both review findings) and
-[`docs/reports/phase3g-findings.md`](reports/phase3g-findings.md) (spec contradictions actually
-met, what the PRD got wrong, and defects found and deliberately not fixed). Commits run
-`1cfbd5a..HEAD`, ending at **final code sha `fdf4507`** — every commit after it is docs-only
-(`git diff --stat fdf4507..HEAD -- '*.go' '*.feature' go.mod go.sum` empty). The phase spent eight
-approaches, distinguished only by their task-id range and each using the same
-`<area>: <why> (task NNN)` commit-subject convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and
-R83–R92 outright and left two gaps in R82; 02 (`1NN`, tasks 101–113) closed one of those gaps and
-the phase's dialog/footer/report-hygiene residue; 03 (`2NN`, tasks 201–214) closed the three
-independent-review findings from that review pass; 04 (`3NN`, tasks 301–309) re-synchronised the
-scenarios review found still racing; 05 (`5NN`, tasks 501–512) fixed three more races found under
-load and drove the stability gate toward 10/10; 06 (`6NN`, tasks 601–608) was the reporting tail
-that closed the two suite-determinism gates by citation at then-final code sha `b0a4e7d` and wrote
-that wave's own close-out; 07 (`7NN`, tasks 701–703) closed review finding 1 by making the repair
-reach a bare hook/probe `error` (task 701, `89edd3c`), enumerated the nine scenarios that repair
-put back into play (task 702, `608e030`) and re-pointed seven of them onto genuine pane exits or a
-widened poll, documenting the remaining two rather than weakening them (task 703, `5ea9475` +
-`2094b83`); 08 (`8NN`, tasks 801–815, this entry among them) is the final wave — it records finding
-1's own SPEC §7 contradiction (task 801, F36), re-points three more of finding 1's fallout
+`error` row with no `PaneExitStatus`; finding 2 — R80's `A`/`x` actions each had (or risked) a
+footer-only eligibility definition diverging from the key handler's own; and finding 3 — task 205's
+`SPEC.md` edit (`b69b5ba`) relied on a steering note's own licence to touch a protected section, and
+review does not honour that licence. `SPEC.md` was amended twice for this run: first (`2eed8de`,
+plan change `a03527c`, both pre-existing operator commits and ancestors of the run's own base
+`1cfbd5a`) so R76–R92 each have a spec authority going in, then again mid-run (`b69b5ba`, task 205)
+to add R93's own §11.8 "in-progress selection" clause, under an explicit operator licence (steering
+018, github.com/n-orlov/deck issue #18) that finding 3 held does not bind this run — only a ruling
+present under read-only `/config/amendments/` does, and the sole such ruling (`001-202.md`) grants
+no protected-path exception. Approach 09's **`2d61993`** (task 909) forward-reverts exactly those
+nine §11.8 lines (`b69b5ba` itself stands unrewritten in published history; `git diff
+1cfbd5a..HEAD -- SPEC.md` empty at every commit since), so R93's shipped drag-selection behaviour
+now has **no SPEC authority anywhere in this tree** — it is specified only by the operator's own
+wording, preserved verbatim in tracked
+[`docs/reports/phase3g-909-spec-restore/README.md`](reports/phase3g-909-spec-restore/README.md)
+and restated as finding **F41**; landing the amendment in `SPEC.md` itself is the operator's own
+act, outside this run. R76's reconcile repair itself was narrowed again by approach 09 (tasks
+901–906, finding **F40**): it repairs a `stopped` row under a live pane whatever its source, and an
+`error` row that carries a pane-exit verdict or a `tmux`-/`user`-sourced verdict, but it deliberately
+never repairs a hook- or probe-sourced `error` row with no pane-exit verdict — narrower than
+approach 07's `89edd3c`, which had made the repair reach every bare `error` row unconditionally to
+close finding 1, before `SPEC.md`'s own precedence rule (`SPEC.md:509,512`) was found to forbid that
+reading. Evidence: [`docs/reports/phase3g.md`](reports/phase3g.md) (per-requirement, with
+revert-and-reproduce proofs for the eight requirements the PRD named a naive-test trap — R76, R77,
+R79, R86, R87, R88, R89, R91 — plus R93's own retroactive proof, and dedicated sections for both
+original review findings) and [`docs/reports/phase3g-findings.md`](reports/phase3g-findings.md)
+(spec contradictions actually met, what the PRD got wrong, and defects found and deliberately not
+fixed). Commits run `1cfbd5a..HEAD`, ending at **final code sha `a5f8f6b`** (task 1001) — every
+commit after it is docs-only (`git diff --stat a5f8f6b..HEAD -- '*.go' '*.feature' '*.sh' '*.toml'
+go.mod go.sum` empty). The whole suite is green at that sha: the mandated, unnarrowed
+`ci/run.sh go test -p=1 -count=1 ./...` exits **`0`**
+([`docs/reports/phase3g-1002-fullsuite/suite.log`](reports/phase3g-1002-fullsuite/suite.log),
+exit status in the sibling
+[`suite.log.exitstatus`](reports/phase3g-1002-fullsuite/suite.log.exitstatus), task 1002), and
+`ci/stability.sh 10` at the same sha is
+**10/10, script exit 0**, quoted verbatim from
+[`docs/reports/phase3g-1003-stability10/summary.log`](reports/phase3g-1003-stability10/summary.log)
+(closed on citation, no re-run, by task 1004). The phase spent ten approaches, distinguished only
+by their task-id range and each using the same `<area>: <why> (task NNN)` commit-subject
+convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and R83–R92 outright and left two gaps in R82;
+02 (`1NN`, tasks 101–113) closed one of those gaps and the phase's dialog/footer/report-hygiene
+residue; 03 (`2NN`, tasks 201–214) closed the three independent-review findings from that review
+pass; 04 (`3NN`, tasks 301–309) re-synchronised the scenarios review found still racing; 05 (`5NN`,
+tasks 501–512) fixed three more races found under load and drove the stability gate toward 10/10;
+06 (`6NN`, tasks 601–608) was the reporting tail that closed the two suite-determinism gates by
+citation at then-final code sha `b0a4e7d` and wrote that wave's own close-out; 07 (`7NN`, tasks
+701–703) closed review finding 1 by making the repair reach a bare hook/probe `error` (task 701,
+`89edd3c`), enumerated the nine scenarios that repair put back into play (task 702, `608e030`) and
+re-pointed seven of them onto genuine pane exits or a widened poll, documenting the remaining two
+rather than weakening them (task 703, `5ea9475` + `2094b83`); 08 (`8NN`, tasks 801–815) records
+finding 1's own SPEC §7 contradiction (task 801, F36), re-points three more of finding 1's fallout
 scenarios (tasks 803–805) while leaving the two that cannot be re-pointed without re-opening
-finding 1 permanently open (F38, task 802 `skipped`/unsatisfiable), closes finding 2's `x` half
-outright (task 807, `b434079`) and its `A` half functionally but not on every literal clause (task
-806 `failed` — the shared predicate landed and is independently exercised by task 808's agreement
-matrix, `33e7935`+`fdf4507`, but 806's own "existing footer tests unedited" clause was breached by
-a one-identifier rename, filed F39 and left as that task's own residual rather than closed), records
-both findings' closures in the report (task 809) and every residual this wave found (task 810,
-F37/F38/F39, plus a corrected F20 restatement), re-measures both suite-determinism gates at the
-true final code sha rather than carrying the approach-06 numbers forward (tasks 811/812, both
-`skipped`/unsatisfiable — see below), re-verifies every guard (task 813, `skipped`/unsatisfiable on
-one impossible clause, bundle itself landed at `8eaf474`..`9e86f4c`), rewrites this paragraph (task
-814) and writes the approach's own close-out section (task 815).
+finding 1 open at that wave's own tree (F38, task 802 `skipped`/unsatisfiable), closes finding 2's
+`x` half outright (task 807, `b434079`) and its `A` half functionally but not on every literal
+clause (task 806 `failed`, F39), records both findings' closures in the report (task 809) and every
+residual this wave found (task 810, F37/F38/F39, plus a corrected F20 restatement), re-measures
+both suite-determinism gates at that wave's then-final code sha and finds them regressed rather
+than carrying the approach-06 numbers forward (tasks 811/812, both `skipped`/unsatisfiable), and
+re-verifies every guard (task 813, `skipped`/unsatisfiable on one impossible clause); 09 (`9NN`,
+tasks 901–909) resolved finding 3 by forward-reverting the protected `SPEC.md` edit (task 909,
+`2d61993`, F41) and, reading `SPEC.md`'s own precedence rule against its self-heal paragraph,
+narrowed the repair finding 1 had widened unconditionally down to the rule F40 records (tasks
+901–906) — a narrowing, not a fix, that also makes `status_attach.feature:18` and the other
+scenarios approach 08 left open at F38 pass again, closing that regression without re-opening
+finding 1; 10 (`10NN`, tasks 1001–1009, this entry among them) is the final wave — it pins by test
+that no eligibility predicate refuses a live-pane hook-sourced `error` row (task 1001, `a5f8f6b`),
+re-sweeps the whole suite green at that sha (task 1002), re-measures the stability gate 10/10 at
+the same sha and closes it on citation (tasks 1003/1004), brings `docs/reports/phase3g.md`'s R76
+and R93 records to this state (tasks 1005/1006), re-verifies every guard at the true final sha
+(task 1007), rewrites this paragraph (task 1008) and writes the approach's own close-out section
+(task 1009).
 
 **The two suite-determinism gates are red at the phase's true final code sha, not green — a direct,
 understood consequence of review finding 1's own closure, cited rather than re-run to chase a
