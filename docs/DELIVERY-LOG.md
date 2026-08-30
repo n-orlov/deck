@@ -508,39 +508,78 @@ started at the *lowest* 1-minute loadavg of the ten). The whole suite is green a
 
 **Phase 3g** — `prds/phase3g-field-backlog.md`, run `deck-phase3g`, 2026-08-27 to 2026-08-28. Eighteen
 requirements, **R76–R93**, the operator's field backlog against the Phase 3f build plus one
-mid-run addition. `SPEC.md` was amended twice for this run: first (`2eed8de`, plan change
-`a03527c`, both pre-existing operator commits and ancestors of the run's own base `1cfbd5a`) so
-R76–R92 each have a spec authority going in, then again mid-run (`b69b5ba`, task 205) to add
-R93's own §11.8 "in-progress selection" clause, under an explicit operator licence (steering 018,
-github.com/n-orlov/deck issue #18) to touch that one otherwise-protected section for exactly this
-addition. Evidence: [`docs/reports/phase3g.md`](reports/phase3g.md) (per-requirement, with
-revert-and-reproduce proofs for the eight requirements the PRD named a naive-test trap — R76,
-R77, R79, R86, R87, R88, R89, R91 — plus R93's own retroactive proof) and
+mid-run addition, **plus two independent-review findings raised against the six-approach build**
+(review at `d266346`): finding 1 — R76's reconcile repair did not reach a bare hook/probe-sourced
+`error` row with no `PaneExitStatus` — and finding 2 — R80's `A`/`x` actions each had (or risked)
+a footer-only eligibility definition diverging from the key handler's own. `SPEC.md` was amended
+twice for this run: first (`2eed8de`, plan change `a03527c`, both pre-existing operator commits and
+ancestors of the run's own base `1cfbd5a`) so R76–R92 each have a spec authority going in, then
+again mid-run (`b69b5ba`, task 205) to add R93's own §11.8 "in-progress selection" clause, under an
+explicit operator licence (steering 018, github.com/n-orlov/deck issue #18) to touch that one
+otherwise-protected section for exactly this addition. Evidence:
+[`docs/reports/phase3g.md`](reports/phase3g.md) (per-requirement, with revert-and-reproduce proofs
+for the eight requirements the PRD named a naive-test trap — R76, R77, R79, R86, R87, R88, R89,
+R91 — plus R93's own retroactive proof, and dedicated sections for both review findings) and
 [`docs/reports/phase3g-findings.md`](reports/phase3g-findings.md) (spec contradictions actually
 met, what the PRD got wrong, and defects found and deliberately not fixed). Commits run
-`1cfbd5a..HEAD`, ending at **final code sha `b0a4e7d`** — every commit after it is docs-only. The
-phase spent six approaches, distinguished only by their task-id range and each using the same
+`1cfbd5a..HEAD`, ending at **final code sha `fdf4507`** — every commit after it is docs-only
+(`git diff --stat fdf4507..HEAD -- '*.go' '*.feature' go.mod go.sum` empty). The phase spent eight
+approaches, distinguished only by their task-id range and each using the same
 `<area>: <why> (task NNN)` commit-subject convention: 01 (`0NN`, tasks 001–042) landed R76–R81 and
 R83–R92 outright and left two gaps in R82; 02 (`1NN`, tasks 101–113) closed one of those gaps and
 the phase's dialog/footer/report-hygiene residue; 03 (`2NN`, tasks 201–214) closed the three
 independent-review findings from that review pass; 04 (`3NN`, tasks 301–309) re-synchronised the
 scenarios review found still racing; 05 (`5NN`, tasks 501–512) fixed three more races found under
-load and drove the stability gate toward 10/10; 06 (`6NN`, tasks 601–608, this entry among them)
-is the reporting tail that closes the gates by citation, re-verifies every guard and writes this
-close-out.
+load and drove the stability gate toward 10/10; 06 (`6NN`, tasks 601–608) was the reporting tail
+that closed the two suite-determinism gates by citation at then-final code sha `b0a4e7d` and wrote
+that wave's own close-out; 07 (`7NN`, tasks 701–703) closed review finding 1 by making the repair
+reach a bare hook/probe `error` (task 701, `89edd3c`), enumerated the nine scenarios that repair
+put back into play (task 702, `608e030`) and re-pointed seven of them onto genuine pane exits or a
+widened poll, documenting the remaining two rather than weakening them (task 703, `5ea9475` +
+`2094b83`); 08 (`8NN`, tasks 801–815, this entry among them) is the final wave — it records finding
+1's own SPEC §7 contradiction (task 801, F36), re-points three more of finding 1's fallout
+scenarios (tasks 803–805) while leaving the two that cannot be re-pointed without re-opening
+finding 1 permanently open (F38, task 802 `skipped`/unsatisfiable), closes finding 2's `x` half
+outright (task 807, `b434079`) and its `A` half functionally but not on every literal clause (task
+806 `failed` — the shared predicate landed and is independently exercised by task 808's agreement
+matrix, `33e7935`+`fdf4507`, but 806's own "existing footer tests unedited" clause was breached by
+a one-identifier rename, filed F39 and left as that task's own residual rather than closed), records
+both findings' closures in the report (task 809) and every residual this wave found (task 810,
+F37/F38/F39, plus a corrected F20 restatement), re-measures both suite-determinism gates at the
+true final code sha rather than carrying the approach-06 numbers forward (tasks 811/812, both
+`skipped`/unsatisfiable — see below), re-verifies every guard (task 813, `skipped`/unsatisfiable on
+one impossible clause, bundle itself landed at `8eaf474`..`9e86f4c`), rewrites this paragraph (task
+814) and writes the approach's own close-out section (task 815).
 
-**The two suite-determinism gates, both closed by citation of a measurement already held at the
-final code tree, neither re-run to move a number.** The whole suite is green at the final code sha
-`b0a4e7d`: `ci/run.sh go test -p=1 -count=1 ./...`, captured exit status **`0`**, 17/17 Go packages
-accounted for (14 `ok`, 3 `[no test files]`), 311 Gherkin scenarios (311 passed), swept once at the
-docs-only descendant `b4c90ca`, whose empty code-pattern diff back to `b0a4e7d` proves the tree is
-identical (task 604, [report](reports/phase3g-604-fullsuite/README.md),
-[exit status](reports/phase3g-604-fullsuite/full-suite.exitstatus)). `ci/stability.sh 10` at that
-same final code sha is **10/10 passed, script exit status 0** — task 507's round 3, quoted
-verbatim from [`phase3g-507-stability10/round3/summary.log`](reports/phase3g-507-stability10/round3/summary.log)
-and closed by citation rather than a re-run in task 605's own note
-([report](reports/phase3g-605-stability-gate/README.md)), backed by an empty code-pattern diff
-from the measurement's launch commit `16186e3` all the way to `HEAD`.
+**The two suite-determinism gates are red at the phase's true final code sha, not green — a direct,
+understood consequence of review finding 1's own closure, cited rather than re-run to chase a
+number.** Task 811's whole-suite sweep (`nohup ci/run.sh go test -p=1 -count=1 ./...`, verbatim,
+unnarrowed) exits **`1`** at `17b1649` (code state `fdf4507`), deterministically, on
+`TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict`
+(`features/status_attach.feature:18`) — finding F38's own mechanism: R76's repair runs
+synchronously inside the same `deck _hook` subprocess that wrote the hook-sourced `error`, before
+that subprocess returns, so there is no window in which the scenario can observe the pre-repair row
+without weakening its own `!`-marker assertions, and both available fixes (weaken the scenario, or
+gate the repair) are independently forbidden by this run's own standing rules. Filed unsatisfiable
+rather than fixed (task 811). `ci/stability.sh 10` at the same tree measures, quoted verbatim from
+[`phase3g-812-stability10/summary.log`](reports/phase3g-812-stability10/summary.log) at code sha
+**`17b1649`** (code state identical to `fdf4507`; `git diff --stat 17b1649..HEAD -- '*.go'
+'*.feature' go.mod go.sum` empty):
+
+```
+0/10 passed
+```
+
+script exit status **`1`** ([`stability08.exitstatus`](reports/phase3g-812-stability10/stability08.exitstatus)),
+all ten runs failing on the identical `attach_acknowledges_a_live_error_without_replacing_its_verdict`
+mechanism above, with two further non-deterministic flakes also observed and logged:
+`status_probe.feature`'s "Stale sampling..." scenario (6/10 runs, same repair-timing mechanism,
+probe-sourced) and `attach_scroll.feature`'s wheel-notch scenario (1/10 runs, an unrelated tmux
+status-line clock-tick timing artifact). Filed unsatisfiable rather than rounded up or re-run (task
+812). Both gates were 10/10 (Go suite exit `0`) green at approach 06's then-final sha `b0a4e7d` —
+task 507's round 3, [`phase3g-507-stability10/round3/summary.log`](reports/phase3g-507-stability10/round3/summary.log)
+— and the regression is real, caused by making review finding 1's repair correctly unconditional
+(F36), not a re-baselining or a rounding error.
 
 **R82 (dialogs are themed) is resolved, not partial.** Task 016's own create-modal theming pass
 reported its success criteria unsatisfiable (a pre-existing PTY assertion could not survive full
@@ -554,36 +593,50 @@ background §11.4 requires — was closed by task 105, `ea6ce4b` (finding
 per-requirement table in `docs/reports/phase3g.md` carries both closures; nothing in the eighteen
 requirements is less than fully met.
 
-**Four items are named open, never claimed fixed, exactly as this run's own standing rules
-require.** A genuine, durable lost update in `internal/service/reconcile.go`'s unconditional
-shell-liveness promotion, discovered while fixing a scenario-side synchronisation symptom in
-`attention_sort.feature` (finding
+**Six items are named open, never claimed fixed, exactly as this run's own standing rules
+require — plus one item task 810 filed and this same wave already closed.** A genuine, durable
+lost update in `internal/service/reconcile.go`'s unconditional shell-liveness promotion, discovered
+while fixing a scenario-side synchronisation symptom in `attention_sort.feature` (finding
 [F31](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why), part of the
 F29–F32 cluster task 601 filed): diagnosed and measured (36/80 failures under synthetic load, 0 of
 them on the count assertion itself) but not fixed, because no requirement in this plan covers that
-promotion policy and a product change there would invalidate the already-held 10/10 gate. Two
+promotion policy and a product change there would invalidate the (now-superseded) 10/10 gate. Two
 standing Phase 3f flakes, out of scope by this run's own rules and not reproduced by any tracked
 log this phase: `TestGoldenMinimumFrame`'s settle flake, F2
 ([disposition](reports/phase3g-findings.md#4-f2--the-golden-frame-settle-flake-no-recurrence-found)),
 and `internal/interactive`'s `ByteArrivalPattern` connect-budget flake, F22
-([row](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)). And the
+([row](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)). The
 `status_recovery.feature` dup-pane scenario's race against R76's own reconcile repair, first
 disclosed by task 002's evidence and carried as finding F20
 ([row](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)) — its
-original scenario-level symptom was rewritten onto a store read by task 040, but the underlying
+original scenario-level symptom was rewritten onto a store read by task 040, and task 810's own
+restatement (`17b1649`) stopped that restatement contradicting itself, but the underlying
 interaction between R76's self-heal and any scenario that poses a terminal write into a still-live
-pane is a standing one, named here rather than declared closed.
+pane is a standing one, named here rather than declared closed. Task 810 also filed three findings
+of its own this wave: [F37](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
+(`features/sort_order.feature`'s six raw `error` writes racing F36's own repair — **fixed**, task
+804, `46dad5e`, with a one-command tracked reproducer of the pre-fix red,
+`sh docs/reports/phase3g-810-findings/reproduce-f37.sh`); the two genuinely open ones this
+paragraph's own gate section already used above,
+[F38](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) (a hook-sourced
+live-pane `error` has zero observable window for `status_attach.feature`'s scenario shape — not
+fixed, and not fixable without re-opening review finding 1) and
+[F39](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) (task 806's
+mutually exclusive "tests unedited" and "rename away from the footer-scoped name" clauses — not
+fixed, left as that task's own residual).
 
 **Close-out.** [Task 113's original close-out](reports/phase3g-113-closeout/README.md) covered
 approaches 01–02's protected-path audit and citation sweeps; approach 06's own
-[close-out section](reports/phase3g.md#close-out-approach-06) (task 607) supersedes it against the
-phase's true final state — the final-sha attestation, both gates above, the seven-guard
-re-verification (task 606, [report](reports/phase3g-606-guards/README.md)), every approach this
-run spent with its task-id range, and a table of every approach 01–05 task that ended in a
-non-`completed` status naming, for each, the sha(s) and tracked evidence directory (or open
-finding) that actually delivered its scope. This paragraph is the delivery-log half that table's
-rows 042, 309 and 511 point at; its own undelivered state was carried as open residual finding F35
-until this commit, which closes it.
+[close-out section](reports/phase3g.md#close-out-approach-06) (task 607) superseded it against
+that wave's own then-final state (`b0a4e7d`, both gates green) and closed this paragraph's earlier
+stale version as finding F35 (`bb72d96`/`d266346`). Approach 08's own close-out section, task 815,
+supersedes approach 06's in turn against the phase's true final state recorded in this paragraph
+above: final code sha `fdf4507`, both review findings' closures, both suite-determinism gates now
+red and why, task 813's guard re-verification, and a table of every approach 07–08 task that ended
+in a non-`completed` status naming, for each, the sha(s) and tracked evidence directory (or open
+finding) that actually delivered its scope — the same shape approach 06's table used for approaches
+01–05. This commit (task 814) is written first because task 815's own close-out section needs a
+current delivery-log paragraph to point at, not the other way round.
 
 ## Other milestones
 
