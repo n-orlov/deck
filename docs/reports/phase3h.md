@@ -196,9 +196,9 @@ This section, the final-code-sha block above and the per-requirement table below
 brought current by task 209, whose own citation check is
 `docs/reports/phase3h-209-report/README.md`. Task 209's first commit is `426fb3a`; review
 found that commit's table incomplete (it omitted `1f47503`, `c69720f`, `5326e39` and
-`426fb3a` itself), and this data commit is the correction. A commit cannot quote its own sha,
-so the immediately following docs-only addendum names this data commit's sha in the table's
-last row; the addendum's own sha is in turn named by task 211's guard report and task 212's
+`426fb3a` itself), and the data commit `5b7c9e3` is the correction. A commit cannot quote its
+own sha, so this docs-only addendum — the one addendum the task allows — adds `5b7c9e3` to the
+R97 row; the addendum's own sha is in turn named by task 211's guard report and task 212's
 close-out.
 
 Tasks 210 (`docs/reports/phase3h-findings.md`'s refresh), 211 (the guard re-verification
@@ -215,18 +215,17 @@ records all three shas.
 | R94 | met | 001–003 | `f700025`, `2f952da`, `afa55b8`, `9cd8f37`, `357867e`, `67cefcd`, `7634895` | `docs/reports/phase3h-001-status-probe-revert/`, `docs/reports/phase3h-002-narrow-repair/`, `docs/reports/phase3h-003-r94-scenarios/` |
 | R95 | met | 004–005 | `d578c03`, `2c2ec30` | `docs/reports/phase3h-005-hint-token/` |
 | R96 | met | 006–007 | `8d6ed72`, `2ccb1d3` | `docs/reports/phase3h-006-f31/`, `docs/reports/phase3h-007-f31-guard/` |
-| R97 | met | 008–015, 201–209 (210–212 have no commit yet) | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852`, `4673fb9`, `b5e4178`, `ed469e4`, `c69720f`, `5326e39`, `4b1d4dc`, `1f47503`, `c9e88cb`, `fc358c0`, `011b04b`, `79b56d9`, `52e9045`, `50960b9`, `9cff1ea`, `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf`, `426fb3a` | `docs/reports/phase3h-008-fullsuite/` (superseded), `docs/reports/phase3h-009-fullsuite-verbose/` (superseded), `docs/reports/phase3h-010-stability10/` (superseded), `docs/reports/phase3h-012-delivery-log/`, `docs/reports/phase3h-013-report/`, `docs/reports/phase3h-015-guards/` (superseded), `docs/reports/phase3h-findings.md`, `docs/reports/phase3h-201-gofmt/`, `docs/reports/phase3h-202-fullsuite/`, `docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3h-204-stability10/`, `docs/reports/phase3h-205-r76-disposition/`, `docs/reports/phase3h-206-3g-findings-disposition/`, `docs/reports/phase3h-207-delivery-log-3g/`, `docs/reports/phase3h-208-delivery-log-3h/`, `docs/reports/phase3h-209-report/` |
+| R97 | met | 008–015, 201–209 (210–212 have no commit yet) | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852`, `4673fb9`, `b5e4178`, `ed469e4`, `c69720f`, `5326e39`, `4b1d4dc`, `1f47503`, `c9e88cb`, `fc358c0`, `011b04b`, `79b56d9`, `52e9045`, `50960b9`, `9cff1ea`, `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf`, `426fb3a`, `5b7c9e3` | `docs/reports/phase3h-008-fullsuite/` (superseded), `docs/reports/phase3h-009-fullsuite-verbose/` (superseded), `docs/reports/phase3h-010-stability10/` (superseded), `docs/reports/phase3h-012-delivery-log/`, `docs/reports/phase3h-013-report/`, `docs/reports/phase3h-015-guards/` (superseded), `docs/reports/phase3h-findings.md`, `docs/reports/phase3h-201-gofmt/`, `docs/reports/phase3h-202-fullsuite/`, `docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3h-204-stability10/`, `docs/reports/phase3h-205-r76-disposition/`, `docs/reports/phase3h-206-3g-findings-disposition/`, `docs/reports/phase3h-207-delivery-log-3g/`, `docs/reports/phase3h-208-delivery-log-3h/`, `docs/reports/phase3h-209-report/` |
 
 ### Delivery-commit completeness
 
 The four rows above name, between them, every commit of `a24ff8d..HEAD` that existed when this
-refresh was written: the R94 row's seven, the R95 row's two, the R96 row's two and the R97
-row's twenty-five — thirty-six in all, which is exactly `git rev-list a24ff8d..HEAD --count`
-at task 209's first commit `426fb3a`. Only this refresh's own two commits can fall outside that
-set, because neither can quote its own sha: the addendum immediately below adds the data
-commit's sha to the R97 row, and the addendum's own sha is recorded by task 211's guard report
-and task 212's close-out. The counts and the set comparison — which commits of the range the
-report does and does not cite — are run and quoted in
+refresh's data commit `5b7c9e3` landed: the R94 row's seven, the R95 row's two, the R96 row's
+two and the R97 row's twenty-six — thirty-seven in all, which is exactly
+`git rev-list a24ff8d..HEAD --count` at `5b7c9e3`. Only this addendum's own commit falls
+outside that set, because no commit can quote its own sha; its sha is recorded by task 211's
+guard report and task 212's close-out. The counts and the set comparison — which commits of
+the range the report does and does not cite — are run and quoted in
 `docs/reports/phase3h-209-report/README.md`.
 
 Every sha this report cites — the table's, plus the R94/R95/R96 revert-target shas
