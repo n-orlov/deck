@@ -143,6 +143,30 @@ as specified, the same class of case F20 already documents for a raw state-datab
 write — not a spec contradiction, and not grounds to loosen or bypass the repair.
 Evidence: [`phase3g-103-hook-sessionend-repair/`](phase3g-103-hook-sessionend-repair/).
 
+**Tasks 901/902, the repair narrowed to spare a bare hook/probe `error`** (approach
+09). `SPEC.md` §7 disagrees with itself about what the live-pane self-heal repair
+exists to fix, recorded as [F40 in
+`phase3g-findings.md`](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why)
+(task 901, `c19bdde`), which adopts this rule: repair a `stopped` row under a live
+pane whatever its source — that is the actual action-refusing wedge, and
+`canResume`/`canReachPane` gate on exactly it; repair an `error` row that carries a
+pane-exit verdict (a genuine, already-collected crash re-observed live) or a
+`tmux`- or `user`-sourced verdict (nothing outranks tmux liveness on those, per
+precedence); never repair a `hook`- or `probe`-sourced `error` row that carries no
+pane-exit verdict — that shape sits at precedence's top two tiers, and overwriting
+it is exactly what the measured `812` failure the finding quotes shows going wrong.
+**Implementing sha: `a1ca33e`** (task 902) narrows
+`internal/service/reconcile.go`'s trigger to this rule, replacing the test that
+pinned the old unconditional behaviour with two new tests (hook- and
+probe-sourced) proving a live-pane bare `error` row is left untouched. Scenario
+evidence that the narrowing reopens exactly the two scenarios review finding 1
+named, without editing either scenario's assertions:
+[`docs/reports/phase3g-904-review-finding-1/`](phase3g-904-review-finding-1/) (task
+904) — three consecutive green runs of `status_attach.feature` and
+`status_probe.feature`, diff-empty against `1cfbd5a`. The repair is therefore **no
+longer unconditional over `error` rows**: only a pane-exit or `tmux`/`user`-sourced
+`error` qualifies, never a bare hook/probe one.
+
 ## R77 — a deleted session's name is reusable (tasks 003–006)
 
 `SPEC.md` §9.2. **Implementing shas: `b80a4bd` + `70162d4`** (task 003, the tx-scoped
@@ -1904,7 +1928,12 @@ only paths under `docs/`.
 The phase's tests are green at the requirement level (R76–R93, both independent-review
 findings closed) but **not** at the whole-suite-and-stability gate this run's own
 standing rules define "green" by: the gate regressed after approach 06 because
-finding 1's repair is now correctly unconditional and permanently defeats
-`status_attach.feature`'s live-error scenario (F38). This is stated here exactly as
-task 814's delivery-log paragraph states it — no rounding, no "partial" euphemism.
+finding 1's repair was, at this close-out's own state of record (`fdf4507`), made
+unconditional and permanently defeated `status_attach.feature`'s live-error scenario
+(F38). This is stated here exactly as task 814's delivery-log paragraph stated it at
+the time — no rounding, no "partial" euphemism. **Superseded by approach 09**: the
+repair is narrowed back — see the [R76 section](#r76--the-reconcile-repairs-a-terminal-row-with-a-live-pane-tasks-001-002)'s
+"Tasks 901/902" paragraph — so it is no longer unconditional over `error` rows and no
+longer defeats that scenario (task 904's evidence:
+[`phase3g-904-review-finding-1/`](phase3g-904-review-finding-1/)).
 
