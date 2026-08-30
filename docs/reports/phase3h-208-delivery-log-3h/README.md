@@ -54,7 +54,7 @@ generated/untracked directory.
 | `SPEC.md` | path | `git ls-files --error-unmatch SPEC.md` | tracked |
 | `ci/Dockerfile` | path | `git ls-files --error-unmatch ci/Dockerfile` | tracked |
 | `ci/SPIKE.md` | path | `git ls-files --error-unmatch ci/SPIKE.md` | tracked |
-| `prds/` | path (dir) | `git ls-files --error-unmatch prds/phase3h-suite-reconciliation.md` (spot-checked, next row) | tracked |
+| `prds/` | path (dir) | `git ls-files --error-unmatch prds/` | tracked |
 | `prds/phase3h-suite-reconciliation.md` | path | `git ls-files --error-unmatch prds/phase3h-suite-reconciliation.md` | tracked |
 | `docs/reports/phase3h.md` | path | `git ls-files --error-unmatch docs/reports/phase3h.md` | tracked |
 | `docs/reports/phase3h-findings.md` | path | `git ls-files --error-unmatch docs/reports/phase3h-findings.md` | tracked |
@@ -69,13 +69,74 @@ Run as one batch, quoted:
 $ git cat-file -e 4b1d4dc^{commit} && git cat-file -e a24ff8d^{commit} \
     && git cat-file -e de90a5c^{commit} && git cat-file -e HEAD^{commit} && echo ALL_SHAS_OK
 ALL_SHAS_OK
-$ git ls-files --error-unmatch SPEC.md ci/Dockerfile ci/SPIKE.md \
+$ git ls-files --error-unmatch SPEC.md ci/Dockerfile ci/SPIKE.md prds/ \
     prds/phase3h-suite-reconciliation.md docs/reports/phase3h.md docs/reports/phase3h-findings.md \
     docs/reports/phase3h-202-fullsuite/README.md docs/reports/phase3h-203-fullsuite-verbose/README.md \
     docs/reports/phase3h-204-stability10/README.md docs/reports/phase3h-204-stability10/summary.log \
-    && echo ALL_PATHS_OK
+    >/dev/null && echo ALL_PATHS_OK
 ALL_PATHS_OK
 ```
+
+## One quoted check per enumerated token, run individually
+
+The batch above is a convenience; below is the required per-token evidence — every one of the
+sixteen tokens enumerated mechanically above gets its own command and its own verbatim output, in
+the enumeration's own order. No token is covered by another token's check, and no token is
+spot-checked via a sibling path.
+
+```
+$ git cat-file -e 4b1d4dc^{commit} && echo SHA_OK
+SHA_OK
+$ git ls-files --error-unmatch SPEC.md
+SPEC.md
+$ git cat-file -e a24ff8d^{commit} && git cat-file -e HEAD^{commit} && echo RANGE_ENDPOINTS_OK
+RANGE_ENDPOINTS_OK
+$ git cat-file -e a24ff8d^{commit} && echo SHA_OK
+SHA_OK
+$ git ls-files --error-unmatch ci/Dockerfile
+ci/Dockerfile
+$ git ls-files --error-unmatch ci/SPIKE.md
+ci/SPIKE.md
+$ git cat-file -e de90a5c^{commit} && git cat-file -e HEAD^{commit} && echo RANGE_ENDPOINTS_OK
+RANGE_ENDPOINTS_OK
+$ git cat-file -e de90a5c^{commit} && echo SHA_OK
+SHA_OK
+$ git ls-files --error-unmatch docs/reports/phase3h-202-fullsuite/README.md
+docs/reports/phase3h-202-fullsuite/README.md
+$ git ls-files --error-unmatch docs/reports/phase3h-203-fullsuite-verbose/README.md
+docs/reports/phase3h-203-fullsuite-verbose/README.md
+$ git ls-files --error-unmatch docs/reports/phase3h-204-stability10/README.md
+docs/reports/phase3h-204-stability10/README.md
+$ git ls-files --error-unmatch docs/reports/phase3h-204-stability10/summary.log
+docs/reports/phase3h-204-stability10/summary.log
+$ git ls-files --error-unmatch docs/reports/phase3h-findings.md
+docs/reports/phase3h-findings.md
+$ git ls-files --error-unmatch docs/reports/phase3h.md
+docs/reports/phase3h.md
+$ git ls-files --error-unmatch prds/
+prds/phase0-harness-and-skeleton.md
+prds/phase0b-harness-hardening.md
+prds/phase1-durable-identity-and-agents.md
+prds/phase2-status-truth.md
+prds/phase2b1-visible-shell.md
+prds/phase2b2-configuration-and-appearance.md
+prds/phase3-sessions-and-lifecycle.md
+prds/phase3b-interactive-preview.md
+prds/phase3c-residual-and-interactive-preview.md
+prds/phase3e-list-ergonomics-and-chrome.md
+prds/phase3f-residuals-and-suite-determinism.md
+prds/phase3g-field-backlog.md
+prds/phase3h-suite-reconciliation.md
+prds/spike-sibling-toolchain.md
+prds/spike-tmux-embedded-preview.md
+$ git ls-files --error-unmatch prds/phase3h-suite-reconciliation.md
+prds/phase3h-suite-reconciliation.md
+```
+
+The directory token `prds/` is checked as itself (`git ls-files --error-unmatch prds/`, exit 0,
+fifteen tracked files listed) — it is no longer substituted by, or spot-checked through, the
+single-file token `prds/phase3h-suite-reconciliation.md`, which carries its own separate check.
+Listing every token's command verbatim is deliberate: a reader can re-run the block line by line.
 
 ## The two range claims the paragraph makes, re-verified
 
