@@ -220,10 +220,16 @@ func dialogSurfaceChecks() []struct {
 // internal/tui that call bgColorToken(theme.Selection, ...) -- see
 // TestDialogSelectionRenderersComposeOnlyFloorTokens in internal/tui,
 // which enumerates both by AST and fails if either is ever made to
-// compose a token this slice does not list. That test reads THIS
-// declaration out of this file's own AST rather than keeping a second
-// copy of the set, so the floor table and its completeness proof cannot
-// drift: renaming or emptying this variable fails that test outright.
+// compose a token this slice does not list, and its render-level twin
+// TestDialogSelectionCellsRenderOnlyFloorTokens, which renders every
+// themed dialog on every built-in into a terminal emulator and fails if
+// any CELL on the selection background carries a foreground this slice
+// does not list -- so a token that reaches a focused row by a route no
+// static pass follows (a helper, a later `segs[i].Tok = ...`, a run-time
+// value) is caught too. Both tests read THIS declaration out of this
+// file's own AST rather than keeping a second copy of the set, so the
+// floor table and its completeness proofs cannot drift: renaming or
+// emptying this variable fails them outright.
 // Both sites compose only a field's label (hint) and its value (text)
 // onto that background; no
 // current dialog puts dimmed (per-field help), key (a footer keycap) or

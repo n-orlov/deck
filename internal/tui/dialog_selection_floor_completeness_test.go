@@ -212,41 +212,77 @@ func isRenderCreateRowSegmentsCall(call *ast.CallExpr) bool {
 	return ok && sel.Sel.Name == "renderCreateRowSegments"
 }
 
-// tokExpr is one `Tok:` field value found in a settingsRowSegment
-// composite literal, kept with its position so an unresolvable one can be
-// reported precisely.
+// tokExpr is one expression a settingsRowSegment's Tok field is set from
+// -- a `Tok:` composite-literal value or an assignment's right-hand side
+// -- kept with its position so an unresolvable one can be reported
+// precisely. expr is nil when the Tok field is written in a form
+// collectTokExprs cannot pair with a value; the caller turns that into a
+// failure.
 type tokExpr struct {
 	expr ast.Expr
 	pos  token.Pos
 }
 
-// collectTokExprs walks node's subtree and returns every expression used
-// as the Tok field of a composite literal within it. settingsRowSegment
-// (settings.go) is the only struct in this package with a `Tok
-// theme.Token` field, so matching on the `Tok:` key alone -- rather than
-// resolving the composite literal's own type, which the untyped
+// collectTokExprs walks node's subtree and returns every expression a Tok
+// field within it is set FROM, in either of the two forms Go offers:
+//
+//   - as the `Tok:` value of a composite literal (`{Text: ..., Tok: X}`),
+//     and
+//   - as the right-hand side of an assignment to a Tok field
+//     (`seg.Tok = X`, `segs[i].Tok = X`, `p.Tok = X`) -- the form task
+//     1204's second attempt missed, and the form validation used to slip
+//     a sub-floor `theme.Dimmed` into renderRenameFieldRow's already-
+//     built segments without this test noticing.
+//
+// settingsRowSegment (settings.go) is the only struct in this package with
+// a `Tok theme.Token` field, so matching on the field NAME alone -- rather
+// than resolving the composite literal's own type, which the untyped
 // `{Text: ..., Tok: ...}` form inside a `[]settingsRowSegment{...}` slice
 // literal elides -- reliably identifies every one, in both its typed and
-// elided forms. The VALUE is returned unresolved on purpose: resolution
-// (and the fail-closed error for anything unresolvable) belongs to the
-// caller, which knows the enclosing scope.
+// elided forms. An assignment whose shape this cannot read off (a tuple
+// assignment `a.Tok, b.Tok = f()`, or a compound `a.Tok += x`) yields a
+// nil expr, which the caller reports as unresolvable: fail closed, never
+// skip.
+//
+// Resolution of the returned expressions (and the fail-closed error for
+// anything unresolvable) belongs to the caller, which knows the enclosing
+// scope.
 func collectTokExprs(node ast.Node) []tokExpr {
 	var found []tokExpr
+	isTokSelector := func(e ast.Expr) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		return ok && sel.Sel.Name == "Tok"
+	}
 	ast.Inspect(node, func(n ast.Node) bool {
-		cl, ok := n.(*ast.CompositeLit)
-		if !ok {
-			return true
-		}
-		for _, elt := range cl.Elts {
-			kv, ok := elt.(*ast.KeyValueExpr)
-			if !ok {
-				continue
+		switch s := n.(type) {
+		case *ast.CompositeLit:
+			for _, elt := range s.Elts {
+				kv, ok := elt.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				key, ok := kv.Key.(*ast.Ident)
+				if !ok || key.Name != "Tok" {
+					continue
+				}
+				found = append(found, tokExpr{kv.Value, kv.Value.Pos()})
 			}
-			key, ok := kv.Key.(*ast.Ident)
-			if !ok || key.Name != "Tok" {
-				continue
+		case *ast.AssignStmt:
+			for i, lhs := range s.Lhs {
+				if !isTokSelector(lhs) {
+					continue
+				}
+				if s.Tok != token.ASSIGN || len(s.Rhs) != len(s.Lhs) {
+					// A compound assignment, or a tuple assignment
+					// whose right-hand side is a single call: the
+					// value cannot be paired with this Tok field
+					// here, so hand the caller a nil expr and let it
+					// fail closed.
+					found = append(found, tokExpr{nil, lhs.Pos()})
+					continue
+				}
+				found = append(found, tokExpr{s.Rhs[i], s.Rhs[i].Pos()})
 			}
-			found = append(found, tokExpr{kv.Value, kv.Value.Pos()})
 		}
 		return true
 	})
@@ -279,19 +315,28 @@ func sortedKeys(m map[string]bool) []string {
 //     renderRenameFieldRow (rename.go) -- a third site, or either of
 //     these two disappearing, fails this test rather than silently going
 //     unchecked.
-//  2. Every settingsRowSegment `Tok:` expression built in the scope that
-//     feeds either site (renderRenameFieldRow's own body; for
+//  2. Every settingsRowSegment Tok field written in the scope that
+//     feeds either site -- as a `Tok:` composite-literal value OR as the
+//     target of a later assignment (`segs[i].Tok = ...`) -- is resolved
+//     the same fail-closed way (renderRenameFieldRow's own body; for
 //     renderCreateRowSegments, the innermost enclosing function/closure
 //     of each of its call sites, since it receives segs as a parameter
-//     rather than building it itself) is resolved the same fail-closed
-//     way: a token this analysis cannot pin down is a failure, not a
-//     silent omission.
+//     rather than building it itself): a token this analysis cannot pin
+//     down is a failure, not a silent omission.
 //  3. Every resolved token must appear in the floor table. A future edit
 //     that composes `dimmed`, `key` or `error` over theme.Selection --
 //     reintroducing a pair R84's floor does not hold, per
 //     internal/theme/contrast_test.go's own dialogSelectionTokens doc
 //     comment, which also records why theme.SelectionIdle is out of scope
 //     -- fails here.
+//
+// This static pass is deliberately paired with the render-level proof in
+// dialog_selection_floor_render_test.go
+// (TestDialogSelectionCellsRenderOnlyFloorTokens), which reads the
+// finished emulator grid of every themed dialog on every built-in and so
+// catches a token that reaches a focused row by any route at all -- a
+// helper this pass does not walk, a value computed at run time. Neither
+// test may be weakened on the grounds that the other exists.
 func TestDialogSelectionRenderersComposeOnlyFloorTokens(t *testing.T) {
 	floorTokens := loadThemeSelectionFloorTokens(t)
 	t.Logf("R84 floor table (%s %s): %v", themeContrastTestPath, themeFloorTokensVar, sortedKeys(floorTokens))
@@ -387,6 +432,10 @@ func TestDialogSelectionRenderersComposeOnlyFloorTokens(t *testing.T) {
 	got := map[string]bool{}
 	resolveScope := func(what string, scope ast.Node) {
 		for _, te := range collectTokExprs(scope) {
+			if te.expr == nil {
+				t.Errorf("%s assigns a settingsRowSegment's Tok field at %s in a form this analysis cannot pair with a value (compound or tuple assignment) -- this row is drawn over theme.Selection, so extend collectTokExprs rather than leaving the token unchecked", what, fset.Position(te.pos))
+				continue
+			}
 			toks, ok := resolveThemeTokens(te.expr, scope, 0)
 			if !ok {
 				t.Errorf("%s composes a settingsRowSegment whose Tok expression at %s (%T) cannot be statically resolved to a theme token -- this row is drawn over theme.Selection, so an unresolved token could be a pair R84's floor does not hold; extend resolveThemeTokens or use a literal theme.X", what, fset.Position(te.pos), te.expr)
