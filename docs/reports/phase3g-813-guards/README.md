@@ -473,3 +473,33 @@ exit=0
 Clean tree and `HEAD == origin/main`, both confirmed at `8eaf474` — this
 bundle's own final sha — closing the one thing a commit cannot say about
 itself directly.
+
+## Addendum, round 2 (the correction commit's own final sha)
+
+Round 1's addendum above is left exactly as it stood; it is true of the sha it
+names. The round-2 correction that fixes the three defects listed at the top of
+this report is its own commit, **`ddc0936`**
+(`ddc09362c6116d2d3112da300b89663c52b447d0`), and a commit still cannot quote
+its own sha — so the pair is re-shown here, at `ddc0936`, captured after that
+commit was pushed and before this addendum's own file changes existed in the
+worktree (full transcript in `addendum-round2-final-sha-check.log`):
+
+```
+$ git status --porcelain
+exit=0
+
+$ git rev-parse HEAD
+ddc09362c6116d2d3112da300b89663c52b447d0
+exit=0
+
+$ git log --oneline -1 origin/main
+ddc0936 docs: publish the guard bundle's outputs unedited and record why the godog diff guard cannot be empty (task 813)
+exit=0
+```
+
+Clean tree, and local `HEAD` equal to `origin/main`, both at `ddc0936`. The
+bundle's final sha is this addendum's own commit, one further on; the same
+`git status --porcelain` / `git rev-parse HEAD` / `git log --oneline -1
+origin/main` triple re-run at any later point reproduces the same agreement,
+which is why this report states the property and its command rather than
+chasing a sha it cannot contain.
