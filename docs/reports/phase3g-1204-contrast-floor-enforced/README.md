@@ -112,3 +112,63 @@ read fails instead of passing (proof 3). No branch remains through which a sub-f
 reach the screen unchecked.
 
 Reproduce: `ci/run.sh go test -count=1 ./internal/theme/ ./internal/tui/`.
+
+## Second correction: the render-level proof (validation attempt 2's finding)
+
+Validation of the state above found the remaining hole in the *static* pass: it read a Tok
+field only where a composite literal named it (`{Tok: X}`), so a **later assignment** to an
+already-built segment — validation's own mutation, `segs[0].Tok = theme.Dimmed` inserted just
+before `renderRenameFieldRow` renders those segments through
+`bgColorToken(theme.Selection, ...)` — reintroduced the known sub-floor `dimmed/selection` pair
+with both tests green. Two changes close it, and the second closes the whole class rather than
+that one form:
+
+1. `collectTokExprs` now also collects the right-hand side of every assignment to a `.Tok`
+   field (`seg.Tok = X`, `segs[i].Tok = X`), and hands the caller a nil expression — reported
+   as unresolvable, i.e. a failure — for a compound (`+=`) or tuple assignment whose value it
+   cannot pair with the field. Fail closed, as everywhere else in that file.
+2. `internal/tui/dialog_selection_floor_render_test.go` (new) adds
+   `TestDialogSelectionCellsRenderOnlyFloorTokens`, a **render-level** twin that does not
+   reason about source at all. It reuses `dialogDegradationCases()` — the tracked table that
+   already enumerates every dialog this phase themed, with each dialog's own model builder and
+   its failure-note variants — renders each body once per built-in theme (`m.settings.Theme`)
+   into a `vt.Emulator`, and inspects the finished grid: every non-blank cell whose background
+   is that theme's `selection` colour must carry a foreground equal to one of the colours
+   R84's floor table holds against `selection`. The accepted set is derived from
+   `../theme/contrast_test.go`'s `dialogSelectionTokens` via the same AST reader
+   (`loadThemeSelectionFloorTokens`) plus `floorTokenFor`, so there is still no second copy of
+   the table; a cell with no explicit foreground on that background fails too (the terminal
+   default is a colour the floor cannot hold); and a run that finds no selection-background
+   cell at all is a `t.Fatal`, so the proof cannot pass vacuously.
+
+Because it reads cells, no source-level route evades it: a helper the static pass never walks,
+a value computed at run time, or a post-hoc field write all land on the grid as an unlisted
+foreground.
+
+### Evidence for this correction
+
+- `green.log` / `.exitstatus` above was re-captured at this state: exit `0`, both packages `ok`.
+- `mutation-tok-field-assignment.log` / `.exitstatus` — validation's exact mutation,
+  `segs[0].Tok = theme.Dimmed` added to `renderRenameFieldRow` in the scratch worktree. Now
+  **both** halves fail: the static pass reports `tokens composed over theme.Selection by dialog
+  focused rows: [Dimmed Hint Text]` against a floor table of `[Hint Text]`, and the render pass
+  reports the `dimmed` foreground on the selection background for `cobalt`, `empire`, `matrix`
+  and `parchment`. Exit `1`.
+- `mutation-tok-set-by-unwalked-helper.log` / `.exitstatus` — the same sub-floor token reached
+  through a helper the static pass does not walk
+  (`settingsRenderRowOpen(mutationHelperForProof(segs))`, the helper setting
+  `out[0].Tok = theme.Dimmed`). The static pass stays green — it cannot see inside the helper —
+  and the render pass alone fails, which is exactly the independent coverage it exists for.
+  Exit `1`.
+
+Both were produced in `git worktree add --detach .scratch-1204 HEAD` with this task's test
+files copied in, run as
+`ci/run.sh sh -c 'cd .scratch-1204 && go test -count=1 ./internal/theme/ ./internal/tui/'`, then
+`git worktree remove --force .scratch-1204`; `/workspace` was left clean (`git status` showed
+only this task's own two test files).
+
+The earlier mutation logs (`mutation-added-subfloor-cell`,
+`mutation-dimmed-over-selection-via-variable`, `mutation-unresolvable-token-expression`,
+`mutation-indirect-selection-background`, `scratch-worktree-baseline`) were captured against the
+previous state of these tests and are kept as-is: each still documents the branch it closed, and
+none of the assertions they exercise was weakened by this correction.
