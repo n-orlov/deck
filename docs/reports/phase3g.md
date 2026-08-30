@@ -1729,9 +1729,10 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > **Addendum, second part (commit D).** A third commit landed after commit B —
 > **`7b3469c`** ("docs: reword four bare path-like tokens in the approach 08
 > close-out so the citation sweep's only unresolved items stay the two pre-existing
-> false positives (task 815)") — correcting six new bare path-like tokens (`.sh`,
-> `0/10`, `10/10`, a Go subtest name containing `/`, `origin/main`, a glob pattern)
-> that this section's own first draft introduced, which the citation sweep
+> false positives (task 815)") — correcting six new bare path-like tokens (a shell
+> extension, two run-rate fractions, a Go subtest name containing a slash, a bare
+> git-ref name, and a glob pattern) that this section's own first draft introduced,
+> which the citation sweep
 > (`docs/reports/phase3g-813-guards/citation_sweep.py`) flagged beyond the two
 > pre-existing false positives every earlier commit in this run already carries.
 > `7b3469c` touches only prose wording, no sha or fact stated above. This paragraph
