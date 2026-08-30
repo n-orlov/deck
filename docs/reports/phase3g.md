@@ -1100,6 +1100,32 @@ touch the otherwise-protected `SPEC.md`: `b69b5ba`** (task 205) — amends §11.
 `SelectedText`'s own run, never rectangular), and it clears when the release commits
 the copy.
 
+**That amendment did not survive review.** Review-08's finding 3 held that a steering
+note's own licence does not bind this run — only a ruling present under read-only
+`/config/amendments/` does, and the sole such ruling (`001-202.md`) grants no
+protected-path exception — so `b69b5ba`'s edit to `SPEC.md` was out of bounds
+regardless of who asked for it. **`2d61993`** (task 909) forward-reverts exactly those
+nine §11.8 lines (`git revert --no-commit b69b5ba`, no conflicts; `b69b5ba` itself
+stands unamended, unrebased, in published history exactly as before), so that at HEAD:
+
+```
+$ git diff 1cfbd5a..HEAD -- SPEC.md
+$
+```
+
+— `SPEC.md` is byte-identical to run base `1cfbd5a`, empty output, exit `0`. R93's
+shipped drag-selection behaviour (`internal/tui/interactive_select.go`,
+`internal/interactive/grid.go`'s selection-aware render, all unmodified by the revert)
+therefore has **no SPEC authority anywhere in this tree**: the only place its rule is
+written down is the operator's own wording, preserved verbatim — not summarised — in
+the tracked
+[`docs/reports/phase3g-909-spec-restore/README.md`](phase3g-909-spec-restore/README.md)
+and restated as finding
+[**F41**](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why) in
+`docs/reports/phase3g-findings.md`. Landing the amendment in `SPEC.md` itself is the
+operator's own act, to be done outside this run — this job may not touch the protected
+path to do it for them.
+
 **Implementing shas:**
 
 - **`b249992`** (task 206) — `internal/interactive/grid.go`'s
@@ -1499,7 +1525,7 @@ explicitly, both in the subsection above and in the R80 row below.
 | R90 | met | 032–033 | `99fc4a3`, `ab14d19`, `ca43907` | not required (read-gap quoted anyway) |
 | R91 | met | 034–035 | `c93f811`, `9d6c22a` | yes (retroactive, disclosed; plus the count prediction) |
 | R92 | met | 036–037 | `78bc156`, `cc36cfa` | not required (no defect to revert) |
-| R93 | met | 205–207 | `b69b5ba`, `b249992`, `c3a5a06`, `7e7b0be`, `a0bf89e` | yes (retroactive on 207's round 1; disclosed) |
+| R93 | met — `b69b5ba`'s `SPEC.md` §11.8 amendment forward-reverted by `2d61993` (task 909); `git diff 1cfbd5a..HEAD -- SPEC.md` empty, so the shipped behaviour has no SPEC authority in this tree and is specified only by the operator's own wording preserved in [`phase3g-909-spec-restore/README.md`](phase3g-909-spec-restore/README.md) and [F41](phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why); landing it in `SPEC.md` is the operator's act, outside this run | 205–207, 909 | `b69b5ba`, `b249992`, `c3a5a06`, `7e7b0be`, `a0bf89e`, `2d61993` | yes (retroactive on 207's round 1; disclosed) |
 
 R82's task-016 residual is resolved (task 203; F27, per the PRD's own
 `SPEC.md`-wins precedence rule) and carried in
