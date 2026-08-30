@@ -243,7 +243,24 @@ git diff 1cfbd5a..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' | grep -n '^+.*t\.S
 
 ## Addendum (this bundle's own final sha)
 
-Pending — added by a follow-up commit once this bundle's own commit sha is
-known, per this task's own criterion ("because a commit cannot quote its
-own sha, a follow-up addendum commit names the bundle's own final sha and
-re-shows the clean-tree and HEAD-equals-origin/main pair at it").
+This bundle's own commit (the one adding every file above) is **`8eaf474`**
+(`8eaf47436f079b1c9080fee95d406808788ff4d7`). Re-run in this follow-up
+addendum commit, at that exact sha, before this addendum's own change is
+staged (full transcript in `addendum-final-sha-check.log`):
+
+```
+$ git status --porcelain
+exit=0
+
+$ git rev-parse HEAD
+8eaf47436f079b1c9080fee95d406808788ff4d7
+exit=0
+
+$ git log --oneline -1 origin/main
+8eaf474 docs: re-verify this run's guards at HEAD and publish the bundle (task 813)
+exit=0
+```
+
+Clean tree and `HEAD == origin/main`, both confirmed at `8eaf474` — this
+bundle's own final sha — closing the one thing a commit cannot say about
+itself directly.

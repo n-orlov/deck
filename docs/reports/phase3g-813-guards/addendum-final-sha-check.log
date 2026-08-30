@@ -1,0 +1,10 @@
+$ git status --porcelain
+exit=0
+
+$ git rev-parse HEAD
+8eaf47436f079b1c9080fee95d406808788ff4d7
+exit=0
+
+$ git log --oneline -1 origin/main
+8eaf474 docs: re-verify this run's guards at HEAD and publish the bundle (task 813)
+exit=0
