@@ -83,22 +83,19 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		if present {
 			pane, crashed := crashedPane(observed)
 			if !crashed {
-				// A live, non-dead pane paired with a stopped row, or with an
-				// error row that itself carries a pane-exit or tmux/user-sourced
-				// verdict, is SPEC §7's invariant violation regardless of
-				// whether terminal (below) also holds for this row: the pane is
-				// the part that is right, and the stored verdict is either
-				// spent (a crash the live pane now contradicts) or was never
-				// more than tmux's own liveness guess in the first place. A
-				// hook- or probe-sourced error with no pane-exit verdict is
-				// deliberately excluded: SPEC §7's transition table allows
-				// running --turn or API failure--> error with no pane death at
-				// all, so that row is the agent's own considered verdict, not a
-				// contradiction tmux liveness gets to overrule (finding F40,
-				// task 901); it still owns :188's session-absent branch,
-				// unmodified.
-				if session.Status == "stopped" ||
-					(session.Status == "error" && (session.PaneExitStatus != nil || session.StatusSource == "tmux" || session.StatusSource == "user")) {
+				// A live, non-dead pane paired with a terminal row is SPEC
+				// §7's invariant violation regardless of whether terminal
+				// (below) also holds for this row: the pane is the part that
+				// is right. SPEC.md:560-566 is the precedence authority here
+				// and draws no distinction by source or by whether the row
+				// already carries a pane-exit verdict: "A terminal status --
+				// stopped, error -- claims there is nothing running here, and
+				// a live, non-dead pane is direct evidence against it. So when
+				// the reconcile observes one under a terminal row it corrects
+				// the row." A hook- or probe-written error row with no
+				// pane-exit verdict is not excepted: the row still owns :188's
+				// session-absent branch, unmodified.
+				if session.Status == "stopped" || session.Status == "error" {
 					if err := s.repairTerminalRowWithLivePane(ctx, session); err != nil {
 						return err
 					}
@@ -220,17 +217,16 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 	return nil
 }
 
-// repairTerminalRowWithLivePane is SPEC §7's one self-healing rule: a
-// stopped row, or an error row that itself already carries a pane-exit or
-// tmux/user-sourced verdict, paired with a live, non-dead pane is an
+// repairTerminalRowWithLivePane is SPEC §7's one self-healing rule
+// (SPEC.md:560-566, "A terminal row with a live pane is an invariant
+// violation, and the same pass repairs it"): any terminal row -- stopped or
+// error, whatever wrote it -- paired with a live, non-dead pane is an
 // invariant violation, not evidence to act on -- the pane is the part that
-// is right. A hook- or probe-sourced error row with no pane-exit verdict is
-// deliberately excluded: SPEC §7's transition table allows running --turn or
-// API failure--> error with no pane death at all, so that row is the
-// agent's own considered verdict, not a contradiction tmux liveness gets to
-// overrule (finding F40, task 901); the caller (reconcile.go's terminal-row
-// branch above) is what enforces that narrower trigger before ever calling
-// this function. It corrects the row from what liveness alone can observe: for a
+// is right, and SPEC.md:560-566 is the one precedence authority for this
+// rule; it draws no exception by StatusSource or by whether the row already
+// carries a pane-exit verdict. The caller (reconcile.go's terminal-row
+// branch above) enforces exactly that trigger -- Status == "stopped" ||
+// Status == "error" -- before ever calling this function. It corrects the row from what liveness alone can observe: for a
 // shell row that is exactly the §7 shell-liveness rule (a live pane always
 // means running, because a shell has no other signal, ever); for an agent
 // row liveness supplies no verdict at all, so the row is reset to the
