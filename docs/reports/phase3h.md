@@ -192,21 +192,56 @@ gate results, the protected-path ruling and this report.
 
 ### This report's own state-of-record refresh (task 209)
 
-This section, the final-code-sha block above and the per-requirement table below were
-brought current by task 209, whose own citation check is
-`docs/reports/phase3h-209-report/README.md`. Task 209's first commit is `426fb3a`; review
-found that commit's table incomplete (it omitted `1f47503`, `c69720f`, `5326e39` and
-`426fb3a` itself), and the data commit `5b7c9e3` is the correction. A commit cannot quote its
-own sha, so this docs-only addendum — the one addendum the task allows — adds `5b7c9e3` to the
-R97 row; the addendum's own sha is in turn named by task 211's guard report and task 212's
-close-out.
+This section, the final-code-sha block above, the task ledger and the per-requirement table
+below were brought current by task 209, whose own citation check is
+`docs/reports/phase3h-209-report/README.md`. Task 209 took four commits. `426fb3a` was the
+first publish; review found its table incomplete (it omitted `1f47503`, `c69720f`, `5326e39`
+and `426fb3a` itself). The data commit `5b7c9e3` recorded every delivery commit that existed
+at that point, and because a commit cannot quote its own sha, the docs-only addendum
+`1b61337` added `5b7c9e3` to the ledger. This commit — the fourth and last — adds `1b61337`
+itself, gives every task of this approach its own ledger row, and is recorded here by the
+only identity it can carry inside itself (see *This refresh's own tail commit* below).
 
-Tasks 210 (`docs/reports/phase3h-findings.md`'s refresh), 211 (the guard re-verification
-report) and 212 (this report's close-out section) **have no commit in this tree yet** — the
-search for their task markers, quoted at this report's own sha in
-`docs/reports/phase3h-209-report/README.md`, comes back empty — so there is no sha to record
-for them and none is invented here. Each lands with its own commit, and task 212's close-out
-records all three shas.
+### The approach-03 task ledger (tasks 201–212)
+
+Every task of this approach with the commit or commits that delivered it. Tasks whose commit
+carries no `(task NNN)` marker are named as such: per the standing rules a validation-fix or
+self-sha commit carries no marker, so the marker search is not the ledger.
+
+| task | commit shas | note |
+|---|---|---|
+| 201 | `4b1d4dc`, `1f47503` | `4b1d4dc` is the gofmt realignment and this phase's final code sha; `1f47503` publishes its evidence and names `4b1d4dc`, so it carries no marker of its own |
+| 202 | `c9e88cb` | whole-suite sweep at `4b1d4dc` |
+| 203 | `fc358c0`, `011b04b` | `011b04b` is the self-sha addendum naming `fc358c0` |
+| 204 | `79b56d9` | `ci/stability.sh 10` at `4b1d4dc` |
+| 205 | `52e9045` | `docs/reports/phase3g.md`'s R76 disposition sentence, rewritten from the diffs |
+| 206 | `50960b9` | `docs/reports/phase3g-findings.md`'s F36/F38/F40/F41 disposition sentences |
+| 207 | `9cff1ea` | `docs/DELIVERY-LOG.md`'s Phase 3g section |
+| 208 | `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf` | `87bde8f` carries the marker; the other three are validation fixes and carry none |
+| 209 | `426fb3a`, `5b7c9e3`, `1b61337`, and this commit | `426fb3a` carries the marker; `5b7c9e3`/`1b61337` and this commit are validation fixes and carry none. This commit's own sha is unquotable inside itself — recorded by subject line below, and by hex in tasks 211 and 212 |
+| 210 | none in this tree at this commit | `docs/reports/phase3h-findings.md`'s refresh; the marker search over `a24ff8d..HEAD` for tasks 210–212 comes back empty, quoted in `docs/reports/phase3h-209-report/README.md`. No sha exists, so none is invented; task 210's own commit records it and task 212's close-out records all three |
+| 211 | none in this tree at this commit | the guard re-verification at `4b1d4dc`, same empty-marker proof; task 211's own commit records its sha, and it also records this refresh's tail sha |
+| 212 | none in this tree at this commit | this report's close-out section, same empty-marker proof; task 212's close-out records 210's, 211's and its own sha, plus this refresh's tail sha |
+
+A task that has not run yet cannot have a sha: tasks 210 and 211 depend on task 209 (this
+report) directly and task 212 does so through 211, so their commits are necessarily later than
+every commit this report can name. The
+ledger rows above are therefore complete as of this commit, and the three empty cells are a
+measured absence — proved by the quoted marker search — not an omission.
+
+### This refresh's own tail commit
+
+A git commit's sha is a hash over its own content, so no commit can contain its own sha; the
+last commit of this task is therefore the one delivery commit whose hex cannot appear in the
+ledger above. It is instead recorded here by its exact, unique subject line, which resolves
+to the hex mechanically:
+
+```
+$ git log -1 --format=%H --grep='docs: complete the Phase 3h delivery ledger and task ledger for tasks 201-212' a24ff8d..HEAD
+```
+
+Task 211's guard report and task 212's close-out record that hex directly. No addendum
+follows this commit.
 
 ## Per-requirement table
 
@@ -215,18 +250,19 @@ records all three shas.
 | R94 | met | 001–003 | `f700025`, `2f952da`, `afa55b8`, `9cd8f37`, `357867e`, `67cefcd`, `7634895` | `docs/reports/phase3h-001-status-probe-revert/`, `docs/reports/phase3h-002-narrow-repair/`, `docs/reports/phase3h-003-r94-scenarios/` |
 | R95 | met | 004–005 | `d578c03`, `2c2ec30` | `docs/reports/phase3h-005-hint-token/` |
 | R96 | met | 006–007 | `8d6ed72`, `2ccb1d3` | `docs/reports/phase3h-006-f31/`, `docs/reports/phase3h-007-f31-guard/` |
-| R97 | met | 008–015, 201–209 (210–212 have no commit yet) | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852`, `4673fb9`, `b5e4178`, `ed469e4`, `c69720f`, `5326e39`, `4b1d4dc`, `1f47503`, `c9e88cb`, `fc358c0`, `011b04b`, `79b56d9`, `52e9045`, `50960b9`, `9cff1ea`, `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf`, `426fb3a`, `5b7c9e3` | `docs/reports/phase3h-008-fullsuite/` (superseded), `docs/reports/phase3h-009-fullsuite-verbose/` (superseded), `docs/reports/phase3h-010-stability10/` (superseded), `docs/reports/phase3h-012-delivery-log/`, `docs/reports/phase3h-013-report/`, `docs/reports/phase3h-015-guards/` (superseded), `docs/reports/phase3h-findings.md`, `docs/reports/phase3h-201-gofmt/`, `docs/reports/phase3h-202-fullsuite/`, `docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3h-204-stability10/`, `docs/reports/phase3h-205-r76-disposition/`, `docs/reports/phase3h-206-3g-findings-disposition/`, `docs/reports/phase3h-207-delivery-log-3g/`, `docs/reports/phase3h-208-delivery-log-3h/`, `docs/reports/phase3h-209-report/` |
+| R97 | met | 008–015, 201–209; 210–212 have no commit yet (see the task ledger above) | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852`, `4673fb9`, `b5e4178`, `ed469e4`, `c69720f`, `5326e39`, `4b1d4dc`, `1f47503`, `c9e88cb`, `fc358c0`, `011b04b`, `79b56d9`, `52e9045`, `50960b9`, `9cff1ea`, `87bde8f`, `0d9a551`, `f54873e`, `68ac4cf`, `426fb3a`, `5b7c9e3`, `1b61337` | `docs/reports/phase3h-008-fullsuite/` (superseded), `docs/reports/phase3h-009-fullsuite-verbose/` (superseded), `docs/reports/phase3h-010-stability10/` (superseded), `docs/reports/phase3h-012-delivery-log/`, `docs/reports/phase3h-013-report/`, `docs/reports/phase3h-015-guards/` (superseded), `docs/reports/phase3h-findings.md`, `docs/reports/phase3h-201-gofmt/`, `docs/reports/phase3h-202-fullsuite/`, `docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3h-204-stability10/`, `docs/reports/phase3h-205-r76-disposition/`, `docs/reports/phase3h-206-3g-findings-disposition/`, `docs/reports/phase3h-207-delivery-log-3g/`, `docs/reports/phase3h-208-delivery-log-3h/`, `docs/reports/phase3h-209-report/` |
 
 ### Delivery-commit completeness
 
 The four rows above name, between them, every commit of `a24ff8d..HEAD` that existed when this
-refresh's data commit `5b7c9e3` landed: the R94 row's seven, the R95 row's two, the R96 row's
-two and the R97 row's twenty-six — thirty-seven in all, which is exactly
-`git rev-list a24ff8d..HEAD --count` at `5b7c9e3`. Only this addendum's own commit falls
-outside that set, because no commit can quote its own sha; its sha is recorded by task 211's
-guard report and task 212's close-out. The counts and the set comparison — which commits of
-the range the report does and does not cite — are run and quoted in
-`docs/reports/phase3h-209-report/README.md`.
+commit was written: the R94 row's seven, the R95 row's two, the R96 row's two and the R97
+row's twenty-seven — thirty-eight in all, which is exactly
+`git rev-list a24ff8d..HEAD --count` at `1b61337`, this refresh's parent. The one commit of
+the phase that falls outside that set is this commit itself, for the content-addressing reason
+given under *This refresh's own tail commit* above; it is recorded there by its exact subject
+line, and by hex in task 211's guard report and task 212's close-out. The counts and the set
+comparison — which commits of the range the report does and does not cite — are run and quoted
+in `docs/reports/phase3h-209-report/README.md`.
 
 Every sha this report cites — the table's, plus the R94/R95/R96 revert-target shas
 `a53146a`, `c176751`, `0b7dce5`, the operator's ruling/plan shas `de90a5c`, `a24ff8d` and
