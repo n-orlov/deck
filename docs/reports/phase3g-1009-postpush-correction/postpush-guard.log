@@ -1,0 +1,23 @@
+=== post-push guard triple, captured AFTER this correction's commit (fc12967) was pushed ===
+=== captured OUTSIDE the workspace before any new tracked file existed, same discipline as the correction itself ===
+
+$ git status --porcelain
+(exit code: 0 )
+
+$ git rev-parse HEAD
+fc12967b098c2d9ad1f6a372ba85082eaf831f6f
+(exit code: 0 )
+
+$ git rev-parse origin/main
+fc12967b098c2d9ad1f6a372ba85082eaf831f6f
+(exit code: 0 )
+
+$ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" && echo EQUAL || echo DIFFERENT
+EQUAL
+(exit code: 0 )
+
+$ git diff --stat a5f8f6b..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum
+(exit code: 0 )
+
+$ git diff 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+(exit code: 0 )

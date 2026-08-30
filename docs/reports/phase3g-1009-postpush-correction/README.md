@@ -77,3 +77,7 @@ machine that produced it).
 - Every sha this correction's own files quote resolves under
   `git cat-file -e <sha>^{commit}`; every link target here is listed by
   `git ls-files` after the commit.
+- [`postpush-guard.log`](postpush-guard.log): the same three checks, captured
+  outside the workspace after this correction's own commit (`fc12967`) was pushed,
+  then copied in unedited by a follow-up commit quoting that sha — clean tree,
+  `HEAD == origin/main`, both diffs still empty.
