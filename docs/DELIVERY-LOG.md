@@ -636,8 +636,19 @@ while fixing a scenario-side synchronisation symptom in `attention_sort.feature`
 [F31](reports/phase3g-findings.md#3-defects-found-and-deliberately-not-fixed-and-why), part of the
 F29–F32 cluster task 601 filed): diagnosed and measured (36/80 failures under synthetic load, 0 of
 them on the count assertion itself) but not fixed, because no requirement in this plan covers that
-promotion policy and a product change there would invalidate the (now-superseded) 10/10 gate. Two
-standing Phase 3f flakes, out of scope by this run's own rules and not reproduced by any tracked
+promotion policy and a product change there would invalidate the (now-superseded) 10/10 gate.
+**Phase 3h disposition (task 012): F31 is fixed for real.** Task 007's `2ccb1d3` adds
+`AllowedCurrentStatuses: []string{"starting"}` to the `tmux.shell_live` promotion in
+`internal/service/reconcile.go` — exactly the candidate fix named above — closing the lost update:
+a forced-interleaving regression test pins the pre-fix red at task 006 (`8d6ed72`,
+[`docs/reports/phase3h-006-f31/`](reports/phase3h-006-f31/README.md)) and the same test is
+green after task 007's guard
+([`docs/reports/phase3h-007-f31-guard/`](reports/phase3h-007-f31-guard/README.md)). F2,
+F20, F22 and F37 below are unaffected by this fix and stay exactly the out-of-scope, never-
+claimed-fixed items Phase 3h's own standing rules name; a recurrence in that phase's gate is
+reported with its log path, not fixed here.
+
+Two standing Phase 3f flakes, out of scope by this run's own rules and not reproduced by any tracked
 log this phase: `TestGoldenMinimumFrame`'s settle flake, F2
 ([disposition](reports/phase3g-findings.md#4-f2--the-golden-frame-settle-flake-no-recurrence-found)),
 and `internal/interactive`'s `ByteArrivalPattern` connect-budget flake, F22
