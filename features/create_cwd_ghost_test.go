@@ -234,11 +234,11 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
+	hint, err := resolveScenarioTokenHex(ctx, "hint")
 	if err != nil {
 		return err
 	}
-	found, row, col, content, first, last, err := cwdFieldDimmedCell(client, dimmed)
+	found, row, col, content, first, last, err := cwdFieldDimmedCell(client, hint)
 	if err != nil {
 		return fmt.Errorf("client %q %w", name, err)
 	}
@@ -288,11 +288,39 @@ func cwdFieldRowBounds(client *ScreenDriver) (first, last int, err error) {
 	return first, last, nil
 }
 
+// cwdFieldLabelEndCol locates, on row y, the column right after the
+// field's own literal "Working directory: " label text (colon and its
+// one trailing space) -- i.e. where the value/ghost portion of the row
+// begins. It returns 0 (no skip) when the label text is not found on
+// that row, which only happens for a wrapped continuation row that never
+// carries the label. SPEC.md:1355 puts a field's label in the `hint`
+// token unconditionally, the same token task 005 re-points the ghost
+// itself onto (R95), so cwdFieldDimmedCell below must skip exactly the
+// label's own columns on the label row -- otherwise every field, ghosted
+// or not, would show a `hint` cell there and the negative proof
+// (clientCWDFieldShowsNoGhostText) could never pass.
+func cwdFieldLabelEndCol(client *ScreenDriver, y int) int {
+	cols, _ := client.GridSize()
+	var b strings.Builder
+	for x := 0; x < cols; x++ {
+		if cell := client.CellAt(x, y); cell != nil {
+			b.WriteString(cell.Content)
+		}
+	}
+	const label = "Working directory: "
+	idx := strings.Index(b.String(), label)
+	if idx < 0 {
+		return 0
+	}
+	return idx + len(label)
+}
+
 // cwdFieldDimmedCell scans exactly the bounded rows cwdFieldRowBounds
-// returns for the first cell whose foreground equals the dimmed token
-// (already resolved to hex), reading real Style.Fg values via CellAt,
-// exactly as the per-cell steps in features/cell_attributes_test.go do.
-// found is false when no such cell exists in bounds. Shared by
+// returns -- skipping the label row's own "Working directory: " columns
+// (cwdFieldLabelEndCol) -- for the first cell whose foreground equals the
+// hint token (already resolved to hex), reading real Style.Fg values via
+// CellAt, exactly as the per-cell steps in features/cell_attributes_test.go
+// do. found is false when no such cell exists in bounds. Shared by
 // clientCWDFieldShowsNoGhostText (the negative proof) and
 // clientCWDFieldShowsGhostText (task 203's positive control) so both
 // directions of the same check use one scan.
@@ -301,9 +329,14 @@ func cwdFieldDimmedCell(client *ScreenDriver, dimmed string) (found bool, row, c
 	if err != nil {
 		return false, 0, 0, "", 0, 0, err
 	}
+	labelEnd := cwdFieldLabelEndCol(client, first)
 	cols, _ := client.GridSize()
 	for y := first; y <= last; y++ {
-		for x := 0; x < cols; x++ {
+		startX := 0
+		if y == first {
+			startX = labelEnd
+		}
+		for x := startX; x < cols; x++ {
 			cell := client.CellAt(x, y)
 			if cell == nil || cell.Style.Fg == nil {
 				continue
@@ -330,11 +363,11 @@ func clientCWDFieldShowsGhostText(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
+	hint, err := resolveScenarioTokenHex(ctx, "hint")
 	if err != nil {
 		return err
 	}
-	found, _, _, _, first, last, err := cwdFieldDimmedCell(client, dimmed)
+	found, _, _, _, first, last, err := cwdFieldDimmedCell(client, hint)
 	if err != nil {
 		return fmt.Errorf("client %q %w", name, err)
 	}
