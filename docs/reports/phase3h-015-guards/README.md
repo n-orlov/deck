@@ -91,3 +91,21 @@ docs/reports/phase3h-findings.md
 ```
 
 Both cited shas resolve and the one cited path is tracked.
+
+## Addendum — re-published at this guard commit's own sha
+
+This README's own commit (`docs: re-verify protected-path and push guards at final sha
+(task 015)`) is `c69720f63fef52384f32117494729c1fb5ff6c5d`. Re-running the HEAD/`origin/main`
+triple immediately after that commit was pushed, at that commit's own sha:
+
+```
+$ git rev-parse HEAD
+c69720f63fef52384f32117494729c1fb5ff6c5d
+$ git rev-parse origin/main
+c69720f63fef52384f32117494729c1fb5ff6c5d
+$ git status --porcelain
+(empty)
+```
+
+`HEAD` and `origin/main` agree at `c69720f`, and the worktree is clean. The push guard holds
+at the guard commit's own sha, not only at the commit measured in the body above.
