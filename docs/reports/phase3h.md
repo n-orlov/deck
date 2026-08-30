@@ -26,9 +26,11 @@ narrow repair: `f700025` (reverts `a53146a`, `features/status_probe.feature`'s
 stale-sampling scenario), `2f952da` (reverts `c176751`, task 001,
 `features/status_claude_hooks.feature`'s `StopFailure` block) and `afa55b8` (reverts
 `0b7dce5`, task 002, `internal/service/reconcile.go`'s narrow live-pane repair, restoring
-`internal/service/reconcile_live_error_precedence_test.go` and removing
-`reconcile_bare_error_repair_test.go`). Task 003 proved all three hold at HEAD and that
-`status_attach.feature:18`, `status_claude_hooks.feature:6` and `status_probe.feature`'s
+`internal/service/reconcile_live_error_precedence_test.go` and deleting the replacement test
+file `0b7dce5` had added in its place — that file is absent from the tree at HEAD by design,
+so it is cited here only through `afa55b8`'s own diff and never as a path). Task 003 proved
+all three hold at HEAD and that `features/status_attach.feature:18`,
+`features/status_claude_hooks.feature:6` and `features/status_probe.feature`'s
 stale-sampling scenario pass in their pre-revert-range form, unedited beyond the reverts
 themselves — evidence at `docs/reports/phase3h-001-status-probe-revert/`,
 `docs/reports/phase3h-002-narrow-repair/` and `docs/reports/phase3h-003-r94-scenarios/`.
@@ -37,7 +39,7 @@ themselves — evidence at `docs/reports/phase3h-001-status-probe-revert/`,
 
 Task 004 (`d578c03`) re-pointed `features/create_cwd_ghost.feature`'s three `Then` steps and
 the `:14` scenario title from `dimmed` to `hint`. Task 005 (`2c2ec30`) re-pointed the two
-`create_cwd_ghost_test.go` step helpers to `resolveScenarioTokenHex(ctx, "hint")`, adding the
+`features/create_cwd_ghost_test.go` step helpers to `resolveScenarioTokenHex(ctx, "hint")`, adding the
 new `cwdFieldLabelEndCol` helper so the field-label row (which also carries the `hint` token
 per `SPEC.md:1355`) does not defeat the negative "no ghost" proof — evidence and the
 collision writeup at `docs/reports/phase3h-005-hint-token/`.
@@ -59,10 +61,11 @@ evidence at `docs/reports/phase3h-007-f31-guard/`.
 ### Whole-suite sweep (task 008)
 
 Launched verbatim/unnarrowed at final code sha `2ccb1d3`. Exit status quoted from
-`docs/reports/phase3h-008-fullsuite/.exitstatus` and its own `README.md`:
+`docs/reports/phase3h-008-fullsuite/.exitstatus` and its own
+`docs/reports/phase3h-008-fullsuite/README.md`:
 
 ```
-$ cat /tmp/phase3h-sweep.exitstatus
+$ cat docs/reports/phase3h-008-fullsuite/.exitstatus
 0
 ```
 
@@ -82,7 +85,7 @@ Docs-only descendant run, `-v` added and nothing else. Scenario tally quoted ver
 
 ### Stability gate (task 010)
 
-`ci/stability.sh 10` at final code sha `2ccb1d3`. Final line quoted verbatim from
+`ci/stability.sh 10` (the tracked script `ci/stability.sh`) at final code sha `2ccb1d3`. Final line quoted verbatim from
 `docs/reports/phase3h-010-stability10/summary.log`:
 
 ```
@@ -90,7 +93,7 @@ Docs-only descendant run, `-v` added and nothing else. Scenario tally quoted ver
 ```
 
 Every one of the 10 runs is `PASS (exit 0)` with all 17 packages `ok`/`[no test files]`; no
-recurrence of F2/F20/F22/F37 or the `filter.feature` dd/undo race to classify.
+recurrence of F2/F20/F22/F37 or the `features/filter.feature` dd/undo race to classify.
 
 ### Documentation refresh (tasks 011–012)
 
@@ -110,7 +113,10 @@ product half this phase leaves open — evidence at `docs/reports/phase3h-012-de
 | R96 | met | 006–007 | `8d6ed72`, `2ccb1d3` | `docs/reports/phase3h-006-f31/`, `docs/reports/phase3h-007-f31-guard/` |
 | R97 | met | 008–012 | `e686a97`, `1f919b7`, `2badb74`, `08171ce`, `5708f52`, `5042852` | `docs/reports/phase3h-008-fullsuite/`, `docs/reports/phase3h-009-fullsuite-verbose/`, `docs/reports/phase3h-010-stability10/`, `docs/reports/phase3h-012-delivery-log/` |
 
-Every sha and path cited above (plus the R94/R95/R96 revert-target shas `a53146a`,
-`c176751`, `0b7dce5` and the operator's ruling/plan shas `de90a5c`, `a24ff8d` named in
-prose) is verified — `git cat-file -e <sha>^{commit}` and `git ls-files --error-unmatch
-<path>` output for each — in `docs/reports/phase3h-013-report/README.md`.
+Every sha this report cites — the table's, plus the R94/R95/R96 revert-target shas
+`a53146a`, `c176751`, `0b7dce5`, the operator's ruling/plan shas `de90a5c`, `a24ff8d` and
+Phase 3g's `46dad5e` named in prose — and every path it cites, including the product,
+feature and document paths named outside the table, is verified exhaustively in
+`docs/reports/phase3h-013-report/README.md`: one quoted `git cat-file -e <sha>^{commit}`
+run per sha and one quoted `git ls-files --error-unmatch <path>` run per path, each with
+its exit status.
