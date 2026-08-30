@@ -709,6 +709,34 @@ finding) that actually delivered its scope — the same shape approach 06's tabl
 01–05. This commit (task 814) is written first because task 815's own close-out section needs a
 current delivery-log paragraph to point at, not the other way round.
 
+**Phase 3h** — `prds/phase3h-suite-reconciliation.md`, run deck-phase3h, 2026-08-30. Four
+requirements, **R94–R97**: three forward-reverts plus R95's one-token cwd-ghost re-point return
+the suite to the operator's own §7 ruling landed in `de90a5c` — the transition table is the
+design: a stopped row is repaired whatever its source, an error row is repaired only when it
+carries a pane-exit verdict or a tmux/user source, and a hook- or probe-sourced error with no
+pane-exit verdict is never repaired; R96 fixes F31, the reconcile lost update, for real; R97 is
+this phase's own documentation refresh. Final code sha `4b1d4dc` (task 201's own commit, the
+gofmt-clean realignment of the promotion write). At that sha both gates measured green: the
+mandated, unnarrowed whole-suite sweep exits **0**, all 17 packages pass or report no test files,
+nothing failed
+([`docs/reports/phase3h-202-fullsuite/README.md`](reports/phase3h-202-fullsuite/README.md));
+its verbose companion tallies **311 scenarios (311 passed)**, **3532 steps (3532 passed)**
+([`docs/reports/phase3h-203-fullsuite-verbose/README.md`](reports/phase3h-203-fullsuite-verbose/README.md));
+and the stability gate's own `docs/reports/phase3h-204-stability10/summary.log` final line reads,
+verbatim, **10/10 passed**, script exit **0**, zero recurrence of F2, F20, F22, F37 or the
+filter.feature dd/undo race across all ten runs
+([`docs/reports/phase3h-204-stability10/README.md`](reports/phase3h-204-stability10/README.md)).
+**The protected-path audit is operator-ruled satisfied** (steering 001, operator amendment
+001-211, 2026-08-30): the range `de90a5c..HEAD` over `SPEC.md`, `prds/`, `ci/Dockerfile`,
+`ci/SPIKE.md` contains exactly one commit, `a24ff8d` (the operator's own pre-launch commit adding
+this phase's PRD, whose omission from the PRD's own legitimate-shas list was the operator's
+authoring error, not this run's problem), and `a24ff8d..HEAD` over the same paths is empty — this
+run's own writes never touch a protected path. Evidence:
+[`docs/reports/phase3h.md`](reports/phase3h.md) (the per-requirement report) and
+[`docs/reports/phase3h-findings.md`](reports/phase3h-findings.md) (the ruling, the
+false-disposition-prose corrections to both Phase 3g reports, and this phase's own out-of-scope
+recurrence check).
+
 ## Other milestones
 
 | Date | What |
