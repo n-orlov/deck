@@ -1,0 +1,11 @@
+$ git status --porcelain
+?? docs/reports/phase3g-1007-guards/
+(status exit: 0 )
+
+$ git rev-parse HEAD
+11a9c9c8bdbfefcb0c2125c102a0cee6be89d8f9
+$ git rev-parse origin/main
+11a9c9c8bdbfefcb0c2125c102a0cee6be89d8f9
+
+$ git diff --stat a5f8f6b..HEAD -- "*.go" "*.feature" "*.sh" "*.toml" go.mod go.sum
+(exit code: 0 )

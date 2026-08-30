@@ -1,0 +1,6 @@
+$ git diff 1cfbd5a..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+(exit code: 0 )
+
+$ git log --all --oneline 1cfbd5a.. -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+2d61993 docs: forward-revert b69b5ba's SPEC.md edit and record F41 (task 909)
+b69b5ba docs: amend SPEC.md §11.8 for R93's visible in-progress selection (task 205)

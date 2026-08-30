@@ -1,0 +1,241 @@
+=== (e) No diff in 1cfbd5a..HEAD touches a session's cwd handling ===
+
+$ git diff 1cfbd5a..HEAD -- "*.go" | grep -n "CWD\|\-c "
+726:+			ID: id, Name: id, CWD: cwd, Agent: "shell", CapturedPath: "/bin",
+739:+		ID: "startup-continuation-fresh", Name: "startup-continuation-fresh", CWD: cwd,
+1724:@@ -30,6 +31,7 @@ func registerCreateCWDGhostSteps(sc *godog.ScenarioContext) {
+1726: 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the scratch directory labelled "([^"]+)" plus "([^"]*)"$`, sessionHasCWDExactlyScratchDirPlus)
+1727: 	sc.Step(`^deck client "([^"]+)" cwd field shows no ghost text$`, clientCWDFieldShowsNoGhostText)
+1728:+	sc.Step(`^deck client "([^"]+)" cwd field shows ghost text$`, clientCWDFieldShowsGhostText)
+1733: // clientCWDFieldShowsNoGhostText backs task 011's negative proof (SPEC
+1736:-// any other arbitrary one. Since createCWDDisplayValue's ghost is the ONLY
+1747:+// renders in the `dimmed` token ON THE CWD FIELD'S OWN ROWS, so scanning
+1765:+// version stay byte-unchanged; clientCWDFieldShowsGhostText below is this
+1768: func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
+1771:@@ -225,18 +238,109 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
+1789:+// the exact bound-finding logic clientCWDFieldShowsNoGhostText used inline
+1830:+// clientCWDFieldShowsNoGhostText (the negative proof) and
+1831:+// clientCWDFieldShowsGhostText (task 203's positive control) so both
+1854:+// clientCWDFieldShowsGhostText is task 203's positive control for the
+1855:+// narrowing clientCWDFieldShowsNoGhostText applies above: it proves the
+1863:+func clientCWDFieldShowsGhostText(ctx context.Context, name string) error {
+2083:@@ -24,7 +24,7 @@ func registerCreateSessionCWDPrefillSteps(sc *godog.ScenarioContext) {
+2084: 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" with a fresh working directory labelled "([^"]+)"$`, clientCreatesShellSessionWithFreshCWDLabelled)
+2086: 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the directory labelled "([^"]+)"$`, sessionHasCWDExactlyLabelled)
+2087:-	sc.Step(`^deck client "([^"]+)" presses "(up|down)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
+2088:+	sc.Step(`^deck client "([^"]+)" presses "(up|down|ctrl\+p|ctrl\+n)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
+2089: 	sc.Step(`^deck client "([^"]+)" tabs to the cwd field$`, clientTabsToCWDField)
+2118: // createShellSessionInLabelledCWD drives the real create modal to a
+2126:@@ -141,14 +146,20 @@ func createShellSessionInLabelledCWD(ctx context.Context, h *ScenarioHarness, cl
+2150: 	return createShellSessionInLabelledCWD(ctx, h, clientName, sessionName, label)
+2153:-// clientTabsToCWDField sends a single tab, moving create-modal focus from
+2155:+// clientTabsToCWDField moves create-modal focus from the name field (0,
+2160: // clientPressesArrowInCWDFieldNTimes below needs the cwd field actually
+2165: func clientTabsToCWDField(ctx context.Context, name string) error {
+2168:@@ -197,19 +212,22 @@ func clientTabsToCWDField(ctx context.Context, name string) error {
+2180:-// clientPressesArrowInCWDFieldNTimes drives task 009's shell-history-style
+2182:-// field (clientTabsToCWDField) since up/down are a no-op everywhere else in
+2186:+// clientPressesArrowInCWDFieldNTimes drives ↑/↓ field navigation or (task
+2190:+// (clientTabsToCWDField), since ↑/↓ move to a different field, and
+2197: func clientPressesArrowInCWDFieldNTimes(ctx context.Context, name, direction string, n int) error {
+2198:@@ -221,9 +239,14 @@ func clientPressesArrowInCWDFieldNTimes(ctx context.Context, name, direction str
+2212:+		return fmt.Errorf("clientPressesArrowInCWDFieldNTimes: unrecognised direction %q", direction)
+2220:@@ -59,14 +59,17 @@ func clientCreatesShellSessionWithTildeCWD(ctx context.Context, clientName, name
+2240:@@ -88,14 +91,17 @@ func clientAttemptsShellSessionWithCWD(ctx context.Context, clientName, name, cw
+2348: // clientTypesNonexistentPathIntoCreateCWDField registers label under a
+2356: func clientTypesNonexistentPathIntoCreateCWDField(ctx context.Context, name, label string) error {
+2359:@@ -166,7 +171,7 @@ func clientTypesNonexistentPathIntoCreateCWDField(ctx context.Context, name, lab
+2368:@@ -191,7 +196,7 @@ func clientTypesFilePathIntoCreateCWDField(ctx context.Context, name, label stri
+2435: 	sc.Step(`^deck client "([^"]+)" attempts to create a shell session named "([^"]+)" with working directory "([^"]+)"$`, clientAttemptsCreateModalWithCWD)
+2642:@@ -362,10 +400,13 @@ func clientAttemptsCreateModalWithCWD(ctx context.Context, clientName, name, cwd
+2953:@@ -49,14 +49,17 @@ func clientCreatesShellSessionWithScratchCWDLabelled(ctx context.Context, client
+3931: 		ID: id, Name: input.Name, CWD: input.CWD, Agent: adapter.Kind(), CapturedPath: capturedPath,
+3940: 	s.promoteRecentCwd(ctx, session.CWD)
+3994:+	first, err := svc.CreateShell(ctx, ShellCreateInput{Name: "reused name", CWD: t.TempDir()})
+4002:+	second, err := svc.CreateShell(ctx, ShellCreateInput{Name: "reused name", CWD: t.TempDir()})
+4032:+	first, err := svc.CreateAgent(ctx, AgentCreateInput{Name: "Shell: reuse", CWD: t.TempDir(), Agent: "shell"})
+4040:+	second, err := svc.CreateAgent(ctx, AgentCreateInput{Name: "Shell: reuse", CWD: t.TempDir(), Agent: "shell"})
+4067:+	live, err := svc.CreateShell(ctx, ShellCreateInput{Name: "live holder", CWD: t.TempDir()})
+4073:+	tombstoned, err := svc.CreateShell(ctx, ShellCreateInput{Name: "kept holder", CWD: t.TempDir()})
+4082:+	if _, err := svc.CreateShell(ctx, ShellCreateInput{Name: "live holder", CWD: t.TempDir()}); err == nil {
+4234:+		ID: id, Name: name, CWD: cwd, Agent: "shell", CapturedPath: "/bin",
+4241:+		Slug: session.Slug, CWD: cwd,
+4403:+		Name: "Claude: lease release failure", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+4630:+		ID: sessionID, Name: source + "-sourced error, live pane", CWD: t.TempDir(),
+4727:+		ID: "00000000-0000-4000-8000-000000000041", Name: "killed but alive", CWD: t.TempDir(),
+4793:+		ID: "00000000-0000-4000-8000-000000000042", Name: "crashed but alive", CWD: t.TempDir(),
+4994:+		ID: "00000000-0000-4000-8000-000000000031", Name: "orphaned shell", CWD: cwd,
+5000:+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "sleep 30"}}); err != nil {
+5052:+		ID: "00000000-0000-4000-8000-000000000032", Name: "contradicted agent", CWD: cwd,
+5058:+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "sleep 30"}}); err != nil {
+5105:+		ID: "00000000-0000-4000-8000-000000000033", Name: "retained corpse under stopped", CWD: cwd,
+5113:+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", command}}); err != nil {
+5273:+	reaped, err := svc.CreateShell(ctx, ShellCreateInput{Name: "freed name", CWD: t.TempDir()})
+5282:+	subject, err := svc.CreateShell(ctx, ShellCreateInput{Name: "renamed subject", CWD: t.TempDir()})
+5329:+	live, err := svc.CreateShell(ctx, ShellCreateInput{Name: "live holder", CWD: t.TempDir()})
+5335:+	archived, err := svc.CreateShell(ctx, ShellCreateInput{Name: "archived holder", CWD: t.TempDir()})
+5344:+	subject, err := svc.CreateShell(ctx, ShellCreateInput{Name: "rename subject", CWD: t.TempDir()})
+5449: 		ID: id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: capturedPath,
+5458: 	s.promoteRecentCwd(ctx, session.CWD)
+6183:+		ID: "sweep-expired-reused", Name: expired.Name, CWD: "/work/sweep-expired-reused",
+6507:+		ID: "reused-new-holder", Name: old.Name, CWD: "/work/reused-new-holder",
+6548:+			ID: "new-holder", Name: old.Name, CWD: "/work/new-holder",
+6592:+		ID: "slug-old", Name: "Slug Holder", CWD: "/work/slug-old",
+6602:+		ID: "slug-new", Name: "slug holder", CWD: "/work/slug-new",
+6623:+		ID: "live-holder-2", Name: live.Name, CWD: "/work/live-holder-2",
+6653:+		ID: "archived-holder-2", Name: archived.Name, CWD: "/work/archived-holder-2",
+6722:+		ID: "rename-slug-old", Name: "Slug Holder", CWD: "/work/rename-slug-old",
+6812:+		ID: "holder-tomb", Name: "Held Name", CWD: "/work/holder-tomb",
+6854:+		ID: "holder-new", Name: tomb.Name, CWD: "/work/holder-new",
+7244:+// failing pre_launch is the natural-route case: `sh -c 'exit 1'` here is
+7262:+		CWD:     t.TempDir(),
+7301:+		CWD:     t.TempDir(),
+7888:+		CWD:     t.TempDir(),
+7907:-	args := []string{"new-session", "-d", "-s", name, "-c", launch.CWD, "--", "env"}
+7932:+	args = append(args, "-c", launch.CWD, "--", "env")
+7981:+	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "idle", CWD: "/repo/alpha", ConversationID: "conv-1"}}
+7993:+	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped", CWD: "/repo/alpha", ConversationID: "conv-1"}}
+8464:+			CWD:    "/repo/deck",
+8912:+// createCWDLastUsed: the moment the Agent field is cycled away, the value
+9056:+	m.createCWD = t.TempDir()
+9136:+// createCWDGhostCompletion has a ghost to offer and the cwd row's value
+9155:+	m.createCWD = parent + "/uni"
+9156:+	ghost, ok := createCWDGhostCompletion(m.createCWD)
+9158:+		t.Fatalf("createCWDGhostCompletion(%q) = %q ok=%v, want %q -- this test needs a live ghost to be non-vacuous", m.createCWD, ghost, ok, "que-directory/")
+9163:+// TestCreateCWDGhostValueCarriesNoSGRBytes closes task 016's own
+9165:+// inside createCWDDisplayValue, so createFieldRows()[1].value came back as
+9172:+func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
+9180:+	if want := m.createCWD + ghost; value != want {
+9204:+	typed.createCWD = m.createCWD + ghost
+9255:+	candidates.createCWDCandidates = []string{"alpha", "beta"}
+9256:+	candidates.createCWDCandidateIndex = 1
+9316:+	m.createCWD = parent + "/" + segment
+9317:+	ghost, ok := createCWDGhostCompletion(m.createCWD)
+9319:+		t.Fatalf("createCWDGhostCompletion(%q) = %q ok=%v, want %q", m.createCWD, ghost, ok, " tail/")
+9664:+// complete or list (tabCompleteCreateCWD reports false -- here because the
+9672:+	m.createCWD = "/definitely/does/not/exist/anywhere-025"
+9673:+	m.createCWDPrefilled = false
+9680:+	if got.createCWD != m.createCWD {
+9681:+		t.Fatalf("tab with no filesystem match changed createCWD to %q, want unchanged %q", got.createCWD, m.createCWD)
+9685:+// TestCreateModalRecentCWDCyclesOnCtrlPCtrlN proves task 025's third
+9690:+func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
+9708:+	m.createCWD, m.createCWDPrefilled = "/typed/value", false
+9712:+	if got.createCWD != "/recent/two" {
+9713:+		t.Fatalf("Ctrl+P did not cycle to the most recent entry: createCWD = %q, want %q", got.createCWD, "/recent/two")
+9722:+	if got.createCWD != "/recent/one" {
+9723:+		t.Fatalf("second Ctrl+P did not cycle to the older entry: createCWD = %q, want %q", got.createCWD, "/recent/one")
+9729:+	if got.createCWD != "/recent/two" {
+9730:+		t.Fatalf("Ctrl+N did not cycle back to the newer entry: createCWD = %q, want %q", got.createCWD, "/recent/two")
+9740:+	if got.createCWD != "/typed/value" {
+9741:+		t.Fatalf("Ctrl+N past the newest entry did not restore the pre-cycle value: createCWD = %q, want %q", got.createCWD, "/typed/value")
+9743:+	if got.createCWDRecentIndex != -1 {
+9744:+		t.Fatalf("Ctrl+N past the newest entry left the cycle open: createCWDRecentIndex = %d, want -1", got.createCWDRecentIndex)
+9750:+	if got.createCWD != "/typed/value" {
+9751:+		t.Fatalf("Ctrl+N with no cycle in progress changed createCWD to %q, want %q", got.createCWD, "/typed/value")
+9772:+	m.createCWDCandidates = []string{"alpha", "beta", "gamma"}
+9773:+	m.createCWDCandidateIndex = 0
+9777:+	if got.createCWDCandidateIndex != 1 {
+9778:+		t.Fatalf("\"down\" with the candidate list open moved createCWDCandidateIndex to %d, want 1", got.createCWDCandidateIndex)
+9786:+	if got.createCWDCandidateIndex != 0 {
+9787:+		t.Fatalf("\"up\" with the candidate list open moved createCWDCandidateIndex to %d, want back to 0", got.createCWDCandidateIndex)
+10114:+		ID: id, Name: id, CWD: "/work", Agent: "claude", CapturedPath: "/bin",
+11173:@@ -106,7 +106,7 @@ func TestFilterByCWDShowsOnlyTheMatchingRow(t *testing.T) {
+12886:+	m.sessions = []store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}}
+13106:+	m := mouseTestModel([]store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}})
+14017: 	createCWD        string
+14021: 	// used" label. Cleared together with createCWDPrefilled on first edit.
+14022: 	createCWDLastUsed bool
+14036:+	// on the Agent field, exactly as createCWDLastUsed does for cwd.
+14041: 	// createCWDRecents is the §11.7 recent_cwds snapshot the cwd field is
+14050: 	createCWDRecents []store.RecentCwd
+14051: 	// createCWDRecentIndex is the 0-based position within createCWDRecents
+14055: 	createCWDRecentIndex int
+14056: 	// createCWDPreCycleValue/Prefilled/LastUsed snapshot the cwd field's
+14477: 				m.createCWD, m.createCWDLastUsed = m.prefillCreateCWD()
+14478: 				m.createCWDPrefilled = true
+14479: 				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
+14480: 				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
+14481: 				m.closeCreateCWDCandidates()
+15433:+	out = append(out, m.detailField("Working directory:  ", session.CWD))
+15484: 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+15540:+	out = append(out, m.detailField("Working directory:  ", session.CWD))
+15826: // cycleCreateCWDRecent implements the cwd field's second declared §11.7
+15851: func (m *Model) cycleCreateCWDRecent(delta int) {
+15852: 	if m.createCWDRecentIndex < 0 {
+15854:@@ -4809,8 +6035,8 @@ func (m *Model) cycleCreateCWDRecent(delta int) {
+15856: 	next := m.createCWDRecentIndex + delta
+15862: 		m.createCWD = m.createCWDPreCycleValue
+15863: 		m.createCWDPrefilled = m.createCWDPreCyclePrefilled
+15864: 		m.createCWDLastUsed = m.createCWDPreCycleLastUsed
+15865:@@ -4818,7 +6044,7 @@ func (m *Model) cycleCreateCWDRecent(delta int) {
+15868: 	if next >= len(m.createCWDRecents) {
+15873: 		next = len(m.createCWDRecents) - 1
+15885: 		m.closeCreateCWDCandidates()
+15897:-			// full -- tabCompleteCreateCWD reports false and tab falls
+15908:+			// candidate there is in full -- tabCompleteCreateCWD reports
+15913: 			if m.tabCompleteCreateCWD() {
+15931: 			if len(m.createCWDCandidates) > 0 {
+15932: 				m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
+15951: 			m.cycleCreateCWDRecent(1)
+15959: 			m.cycleCreateCWDRecent(-1)
+15987:+		// exactly as createCWDLastUsed is cleared on the cwd field's first
+15997:-// createCWDDisplayValue is the cwd field's rendered value: m.createCWD,
+16003:-func (m Model) createCWDDisplayValue() string {
+16004:+// createCWDGhostSuffix is the cwd field's ghost completion (task 010) as
+16005:+// the PLAIN trailing suffix of createCWDDisplayValue's value: non-empty
+16020:+func (m Model) createCWDGhostSuffix() string {
+16022:-		return m.createCWD
+16025: 	ghost, ok := createCWDGhostCompletion(m.createCWD)
+16027:-		return m.createCWD
+16034:+// createCWDDisplayValue is the cwd field's rendered value: m.createCWD
+16035:+// plus its ghost completion, both plain -- see createCWDGhostSuffix for
+16037:+func (m Model) createCWDDisplayValue() string {
+16038:+	return m.createCWD + m.createCWDGhostSuffix()
+16042:+// SPEC.md:1364-1367), mirroring createCWDHelp's "(last used)" prefix for
+16044:+// than appended to the value, for the identical reason createCWDHelp gives
+16052:-	return m.createCWD + m.colorToken(theme.Dimmed, ghost)
+16056: func (m Model) createCWDHelp() string {
+16061: 	// like createCWDDisplayValue's ghost: "the cursor is at end of field"
+16062:@@ -5292,6 +6571,32 @@ func (m Model) createCWDHelp() string {
+16098: 		{"Working directory", m.createCWDDisplayValue(), m.createCWDHelp()},
+16133:+// createFieldRows/createNameReuseWarning/createCWDCandidates in the same
+16159: 	if len(m.createCWDCandidates) > 0 {
+16245:+	// completion rather than typed text (createCWDGhostSuffix; "" for every
+16331:+			ghost = m.createCWDGhostSuffix()
+16341:+	if len(m.createCWDCandidates) > 0 {
+16343:+		for i, name := range m.createCWDCandidates {
+16345:+			if i == m.createCWDCandidateIndex {
+
+Total hits: 204
+
+--- Review ---
+The overwhelming majority of the ~200 hits are `store.Session{... CWD: ...}`,
+`ShellCreateInput{... CWD: ...}`, `AgentCreateInput{... CWD: ...}` literals in
+NEW test fixtures (feature-step registrations, internal/service test helpers,
+internal/tui model tests), and `createCWD*` identifiers in
+internal/tui/model.go (the create-modal's own field state: prefill, ghost
+completion, recent-cwd cycling, candidate list) plus their step-definition
+plumbing in features/*_steps.go. None of these change how a session's cwd is
+read from, stored to, or passed to tmux -- they are new callers/fixtures
+supplying a cwd value the same way earlier ones did, and UI-only state for
+the create dialog's cwd text field (which is not a session's cwd handling;
+it is the form value that eventually becomes one session's CWD at create
+time, already governed by existing, untouched code paths).
+
+The one hit that changes a real cwd-adjacent code path is
+internal/tmux/tmux.go's Client.Create (task 501, env-mirroring race fix,
+docs/reports/phase3g-501-create-env-race/): it moves the `-c`, launch.CWD
+pair later in the args slice (after new, prepended `-e KEY=VALUE` flags) and
+moves the `-e` construction from a later, separate set-environment call
+into the same new-session invocation. The `-c` FLAG's VALUE is unchanged
+(still exactly `launch.CWD`, still passed as `new-session`'s `-c` argument,
+still the same field on the same Launch struct) -- only where other,
+unrelated `-e` flags for the environment table sit relative to it in the
+args slice changed. This is an environment-mirroring atomicity fix, not a
+change to cwd handling: the standing prohibition names
+`launch.CWD`/the `-c` argument/any cwd path, and none of those three
+changed value, meaning or resolution here.
+
+No other `-c ` hit is a session-launch flag: the sole non-CWD `-c ` match
+is a code comment quoting a test fixture's shell command (`sh -c 'exit 1'`,
+task 501's own red-repro test), not a deck-issued tmux flag.
