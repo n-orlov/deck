@@ -271,6 +271,22 @@ $ git diff --stat a24ff8d..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
 (nothing printed)
 ```
 
+## Commit accounting for this task's marker
+
+Exactly one commit in `a24ff8d..HEAD` carries this task's marker in its subject:
+
+```
+$ git log --format='%s' a24ff8d..HEAD | grep -c -F '(task 208)' && git log --format='%h %s' a24ff8d..HEAD | grep -F '(task 208)'
+1
+87bde8f docs: add Phase 3h's DELIVERY-LOG paragraph at the final code sha with both gate results (task 208)
+```
+
+The two later commits touching this directory (`0d9a551`, `f54873e`) are unmarked docs-only
+refinements of the citation checks in this very report; the paragraph never names its own sha, so no
+marker-carrying addendum was permitted and none was made. `f54873e`'s message body mentions the
+marker string only inside a sentence explaining that the commit deliberately does not carry it —
+subject lines, which is where the marker convention lives, count one.
+
 ## Outcome
 
 - `docs/DELIVERY-LOG.md` gained one new paragraph, introduced by `**Phase 3h**`, immediately
