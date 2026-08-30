@@ -1,0 +1,7 @@
+$ git diff 1cfbd5a..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' | grep -n '^+.*t\.Skip('
+9123:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+9193:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+9736:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+11803:+		t.Skip("this theme's key and hint tokens happen to share a colour; the distinctness assertion below would be vacuous")
+14471:+		t.Skip("this theme's key and hint tokens share a colour; the prose-vs-key distinctness assertion below would be vacuous")
+exit=0

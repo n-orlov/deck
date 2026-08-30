@@ -1,0 +1,7 @@
+$ git rev-parse HEAD
+b1dbfc494d6c13ed0c5a3413cac793b621104234
+exit=0
+
+$ git log --oneline -1 origin/main
+b1dbfc4 docs: publish ci/stability.sh 10's observed 0/10 rate at the final code commit, root-caused (task 812)
+exit=0

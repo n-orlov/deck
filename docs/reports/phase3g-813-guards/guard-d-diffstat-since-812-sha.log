@@ -1,0 +1,2 @@
+$ git diff --stat 17b1649..HEAD -- '*.go' '*.feature' '*.sh' '*.toml' go.mod go.sum
+exit=0
