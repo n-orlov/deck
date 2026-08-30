@@ -122,6 +122,7 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 						Reason:    "tmux pane is alive",
 						Source:    "tmux",
 						At:        s.Clock.Now().UnixMilli(),
+						AllowedCurrentStatuses: []string{"starting"},
 						EventKind: "tmux.shell_live",
 					}); err != nil {
 						return fmt.Errorf("promote live shell session %q: %w", session.ID, err)
