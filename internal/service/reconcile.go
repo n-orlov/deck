@@ -83,14 +83,22 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		if present {
 			pane, crashed := crashedPane(observed)
 			if !crashed {
-				// A live, non-dead pane paired with a stopped or bare-error row
-				// is SPEC §7's invariant violation regardless of whether
-				// terminal (below) also holds for this row: terminal excludes
-				// a hook/probe error row with no pane-exit verdict on purpose
-				// (it still owns :188's session-absent branch, unmodified), so
-				// the repair gets its own test instead of nesting inside
-				// terminal and silently skipping that row.
-				if session.Status == "stopped" || session.Status == "error" {
+				// A live, non-dead pane paired with a stopped row, or with an
+				// error row that itself carries a pane-exit or tmux/user-sourced
+				// verdict, is SPEC §7's invariant violation regardless of
+				// whether terminal (below) also holds for this row: the pane is
+				// the part that is right, and the stored verdict is either
+				// spent (a crash the live pane now contradicts) or was never
+				// more than tmux's own liveness guess in the first place. A
+				// hook- or probe-sourced error with no pane-exit verdict is
+				// deliberately excluded: SPEC §7's transition table allows
+				// running --turn or API failure--> error with no pane death at
+				// all, so that row is the agent's own considered verdict, not a
+				// contradiction tmux liveness gets to overrule (finding F40,
+				// task 901); it still owns :188's session-absent branch,
+				// unmodified.
+				if session.Status == "stopped" ||
+					(session.Status == "error" && (session.PaneExitStatus != nil || session.StatusSource == "tmux" || session.StatusSource == "user")) {
 					if err := s.repairTerminalRowWithLivePane(ctx, session); err != nil {
 						return err
 					}
