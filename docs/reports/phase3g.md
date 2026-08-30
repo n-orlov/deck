@@ -1826,26 +1826,33 @@ is cited with the exact clause it did or did not meet, not with its status word.
 > re-deriving the boundary runs the same three commands at `git rev-parse HEAD`: the
 > property, not the number, is what this section guarantees.
 
-### (b) Task 811 — whole-suite sweep: does **not** meet its bar; no tracked evidence directory exists
+### (b) Task 811 — whole-suite sweep: does **not** meet its bar; the log now sits under a tracked path but reads `1`, and no `README.md` naming skips/exclusions exists
 
 Task 811 required the mandated launcher's committed `.exitstatus` to read `0` at
 `docs/reports/phase3g-811-fullsuite/full-suite.exitstatus`, and a `README.md` in that
-same tracked directory naming every skip/exclusion. **Neither exists.**
-`git ls-files docs/reports/phase3g-811-fullsuite/` returns nothing — the directory
-was never created inside the repository. Task 811 ran the launcher exactly once,
+same tracked directory naming every skip/exclusion. **Neither is met.** Task 908
+committed this sweep's raw log and exit-status file, byte-for-byte, from this run's
+own `/run/ralphd/artifacts/phase3g-811-unsatisfiable/` into
+[`phase3g-811-fullsuite/full-suite.log`](phase3g-811-fullsuite/full-suite.log) and
+[`phase3g-811-fullsuite/full-suite.exitstatus`](phase3g-811-fullsuite/full-suite.exitstatus)
+— `git ls-files docs/reports/phase3g-811-fullsuite/` now lists both — but the
+committed `.exitstatus` reads `1`, not the required `0`, and no `README.md` naming
+every skip/exclusion exists in that directory, so the task's bar is still unmet.
+Task 811 ran the launcher exactly once,
 verbatim, backgrounded and polled, at HEAD `17b1649` (code state `fdf4507`), and
 measured exit status **`1`**, deterministically, on `TestFeatures`'s
 `attach_acknowledges_a_live_error_without_replacing_its_verdict`
 (`features/status_attach.feature:18`): 311 scenarios (310 passed, 1 failed), 3532
-steps (3526 passed, 1 failed, 5 skipped). The raw log, the exit-status file and a
-failure excerpt exist only outside this repository, at
+steps (3526 passed, 1 failed, 5 skipped). The failure excerpt referenced by that
+sweep still exists only outside this repository, at
 `/run/ralphd/artifacts/phase3g-811-unsatisfiable/` (labelled here, per this run's
-standing rule, as a path this report may name only inside a quoted command, never
-link) — they were never committed because the task's own bar (exit `0`) was never
-reached, and this run's standing rules forbid the two routes that could have forced
-it (weakening the scenario's assertions, or gating R76's repair). Task 811 is
+standard rule, as a path this report may name only inside a quoted command, never
+link) — because the task's own bar (exit `0`) was never reached, and this run's
+standing rules forbid the two routes that could have forced it (weakening the
+scenario's assertions, or gating R76's repair). Task 811 is
 recorded `skipped` (filed `unsatisfiable`), not `completed`: **the missing piece is
-the entire tracked evidence directory and log**, not merely the number inside it.
+the `README.md` naming every skip/exclusion**, not the number inside the now-tracked
+exit-status file.
 
 ### (c) Task 812 — `ci/stability.sh 10`: does **not** meet its bar; fully tracked
 
@@ -1925,7 +1932,7 @@ only paths under `docs/`.
 |---|---|---|
 | clean tree at the true final sha | met, re-shown at commit A | addendum above, [`addendum-guard.log`](phase3g-815-closeout/addendum-guard.log) |
 | local `HEAD == origin/main` at the true final sha | met, re-shown at commit A | addendum above, [`addendum-guard.log`](phase3g-815-closeout/addendum-guard.log) |
-| task 811 (whole-suite sweep, exit 0) | **not met** — exit `1`, no tracked evidence directory | (b) above |
+| task 811 (whole-suite sweep, exit 0) | **not met** — committed `.exitstatus` reads `1`, no `README.md` naming skips | (b) above |
 | task 812 (`ci/stability.sh 10`, `10/10 passed`) | **not met** — `0/10 passed`, script exit `1` | (c) above, [`phase3g-812-stability10/`](phase3g-812-stability10/) |
 | task 813 guard (e) (`godog_test.go` diff empty) | **not met**, unsatisfiable as written; other six guards met | (d) above, [`phase3g-813-guards/`](phase3g-813-guards/) |
 | task 806 (footer/parity tests unedited) | **not met**, residual gap, no follow-up task filed | [review finding 2](#review-finding-2--r80s-one-definition-per-action-tasks-806808) |
