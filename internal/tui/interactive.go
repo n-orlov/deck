@@ -169,6 +169,27 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		})
 	}
 
+	// SPEC §7: entering the interactive preview is a deck-mediated
+	// attachment in exactly `a`'s sense -- the keyboard is about to reach
+	// the pane -- so the same durable transaction (store.RecordAttachment,
+	// via the same m.prepareAttach attachSelected consults) answers a
+	// waiting row and acknowledges an error row, against the durable row
+	// rather than the possibly-stale list frame. It runs only after every
+	// refusal and every fallible tmux step above: a refused or failed
+	// entry must not claim the user answered anything. A store failure
+	// here refuses the entry like attachSelected refuses the attach, and
+	// unwinds the claim already made -- grid first, then geometry, then
+	// ownership, the same order exitInteractive's teardown uses.
+	if m.prepareAttach != nil {
+		if err := m.prepareAttach(ctx, session.ID); err != nil {
+			_ = grid.Close()
+			_ = client.RestoreWindowGeometry(ctx, windowTarget, geometry)
+			_ = ownership.Release(ctx)
+			m.attachError = "Cannot enter interactive mode: " + err.Error()
+			return m, nil
+		}
+	}
+
 	m.interactive = true
 	m.interactiveWindowTarget = windowTarget
 	m.interactiveGeometry = geometry
