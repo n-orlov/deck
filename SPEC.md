@@ -510,7 +510,9 @@ Rules:
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
   hook verdict, and `tmux` only ever supplies liveness.
-- `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. Leaving an
+- `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. "Attaching"
+  means both ways the keyboard reaches the pane through deck: `a`'s full attach and `↵`'s
+  interactive preview (§11.9) — the same durable transaction applies to either. Leaving an
   attention state bumps `notify_epoch` (§10.2).
 - **Attaching to a `waiting` row also clears the status to `running`** (not only the
   acknowledgement): answering the prompt is why you attached, deck watched you do it, and
@@ -1698,6 +1700,9 @@ footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is
 `Enter` hands the keyboard to the selected session without leaving the list. deck fits the
 session's window to the preview panel, streams the pane into an in-process cell grid, and
 forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
+Entering is an attachment in §7's sense: the same durable transaction as `a`'s attach answers
+a `waiting` row and acknowledges an `error` row, applied only once entry has actually
+succeeded — a refused entry claims nothing.
 
 What separates this from §11's passive fit is **ownership**, not permission: passive fitting
 picks a size and leaves it, while interactive mode records what it found, claims it, and puts
