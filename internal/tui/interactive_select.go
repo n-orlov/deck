@@ -341,9 +341,18 @@ func (m Model) highlightInProgressSelection(lines []string, contentHeight int) [
 // (every CSI/OSC escape byte passed through untouched at zero columns via
 // ansiEscapeLen, every printable rune's own cellWidth spent against the
 // running column count) so the insertion point never lands mid-escape or
-// mid-glyph. A span still open when the row ends is closed there, so a
-// highlight reaching a row's own last column never bleeds into whatever
-// the caller appends next (padTrunc's own padding, the panel border).
+// mid-glyph. The row's OWN SGR sequences pass through with their
+// foreground selections intact, but any of them may also clear or replace
+// the background -- most commonly the \x1b[0m reset that ends a coloured
+// token of the pane's content, which un-did the selection background for
+// the rest of the row (GH #18: the highlight visibly died at the first
+// coloured character and stayed dead until the next row's fresh span) --
+// so while the span is open, openSeq is re-emitted immediately after each
+// passed-through CSI SGR: the content's foreground change lands first,
+// then the selection background reasserts itself over it. A span still
+// open when the row ends is closed there, so a highlight reaching a row's
+// own last column never bleeds into whatever the caller appends next
+// (padTrunc's own padding, the panel border).
 func highlightRangeSGR(line string, startCol, endCol int, openSeq, closeSeq string) string {
 	if startCol > endCol {
 		return line
@@ -356,6 +365,9 @@ func highlightRangeSGR(line string, startCol, endCol int, openSeq, closeSeq stri
 			n := ansiEscapeLen(line, i)
 			out.WriteString(line[i : i+n])
 			i += n
+			if opened && n >= 3 && line[i-n+1] == '[' && line[i-1] == 'm' {
+				out.WriteString(openSeq)
+			}
 			continue
 		}
 		switch {
