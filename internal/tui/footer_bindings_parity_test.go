@@ -127,15 +127,15 @@ func TestFooterEntriesNameOnlyBoundKeysViaSourceParse(t *testing.T) {
 // evaluates the very function the entry's own source names rather than a
 // second implementation of its logic that could drift from it.
 var footerPredicateByName = map[string]func(store.Session) bool{
-	"canAcknowledge":        canAcknowledge,
-	"canKill":               canKill,
-	"canResume":             canResume,
-	"canRestart":            canRestart,
-	"canDelete":             canDelete,
-	"canReachPane":          canReachPane,
-	"canShowDetail":         canShowDetail,
-	"canArchive":            canArchive,
-	"canUnarchive":          canUnarchive,
+	"canAcknowledge": canAcknowledge,
+	"canKill":        canKill,
+	"canResume":      canResume,
+	"canRestart":     canRestart,
+	"canDelete":      canDelete,
+	"canReachPane":   canReachPane,
+	"canShowDetail":  canShowDetail,
+	"canArchive":     canArchive,
+	"canUnarchive":   canUnarchive,
 }
 
 // footerGlobalKeysWithNoEligibility is the exact, closed set of footer
