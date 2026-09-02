@@ -165,18 +165,27 @@ func reclaimOne(ctx context.Context, client Client, dir string, record Interacti
 			// A live process holds this window's ownership right now --
 			// stand down untouched, exactly as ClaimWindowOwnership itself
 			// would. Leaving the temp dir in place is deliberate too: it is
-			// that live process's own pipe, still in active use.
+			// that live process's own pipe, still in active use. Neither
+			// option is touched: the ownership option (state.Value, already
+			// read above) and @deck_isize_geometry both stay exactly as the
+			// live owner left them -- R100's original-geometry record must
+			// outlive every steal until the LAST holder lets go legitimately,
+			// and a live owner has not.
 			return false, nil
 		}
 	}
 	// Stale (a dead owner's claim, or already unset with the pipe left
 	// armed by a crash between release and disarm): reclaim in the same
-	// order Model.exitInteractive itself uses -- disarm the transport,
-	// restore geometry, THEN release ownership -- so a concurrent claimant
-	// racing this reclaim pass never observes a window resized by an
-	// owner that has already let go of it.
+	// order Model.exitInteractive's own still-mine-gated teardown uses
+	// (task 112's teardownInteractiveClaim in internal/tui) -- disarm the
+	// transport, restore geometry, clear @deck_isize_geometry, THEN release
+	// ownership -- so a concurrent claimant racing this reclaim pass never
+	// observes a window resized by an owner that has already let go of it,
+	// and R100's original-geometry record never outlives the claim it was
+	// kept for.
 	_, _ = client.run(ctx, "pipe-pane", "-t", record.PaneTarget)
 	_ = client.RestoreWindowGeometry(ctx, record.WindowTarget, record.Geometry)
+	_ = client.ClearIsizeGeometry(ctx, record.WindowTarget)
 	if state.Set {
 		_ = client.unsetWindowOwnership(ctx, record.WindowTarget)
 	}
