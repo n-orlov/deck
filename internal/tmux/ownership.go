@@ -211,6 +211,38 @@ func (c Client) ClaimWindowOwnership(ctx context.Context, target string) (*Windo
 	return nil, false, fmt.Errorf("claim %s on %q: gave up after %d attempts racing a concurrent writer", OwnershipOption, target, maxOwnershipClaimAttempts)
 }
 
+// ForceClaimWindowOwnership implements a single-shot variant of
+// ClaimWindowOwnership for a force-attach path (SPEC.md §11.9's force
+// override): it never reads the option first and never consults pidAlive
+// -- a live owner is not respected here by design, because the caller has
+// already decided to override whatever is there. It writes this process's
+// fresh pid-tagged `<tag>:<pid>` claim exactly once and confirm-reads it
+// exactly once, with no retry loop: if the confirm-read shows exactly the
+// value just written, the claim is acquired; if it shows anything else
+// (a concurrent writer landed between the write and the confirm-read),
+// this call simply lost that single race and returns acquired=false with
+// a nil error -- never an error, because losing a race to another writer
+// is not a transport failure. An error return is reserved for a genuine
+// tmux/transport failure from the write or the confirm-read themselves.
+func (c Client) ForceClaimWindowOwnership(ctx context.Context, target string) (*WindowOwnership, bool, error) {
+	tag, err := ownershipClaimTag()
+	if err != nil {
+		return nil, false, err
+	}
+	mine := formatOwnershipClaim(tag, os.Getpid())
+	if err := c.writeWindowOwnership(ctx, target, mine); err != nil {
+		return nil, false, err
+	}
+	confirm, err := c.readWindowOwnership(ctx, target)
+	if err != nil {
+		return nil, false, err
+	}
+	if confirm.Set && confirm.Value == mine {
+		return &WindowOwnership{client: c, target: target, claim: mine}, true, nil
+	}
+	return nil, false, nil
+}
+
 // Release gives up this ownership, unsetting OwnershipOption on its target
 // -- but only if the option still reads exactly the claim this call made.
 // If it does not (a later claimant already validated this process as dead
