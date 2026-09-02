@@ -11,34 +11,35 @@ hold (R102), and the record-matches-the-tree documentation requirement (R103).
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
-a559e7c61a00ab5fa31c2d98eaf5ce787744e4dc
+3b70bfbc7e3552ff375ae675af117805a1eee944
 ```
 
-This is the approach-2 final code sha, not the `b9243a1` this section named when approach 1
-closed. Approach 2 reopened three requirements found stale on review and each landed a real
-code commit after `b9243a1`: task 201 (`c025c54`, `internal/tui/tui.go`'s helpText F entry),
-task 202 (`5b554f2`, `internal/tui/help_force_semantics_test.go`, pinning that wording to the
-force path's real semantics), and task 203 (`a559e7c`, `internal/tmux/restore_plain_unset_test.go`,
-pinning `RestoreWindowGeometry`'s plain-unset shape against a set window-size) — the last of
-the three, `a559e7c`, is now the final code sha. Everything after `a559e7c` at the time of
-writing is docs-only (task 208's finding, this refresh, and whatever follows in this approach),
-so `a559e7c` is what both gates and every R103 document in this phase must now measure
-against; both gates (tasks 127/129, captured at `b9243a1`) and every prior R103 document are
-stale against this new sha and are disclosed as such rather than silently superseded. Task
-136's `fcdb994` remains a code commit that is an ancestor of `b9243a1`, landing before either
-final code sha rather than after it. `git status --porcelain` is empty and
+This is the approach-4 final code sha, not the `a559e7c` this section named when approach 2
+closed (approach 3 landed no code commit). It moved because approach 4's own finding —
+SPEC §11.3's curated footer fixed-set sentence and PRD R98's footer wording disagreeing over
+`F` — required a SPEC-conformance fix: task 401 (`96bff56`, `internal/tui/tui.go`, dropping the
+`F` row from `footerLegend` and its dead completeness pair) and task 402 (`3b70bfb`,
+`internal/tui/footer_bindings_parity_test.go`, pinning `footerLegend`'s glyph set as a closed
+list against SPEC §11.3) — the second of the two, `3b70bfb`, is now the final code sha.
+Everything after `3b70bfb` at the time of writing is docs-only (this refresh and whatever
+follows in this approach), so `3b70bfb` is what both gates and every R103 document in this
+phase must now measure against; the approach-2/3 gates (tasks 127/129/206, captured at
+`b9243a1`, and tasks 302/303, captured at `a559e7c`) and every prior R103 document are stale
+against this new sha and are disclosed as such rather than silently superseded. Task 136's
+`fcdb994` remains a code commit that is an ancestor of `a559e7c`, landing before this final
+code sha rather than after it. `git status --porcelain` is empty and
 `git rev-parse HEAD origin/main` agree at the end of this task's commit.
 
 ## Per-requirement table
 
 | req | status | tasks | shas | evidence |
 |---|---|---|---|---|
-| R98 | met | 104–109; 201, 202 (approach-2 correction) | `a65190e`, `0177991`, `e31c37e`, `8d1b41a`, `17e185c`, `7e141ad`, `a063296`, `8e5e036`, `55c0818`, `c025c54`, `5b554f2` | `internal/tui/interactive.go`, `internal/tui/tui.go`, `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_handler_agreement_test.go`, `internal/tui/refusal_f_naming_test.go`, `internal/tui/force_enter_test.go`, `internal/tui/force_indistinguishable_test.go`, `features/interactive_force_attach.feature`, `internal/tui/help_force_semantics_test.go` |
+| R98 | met | 104–109; 201, 202 (approach-2 correction); 401, 402 (approach-4 SPEC §11.3 conformance fix) | `a65190e`, `0177991`, `e31c37e`, `8d1b41a`, `17e185c`, `7e141ad`, `a063296`, `8e5e036`, `55c0818`, `c025c54`, `5b554f2`, `96bff56`, `3b70bfb` | `internal/tui/interactive.go`, `internal/tui/tui.go`, `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_handler_agreement_test.go`, `internal/tui/refusal_f_naming_test.go`, `internal/tui/force_enter_test.go`, `internal/tui/force_indistinguishable_test.go`, `features/interactive_force_attach.feature`, `internal/tui/help_force_semantics_test.go`, `internal/tui/footer_bindings_parity_test.go` |
 | R99 | met | 101, 102, 121 | `eb1e917`, `244f66f`, `d7f149c` | `internal/tmux/ownership.go`, `internal/tmux/force_ownership_test.go`, `features/interactive_force_attach.feature` (the `↵` refused, `F` wins, A is told scenario) |
 | R100 | met | 110–115; 203 (approach-2 pin); 304 (approach-3 correction) | `a790061`, `e6157d8`, `4ef6d28`, `c525b35`, `cbc6692`, `625c663`, `cb27c5c`, `1b71c74`, `a559e7c`, `ca00cb6` | `internal/tmux/isize_geometry.go`, `internal/tmux/isize_geometry_test.go`, `internal/tui/isize_geometry_entry_test.go`, `internal/tui/teardown_still_mine_gate_test.go`, `internal/tui/teardown_transport_gate_test.go`, `internal/tui/failed_entry_unwind_test.go`, `internal/tmux/reclaim.go`, `internal/tmux/reclaim_test.go`, `internal/tui/double_steal_restore_test.go`, `features/interactive_force_attach.feature` (the geometry-survives-the-chain scenario), `internal/tmux/restore_plain_unset_test.go` |
 | R101 | met | 116, 117, 118, 120, 136 (not 119 — its disposition belongs to the phase 3i findings report, task 131); 121–123 (feature scenarios) | `4ac5970`, `c95e848`, `be7a387`, `5fb9e4f`, `e398881`, `fcdb994`, `d7f149c`, `8d0437f`, `704fd1a` | `internal/tui/lost_attach.go`, `internal/tui/lost_attach_test.go`, `internal/tui/lost_attach_swallow_test.go`, `internal/tui/interactive_displacement.go`, `internal/tui/interactive_displacement_test.go`, `internal/tui/interactive_fallout_store_test.go`, `internal/tui/displacement_teardown_test.go`, `features/interactive_force_attach.feature` (the `↵` refused/`F` wins/A is told, full-attach-displaces-the-holder and dialog-swallows-keys scenarios) |
 | R102 | met | 124–126 | `7371c07`, `83e92d5`, `b9243a1` | `internal/tui/tui.go`, `internal/tui/preview_fit_foreign_claim_test.go`, `features/interactive_force_attach.feature` (the passive-fit-stands-down scenario) |
-| R103 | met | 127–129, 206 (gates, superseded); 130–133 (report, findings, DELIVERY-LOG, GH map); 301–305 (approach 3 re-verification at the final code sha `a559e7c`) | `0c022e8`, `4a9d745`, `3508c5a`, `c8fa18f`, `2c5c098`, `ac87852`, `7db4756`, `7206877`, `ca00cb6`, `ef3c0e3` | `docs/reports/phase3i.md`, `docs/reports/phase3i-findings.md`, `docs/DELIVERY-LOG.md` (Phase 3i paragraph), the GH issue #19 design section map above, `docs/reports/phase3i-302-fullsuite/`, `docs/reports/phase3i-303-fullsuite-verbose/`, `docs/reports/phase3i-206-stability10/`, `docs/reports/phase3i-308-guards/`, `docs/reports/phase3i-309-closeout/` |
+| R103 | met | 127–129, 206 (gates, superseded); 130–133 (report, findings, DELIVERY-LOG, GH map); 301–305 (approach 3 re-verification at the final code sha `a559e7c`, superseded); 306, 307, 308, 309 (approach-3 documentation commits, review finding 3); 401, 402 (approach-4 code fix), 403 (findings §8), 404, 405, 406 (approach-4 gates at the new final code sha `3b70bfb`), this refresh (task 407) | `0c022e8`, `4a9d745`, `3508c5a`, `c8fa18f`, `2c5c098`, `ac87852`, `7db4756`, `7206877`, `ca00cb6`, `ef3c0e3`, `90fd553`, `3761469`, `ba80e8e`, `370a065`, `96bff56`, `3b70bfb`, `4058c01`, `a6b382d`, `e4d3028`, `197e035` | `docs/reports/phase3i.md`, `docs/reports/phase3i-findings.md`, `docs/DELIVERY-LOG.md` (Phase 3i paragraph), the GH issue #19 design section map above, `docs/reports/phase3i-404-fullsuite/`, `docs/reports/phase3i-405-stability10/`, `docs/reports/phase3i-406-fullsuite-verbose/`, `docs/reports/phase3i-308-guards/`, `docs/reports/phase3i-309-closeout/` (phase3i-302-fullsuite/, phase3i-303-fullsuite-verbose/ and phase3i-206-stability10/ are superseded by 404/405/406) |
 
 **R100 and SPEC 11.9 agree.** The PRD's R100 unit-evidence bullet reads, in full, "the
 `window-size` value including its **unset** shape" (verified fresh: `sed -n '145,148p'
@@ -148,15 +149,18 @@ finding.
 ## R103's discharge
 
 R103 requires the record to match the tree. That now holds at the frozen final code sha
-`a559e7c`: this report (`docs/reports/phase3i.md`), the phase 3i findings report
-(`docs/reports/phase3i-findings.md`, including task 119's disposition in its numbered
-finding 1 and approach 3's own gate disposition in its numbered finding 7), the
-`docs/DELIVERY-LOG.md` Phase 3i paragraph and the GH issue #19 design section map above are
-all landed and current. The tasks 127–129/206 gate artifacts named in "Gate results" above
-were captured at superseded shas (`b9243a1` for 127–129, and 206's stability run is at
-`a559e7c` but predates approach 3's own re-verification); the CURRENT gate evidence for the
-final code sha `a559e7c` is `docs/reports/phase3i-302-fullsuite/` (whole-suite sweep, exit
-`0`), `docs/reports/phase3i-303-fullsuite-verbose/` (verbose companion, exit `0`, 319
-scenarios / 3682 steps) and `docs/reports/phase3i-206-stability10/` (`ci/stability.sh 10`,
-`10/10 passed`, not re-run since `git log --oneline a559e7c..HEAD -- '*.go' '*.feature'` is
-empty). R103's row above therefore reads `met`, citing these documents and gate directories.
+`3b70bfb`: this report (`docs/reports/phase3i.md`, this refresh, task 407), the phase 3i
+findings report (`docs/reports/phase3i-findings.md`, including task 119's disposition in its
+numbered finding 1, approach 3's own gate disposition in its numbered finding 7, and
+approach 4's SPEC §11.3/R98 footer disagreement and its cure in its numbered finding 8, task
+403), the `docs/DELIVERY-LOG.md` Phase 3i paragraph and the GH issue #19 design section map
+above are all landed and current. The tasks 127–129/206 (`b9243a1`) and 302/303 (`a559e7c`)
+gate artifacts named in "Gate results" above were captured at now-superseded shas — every
+code commit since (`c025c54`, `5b554f2`, `a559e7c`, `96bff56`, `3b70bfb`) postdates them; the
+CURRENT gate evidence for the final code sha `3b70bfb` is `docs/reports/phase3i-404-fullsuite/`
+(whole-suite sweep, exit `0`, `ci/run.sh go test -p=1 -count=1 ./...`),
+`docs/reports/phase3i-406-fullsuite-verbose/` (verbose companion, exit `0`, 319 scenarios /
+3682 steps) and `docs/reports/phase3i-405-stability10/` (`ci/stability.sh 10`, 10/10 PASS, no
+FAIL runs), all three captured with the repo at that frozen sha and not re-run since
+`git log --oneline 3b70bfb..HEAD -- '*.go' '*.feature'` is empty. R103's row above therefore
+reads `met`, citing these documents and gate directories.
