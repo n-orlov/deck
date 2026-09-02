@@ -140,6 +140,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveSelectionSteps(sc)
 	registerInteractiveRetargetSteps(sc)
 	registerInteractivePipeLeakSteps(sc)
+	registerInteractiveForceAttachSteps(sc)
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
