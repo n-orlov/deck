@@ -58,6 +58,13 @@ func TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerCl
 		t.Fatalf("test's chosen dead pid %d is alive; pick another", deadPID)
 	}
 	setWindowOwnershipRaw(t, socket, "s0", formatOwnershipClaim("deadowner", deadPID))
+	// R100 (task 111/113): the record's Geometry is the RESOLVED original --
+	// what enterInteractive's own ResolveIsizeGeometry would have written to
+	// @deck_isize_geometry on first claim -- so a real reclaim pass has the
+	// same option present to clear once it actually proceeds.
+	if err := client.writeWindowIsizeGeometry(ctx, "s0", geometry); err != nil {
+		t.Fatalf("writeWindowIsizeGeometry: %v", err)
+	}
 	if err := client.resizeWindow(ctx, "s0", 40, 10); err != nil {
 		t.Fatalf("simulate FitWindowToPane's own resize: %v", err)
 	}
@@ -127,6 +134,13 @@ func TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerCl
 	if ownership.Set {
 		t.Fatalf("ownership option is still set after reclaim (%q), want released", ownership.Value)
 	}
+	_, isizeSet, err := client.readWindowIsizeGeometry(ctx, "s0")
+	if err != nil {
+		t.Fatalf("readWindowIsizeGeometry after reclaim: %v", err)
+	}
+	if isizeSet {
+		t.Fatalf("@deck_isize_geometry is still set after reclaim, want unset (task 113: a reclaim that proceeds unsets both options)")
+	}
 	if _, err := os.Stat(tempDir); !os.IsNotExist(err) {
 		t.Fatalf("leaked temp dir %q still present after reclaim (err=%v), want removed", tempDir, err)
 	}
@@ -153,6 +167,13 @@ func TestReclaimLeakedInteractivePipesLeavesALiveOwnersClaimUntouched(t *testing
 	}
 	liveClaim := formatOwnershipClaim("livecompetitor", os.Getpid())
 	setWindowOwnershipRaw(t, socket, "s0", liveClaim)
+	// R100 (task 111/113): the live owner's own @deck_isize_geometry record
+	// must be just as untouchable as its ownership option -- reclaim must
+	// not clear the ONE record of the window's true pre-deck size out from
+	// under a claim that is still legitimately live.
+	if err := client.writeWindowIsizeGeometry(ctx, "s0", geometry); err != nil {
+		t.Fatalf("writeWindowIsizeGeometry: %v", err)
+	}
 	if err := client.resizeWindow(ctx, "s0", 40, 10); err != nil {
 		t.Fatalf("simulate FitWindowToPane's own resize: %v", err)
 	}
@@ -199,6 +220,13 @@ func TestReclaimLeakedInteractivePipesLeavesALiveOwnersClaimUntouched(t *testing
 	}
 	if !ownership.Set || ownership.Value != liveClaim {
 		t.Fatalf("ownership option = (set=%v, value=%q) after reclaim, want the live owner's claim %q left untouched", ownership.Set, ownership.Value, liveClaim)
+	}
+	isizeGeometry, isizeSet, err := client.readWindowIsizeGeometry(ctx, "s0")
+	if err != nil {
+		t.Fatalf("readWindowIsizeGeometry after reclaim: %v", err)
+	}
+	if !isizeSet || isizeGeometry != geometry {
+		t.Fatalf("@deck_isize_geometry = (set=%v, value=%+v) after reclaim, want the live owner's original geometry %+v left untouched (task 113)", isizeSet, isizeGeometry, geometry)
 	}
 	if _, err := os.Stat(tempDir); err != nil {
 		t.Fatalf("live owner's own temp dir %q was removed by reclaim: %v", tempDir, err)
