@@ -160,3 +160,16 @@ func (c Client) unsetWindowIsizeGeometry(ctx context.Context, target string) err
 	}
 	return nil
 }
+
+// ClearIsizeGeometry unsets IsizeGeometryOption in the window scope --
+// exported so a caller outside this package (task 112's still-mine-gated
+// teardown in internal/tui) can perform R100's "restored and cleared by
+// the last holder to let go legitimately" half without a same-package
+// helper of its own. It is a thin wrapper over unsetWindowIsizeGeometry
+// and performs no gating of its own -- the caller decides, via
+// WindowOwnership.Probe, whether it is entitled to call this at all,
+// exactly the separation unsetWindowIsizeGeometry's own doc comment
+// already keeps from ITS caller.
+func (c Client) ClearIsizeGeometry(ctx context.Context, target string) error {
+	return c.unsetWindowIsizeGeometry(ctx, target)
+}
