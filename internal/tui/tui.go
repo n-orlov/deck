@@ -1062,9 +1062,23 @@ type uiStatePersisted struct{ err error }
 // failure and the real FitWindowToPane call) and every pre-existing test
 // that constructs previewFitDone{sessionID: ...} without naming this
 // field.
+//
+// foreignLiveClaim (task 124, SPEC §11.9 R102) is true ONLY for the
+// closure's foreign-live-claim return: task 103's Client.ProbeWindowOwnership
+// read OwnershipOption on the selected session's window and found it held
+// by a live pid that is not this process. Exactly like noLivePane, nothing
+// was resized, so this must not latch previewFitSessionID either -- the
+// claim is a transient state (a preview row someone else's `F` or a plain
+// attach happens to be sitting on right now), and latching would cost the
+// session its fit for the rest of the model's lifetime the moment that
+// claim clears, which is precisely the failure task 035 already fixed for
+// the no-live-pane case. It is a separate field, not a second meaning
+// piggybacked onto noLivePane, so noLivePane keeps naming exactly the one
+// condition its own doc comment states.
 type previewFitDone struct {
-	sessionID  string
-	noLivePane bool
+	sessionID        string
+	noLivePane       bool
+	foreignLiveClaim bool
 }
 
 type sessionResumed struct {
@@ -1500,6 +1514,23 @@ func (m Model) capturePreview() tea.Cmd {
 // window-size latest and simply wins" is the stated, accepted outcome, not
 // a case to refuse.
 //
+// It DOES, however, stand down for a foreign LIVE claim (task 103's probe,
+// task 124, SPEC §11.9 R102): after the round trip lands, the closure
+// checks Client.ProbeWindowOwnership on the very same window it is about
+// to resize, and issues no resize-window at all if that reads
+// tmux.ClaimForeignLive. This is deliberately NOT a latching refusal --
+// unlike previewFitSessionID's own coalescing, a foreign claim is read
+// fresh on every attempt via previewFitDone's foreignLiveClaim (which,
+// exactly like task 035's noLivePane, is never recorded as "settled"). A
+// transient claim (someone else's `F` steal, or a plain attach that has
+// since detached again) must not cost the session its fit for the rest of
+// the model's lifetime merely because one tick happened to land while the
+// claim was held -- the same reasoning task 035 already established for a
+// momentarily-dead pane, applied here to a momentarily-claimed window. A
+// probe transport error is treated the same as every other best-effort
+// read in this function: fall through and attempt the fit anyway, rather
+// than refuse on an unconfirmed read.
+//
 // The receiver is a POINTER because scheduling a fit is itself a state
 // change: previewFitInFlight has to be marked before the command is handed
 // to the event loop, or the very next tick can slip past the guard.
@@ -1553,6 +1584,17 @@ func (m *Model) previewFit() tea.Cmd {
 		windowTarget, err := tmux.SessionName(slug)
 		if err != nil {
 			return previewFitDone{sessionID: sessionID}
+		}
+		// Task 103/124: a foreign LIVE claim on this window (someone else's
+		// `F` steal, or a plain attach) means passive fit must stand down --
+		// resizing a window another live process now holds races whatever
+		// that process is doing with it. foreignLiveClaim: true (not
+		// noLivePane) so this does NOT latch previewFitSessionID: the claim
+		// is read fresh on every attempt, exactly like task 035's no-live-
+		// pane return, so the session regains eligibility the moment the
+		// claim clears without waiting for the selection to change.
+		if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
+			return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}
 		}
 		// FitWindowToPane already no-ops (0 resize-window calls) when the
 		// pane already matches width/height, so a settled selection whose
@@ -2276,7 +2318,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// stays (or is re-)selected. Every OTHER return path (the real fit,
 		// and the pre-existing tmux.SessionName failure path, both left
 		// unchanged by this task) keeps latching exactly as before.
-		if !msg.noLivePane {
+		if !msg.noLivePane && !msg.foreignLiveClaim {
 			m.previewFitSessionID = msg.sessionID
 		}
 		// Cleared unconditionally, not only when it matches the session
