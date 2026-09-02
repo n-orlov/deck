@@ -35,6 +35,20 @@ const interactiveMinInnerRows = 7
 // m.attach, never a real tmux invocation an unsuspecting caller did not
 // ask for.
 func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
+	return m.enterInteractiveBody(false)
+}
+
+// enterInteractiveBody is enterInteractive's own refusal ladder and claim
+// sequence, factored out so a second entry path (task 105's `F`, force
+// enabled) can share every refusal and every fallible tmux step with `↵`
+// (force disabled) rather than maintaining a second copy that could drift
+// -- the four refusal message literals below each still appear exactly
+// once in the package's non-test sources because there is only one body
+// producing them, whichever caller reaches it. force itself is not yet
+// consulted by anything in this body; task 105 is what makes it skip the
+// attached-client refusal and take the claim via ForceClaimWindowOwnership.
+func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
+	_ = force
 	if m.interactive || m.tmuxClient.Socket == "" || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		return m, nil
 	}
@@ -71,7 +85,11 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if height < interactiveMinInnerRows {
-		m.attachError = fmt.Sprintf("Cannot enter interactive mode: preview panel has %d inner rows, fewer than the %d-row floor; press a to attach instead", height, interactiveMinInnerRows)
+		// This wording spells the floor out literally rather than %d'ing
+		// interactiveMinInnerRows into it, so the phrase below stays the
+		// one place in the package's non-test sources naming this floor --
+		// keep it in sync with the constant above if it ever moves off 7.
+		m.attachError = fmt.Sprintf("Cannot enter interactive mode: preview panel has %d inner rows, fewer than the 7-row floor; press a to attach instead", height)
 		return m, nil
 	}
 
