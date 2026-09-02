@@ -744,18 +744,22 @@ carrying the pre-any-deck geometry through an arbitrary chain of steals so the s
 original geometry is never lost (R100), the lost-attach dialog that tells and silences the
 displaced client (R101), the passive-fit stand-down that keeps a second client's mere row
 selection from resizing a window it doesn't hold (R102), and the record-matches-the-tree
-documentation requirement (R103). Final code sha `a559e7c`
-(`a559e7c61a00ab5fa31c2d98eaf5ce787744e4dc`) — approach 3 of this run lands zero `*.go`/
-`*.feature` changes, so this is the same sha R98-R102 were shipped and independently reviewed
-at. At that sha all three current gates measured green: the mandated, unnarrowed whole-suite
-sweep exits **0**, all 17 packages pass or report no test files, nothing failed
-([`docs/reports/phase3i-302-fullsuite/README.md`](reports/phase3i-302-fullsuite/README.md));
+documentation requirement (R103). **Final code sha is now `3b70bfb`
+(`3b70bfbc7e3552ff375ae675af117805a1eee944`), not the `a559e7c` this paragraph used to cite**:
+approach 4 landed exactly two code commits, task 401 (`96bff56`) and task 402 (`3b70bfb`
+itself), a SPEC-conformance fix in which SPEC §11.3's curated footer fixed-set sentence outranks
+PRD R98's footer wording, so `F` comes out of `footerLegend`'s fixed set (and its now-dead
+completeness pair) while staying bound, staying in the keymap and staying in the `?` overlay —
+`3b70bfb` is the code-frozen sha every gate and document in this phase must now measure
+against; the approach-2/3 gates (tasks 127/128/129/204 at `b9243a1`, and tasks 302/303/206 at
+`a559e7c`) are stale and disclosed only as superseded, never as a discharge. At `3b70bfb` all
+three current gates measured green: the mandated, unnarrowed whole-suite sweep exits **0**, all
+17 packages pass or report no test files, nothing failed
+([`docs/reports/phase3i-404-fullsuite/README.md`](reports/phase3i-404-fullsuite/README.md));
 its verbose companion tallies **319 scenarios (319 passed)**, **3682 steps (3682 passed)**
-([`docs/reports/phase3i-303-fullsuite-verbose/README.md`](reports/phase3i-303-fullsuite-verbose/README.md));
-and the stability gate's own `docs/reports/phase3i-206-stability10/summary.log` final line
-reads, verbatim, **10/10 passed**, script exit **0**, not re-measured in approach 3 since no
-code commit landed after it
-([`docs/reports/phase3i-206-stability10/README.md`](reports/phase3i-206-stability10/README.md)).
+([`docs/reports/phase3i-406-fullsuite-verbose/README.md`](reports/phase3i-406-fullsuite-verbose/README.md));
+and the stability gate's own summary line reads, verbatim, **10/10 passed**, script exit **0**
+([`docs/reports/phase3i-405-stability10/README.md`](reports/phase3i-405-stability10/README.md)).
 **The PRD's literal protected-path clause is UNMET, not met, and is reported that way
 deliberately**: the audit range `6197b53..HEAD` over `SPEC.md`, `prds/`, `ci/Dockerfile`,
 `ci/SPIKE.md` necessarily contains one operator commit, `3090b68` (the operator's own commit
@@ -765,19 +769,21 @@ rewrite may move that commit out of it, so the clause stands UNMET exactly as wr
 [`docs/reports/phase3i-findings.md`](reports/phase3i-findings.md) §2 ("The protected-path audit
 range `6197b53..HEAD` necessarily contains one operator commit") for the full disclosure,
 including the worker-write range `3090b68..HEAD` over the same paths, which is empty: no worker
-commit in this run touched a protected path. Terminal non-completed tasks from the earlier
-approaches, reported honestly rather than presented as discharging any requirement: approach
+commit in this run touched a protected path. Six terminal non-completed tasks from the earlier
+approaches are reported honestly rather than presented as discharging any requirement: approach
 1's task 119 ("Prove the two displacement flavours tear down differently") ended `failed`
-(validation-exhausted) on test strength, not on product behaviour, its residual carved into
-task 136 (`validated`, counts ownership-option reads rather than only unsets in the
-stolen-claim teardown test) and task 134 ended `skipped`; approach 2's task 204 ("Run and
+(validation-exhausted) on test strength, not on product behaviour, its residual discharged by
+task 136 (`validated`, `fcdb994`, counts ownership-option reads rather than only unsets in the
+stolen-claim teardown test), and task 134 ended `skipped`; approach 2's task 204 ("Run and
 publish the whole-suite sweep at the new final code sha") ended `failed` (validation-exhausted)
-on sweep-polling discipline, superseded by approach 3's task 302, task 205 stayed `pending`
-when the run moved to approach 3, and tasks 211 and 212 ended `skipped`. Evidence:
-[`docs/reports/phase3i.md`](reports/phase3i.md) (the per-requirement report) and
+on sweep-polling discipline, superseded first by approach 3's task 302 and now by approach 4's
+task 404; task 205 ("Publish the verbose companion sweep's Gherkin tally") stayed `pending` when
+the run moved to approach 3, superseded by approach 4's task 406; and tasks 211 and 212 ended
+`skipped` when that same move happened. Evidence: [`docs/reports/phase3i.md`](reports/phase3i.md)
+(the per-requirement report, refreshed against `3b70bfb` by task 407) and
 [`docs/reports/phase3i-findings.md`](reports/phase3i-findings.md) (task 119's disposition, the
-protected-path audit disclosure, both gates' disposition quoted verbatim, and this phase's own
-out-of-scope recurrence check).
+protected-path audit disclosure, both gates' disposition quoted verbatim, the SPEC §11.3 footer
+finding (numbered finding 8, task 403), and this phase's own out-of-scope recurrence check).
 
 ## Other milestones
 
