@@ -2236,7 +2236,39 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.previewFit(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// Task 118: displacement detection rides this same tick, never a
+		// per-keystroke check (updateInteractive gains none at all). The
+		// fast path is checked first and, unlike the backstop below, needs
+		// no tea.Cmd at all -- it is a pure read of the transport's own
+		// Status(), so a hit is handled inline, in this very Update call,
+		// rather than round-tripping through another message.
+		if m.interactive {
+			if m.interactiveDisplacementFastPath() {
+				name := ""
+				if m.selected >= 0 && m.selected < len(m.sessions) {
+					name = m.sessions[m.selected].Name
+				}
+				next, cmd := m.raiseLostAttach(name)
+				m = next
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			} else if cmd := m.checkInteractiveDisplacementBackstop(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 		return m, tea.Batch(cmds...)
+	case interactiveDisplacementChecked:
+		// Ignored unless interactive mode is both still active AND still
+		// against the exact window this poll was issued against: the fast
+		// path above may already have raised the dialog this same tick, or
+		// Ctrl+Q may have left interactive mode (and possibly re-entered a
+		// different session) before this round trip landed.
+		if msg.displaced && m.interactive && m.interactiveWindowTarget == msg.windowTarget {
+			next, cmd := m.raiseLostAttach(msg.sessionName)
+			return next, cmd
+		}
+		return m, nil
 	case previewFitDone:
 		// Task 035: a no-live-pane return must NOT latch previewFitSessionID
 		// -- nothing was resized, so this session must stay eligible for a
