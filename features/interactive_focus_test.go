@@ -17,6 +17,7 @@ import (
 func registerInteractiveFocusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" enters interactive mode$`, clientEntersInteractiveMode)
 	sc.Step(`^deck client "([^"]+)" leaves interactive mode$`, clientLeavesInteractiveMode)
+	sc.Step(`^deck client "([^"]+)" forces entry into interactive mode$`, clientForcesEntryIntoInteractiveMode)
 }
 
 // clientEntersInteractiveMode sends a bare Enter (SPEC §11.9, task 061:
@@ -56,6 +57,31 @@ func clientLeavesInteractiveMode(ctx context.Context, name string) error {
 		return err
 	}
 	if err := client.Send("\x11"); err != nil {
+		return err
+	}
+	time.Sleep(150 * time.Millisecond)
+	return nil
+}
+
+// clientForcesEntryIntoInteractiveMode sends a bare `F` (task 105's list-mode
+// binding to enterInteractiveBody(true), SPEC "F forces entry over whoever
+// holds the window"), the one entry path that skips the attached-client
+// refusal and steals a live ownership claim instead of standing down for it
+// (internal/tui/force_enter_test.go's TestForceEntersDespiteAnAttachedClient
+// proves the same claim-stealing at the model level; this is its real-tmux,
+// real-pty counterpart). Paced identically to clientEntersInteractiveMode:
+// the claim steal, window resize and transport start all need to land
+// before the next step reads the frame.
+func clientForcesEntryIntoInteractiveMode(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("F"); err != nil {
 		return err
 	}
 	time.Sleep(150 * time.Millisecond)
