@@ -243,6 +243,96 @@ func (c Client) ForceClaimWindowOwnership(ctx context.Context, target string) (*
 	return nil, false, nil
 }
 
+// ClaimState is the tri-state answer to "what does OwnershipOption read on
+// this window RIGHT NOW", from the point of view of a caller who may or
+// may not hold a claim there (SPEC.md §11.9's R100 teardown gating, R101
+// tick poll and R102 previewFit stand-down all classify a window this way
+// before deciding whether to act on it).
+type ClaimState int
+
+const (
+	// ClaimUnset means OwnershipOption carries no live claim: either it
+	// was never set (windowOwnershipState.Set == false, tmux's "invalid
+	// option" or an empty successful read) or it names a pid that is no
+	// longer alive -- the same "unset or dead owner" grouping
+	// ClaimWindowOwnership's own doc comment already treats as
+	// equivalent (both fall through to a write there; here, both fall
+	// through to this answer).
+	ClaimUnset ClaimState = iota
+	// ClaimForeignLive means OwnershipOption is set to a value this call
+	// does not recognise as its own, naming a pid that answers
+	// pidAlive -- some other live process holds the window now (most
+	// obviously a ForceClaimWindowOwnership steal, but also an ordinary
+	// ClaimWindowOwnership by another process).
+	ClaimForeignLive
+	// ClaimStillMine means OwnershipOption reads exactly the value a
+	// specific WindowOwnership claimed -- nobody has stolen it. Only
+	// WindowOwnership.Probe, which knows that value, can ever return
+	// this; the target-only Client.ProbeWindowOwnership never does.
+	ClaimStillMine
+)
+
+// String renders a ClaimState the way test failures and any future log
+// line should name it.
+func (s ClaimState) String() string {
+	switch s {
+	case ClaimUnset:
+		return "unset"
+	case ClaimForeignLive:
+		return "foreign-live"
+	case ClaimStillMine:
+		return "still-mine"
+	default:
+		return fmt.Sprintf("ClaimState(%d)", int(s))
+	}
+}
+
+// classifyWindowOwnership reads OwnershipOption on target and classifies
+// it against mine (the empty string when the caller holds no claim of its
+// own to compare against -- Client.ProbeWindowOwnership's case): unset (or
+// a dead owner), a live claim that is not mine, or mine exactly. This is
+// the one implementation shared by both exported probes below; neither
+// adds a branch of its own.
+func (c Client) classifyWindowOwnership(ctx context.Context, target, mine string) (ClaimState, error) {
+	got, err := c.readWindowOwnership(ctx, target)
+	if err != nil {
+		return ClaimUnset, err
+	}
+	if !got.Set {
+		return ClaimUnset, nil
+	}
+	if mine != "" && got.Value == mine {
+		return ClaimStillMine, nil
+	}
+	_, pid, ok := parseOwnershipClaim(got.Value)
+	if !ok || !pidAlive(pid) {
+		return ClaimUnset, nil
+	}
+	return ClaimForeignLive, nil
+}
+
+// ProbeWindowOwnership answers whether OwnershipOption on target is unset
+// or held by a live foreign pid, for a caller that holds no claim of its
+// own on target to compare against (SPEC.md §11.9's R102: previewFit
+// checks a session's window it has never claimed). It never returns
+// ClaimStillMine -- there is nothing here to be "mine" -- so a caller that
+// DOES hold a claim wants WindowOwnership.Probe instead.
+func (c Client) ProbeWindowOwnership(ctx context.Context, target string) (ClaimState, error) {
+	return c.classifyWindowOwnership(ctx, target, "")
+}
+
+// Probe answers, for this WindowOwnership's own target, which of the
+// three claim states currently holds: OwnershipOption unset, held by a
+// live foreign pid, or still exactly this WindowOwnership's own confirmed
+// claim. It is the read-only counterpart to
+// ClaimWindowOwnership/ForceClaimWindowOwnership that R100's teardown
+// gating and R101's tick poll both need before acting: neither may
+// restore geometry, clear @deck_isize_geometry or release ownership
+// unless this reads ClaimStillMine first.
+func (o *WindowOwnership) Probe(ctx context.Context) (ClaimState, error) {
+	return o.client.classifyWindowOwnership(ctx, o.target, o.claim)
+}
+
 // Release gives up this ownership, unsetting OwnershipOption on its target
 // -- but only if the option still reads exactly the claim this call made.
 // If it does not (a later claimant already validated this process as dead
