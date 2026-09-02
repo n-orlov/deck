@@ -591,15 +591,23 @@ list):**
 > `footer_bindings_parity_test.go` and `footer_handler_agreement_test.go` all agree with the
 > amended §11.3 keymap.
 
+The three bare basenames inside that block are the PRD's own wording, reproduced verbatim
+because this finding is about what R98 literally says; they are not this report's own path
+citations. The tracked, repo-relative paths R98's sentence names are
+`internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_bindings_parity_test.go` and
+`internal/tui/footer_handler_agreement_test.go`, and every path this section cites in its own
+voice -- outside that quotation -- is written in exactly that repo-relative form, so each one
+passes `git ls-files --error-unmatch` as cited.
+
 Read literally, R98 asks `F` to appear in the footer everywhere `↵`/`a` do, since both of
 those are in SPEC §11.3's fixed set -- directly contradicting §11.3's own curated list, which
 names fourteen keys and not `F`.
 
 **SPEC wins, per the PRD's own authority rule quoted above** ("Where this PRD and `SPEC.md`
 disagree, `SPEC.md` wins"). `F` leaves `footerLegend` -- the footer's curated fixed set --
-while staying bound in the bare-key switch, staying in `help_keymap_parity_test.go`'s keymap
-parity and staying in the `?` overlay's `helpText`, exactly as §11.3 prescribes for a
-rarely-used per-row action kept out of the footer.
+while staying bound in the bare-key switch, staying in
+`internal/tui/help_keymap_parity_test.go`'s keymap parity and staying in the `?` overlay's
+`helpText`, exactly as §11.3 prescribes for a rarely-used per-row action kept out of the footer.
 
 **The cure -- tasks 401 and 402:**
 
