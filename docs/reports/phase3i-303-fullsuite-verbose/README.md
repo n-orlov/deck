@@ -157,11 +157,31 @@ from the `TestGodogRejectsUndefinedAndFailedSteps` fixture inside `internal/tui`
 deliberately runs a failing step and an undefined step to prove godog's own step-rejection
 behaviour — not part of the real suite's Gherkin coverage.
 
+godog colours its tally lines, so each of those log lines carries raw ANSI SGR escape bytes
+(`ESC` = `0x1b`) around the count. **The first fenced block in each subsection below is the
+`grep -n` output byte-for-byte, escape bytes included** — copied straight out of `verbose.log`,
+not retyped — so a byte-exact search for any quoted `NNNN:...` line finds it in both files. The
+second fenced block repeats the same two lines through `cat -v`, which renders each `ESC` byte as
+the two visible characters `^[`, for readers whose viewer swallows control bytes. To reproduce
+either form from this directory:
+
+```
+grep -n 'scenarios (\|steps (' verbose.log            # the raw bytes (first block)
+grep -n 'scenarios (\|steps (' verbose.log | cat -v   # the ^[ rendition (second block)
+```
+
 ### The deliverable tally (from the `features` package's real run)
 
 ```
-5642:319 scenarios ([32m319 passed[0m)
-5643:3682 steps ([32m3682 passed[0m)
+5642:319 scenarios ([32m319 passed[0m)
+5643:3682 steps ([32m3682 passed[0m)
+```
+
+The same two lines with the ESC bytes made visible (`grep -n ... | cat -v`):
+
+```
+5642:319 scenarios (^[[32m319 passed^[[0m)
+5643:3682 steps (^[[32m3682 passed^[[0m)
 ```
 
 **319 scenarios (319 passed)** / **3682 steps (3682 passed)** — every scenario and every step in
@@ -176,15 +196,29 @@ reports the failure/undefined status correctly), but their own internal godog ta
 part of the real suite's Gherkin coverage and are excluded from the 319/3682 figures above:
 
 ```
-5977:1 scenarios ([31m1 failed[0m)
-5978:1 steps ([31m1 failed[0m)
+5977:1 scenarios ([31m1 failed[0m)
+5978:1 steps ([31m1 failed[0m)
+```
+
+The same two lines with the ESC bytes made visible (`grep -n ... | cat -v`):
+
+```
+5977:1 scenarios (^[[31m1 failed^[[0m)
+5978:1 steps (^[[31m1 failed^[[0m)
 ```
 — from the `/failed` sub-fixture (line 5966 `=== RUN   TestGodogRejectsUndefinedAndFailedSteps/failed`):
 1 scenario, 1 step, both deliberately failed to prove godog surfaces a failing step.
 
 ```
-5984:1 scenarios ([33m1 undefined[0m)
-5985:1 steps ([33m1 undefined[0m)
+5984:1 scenarios ([33m1 undefined[0m)
+5985:1 steps ([33m1 undefined[0m)
+```
+
+The same two lines with the ESC bytes made visible (`grep -n ... | cat -v`):
+
+```
+5984:1 scenarios (^[[33m1 undefined^[[0m)
+5985:1 steps (^[[33m1 undefined^[[0m)
 ```
 — from the `/undefined` sub-fixture (line 5980 `=== RUN   TestGodogRejectsUndefinedAndFailedSteps/undefined`):
 1 scenario, 1 step, deliberately undefined to prove godog surfaces an undefined step.
