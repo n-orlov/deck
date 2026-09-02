@@ -2,3 +2,6 @@ bin/
 .claude/
 .idea/
 .spike-preview/
+
+# ralphd run-engine scratch (not project content)
+artifacts/
