@@ -11,27 +11,49 @@ hold (R102), and the record-matches-the-tree documentation requirement (R103).
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
-b9243a1f415ba9ca77cc2ffa2ec557ca8b1be4cb
+a559e7c61a00ab5fa31c2d98eaf5ce787744e4dc
 ```
 
-Every commit after `b9243a1` at the time of writing is docs-only — the three gate captures
-(`0c022e8` task 127, `4a9d745` task 128, `3508c5a` task 129) and this report — so `b9243a1`
-remains the final code sha both gates (tasks 127/129) and every R103 document in this phase
-measure against. Task 136's `fcdb994` is *not* one of them: it is a code commit (it changed
-`internal/tui/displacement_teardown_test.go`) and it is an ancestor of `b9243a1`, landing
-before the final code sha rather than after it. `git status --porcelain` is empty and
+This is the approach-2 final code sha, not the `b9243a1` this section named when approach 1
+closed. Approach 2 reopened three requirements found stale on review and each landed a real
+code commit after `b9243a1`: task 201 (`c025c54`, `internal/tui/tui.go`'s helpText F entry),
+task 202 (`5b554f2`, `internal/tui/help_force_semantics_test.go`, pinning that wording to the
+force path's real semantics), and task 203 (`a559e7c`, `internal/tmux/restore_plain_unset_test.go`,
+pinning `RestoreWindowGeometry`'s plain-unset shape against a set window-size) — the last of
+the three, `a559e7c`, is now the final code sha. Everything after `a559e7c` at the time of
+writing is docs-only (task 208's finding, this refresh, and whatever follows in this approach),
+so `a559e7c` is what both gates and every R103 document in this phase must now measure
+against; both gates (tasks 127/129, captured at `b9243a1`) and every prior R103 document are
+stale against this new sha and are disclosed as such rather than silently superseded. Task
+136's `fcdb994` remains a code commit that is an ancestor of `b9243a1`, landing before either
+final code sha rather than after it. `git status --porcelain` is empty and
 `git rev-parse HEAD origin/main` agree at the end of this task's commit.
 
 ## Per-requirement table
 
 | req | status | tasks | shas | evidence |
 |---|---|---|---|---|
-| R98 | met | 104–109 | `a65190e`, `0177991`, `e31c37e`, `8d1b41a`, `17e185c`, `7e141ad`, `a063296`, `8e5e036`, `55c0818` | `internal/tui/interactive.go`, `internal/tui/tui.go`, `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_handler_agreement_test.go`, `internal/tui/refusal_f_naming_test.go`, `internal/tui/force_enter_test.go`, `internal/tui/force_indistinguishable_test.go`, `features/interactive_force_attach.feature` |
+| R98 | met | 104–109; 201, 202 (approach-2 correction) | `a65190e`, `0177991`, `e31c37e`, `8d1b41a`, `17e185c`, `7e141ad`, `a063296`, `8e5e036`, `55c0818`, `c025c54`, `5b554f2` | `internal/tui/interactive.go`, `internal/tui/tui.go`, `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_handler_agreement_test.go`, `internal/tui/refusal_f_naming_test.go`, `internal/tui/force_enter_test.go`, `internal/tui/force_indistinguishable_test.go`, `features/interactive_force_attach.feature`, `internal/tui/help_force_semantics_test.go` |
 | R99 | met | 101, 102, 121 | `eb1e917`, `244f66f`, `d7f149c` | `internal/tmux/ownership.go`, `internal/tmux/force_ownership_test.go`, `features/interactive_force_attach.feature` (the `↵` refused, `F` wins, A is told scenario) |
-| R100 | met | 110–115 | `a790061`, `e6157d8`, `4ef6d28`, `c525b35`, `cbc6692`, `625c663`, `cb27c5c`, `1b71c74` | `internal/tmux/isize_geometry.go`, `internal/tmux/isize_geometry_test.go`, `internal/tui/isize_geometry_entry_test.go`, `internal/tui/teardown_still_mine_gate_test.go`, `internal/tui/teardown_transport_gate_test.go`, `internal/tui/failed_entry_unwind_test.go`, `internal/tmux/reclaim.go`, `internal/tmux/reclaim_test.go`, `internal/tui/double_steal_restore_test.go`, `features/interactive_force_attach.feature` (the geometry-survives-the-chain scenario) |
+| R100 | met, with a qualification (see below) | 110–115; 203 (approach-2 pin) | `a790061`, `e6157d8`, `4ef6d28`, `c525b35`, `cbc6692`, `625c663`, `cb27c5c`, `1b71c74`, `a559e7c` | `internal/tmux/isize_geometry.go`, `internal/tmux/isize_geometry_test.go`, `internal/tui/isize_geometry_entry_test.go`, `internal/tui/teardown_still_mine_gate_test.go`, `internal/tui/teardown_transport_gate_test.go`, `internal/tui/failed_entry_unwind_test.go`, `internal/tmux/reclaim.go`, `internal/tmux/reclaim_test.go`, `internal/tui/double_steal_restore_test.go`, `features/interactive_force_attach.feature` (the geometry-survives-the-chain scenario), `internal/tmux/restore_plain_unset_test.go` |
 | R101 | met | 116, 117, 118, 120, 136 (not 119 — its disposition belongs to the phase 3i findings report, task 131); 121–123 (feature scenarios) | `4ac5970`, `c95e848`, `be7a387`, `5fb9e4f`, `e398881`, `fcdb994`, `d7f149c`, `8d0437f`, `704fd1a` | `internal/tui/lost_attach.go`, `internal/tui/lost_attach_test.go`, `internal/tui/lost_attach_swallow_test.go`, `internal/tui/interactive_displacement.go`, `internal/tui/interactive_displacement_test.go`, `internal/tui/interactive_fallout_store_test.go`, `internal/tui/displacement_teardown_test.go`, `features/interactive_force_attach.feature` (the `↵` refused/`F` wins/A is told, full-attach-displaces-the-holder and dialog-swallows-keys scenarios) |
 | R102 | met | 124–126 | `7371c07`, `83e92d5`, `b9243a1` | `internal/tui/tui.go`, `internal/tui/preview_fit_foreign_claim_test.go`, `features/interactive_force_attach.feature` (the passive-fit-stands-down scenario) |
 | R103 | in progress | 127–129 (gates, done); 130 (this report); 131–135 not yet committed | `0c022e8`, `4a9d745`, `3508c5a` | `docs/reports/phase3i-127-fullsuite/`, `docs/reports/phase3i-128-fullsuite-verbose/`, `docs/reports/phase3i-129-stability10/` |
+
+**R100's qualification.** The PRD's R100 unit-evidence bullet reads literally as a
+value-preserving restore ("the `window-size` value including its set shape"). SPEC.md 11.9
+and PRD phase3b II-9 both name a plain, unconditional unset as the exit recipe's last step
+instead, and the shipped product (`internal/tmux/geometry.go:243`'s unconditional
+`unsetWindowSize` call) follows SPEC, not that literal PRD wording. Task 203's
+`internal/tmux/restore_plain_unset_test.go` (`a559e7c`) pins this: it sets `window-size`
+window-locally before capture and asserts the option reads back UNSET, not restored to that
+set value, after `RestoreWindowGeometry`. Per the standing rule that SPEC wins where the PRD
+and SPEC disagree, this is deliberate, not a defect, and R100 is still "met" against the
+SPEC-governed behaviour the product actually ships. The full disagreement, its authority
+resolution, and the evidence that `internal/tui/double_steal_restore_test.go` only ever proved
+byte-exact restoration for the unset shape are recorded as numbered finding 5 of
+`docs/reports/phase3i-findings.md` (task 208, `ae35983`) — see that finding for the complete
+account; this row's "met, with a qualification" status points at it rather than repeating it.
 
 R101's met verdict above rests only on tasks 116, 117, 118, 120 and 136 and on the feature
 scenarios of tasks 121–123: detection on the preview tick and the dialog (116, 117, 118), the
