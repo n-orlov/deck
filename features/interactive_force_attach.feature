@@ -113,6 +113,48 @@ Feature: Forced entry into interactive mode answers a waiting row
   # show exactly one attached event for that steal: neither B's refused
   # plain Enter nor A's own fall-out through the lost-attach dialog may add
   # a second one.
+  # The lost-attach dialog raised on the displaced client (task 116) binds
+  # only Enter -- updateLostAttachView routes every OTHER key to itself and
+  # does nothing with it (SPEC.md ~1770, "swallows every key -- that is its
+  # point"). This proves that literally for three keys that are anything
+  # but inert in the ordinary list view: `j` moves the selection, `dd` opens
+  # a confirm dialog naming what survives, `x` kills the selected session
+  # outright. None of the three may reach the list's own handler while the
+  # dialog is up -- the selection A had before the steal must still be
+  # exactly where A left it once the dialog is dismissed, no confirm dialog
+  # may appear, and the row's durable state (a shell session starts and
+  # stays "running" from "tmux", RecordAttachment's default case is a
+  # no-op for any status but waiting/error, so acknowledged/notify_epoch/
+  # attached-event count never move for this session at any point in the
+  # scenario) must read back identical to its pre-steal value.
+  Scenario: the lost-attach dialog swallows j, dd and x
+    Given deck client "A" is started
+    And deck client "B" is started
+    And deck client "A" creates shell session "swallowed"
+    Then within one configured reconcile interval deck client "B" screen contains "swallowed"
+    And deck client "A" selects session "swallowed"
+    And deck client "B" selects session "swallowed"
+    And the state database session "swallowed" is "running" from "tmux" with acknowledged=1, notify_epoch=0, and 0 attached events
+    When deck client "A" enters interactive mode
+    Then deck client "A" screen contains "Ctrl+Q"
+    When deck client "B" forces entry into interactive mode
+    Then deck client "B" screen contains "Ctrl+Q"
+    And deck client "A" screen contains "Lost attach: swallowed"
+    When deck client "A" sends "j"
+    And deck client "A" sends "dd"
+    And deck client "A" sends "x"
+    Then deck client "A" screen contains "Lost attach: swallowed"
+    And deck client "A" screen does not contain "Enter deletes"
+    And the state database session "swallowed" is "running" from "tmux" with acknowledged=1, notify_epoch=0, and 0 attached events
+    When deck client "A" dismisses the lost-attach dialog
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" has session "swallowed" selected
+    And deck client "A" screen does not contain "Enter deletes"
+    And the state database session "swallowed" is "running" from "tmux" with acknowledged=1, notify_epoch=0, and 0 attached events
+    When deck client "B" leaves interactive mode
+    And deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
   Scenario: a refused plain entry names F, and only B's forced steal is durably attached
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
