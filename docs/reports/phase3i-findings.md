@@ -109,7 +109,46 @@ Author: Nik <nikolaiorl@gmail.com>
 Date:   Wed Sep 2 09:00:21 2026 +0100
 
     prds: cut Phase 3i — force-attach, stealing the interactive preview (operator)
+
+    GH #19, against the §11.9 amendment landed in 6197b53. Six requirements:
+    R98 binds F and makes the two contention refusals advertise it; R99 adds
+    the single-shot force claim (write over anything, keep the confirm-read, so
+    exactly one winner and every loser stands down with no error); R100 puts
+    the window's ORIGINAL geometry in a second window option so it survives an
+    arbitrary chain of steals and only the last legitimate holder restores it;
+    R101 gives the displaced client the lost-attach dialog and stops its
+    keyboard; R102 makes passive previewFit stand down under a foreign live
+    claim (a pre-existing gap — a second deck merely SELECTING a row resizes a
+    window the first is typing into); R103 is the record.
+
+    The phase is deliberately small and says so. Most of the mechanism already
+    exists — the claim protocol is already write-then-confirm-read, Release is
+    already steal-safe, the pipe transport already reports displacement — and
+    the PRD names each of those so the run extends rather than rebuilds.
+
+    Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+ prds/phase3i-force-attach.md | 302 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 302 insertions(+)
 ```
+
+The diffstat's last two lines confirm it touches exactly one file, adding it whole (`302
+insertions(+)`, zero deletions, zero other files) — `prds/phase3i-force-attach.md`, the PRD file
+this very phase's plan was cut from.
+
+**The PRD's own zero-commit clause, quoted verbatim (`prds/phase3i-force-attach.md:33-34`):**
+
+> The audit range for this run is `6197b53..HEAD` and it must show **zero** protected-path
+> commits.
+
+Read literally, that clause is **UNMET**: the range is non-empty, as shown above, and it can
+never become empty without doing one of two things, both of which are themselves forbidden —
+(a) an operator amendment narrowing the clause to name a *different* range (e.g. one starting
+after the operator's own last protected-path write), which only the operator can make, this job
+cannot license itself, and no task in this plan has done; or (b) a history rewrite that drops or
+moves `3090b68` out of `6197b53..HEAD`, which the standing rules forbid outright ("Never
+force-push, never rewrite history"). Neither has happened, so the clause stands UNMET exactly as
+written, and this section declines to try either forbidden route to make it read otherwise.
 
 This is the same shape phase 3h's findings report disclosed for its own audit range
 (`de90a5c..HEAD` necessarily containing the operator's own plan commit `a24ff8d`): whichever
@@ -121,11 +160,12 @@ last protected-path write, `3090b68..HEAD`:
 
 ```
 $ git log --oneline 3090b68..HEAD -- SPEC.md prds ci/Dockerfile ci/SPIKE.md
-$ git diff --stat 3090b68..HEAD -- SPEC.md prds ci/Dockerfile ci/SPIKE.md
+$ git diff --name-only 3090b68..HEAD -- SPEC.md prds ci/Dockerfile ci/SPIKE.md
 ```
 
-Both print nothing: no worker commit in this run touched a protected path. Filed here as a
-finding, not fixed by editing the PRD or the standing rules — the guard's literal text stands
+Both print nothing: no worker commit in this run touched a protected path — the worker-write
+range is empty even though the PRD's own literal range is not. Filed here as a finding, not
+fixed by editing the PRD or the standing rules — the guard's literal text stands
 exactly as written, and this section is the disclosure it calls for.
 
 ## 3. Gate disposition: whole-suite sweep and ten-run stability, both clean, no out-of-scope recurrence
