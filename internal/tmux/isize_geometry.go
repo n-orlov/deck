@@ -113,6 +113,38 @@ func (c Client) writeWindowIsizeGeometry(ctx context.Context, target string, geo
 	return nil
 }
 
+// ResolveIsizeGeometry implements SPEC.md §11.9's "written by whoever
+// finds none there and read -- never rewritten -- by whoever takes the
+// claim afterwards": if IsizeGeometryOption is absent on target, it
+// writes captured (the caller's own, just-taken CaptureWindowGeometry)
+// and returns it unchanged, exactly the first-claimant case; if the
+// option is already present -- a steal, by force or otherwise -- it reads
+// the value already recorded there and returns THAT instead, never
+// writing anything at all. captured is consulted only on the absent
+// branch; on the present branch it is ignored entirely, which is what
+// keeps the original pre-entry geometry from drifting at each successive
+// steal (a stealer's own CaptureWindowGeometry sees the previous holder's
+// already-fitted size, never the window's true pre-deck size).
+//
+// The caller is expected to call this only once it has actually taken
+// the claim (ClaimWindowOwnership/ForceClaimWindowOwnership acquired);
+// this function itself performs no ownership check and has no opinion on
+// whether the caller is entitled to write -- the same separation the
+// other helpers in this file keep from their own callers' gating.
+func (c Client) ResolveIsizeGeometry(ctx context.Context, target string, captured WindowGeometry) (WindowGeometry, error) {
+	existing, ok, err := c.readWindowIsizeGeometry(ctx, target)
+	if err != nil {
+		return WindowGeometry{}, err
+	}
+	if ok {
+		return existing, nil
+	}
+	if err := c.writeWindowIsizeGeometry(ctx, target, captured); err != nil {
+		return WindowGeometry{}, err
+	}
+	return captured, nil
+}
+
 // unsetWindowIsizeGeometry unsets IsizeGeometryOption in the window scope
 // -- the "restored and cleared" half of R100's "restored and cleared by
 // the last holder to let go legitimately, and by nobody else". Whether
