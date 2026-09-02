@@ -124,7 +124,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if attached > 0 {
-			m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead"
+			m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead, or F to force it"
 			return m, nil
 		}
 	}
@@ -160,7 +160,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// hand-crafted claim -- ClaimWindowOwnership's own liveness check via
 		// kill(pid, 0) is what decides this, not merely "the option is set")
 		// already holds ownership of this window.
-		m.attachError = "Cannot enter interactive mode: a live process holds ownership of this window; press a to attach instead"
+		m.attachError = "Cannot enter interactive mode: a live process holds ownership of this window; press a to attach instead, or F to force it"
 		return m, nil
 	}
 	if _, err := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height); err != nil {
