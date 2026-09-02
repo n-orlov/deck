@@ -1116,10 +1116,39 @@ func (s *Session) Renders() <-chan struct{} { return s.renders.Renders() }
 // shutdown, so a caller never observes a Session whose update goroutine
 // is still writing into its Grid after Close returns.
 func (s *Session) Close() error {
+	return s.close(true)
+}
+
+// CloseLocal is Close for a caller that has already established it must
+// not touch whatever `pipe-pane` is CURRENTLY armed on the target (task
+// 112/SPEC §11.9 R100: a deck whose window claim has been stolen by a
+// second deck -- the winner's own live transport is what is armed there
+// now, and tmux's disarm command is target-scoped, not holder-scoped, so
+// Close's bare `pipe-pane -t target` would take the WINNER's pipe down,
+// see PanePipe.Close's own doc). It releases exactly this Session's own
+// resources -- the reader fd, the FIFO's temp dir, and every goroutine
+// this Session started, waited for identically to Close -- and issues no
+// tmux command whatsoever. Like Close it is idempotent, and safe to call
+// after the live path already noticed the displacement on its own (that
+// path performs the same PanePipe.CloseLocal internally, so the second
+// call is a no-op rather than a disarm).
+func (s *Session) CloseLocal() error {
+	return s.close(false)
+}
+
+// close is the one shutdown sequence behind both Close and CloseLocal:
+// they differ in exactly one respect -- whether the pipe's teardown is
+// allowed to issue tmux's target-scoped disarm command (disarm) or must
+// confine itself to this process's own fd/tempdir (CloseLocal above).
+func (s *Session) close(disarm bool) error {
 	s.pollCancel()
 	var err error
 	if s.pipe != nil {
-		err = s.pipe.Close()
+		if disarm {
+			err = s.pipe.Close()
+		} else {
+			err = s.pipe.CloseLocal()
+		}
 	}
 	<-s.done
 	<-s.pollDone

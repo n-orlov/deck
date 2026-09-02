@@ -189,7 +189,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	dispatcher, err := tmux.NewDispatcher(ctx, client, pane.ID)
 	if err != nil {
-		teardownOwnedWindow(ctx, client, ownership, windowTarget, geometry)
+		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
@@ -208,7 +208,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		return interactive.CaptureSeed(ctx, client, pane.ID)
 	}, transport)
 	if err != nil {
-		teardownOwnedWindow(ctx, client, ownership, windowTarget, geometry)
+		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
@@ -238,11 +238,12 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	// entry must not claim the user answered anything. A store failure
 	// here refuses the entry like attachSelected refuses the attach, and
 	// unwinds the claim already made -- grid first, then geometry, then
-	// ownership, the same order exitInteractive's teardown uses.
+	// ownership, the same order exitInteractive's teardown uses (and
+	// through the same still-mine-gated helper, so an unwind that races a
+	// steal disarms nothing of the winner's; task 112).
 	if m.prepareAttach != nil {
 		if err := m.prepareAttach(ctx, session.ID); err != nil {
-			_ = grid.Close()
-			teardownOwnedWindow(ctx, client, ownership, windowTarget, geometry)
+			teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, grid)
 			m.attachError = "Cannot enter interactive mode: " + err.Error()
 			return m, nil
 		}
@@ -277,60 +278,86 @@ func (m Model) teardownInteractive(ctx context.Context) {
 	if !m.interactive {
 		return
 	}
-	if m.interactiveGrid != nil {
-		_ = m.interactiveGrid.Close()
-	}
-	if m.interactiveWindowTarget != "" {
-		teardownOwnedWindow(ctx, m.tmuxClient, m.interactiveOwnership, m.interactiveWindowTarget, m.interactiveGeometry)
-		return
-	}
-	releaseIfStillMine(ctx, m.interactiveOwnership)
+	teardownInteractiveClaim(ctx, m.tmuxClient, m.interactiveOwnership, m.interactiveWindowTarget, m.interactiveGeometry, m.interactiveGrid)
 }
 
-// releaseIfStillMine releases ownership only once task 103's probe
-// confirms this process's own claim is still the one OwnershipOption
-// records (ClaimStillMine); WindowOwnership.Release already self-gates
-// its own unset the same way internally, but every teardown call site in
-// this file consults the probe explicitly first so a stolen-from holder
-// is uniformly observable (in tests and in this file's own control flow)
-// as touching nothing rather than merely happening to no-op. A probe
-// transport error is treated the same as "not still mine": acting on an
-// unconfirmed claim is never safer than standing down.
-func releaseIfStillMine(ctx context.Context, ownership *tmux.WindowOwnership) {
+// claimStillMine is task 103's probe as every teardown path in this file
+// asks it: true only when OwnershipOption on this ownership's own target
+// still reads exactly the claim this process confirmed (ClaimStillMine).
+// A nil ownership (nothing was ever claimed) and a probe transport error
+// both answer false -- acting on an unconfirmed claim is never safer than
+// standing down.
+func claimStillMine(ctx context.Context, ownership *tmux.WindowOwnership) bool {
 	if ownership == nil {
-		return
+		return false
 	}
 	state, err := ownership.Probe(ctx)
-	if err != nil || state != tmux.ClaimStillMine {
+	return err == nil && state == tmux.ClaimStillMine
+}
+
+// releaseIfStillMine releases ownership only once claimStillMine above
+// confirms the claim; WindowOwnership.Release already self-gates its own
+// unset the same way internally, but every teardown call site in this
+// file consults the probe explicitly first so a stolen-from holder is
+// uniformly observable (in tests and in this file's own control flow) as
+// touching nothing rather than merely happening to no-op. It is the
+// pre-fit unwind's own teardown: at those bails nothing has resized the
+// window and no transport exists yet, so releasing the claim is the whole
+// of the unwind.
+func releaseIfStillMine(ctx context.Context, ownership *tmux.WindowOwnership) {
+	if !claimStillMine(ctx, ownership) {
 		return
 	}
 	_ = ownership.Release(ctx)
 }
 
-// teardownOwnedWindow performs SPEC §11.9's R100 teardown sequence against
-// a window this process still owns -- restore its pre-entry geometry,
-// clear the persisted @deck_isize_geometry record, and release ownership,
-// in that order (restore before release, so a concurrent claimant never
-// observes a window resized by an owner that has already let go of it) --
-// but only once task 103's probe confirms this process's own claim is
-// still the one OwnershipOption records (ClaimStillMine). A stolen claim
-// (ClaimForeignLive) skips all three: the window belongs to whoever stole
-// it now, restoring geometry or clearing the geometry record out from
-// under that new holder is exactly the bug R100 exists to prevent, and
-// this holder's only remaining responsibility -- closing its own
-// transport -- is handled by every caller below, unconditionally, before
-// this is ever reached. A probe transport error is treated the same as
-// "not still mine".
-func teardownOwnedWindow(ctx context.Context, client tmux.Client, ownership *tmux.WindowOwnership, target string, geometry tmux.WindowGeometry) {
-	if ownership == nil || target == "" {
+// teardownInteractiveClaim is the ONE teardown sequence every post-fit
+// exit route in this file goes through -- exitInteractive and
+// ShutdownInteractive (both via teardownInteractive above) and
+// enterInteractive's own failed-entry unwinds -- so SPEC §11.9's R100
+// gating cannot be present on one route and missing on another (task
+// 112).
+//
+// It consults task 103's probe FIRST, before touching anything at all,
+// and every step below is decided by that single answer:
+//
+//   - the transport is always closed, but a stolen-from holder closes
+//     only its OWN end of it (Session.CloseLocal, which issues no tmux
+//     command): tmux's `pipe-pane -t target` disarm is target-scoped,
+//     not holder-scoped, so once the claim has been stolen the pipe armed
+//     on that pane is the WINNER's, and Session.Close would take the
+//     winner's live transport down as a side effect of this holder
+//     tidying up (internal/tmux.PanePipe.Close's own doc names this).
+//     This is why the probe has to precede the transport close rather
+//     than following it, as an earlier version of this teardown did.
+//   - the geometry restore, the @deck_isize_geometry unset and the
+//     ownership release run only for a claim that is still ours, in that
+//     order (restore before release, so a concurrent claimant never
+//     observes a window resized by an owner that has already let go of
+//     it). A stolen claim (ClaimForeignLive) skips all three: the window
+//     belongs to whoever stole it now, and restoring geometry or clearing
+//     the geometry record out from under that new holder is exactly the
+//     bug R100 exists to prevent.
+//
+// A probe transport error is treated the same as "not still mine". A nil
+// grid (a bail before the transport was ever started) and an empty target
+// (nothing was fitted) each simply skip their own step.
+func teardownInteractiveClaim(ctx context.Context, client tmux.Client, ownership *tmux.WindowOwnership, target string, geometry tmux.WindowGeometry, grid *interactive.Session) {
+	stillMine := claimStillMine(ctx, ownership)
+	if grid != nil {
+		if stillMine {
+			_ = grid.Close()
+		} else {
+			_ = grid.CloseLocal()
+		}
+	}
+	if !stillMine {
 		return
 	}
-	state, err := ownership.Probe(ctx)
-	if err != nil || state != tmux.ClaimStillMine {
-		return
+	if target != "" {
+		_ = client.RestoreWindowGeometry(ctx, target, geometry)
+		_ = client.ClearIsizeGeometry(ctx, target)
 	}
-	_ = client.RestoreWindowGeometry(ctx, target, geometry)
-	_ = client.ClearIsizeGeometry(ctx, target)
 	_ = ownership.Release(ctx)
 }
 
