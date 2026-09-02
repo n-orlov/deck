@@ -17,7 +17,8 @@ is tracked under `git ls-files --error-unmatch`, both checked in
 - [2. The protected-path audit range `6197b53..HEAD` necessarily contains one operator commit](#2-the-protected-path-audit-range-6197b53head-necessarily-contains-one-operator-commit)
 - [3. Gate disposition: whole-suite sweep and ten-run stability, both clean, no out-of-scope recurrence](#3-gate-disposition-whole-suite-sweep-and-ten-run-stability-both-clean-no-out-of-scope-recurrence)
 - [4. The shipped helpText's `F` entry wrongly told users a live claim holder still refuses `F` -- corrected by task 201, guarded by task 202](#4-the-shipped-helptexts-f-entry-wrongly-told-users-a-live-claim-holder-still-refuses-f----corrected-by-task-201-guarded-by-task-202)
-- [5. How to re-check every citation in this report](#5-how-to-re-check-every-citation-in-this-report)
+- [5. R100's literal "including its set shape" wording disagrees with SPEC 11.9's plain unset -- SPEC wins, pinned by task 203](#5-r100s-literal-including-its-set-shape-wording-disagrees-with-spec-119s-plain-unset----spec-wins-pinned-by-task-203)
+- [6. How to re-check every citation in this report](#6-how-to-re-check-every-citation-in-this-report)
 
 ## 1. Task 119 ended `failed (validation-exhausted)` on test strength, not on product behaviour — discharged by task 136
 
@@ -254,13 +255,83 @@ contradicts the requirement it documents is exactly the shape of defect this rep
 disclose, per the standing rules' instruction that a correction be recorded with the commit
 that fixed it and the test that keeps it fixed.
 
-## 5. How to re-check every citation in this report
+## 5. R100's literal "including its set shape" wording disagrees with SPEC 11.9's plain unset -- SPEC wins, pinned by task 203
+
+PRD `phase3i-force-attach.md`'s R100 ("the window's original geometry outlives an arbitrary
+chain of steals") ends its own unit-evidence bullet with a byte-exact-restore promise:
+
+```
+$ sed -n '145,148p' prds/phase3i-force-attach.md
+- Unit evidence in `internal/tmux` and `internal/tui`: two sequential steals of one window
+  restore the pre-first-entry size byte-exactly (width, height, and the `window-size` value
+  including its unset shape); a stolen-from holder's teardown issues zero `resize-window`; a
+  reclaim over a stolen claim touches neither option.
+```
+
+Read literally and generally -- "restore ... byte-exactly ... the `window-size` value
+[including its shape, whether that shape was set or unset]" -- that clause asks for a
+value-preserving restore: if a window's `window-size` was window-locally SET to a specific
+value before deck's first claim on it, R100 would have the exit recipe put that same set value
+back, not merely leave the option unset. This is the reading `internal/tmux/restore_plain_unset_test.go`
+names explicitly in its own doc comment (`c025c54`..`a559e7c`'s ancestor commit range is not
+needed here; the comment is quoted verbatim): "It diverges from a LITERAL reading of PRD
+phase3i-force-attach.md's R100, which asks two sequential steals to 'restore the pre-first-entry
+size byte-exactly (width, height, and the window-size value including its set shape)' -- read as
+a general byte-exact-restore promise, that clause would require this test's pre-entry SET value
+to come back after RestoreWindowGeometry, not merely to end up unset."
+
+**SPEC.md 11.9 and PRD phase3b II-9 both name a plain unset, unconditionally, as the exit
+recipe's last step -- never a value-preserving restore.** The product follows SPEC. The
+committed code, `internal/tmux/geometry.go`, confirms it: `RestoreWindowGeometry`'s only
+window-size-restoring call is unconditional and last,
+
+```go
+// internal/tmux/geometry.go:243
+	return c.unsetWindowSize(ctx, target)
+```
+
+and `unsetWindowSize` (`geometry.go:201`) issues `set-option -w -u window-size` and nothing
+else -- it never reads `WindowGeometry.WindowSizeValue` at all, so there is nothing in the
+committed code path that could write a captured set value back. Per the standing rule ("Where
+the PRD and SPEC disagree, SPEC wins"), this is deliberate: the fix is not to make
+`RestoreWindowGeometry` value-preserving, and this report does not ask for one.
+
+**Evidence -- task 203, commit `a559e7c61a00ab5fa31c2d98eaf5ce787744e4dc`** (`tmux: pin
+RestoreWindowGeometry's plain-unset shape against a set window-size (task 203)`), adds
+`internal/tmux/restore_plain_unset_test.go`. Against a real tmux server on a private socket, it
+sets `window-size` window-locally to `"manual"` BEFORE `CaptureWindowGeometry` runs (so the
+captured geometry has `WindowSizeSet == true`, `WindowSizeValue == "manual"`), calls
+`RestoreWindowGeometry` with zero attached clients, and asserts the window-local `window-size`
+option reads back UNSET afterwards -- the pre-entry SET value is deliberately not restored.
+The test's own failure message, quoted verbatim, names the authority and the diverging clause
+together: "...per SPEC.md §11.9 / PRD phase3b II-9's plain-unset recipe, not R100's literal
+\"including its set shape\" wording".
+
+**`internal/tui/double_steal_restore_test.go` (task 114, commit
+`cb27c5c0630a9c8f9a73ebc6c28abcea3246bf85`) proves byte-exact restoration only for the UNSET
+shape, not the set one.** Its own pre-entry capture asserts `WindowSizeSet` is false --
+"Capture the window's pre-first-entry geometry -- width, height and the window-size read,
+INCLUDING its unset shape -- before any deck entry has touched the window at all" -- and then
+fails the test outright if that assumption does not hold
+(`if preEntry.WindowSizeSet { t.Fatalf("test assumption violated...") }`). Two sequential
+steals and a final legitimate exit are then shown to restore that pre-entry state
+byte-exactly. That test's own scope is the unset shape; it says nothing about a pre-entry SET
+value, and is not evidence for a value-preserving restore -- task 203's test is the one that
+covers the SET case, and it shows the opposite of a literal R100 reading.
+
+**Disposition.** No task in this plan makes `RestoreWindowGeometry` value-preserving, and none
+should: SPEC 11.9's plain unset is the authority, task 203's real-tmux test pins the product's
+actual (plain-unset) behaviour against a pre-entry SET value, and this section is the disclosure
+the standing rules call for when SPEC and the PRD disagree, filed rather than fixed by editing
+either protected document.
+
+## 6. How to re-check every citation in this report
 
 Every backticked sha above resolves under `git cat-file -e`; every backticked repo-relative
 path names a file tracked under `git ls-files --error-unmatch`:
 
 ```
-$ for sha in 6197b53 3090b68 b9243a1 0c022e8 4a9d745 3508c5a fcdb994 c025c54 5b554f2; do \
+$ for sha in 6197b53 3090b68 b9243a1 0c022e8 4a9d745 3508c5a fcdb994 c025c54 5b554f2 a559e7c cb27c5c; do \
     git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
 6197b53 ok
 3090b68 ok
@@ -271,12 +342,17 @@ b9243a1 ok
 fcdb994 ok
 c025c54 ok
 5b554f2 ok
+a559e7c ok
+cb27c5c ok
 $ git ls-files --error-unmatch \
     internal/tmux/ownership.go \
     internal/tui/displacement_teardown_test.go \
     internal/tui/interactive.go \
     internal/tui/tui.go \
     internal/tui/help_force_semantics_test.go \
+    internal/tmux/geometry.go \
+    internal/tmux/restore_plain_unset_test.go \
+    internal/tui/double_steal_restore_test.go \
     prds/phase3i-force-attach.md \
     SPEC.md \
     docs/reports/phase3i.md \
