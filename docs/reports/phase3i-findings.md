@@ -19,6 +19,7 @@ is tracked under `git ls-files --error-unmatch`, both checked in
 - [4. The shipped helpText's `F` entry wrongly told users a live claim holder still refuses `F` -- corrected by task 201, guarded by task 202](#4-the-shipped-helptexts-f-entry-wrongly-told-users-a-live-claim-holder-still-refuses-f----corrected-by-task-201-guarded-by-task-202)
 - [5. Correction: R100's actual wording ('including its unset shape') agrees with SPEC 11.9 -- there is no R100/SPEC disagreement, retracting the claim task 208 published](#5-correction-r100s-actual-wording-including-its-unset-shape-agrees-with-spec-119----there-is-no-r100spec-disagreement-retracting-the-claim-task-208-published)
 - [6. How to re-check every citation in this report](#6-how-to-re-check-every-citation-in-this-report)
+- [7. Approach 3's gate disposition at the final code sha `a559e7c`: whole-suite sweep, verbose companion and stability-10, all clean, no out-of-scope recurrence](#7-approach-3s-gate-disposition-at-the-final-code-sha-a559e7c-whole-suite-sweep-verbose-companion-and-stability-10-all-clean-no-out-of-scope-recurrence)
 
 ## 1. Task 119 ended `failed (validation-exhausted)` on test strength, not on product behaviour — discharged by task 136
 
@@ -392,9 +393,171 @@ $ git ls-files --error-unmatch \
     docs/reports/phase3i-128-fullsuite-verbose/verbose.log \
     docs/reports/phase3i-129-stability10/summary.log \
     docs/reports/phase3i-129-stability10/summary.log.exitstatus \
-    docs/reports/phase3i-129-stability10/README.md
+    docs/reports/phase3i-129-stability10/README.md \
+    docs/reports/phase3i-302-fullsuite/sweep.log \
+    docs/reports/phase3i-302-fullsuite/sweep.log.exitstatus \
+    docs/reports/phase3i-302-fullsuite/README.md \
+    docs/reports/phase3i-303-fullsuite-verbose/verbose.log \
+    docs/reports/phase3i-303-fullsuite-verbose/verbose.log.exitstatus \
+    docs/reports/phase3i-303-fullsuite-verbose/README.md \
+    docs/reports/phase3i-206-stability10/summary.log \
+    docs/reports/phase3i-206-stability10/summary.log.exitstatus \
+    docs/reports/phase3i-206-stability10/README.md
 ```
 
 All resolve. `prds/phase3i-force-attach.md`, `SPEC.md` and the other protected paths named in
 [§2](#2-the-protected-path-audit-range-6197b53head-necessarily-contains-one-operator-commit)
 are quoted there, never edited — nothing in this report writes to any of them.
+
+## 7. Approach 3's gate disposition at the final code sha `a559e7c`: whole-suite sweep, verbose companion and stability-10, all clean, no out-of-scope recurrence
+
+Approach 3 lands zero `*.go`/`*.feature` changes (standing rules); the final code sha stays
+frozen at `a559e7c61a00ab5fa31c2d98eaf5ce787744e4dc`, confirmed fresh against this report's own
+tree:
+
+```
+$ git log -1 --format=%H -- '*.go' '*.feature'
+a559e7c61a00ab5fa31c2d98eaf5ce787744e4dc
+```
+
+The three gate artifacts this section reports are, exactly:
+[`docs/reports/phase3i-302-fullsuite/`](phase3i-302-fullsuite/),
+[`docs/reports/phase3i-303-fullsuite-verbose/`](phase3i-303-fullsuite-verbose/) and
+[`docs/reports/phase3i-206-stability10/`](phase3i-206-stability10/) -- each path passes
+`git ls-files --error-unmatch` (checked in [§6](#6-how-to-re-check-every-citation-in-this-report)'s
+citation list, which this section's paths have been added to).
+
+### Whole-suite sweep (task 302, republished `7db4756`)
+
+`ci/run.sh go test -p=1 -count=1 ./...` at `a559e7c`. Exit status, quoted verbatim from
+`sweep.log.exitstatus`:
+
+```
+$ cat docs/reports/phase3i-302-fullsuite/sweep.log.exitstatus
+0
+```
+
+All 17 package result lines `ok` or `[no test files]`, zero `FAIL`:
+
+```
+$ grep -a -c FAIL docs/reports/phase3i-302-fullsuite/sweep.log
+0
+```
+
+### Verbose companion (task 303, `d523374` + fix `7206877`)
+
+`ci/run.sh go test -p=1 -count=1 -v ./...` at the same sha. Exit status, quoted verbatim from
+`verbose.log.exitstatus`:
+
+```
+$ cat docs/reports/phase3i-303-fullsuite-verbose/verbose.log.exitstatus
+0
+```
+
+The deliverable Gherkin tally (phase 3g finding F34), lines 5642-5643 of `verbose.log`, spliced
+straight from the log's own bytes -- ANSI SGR escape sequences included, exactly as task 303's
+README does it, so a byte-exact search for these two lines finds them in both documents:
+
+```
+5642:319 scenarios ([32m319 passed[0m)
+5643:3682 steps ([32m3682 passed[0m)
+```
+
+The same two lines through `cat -v` (renders each `ESC` byte as `^[`), for readers whose viewer
+swallows control bytes:
+
+```
+5642:319 scenarios (^[[32m319 passed^[[0m)
+5643:3682 steps (^[[32m3682 passed^[[0m)
+```
+
+**319 scenarios (319 passed) / 3682 steps (3682 passed)** -- every scenario and every step in
+the real suite passed; none pending, skipped, undefined or failed. (The two deliberately-failed
+and deliberately-undefined fixture tallies at lines 5977-5978 and 5984-5985, from
+`TestGodogRejectsUndefinedAndFailedSteps`, are not part of this real-suite figure -- see task
+303's own README for that distinction; this section repeats only the deliverable tally the
+standing rules ask for.)
+
+### Stability gate (task 206, `3508c5a`) -- NOT re-measured in approach 3
+
+**Approach 3 does not re-run `ci/stability.sh 10`.** The gate stays task 206's 10/10 at the
+frozen final code sha, because approach 3 lands no code change to re-measure against: the
+range from that final code sha to this report's own tree is empty over the paths the gate
+exists to cover:
+
+```
+$ git log --oneline a559e7c..HEAD -- '*.go' '*.feature'
+```
+
+prints nothing. A gate that certifies a code state stays valid for that code state as long as
+the code state itself has not moved; it has not.
+
+Final tally line and exit status, quoted verbatim:
+
+```
+$ tail -1 docs/reports/phase3i-206-stability10/summary.log
+10/10 passed
+$ cat docs/reports/phase3i-206-stability10/summary.log.exitstatus
+0
+```
+
+10/10 passed, no rounding -- all 10 runs `PASS (exit 0)`; zero `FAIL` lines across all ten
+per-run logs (task 206's own README's recurrence-check grep, reproduced there).
+
+### Task 204's `phase3i-204-fullsuite` is superseded by 302, not a live requirement
+
+Approach 2's task 204 ("Run and publish the whole-suite sweep at the new final code sha") is
+`failed` (`validation-exhausted`) in the approach 2 task record
+(`/run/ralphd/approaches/02/tasks.json`) -- not tracked in this run's own `tasks.json`, which
+carries only approach 3's tasks 301-309, but the source of record for what approach 3 inherits.
+Its artifact directory, `docs/reports/phase3i-204-fullsuite/`, published a sweep with the same
+`0` exit status and the same 17-clean-lines shape as task 302's, but polled the run with an
+inconsistent `sleep 60`/`sleep 180` mix rather than `sleep 60` throughout -- the discipline gap
+task 302 exists to fix (task 302's own README: "This supersedes task 204's
+`phase3i-204-fullsuite` ... this run polled with **`sleep 60` and no other duration**,
+throughout"). **`docs/reports/phase3i-302-fullsuite/` supersedes `docs/reports/phase3i-204-fullsuite/`
+as the current whole-suite-sweep gate; no requirement in [`phase3i.md`](phase3i.md) or this
+report rests on task 204 or its artifact.** Per the standing rules, a terminally `failed` task's
+artifact may be named only as superseded or stale, never as a requirement's discharge -- this
+paragraph is that disclosure, not a claim that 204's own criteria were met.
+
+### No recurrence of any out-of-scope carried finding in the whole-suite sweep
+
+The seven out-of-scope findings carried forward by the standing rules -- F2 (golden-frame
+settle), F20 (`status_recovery` dup-pane), F22 (`ByteArrivalPattern`), F37 (`sort_order` latent
+race), F7 (quantisation collisions), the `features/filter.feature` dd/undo race, and the OSC 52
+clipboard question -- were checked by name against task 302's own sweep log:
+
+```
+$ grep -ilE 'FAIL|panic|race detected' docs/reports/phase3i-302-fullsuite/sweep.log
+(no matches, exit 1)
+$ grep -iE 'F2\b|F20\b|F22\b|F37\b|F7\b|golden.frame|status_recovery|ByteArrivalPattern|sort_order|filter\.feature|osc.?52|clipboard' docs/reports/phase3i-302-fullsuite/sweep.log
+(no matches, exit 1)
+```
+
+Both searches over `sweep.log` return no matches. The two packages every one of the seven
+findings lives inside -- `features` and `internal/interactive` -- both report `ok` in the same
+sweep:
+
+```
+$ grep -a 'features\|interactive' docs/reports/phase3i-302-fullsuite/sweep.log
+ok  	github.com/n-orlov/deck/features	329.502s
+ok  	github.com/n-orlov/deck/internal/interactive	11.674s
+```
+
+`go test` reports a package `ok` only when every test and subtest inside it passes, so a
+recurrence of any of the seven would have surfaced as `FAIL` on one of those two lines, not
+`ok` -- it did not. **This is not proof any of the seven is fixed** -- several are documented
+elsewhere in this project's history as flakes with a base rate below one in ten runs, or
+reproducible only under a forced interleaving no gate here applies -- this section is only the
+by-name recurrence check the standing rules call for against approach 3's own sweep, and it
+found nothing to report.
+
+### Disposition
+
+At the frozen final code sha `a559e7c`, the whole-suite sweep (task 302) and its verbose
+companion (task 303) are both fresh republications with clean `0` exits and a full 319/3682
+Gherkin tally; the stability gate (task 206) is not re-measured because no code moved since it
+was taken, and its 10/10 stays the current, valid gate. Task 204's own sweep artifact is
+superseded and carries no requirement. None of the seven out-of-scope carried findings recurred
+in task 302's sweep log by name.
