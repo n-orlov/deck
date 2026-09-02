@@ -20,10 +20,11 @@ A document cannot quote the sha of the commit that first adds it: that sha is a 
 the document's own bytes, so writing it in would change it (the standing rule this run
 runs under, restated from task 134's guard report in approach 1). The block below was
 therefore captured **before** this revision's own commit, at parent commit
-`fb78352ff2fc935e2c790b832913ebc7fb1a9869` — the tip of `main` this revision started
-from — with the revised `verify.sh` held outside the worktree (`/tmp`) and executed from
-there against the committed tree, so `git status --porcelain` reported the tree this
-commit actually publishes, not the authoring scratch. That commit's own sha is exactly one line below (check 4's
+`9f7df0a87482f0cba9b344679522e6dbb7d4c5f3` — the tip of `main` this revision started
+from — with the revised `verify.sh` held outside the live worktree (`/tmp/verify-rev.sh`)
+and executed against a throwaway `git worktree add --detach` checkout of that same
+commit, so `git status --porcelain` reported the committed tree, not the authoring
+scratch. That commit's own sha is exactly one line below (check 4's
 `HEAD origin/main` pair): after this task's commit is made and pushed, `HEAD` (and
 `origin/main`) will read a **different**, newer sha there — every other check's PASS
 text is invariant under a docs-only commit that touches nothing checks 1/2/5 scan, and
@@ -34,13 +35,13 @@ five PASS lines with only that one sha value advancing.
 ```
 $ sh docs/reports/phase3i-308-guards/verify.sh
 PASS: check 1: all 55 distinct cited shas resolve (git cat-file -e)
-PASS: check 2: all 92 distinct cited paths pass git ls-files --error-unmatch
+PASS: check 2: all 98 distinct cited paths pass git ls-files --error-unmatch
 PASS: check 3: git status --porcelain is empty
-PASS: check 4: git rev-parse HEAD origin/main agree (fb78352ff2fc935e2c790b832913ebc7fb1a9869)
+PASS: check 4: git rev-parse HEAD origin/main agree (9f7df0a87482f0cba9b344679522e6dbb7d4c5f3)
 PASS: check 5: git log --oneline 3090b68..HEAD -- SPEC.md prds ci/Dockerfile ci/SPIKE.md is empty
-ALL GUARDS OK at fb78352ff2fc935e2c790b832913ebc7fb1a9869
+ALL GUARDS OK at 9f7df0a87482f0cba9b344679522e6dbb7d4c5f3
 ```
-(exit status `0`, captured at parent commit `fb78352ff2fc935e2c790b832913ebc7fb1a9869`.)
+(exit status `0`, captured at parent commit `9f7df0a87482f0cba9b344679522e6dbb7d4c5f3`.)
 
 ## What each check actually asserts
 
@@ -60,17 +61,30 @@ ALL GUARDS OK at fb78352ff2fc935e2c790b832913ebc7fb1a9869
    treated as a cited sha and reported `FAIL`; that is the deliberate trade (a false FAIL
    is loud and fixable, a missed broken sha is silent) and no such token exists in the
    three documents at the capture above.
-2. **Every path cited** — backtick-quoted bare paths (stripped of a trailing `:NNN` or
-   `:NNN-NNN` line-range suffix) and markdown link targets — **is tracked**
-   (`git ls-files --error-unmatch`, falling back to a same-directory-relative
-   resolution for the two source documents that live in `docs/reports/` and for
-   `docs/DELIVERY-LOG.md`'s own `docs/`-relative links, then to a basename search for
-   bare filenames used as markdown link *labels* whose real path is established
-   elsewhere in the same document, e.g. `` `ownership.go` `` for
-   `internal/tmux/ownership.go`). `tasks.json` and any `/run/ralphd/...` path are
-   excluded by name: both are the run's own external state, quoted verbatim in prose
-   about the run itself, never asserted as a path inside this repo. 92 distinct paths
-   at the time of the capture above.
+2. **Every path cited is tracked** (`git ls-files --error-unmatch`). "Cited" is again read
+   as widely as the documents actually cite: **every backtick span is split on whitespace
+   and every resulting token is considered**, so a path quoted inside a multi-token command
+   span is checked exactly like a path quoted on its own — `` `ci/run.sh go test -count=1
+   ./internal/tui/` `` contributes both `ci/run.sh` and `./internal/tui/`. Markdown link
+   targets (every non-anchor `](target)`, not only `reports/`- and `phase3i`-prefixed ones)
+   are checked too. A token counts as path-shaped when, after wrapping quotes, trailing
+   prose punctuation and any `:NNN`/`:NNN-NNN` line-range suffix are stripped, it contains a
+   `/`, or ends in one of this repo's extensions, or is a `phase3i*`/`phase3h*` report-dir
+   shorthand; resolution falls back to a same-directory-relative form for the two source
+   documents that live in `docs/reports/` and for `docs/DELIVERY-LOG.md`'s own
+   `docs/`-relative links, then to a basename search for bare filenames used as markdown
+   link *labels* whose real path is established elsewhere in the same document (e.g.
+   `` `ownership.go` `` for `internal/tmux/ownership.go`). Five documented exclusions, each
+   path-shaped but not a path in this repo: `tasks.json` and any `/run/ralphd/...` token
+   (the run's own external state, quoted in prose about the run itself), `origin/main` (a
+   git ref, quoted inside check 4's own command), `./...` (the Go package pattern), any
+   token holding a shell/placeholder metacharacter such as `2>&1` or `~/.git-credentials`
+   (a real path, but in `$HOME`), and a digits-and-slashes-only token such as a `10/10`
+   ratio. **98** distinct paths at the time of the capture above — six more than the
+   earlier revision's 92, which extracted only backtick spans containing no spaces and so
+   never checked `ci/run.sh` or `ci/stability.sh` at all despite their nine citations
+   across `docs/reports/phase3i.md` and `docs/reports/phase3i-findings.md` (see the check-2
+   negative control below).
 3. **`git status --porcelain` is empty** — nothing modified, staged or untracked.
 4. **`git rev-parse HEAD origin/main` agree** — the branch is pushed.
 5. **`git log --oneline 3090b68..HEAD -- SPEC.md prds ci/Dockerfile ci/SPIKE.md` is
@@ -98,6 +112,47 @@ DOES NOT resolve
 So a mistyped sha inside a range citation — the exact shape `docs/reports/phase3i-findings.md`
 uses for phase 3h's `de90a5c..HEAD` — now produces a `FAIL: cited sha de90a5d does not
 resolve` line and exit status 1, where the earlier backtick-only extraction reported `PASS`.
+
+## Negative control for check 2 (why splitting command spans is load-bearing)
+
+Same method, one revision later and for the path scan: run at
+`9f7df0a87482f0cba9b344679522e6dbb7d4c5f3`, inside a throwaway
+`git worktree add --detach` checkout of that commit under `/tmp/wt308b` (never the live
+tree; removed afterwards), with the first `ci/run.sh` citation in
+`docs/reports/phase3i-findings.md` corrupted to a path that does not exist. The two
+scripts compared are `/tmp/verify-old.sh` (`git show
+9f7df0a:docs/reports/phase3i-308-guards/verify.sh`, the space-free-span extraction) and
+`/tmp/verify-rev.sh` (this revision):
+
+```
+$ sed -i '0,/ci\/run\.sh go test/s//ci\/run-typo.sh go test/' docs/reports/phase3i-findings.md
+$ sh /tmp/verify-old.sh | grep 'check 2'
+PASS: check 2: all 92 distinct cited paths pass git ls-files --error-unmatch
+$ sh /tmp/verify-rev.sh | grep -e 'check 2' -e run-typo
+FAIL: cited path ci/run-typo.sh is not tracked (git ls-files --error-unmatch)
+$ git checkout -- docs/reports/phase3i-findings.md && git status --porcelain && echo CLEAN
+CLEAN
+```
+
+And the extraction difference that causes it, over the same three documents at that same
+commit (`$D` = the two reports plus the extracted Phase 3i paragraph):
+
+```
+$ grep -oh '`[^` ]*`' $D | tr -d '`' | sort -u | grep '^ci/'          # old: space-free spans only
+ci/Dockerfile
+ci/SPIKE.md
+$ grep -oh '`[^`]*`' $D | tr -d '`' | tr -s ' \t' '\n' \
+    | sed "s/^['\"]*//; s/['\",;)]*\$//" | sort -u | grep '^ci/'      # new: spans split on whitespace
+ci/Dockerfile
+ci/SPIKE.md
+ci/run.sh
+ci/stability.sh
+```
+
+So the nine `ci/run.sh` / `ci/stability.sh` citations — which appear only ever inside
+multi-token command spans like `` `ci/run.sh go test -p=1 -count=1 ./...` `` and
+`` `ci/stability.sh 10` `` — went from unchecked (a stale one would have passed silently)
+to checked, and a broken one now fails the guard.
 
 ## What this guard deliberately does NOT assert
 
