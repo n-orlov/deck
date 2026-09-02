@@ -101,6 +101,35 @@ Feature: Forced entry into interactive mode answers a waiting row
     And the real tmux client attached to session "grabbed" detaches
     And deck client "A" exits cleanly
 
+  # The scenarios above all involve a steal or a real attach displacing an
+  # existing interactive holder. This one proves the OTHER half of the same
+  # ownership mechanism from the opposite direction: ordinary passive
+  # preview (SPEC.md ~1115, "passive fit stands down entirely, issuing no
+  # resize-window at all, while another live process holds §11.9's
+  # ownership claim") declining to touch a window a SECOND client merely
+  # SELECTS while a FIRST client is already interactive on it -- B never
+  # enters interactive mode and never forces anything here. Selecting the
+  # row is enough to schedule B's own previewFit on its next tick, and
+  # that tick's foreign-live-claim probe (task 103, the same real-claim
+  # mechanism task 125's unit test proved in isolation) must see A's real,
+  # live ownership and issue no resize-window at all -- the window stays
+  # exactly at the size A's own interactive entry fitted it to.
+  Scenario: passive fit stands down for B while A holds the window interactively
+    Given deck client "A" is started
+    And deck client "B" is started
+    And deck client "A" creates shell session "watched-live"
+    Then within one configured reconcile interval deck client "B" screen contains "watched-live"
+    And deck client "A" selects session "watched-live"
+    When deck client "A" enters interactive mode
+    Then deck client "A" screen contains "Ctrl+Q"
+    And the private tmux window for session "watched-live" is captured as "A-held"
+    When deck client "B" selects session "watched-live"
+    And 300 milliseconds pass
+    Then the private tmux window for session "watched-live" still matches "A-held"
+    When deck client "A" leaves interactive mode
+    And deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
   # The scenarios above prove the steal itself; this one proves the refusal
   # that precedes it when the steal is NOT forced. B's plain Enter, tried
   # while A already holds the window's ownership claim, must be REFUSED
