@@ -189,3 +189,18 @@ was pushed, at that commit's own sha, is recorded in a one-line follow-up commit
 the pair is citable without a commit having to quote itself.
 
 <!-- addendum appended by a follow-up commit; do not remove this marker -->
+
+The guard README commit above landed as `112ab696d826550334270ce775bb994851f914ea`.
+Re-running the triple immediately after that commit was pushed, at that commit's own
+sha:
+
+```
+$ git rev-parse HEAD origin/main
+112ab696d826550334270ce775bb994851f914ea
+112ab696d826550334270ce775bb994851f914ea
+$ git status --porcelain
+(empty)
+```
+
+`HEAD` and `origin/main` agree at `112ab69`, and the worktree is clean. The push guard
+holds at the guard commit's own sha, not only at the commit measured in the body above.
