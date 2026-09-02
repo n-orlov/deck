@@ -322,3 +322,53 @@ func TestFooterFixedSetMatchesSpecAndExcludesRareKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestFooterLegendGlyphSetIsClosedAgainstSpec is task 402: a closed-list
+// (both-directions) cross-check of footerLegend's own parsed glyph set
+// against specFooterFixedSetGlyphs(t)'s SPEC-parsed list, reading SPEC.md
+// fresh rather than a copied Go list (same specFooterFixedSetGlyphs(t)
+// helper TestFooterFixedSetMatchesSpecAndExcludesRareKeys above already
+// uses). TestFooterFixedSetMatchesSpecAndExcludesRareKeys only checks that
+// every SPEC-required glyph is present and that the two explicitly-named
+// excluded glyphs (`P`, `p`) are absent -- it says nothing about a THIRD
+// glyph, one SPEC's fixed-set sentence never names at all (never bound,
+// never excluded by name), sneaking into footerLegend. This test closes
+// that gap: footerLegend's glyph set and SPEC's fixed-set glyph set must
+// be exactly equal, so any footerLegend entry SPEC §11.3's fixed-set
+// sentence does not name fails here even though it would pass the older
+// test cleanly (that test has no excluded-glyph entry for it at all).
+//
+// Demonstrated load-bearing by temporarily restoring the removed
+// {"F", "F", "force", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
+// row inside footerLegend (tui.go) and re-running this test. Observed
+// failure (go test -run TestFooterLegendGlyphSetIsClosedAgainstSpec -v
+// ./internal/tui/, task 402, footerLegend temporarily restored with the
+// `F` row above):
+//
+//	footer_bindings_parity_test.go:366: tui.go's footerLegend has glyph "F" that SPEC.md §11.3's footer fixed-set sentence does not name
+//
+// The restored row was removed again immediately after capturing that
+// line; it is not left in the tree (task 401 already deleted it and its
+// footer_handler_agreement_test.go completeness pair for good).
+func TestFooterLegendGlyphSetIsClosedAgainstSpec(t *testing.T) {
+	entries := parseFooterLegendSource(t)
+	footerGlyphs := map[string]bool{}
+	for _, e := range entries {
+		footerGlyphs[e.unicodeKey] = true
+	}
+	specGlyphs := map[string]bool{}
+	for _, g := range specFooterFixedSetGlyphs(t) {
+		specGlyphs[g] = true
+	}
+
+	for g := range footerGlyphs {
+		if !specGlyphs[g] {
+			t.Errorf("tui.go's footerLegend has glyph %q that SPEC.md \u00a711.3's footer fixed-set sentence does not name", g)
+		}
+	}
+	for g := range specGlyphs {
+		if !footerGlyphs[g] {
+			t.Errorf("SPEC.md \u00a711.3's footer fixed-set sentence names glyph %q that tui.go's footerLegend does not have", g)
+		}
+	}
+}
