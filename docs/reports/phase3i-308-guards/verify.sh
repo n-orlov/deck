@@ -35,15 +35,32 @@ fi
 DOCS="docs/reports/phase3i.md docs/reports/phase3i-findings.md $tmpdir/delivery-log-phase3i.md"
 
 # --- check 1: every sha cited in the three documents resolves ---------------------
+# The scan is deliberately WIDER than "backtick-quoted token": EVERY maximal run of 7-40
+# lowercase hex characters anywhere in the three documents is treated as a cited sha and
+# must resolve. That is what makes all three citation shapes these documents actually use
+# checkable, rather than only the first:
+#   * a sha quoted on its own                 -- `a559e7c`
+#   * either endpoint of a quoted commit range -- `de90a5c..HEAD`, `55e04e6..17cc346`
+#   * an UNBACKTICKED sha inside quoted git output or prose
+#     -- "commit 3090b68e990bfb063150cbb46f4c3a93bf574883", "landed in 6197b53"
+# The extraction is a single `tr -c` that turns every non-hex byte into a newline, so no
+# range/backtick/word-boundary parsing is involved and none of the three shapes can slip
+# past: a range's "." separator, a backtick and a space are all equally just separators.
+# Consequence worth knowing: a 7+ digit decimal number, or an all-of-a-f English word of
+# 7+ letters, would also be treated as a cited sha and reported FAIL. That is the
+# intended trade (a false FAIL is loud and fixable by quoting the number differently; a
+# missed broken sha is silent), and no such token exists in the three documents today.
+cat $DOCS | tr -c '0-9a-f' '\n' | grep -xE '[0-9a-f]{7,40}' | sort -u > "$tmpdir/shas.txt"
 n=0
 c1=0
-for s in $(grep -oh '`[0-9a-f]\{7,40\}`' $DOCS | tr -d '`' | sort -u); do
+while read -r s; do
+  [ -n "$s" ] || continue
   n=$((n + 1))
   if ! git cat-file -e "${s}^{commit}" 2>/dev/null; then
     fail "cited sha $s does not resolve (git cat-file -e)"
     c1=1
   fi
-done
+done < "$tmpdir/shas.txt"
 [ "$c1" -eq 0 ] && pass "check 1: all $n distinct cited shas resolve (git cat-file -e)"
 
 # --- check 2: every path cited in the three documents is tracked ------------------
