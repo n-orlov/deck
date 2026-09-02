@@ -285,19 +285,6 @@ func footerAgreementKeys() []footerAgreementKey {
 			acted: func(_ Model, rec *footerAgreementRecorder) bool { return rec.attachCalled },
 		},
 		{
-			// `F` shares canReachPane with `↵`/`a` and, on a canReachPane-
-			// eligible row, reaches the very same floor refusal `↵` does on
-			// this fixture's 80x9 frame -- force (task 105) skips only the
-			// attached-client refusal, which this unit test never reaches
-			// (no tmux server), so "acted" is observable here the identical
-			// way it is for `↵`.
-			glyph: "F",
-			press: func(m Model) Model { return pressAndRun(m, "F") },
-			acted: func(after Model, _ *footerAgreementRecorder) bool {
-				return strings.Contains(after.attachError, footerAgreementPastEligibilityGate)
-			},
-		},
-		{
 			// `i` opens the detail dialog on the keypress itself (its one
 			// store read is dispatched as a tea.Cmd and degrades to an empty
 			// result with the nil store this fixture carries), so the dialog

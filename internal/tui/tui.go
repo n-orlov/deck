@@ -3791,7 +3791,6 @@ var footerLegend = []footerKeyHint{
 	{"↑/↓", "up/down", "", nil},
 	{"↵", "Enter", "interactive", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
 	{"a", "a", "attach", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
-	{"F", "F", "force", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
 	{"Y", "Y", "acknowledge", func(m Model) bool { return footerRowEligible(m, false, canAcknowledge) }},
 	{"n", "n", "new", nil},
 	{"x", "x", "kill", func(m Model) bool { return footerRowEligible(m, true, canKill) }},
