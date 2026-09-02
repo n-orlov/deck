@@ -178,12 +178,31 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	// restore) uses.
 	geometry, err = client.ResolveIsizeGeometry(ctx, windowTarget, geometry)
 	if err != nil {
+		// This bail is release-only, and deliberately so: nothing has
+		// resized the window yet (the fit is below), so there is no
+		// geometry to restore -- and @deck_isize_geometry must NOT be
+		// cleared here, because the failure that lands here is either a
+		// failed READ of an option that may well already hold an earlier
+		// holder's original pre-entry size (clearing it would destroy the
+		// one record R100 exists to preserve) or a failed WRITE that by
+		// definition set nothing. err also leaves geometry zero-valued,
+		// so restoring it would resize the window to 0x0.
 		releaseIfStillMine(ctx, ownership)
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
 	if _, err := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height); err != nil {
-		releaseIfStillMine(ctx, ownership)
+		// The first bail with real state behind it, so it unwinds through
+		// the full still-mine-gated teardown rather than merely releasing
+		// (task 112): FitWindowToPane reports its error AFTER however many
+		// resize-window calls it already made (it returns that count), and
+		// ResolveIsizeGeometry above has already written or adopted
+		// @deck_isize_geometry -- so a release-only unwind here would leave
+		// the window partially fitted and the geometry record stale behind
+		// an entry that refused, and the NEXT entry would then adopt this
+		// failed entry's own halfway size as the window's original
+		// geometry. There is no transport yet (nil grid).
+		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
@@ -301,9 +320,11 @@ func claimStillMine(ctx context.Context, ownership *tmux.WindowOwnership) bool {
 // file consults the probe explicitly first so a stolen-from holder is
 // uniformly observable (in tests and in this file's own control flow) as
 // touching nothing rather than merely happening to no-op. It is the
-// pre-fit unwind's own teardown: at those bails nothing has resized the
-// window and no transport exists yet, so releasing the claim is the whole
-// of the unwind.
+// pre-fit unwind's own teardown: at the one bail that still uses it (a
+// ResolveIsizeGeometry failure) nothing has resized the window, no
+// transport exists yet and no geometry record was left behind, so
+// releasing the claim is the whole of the unwind. Every bail from the
+// fit onward goes through teardownInteractiveClaim below instead.
 func releaseIfStillMine(ctx context.Context, ownership *tmux.WindowOwnership) {
 	if !claimStillMine(ctx, ownership) {
 		return
