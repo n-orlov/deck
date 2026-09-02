@@ -196,15 +196,32 @@ func clientEveryFullWidthRowIsBorderedOnBothEdges(ctx context.Context, name stri
 	cols, _ := client.GridSize()
 	frame := client.Frame(false)
 	borderRunes := map[rune]bool{'+': true, '|': true}
+	lines := strings.Split(frame, "\n")
+	// lastBoxRow bounds the scan to the box itself: the last line whose
+	// FIRST rune is '+' is the box's own bottom border, and the footer/
+	// help line deck prints below it is never part of the boxed panels.
+	// A pure width-equality exclusion (every OTHER row's own trailing
+	// border glyph keeps NormalizeFrame's TrimRight from shortening it,
+	// so a genuine border row always fills the full column width) used to
+	// stand in for this, on the assumption the footer's own text length
+	// never happens to land on exactly `cols` too -- which task 125's own
+	// evidence run disproved (a widepane session's longer footer key list,
+	// including "R relaunch", coincidentally filled the grid's exact width
+	// with no trailing space, so the old check misclassified deck's own
+	// footer copy as an unbordered box row). Bounding by structural
+	// position instead of width alone is immune to that coincidence.
+	lastBoxRow := -1
+	for i, line := range lines {
+		if runes := []rune(line); len(runes) > 0 && runes[0] == '+' {
+			lastBoxRow = i
+		}
+	}
 	var bad []string
-	for _, line := range strings.Split(frame, "\n") {
+	for i, line := range lines {
+		if i > lastBoxRow {
+			break
+		}
 		runes := []rune(line)
-		// A bordered panel row always fills the frame's full column width
-		// (its own border glyph occupies the very last column, so
-		// NormalizeFrame's TrimRight never shortens it); the footer line
-		// below the boxes is deck's own copy, not a fixed-width border
-		// row, so it is excluded by this exact-width match rather than a
-		// fuzzy threshold.
 		if len(runes) != cols {
 			continue
 		}
