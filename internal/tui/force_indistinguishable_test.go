@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +15,76 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
+
+// newTmuxWireLogger builds a throwaway `tmux` shim for tmux.Client's own
+// Binary field: it appends every invocation's argv to a log file and then
+// execs the real tmux, so a test can count what a code path actually put
+// on the wire without any product-code hook, branch or env knob (PRD R8).
+// This is how the resize-window count is observed from INSIDE the real
+// entry path below: Client.FitWindowToPane's own return value is the
+// number of `resize-window` commands it issued (internal/tmux/geometry.go
+// increments `resizes` once per c.resizeWindow call and resizeWindow is
+// the only site in the package that issues that command), and
+// enterInteractiveBody discards that value -- so counting `resize-window`
+// lines the entry itself logged measures exactly the count the fit
+// reported, for the fit the real entry performed, not for a rehearsal.
+func newTmuxWireLogger(t *testing.T) (binary, logPath string) {
+	t.Helper()
+	realTmux, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Fatalf("locate the real tmux binary: %v", err)
+	}
+	dir := t.TempDir()
+	logPath = filepath.Join(dir, "wire.log")
+	binary = filepath.Join(dir, "tmux")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + logPath + "\nexec " + realTmux + " \"$@\"\n"
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatalf("write tmux wire-logging shim: %v", err)
+	}
+	if err := os.WriteFile(logPath, nil, 0o644); err != nil {
+		t.Fatalf("create tmux wire log: %v", err)
+	}
+	return binary, logPath
+}
+
+// truncateWireLog empties the wire log so the next count covers exactly
+// one span of work (here: one Update call carrying one keypress).
+func truncateWireLog(t *testing.T, logPath string) {
+	t.Helper()
+	if err := os.Truncate(logPath, 0); err != nil {
+		t.Fatalf("truncate tmux wire log: %v", err)
+	}
+}
+
+// countWireCommands counts the logged tmux invocations whose argv starts
+// with command (the first token after the shim's `-L <socket>` prefix).
+func countWireCommands(t *testing.T, logPath, command string) int {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read tmux wire log: %v", err)
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		// Every invocation the shim sees is `-L <socket> <command> ...`.
+		if len(fields) >= 3 && fields[0] == "-L" && fields[2] == command {
+			count++
+		}
+	}
+	return count
+}
+
+// pressWithoutRunningCmd feeds one KeyMsg through the REAL Update key
+// switch (so `F` exercises tui.go's own `case "F"` handler and `↵` its
+// `case "enter"`, not enterInteractiveBody directly) and returns the next
+// model. Unlike pressAndRun it never invokes the returned tea.Cmd: a
+// successful interactive entry hands back work this test has no event loop
+// to service.
+func pressWithoutRunningCmd(m Model, keyStr string) Model {
+	next, _ := m.Update(key(keyStr))
+	return next.(Model)
+}
 
 // ownershipClaimShapeRe matches OwnershipOption's documented `<tag>:<pid>`
 // form (internal/tmux/ownership.go's formatOwnershipClaim): a 16-hex-char
@@ -66,14 +137,17 @@ func paneSizeForTest(t *testing.T, socket, paneID string) (width, height int) {
 
 // TestForceOnUncontendedWindowMatchesReturnKey proves task 108's whole
 // point: on a window with nothing to steal (no attached client, no live
-// claim), `F` (enterInteractiveBody(true)) is indistinguishable from `↵`
-// (enterInteractiveBody(false)) in every observable this ladder produces
-// -- the fitted window size, the claim option's own `<tag>:<pid>` shape,
-// the resize-window count Client.FitWindowToPane reports (which
-// enterInteractiveBody itself discards, so this measures it directly
-// against two panes with identical starting geometry and the identical
-// wanted size both entries compute from the same m.width/m.height), and
-// exactly one prepareAttach call each (SPEC §7).
+// claim), `F` is indistinguishable from `↵` in every observable this
+// ladder produces -- the fitted window size, the claim option's own
+// `<tag>:<pid>` shape, the resize-window count the entry's own
+// Client.FitWindowToPane reported (counted off the wire, since
+// enterInteractiveBody discards the return value), and exactly one
+// prepareAttach call each (SPEC §7). Both entries go through the real
+// bare-key switch in tui.go -- `key("enter")` and `key("F")` -- so the
+// binding itself is part of what is proved, and both counts come from
+// the fit the real entry performed: delete the fit from
+// enterInteractiveBody and this test fails on a zero resize count and on
+// the unfitted final size, rather than passing on a rehearsal.
 func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	probe := New(nil, config.Settings{Color: true}, "")
 	probe.width, probe.height = 100, 30
@@ -86,8 +160,10 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	forceSocket := selectionTestSocket("indistforce")
 	newQuietSelectionPane(t, enterSocket, "deck_indistkey", 80, 24)
 	newQuietSelectionPane(t, forceSocket, "deck_indistforce", 80, 24)
-	enterClient := tmux.Client{Socket: enterSocket}
-	forceClient := tmux.Client{Socket: forceSocket}
+	enterBinary, enterLog := newTmuxWireLogger(t)
+	forceBinary, forceLog := newTmuxWireLogger(t)
+	enterClient := tmux.Client{Socket: enterSocket, Binary: enterBinary}
+	forceClient := tmux.Client{Socket: forceSocket, Binary: forceBinary}
 
 	enterTarget, err := tmux.SessionName("indistkey")
 	if err != nil {
@@ -108,27 +184,10 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 		t.Fatalf("PreviewPane(indistforce): ok=%v err=%v", ok, err)
 	}
 
-	// Measure the resize-window count Client.FitWindowToPane reports for
-	// each pane BEFORE either entry: both panes started at the identical
-	// 80x24 geometry and both are fit to the identical wantWidth/
-	// wantHeight, so the two counts are directly comparable, and this is
-	// the one place either count is ever observed at all -- the real
-	// entries below call this exact same method internally but discard
-	// its return value.
-	enterResizes, err := enterClient.FitWindowToPane(ctx, enterTarget, enterPane.ID, wantWidth, wantHeight)
-	if err != nil {
-		t.Fatalf("measure fit resize count (↵ pane): %v", err)
-	}
-	forceResizes, err := forceClient.FitWindowToPane(ctx, forceTarget, forcePane.ID, wantWidth, wantHeight)
-	if err != nil {
-		t.Fatalf("measure fit resize count (F pane): %v", err)
-	}
-	if enterResizes == 0 {
-		t.Fatalf("test assumption violated: fitting an 80x24 pane to %dx%d took 0 resize-window calls", wantWidth, wantHeight)
-	}
-	if enterResizes != forceResizes {
-		t.Fatalf("resize-window count differs for identical starting/target geometry: ↵ pane measured %d, F pane measured %d", enterResizes, forceResizes)
-	}
+	// Both windows start at the identical 80x24 geometry and both entries
+	// compute the identical wanted size from the identical m.width/
+	// m.height, so the two entries' own resize-window counts (read off the
+	// wire below, one span per keypress) are directly comparable.
 
 	// ↵ entry, on an uncontended window (no attached client, no claim).
 	m := New(nil, config.Settings{Color: true}, "")
@@ -141,8 +200,9 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 		enterRecorded = append(enterRecorded, id)
 		return nil
 	}
-	next, _ := m.enterInteractive()
-	enterGot := next.(Model)
+	truncateWireLog(t, enterLog)
+	enterGot := pressWithoutRunningCmd(m, "enter")
+	enterResizes := countWireCommands(t, enterLog, "resize-window")
 	if enterGot.attachError != "" {
 		t.Fatalf("↵ entry refused on an uncontended window: %q", enterGot.attachError)
 	}
@@ -175,8 +235,9 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 		forceRecorded = append(forceRecorded, id)
 		return nil
 	}
-	next2, _ := m2.enterInteractiveBody(true)
-	forceGot := next2.(Model)
+	truncateWireLog(t, forceLog)
+	forceGot := pressWithoutRunningCmd(m2, "F")
+	forceResizes := countWireCommands(t, forceLog, "resize-window")
 	if forceGot.attachError != "" {
 		t.Fatalf("F entry refused on an uncontended window: %q", forceGot.attachError)
 	}
@@ -197,6 +258,17 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	forceFinalWidth, forceFinalHeight := paneSizeForTest(t, forceSocket, forcePane.ID)
 	forceGot.exitInteractive()
 
+	// The resize-window counts each entry's OWN fit issued (and therefore
+	// reported): equal to each other, and non-zero, which is what makes
+	// this an assertion about the entry path's fit rather than about the
+	// window's final size alone.
+	if enterResizes == 0 {
+		t.Fatalf("↵ entry issued 0 resize-window calls fitting an 80x24 window to %dx%d -- the entry path did not fit the window at all", wantWidth, wantHeight)
+	}
+	if enterResizes != forceResizes {
+		t.Fatalf("resize-window count reported by the entry's own fit differs for identical starting/target geometry: ↵ = %d, F = %d", enterResizes, forceResizes)
+	}
+
 	if enterFinalWidth != forceFinalWidth || enterFinalHeight != forceFinalHeight {
 		t.Fatalf("fitted window size differs on an uncontended window: ↵ = %dx%d, F = %dx%d", enterFinalWidth, enterFinalHeight, forceFinalWidth, forceFinalHeight)
 	}
@@ -214,6 +286,10 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 }
 
 // TestRefusedForceRecordsNoPrepareAttach proves the other half of task
+// 108, and it too presses the real `F` key rather than calling
+// enterInteractiveBody directly.
+//
+// Original note follows: task
 // 108: when Client.ForceClaimWindowOwnership's own single-shot confirm-read
 // loses to a genuinely concurrent writer (the one way a force claim is
 // ever refused -- ForceClaimWindowOwnership never consults pidAlive, so
@@ -265,10 +341,9 @@ func TestRefusedForceRecordsNoPrepareAttach(t *testing.T) {
 			}
 		}(round)
 
-		next, _ := m.enterInteractiveBody(true)
+		got := pressWithoutRunningCmd(m, "F")
 		close(stop)
 		<-done
-		got := next.(Model)
 
 		if got.interactive {
 			// This round's confirm-read was not raced away (the
