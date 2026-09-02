@@ -2929,6 +2929,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			return m.enterInteractive()
+		case "F":
+			// SPEC.md §11.9's force-attach: steal the interactive preview over
+			// any existing holder. This is `↵`'s own enterInteractiveBody with
+			// force=true (task 105) -- every refusal in that ladder still
+			// applies except the attached-client one, which is exactly what
+			// force exists to skip; the claim itself is taken via
+			// ForceClaimWindowOwnership (task 101), not ClaimWindowOwnership.
+			return m.enterInteractiveBody(true)
 		case "a":
 			return m.attachSelected()
 		}
@@ -7009,6 +7017,11 @@ Keys
     scrolls this bounded, deck-owned scrollback of the fitted view (not
     the pane's own tmux scrollback) rather than forwarding to the pane;
     typing snaps the view back to the live bottom
+  F force-enter interactive mode on the selected session, stealing it from
+    any client already attached to it -- the one refusal ↵ itself still
+    respects that F exists to skip; every other refusal ↵ has (the 7-row
+    floor, no-width squeeze, a stopped session, a live process already
+    holding the window's own claim) still applies
   a attach the selected running session (full-screen, like Ctrl+Q never
     happened -- ↵ enters interactive mode instead)
   Y acknowledge the selected waiting/error session, clear its unseen marker

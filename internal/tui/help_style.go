@@ -53,7 +53,7 @@ var helpStyleHeaders = map[string]bool{
 // red, not by any corruption of the help text itself: helpText is never
 // touched by this file.
 var helpKeycapTokens = map[string]bool{
-	"↑/↓": true, "j/k": true, "↵": true, "a": true, "Y": true, "n": true,
+	"↑/↓": true, "j/k": true, "↵": true, "a": true, "F": true, "Y": true, "n": true,
 	"x": true, "u": true, "dd": true, "A": true, "U": true, "m": true, "r": true,
 	"R": true, "P": true, "p": true, "i": true, "e": true, "E": true,
 	"/": true, "space": true, "c": true, "g": true, "G": true, ",": true,
