@@ -20,6 +20,7 @@ is tracked under `git ls-files --error-unmatch`, both checked in
 - [5. Correction: R100's actual wording ('including its unset shape') agrees with SPEC 11.9 -- there is no R100/SPEC disagreement, retracting the claim task 208 published](#5-correction-r100s-actual-wording-including-its-unset-shape-agrees-with-spec-119----there-is-no-r100spec-disagreement-retracting-the-claim-task-208-published)
 - [6. How to re-check every citation in this report](#6-how-to-re-check-every-citation-in-this-report)
 - [7. Approach 3's gate disposition at the final code sha `a559e7c`: whole-suite sweep, verbose companion and stability-10, all clean, no out-of-scope recurrence](#7-approach-3s-gate-disposition-at-the-final-code-sha-a559e7c-whole-suite-sweep-verbose-companion-and-stability-10-all-clean-no-out-of-scope-recurrence)
+- [8. SPEC §11.3's footer fixed-set sentence and PRD R98's footer wording disagree over `F` -- SPEC wins, cured by tasks 401 and 402](#8-spec-113s-footer-fixed-set-sentence-and-prd-r98s-footer-wording-disagree-over-f----spec-wins-cured-by-tasks-401-and-402)
 
 ## 1. Task 119 ended `failed (validation-exhausted)` on test strength, not on product behaviour — discharged by task 136
 
@@ -561,3 +562,64 @@ Gherkin tally; the stability gate (task 206) is not re-measured because no code 
 was taken, and its 10/10 stays the current, valid gate. Task 204's own sweep artifact is
 superseded and carries no requirement. None of the seven out-of-scope carried findings recurred
 in task 302's sweep log by name.
+
+## 8. SPEC §11.3's footer fixed-set sentence and PRD R98's footer wording disagree over `F` -- SPEC wins, cured by tasks 401 and 402
+
+This is approach 4's own finding, flagged at planning by
+`prds/phase3i-force-attach.md`'s own instruction: "Where this PRD and `SPEC.md` disagree,
+`SPEC.md` wins and the disagreement is a finding for `docs/reports/phase3i-findings.md`, never
+an edit." `internal/tui/tui.go`'s `footerLegend` carried an `F` row (glyph `F`, verb `force`)
+that SPEC §11.3's curated fixed-set sentence does not list -- the disagreement this section
+records.
+
+**SPEC §11.3's footer fixed-set sentence, quoted verbatim (`SPEC.md`):**
+
+> The footer's fixed set is curated for the keys worth a whole line of the frame. It carries
+> navigation, `↵`, `a`, `Y`, `n`, `x`, `r`, `R`, `dd`, the eligible one of `A`/`U`, `,`, `i`,
+> `?` and `q`.
+
+That sentence names an exhaustive, curated list -- fourteen entries by name, no `F` among
+them -- and the same bullet goes on to say rarely-used per-row actions "stay bound, stay in
+the `?` overlay and in §11's keymap, and stay out of the footer: one line is a budget", i.e.
+absence from the footer's fixed set is a deliberate curation choice, not an oversight to be
+closed by adding more glyphs.
+
+**PRD R98's footer sentence, quoted verbatim (`prds/phase3i-force-attach.md`, R98's own bullet
+list):**
+
+> Help and footer: `F` appears wherever `↵`/`a` do, so `help_keymap_parity_test.go`,
+> `footer_bindings_parity_test.go` and `footer_handler_agreement_test.go` all agree with the
+> amended §11.3 keymap.
+
+Read literally, R98 asks `F` to appear in the footer everywhere `↵`/`a` do, since both of
+those are in SPEC §11.3's fixed set -- directly contradicting §11.3's own curated list, which
+names fourteen keys and not `F`.
+
+**SPEC wins, per the PRD's own authority rule quoted above** ("Where this PRD and `SPEC.md`
+disagree, `SPEC.md` wins"). `F` leaves `footerLegend` -- the footer's curated fixed set --
+while staying bound in the bare-key switch, staying in `help_keymap_parity_test.go`'s keymap
+parity and staying in the `?` overlay's `helpText`, exactly as §11.3 prescribes for a
+rarely-used per-row action kept out of the footer.
+
+**The cure -- tasks 401 and 402:**
+
+- **Task 401, commit `96bff5682571511a3cc63b1065d593fe64440ae9`**
+  (`footer: drop F from footerLegend per SPEC §11.3 curated fixed set (task 401)`) removed the
+  `{"F", "F", "force", ...}` row from `footerLegend` in `internal/tui/tui.go` and its dead
+  completeness pair (`glyph: "F"`) from `footerAgreementKeys` in
+  `internal/tui/footer_handler_agreement_test.go`. `F` stays bound (`case "F":` in
+  `internal/tui/tui.go` still present once) and stays in `helpText` (`F force-enter
+  interactive mode` still present once) and in the keymap and the `?` overlay, untouched.
+- **Task 402, commit `3b70bfbc7e3552ff375ae675af117805a1eee944`**
+  (`tui: pin footerLegend's glyph set as a closed list against SPEC §11.3 (task 402)`) added
+  `TestFooterLegendGlyphSetIsClosedAgainstSpec` to `internal/tui/footer_bindings_parity_test.go`,
+  asserting `footerLegend`'s parsed glyph set equals `specFooterFixedSetGlyphs(t)`'s SPEC-parsed
+  set, both directions -- a closed-list guard against SPEC §11.3's sentence, not merely a
+  subset check. Demonstrated load-bearing per task 402's own record: temporarily restoring the
+  `F` row in `footerLegend` and re-running the new test alone produced `tui.go's footerLegend
+  has glyph "F" that SPEC.md §11.3's footer fixed-set sentence does not name`, then the
+  restoration was reverted before the commit.
+
+`F` therefore now agrees with SPEC §11.3 exactly: out of the footer's curated fixed set, still
+bound, still in `internal/tui`'s keymap, and still in the `?` overlay's help text -- and task
+402's guard keeps `footerLegend` and SPEC §11.3 from drifting apart again.
