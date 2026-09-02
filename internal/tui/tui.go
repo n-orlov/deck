@@ -3066,7 +3066,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	}
 	session := m.sessions[m.selected]
 	if !canReachPane(session) {
-		m.attachError = "Cannot attach: session is stopped; resume it first"
+		m.attachError = "Cannot attach: " + stoppedSessionRefusalTail
 		return m, nil
 	}
 	command, err := m.attach(context.Background(), session.Slug)
@@ -3788,7 +3788,7 @@ func (m Model) footerLegendWidth() int {
 // token, so the line stays the one line SPEC §11.3 guarantees stays on
 // screen and the user can see that the legend is not the whole story (the
 // `?` overlay and §11's keymap remain the complete list). Only a budget
-// too small for even the first entry plus that marker falls back to a
+// too narrow for even the first entry plus that marker falls back to a
 // plain clip, which is a terminal narrower than any deck supports.
 func (m Model) footerLegendWithin(budget int) string {
 	segments, widths := m.footerLegendSegments()
@@ -6985,7 +6985,7 @@ Keys
     panel -- [ui] preview_fit, on by default -- the same cost ↵ below
     pays at entry: a SIGWINCH, and scrollback consumed faster while the
     window is narrower than usual. Skipped below the interactive floor
-    (never resizes into a box too small to be worth it, and never
+    (never resizes into a box too cramped to be worth it, and never
     enters interactive mode as a side effect); best-effort, so a session
     an attached client is also watching simply keeps that client's own
     size the next time it redraws. preview_fit = false turns this off

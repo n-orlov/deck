@@ -23,6 +23,15 @@ import (
 // like the 6-row case does for a single-line input.
 const interactiveMinInnerRows = 7
 
+// stoppedSessionRefusalTail is the one place in the package's non-test
+// sources that spells out the stopped-session refusal, shared verbatim by
+// enterInteractiveBody below ("Cannot enter interactive mode: " + tail) and
+// by attachSelected in tui.go ("Cannot attach: " + tail). Both messages stay
+// byte-identical to what they were before the split; keeping the phrase in a
+// single constant is what keeps the refusal ladder's four literals to one
+// occurrence each even though `a` refuses a stopped session too.
+const stoppedSessionRefusalTail = "session is stopped; resume it first"
+
 // enterInteractive is `\u21b5`'s new job (SPEC \u00a711.9, PRD Part II task 061
 // onward): claim the selected session's window, fit it to the preview
 // panel's own content box and start the live transport, so every
@@ -54,7 +63,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	session := m.sessions[m.selected]
 	if !canReachPane(session) {
-		m.attachError = "Cannot enter interactive mode: session is stopped; resume it first"
+		m.attachError = "Cannot enter interactive mode: " + stoppedSessionRefusalTail
 		return m, nil
 	}
 	ctx := context.Background()
@@ -93,8 +102,8 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Refusal case 2 (PRD II-47): another client is attached to this
-	// session. The squeeze is unavoidable -- one tmux window has one size
+	// Refusal case 2 (PRD II-47): some other client is already attached to
+	// this session. The squeeze is unavoidable -- one tmux window has one size
 	// -- so this is checked, and refused, before anything else touches the
 	// window; a bystander watching this session must never see it collapse
 	// into the preview panel's own box. This must still precede every check
