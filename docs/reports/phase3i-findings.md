@@ -16,7 +16,8 @@ is tracked under `git ls-files --error-unmatch`, both checked in
 - [1. Task 119 ended `failed (validation-exhausted)` on test strength, not on product behaviour — discharged by task 136](#1-task-119-ended-failed-validation-exhausted-on-test-strength-not-on-product-behaviour--discharged-by-task-136)
 - [2. The protected-path audit range `6197b53..HEAD` necessarily contains one operator commit](#2-the-protected-path-audit-range-6197b53head-necessarily-contains-one-operator-commit)
 - [3. Gate disposition: whole-suite sweep and ten-run stability, both clean, no out-of-scope recurrence](#3-gate-disposition-whole-suite-sweep-and-ten-run-stability-both-clean-no-out-of-scope-recurrence)
-- [4. How to re-check every citation in this report](#4-how-to-re-check-every-citation-in-this-report)
+- [4. The shipped helpText's `F` entry wrongly told users a live claim holder still refuses `F` -- corrected by task 201, guarded by task 202](#4-the-shipped-helptexts-f-entry-wrongly-told-users-a-live-claim-holder-still-refuses-f----corrected-by-task-201-guarded-by-task-202)
+- [5. How to re-check every citation in this report](#5-how-to-re-check-every-citation-in-this-report)
 
 ## 1. Task 119 ended `failed (validation-exhausted)` on test strength, not on product behaviour — discharged by task 136
 
@@ -192,13 +193,74 @@ a base rate below one in ten runs, or reproducible only under a forced interleav
 never applies — this section is only the recurrence check the standing rules call for, and it
 found nothing to report for this phase's two gates.
 
-## 4. How to re-check every citation in this report
+## 4. The shipped helpText's `F` entry wrongly told users a live claim holder still refuses `F` -- corrected by task 201, guarded by task 202
+
+This is approach 2's own finding, not approach 1's: the code review that opened approach 2
+found the `F` entry in `internal/tui/tui.go`'s `helpText` naming a refusal that R98/SPEC 11.9
+says `F` exists to skip.
+
+**What was shipped, quoted verbatim from the pre-fix source (task 201's diff shows the exact
+removed lines):**
+
+```
+F force-enter interactive mode on the selected session, stealing it from
+  any client already attached to it -- the one refusal Enter itself still
+  respects that F exists to skip; every other refusal Enter has (the 7-row
+  floor, no-width squeeze, a stopped session, a live process already
+  holding the window's own claim) still applies
+```
+
+That text told the user `F` skips only the attached-client refusal, and that "a live process
+already holding the window's own claim" is one of the refusals `F` still respects -- the
+opposite of what R98/SPEC 11.9 specify. **R98** (`prds/phase3i-force-attach.md`) states `F`
+differs from `Enter` in exactly two ways, both named in SPEC 11.9: "it does not refuse for
+`SessionAttachedCount > 0`, and it takes ownership over a live holder (R99) instead of standing
+down", and that the attached-client refusal and the **live-ownership refusal** are R98's two
+named contention refusals `F` must skip. **SPEC.md 11.9** is the requirement's own text: an
+owner "has recorded a size it is going to put back", and R98's force variant is specified to
+take that claim rather than stand down for it -- a live holder is exactly the case `F` is built
+to override, not one it still refuses on.
+
+**Correction -- task 201, commit `c025c54451e816eadc3f84063321814c118a8e76`** (`tui: correct
+helpText's F entry to match SPEC 11.9's two skipped refusals (task 201)`), in
+`internal/tui/tui.go`. The corrected entry:
+
+```
+F force-enter interactive mode on the selected session, stealing it from
+  any client already attached to it and claiming ownership over a
+  live holder of the window's claim instead of standing down for one --
+  the two refusals Enter itself still respects that F exists to skip; every
+  other refusal Enter has (the 7-row floor, no-width squeeze, a stopped
+  session, no live pane) still applies
+```
+
+Now names both refusals `F` skips (the attached-client refusal, and a live holder of the
+window's ownership claim) and still names the refusals that do apply to `F` (the 7-row inner
+floor, the no-width squeeze, a stopped session, no live pane) -- agreeing with R98/SPEC 11.9.
+Post-fix, `grep -n "live process already" internal/tui/tui.go` prints nothing.
+
+**Guard -- task 202, commit `5b554f2632c6a085e0da2d40a5fcab75bf759f06`** (`tui: pin helpText's F
+entry wording to the force path's real semantics (task 202)`), adds
+`internal/tui/help_force_semantics_test.go`. The test reads `tui.go`'s `helpText` `F` entry as
+source text and fails if it says a live-ownership/claim refusal applies to `F` while
+`internal/tui/interactive.go`'s force path calls `ForceClaimWindowOwnership` -- tying the
+wording assertion to the actual force-path call, not to a copy of the old prose. Task 202's own
+record states the pre-201 wording was restored against the test and made it fail, then
+reverted, before the guard was committed; the bad wording is not left in the tree.
+
+**Disposition.** Both commits are `validated` (tasks 201 and 202 in `tasks.json`); this defect
+is fixed and pinned, not merely reported. Filed here because a wrong help entry that
+contradicts the requirement it documents is exactly the shape of defect this report exists to
+disclose, per the standing rules' instruction that a correction be recorded with the commit
+that fixed it and the test that keeps it fixed.
+
+## 5. How to re-check every citation in this report
 
 Every backticked sha above resolves under `git cat-file -e`; every backticked repo-relative
 path names a file tracked under `git ls-files --error-unmatch`:
 
 ```
-$ for sha in 6197b53 3090b68 b9243a1 0c022e8 4a9d745 3508c5a fcdb994; do \
+$ for sha in 6197b53 3090b68 b9243a1 0c022e8 4a9d745 3508c5a fcdb994 c025c54 5b554f2; do \
     git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
 6197b53 ok
 3090b68 ok
@@ -207,10 +269,16 @@ b9243a1 ok
 4a9d745 ok
 3508c5a ok
 fcdb994 ok
+c025c54 ok
+5b554f2 ok
 $ git ls-files --error-unmatch \
     internal/tmux/ownership.go \
     internal/tui/displacement_teardown_test.go \
     internal/tui/interactive.go \
+    internal/tui/tui.go \
+    internal/tui/help_force_semantics_test.go \
+    prds/phase3i-force-attach.md \
+    SPEC.md \
     docs/reports/phase3i.md \
     docs/reports/phase3h-findings.md \
     docs/reports/phase3i-127-fullsuite/sweep.log \
