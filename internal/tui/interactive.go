@@ -163,6 +163,25 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		m.attachError = "Cannot enter interactive mode: a live process holds ownership of this window; press a to attach instead, or F to force it"
 		return m, nil
 	}
+	// R100 (SPEC section 11.9): the geometry to restore is recorded beside
+	// the claim, written by whoever finds none there and read -- never
+	// rewritten -- by whoever takes the claim afterwards. This runs only
+	// once the claim above was actually acquired (both the first
+	// claimant and a `F` steal reach here identically): geometry, already
+	// captured above from this process's own CaptureWindowGeometry, is
+	// what gets written when @deck_isize_geometry is absent; when it is
+	// already present (this entry stole an existing holder's claim),
+	// geometry is replaced with the value already recorded there, so the
+	// ORIGINAL pre-entry size -- not this stealer's own capture of the
+	// previous holder's already-fitted size -- is what every later step
+	// below (the fit, SaveInteractiveClaimRecord, and eventually the
+	// restore) uses.
+	geometry, err = client.ResolveIsizeGeometry(ctx, windowTarget, geometry)
+	if err != nil {
+		_ = ownership.Release(ctx)
+		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		return m, nil
+	}
 	if _, err := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height); err != nil {
 		_ = ownership.Release(ctx)
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
