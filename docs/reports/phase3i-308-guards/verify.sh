@@ -64,13 +64,40 @@ done < "$tmpdir/shas.txt"
 [ "$c1" -eq 0 ] && pass "check 1: all $n distinct cited shas resolve (git cat-file -e)"
 
 # --- check 2: every path cited in the three documents is tracked ------------------
-# A handful of backtick tokens are excluded by name or shape: `tasks.json` and any
-# `/run/ralphd/...` path are the run's OWN state files, which live outside this repo
-# by design and are quoted verbatim from prose describing the run, not asserted as a
-# repo path; a bare `/` is markdown punctuation between two other backtick tokens
-# (e.g. `*.go`/`*.feature`), not a path at all. Ordinary shorthand basenames like
-# `ownership.go` or `tui.go` are NOT excluded — they genuinely resolve via the
-# basename fallback below, against their one real tracked file.
+# The scan is deliberately WIDER than "a backtick span containing no spaces": every
+# backtick span is split on whitespace and EVERY resulting token is considered, so a
+# path cited inside a multi-token command span is checked exactly like a path cited
+# on its own. That is what makes all of these shapes checkable rather than only the
+# first:
+#   * a path quoted on its own          -- `internal/tmux/geometry.go`
+#   * a path inside a quoted command    -- `ci/run.sh go test -count=1 ./internal/tui/`,
+#                                          `ci/stability.sh 10`
+#   * a markdown link target            -- [..](phase3h-findings.md), [..](reports/phase3i.md)
+# (An earlier revision of this script extracted only complete space-free backtick
+# spans with `grep -oh '`[^` ]*`'`, so the nine `ci/run.sh` / `ci/stability.sh`
+# citations that only ever appear inside multi-token command spans were never checked
+# at all: they could have gone stale silently. Hence the split.)
+#
+# A token is treated as a cited PATH when, after stripping wrapping quotes, trailing
+# markdown/prose punctuation and any `:NNN`/`:NNN-NNN` line-number suffix, it either
+# contains a `/` or ends in one of this repo's file extensions, or is a
+# `phase3i*`/`phase3h*` report-directory shorthand. Everything else in a command span
+# (`go`, `test`, `-count=1`, `grep`, `sed`) is not path-shaped and is skipped.
+#
+# Five documented exclusions, each a token that is path-SHAPED but is not a path in
+# this repo:
+#   * `tasks.json` and any `/run/ralphd/...` token -- the run's OWN state files, which
+#     live outside this repo by design and are quoted from prose describing the run.
+#   * `origin/main` -- a git ref (it is quoted inside check 4's own command), not a path.
+#   * `./...` -- the Go package pattern, not a directory.
+#   * a token holding a shell/placeholder metacharacter (`<>$=&|;(){}!^@#~`) -- command
+#     fragments such as `2>&1`, `DECK_GODOG_PATHS=<file>.feature` and `~/.git-credentials`
+#     (the last a real path, but in $HOME, not in the repo).
+#   * a token made only of digits and `/` -- a ratio such as `10/10`, not a path.
+# Ordinary shorthand basenames like `ownership.go` or `tui.go` are NOT excluded — they
+# genuinely resolve via the basename fallback below, against their one real tracked file.
+# Glob citations (`*.go`, `*.feature`) are not excluded either: git resolves them as
+# pathspecs, so an extension that stopped existing in the tree would FAIL loudly.
 m=0
 c2=0
 resolves_as_file() {
@@ -90,14 +117,22 @@ check_one_path() {
   return 1
 }
 
-for raw in $(grep -oh '`[^` ]*`' $DOCS | tr -d '`' | sed 's/:[0-9]*-\{0,1\}[0-9]*$//' | sort -u); do
+for raw in $(grep -oh '`[^`]*`' $DOCS | tr -d '`' | tr -s ' \t' '\n' \
+               | sed "s/^['\"]*//; s/['\",;)]*\$//; s/:[0-9]*-\{0,1\}[0-9]*\$//" | sort -u); do
   case "$raw" in
-    tasks.json) continue ;;
+    tasks.json|origin/main|'./...') continue ;;
     ''|/) continue ;;
     '~'*|'#'*|/run/ralphd/*) continue ;;
+    *[\<\>\$\=\&\|\;\(\)\{\}\!\^\@\#\~]*) continue ;;
+  esac
+  # digits-and-slashes only (a ratio like 10/10) is not a path
+  case "$raw" in
+    *[!0-9/]*) ;;
+    *) continue ;;
   esac
   case "$raw" in
     *.md|*.go|*.feature|*.sh|*.toml|*.log|*.exitstatus|*/) ;;
+    phase3i*|phase3h*) ;;
     */*) ;;
     *) continue ;;
   esac
@@ -108,7 +143,7 @@ for raw in $(grep -oh '`[^` ]*`' $DOCS | tr -d '`' | sed 's/:[0-9]*-\{0,1\}[0-9]
   fi
 done
 
-for l in $(grep -oh '](reports/[^)) ]*)\|](phase3i[^)) ]*)' $DOCS | sed 's/^](//; s/)$//' | sort -u); do
+for l in $(grep -oh ']([^) ]*)' $DOCS | sed 's/^](//; s/)$//' | sort -u); do
   case "$l" in '#'*) continue ;; esac
   t="${l%%#*}"
   m=$((m + 1))
