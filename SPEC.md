@@ -511,9 +511,12 @@ Rules:
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
   hook verdict, and `tmux` only ever supplies liveness.
 - `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. "Attaching"
-  means both ways the keyboard reaches the pane through deck: `a`'s full attach and `↵`'s
-  interactive preview (§11.9) — the same durable transaction applies to either. Leaving an
-  attention state bumps `notify_epoch` (§10.2).
+  means every way the keyboard reaches the pane through deck: `a`'s full attach and the
+  interactive preview (§11.9), whether entered by `↵` or forced by `F` — the same durable
+  transaction applies to any of them, and a forced entry is an attachment for exactly the
+  reason an ordinary one is, since the keyboard reaches the pane either way. Being
+  *displaced* from the preview by another client records nothing: that is something done to
+  the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.2).
 - **Attaching to a `waiting` row also clears the status to `running`** (not only the
   acknowledgement): answering the prompt is why you attached, deck watched you do it, and
   no hook fires on a prompt being answered — the subscribed hooks (§8.1) are per-turn, not
@@ -1108,7 +1111,13 @@ hold them side by side.
   leaving the pane cropped, because a box that small has no transcript in it worth reflowing
   for; and it is **best-effort, owning and restoring nothing** — a session the user looked at
   is left at the size deck last chose, and any attaching client re-expresses its own size
-  under `window-size latest` and simply wins.
+  under `window-size latest` and simply wins. Best-effort does not extend to fighting an
+  **owner**, though: passive fit stands down entirely, issuing no `resize-window` at all,
+  while another live process holds §11.9's ownership claim on that window. An owner has
+  recorded a size it is going to put back, so a passive fit landing under it is the one case
+  where "deck last chose" is a lie — and without this, merely *selecting* a row in a second
+  deck would resize a window the first deck is typing into. The capture still renders, at
+  whatever size the owner is holding.
 - **The cost is stated, not hidden.** A fit sends the agent `SIGWINCH` and reflows its output,
   so §3.2's history arithmetic applies: output produced while narrow consumes scrollback rows
   faster and evicted rows never return. A second client attached at another size sees the crop
@@ -1157,7 +1166,8 @@ Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename is an action inside it**,
 not a top-level key) · `e` env editor · `P` permission profile · `p` pin conversation ·
-`E` event log · `f` find (§12) · `/` filter list · `m` mark · `z` snooze · `A` archive
+`E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
+filter list · `m` mark · `z` snooze · `A` archive
 (confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `,` settings
 (§11.5) · `t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) ·
 `?` help · `q` quit.
@@ -1406,7 +1416,8 @@ unbuilt behaviour is simply absent rather than a stub that opens onto nothing
 **rename** is reached · confirm (kill, delete, purge, archive) · delete options (tombstone
 vs purge) · permission profile picker · pin conversation · send message (§11.1) · env editor
 · snooze duration · notification rules · theme picker (§11.6) · event log · health view ·
-find (§12) · help overlay. Settings is deliberately *not* a dialog — see below.
+find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
+— see below.
 
 ### 11.5 Settings
 
@@ -1723,7 +1734,44 @@ must be restored afterwards.
   re-expresses its own under `window-size latest`, so the fit cannot be *held*, and unlike
   §11's best-effort passive fit interactive mode needs a held size for its grid to stay
   correct; the preview box has fewer than **7 inner rows**, which is deck's stacked height
-  floor and leaves no transcript at all; or ownership is held by a live process.
+  floor and leaves no transcript at all; or ownership is held by a live process. Two of those
+  three are refusals about *someone else's* claim on the window rather than about deck's
+  ability to do the job, so both also offer `F` (below) and say so; the row floor is deck's
+  own limit and offers only `a`.
+- **`F` forces entry over whoever holds the window.** One operator working one set of sessions
+  from more than one place is the ordinary case, not an anomaly, and the refusals above leave
+  them with no way to move the keyboard except by hunting down the other client. `F` is
+  identical to `↵` in every respect but two: it does not refuse for an attached client, and
+  it claims ownership *over* a live holder instead of standing down for one. Every other
+  refusal still applies unchanged — a stopped session, the 7-inner-row floor, a pane that is
+  not live — because those are not contention. There is **no priority between a full attach
+  and a preview**: forcing over an attached client resizes the window under them, which is
+  the accepted cost of the interaction model deck is built around, and it never detaches
+  them. With nothing to steal, `F` and `↵` are the same key.
+- **Exactly one client wins a contested window.** The claim protocol already decides this and
+  needs nothing added: a forced claim writes over whatever is there and then re-reads, and
+  only the value that survives its own confirm-read is a claim. Simultaneous forcers therefore
+  produce one winner and no corrupt state; every loser stands down with no error, back into
+  the ordinary refusal — which still offers `F`, so trying again is a keypress, not a puzzle.
+- **The original geometry outlives every steal.** A stealer that captured the window's size at
+  steal time would capture the *previous holder's fitted* size and hand that back on exit, so
+  the real pre-preview geometry would be lost at the first steal and drift further at each one
+  after. So the geometry to restore is recorded **beside the ownership claim, in the window's
+  own options**, written by whoever finds none there and read — never rewritten — by whoever
+  takes the claim afterwards. It is restored and cleared by the last holder to let go
+  legitimately, and by nobody else: a holder whose claim was stolen restores nothing, closes
+  only its own transport, and leaves the window to its new owner. The SIGKILL-reclaim path
+  reads the same record and keeps standing down for a live claim, so a crashed process's
+  cleanup can never resize a window out from under the client that took over from it.
+- **A displaced client is told, and its keyboard is stopped first.** Losing the pane silently
+  is worse than losing it: the next keystrokes would go somewhere the user cannot see, or
+  nowhere. Whichever way the loss happens — its claim stolen by `F`, or a full attach arriving
+  and re-expressing its own size — the losing client leaves interactive mode and raises a
+  dialog that names the session, says another client took over, and dismisses on `↵`. It
+  swallows every key while it is up, because that is its point. Detection rides the preview
+  tick, with the pipe transport's own displacement signal as the fast path; the keystrokes
+  typed in the window between the steal and the tick that notices are a **known, accepted
+  loss**, deliberately not paid for with a tmux round-trip per keystroke.
 - **The transport is `pipe-pane -IO` into a `charmbracelet/x/vt` grid**, seeded from
   `capture-pane -e -N` plus the pane state tmux exposes as formats, and **reseeded on every
   resize** — resizing the grid alone leaves it wrong for seconds. The pipe is armed before
