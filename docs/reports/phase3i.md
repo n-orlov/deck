@@ -35,25 +35,27 @@ final code sha rather than after it. `git status --porcelain` is empty and
 |---|---|---|---|---|
 | R98 | met | 104–109; 201, 202 (approach-2 correction) | `a65190e`, `0177991`, `e31c37e`, `8d1b41a`, `17e185c`, `7e141ad`, `a063296`, `8e5e036`, `55c0818`, `c025c54`, `5b554f2` | `internal/tui/interactive.go`, `internal/tui/tui.go`, `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_handler_agreement_test.go`, `internal/tui/refusal_f_naming_test.go`, `internal/tui/force_enter_test.go`, `internal/tui/force_indistinguishable_test.go`, `features/interactive_force_attach.feature`, `internal/tui/help_force_semantics_test.go` |
 | R99 | met | 101, 102, 121 | `eb1e917`, `244f66f`, `d7f149c` | `internal/tmux/ownership.go`, `internal/tmux/force_ownership_test.go`, `features/interactive_force_attach.feature` (the `↵` refused, `F` wins, A is told scenario) |
-| R100 | met, with a qualification (see below) | 110–115; 203 (approach-2 pin) | `a790061`, `e6157d8`, `4ef6d28`, `c525b35`, `cbc6692`, `625c663`, `cb27c5c`, `1b71c74`, `a559e7c` | `internal/tmux/isize_geometry.go`, `internal/tmux/isize_geometry_test.go`, `internal/tui/isize_geometry_entry_test.go`, `internal/tui/teardown_still_mine_gate_test.go`, `internal/tui/teardown_transport_gate_test.go`, `internal/tui/failed_entry_unwind_test.go`, `internal/tmux/reclaim.go`, `internal/tmux/reclaim_test.go`, `internal/tui/double_steal_restore_test.go`, `features/interactive_force_attach.feature` (the geometry-survives-the-chain scenario), `internal/tmux/restore_plain_unset_test.go` |
+| R100 | met | 110–115; 203 (approach-2 pin); 304 (approach-3 correction) | `a790061`, `e6157d8`, `4ef6d28`, `c525b35`, `cbc6692`, `625c663`, `cb27c5c`, `1b71c74`, `a559e7c`, `ca00cb6` | `internal/tmux/isize_geometry.go`, `internal/tmux/isize_geometry_test.go`, `internal/tui/isize_geometry_entry_test.go`, `internal/tui/teardown_still_mine_gate_test.go`, `internal/tui/teardown_transport_gate_test.go`, `internal/tui/failed_entry_unwind_test.go`, `internal/tmux/reclaim.go`, `internal/tmux/reclaim_test.go`, `internal/tui/double_steal_restore_test.go`, `features/interactive_force_attach.feature` (the geometry-survives-the-chain scenario), `internal/tmux/restore_plain_unset_test.go` |
 | R101 | met | 116, 117, 118, 120, 136 (not 119 — its disposition belongs to the phase 3i findings report, task 131); 121–123 (feature scenarios) | `4ac5970`, `c95e848`, `be7a387`, `5fb9e4f`, `e398881`, `fcdb994`, `d7f149c`, `8d0437f`, `704fd1a` | `internal/tui/lost_attach.go`, `internal/tui/lost_attach_test.go`, `internal/tui/lost_attach_swallow_test.go`, `internal/tui/interactive_displacement.go`, `internal/tui/interactive_displacement_test.go`, `internal/tui/interactive_fallout_store_test.go`, `internal/tui/displacement_teardown_test.go`, `features/interactive_force_attach.feature` (the `↵` refused/`F` wins/A is told, full-attach-displaces-the-holder and dialog-swallows-keys scenarios) |
 | R102 | met | 124–126 | `7371c07`, `83e92d5`, `b9243a1` | `internal/tui/tui.go`, `internal/tui/preview_fit_foreign_claim_test.go`, `features/interactive_force_attach.feature` (the passive-fit-stands-down scenario) |
-| R103 | in progress | 127–129 (gates, done); 130 (this report); 131–135 not yet committed | `0c022e8`, `4a9d745`, `3508c5a` | `docs/reports/phase3i-127-fullsuite/`, `docs/reports/phase3i-128-fullsuite-verbose/`, `docs/reports/phase3i-129-stability10/` |
+| R103 | met | 127–129, 206 (gates, superseded); 130–133 (report, findings, DELIVERY-LOG, GH map); 301–305 (approach 3 re-verification at the final code sha `a559e7c`) | `0c022e8`, `4a9d745`, `3508c5a`, `c8fa18f`, `2c5c098`, `ac87852`, `7db4756`, `7206877`, `ca00cb6`, `ef3c0e3` | `docs/reports/phase3i.md`, `docs/reports/phase3i-findings.md`, `docs/DELIVERY-LOG.md` (Phase 3i paragraph), the GH issue #19 design section map above, `docs/reports/phase3i-302-fullsuite/`, `docs/reports/phase3i-303-fullsuite-verbose/`, `docs/reports/phase3i-206-stability10/` |
 
-**R100's qualification.** The PRD's R100 unit-evidence bullet reads literally as a
-value-preserving restore ("the `window-size` value including its set shape"). SPEC.md 11.9
-and PRD phase3b II-9 both name a plain, unconditional unset as the exit recipe's last step
-instead, and the shipped product (`internal/tmux/geometry.go:243`'s unconditional
-`unsetWindowSize` call) follows SPEC, not that literal PRD wording. Task 203's
-`internal/tmux/restore_plain_unset_test.go` (`a559e7c`) pins this: it sets `window-size`
-window-locally before capture and asserts the option reads back UNSET, not restored to that
-set value, after `RestoreWindowGeometry`. Per the standing rule that SPEC wins where the PRD
-and SPEC disagree, this is deliberate, not a defect, and R100 is still "met" against the
-SPEC-governed behaviour the product actually ships. The full disagreement, its authority
-resolution, and the evidence that `internal/tui/double_steal_restore_test.go` only ever proved
-byte-exact restoration for the unset shape are recorded as numbered finding 5 of
-`docs/reports/phase3i-findings.md` (task 208, `ae35983`) — see that finding for the complete
-account; this row's "met, with a qualification" status points at it rather than repeating it.
+**R100 and SPEC 11.9 agree.** The PRD's R100 unit-evidence bullet reads, in full, "the
+`window-size` value including its **unset** shape" (verified fresh: `sed -n '145,148p'
+prds/phase3i-force-attach.md`) — a plain, unconditional unset, not a value-preserving
+restore. SPEC.md 11.9 and PRD phase3b II-9 both name that same plain, unconditional unset as
+the exit recipe's last step, and the shipped product (`internal/tmux/geometry.go:243`'s
+unconditional `unsetWindowSize` call) follows exactly that. There is no disagreement between
+the PRD and SPEC on this requirement. Task 203's `internal/tmux/restore_plain_unset_test.go`
+(`a559e7c`) pins the shipped behaviour: it sets `window-size` window-locally before capture
+and asserts the option reads back UNSET, not restored to that set value, after
+`RestoreWindowGeometry` — exactly what the PRD's own "unset shape" wording calls for. An
+earlier version of this report's numbered finding 5 (`docs/reports/phase3i-findings.md`, task
+208, `ae35983`) misquoted the PRD as reading "including its **set** shape" and inferred a
+PRD/SPEC disagreement from that misquote; task 304's corrected finding 5 (`ca00cb6`) retracts
+that misquote and restates the actual, unqualified agreement with the sed-verified quote
+above — see that finding for the complete account. R100 is met outright, with no
+qualification.
 
 R101's met verdict above rests only on tasks 116, 117, 118, 120 and 136 and on the feature
 scenarios of tasks 121–123: detection on the preview tick and the dialog (116, 117, 118), the
@@ -143,11 +145,18 @@ path: `docs/reports/phase3i-129-stability10/summary.log` (exit status in
 All 10 runs `PASS (exit 0)`; no failures to name, no recurrence of any out-of-scope carried
 finding.
 
-## Remaining R103 work
+## R103's discharge
 
-Not yet committed at the time of this report: the re-verification of both guards at the true
-final sha (task 134) and the closing report (task 135). The phase 3i findings report (task
-131, which also carries task 119's disposition), the `docs/DELIVERY-LOG.md` paragraph (task
-132) and the GH issue #19 design section map above (task 133) are now landed. R103's row
-above is therefore still `in progress`, not `met`; it will be revised to `met` once 134 and
-135 land, citing their own commits.
+R103 requires the record to match the tree. That now holds at the frozen final code sha
+`a559e7c`: this report (`docs/reports/phase3i.md`), the phase 3i findings report
+(`docs/reports/phase3i-findings.md`, including task 119's disposition in its numbered
+finding 1 and approach 3's own gate disposition in its numbered finding 7), the
+`docs/DELIVERY-LOG.md` Phase 3i paragraph and the GH issue #19 design section map above are
+all landed and current. The tasks 127–129/206 gate artifacts named in "Gate results" above
+were captured at superseded shas (`b9243a1` for 127–129, and 206's stability run is at
+`a559e7c` but predates approach 3's own re-verification); the CURRENT gate evidence for the
+final code sha `a559e7c` is `docs/reports/phase3i-302-fullsuite/` (whole-suite sweep, exit
+`0`), `docs/reports/phase3i-303-fullsuite-verbose/` (verbose companion, exit `0`, 319
+scenarios / 3682 steps) and `docs/reports/phase3i-206-stability10/` (`ci/stability.sh 10`,
+`10/10 passed`, not re-run since `git log --oneline a559e7c..HEAD -- '*.go' '*.feature'` is
+empty). R103's row above therefore reads `met`, citing these documents and gate directories.
