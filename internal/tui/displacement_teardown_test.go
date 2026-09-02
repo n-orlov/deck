@@ -2,12 +2,62 @@ package tui
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
+
+// countWireOptionUnsets counts the logged tmux invocations that unset one
+// specific option in the window scope -- the exact wire shape every
+// teardown step this file cares about produces, and the only way to tell
+// them apart from each other, since all three are `set-option`:
+//
+//	RestoreWindowGeometry's step 2  set-option -w -u -t <target> window-size
+//	ClearIsizeGeometry              set-option -w -u -t <target> @deck_isize_geometry
+//	WindowOwnership.Release         set-option -w -u -t <target> @deck_isize_owner
+//
+// countWireCommands (force_indistinguishable_test.go) only looks at the
+// first token after the shim's `-L <socket>` prefix, so it cannot
+// distinguish those three; this counts by the `-u` flag plus the option
+// name in final position instead, and deliberately does NOT pin the target
+// token (the entry path chooses its own window target form).
+//
+// It is the observable that answers the one question the resulting tmux
+// STATE cannot: `Release` self-gates (it re-reads the option and returns
+// nil when the value is not its own claim), so "the option still holds the
+// winner's claim" is equally consistent with Release having been called and
+// with Release never being reached. "Zero ownership-option unsets on this
+// client's wire" is not: it fails the moment the release step actually
+// runs.
+func countWireOptionUnsets(t *testing.T, logPath, option string) int {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read tmux wire log: %v", err)
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		// Every invocation the shim sees is `-L <socket> <command> ...`.
+		if len(fields) < 4 || fields[0] != "-L" || fields[2] != "set-option" {
+			continue
+		}
+		if fields[len(fields)-1] != option {
+			continue
+		}
+		for _, field := range fields[3:] {
+			if field == "-u" {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
 
 // TestRaiseLostAttachOnStolenClaimTouchesNothing proves task 119's first
 // half: raiseLostAttach's own exitInteractive call, run from the
@@ -21,31 +71,45 @@ import (
 // (interactive_displacement_test.go's TestPreviewTickRaisesLostAttachOnStolenClaim
 // proves the Model-level routing into raiseLostAttach; this proves what
 // raiseLostAttach's own teardown does to tmux state once it gets there).
+//
+// The claim is made on the WIRE, not merely on the resulting tmux state:
+// the stolen-from model's own tmux.Client runs through its private
+// wire-logging shim (newTmuxWireLogger), the log is truncated immediately
+// before raiseLostAttach, and the span afterwards must contain zero
+// `resize-window` invocations and zero window-option unsets of any kind.
+// A redundant same-size resize, or a Release call that self-gated into a
+// no-op, both fail these counts while leaving the asserted state below
+// completely unchanged.
 func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 	socket := selectionTestSocket("teardownstolen")
 	session := "deck_teardownstolen"
 	newQuietSelectionPane(t, socket, session, 80, 24)
 	client := tmux.Client{Socket: socket}
 
+	// The stolen-from model gets its own logging shim so the winner's own
+	// (legitimate) claim/fit traffic can never be counted against it.
+	loserBinary, loserLog := newTmuxWireLogger(t)
+	loserClient := tmux.Client{Socket: socket, Binary: loserBinary}
+
 	windowTarget, err := tmux.SessionName("teardownstolen")
 	if err != nil {
 		t.Fatalf("SessionName: %v", err)
 	}
 
-	newTestModel := func(width, height int) Model {
+	newTestModel := func(width, height int, modelClient tmux.Client) Model {
 		m := New(nil, config.Settings{Color: true}, "")
 		m.width, m.height = width, height
 		if _, h := m.previewContentSize(); h < interactiveMinInnerRows {
 			t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", h, interactiveMinInnerRows)
 		}
-		m.tmuxClient = client
+		m.tmuxClient = modelClient
 		m.sessions = []store.Session{{ID: "sess-teardownstolen-1", Name: "teardownstolen", Slug: "teardownstolen", Status: "waiting"}}
 		m.selected = 0
 		return m
 	}
 
 	// First entry: the model whose claim is about to be stolen.
-	next1, _ := newTestModel(100, 30).enterInteractiveBody(false)
+	next1, _ := newTestModel(100, 30, loserClient).enterInteractiveBody(false)
 	got1 := next1.(Model)
 	if !got1.interactive {
 		t.Fatalf("first entry did not enter interactive mode: attachError=%q", got1.attachError)
@@ -55,7 +119,7 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 	// so the winner's own fitted geometry visibly differs from got1's
 	// pre-entry geometry -- a wrongful restore back to got1's own
 	// pre-entry size would otherwise be invisible.
-	next2, _ := newTestModel(120, 40).enterInteractiveBody(true)
+	next2, _ := newTestModel(120, 40, client).enterInteractiveBody(true)
 	got2 := next2.(Model)
 	if got2.attachError != "" {
 		t.Fatalf("steal refused: %q", got2.attachError)
@@ -83,7 +147,9 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 	}
 
 	// The stolen-from model raises the lost-attach dialog exactly as
-	// previewTick's fast path would drive it.
+	// previewTick's fast path would drive it. Everything this model's own
+	// client puts on the wire from here on is exactly the teardown span.
+	truncateWireLog(t, loserLog)
 	m, _ := got1.raiseLostAttach("teardownstolen")
 	if m.interactive {
 		t.Fatalf("raiseLostAttach did not leave interactive mode")
@@ -95,7 +161,31 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 		t.Fatalf("lostAttachSession = %q, want %q", m.lostAttachSession, "teardownstolen")
 	}
 
-	// Zero resize-window calls: the window geometry is byte-identical to
+	// Zero resize-window calls, counted on the wire: not "the size ended
+	// up the same", but "the command was never issued", so a redundant
+	// same-size resize fails here too.
+	if resizes := countWireCommands(t, loserLog, "resize-window"); resizes != 0 {
+		t.Fatalf("the stolen-from teardown issued %d resize-window commands, want 0 (the still-mine gate must skip RestoreWindowGeometry entirely)", resizes)
+	}
+	// Releases nothing, counted on the wire: WindowOwnership.Release
+	// self-gates, so only the absence of its own unset from this client's
+	// wire distinguishes "never called" from "called and declined".
+	if unsets := countWireOptionUnsets(t, loserLog, tmux.OwnershipOption); unsets != 0 {
+		t.Fatalf("the stolen-from teardown issued %d %s unsets, want 0 (Release must never be reached)", unsets, tmux.OwnershipOption)
+	}
+	if unsets := countWireOptionUnsets(t, loserLog, tmux.IsizeGeometryOption); unsets != 0 {
+		t.Fatalf("the stolen-from teardown issued %d %s unsets, want 0 (ClearIsizeGeometry must never be reached)", unsets, tmux.IsizeGeometryOption)
+	}
+	if unsets := countWireOptionUnsets(t, loserLog, "window-size"); unsets != 0 {
+		t.Fatalf("the stolen-from teardown issued %d window-size unsets, want 0 (RestoreWindowGeometry must never be reached)", unsets)
+	}
+	// Nothing else mutated a window option either: the whole post-probe
+	// body is skipped, not merely its three named steps.
+	if sets := countWireCommands(t, loserLog, "set-option"); sets != 0 {
+		t.Fatalf("the stolen-from teardown issued %d set-option commands, want 0 (nothing may be written after the still-mine probe fails)", sets)
+	}
+
+	// The resulting state agrees: the window geometry is byte-identical to
 	// what the winner already left it at.
 	geometryAfter, err := client.CaptureWindowGeometry(ctx, windowTarget)
 	if err != nil {
@@ -140,6 +230,15 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 // tmux's "window-size latest" follow, NOT back to the pre-entry geometry
 // and NOT staying pinned at the fitted size -- while @deck_isize_geometry
 // is cleared and @deck_isize_owner is released.
+//
+// As in the stolen-claim test above, each of those four steps is asserted
+// as a WIRE count over the teardown span (the model's client runs through
+// newTmuxWireLogger's shim, truncated immediately before raiseLostAttach):
+// zero `resize-window`, exactly one `window-size` unset, exactly one
+// @deck_isize_geometry unset, exactly one @deck_isize_owner unset. The
+// final 80x23 state alone would not distinguish the attached gate skipping
+// the explicit resize from an explicit resize followed by the unset --
+// only the zero resize-window count does.
 func TestRaiseLostAttachOnClientAttachRunsOrdinaryTeardown(t *testing.T) {
 	socket := selectionTestSocket("teardownattach")
 	session := "deck_teardownattach"
@@ -156,7 +255,8 @@ func TestRaiseLostAttachOnClientAttachRunsOrdinaryTeardown(t *testing.T) {
 	if _, h := m.previewContentSize(); h < interactiveMinInnerRows {
 		t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", h, interactiveMinInnerRows)
 	}
-	m.tmuxClient = client
+	binary, wireLog := newTmuxWireLogger(t)
+	m.tmuxClient = tmux.Client{Socket: socket, Binary: binary}
 	m.sessions = []store.Session{{ID: "sess-teardownattach-1", Name: "teardownattach", Slug: "teardownattach", Status: "waiting"}}
 	m.selected = 0
 
@@ -199,6 +299,9 @@ func TestRaiseLostAttachOnClientAttachRunsOrdinaryTeardown(t *testing.T) {
 		t.Fatalf("%s unset before teardown", tmux.IsizeGeometryOption)
 	}
 
+	// Everything this model's client puts on the wire from here on is
+	// exactly the teardown span.
+	truncateWireLog(t, wireLog)
 	after, _ := got.raiseLostAttach("teardownattach")
 	if after.interactive {
 		t.Fatalf("raiseLostAttach did not leave interactive mode")
@@ -210,7 +313,24 @@ func TestRaiseLostAttachOnClientAttachRunsOrdinaryTeardown(t *testing.T) {
 		t.Fatalf("lostAttachSession = %q, want %q", after.lostAttachSession, "teardownattach")
 	}
 
-	// Attached-gated restore: the explicit resize-window step was
+	// Attached-gated restore, proved on the wire: zero resize-window
+	// commands (the attached client is still there, so
+	// RestoreWindowGeometry skips step 1) and exactly one window-size
+	// unset (step 2, unconditional).
+	if resizes := countWireCommands(t, wireLog, "resize-window"); resizes != 0 {
+		t.Fatalf("the client-attached teardown issued %d resize-window commands, want 0 (RestoreWindowGeometry's attached gate must skip the explicit resize)", resizes)
+	}
+	if unsets := countWireOptionUnsets(t, wireLog, "window-size"); unsets != 1 {
+		t.Fatalf("the client-attached teardown issued %d window-size unsets, want exactly 1 (RestoreWindowGeometry's unconditional step 2)", unsets)
+	}
+	if unsets := countWireOptionUnsets(t, wireLog, tmux.IsizeGeometryOption); unsets != 1 {
+		t.Fatalf("the client-attached teardown issued %d %s unsets, want exactly 1 (ClearIsizeGeometry)", unsets, tmux.IsizeGeometryOption)
+	}
+	if unsets := countWireOptionUnsets(t, wireLog, tmux.OwnershipOption); unsets != 1 {
+		t.Fatalf("the client-attached teardown issued %d %s unsets, want exactly 1 (WindowOwnership.Release)", unsets, tmux.OwnershipOption)
+	}
+
+	// The resulting state agrees: the explicit resize-window step was
 	// skipped (the attached client is still there, so RestoreWindowGeometry
 	// never issues it), but the unconditional window-size unset alone hands
 	// the window straight to the still-attached client's own size (the
