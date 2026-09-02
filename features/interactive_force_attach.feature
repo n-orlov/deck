@@ -73,3 +73,46 @@ Feature: Forced entry into interactive mode answers a waiting row
     And tmux window "deck_chained" option "@deck_isize_geometry" is unset in the window scope
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
+
+  # The scenarios above prove the steal itself; this one proves the refusal
+  # that precedes it when the steal is NOT forced. B's plain Enter, tried
+  # while A already holds the window's ownership claim, must be REFUSED
+  # (requirement 47's live-ownership case: A's own interactive entry claims
+  # the window via ClaimWindowOwnership, so B's plain Enter meets the same
+  # "a live process holds ownership" refusal interactive_refusals.feature
+  # exercises against a hand-crafted claim -- here against a real one) and
+  # must name `F` as the way past it -- not silently degrade and not steal
+  # on its own. Only B's SUBSEQUENT `F` may steal, and the durable row must
+  # show exactly one attached event for that steal: neither B's refused
+  # plain Enter nor A's own fall-out through the lost-attach dialog may add
+  # a second one.
+  Scenario: a refused plain entry names F, and only B's forced steal is durably attached
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    And deck client "B" is started
+    When deck client "A" creates claude session "held entry" with permission profile "safe"
+    Then within one configured reconcile interval deck client "B" screen contains "held entry"
+    When the released running hook fires for session "held entry"
+    And deck client "A" selects session "held entry"
+    And deck client "A" enters interactive mode
+    Then deck client "A" screen contains "Ctrl+Q"
+    When the released waiting hook fires for session "held entry"
+    Then the state database session "held entry" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events
+    And within one configured reconcile interval deck client "B" row "held entry" contains "waiting"
+    When deck client "B" selects session "held entry"
+    And deck client "B" enters interactive mode
+    Then deck client "B" screen contains "holds ownership of this window"
+    And deck client "B" screen contains "press a to attach"
+    And deck client "B" screen contains "F to force it"
+    And deck client "B" screen contains "deck - sessions"
+    And the state database session "held entry" has 0 attached events
+    When deck client "B" forces entry into interactive mode
+    Then deck client "B" screen contains "Ctrl+Q"
+    And the state database session "held entry" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event
+    And deck client "A" screen contains "Lost attach: held entry"
+    When deck client "A" dismisses the lost-attach dialog
+    Then deck client "A" screen contains "deck - sessions"
+    And the state database session "held entry" has 1 attached event
+    When deck client "B" leaves interactive mode
+    And deck client "A" exits cleanly
+    And deck client "B" exits cleanly
