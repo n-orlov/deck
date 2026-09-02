@@ -74,6 +74,33 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
 
+  # This scenario proves the OTHER displacement flavour task 118 names: a
+  # real tmux client's full attach, never a second deck client's F-steal.
+  # It never touches the ownership option (interactive_displacement.go's own
+  # doc: "a plain `tmux attach` never touches pipe-pane"), so it can only be
+  # caught by checkInteractiveDisplacementBackstop's SessionAttachedCount
+  # read, not the pipe-displacement fast path the scenario above exercises --
+  # and the same raiseLostAttach exit both flavours share still applies: A
+  # leaves by the ordinary teardown, the window is restored per the existing
+  # attached-client gating (unset window-size, let window-size latest
+  # follow), and both isize options are released.
+  Scenario: a real client's full attach displaces the interactive holder and the window is restored
+    Given deck client "A" is started
+    And deck client "A" creates shell session "grabbed"
+    And deck client "A" selects session "grabbed"
+    And the private tmux window for session "grabbed" is captured as "before-real-attach"
+    When deck client "A" enters interactive mode
+    Then deck client "A" screen contains "Ctrl+Q"
+    When a real tmux client attaches to deck session "grabbed" at 80x24
+    Then deck client "A" screen contains "Lost attach: grabbed"
+    When deck client "A" dismisses the lost-attach dialog
+    Then deck client "A" screen contains "deck - sessions"
+    And the private tmux window for session "grabbed" still matches "before-real-attach"
+    And tmux window "deck_grabbed" option "@deck_isize_owner" is unset in the window scope
+    And tmux window "deck_grabbed" option "@deck_isize_geometry" is unset in the window scope
+    And the real tmux client attached to session "grabbed" detaches
+    And deck client "A" exits cleanly
+
   # The scenarios above prove the steal itself; this one proves the refusal
   # that precedes it when the steal is NOT forced. B's plain Enter, tried
   # while A already holds the window's ownership claim, must be REFUSED
