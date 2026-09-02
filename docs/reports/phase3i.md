@@ -40,6 +40,44 @@ falls-out-records-nothing guarantee (120), and the stolen flavour's teardown nev
 the row's shas; its status and disposition are recorded in the phase 3i findings report
 (task 131), not here.
 
+## GH issue #19 design section map (task 133)
+
+GH issue #19, "Force-attach (F): steal the interactive preview from another holder", is this
+phase's source (`prds/phase3i-force-attach.md`'s "Read this before anything else" says so
+directly, and R103 requires this mapping). Its `## Design (agreed with operator, 2026-09-02)`
+body is organised into six numbered subsections. This table names, for each one, which
+requirement discharges it and the commit(s)/evidence already established in the
+per-requirement table above — so closing #19 is a reading, not an argument.
+
+**No `gh` CLI is available in this environment**, and **the issue itself was not edited from
+here**: its text was read with a single authenticated `GET
+https://api.github.com/repos/n-orlov/deck/issues/19` (HTTP 200, `state: open`, `comments: 1`,
+none of them posted by this task) so the six subsection headings quoted below are exact —
+no `POST`/`PATCH`/`PUT` was made against the issue or its comments, and a second `GET` after
+the read showed the same `state: open` with the same comment count. The token used came from
+the pre-existing `~/.git-credentials` credential helper entry and was never printed or passed
+as a command argument.
+
+| issue § | design subsection (verbatim heading) | requirement | tasks | evidence |
+|---|---|---|---|---|
+| 1 | "`f` = force-enter the interactive preview" (shipped as `F`; see PRD/SPEC's `F`-not-`f` ruling) | R98 | 104–109 | `internal/tui/interactive.go`, `internal/tui/tui.go`, `internal/tui/help_keymap_parity_test.go`, `internal/tui/footer_handler_agreement_test.go`, `internal/tui/refusal_f_naming_test.go`, `internal/tui/force_enter_test.go`, `internal/tui/force_indistinguishable_test.go`, `features/interactive_force_attach.feature` |
+| 2 | "Force claim: exactly one winner" | R99 | 101, 102, 121 | `internal/tmux/ownership.go`, `internal/tmux/force_ownership_test.go`, `features/interactive_force_attach.feature` (the `↵` refused, `F` wins scenario, task 121, `d7f149c`) |
+| 3 | "Original geometry survives steals" | R100 | 110–115 | `internal/tmux/isize_geometry.go`, `internal/tmux/isize_geometry_test.go`, `internal/tui/isize_geometry_entry_test.go`, `internal/tui/teardown_still_mine_gate_test.go`, `internal/tui/teardown_transport_gate_test.go`, `internal/tui/failed_entry_unwind_test.go`, `internal/tmux/reclaim.go`, `internal/tmux/reclaim_test.go`, `internal/tui/double_steal_restore_test.go`, `features/interactive_force_attach.feature` (the geometry-survives-the-chain scenario) |
+| 4 | "The loser falls out, into a modal dialog" | R101 | 116, 117, 118, 120, 136 (119's residual, discharged by 136 — see the findings report); 121, 123 (feature scenarios) | `internal/tui/lost_attach.go`, `internal/tui/lost_attach_test.go`, `internal/tui/lost_attach_swallow_test.go`, `internal/tui/interactive_displacement.go`, `internal/tui/interactive_displacement_test.go`, `internal/tui/interactive_fallout_store_test.go`, `internal/tui/displacement_teardown_test.go`, `features/interactive_force_attach.feature` (the `F`-wins/A-is-told scenario, task 121, `d7f149c`; the dialog-swallows-keys scenario, task 123, `704fd1a`) |
+| 5 | "Passive preview fit respects a live claim (pre-existing gap)" | R102 | 124–126 | `internal/tui/tui.go`, `internal/tui/preview_fit_foreign_claim_test.go`, `features/interactive_force_attach.feature` (the passive-fit-stands-down scenario) |
+| 6 | "Full tmux attach stays as-is" | R101 (no code change of its own; the fall-out `a` now lands an interactive holder into is §4/R101's dialog) | 122 (feature scenario proving it) | `features/interactive_force_attach.feature` (the full-attach-displaces-the-holder scenario, task 122, `8d0437f`) |
+
+Section 1's issue text still says the lowercase `f`; §11.9 and this phase's tasks 104–109
+shipped the uppercase `F` per the operator's explicit ruling recorded in the PRD and standing
+rules ("`F`, not `f`" — `f` stays §12's cross-session search). That is the one place the
+shipped requirement's letter differs from the issue's own draft text; the *design* — skip the
+attached-client refusal, steal the live claim — is what R98 discharges, unchanged.
+
+The issue's "## Verification (when implemented)" and "## Out of scope" subsections are not
+numbered design subsections and are not rows above; the "Out of scope" bullets (no detach of
+the other client, no per-keystroke ownership verification) match this phase's own Non-goals
+verbatim and are honoured by omission, not by a citable commit.
+
 ## Gate results (tasks 127–129)
 
 **Whole-suite sweep (task 127, `0c022e8`)** — `ci/run.sh go test -p=1 -count=1 ./...` at
@@ -85,8 +123,9 @@ finding.
 
 ## Remaining R103 work
 
-Not yet committed at the time of this report: the phase 3i findings report (task 131, which
-also carries task 119's disposition), the `docs/DELIVERY-LOG.md` paragraph (task 132), the GH issue #19 section mapping (task 133),
-the re-verification of both guards at the true final sha (task 134), and the closing report
-(task 135). R103's row above is therefore `in progress`, not `met`; it will be revised to
-`met` once those tasks land, citing their own commits.
+Not yet committed at the time of this report: the re-verification of both guards at the true
+final sha (task 134) and the closing report (task 135). The phase 3i findings report (task
+131, which also carries task 119's disposition), the `docs/DELIVERY-LOG.md` paragraph (task
+132) and the GH issue #19 design section map above (task 133) are now landed. R103's row
+above is therefore still `in progress`, not `met`; it will be revised to `met` once 134 and
+135 land, citing their own commits.
