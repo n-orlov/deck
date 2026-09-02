@@ -53,11 +53,13 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 // (force disabled) rather than maintaining a second copy that could drift
 // -- the four refusal message literals below each still appear exactly
 // once in the package's non-test sources because there is only one body
-// producing them, whichever caller reaches it. force itself is not yet
-// consulted by anything in this body; task 105 is what makes it skip the
-// attached-client refusal and take the claim via ForceClaimWindowOwnership.
+// producing them, whichever caller reaches it. force (wired to tui.go's
+// list-mode `F` by task 105) is consulted in exactly two places below:
+// it skips the attached-client refusal outright, and it takes the claim
+// via ForceClaimWindowOwnership instead of ClaimWindowOwnership -- every
+// other refusal (the floor, the stopped-session check, no live pane, a
+// LIVE claim holder surviving the force claim itself) still applies.
 func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
-	_ = force
 	if m.interactive || m.tmuxClient.Socket == "" || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		return m, nil
 	}
@@ -110,14 +112,21 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	// below it that actually touches the window (ClaimWindowOwnership,
 	// FitWindowToPane, ...) -- only the floor check above, which touches
 	// nothing, was allowed to move ahead of it.
-	attached, err := client.SessionAttachedCount(ctx, windowTarget)
-	if err != nil {
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
-		return m, nil
-	}
-	if attached > 0 {
-		m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead"
-		return m, nil
+	// force (task 105's `F`) skips only this one refusal: another client
+	// attached is exactly the condition force exists to steal past, so it is
+	// the sole check force bypasses. Every other refusal in this ladder
+	// (floor, stopped session, no live pane, a LIVE claim holder below)
+	// still applies unchanged under force.
+	if !force {
+		attached, err := client.SessionAttachedCount(ctx, windowTarget)
+		if err != nil {
+			m.attachError = "Cannot enter interactive mode: " + err.Error()
+			return m, nil
+		}
+		if attached > 0 {
+			m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead"
+			return m, nil
+		}
 	}
 
 	pane, ok, err := client.PreviewPane(ctx, session.Slug)
@@ -135,7 +144,13 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
-	ownership, acquired, err := client.ClaimWindowOwnership(ctx, windowTarget)
+	var ownership *tmux.WindowOwnership
+	var acquired bool
+	if force {
+		ownership, acquired, err = client.ForceClaimWindowOwnership(ctx, windowTarget)
+	} else {
+		ownership, acquired, err = client.ClaimWindowOwnership(ctx, windowTarget)
+	}
 	if err != nil {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
