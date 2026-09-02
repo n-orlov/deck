@@ -782,6 +782,19 @@ type Model struct {
 	interactiveSelectAnchorRow  int
 	interactiveSelectCurrentCol int
 	interactiveSelectCurrentRow int
+	// lostAttach is SPEC §11.9's dialog raised when a client is displaced
+	// out of interactive mode -- its own claim stolen by `F`, or a full
+	// attach arriving and re-expressing its own size (task 118 wires the
+	// detection; this field and its dialog are wired ahead of that). It
+	// names lostAttachSession, says another client took over, and
+	// swallows every key while up except ↵, which dismisses it -- there
+	// is nothing to cancel back to since interactive mode is already gone
+	// by the time this raises.
+	lostAttach bool
+	// lostAttachSession is the displaced session's display name, captured
+	// at the moment the dialog opens so the view never has to look it up
+	// again (the session may no longer be m.sessions[m.selected] by then).
+	lostAttachSession string
 }
 
 // WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task
@@ -2297,6 +2310,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return next, tea.Batch(cmds...)
 		}
+		if m.lostAttach {
+			return m.updateLostAttachView(msg)
+		}
 		if m.interactive {
 			return m.updateInteractive(msg)
 		}
@@ -3052,7 +3068,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive || m.lostAttach {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -3212,6 +3228,9 @@ func (m Model) loadDetailDroppedHook(sessionID string) tea.Cmd {
 }
 
 func (m Model) View() string {
+	if m.lostAttach {
+		return m.lostAttachView()
+	}
 	if m.help {
 		return m.helpView()
 	}
