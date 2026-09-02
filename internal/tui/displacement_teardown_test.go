@@ -59,6 +59,37 @@ func countWireOptionUnsets(t *testing.T, logPath, option string) int {
 	return count
 }
 
+// countWireOptionReads counts the logged tmux invocations that READ one
+// specific window-scoped option (`show-options -wv -t <target> <option>`),
+// as opposed to countWireOptionUnsets above which counts the option's
+// UNSET. Every read of OwnershipOption on the wire -- whether from
+// claimStillMine's own probe or from WindowOwnership.Release's internal
+// self-gating re-read (Release always re-reads before deciding whether to
+// unset, tmux/ownership.go's own Release) -- takes this exact shape, so
+// counting reads is what makes "Release was never reached" and "Release
+// ran and self-gated into a no-op" distinguishable on the wire: both
+// leave the unset count at zero, but only the first leaves the read count
+// at exactly one (the still-mine probe alone) rather than two.
+func countWireOptionReads(t *testing.T, logPath, option string) int {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read tmux wire log: %v", err)
+	}
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		// Every invocation the shim sees is `-L <socket> <command> ...`.
+		if len(fields) < 4 || fields[0] != "-L" || fields[2] != "show-options" {
+			continue
+		}
+		if fields[len(fields)-1] == option {
+			count++
+		}
+	}
+	return count
+}
+
 // TestRaiseLostAttachOnStolenClaimTouchesNothing proves task 119's first
 // half: raiseLostAttach's own exitInteractive call, run from the
 // STOLEN-FROM model (the F-steal flavour, task 118's fast path), goes
@@ -172,6 +203,27 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 	// wire distinguishes "never called" from "called and declined".
 	if unsets := countWireOptionUnsets(t, loserLog, tmux.OwnershipOption); unsets != 0 {
 		t.Fatalf("the stolen-from teardown issued %d %s unsets, want 0 (Release must never be reached)", unsets, tmux.OwnershipOption)
+	}
+	// Task 136: count READS of the ownership option too, not only its
+	// unset. WindowOwnership.Release self-gates by re-reading the option
+	// before deciding whether to unset it, so a spurious Release call
+	// that lands here and correctly declines to unset would still cost a
+	// SECOND show-options read of OwnershipOption -- one that an
+	// unset-only count is blind to but a read count catches. Exactly one
+	// read is claimStillMine's own probe (the still-mine gate above);
+	// zero unsets confirms it declined; a second read would mean Release
+	// ran anyway.
+	//
+	// Verified load-bearing by hand for this task: temporarily adding
+	// `_ = ownership.Release(ctx)` to teardownInteractiveClaim's
+	// `if !stillMine { ... }` branch (internal/tui/interactive.go, right
+	// before its `return`) raises this count to 2 and fails this
+	// assertion, while leaving every unset-count assertion above at 0
+	// (Release's own self-gate declines to unset, exactly as documented).
+	// The extra call was reverted immediately after; it must never be
+	// left in the tree.
+	if reads := countWireOptionReads(t, loserLog, tmux.OwnershipOption); reads != 1 {
+		t.Fatalf("the stolen-from teardown issued %d %s show-options reads, want exactly 1 (claimStillMine's own probe; a second read would mean Release ran and merely self-gated into a no-op)", reads, tmux.OwnershipOption)
 	}
 	if unsets := countWireOptionUnsets(t, loserLog, tmux.IsizeGeometryOption); unsets != 0 {
 		t.Fatalf("the stolen-from teardown issued %d %s unsets, want 0 (ClearIsizeGeometry must never be reached)", unsets, tmux.IsizeGeometryOption)
