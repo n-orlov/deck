@@ -777,9 +777,13 @@ task 136 (`validated`, `fcdb994`, counts ownership-option reads rather than only
 stolen-claim teardown test), and task 134 ended `skipped`; approach 2's task 204 ("Run and
 publish the whole-suite sweep at the new final code sha") ended `failed` (validation-exhausted)
 on sweep-polling discipline, superseded first by approach 3's task 302 and now by approach 4's
-task 404; task 205 ("Publish the verbose companion sweep's Gherkin tally") stayed `pending` when
-the run moved to approach 3, superseded by approach 4's task 406; and tasks 211 and 212 ended
-`skipped` when that same move happened. Evidence: [`docs/reports/phase3i.md`](reports/phase3i.md)
+task 404; and tasks 205 ("Publish the verbose companion sweep's Gherkin tally", its deliverable
+superseded by approach 4's task 406), 211 and 212 ended `skipped` when the run moved to approach
+3 — 205's work was still open at that moment, so the abandoned approach's own frozen task-state
+file (a run-state file, not part of this repo) records the `pending` it held as the move landed,
+while this phase's plan record carries all three as `skipped`; neither status discharges anything
+here, which is why 406 had to run at `3b70bfb` for the tally above to exist at all.
+Evidence: [`docs/reports/phase3i.md`](reports/phase3i.md)
 (the per-requirement report, refreshed against `3b70bfb` by task 407) and
 [`docs/reports/phase3i-findings.md`](reports/phase3i-findings.md) (task 119's disposition, the
 protected-path audit disclosure, both gates' disposition quoted verbatim, the SPEC §11.3 footer
