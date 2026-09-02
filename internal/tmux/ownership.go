@@ -211,41 +211,6 @@ func (c Client) ClaimWindowOwnership(ctx context.Context, target string) (*Windo
 	return nil, false, fmt.Errorf("claim %s on %q: gave up after %d attempts racing a concurrent writer", OwnershipOption, target, maxOwnershipClaimAttempts)
 }
 
-// ForceClaimWindowOwnership implements PRD phase3i R99's force-attach
-// steal: unlike ClaimWindowOwnership, it does NOT read OwnershipOption
-// first to decide whether to stand down for a live owner -- the whole
-// point of "force" is that a live holder is stolen from anyway, on
-// purpose, without ever consulting pidAlive. It writes this process's
-// fresh pid-tagged `<tag>:<pid>` claim over whatever the option currently
-// holds -- set, unset, live owner, or dead owner, all alike -- and then
-// does exactly one confirm-read, with no retry loop: if a concurrent
-// writer's own write lands between this call's write and its confirm-read,
-// this call simply reports that it did not win (acquired=false, err=nil)
-// rather than looping back to contest it again, which is what tells
-// ClaimWindowOwnership's bounded retry apart from this single-shot one.
-//
-// The three returns mirror ClaimWindowOwnership's own: the held ownership
-// (nil unless acquired), whether it was acquired at all, and an error only
-// for a genuine tmux/transport failure.
-func (c Client) ForceClaimWindowOwnership(ctx context.Context, target string) (*WindowOwnership, bool, error) {
-	tag, err := ownershipClaimTag()
-	if err != nil {
-		return nil, false, err
-	}
-	mine := formatOwnershipClaim(tag, os.Getpid())
-	if err := c.writeWindowOwnership(ctx, target, mine); err != nil {
-		return nil, false, err
-	}
-	confirm, err := c.readWindowOwnership(ctx, target)
-	if err != nil {
-		return nil, false, err
-	}
-	if confirm.Set && confirm.Value == mine {
-		return &WindowOwnership{client: c, target: target, claim: mine}, true, nil
-	}
-	return nil, false, nil
-}
-
 // Release gives up this ownership, unsetting OwnershipOption on its target
 // -- but only if the option still reads exactly the claim this call made.
 // If it does not (a later claimant already validated this process as dead
