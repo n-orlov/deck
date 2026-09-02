@@ -7112,10 +7112,11 @@ Keys
     the pane's own tmux scrollback) rather than forwarding to the pane;
     typing snaps the view back to the live bottom
   F force-enter interactive mode on the selected session, stealing it from
-    any client already attached to it -- the one refusal ↵ itself still
-    respects that F exists to skip; every other refusal ↵ has (the 7-row
-    floor, no-width squeeze, a stopped session, a live process already
-    holding the window's own claim) still applies
+    any client already attached to it and claiming ownership over a
+    live holder of the window's claim instead of standing down for one --
+    the two refusals ↵ itself still respects that F exists to skip; every
+    other refusal ↵ has (the 7-row floor, no-width squeeze, a stopped
+    session, no live pane) still applies
   a attach the selected running session (full-screen, like Ctrl+Q never
     happened -- ↵ enters interactive mode instead)
   Y acknowledge the selected waiting/error session, clear its unseen marker
