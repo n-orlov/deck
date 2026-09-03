@@ -362,10 +362,26 @@ type Model struct {
 	// killed a live pane (the row's status was not "stopped" when the confirm
 	// was submitted), so the toast can say what actually happened without
 	// re-reading a row that has since left the default list.
-	archiveUndoKilled  bool
-	profileSwitching   bool
-	profileSwitchValue string
-	profileSwitchNote  string
+	archiveUndoKilled bool
+	// archiveUndoHookRan records whether the archive this window undoes also
+	// ran a post_destroy teardown hook (SPEC §9.2: the session's own hook, the
+	// global config.toml one, or both), captured at archive time from the row
+	// the dialog named plus m.settings.PostDestroy. It exists only so the undo
+	// itself can say what SPEC.md:508 and help's own Hooks section promise --
+	// the row comes back stopped and the NEXT `r` rebuilds whatever that hook
+	// released -- without re-reading a row that has since left the list, and
+	// without claiming a rebuild when no teardown hook ever ran.
+	archiveUndoHookRan bool
+	// archiveUndoneRebuildNote/archiveUndoneRebuildGeneration are that
+	// promise's own transient toast, on DECK_UNDO_MS and generation-tied
+	// exactly like the three undo trios above: raised when an archive undo
+	// (`u`) succeeds for an archive whose post_destroy ran, cleared by its own
+	// tick. It reverses nothing itself, so it offers no key.
+	archiveUndoneRebuildNote       bool
+	archiveUndoneRebuildGeneration int
+	profileSwitching               bool
+	profileSwitchValue             string
+	profileSwitchNote              string
 	// profileSwitchYoloOK once tracked P's own yolo confirm keystroke,
 	// mirroring createYoloConfirmed above; removed by the same steer 017
 	// item 2 change.
@@ -1069,10 +1085,22 @@ type sessionRestored struct {
 // unarchive reloads BOTH lists -- the default one the row has just
 // rejoined and the `/` filter's archived-side pool it has just left -- so
 // neither view keeps claiming the row is archived.
+//
+// teardownHookRan is set only by the archive-undo path (`u` on R72's window,
+// never plain `U`) and only when that archive actually ran a post_destroy
+// hook, so the success branch can raise the "the next r rebuilds" toast for
+// exactly the case SPEC.md:508 describes.
 type sessionUnarchived struct {
-	session store.Session
-	err     error
+	session         store.Session
+	err             error
+	teardownHookRan bool
 }
+
+// archiveUndoneRebuildNoteExpired fires DECK_UNDO_MS after an archive undo
+// raised the post_destroy rebuild toast, and is generation-tied for
+// archiveUndoExpired's own reason: a stale tick must not clear a newer
+// toast. Nothing is reaped or reversed when it fires.
+type archiveUndoneRebuildNoteExpired int
 
 // sessionReaped carries task 106's grace-window expiry result back: a
 // failure is surfaced (the row was already gone from the default view, so
@@ -2007,6 +2035,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.archiveUndoSessionID = msg.session.ID
 		m.archiveUndoSessionName = msg.session.Name
 		m.archiveUndoKilled = msg.session.Status != "stopped"
+		// SPEC §9.2: Archive runs the session's own post_destroy and then the
+		// global one, so either being configured means a teardown hook ran for
+		// this archive -- which is what makes the undo's own toast ("the next r
+		// rebuilds") true rather than noise on a session with no hook at all.
+		m.archiveUndoHookRan = msg.session.PostDestroy != "" || m.settings.PostDestroy != ""
 		m.archiveUndoGeneration++
 		archiveGeneration := m.archiveUndoGeneration
 		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) }))
@@ -2014,6 +2047,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if int(msg) == m.archiveUndoGeneration {
 			m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
 			m.archiveUndoKilled = false
+			m.archiveUndoHookRan = false
+		}
+		return m, nil
+	case archiveUndoneRebuildNoteExpired:
+		if int(msg) == m.archiveUndoneRebuildGeneration {
+			m.archiveUndoneRebuildNote = false
 		}
 		return m, nil
 	case sessionDeleted:
@@ -2061,6 +2100,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.attachError = ""
+		if msg.teardownHookRan {
+			// SPEC.md:508 / help's Hooks section: a post_destroy that ran is not
+			// undone by u -- the row comes back stopped and the next r rebuilds
+			// whatever the hook released. Say so, on its own DECK_UNDO_MS window.
+			m.archiveUndoneRebuildNote = true
+			m.archiveUndoneRebuildGeneration++
+			rebuildGeneration := m.archiveUndoneRebuildGeneration
+			return m, tea.Batch(m.loadSessions, m.loadArchivedSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg {
+				return archiveUndoneRebuildNoteExpired(rebuildGeneration)
+			}))
+		}
 		// Both loads, not just loadSessions: the row is in m.sessions only
 		// because m.archivedSessions still holds it (requirement 33's
 		// filter pool), so refreshing the default list alone would leave a
@@ -2910,12 +2960,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				sessionID := m.archiveUndoSessionID
+				hookRan := m.archiveUndoHookRan
 				m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
 				m.archiveUndoKilled = false
+				m.archiveUndoHookRan = false
 				m.archiveUndoGeneration++
 				return m, func() tea.Msg {
 					unarchived, err := m.unarchiveSvc(context.Background(), sessionID)
-					return sessionUnarchived{session: unarchived, err: err}
+					return sessionUnarchived{session: unarchived, err: err, teardownHookRan: hookRan}
 				}
 			}
 			return m, nil
@@ -3626,6 +3678,21 @@ func (m Model) archiveUndoNoteLines(width int) []string {
 	return wrapText("Archived \u2014 press u to unarchive", width)
 }
 
+// archiveUndoneRebuildNoteLines is the teardown half of that undo (SPEC
+// §9.2, SPEC.md:508, help's own Hooks section): undoing an archive whose
+// post_destroy already ran un-hides the row but rebuilds nothing, so the
+// row comes back stopped and the next `r` is what rebuilds whatever the
+// hook released. Rendered and reserved exactly like its three sibling undo
+// toasts, visible for DECK_UNDO_MS after the undo, and shown only when a
+// hook actually ran (archiveUndoHookRan) so a hookless archive's undo stays
+// silent. It names no session and offers no key: nothing here is reversible.
+func (m Model) archiveUndoneRebuildNoteLines(width int) []string {
+	if !m.archiveUndoneRebuildNote {
+		return nil
+	}
+	return wrapText("Back stopped \u2014 post_destroy already ran; the next r rebuilds what it released", width)
+}
+
 // pendingDeleteLines is task 105's first-`d` visible indicator: gone the
 // instant any key resolves it (the second `d`, opening the confirm dialog,
 // or anything else, clearing it with no destructive action), so it is
@@ -3661,7 +3728,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.archiveUndoneRebuildNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -3727,6 +3794,7 @@ func (m Model) mainView() string {
 	lines = append(lines, m.undoNoteLines(width)...)
 	lines = append(lines, m.deleteUndoNoteLines(width)...)
 	lines = append(lines, m.archiveUndoNoteLines(width)...)
+	lines = append(lines, m.archiveUndoneRebuildNoteLines(width)...)
 	lines = append(lines, m.pendingDeleteLines(width)...)
 	lines = append(lines, m.filterStatusLine(width)...)
 	lines = append(lines, m.footerLine())
