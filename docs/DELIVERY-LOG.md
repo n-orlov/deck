@@ -803,24 +803,34 @@ and never on `x` or a reap path (R107); the four editable launch inputs (`pre_la
 stated in user-reachable copy (R109); and the record — this document plus
 [`docs/reports/phase3j.md`](reports/phase3j.md) and
 [`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) — closes on the tree (R110).
-**Final code sha `a44ee320b93186496d56364836b0aed00a6f1e0b`** (task 030's own fix commit,
-updating `features/dialogs_test.go` and `features/agent_steps_test.go`'s create-modal
-keyboard-walk step helpers for task 026's new Post-destroy field — the last commit in the phase
-to touch a `*.go` or `*.feature` path; everything after it, including both gate refreshes and
-this paragraph, is a docs-only descendant). Both gates measured green at that sha, after the
-operator's own gate rulings `002-030` and `003-031` — run-state records of this run, not files
-tracked in this repo — reset and re-ran them once tasks 011, 013–019, 026 and 038 landed:
-the mandated, unnarrowed whole-suite sweep
-(`ci/run.sh go test -p=1 -count=1 ./...`) exits **0**, all 13 packages `ok` plus 3
-`[no test files]`
+**Final code sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`** — the last commit in the phase to
+touch a `*.go` or `*.feature` path. It supersedes the earlier `a44ee32` sha (task 030's own
+create-modal keyboard-walk fix for task 026's Post-destroy field): a second, independent review
+raised five blocking findings against the `a44ee32` tree, and the fix commits for the first
+three of them (`1a4b9db`, `d71c02f`, `a936b30`, `52e529b`, `2042cb8`, `31e6aff`, `b29afb8`)
+advanced the final code sha to `b29afb8`; everything after it — the three re-run gates below,
+the guard re-verification, the findings-4-and-5 record fixes, and this paragraph itself — is a
+docs-only descendant. Three gates were re-run at `b29afb8` and their existing report
+directories refreshed in place: the mandated, unnarrowed whole-suite sweep
+(`ci/run.sh go test -p=1 -count=1 ./...`) exits **0**, 14 packages `ok` plus 3 `[no test files]`
 ([`docs/reports/phase3j-030-fullsuite/README.md`](reports/phase3j-030-fullsuite/README.md));
-the stability gate's own `summary.log` final line reads, verbatim, **`10/10 passed`**, script
-exit **`0`**
+its verbose companion (run only because the non-verbose launcher prints no Gherkin tally) also
+exits **0** and reports, byte-exact, **330 scenarios (330 passed)**, **3824 steps (3824
+passed)**
+([`docs/reports/phase3j-031-fullsuite-verbose/README.md`](reports/phase3j-031-fullsuite-verbose/README.md));
+and the stability gate's own `summary.log` final line reads, verbatim, **`10/10 passed`**,
+script exit **`0`**
 ([`docs/reports/phase3j-032-stability10/README.md`](reports/phase3j-032-stability10/README.md)).
-The protected-path audit and both branch guards were re-verified at that same sha, empty and
-agreeing respectively
-([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)). **No task in this plan
-rests `skipped`, and none rests `failed` at close**, though one did mid-run: task 011 ("Plumb
+The protected-path audit and both branch guards were separately re-verified at that same sha,
+empty and agreeing respectively
+([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)). All five of that second
+review's blocking findings are closed on the tree: findings 1–3 (a teardown-hook failure could
+not raise a visible toast; the teardown timeout was a mutable `var`, not the required named
+constant; R109's user-reachable hook copy was inaccurate and its coverage test missed the
+inaccuracy) by `d71c02f`/`a936b30`/`52e529b`, `1a4b9db`, and `2042cb8`/`31e6aff`/`b29afb8`
+respectively; findings 4 and 5 (record defects in this phase's own reports, and undemonstrated
+gate-polling/one-sweep discipline) by `2dca034`, `807fe0a` and `c32a0c7`. **No task in this
+plan rests `skipped`, and none rests `failed` at close**, though one did mid-run: task 011 ("Plumb
 `post_destroy` through the store's session write and read paths") exhausted its validation
 attempts on one residual gap — `ShellCreateInput` had no `PostDestroy` field, so a
 `CreateShell` row could never carry one,
@@ -834,7 +844,7 @@ Evidence: [`docs/reports/phase3j.md`](reports/phase3j.md) (the per-requirement t
 issue #20 design-section map) and
 [`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) (task 011's history, three
 validation-found gaps closed within their own task, findings §3's SPEC-conformance fix, the
-protected-path/schema-version disclosures, and both gates' dispositions). One residual is left
+protected-path/schema-version disclosures, and the three re-run gates' dispositions). One residual is left
 in the tree deliberately and recorded as advisory in findings §3 rather than fixed: the create
 modal's `Env` field and `Login shell` toggle are still not forwarded on the shell create path
 (`internal/tui/tui.go`'s `submitCreate` hands `CreateShell` name, cwd and `pre_launch` only) — a
