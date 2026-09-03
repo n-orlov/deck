@@ -50,3 +50,46 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     And the state database session "teardown-archive-undo" is "stopped" from "user" with killed_by_user=1
     And the teardown hook artefact file contains exactly one line "teardown-archive-undo"
     When deck client "A" exits cleanly
+
+  Scenario: a failing teardown hook never blocks dd, and its failure lands durably in the event log
+    Given deck client "A" is started
+    And deck client "A" creates shell session "teardown-failing-hook"
+    When deck client "A" opens the launch inputs editor for session "teardown-failing-hook"
+    And deck client "A" types "echo teardown-hook-failure-marker >&2; exit 7" into the post-destroy field
+    And deck client "A" submits the launch inputs editor
+    And deck client "A" closes detail
+    When deck client "A" presses dd
+    And deck client "A" submits the open dialog
+    Then the state database session "teardown-failing-hook" is tombstoned
+    And the state database session "teardown-failing-hook" has an event of kind "note" with reason containing "session post_destroy failed"
+    When deck client "A" exits cleanly
+
+  Scenario: a bulk dd over two marked rows runs each row's own teardown hook exactly once, under its own DECK_SESSION_ID
+    Given deck client "A" is started
+    And 200 milliseconds pass
+    And deck client "A" creates shell session "td-bulk-one"
+    And deck client "A" creates shell session "td-bulk-two"
+    When deck client "A" opens the launch inputs editor for session "td-bulk-one"
+    And deck client "A" types "echo $DECK_SESSION_ID >> $DECK_HOME/pd_ids.txt" into the post-destroy field
+    And deck client "A" submits the launch inputs editor
+    And deck client "A" closes detail
+    When deck client "A" opens the launch inputs editor for session "td-bulk-two"
+    And deck client "A" types "echo $DECK_SESSION_ID >> $DECK_HOME/pd_ids.txt" into the post-destroy field
+    And deck client "A" submits the launch inputs editor
+    And deck client "A" closes detail
+    When deck client "A" sends "k"
+    And 100 milliseconds pass
+    And deck client "A" sends "m"
+    Then deck client "A" screen contains "td-bulk-one running [marked]"
+    When deck client "A" sends "j"
+    Then deck client "A" screen contains "> td-bulk-two running"
+    When deck client "A" sends "m"
+    Then deck client "A" screen contains "td-bulk-one running [marked]"
+    And deck client "A" screen contains "td-bulk-two running [marked]"
+    When deck client "A" presses dd
+    Then deck client "A" screen contains "Delete 2 marked sessions"
+    When deck client "A" submits the open dialog
+    Then the state database session "td-bulk-one" is tombstoned
+    And the state database session "td-bulk-two" is tombstoned
+    And the teardown hook artefact file records each of "td-bulk-one" and "td-bulk-two"'s own DECK_SESSION_ID exactly once
+    When deck client "A" exits cleanly

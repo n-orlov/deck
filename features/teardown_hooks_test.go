@@ -22,6 +22,7 @@ func registerTeardownHooksSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" types "([^"]*)" into the post-destroy field$`, clientTypesIntoLaunchInputsPostDestroyField)
 	sc.Step(`^the teardown hook artefact file is absent$`, teardownHookArtefactFileIsAbsent)
 	sc.Step(`^the teardown hook artefact file contains exactly one line "([^"]+)"$`, teardownHookArtefactFileContainsExactlyOneLine)
+	sc.Step(`^the teardown hook artefact file records each of "([^"]+)" and "([^"]+)"'s own DECK_SESSION_ID exactly once$`, teardownHookIDArtefactFileRecordsEachSessionsOwnIDExactlyOnce)
 }
 
 // teardownHookArtefactPath is the one file every hook line in this suite
@@ -30,6 +31,17 @@ func registerTeardownHooksSteps(sc *godog.ScenarioContext) {
 // is nothing for a second name to disambiguate.
 func teardownHookArtefactPath(h *ScenarioHarness) string {
 	return filepath.Join(h.Home, "pd.txt")
+}
+
+// teardownHookIDArtefactPath is the file the bulk-dd scenario's two
+// session hooks each append their own DECK_SESSION_ID to (task 019, SPEC
+// §9.2's teardown env). Kept separate from teardownHookArtefactPath's
+// session-NAME file on purpose: that step already asserts a file holds
+// exactly one line naming one session, and reusing it for two lines from
+// two sessions would silently change what it proves for the earlier
+// scenarios that also open a fresh DECK_HOME of their own.
+func teardownHookIDArtefactPath(h *ScenarioHarness) string {
+	return filepath.Join(h.Home, "pd_ids.txt")
 }
 
 // clientTypesIntoLaunchInputsPostDestroyField moves focus down one field
@@ -106,6 +118,58 @@ func teardownHookArtefactFileContainsExactlyOneLine(ctx context.Context, session
 			lastErr = fmt.Errorf("teardown hook artefact file %q = %q, want exactly one line %q", path, string(data), sessionName)
 		} else {
 			lastErr = fmt.Errorf("read teardown hook artefact file %q: %w", path, err)
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// teardownHookIDArtefactFileRecordsEachSessionsOwnIDExactlyOnce proves a
+// bulk dd over the two named marked rows ran each row's own post_destroy
+// hook exactly once, tagged with that row's own DECK_SESSION_ID (SPEC
+// §6.1's session context, carried into the teardown env by
+// Service.teardownEnv) -- never a shared id between the two rows, and
+// never zero or two runs for either one. It reads each session's actual
+// id from the state database itself (sessionIDByName), never a value this
+// step invents, so a bug that wrote the wrong session's id would fail
+// this exactly as loudly as writing no id at all.
+func teardownHookIDArtefactFileRecordsEachSessionsOwnIDExactlyOnce(ctx context.Context, name1, name2 string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	id1, err := sessionIDByName(h, name1)
+	if err != nil {
+		return err
+	}
+	id2, err := sessionIDByName(h, name2)
+	if err != nil {
+		return err
+	}
+	if id1 == "" || id2 == "" || id1 == id2 {
+		return fmt.Errorf("session ids for %q/%q must be distinct and non-empty, got %q/%q", name1, name2, id1, id2)
+	}
+	path := teardownHookIDArtefactPath(h)
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+			counts := map[string]int{}
+			for _, line := range lines {
+				if line != "" {
+					counts[line]++
+				}
+			}
+			if len(lines) == 2 && counts[id1] == 1 && counts[id2] == 1 {
+				return nil
+			}
+			lastErr = fmt.Errorf("teardown hook id artefact file %q = %q, want exactly one line each for %q's id %q and %q's id %q", path, string(data), name1, id1, name2, id2)
+		} else {
+			lastErr = fmt.Errorf("read teardown hook id artefact file %q: %w", path, err)
 		}
 		if time.Now().After(deadline) {
 			return lastErr
