@@ -323,6 +323,118 @@ func TestCreateAgentPreLaunchExportReachesOnlyThePaneProcessEnvironment(t *testi
 	}
 }
 
+// TestCreateAgentPreLaunchExportNeverAppearsInSessionEnvironmentOrStateDB
+// covers task 009: SPEC §6.4's two negative boundaries, proved together on
+// the exact value the positive assertion just found in the pane, so a
+// hypothetical regression that let the export leak into either sink would
+// fail this test on the very value that proves the hook actually ran.
+func TestCreateAgentPreLaunchExportNeverAppearsInSessionEnvironmentOrStateDB(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, socket := newAgentTestService(t, nil, "pre-launch-export-negative-boundaries")
+
+	// The value under test is generated at hook-run time by catting a file
+	// the hook command only names by path, never by writing the value's own
+	// text into config -- so a positive hit for exportedValue in the
+	// pre_launch column (which legitimately, and expectedly, stores the raw
+	// hook command the user configured) can only mean the value leaked, not
+	// that config happened to quote it.
+	const exportedValue = "hook-export-must-not-leak-9c3f1a"
+	valueFile := filepath.Join(t.TempDir(), "boundary-value")
+	if err := os.WriteFile(valueFile, []byte(exportedValue), 0o600); err != nil {
+		t.Fatalf("write value file: %v", err)
+	}
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Shell: pre-launch export boundaries", CWD: cwd, Agent: "shell",
+		PreLaunch:  "export DECK_HOOK_BOUNDARY_TEST=\"$(cat " + valueFile + ")\"",
+		LaunchArgs: []string{"-c", "sleep 5"},
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	// Positive control: proves the hook actually ran and exportedValue is
+	// really the value that reached the agent, before either negative
+	// assertion below can be trusted to mean anything.
+	paneValue, found := waitForPaneProcessEnvironmentKey(t, socket, session.Slug, "DECK_HOOK_BOUNDARY_TEST", 5*time.Second)
+	if !found || paneValue != exportedValue {
+		t.Fatalf("pane process environment DECK_HOOK_BOUNDARY_TEST = (%q, found=%v), want (%q, true)", paneValue, found, exportedValue)
+	}
+
+	// Negative boundary 1: tmux's session environment table (show-environment,
+	// SPEC §3.2's -e mirror) never sees it. If buildPaneCommand ever
+	// regressed into mirroring the export via set-environment, this would
+	// find exportedValue in the dump and fail.
+	out, showErr := exec.Command("tmux", "-L", socket, "show-environment", "-t", "deck_"+session.Slug).CombinedOutput()
+	if showErr == nil && strings.Contains(string(out), exportedValue) {
+		t.Fatalf("tmux session environment table unexpectedly carries the hook's export: %s", out)
+	}
+
+	// Negative boundary 2: no column of the session's own state.db row
+	// carries it either, checked generically (every column via SELECT *,
+	// never a named allowlist) so a future column addition is covered
+	// automatically instead of needing this test rewritten.
+	columns := sessionRowColumnValues(t, db, session.ID)
+	if len(columns) == 0 {
+		t.Fatalf("session row %q returned no columns", session.ID)
+	}
+
+	// Sanity: prove the generic scan actually inspects real data -- it must
+	// find a value genuinely present (the session's own slug) -- before its
+	// report of an absence elsewhere in the row means anything.
+	if slug, ok := columns["slug"]; !ok || slug != session.Slug {
+		t.Fatalf("sessionRowColumnValues sanity check failed: columns[%q] = %q, want %q (generic scan may be broken)", "slug", slug, session.Slug)
+	}
+
+	for col, value := range columns {
+		if strings.Contains(value, exportedValue) {
+			t.Fatalf("state.db column %q of session %q unexpectedly contains the hook's export: %q", col, session.ID, value)
+		}
+	}
+}
+
+// sessionRowColumnValues reads every column of a session's own state.db row
+// generically (SELECT * ...), scanning into interface{} rather than naming
+// individual fields, so a negative assertion built on top of it covers any
+// column -- including ones added after this helper was written -- not just
+// the ones a hand-picked field list would name.
+func sessionRowColumnValues(t *testing.T, db *store.Store, sessionID string) map[string]string {
+	t.Helper()
+	rows, err := db.DB().Query(`SELECT * FROM sessions WHERE id = ?`, sessionID)
+	if err != nil {
+		t.Fatalf("query session row: %v", err)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("read columns: %v", err)
+	}
+	if !rows.Next() {
+		t.Fatalf("no state.db row for session %q", sessionID)
+	}
+	raw := make([]any, len(cols))
+	ptrs := make([]any, len(cols))
+	for i := range raw {
+		ptrs[i] = &raw[i]
+	}
+	if err := rows.Scan(ptrs...); err != nil {
+		t.Fatalf("scan session row: %v", err)
+	}
+
+	values := make(map[string]string, len(cols))
+	for i, col := range cols {
+		switch v := raw[i].(type) {
+		case nil:
+			values[col] = ""
+		case []byte:
+			values[col] = string(v)
+		default:
+			values[col] = fmt.Sprintf("%v", v)
+		}
+	}
+	return values
+}
+
 // paneProcessPID resolves the running pane's own process id via tmux's
 // list-panes, the same server the rest of this file drives.
 func paneProcessPID(socket, slug string) (int, error) {
