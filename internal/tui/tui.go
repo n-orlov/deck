@@ -214,6 +214,30 @@ type Model struct {
 	// a dd never un-kills the pane it killed. nil means unarchiving is
 	// unavailable and `U` says so rather than silently doing nothing.
 	unarchiveSvc func(context.Context, string) (store.Session, error)
+	// archiveHookReporter/deleteHookReporter are task 042's message-
+	// carrying teardown seam (findings §1): an optional pair of functions
+	// with the SAME real signature service.Service.Archive/Delete
+	// themselves expose -- (string, error), the second return being
+	// runPostDestroy's own hook-failure message -- rather than
+	// archiveSvc/deleteSvc's action-only (context.Context, store.Session)
+	// error shape above, which is kept unchanged for every existing
+	// caller and test. When set (WithTeardownHookReporters), the matching
+	// dialog's own submit calls the reporter INSTEAD of archiveSvc/
+	// deleteSvc to perform the action, and a non-empty message becomes
+	// teardownHookNote below. nil (the zero value: every pre-existing
+	// constructor and unit test) means archiveSvc/deleteSvc perform the
+	// action exactly as before task 042 and no hook-failure toast is ever
+	// shown.
+	archiveHookReporter func(context.Context, store.Session) (string, error)
+	deleteHookReporter  func(context.Context, store.Session) (string, error)
+	// teardownHookNote/teardownHookNoteGeneration are that message's own
+	// transient toast, on DECK_UNDO_MS and generation-tied exactly like
+	// archiveUndoneRebuildNote above: raised by a successful A/dd submit
+	// whose reporter reported a non-empty hook-failure message, cleared by
+	// its own tick (teardownHookNoteExpired). It reverses nothing itself,
+	// so it offers no key -- see teardownHookNoteLines.
+	teardownHookNote           string
+	teardownHookNoteGeneration int
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -874,6 +898,27 @@ func (m Model) WithLaunchInputsSetter(setter func(context.Context, string, strin
 	return m
 }
 
+// WithTeardownHookReporters attaches task 042's message-carrying teardown
+// seam (findings §1): archiveReporter/deleteReporter are the SAME real
+// functions service.Service.Archive/Delete already expose
+// (func(context.Context, store.Session) (string, error)), so a caller can
+// wire them straight in with no adapter that discards the second return
+// the way cmd/deck/main.go's pre-task-043 archiveAdapter/deleteAdapter did.
+// It is a With... method for the same reason WithLaunchInputsSetter is
+// above: wired at exactly one dependency, reached by the shipped binary
+// but by no unit test that does not opt in. A Model built without it
+// (every pre-existing constructor, and any test that does not call it)
+// has nil reporters, so updateArchiveConfirm's/updateDeleteConfirm's own
+// submit keeps calling archiveSvc/deleteSvc exactly as before task 042,
+// with no hook-failure toast ever shown. Either argument may be nil on
+// its own -- e.g. a caller that only wants the archive path's message
+// need not supply a delete reporter, and vice versa.
+func (m Model) WithTeardownHookReporters(archiveReporter, deleteReporter func(context.Context, store.Session) (string, error)) Model {
+	m.archiveHookReporter = archiveReporter
+	m.deleteHookReporter = deleteReporter
+	return m
+}
+
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
 // caller does not supply one, so every existing constructor keeps working
 // unchanged.
@@ -990,6 +1035,13 @@ type sessionDeleted struct {
 	// surfaces as a plain error banner instead (see the sessionDeleted
 	// case in Update).
 	purgeErr error
+	// hookMessage is task 042's message-carrying teardown seam (findings
+	// §1): non-empty only when deleteHookReporter was set and ran, and
+	// only when runPostDestroy actually reported a hook failure -- never
+	// set by the plain deleteSvc fallback. A successful delete (err ==
+	// nil) with a non-empty hookMessage raises teardownHookNote, its own
+	// DECK_UNDO_MS toast (see the sessionDeleted case in Update).
+	hookMessage string
 }
 
 // sessionArchived carries task 111's `A` submit result back (SPEC
@@ -1005,6 +1057,10 @@ type sessionDeleted struct {
 type sessionArchived struct {
 	session store.Session
 	err     error
+	// hookMessage mirrors sessionDeleted's own field exactly (task 042):
+	// non-empty only when archiveHookReporter was set, ran, and
+	// runPostDestroy reported a hook failure.
+	hookMessage string
 }
 
 // archiveUndoExpired fires DECK_UNDO_MS after a successful `A` submit,
@@ -1022,6 +1078,15 @@ type archiveUndoExpired int
 // newer delete or an intervening u has already superseded is ignored
 // rather than reaping the wrong row or clearing a newer toast.
 type deleteGraceExpired int
+
+// teardownHookNoteExpired fires DECK_UNDO_MS after a successful A or dd
+// submit raised teardownHookNote (task 042, findings §1), mirroring
+// archiveUndoneRebuildNoteExpired's own generation-tying shape exactly: a
+// stale tick left over from an earlier hook-failure toast that a newer
+// A/dd has already superseded is ignored rather than clearing a newer
+// toast. Nothing is reaped or reversed when it fires -- it only takes the
+// toast away.
+type teardownHookNoteExpired int
 
 // sessionsBulkKilled carries task 112's marked-set `x` result back: every
 // marked, non-stopped session's own kill outcome, in markedSessions()'s
@@ -2043,7 +2108,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.archiveUndoHookRan = msg.session.PostDestroy != "" || m.settings.PostDestroy != ""
 		m.archiveUndoGeneration++
 		archiveGeneration := m.archiveUndoGeneration
-		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) }))
+		cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) })}
+		if msg.hookMessage != "" {
+			// task 042 (findings §1): the archive itself already committed --
+			// runPostDestroy's own hook failure never blocks or reverses it --
+			// so this toast is purely informational, on its own DECK_UNDO_MS
+			// window, exactly like archiveUndoneRebuildNoteLines above.
+			m.teardownHookNote = msg.hookMessage
+			m.teardownHookNoteGeneration++
+			teardownGeneration := m.teardownHookNoteGeneration
+			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		}
+		return m, tea.Batch(cmds...)
 	case archiveUndoExpired:
 		if int(msg) == m.archiveUndoGeneration {
 			m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
@@ -2054,6 +2130,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case archiveUndoneRebuildNoteExpired:
 		if int(msg) == m.archiveUndoneRebuildGeneration {
 			m.archiveUndoneRebuildNote = false
+		}
+		return m, nil
+	case teardownHookNoteExpired:
+		if int(msg) == m.teardownHookNoteGeneration {
+			m.teardownHookNote = ""
 		}
 		return m, nil
 	case sessionDeleted:
@@ -2075,7 +2156,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.deleteUndoSessionName = msg.session.Name
 		m.deleteUndoGeneration++
 		generation := m.deleteUndoGeneration
-		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) }))
+		cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) })}
+		if msg.hookMessage != "" {
+			// task 042 (findings §1): mirrors the sessionArchived branch above
+			// exactly -- the delete itself already committed, so this toast is
+			// purely informational, on its own DECK_UNDO_MS window (never tied
+			// to DeleteGrace, which reaps the tombstone, not this note).
+			m.teardownHookNote = msg.hookMessage
+			m.teardownHookNoteGeneration++
+			teardownGeneration := m.teardownHookNoteGeneration
+			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		}
+		return m, tea.Batch(cmds...)
 	case deleteGraceExpired:
 		if int(msg) != m.deleteUndoGeneration || m.deleteUndoSessionID == "" {
 			return m, nil
@@ -3694,6 +3786,21 @@ func (m Model) archiveUndoneRebuildNoteLines(width int) []string {
 	return wrapText("Back stopped \u2014 post_destroy already ran; the next r rebuilds what it released", width)
 }
 
+// teardownHookNoteLines is task 042's visible half of a teardown hook
+// failure (findings §1, SPEC §9.2): runPostDestroy's own hook-failure
+// message, surfaced through m.teardownHookNote by a successful A/dd submit
+// whose reporter (see WithTeardownHookReporters) reported one, rendered
+// and reserved exactly like archiveUndoneRebuildNoteLines above and
+// cleared by its own DECK_UNDO_MS tick (teardownHookNoteExpired). A submit
+// whose reporter is nil, or whose hook ran cleanly (empty message), never
+// sets it, so an ordinary A/dd stays exactly as silent as before task 042.
+func (m Model) teardownHookNoteLines(width int) []string {
+	if m.teardownHookNote == "" {
+		return nil
+	}
+	return wrapText(m.teardownHookNote, width)
+}
+
 // pendingDeleteLines is task 105's first-`d` visible indicator: gone the
 // instant any key resolves it (the second `d`, opening the confirm dialog,
 // or anything else, clearing it with no destructive action), so it is
@@ -3729,7 +3836,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.archiveUndoneRebuildNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.archiveUndoneRebuildNoteLines(width)) + len(m.teardownHookNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -3796,6 +3903,7 @@ func (m Model) mainView() string {
 	lines = append(lines, m.deleteUndoNoteLines(width)...)
 	lines = append(lines, m.archiveUndoNoteLines(width)...)
 	lines = append(lines, m.archiveUndoneRebuildNoteLines(width)...)
+	lines = append(lines, m.teardownHookNoteLines(width)...)
 	lines = append(lines, m.pendingDeleteLines(width)...)
 	lines = append(lines, m.filterStatusLine(width)...)
 	lines = append(lines, m.footerLine())
@@ -5295,8 +5403,16 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				purgePath = m.deletePurgePath
 			}
 			purgeSvc := m.purgeSvc
+			deleteSvc := m.deleteSvc
+			deleteHookReporter := m.deleteHookReporter
 			return func() tea.Msg {
-				err := m.deleteSvc(context.Background(), session)
+				var err error
+				var hookMessage string
+				if deleteHookReporter != nil {
+					hookMessage, err = deleteHookReporter(context.Background(), session)
+				} else {
+					err = deleteSvc(context.Background(), session)
+				}
 				var purgeErr error
 				if err == nil && purgePath != "" {
 					if purgeSvc == nil {
@@ -5305,7 +5421,7 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						purgeErr = purgeSvc(context.Background(), purgePath)
 					}
 				}
-				return sessionDeleted{session: session, err: err, purgeErr: purgeErr}
+				return sessionDeleted{session: session, err: err, purgeErr: purgeErr, hookMessage: hookMessage}
 			}
 		},
 	})
@@ -5394,7 +5510,12 @@ func (m Model) updateArchiveConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return nil
 			}
 			archiveSvc := m.archiveSvc
+			archiveHookReporter := m.archiveHookReporter
 			return func() tea.Msg {
+				if archiveHookReporter != nil {
+					hookMessage, err := archiveHookReporter(context.Background(), session)
+					return sessionArchived{session: session, err: err, hookMessage: hookMessage}
+				}
 				return sessionArchived{session: session, err: archiveSvc(context.Background(), session)}
 			}
 		},
