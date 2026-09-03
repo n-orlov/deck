@@ -126,6 +126,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerLaunchInputsEditorSteps(sc)
 	registerKillDeleteUndoSteps(sc)
 	registerKillDeleteUndoFingerprintSteps(sc)
+	registerTeardownHooksSteps(sc)
 	registerAttachScrollSteps(sc)
 	registerNoLeakScanSteps(sc)
 	registerEventLogSteps(sc)
