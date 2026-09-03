@@ -30,6 +30,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
 	sc.Step(`^the deck config defaults new sessions to yolo without allowing it$`, deckConfigDefaultsYoloWithoutAllowing)
+	sc.Step(`^the deck config runs global pre_launch command "([^"]+)"$`, deckConfigRunsGlobalPreLaunch)
 	sc.Step(`^deck client "([^"]+)" opens the create modal for agent "([^"]+)"$`, clientOpensCreateModalForAgent)
 	sc.Step(`^deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContain)
 	sc.Step(`^deck client "([^"]+)" row "([^"]+)" does not contain "([^"]+)"$`, clientRowDoesNotContain)
@@ -1329,6 +1330,30 @@ func deckConfigDefaultsYoloWithoutAllowing(ctx context.Context) error {
 	}
 	path := filepath.Join(h.Home, "config.toml")
 	if err := os.WriteFile(path, []byte("yolo_default = true\n"), 0o600); err != nil {
+		return fmt.Errorf("write scenario config.toml: %w", err)
+	}
+	return nil
+}
+
+// deckConfigRunsGlobalPreLaunch writes a config.toml with a top-level
+// pre_launch key (task 004, the ONE global hook config.Schema exposes) into
+// the scenario's DECK_HOME, exactly like deckConfigAllowsYolo but for the
+// hook a client reads once at process start (internal/config.Load) and
+// carries for its own lifetime as service.Service.GlobalPreLaunch
+// (cmd/deck/main.go). Must run before the client(s) it is meant to affect
+// are started. command is written through %q (Go's escaping matches TOML's
+// basic-string escaping closely enough for the shell commands this file
+// uses), so callers avoid embedding a literal double quote in command --
+// this step's own capture group excludes it anyway, the same constraint
+// every other quoted Gherkin step argument in this file lives under.
+func deckConfigRunsGlobalPreLaunch(ctx context.Context, command string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(h.Home, "config.toml")
+	content := fmt.Sprintf("pre_launch = %q\n", command)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return fmt.Errorf("write scenario config.toml: %w", err)
 	}
 	return nil
