@@ -434,36 +434,51 @@ is a repo file and neither is claimed to be tracked.
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
 
-## 8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)
+## 8. Gate dispositions: whole-suite sweep (task 058), verbose tally companion (task 059) and ten-run stability (task 060)
 
-Both gates ran, at the recomputed final code sha `a44ee320b93186496d56364836b0aed00a6f1e0b`
-(the last commit touching `*.go`/`*.feature` as of task 035's own writing — confirmed
-unchanged since tasks 030/032/034 ran: `git log -1 --format=%H -- '*.go' '*.feature'` still
-resolves to the same sha). Both are re-runs superseding the earlier `fbbda8f` gates, per
-operator rulings `002-030`/`003-031`, after the reopened 011/013–019/026/038 chain landed.
+**The dispositions below supersede, rather than delete, the earlier `a44ee320b93186496d56364836b0aed00a6f1e0b`
+dispositions this section previously recorded for tasks 030 and 032** (13-package counts, `b4807ce1...`
+HEAD, `fbbda8f`-superseding language). Approach 02's findings-1-3 fix commits (`1a4b9db`, `d71c02f`,
+`a936b30`, `52e529b`, `2042cb8`, `31e6aff`, `b29afb8`) landed after the `a44ee32` gates were published,
+advancing the final code sha; tasks 058, 059 and 060 (approach 03) re-ran all three gates at the new
+final code sha and refreshed their report directories **in place** (no new numbered directories). The
+`a44ee32`-sha dispositions are historical record of what ran at that earlier sha, not a claim about the
+current tree; the current disposition is the one below.
 
-**Task 030 — whole-suite sweep.** Exit status `0`. Report directory
-`docs/reports/phase3j-030-fullsuite/` (refreshed in place, `README.md` + `sweep.log`). Every
-package result line is `ok` (13 packages, including `features` at 339.8s) or `?` with
-`[no test files]` (`internal/notify`, `internal/search`, `internal/unit`) — no skipped
-marker anywhere in the log. The README's own first attempt at this task (before its fix
-commit `a44ee32`) surfaced two `features` step-helper failures from task 026's field-order
-change; those are not a gate failure of the published run, since the fix landed in the same
-task iteration before the passing sweep this section cites.
+**Task 058 — whole-suite sweep.** Exit status `0`. Code sha it ran at:
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` (the final code sha, per
+`git log -1 --format=%H -- '*.go' '*.feature'`). Report path
+`docs/reports/phase3j-030-fullsuite/` (refreshed in place, `README.md` + `sweep.log`). Every package
+result line is `ok` (14 packages, including `features` at 346.7s) or `?` with `[no test files]`
+(`internal/notify`, `internal/search`, `internal/unit`) — no skipped marker anywhere in the log. This
+supersedes the `a44ee32`-sha disposition of 13 `ok` packages: the count grew to 14 with `internal/tmux`
+splitting out as its own package between the two shas (verified: `grep -c '^ok'
+docs/reports/phase3j-030-fullsuite/sweep.log` = 14, `grep -c 'no test files'
+docs/reports/phase3j-030-fullsuite/sweep.log` = 3, matching the refreshed README's own stated counts).
 
-**Task 032 — ten-run stability gate.** Exit status `0` (`ci/stability.sh 10`'s own captured
-status, `/tmp/stability-032.log.exitstatus`). Report directory
-`docs/reports/phase3j-032-stability10/` (`README.md` + `summary.log`, the script's own
-combined summary published verbatim). Result: `10/10 passed` — every one of the 10 runs
-`PASS`, no failing run to name. Run at the same sha `a44ee32...`, HEAD/origin main at run time
-a docs-only descendant (`b4807ce1...`) that does not touch `*.go`/`*.feature`.
+**Task 059 — verbose tally companion.** Exit status `0`. Code sha it ran at: the same
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`. Report path `docs/reports/phase3j-031-fullsuite-verbose/`
+(refreshed in place, `README.md` + `verbose.log` + `verbose.log.exitstatus`). This companion exists only
+because the non-verbose launcher cannot print the godog scenario/step tally (finding F34); task 058's
+sweep remains the deliverable gate. Tally as measured, quoted byte-exact (ESC bytes included) in the
+refreshed README: **330 scenarios (330 passed)**, **3824 steps (3824 passed)** — one step more than the
+superseded `a44ee32` tally's 3823 steps (`features/teardown_hooks.feature` gained one step assertion in
+commit `52e529b`; scenario count unchanged). Package result lines match task 058's non-verbose sweep
+(14 `ok`, 3 `[no test files]`).
 
-**Recurrence check against §4's carried-forward findings.** Grepping both published logs
-(`docs/reports/phase3j-030-fullsuite/sweep.log` and
-`docs/reports/phase3j-032-stability10/summary.log`) for the carried-forward items — F2, F20,
-F22, F37, the F7 quantisation collisions, the `filter.feature` dd/undo race, OSC 52 clipboard
-reliability — finds no match in either log (both are all-`ok`/`[no test files]`, no failure
-output, no `skip` marker to search for a recurrence within):
+**Task 060 — ten-run stability gate.** Exit status `0` (`ci/stability.sh 10`'s own captured status).
+Code sha it ran at: the same `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`. Report path
+`docs/reports/phase3j-032-stability10/` (refreshed in place, `README.md` + `summary.log`, the script's
+own combined summary published verbatim). Result: `10/10 passed` — every one of the 10 runs `PASS`, no
+failing run to name. This supersedes the `a44ee32`-sha disposition (also `10/10 passed`, but at the
+earlier sha and an earlier, now-superseded HEAD `b4807ce1...`); HEAD/origin main at this run's launch
+time was `6bb64b29a6043d006dbed266eb4467766d9bbed8`, a docs-only descendant of `b29afb8`.
+
+**Recurrence check against §4's carried-forward findings, re-run against the new logs.** Grepping the
+refreshed logs (`docs/reports/phase3j-030-fullsuite/sweep.log` and
+`docs/reports/phase3j-032-stability10/summary.log`) for the carried-forward items — F2, F20, F22, F37,
+the F7 quantisation collisions, the `filter.feature` dd/undo race, OSC 52 clipboard reliability — finds
+no match in either log:
 
 ```
 $ grep -n -i "F2\b\|F20\b\|F22\b\|F37\b\|F7\b\|quantis\|filter.feature\|dd/undo\|OSC 52\|clipboard" \
@@ -471,11 +486,11 @@ $ grep -n -i "F2\b\|F20\b\|F22\b\|F37\b\|F7\b\|quantis\|filter.feature\|dd/undo\
 (no output)
 ```
 
-No carried-forward finding recurred in either gate's run. This section is therefore the
-disposition rather than a placeholder: neither gate failed, neither gate is pending, and there
-is no recurrence to mark advisory. (The carried-forward items themselves remain advisory-only,
-as recorded in §4 and in the handoff notes' residuals list — this paragraph reports their
-non-recurrence in these two gate runs, not a change to their own disposition.)
+No carried-forward finding recurred in either refreshed gate's run. This section is therefore the
+disposition rather than a placeholder: none of the three gates failed, none is pending, and there is no
+recurrence to mark advisory. (The carried-forward items themselves remain advisory-only, as recorded in
+§4 and in the handoff notes' residuals list — this paragraph reports their non-recurrence in these
+refreshed gate runs, not a change to their own disposition.)
 
 ## 9. Independent review's blocking findings 1-3 (approach 01) are closed
 
