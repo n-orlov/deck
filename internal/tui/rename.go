@@ -25,12 +25,15 @@ import (
 // session), never all the way out to the main list.
 
 // updateDetailView handles every key while the `i` detail dialog is open
-// and no rename is in progress (m.renaming == false; see
-// updateRenameDialog for that nested state). detailView itself has no
-// §11.4 fields to submit or cycle, so the only shared contract key it
-// binds is esc; "i" (declared inline, mirroring detailView's own footer
-// text "i or Esc closes detail"), "r" (this task's additional
-// load-bearing key, declared inline exactly as §11.4 allows), pgup/
+// and no rename or launch-inputs edit is in progress (m.renaming ==
+// false and m.launchInputsEditing == false; see updateRenameDialog and
+// updateLaunchInputsDialog, launch_inputs.go, for those nested states).
+// detailView itself has no §11.4 fields to submit or cycle, so the only
+// shared contract key it binds is esc; "i" (declared inline, mirroring
+// detailView's own footer text "i or Esc closes detail"), "r" (this
+// task's additional load-bearing key, declared inline exactly as §11.4
+// allows), "l" (task 023's own load-bearing key, opening the
+// launch-inputs editor exactly as "r" opens rename), pgup/
 // pgdown (task 078's whole-dialog scroll, requirement 39 residual) and
 // "q"/"ctrl+c" (task 079: a bare q while m.detail is true used to be a
 // silent no-op here -- helpText's own "q or Ctrl+C quit deck" line in
@@ -61,6 +64,20 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.renameValue = session.Name
 			m.renamePrefilled = true
 			m.renameNote = ""
+		}
+	case "l":
+		// Task 023 (SPEC §6.2/§11.4, PRD R108): the launch-inputs editor,
+		// reachable ONLY from inside `i` detail, exactly like "r" above.
+		if len(m.sessions) > 0 {
+			session := m.sessions[m.selected]
+			m.launchInputsEditing = true
+			m.launchInputsField = 0
+			m.launchInputsPreLaunch = session.PreLaunch
+			m.launchInputsPostDestroy = session.PostDestroy
+			m.launchInputsLaunchArgs = launchArgsToText(session.LaunchArgs)
+			m.launchInputsLoginShell = session.LoginShell
+			m.launchInputsNote = ""
+			m.launchInputsScroll = 0
 		}
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls

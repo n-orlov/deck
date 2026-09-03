@@ -916,7 +916,7 @@ func (m Model) wheelScrollableOverlay() scrollableOverlayKind {
 	// blanket action guard already made it.
 	if m.interactive || m.creating || m.profileSwitching || m.pinning || m.envEditing ||
 		m.restartChoosing || m.deleteConfirming || m.archiveConfirming ||
-		m.settingsOpen || m.settingsDiscardConfirm || m.themePicking {
+		m.settingsOpen || m.settingsDiscardConfirm || m.themePicking || m.launchInputsEditing {
 		return overlayScrollNone
 	}
 	switch {
