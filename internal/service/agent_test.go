@@ -344,6 +344,75 @@ func TestCreateAgentFailingGlobalPreLaunchNeverReachesSessionHookOrAgent(t *test
 	}
 }
 
+// TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained covers
+// task 006's fail-closed row-and-pane assertion: a global pre_launch that
+// fails, paired with a session pre_launch that would itself pass, must never
+// let the session hook or the agent run, must retain the dead pane long
+// enough for its own output to be observed (deck's server-wide `remain-on-exit
+// failed`, SPEC.md:547), and once Reconcile collects that retained corpse,
+// the durable row must read `error` carrying the hook's own exit status as
+// its reason and the hook's own stderr in its crash tail.
+func TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, _ := newAgentTestService(t, nil, "global-pre-launch-fail-error-row")
+	service.GlobalPreLaunch = "echo global-pre-launch-boom >&2; exit 9"
+	sessionMarker := filepath.Join(cwd, "session_marker")
+	agentMarker := filepath.Join(cwd, "agent_marker")
+
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Shell: global pre-launch fail, session hook would pass", CWD: cwd, Agent: "shell",
+		// This session hook, on its own, always succeeds: if it ever ran, the
+		// fixture would not be discriminating for a fail-closed global hook.
+		PreLaunch:  "touch " + sessionMarker,
+		LaunchArgs: []string{"-c", "touch " + agentMarker},
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	// Fail-closed retention: deck's tmux server keeps the dead pane (and its
+	// session) around under remain-on-exit failed rather than letting it exit
+	// cleanly, so the failure is observable instead of silently vanishing.
+	waitForDeadPane(t, service.TMux, session.Slug, 9)
+	if _, err := os.Stat(sessionMarker); err == nil {
+		t.Fatalf("session pre_launch ran despite a failing global pre_launch: %s exists", sessionMarker)
+	}
+	if _, err := os.Stat(agentMarker); err == nil {
+		t.Fatalf("agent started despite a failing global pre_launch: %s exists", agentMarker)
+	}
+
+	// Before any reconciliation pass, the durable row is still whatever
+	// CreateAgent itself wrote (launch.ready via tmux) -- proving the row does
+	// not turn error on its own; only collecting the retained corpse does.
+	preReconcile, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preReconcile.Status == "error" {
+		t.Fatalf("row already reads error before reconciliation collected the retained pane")
+	}
+
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile retained corpse: %v", err)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "error" {
+		t.Fatalf("collected row reads %q, want error: the failing global pre_launch was not collected as a crash", got.Status)
+	}
+	if got.PaneExitStatus == nil || *got.PaneExitStatus != 9 {
+		t.Fatalf("pane exit status = %v, want the global hook's own exit code 9", got.PaneExitStatus)
+	}
+	if !strings.Contains(got.StatusReason, "9") {
+		t.Fatalf("status reason = %q, want it to carry the hook's own exit status 9", got.StatusReason)
+	}
+	if !strings.Contains(got.CrashTail, "global-pre-launch-boom") {
+		t.Fatalf("crash tail = %q, want it to carry the global pre_launch's own stderr", got.CrashTail)
+	}
+}
+
 // TestBuildPaneCommand covers task 005: buildPaneCommand joins a global
 // hook, a session hook and the adapter argv global-first with `&&`, without
 // disturbing any case that already worked before the global hook existed.
