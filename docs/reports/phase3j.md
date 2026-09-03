@@ -1,0 +1,131 @@
+# Phase 3j report
+
+Phase 3j closes GH issue #20: every pane now carries its own session's `DECK_SESSION_*`
+context (R104) on every adapter and both launch paths; a global `pre_launch` composes
+global-first with the session's own and the empty-global case is byte-identical to today's
+tree (R105); the hook's env-mutation contract — reaches the agent, not the tmux session table,
+not `state.db` — is stated and tested (R106); a global/per-session `post_destroy` runs
+session-then-global on `A`/`dd`, fail-open, bounded by a 30s timeout, and never on `x` or a
+reap path (R107); the four editable launch inputs (`pre_launch`, `post_destroy`,
+`launch_args`, `login_shell`) are now editable on a live row through a `launch_dirty` flag and
+`launch↻` badge, restart-to-apply, with `agent`/`cwd`/`slug`/`captured_path` enforced as
+un-mutable by a source-scanning guard (R108); the hook rules are stated in user-reachable copy
+(R109); and this document plus `docs/reports/phase3j-findings.md` and
+`docs/DELIVERY-LOG.md` close the record (R110).
+
+## Final code sha
+
+```
+$ git log -1 --format=%H -- '*.go' '*.feature'
+a44ee320b93186496d56364836b0aed00a6f1e0b
+```
+
+This is task 030's fix commit (`features/dialogs_test.go` and `features/agent_steps_test.go`'s
+create-modal keyboard-walk step helpers, updated for task 026's new Post-destroy field), the
+last commit in this phase to touch a `*.go` or `*.feature` path. Everything after it —
+including this report — is a docs-only descendant; `git status --porcelain` is empty and
+`git rev-parse HEAD origin/main` agree at `d1d5f776c637a5cf791a2f7efa5bf1a8ed13332c` as of
+this task's own commit (task 033's `d1d5f77`, the most recent verified pair).
+
+## Per-requirement table
+
+| req | status | task ids | shas | evidence |
+|---|---|---|---|---|
+| R104 | met | 001, 002, 003; 038 (CreateShell composed through the same context builder) | `be6e42b`, `f1788b9`, `5bc6f3e`, `c13a909`, `2e5fc6b`, `566cb6d`, `4daf1d6`, `fa634db` | `internal/service/session_context.go`, `internal/service/session_context_test.go`, `internal/agent/claude.go`, `internal/service/agent.go`, `internal/service/resume.go`, `internal/service/shell.go`, `internal/service/shell_test.go`, `internal/tui/create_shell_pre_launch_test.go`, `features/launch_hooks.feature`, `docs/reports/phase3j-findings.md` (finding 3) |
+| R105 | met | 004, 005, 006, 007 | `ed8b81e`, `38ad227`, `34f1560`, `db8d5c7`, `0316c51` | `internal/config/schema.go`, `internal/config/schema_test.go`, `internal/service/agent.go`, `internal/service/agent_test.go`, `internal/service/resume.go`, `internal/service/resume_test.go`, `features/launch_hooks.feature`, `features/agent_steps_test.go`, `features/env_editor_test.go` |
+| R106 | met | 008, 009 | `b50cc20`, `5ef971b` | `internal/service/agent.go`, `internal/service/agent_test.go` (the export-reaches-the-agent proof against a real tmux socket and the two negative-boundary proofs — absent from the tmux session environment table and absent from every column of `state.db` for the session) |
+| R107 | met | 010 (`schemaV6`, shared with R108), 011 (both the store round-trip and the CreateShell residual), 012, 013, 014, 015, 016, 017, 018, 019 | `f60b5e4`, `0299be9`, `9fb6aec`, `66711eb`, `259284b`, `720dafc`, `8876ad8`, `7ba666c`, `0e73841`, `3aa0fe3`, `c8e5911`, `b9132c9` | `internal/store/store.go`, `internal/store/store_test.go`, `internal/config/schema.go`, `internal/service/post_destroy.go`, `internal/service/post_destroy_test.go`, `internal/service/post_destroy_no_hook_paths_test.go`, `internal/tui/mark_test.go`, `features/teardown_hooks.feature`, `features/teardown_hooks_test.go`, `internal/tui/archive_undo_rebuild_note_test.go`, `internal/tui/tui.go`, `internal/service/shell.go`, `internal/service/shell_test.go` |
+| R108 | met | 010 (`launch_dirty`, shared with R107), 020, 021, 022, 023, 024, 025, 026, 027 | `f60b5e4`, `8931988`, `db2ea55`, `ad51022`, `325d00a`, `630ac90`, `9fb25f7`, `6b8f1d0`, `6080c55`, `a44ee32`, `895f58d` | `internal/store/store.go`, `internal/store/store_test.go`, `internal/service/inject_launch_dirty_test.go`, `internal/service/restart.go`, `internal/service/restart_test.go`, `internal/store/no_forbidden_update_columns_test.go`, `internal/tui/launch_inputs.go`, `internal/service/launch_inputs.go`, `internal/service/launch_inputs_test.go`, `internal/tui/launch_inputs_wiring_test.go`, `internal/tui/launch_badge_test.go`, `internal/tui/create_post_destroy_test.go`, `features/dialogs_test.go`, `features/agent_steps_test.go`, `features/launch_inputs_editor_test.go`, `features/launch_hooks.feature` |
+| R109 | met | 028 | `17cabb8` | `internal/tui/hook_help_coverage_test.go`, `internal/tui/tui.go` (the idempotency claim, the fail-closed claim, the not-on-`x` claim and the never-echo claim, each asserted present somewhere a user can reach — `?` help, create-modal field help, the launch-inputs editor, settings' descriptions) |
+| R110 | met (this document and the gates it cites; the findings/DELIVERY-LOG/Telegram tasks that round out the phase's remaining paperwork are tasks 035–037, not yet committed as of this writing) | 029, 030, 031, 032, 033, 034 (this report) | `a30accd`, `12e0e72`, `2d45ef3`, `204af7d`, `fbbda8f`, `2ad633d`, `b79228d`, `8b029e1`, `b4807ce`, `899af55`, `fe18ea9`, `7e8cf1c`, `d1d5f77` | `docs/reports/phase3j-findings.md`, `docs/reports/phase3j-030-fullsuite/`, `docs/reports/phase3j-031-fullsuite-verbose/`, `docs/reports/phase3j-032-stability10/`, `docs/reports/phase3j-033-guards/`, this document, the GH issue #20 design section map below |
+
+## GH issue #20 design section map (task 034)
+
+GH issue #20, "Launch/teardown hooks: export `DECK_SESSION_*` context, global `pre_launch`,
+`post_destroy`, and editable launch inputs", is this phase's source
+(`prds/phase3j-launch-and-teardown-hooks.md`'s "Goal" section says so directly, and R110
+requires this mapping). Its body is organised into four numbered requirement sections
+(`## R1` through `## R4`), each with its own heading; this table names, for each one, the
+phase requirement that discharges it and the row already established above — closing #20 is a
+reading, not an argument.
+
+**No `gh` CLI is available in this environment.** The issue text below was read with a single
+authenticated `GET https://api.github.com/repos/n-orlov/deck/issues/20` (HTTP 200,
+`state: open`, `comments: 0`), so the four section headings quoted are exact; a second `GET`
+immediately after showed the same `state: open` and the same comment count, so nothing was
+posted or edited from here. No `POST`/`PATCH`/`PUT` was made against the issue or its
+comments. The token used came from the pre-existing `~/.git-credentials` credential helper
+entry and was never printed or passed as a command argument.
+
+| issue § | design section (verbatim heading) | requirement | task ids | evidence |
+|---|---|---|---|---|
+| R1 | "Export the session's own identity into its pane" | R104 | 001, 002, 003; 038 | `internal/service/session_context.go`, `internal/service/session_context_test.go`, `features/launch_hooks.feature` |
+| R2 | "A global `pre_launch`, editable in settings" (its own "The env-mutation contract, stated explicitly" subsection) | R105 (the global hook and its composition); R106 (the env-mutation contract subsection) | 004–007 (R105); 008, 009 (R106) | `internal/config/schema.go`, `internal/service/agent.go`, `internal/service/agent_test.go`, `features/launch_hooks.feature` |
+| R3 | "`post_destroy`, per-session and global" | R107 | 010–019 | `internal/store/store.go`, `internal/service/post_destroy.go`, `internal/service/post_destroy_test.go`, `features/teardown_hooks.feature` |
+| R4 | "Every launch input editable post-start, restart-to-apply" (its own "`pre_launch` must be idempotent, and deck must say so" subsection) | R108 (the four editable inputs and the dirty flag/badge); R109 (the idempotency statement lands in user-reachable copy, not only in this issue's prose) | 020–027 (R108); 028 (R109) | `internal/store/store.go`, `internal/tui/launch_inputs.go`, `internal/tui/launch_badge_test.go`, `internal/tui/hook_help_coverage_test.go` |
+
+The issue's own "## Out of scope" and "## Verification" subsections are not numbered design
+sections and are not rows above; "Out of scope" (the motivating gateway's own auth/lifecycle,
+in-place env mutation on a live pane, editing `agent`/`cwd`, per-agent-kind hook declarations)
+matches this phase's PRD Non-goals and is honoured by omission, not by a citable commit.
+"Verification" enumerates the same unit/feature shapes the PRD's own per-requirement bullets
+already state and each is discharged by the shas in the per-requirement table above; it is not
+a fifth design section.
+
+## Gate results
+
+**Whole-suite sweep (task 030, `a44ee32`, refreshed in place)** — `ci/run.sh go test -p=1
+-count=1 ./...` at the final code sha above. Published at
+`docs/reports/phase3j-030-fullsuite/sweep.log` (`docs/reports/phase3j-030-fullsuite/README.md`).
+Exit status quoted verbatim from that README:
+
+```
+$ cat docs/reports/phase3j-030-fullsuite/README.md | sed -n '/## Exit status/,/```/p'
+## Exit status
+
+```
+0
+```
+```
+
+Every package result line is `ok` (13 packages) or `?` with `[no test files]` (`internal/notify`,
+`internal/search`, `internal/unit`); no `t.Skip`, no godog `@wip`/skipped marker anywhere in the
+captured log. This refresh supersedes the earlier sweep published at `fbbda8f` per operator
+ruling `002-030` (task 030 was reset to pending and re-run once steps 1–3 of the operator's
+`001-unblock-011-gate-ordering.md` — tasks 011, 013–019, 026 and 038 — were validated).
+
+**Verbose companion tally (task 031, `b4807ce`, refreshed in place)** — the `-v` companion,
+same tree, same final code sha. Published at
+`docs/reports/phase3j-031-fullsuite-verbose/verbose.log`
+(`docs/reports/phase3j-031-fullsuite-verbose/verbose.log.exitstatus`,
+`docs/reports/phase3j-031-fullsuite-verbose/README.md`). This refresh supersedes the earlier
+tally published at `fbbda8f` per operator ruling `003-031`, polled with `sleep 60` and nothing
+longer throughout.
+
+**Stability gate (task 032, `899af55`)** — `ci/stability.sh 10` from a clean state, at the
+final code sha above. Published at
+`docs/reports/phase3j-032-stability10/summary.log`
+(`docs/reports/phase3j-032-stability10/README.md`). Final line quoted verbatim from that log:
+
+```
+$ tail -1 docs/reports/phase3j-032-stability10/summary.log
+10/10 passed
+```
+
+The script's own captured exit status (recorded to a scratch path outside the tree at run
+time, per task 032's README) was `0`; every one of the ten runs is a `PASS`, and no failing
+run needs naming.
+
+**Protected-path audit and branch guards (task 033, `d1d5f77`)** — re-verified at the final
+code sha above. Published at `docs/reports/phase3j-033-guards/`. The audit command (computed
+`BASE`, not pasted) printed nothing; `git status --porcelain` was empty and
+`git rev-parse HEAD origin/main` agreed, both quoted verbatim in
+`docs/reports/phase3j-033-guards/protected-path-audit.out`,
+`docs/reports/phase3j-033-guards/git-status-porcelain.out` and
+`docs/reports/phase3j-033-guards/rev-parse-head-origin-main.out`.
+
+**Both gates are green at the true final code sha `a44ee320b93186496d56364836b0aed00a6f1e0b`**:
+the whole-suite sweep exits 0 with every package `ok`/`[no test files]`, and the stability gate
+is 10/10. Neither gate is qualified by an unresolved carried-forward finding from this phase's
+own R104–R109 work; the carried-forward advisories predate this phase (see
+`docs/reports/phase3j-findings.md` §4).
