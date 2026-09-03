@@ -522,6 +522,26 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section: "",
+		Key:     "pre_launch",
+		Kind:    KindString,
+		Default: "",
+		Description: "The global launch hook (task 004, phase3j): a shell command run in " +
+			"every session's pane before that session's own agent/shell argv, " +
+			"the same way a session's own pre_launch already does, but for EVERY " +
+			"session rather than one chosen at create time. Empty by default -- " +
+			"nothing runs unless this is set. Restart-to-apply: saving here writes " +
+			"config.toml immediately, but the already-running client's launch path " +
+			"keeps using whichever value it read at process start until deck " +
+			"restarts.",
+		// requirement 19: this key has no live consumer -- it is read once, at
+		// process start, into service.Service (cmd/deck/main.go), and every
+		// launch for the lifetime of that process uses the value captured
+		// then. A save changes config.toml immediately but the already-running
+		// client keeps launching with the old value until deck restarts.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "env",
 		Key:         "",
 		Kind:        KindListOfStrings,
