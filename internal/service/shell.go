@@ -20,6 +20,12 @@ type ShellCreateInput struct {
 	Name string
 	CWD  string
 	Env  map[string]string
+	// PostDestroy is this shell session's own teardown hook (SPEC §9.2,
+	// R107), persisted verbatim into store.CreateSessionInput.PostDestroy.
+	// Empty is the common, valid case of nothing configured. Running the
+	// hook itself is not this field's scope -- that is wired by the callers
+	// task 013 adds.
+	PostDestroy string
 }
 
 // Service performs operations which must keep the SQLite store and private
@@ -139,6 +145,7 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
+		PostDestroy: input.PostDestroy,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable shell session: %w", err)
