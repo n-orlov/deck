@@ -49,6 +49,14 @@ type Service struct {
 	// composes this with a session's own pre_launch, global first, joined by
 	// shell `&&`.
 	GlobalPreLaunch string
+	// GlobalPostDestroy mirrors config.toml's top-level post_destroy key
+	// (task 012, phase3j): the global teardown hook, a shell command run once
+	// a session's pane is gone, in addition to (never instead of) that
+	// session's own post_destroy (store.Session/CreateAgentInput's own field
+	// of that name). Empty is the common, valid case of nothing configured.
+	// Running this hook is not this task's own scope -- that is wired by a
+	// later task.
+	GlobalPostDestroy string
 	// DeckExecutable and DeckHome are deck-owned launch facts supplied to
 	// adapters for hook instrumentation. They are never persisted as user
 	// launch arguments or session environment.

@@ -751,6 +751,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		EventRetentionDays:   s.File.EventRetentionDays,
 		Theme:                s.File.Theme,
 		PreLaunch:            s.File.PreLaunch,
+		PostDestroy:          s.File.PostDestroy,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
@@ -1044,6 +1045,8 @@ func settingsStringValue(f config.Field, cfg config.FileConfig) string {
 	switch f.FullKey() {
 	case "pre_launch":
 		return cfg.PreLaunch
+	case "post_destroy":
+		return cfg.PostDestroy
 	default:
 		s, _ := f.Default.(string)
 		return s
@@ -1056,6 +1059,8 @@ func settingsSetString(cfg *config.FileConfig, f config.Field, v string) {
 	switch f.FullKey() {
 	case "pre_launch":
 		cfg.PreLaunch = v
+	case "post_destroy":
+		cfg.PostDestroy = v
 	}
 }
 

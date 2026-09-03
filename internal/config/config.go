@@ -111,6 +111,11 @@ type Settings struct {
 	// (never instead of) a session's own pre_launch. Empty by default.
 	// Defaults per internal/config.Schema.
 	PreLaunch string
+	// PostDestroy mirrors config.toml's top-level post_destroy key (task 012,
+	// phase3j): the global teardown hook, a shell command run once a session's
+	// pane is gone, in addition to (never instead of) a session's own
+	// post_destroy. Empty by default. Defaults per internal/config.Schema.
+	PostDestroy string
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
@@ -294,6 +299,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		PreLaunch:          fileCfg.PreLaunch,
+		PostDestroy:        fileCfg.PostDestroy,
 		GroupByWorkspace:   groupByWorkspace,
 		SortOrder:          fileCfg.SortOrder,
 		PreviewFit:         previewFit,

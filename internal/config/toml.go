@@ -35,6 +35,7 @@ type FileConfig struct {
 	EventRetentionDays   int
 	Theme                string
 	PreLaunch            string
+	PostDestroy          string
 	Env                  map[string]string
 }
 
@@ -161,6 +162,8 @@ func defaultFileConfig() FileConfig {
 			cfg.Theme, _ = field.Default.(string)
 		case "pre_launch":
 			cfg.PreLaunch, _ = field.Default.(string)
+		case "post_destroy":
+			cfg.PostDestroy, _ = field.Default.(string)
 		}
 	}
 	return cfg
@@ -245,6 +248,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.InteractiveTransport = unquoted
 		case "pre_launch":
 			cfg.PreLaunch = unquoted
+		case "post_destroy":
+			cfg.PostDestroy = unquoted
 		}
 	default:
 		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)
