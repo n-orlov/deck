@@ -36,6 +36,12 @@ type AgentCreateInput struct {
 	// relying on captured_path for PATH resolution.
 	PreLaunch  string
 	LoginShell bool
+	// PostDestroy, when set, is this session's own teardown hook (SPEC
+	// §9.2, R107): run as its own deck subprocess (never a pane) after
+	// this row's Archive or Delete has durably succeeded, before the
+	// global post_destroy hook. Stored verbatim on the row; task 013 is
+	// what actually runs it.
+	PostDestroy string
 }
 
 // CreateAgent creates the durable row for a real coding-agent session,
@@ -89,6 +95,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: adapter.Kind(), CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
+		PostDestroy:       input.PostDestroy,
 		PermissionProfile: profile, PermissionProfileReason: degradationReason, ConversationID: conversationID,
 	})
 	if err != nil {

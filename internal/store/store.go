@@ -155,6 +155,13 @@ type CreateSessionInput struct {
 	// PreLaunch is an optional shell command run in the pane before the
 	// agent argv, e.g. to source secrets (SPEC §6.4).
 	PreLaunch string
+	// PostDestroy is an optional shell command run, as its own deck
+	// subprocess (never a pane), after this session's row has been durably
+	// archived or deleted (SPEC §9.2, R107). It never runs on Kill or any
+	// reap path -- that is enforced by the callers that run it (task 013),
+	// not by this field. Empty is the common, valid case of nothing
+	// configured.
+	PostDestroy string
 	// LoginShell runs PreLaunch (and the agent) via "$SHELL -lc" rather than
 	// relying on CapturedPath, when true.
 	LoginShell bool
@@ -214,9 +221,15 @@ type Session struct {
 	LastMessage    string
 	Acknowledged   bool
 
-	LaunchArgs              []string
-	Env                     map[string]string
-	PreLaunch               string
+	LaunchArgs []string
+	Env        map[string]string
+	PreLaunch  string
+	// PostDestroy is the sessions.post_destroy column verbatim (SPEC §9.2,
+	// R107): the per-session teardown hook run after this row's own Archive
+	// or Delete has durably succeeded, before the global post_destroy hook
+	// (task 013 runs both; this field is just the stored value). Empty
+	// exactly when the row has never had one recorded.
+	PostDestroy             string
 	LoginShell              bool
 	PermissionProfile       string
 	PermissionProfileReason string
@@ -444,11 +457,11 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
-		 launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
-		launchArgsJSON, envJSON, nullableString(input.PreLaunch), input.LoginShell,
+		launchArgsJSON, envJSON, nullableString(input.PreLaunch), nullableString(input.PostDestroy), input.LoginShell,
 		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
@@ -466,7 +479,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
 		Acknowledged: true,
-		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
+		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
 		ConversationID: input.ConversationID,
 		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
@@ -515,14 +528,14 @@ func scanSession(row interface {
 }) (Session, error) {
 	var session Session
 	var launchArgsJSON, envJSON string
-	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace sql.NullString
+	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace, postDestroy sql.NullString
 	var leaseOwner string
 	var loginShell, killedByUser, acknowledged, envDirty int
 	var paneExitStatus sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
-		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch,
+		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt,
 		&leaseOwner); err != nil {
@@ -546,6 +559,7 @@ func scanSession(row interface {
 		return Session{}, fmt.Errorf("decode env: %w", err)
 	}
 	session.PreLaunch = preLaunch.String
+	session.PostDestroy = postDestroy.String
 	session.PermissionProfileReason = permissionProfileReason.String
 	session.ConversationID = conversationID.String
 	session.ResumePin = resumePin.String
@@ -579,7 +593,7 @@ func DefaultWorkspace(cwd string) string {
 const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
-		launch_args, env, pre_launch, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
+		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		workspace, last_probe_at, env_dirty, deleted_at, archived_at,
 		COALESCE(launch_lease_owner, '')`
 
