@@ -1,22 +1,24 @@
 # Phase 3j findings
 
-Companion to `docs/reports/phase3j.md` (task 034, not yet written): what the requirement table
-does not carry — a task that ended `failed` and the dependency doom it leaves behind, gaps a
-validation pass found that were then closed within the same task rather than left open, the
+Companion to the phase closeout report task 034 writes (that task's own `successCriteria` in
+the run's own `/run/ralphd/tasks.json` names its path; it is deliberately not cited here, because
+every repo path this report cites is one already tracked in git — see §5): what the requirement
+table does not carry — a task that ended `failed` and the dependency doom it leaves behind, gaps
+a validation pass found that were then closed within the same task rather than left open, the
 protected-path audit's disposition over this run's own commit range, this phase's check for a
 disagreement between the tree and `SPEC.md`, and a placeholder for both gates' dispositions
 (tasks 030/032, filled in by tasks 033 and 034 per the plan).
 
 Written by task 029 against the tree at commit `17cabb871d0c8c17dc742256632015ed1889db9b` (the
-last commit touching `*.go`/`*.feature` as of this writing; `docs/reports/phase3j.md` §"Final
-code sha", task 034, is the authority once it lands — this section does not repeat that
+last commit touching `*.go`/`*.feature` as of this writing; task 034's closeout report, and its
+own final-code-sha section, are the authority once they land — this section does not repeat that
 ancestry argument). Every sha cited resolves under `git cat-file -e` and every path cited is
 tracked under `git ls-files --error-unmatch`, both checked in
 [§5](#5-how-to-re-check-every-citation-in-this-report).
 
 - [1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
 - [2. Three tasks (002, 007, 023) had a validation-found gap that was closed within the same task's own follow-up commit, not left open](#2-three-tasks-002-007-023-had-a-validation-found-gap-that-was-closed-within-the-same-tasks-own-follow-up-commit-not-left-open)
-- [3. No SPEC.md-versus-tree disagreement found in R104–R109's landed work (tasks 001–028)](#3-no-specmd-versus-tree-disagreement-found-in-r104r109s-landed-work-tasks-001028)
+- [3. One SPEC-versus-tree disagreement found in R104–R109's landed work: CreateShell skips the hook composition and the config env layer](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work-createshell-skips-the-hook-composition-and-the-config-env-layer)
 - [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-not-yet-checked-against-a-whole-suite-run)
 - [5. How to re-check every citation in this report](#5-how-to-re-check-every-citation-in-this-report)
 - [6. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034](#6-placeholder-gate-dispositions-whole-suite-sweep-and-ten-run-stability-filled-in-by-tasks-033-and-034)
@@ -142,7 +144,8 @@ through it. Confirmed fresh:
 ```
 $ grep -n "WithLaunchInputsSetter" cmd/deck/main.go internal/tui/tui.go
 ```
-shows the constructor call in `main.go` and the method's definition in `tui.go`.
+shows the constructor call in `cmd/deck/main.go` and the method's definition in
+`internal/tui/tui.go`.
 
 **Disposition.** All three tasks are `validated`; none has an open residual as of this writing.
 This section exists because a reader of `tasks.json`'s `validationNotes` field alone, without
@@ -150,11 +153,62 @@ walking each task's own commit history, would see an apparently-unresolved criti
 `validated` task — this is the record that it was, in fact, resolved, by which commit, and how
 to check that fresh.
 
-## 3. No SPEC.md-versus-tree disagreement found in R104–R109's landed work (tasks 001–028)
+## 3. One SPEC-versus-tree disagreement found in R104–R109's landed work: CreateShell skips the hook composition and the config env layer
 
-The PRD's own instruction ("Where this PRD and `SPEC.md` disagree, `SPEC.md` wins and the
-disagreement is a finding … never an edit") was checked against every SPEC section R104–R109
-name and the code that claims to satisfy it:
+**The disagreement, named with its SPEC sections and its repo-relative source path.**
+
+| | |
+|---|---|
+| SPEC sections | §6.4 (`pre_launch` "runs in the pane, in the same shell that then execs the agent"; "A hook must be idempotent, because it runs on every launch … fires on create, on `r`, on `R`"), §6.5 ("The two hook keys are global defaults that compose with a session's own, never replace it. … Both run, **global first**"), §6.1 (the resolution order includes `[env]` in `config.toml` for every pane deck launches — "every adapter, `shell` included, on create and on resume alike"), §6.3 (`captured_path` sits **between** the server environment and `[env]`) |
+| Source path | `internal/service/shell.go` (`Service.CreateShell`) |
+| Disposition | `SPEC.md` wins; recorded here as a finding, never edited — and **not fixed by this phase**, whose tasks 001–028 do not reach `CreateShell`'s launch path. The gap predates this phase's base commit `06ea5b72d98ce0dda251d16af452b7f6d87e2c2f`; R104's session-context merge (task 001) is the one part of §6 that `CreateShell` does honour. |
+
+`CreateShell` builds its pane command as the bare user shell and hands that argv straight to
+tmux, never through `buildPaneCommand` (`internal/service/agent.go` — the function that composes
+global-then-session `pre_launch` and applies `login_shell`), and it builds `launchEnv` from the
+caller's `input.Env` plus adapter instrumentation plus §6.1's session context alone, never
+through `resolveLaunchEnv` (the function that merges `Service.ConfigEnv`, i.e. `config.toml`'s
+`[env]` table, and `captured_path`). Confirmed fresh against the committed code:
+
+```
+$ grep -n 'argv := \[\]string{shell}\|s.TMux.Create(ctx, tmux.Launch' internal/service/shell.go
+175:	argv := []string{shell}
+187:	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: argv, Env: launchEnv}); err != nil {
+$ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/shell.go
+(no output — neither is called there; the file's only mention of buildPaneCommand is the prose of
+ Service.GlobalPreLaunch's doc comment)
+$ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/resume.go
+250:	launchEnv := s.resolveLaunchEnv(envCapturedPath, session.Env)
+268:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, session.PreLaunch, session.LoginShell, argv)
+```
+
+Three consequences, each disagreeing with the SPEC sentence named beside it:
+
+- **Neither hook runs when a `shell` session is created.** §6.5 makes the global key a default
+  that composes with every session's own; `Service.GlobalPreLaunch` is plumbed into the service
+  (task 004, `ed8b81e`) and is consumed by `buildPaneCommand` (task 005, `38ad227`) and by
+  `Resume`, but a `shell` create reaches neither. `login_shell` (§6.3) is likewise not applied on
+  that path.
+- **A shell session's create and its own relaunches disagree with each other.**
+  `internal/service/resume.go` is adapter-agnostic, so the same row *does* get both hooks and the
+  full §6.1/§6.3 env layering on `r`/`R`. §6.4's idempotency sentence assumes the opposite — that
+  the hook "fires on create, on `r`, on `R`" alike — so for a `shell` session a configured hook
+  first runs on the first relaunch rather than at creation.
+- **`config.toml`'s `[env]` layer and `captured_path` are absent from a freshly created shell
+  pane**, contrary to §6.1's stated resolution order and §6.3's first mitigation, even though
+  `CreateShell` does persist `captured_path` to the row.
+
+This is the launch-side half of a shape whose storage-side half is
+[§1](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
+(task 011's residual gap: `ShellCreateInput` carries no per-session `PostDestroy`, so a `shell`
+row cannot even hold a teardown hook). A future phase that closes this needs both halves: route
+`CreateShell` through `resolveLaunchEnv` and `buildPaneCommand`, and give `ShellCreateInput` its
+`PostDestroy` field.
+
+**The rest of R104–R109's landed work agrees with `SPEC.md`.** The PRD's own instruction ("Where
+this PRD and `SPEC.md` disagree, `SPEC.md` wins and the disagreement is a finding … never an
+edit") was checked against every SPEC section R104–R109 name and the code that claims to satisfy
+it — five checks, none of which produced a further disagreement:
 
 - **§6.1's nine-variable table** against `internal/service/session_context.go`'s
   `sessionContextEnv`: all nine keys present, `DECK_SESSION_PROFILE` reads
@@ -187,11 +241,12 @@ name and the code that claims to satisfy it:
   each claim (idempotency, fail-closed, fail-open-and-not-on-`x`, undo-then-rebuild-on-next-`r`,
   the `export K=V`-on-stdout/`sensitive` shape).
 
-None of the above produced a disagreement; each product statement matches the SPEC section it
-claims to satisfy. This section will be revisited if a disagreement surfaces while R107/R108's
-remaining tasks (013–019, 026) land, since those consume §6.5's teardown-order sentence
-("Session's own first, then the global one" — the *reverse* of §6.5's launch order) which no
-landed task yet exercises.
+None of the five bullets above produced a further disagreement; each product statement matches
+the SPEC section it claims to satisfy. This section will be revisited if another disagreement
+surfaces while R107/R108's remaining tasks (013–019, 026) land, since those consume §9.2's
+teardown-order sentence ("run the session's own `post_destroy` and then the global one from
+`config.toml` (§6.5)" — the *reverse* of §6.5's launch order), which no landed task yet
+exercises.
 
 ## 4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run
 
@@ -217,8 +272,8 @@ single-feature `internal/features` runs), never the whole-suite sweep that would
 `features`/`internal/interactive` packages these seven findings live in — that sweep is task
 030's own job, not yet run as of this writing. **This section does not claim a recurrence check
 here**; task 035 ("Fill in the gate dispositions") is the task that runs the by-name recurrence
-grep against task 030's actual sweep log and records the result, following §3's disposition
-placeholder below.
+grep against task 030's actual sweep log and records the result, in §6's disposition placeholder
+below.
 
 ## 5. How to re-check every citation in this report
 
@@ -237,6 +292,7 @@ $ git ls-files --error-unmatch \
     internal/service/session_context_test.go \
     internal/service/agent.go \
     internal/service/agent_test.go \
+    internal/service/resume.go \
     internal/service/launch_inputs.go \
     internal/store/store.go \
     internal/config/schema.go \
@@ -247,22 +303,30 @@ $ git ls-files --error-unmatch \
     features/launch_hooks.feature \
     SPEC.md \
     prds/phase3j-launch-and-teardown-hooks.md
-(all resolve; this report's own path, docs/reports/phase3j-findings.md, becomes tracked once
-this task's commit lands, which is why it is excluded from the pre-commit check above and
-verified separately after committing, below.)
+(all resolve, this report's own path docs/reports/phase3j-findings.md included — it became
+tracked in commit a30accd, task 029's first commit.)
 ```
+
+**No repo path in this report names an untracked file or a not-yet-generated directory.** The
+closeout report of task 034 and the three gate report directories of tasks 030–032 are referred
+to by the task that publishes them, never by a path, precisely because
+`git ls-files --error-unmatch` cannot succeed for a path that does not exist yet. The only
+non-repo paths quoted anywhere above are this run's own loop state — `/run/ralphd/tasks.json`,
+quoted as a record rather than as a repo file — and paths that appear *inside* a quoted SPEC
+sentence (`$XDG_CONFIG_HOME/deck/config.toml`, `$DECK_HOME/captures/<session_id>/`); neither kind
+is a repo file and neither is claimed to be tracked.
 
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
 
 ## 6. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034
 
-Both gates are pending as of this writing: task 030 (whole-suite sweep,
-`docs/reports/phase3j-030-fullsuite/`), task 031 (verbose Gherkin-tally companion,
-`docs/reports/phase3j-031-fullsuite-verbose/`) and task 032 (ten-run stability gate,
-`docs/reports/phase3j-032-stability10/`) have not yet run. Per this phase's own plan, task 033
+Both gates are pending as of this writing: task 030 (the whole-suite sweep), task 031 (its
+verbose Gherkin-tally companion) and task 032 (the ten-run stability gate) have not yet run, and
+so none of the report directories their own `successCriteria` name exists yet — which is why this
+section names those tasks rather than their paths (see §5). Per this phase's own plan, task 033
 re-verifies the protected-path audit and the branch guards at the true final code sha and task
-034 writes `docs/reports/phase3j.md` (the requirement table and both gates' dispositions); task
+034 writes the phase closeout report (the requirement table and both gates' dispositions); task
 035 then replaces this placeholder with the actual disposition of the whole-suite sweep and the
 stability gate — their exit statuses, the code sha each ran at, their published report
 directories, and any recurrence of a §4 carried-forward finding, marked advisory.
