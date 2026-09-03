@@ -17,15 +17,18 @@ un-mutable by a source-scanning guard (R108); the hook rules are stated in user-
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
-a44ee320b93186496d56364836b0aed00a6f1e0b
+b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
 ```
 
-This is task 030's fix commit (`features/dialogs_test.go` and `features/agent_steps_test.go`'s
-create-modal keyboard-walk step helpers, updated for task 026's new Post-destroy field), the
-last commit in this phase to touch a `*.go` or `*.feature` path. Everything after it —
-including this report — is a docs-only descendant; `git status --porcelain` is empty and
-`git rev-parse HEAD origin/main` agree at `d1d5f776c637a5cf791a2f7efa5bf1a8ed13332c` as of
-this task's own commit (task 033's `d1d5f77`, the most recent verified pair).
+This is task 046's fix commit (tightening `internal/tui/hook_help_coverage_test.go` to catch the
+inaccurate R109 hook copy the independent review's finding 3 identified), the last commit in
+this phase to touch a `*.go` or `*.feature` path. It supersedes task 030's earlier `a44ee32`:
+review findings 1-3's fix commits (tasks 041-047 — `1a4b9db`, `d71c02f`, `a936b30`, `52e529b`,
+`2042cb8`, `31e6aff`, `b29afb8`, `6a22181`) landed after `a44ee32`, advancing the final code sha.
+Everything after `b29afb8` — including this report and the three refreshed gate directories
+below — is a docs-only descendant; `git status --porcelain` was empty and
+`git rev-parse HEAD origin/main` agreed at `ae62146b1534c136dcb1a25d30ac906594b66746` as of
+task 061's own commit, the most recent verified boundary check before this one.
 
 ## Per-requirement table
 
@@ -37,7 +40,7 @@ this task's own commit (task 033's `d1d5f77`, the most recent verified pair).
 | R107 | met | 010 (`schemaV6`, shared with R108), 011 (both the store round-trip and the CreateShell residual), 012, 013, 014, 015, 016, 017, 018, 019 | `f60b5e4`, `0299be9`, `9fb6aec`, `66711eb`, `259284b`, `720dafc`, `8876ad8`, `7ba666c`, `0e73841`, `3aa0fe3`, `c8e5911`, `b9132c9` | `internal/store/store.go`, `internal/store/store_test.go`, `internal/config/schema.go`, `internal/service/post_destroy.go`, `internal/service/post_destroy_test.go`, `internal/service/post_destroy_no_hook_paths_test.go`, `internal/tui/mark_test.go`, `features/teardown_hooks.feature`, `features/teardown_hooks_test.go`, `internal/tui/archive_undo_rebuild_note_test.go`, `internal/tui/tui.go`, `internal/service/shell.go`, `internal/service/shell_test.go` |
 | R108 | met | 010 (`launch_dirty`, shared with R107), 020, 021, 022, 023, 024, 025, 026, 027, 030 (`a44ee32`, the create-modal keyboard-walk step helpers updated for task 026's Post-destroy field) | `f60b5e4`, `8931988`, `db2ea55`, `ad51022`, `325d00a`, `630ac90`, `9fb25f7`, `6b8f1d0`, `6080c55`, `a44ee32`, `895f58d` | `internal/store/store.go`, `internal/store/store_test.go`, `internal/service/inject_launch_dirty_test.go`, `internal/service/restart.go`, `internal/service/restart_test.go`, `internal/store/no_forbidden_update_columns_test.go`, `internal/tui/launch_inputs.go`, `internal/service/launch_inputs.go`, `internal/service/launch_inputs_test.go`, `internal/tui/launch_inputs_wiring_test.go`, `internal/tui/launch_badge_test.go`, `internal/tui/create_post_destroy_test.go`, `features/dialogs_test.go`, `features/agent_steps_test.go`, `features/launch_inputs_editor_test.go`, `features/launch_hooks.feature` |
 | R109 | met | 028 | `17cabb8` | `internal/tui/hook_help_coverage_test.go`, `internal/tui/tui.go` (the idempotency claim, the fail-closed claim, the not-on-`x` claim and the never-echo claim, each asserted present somewhere a user can reach — `?` help, create-modal field help, the launch-inputs editor, settings' descriptions) |
-| R110 | met (this document and the gates it cites; the findings/DELIVERY-LOG/Telegram tasks that round out the phase's remaining paperwork are tasks 035–037, not yet committed as of this writing) | 029, 030, 031, 032, 033, 034 (this report) | `a30accd`, `12e0e72`, `2d45ef3`, `204af7d`, `fbbda8f`, `2ad633d`, `b79228d`, `8b029e1`, `b4807ce`, `899af55`, `fe18ea9`, `7e8cf1c`, `d1d5f77` | `docs/reports/phase3j-findings.md`, `docs/reports/phase3j-030-fullsuite/`, `docs/reports/phase3j-031-fullsuite-verbose/`, `docs/reports/phase3j-032-stability10/`, `docs/reports/phase3j-033-guards/`, this document, the GH issue #20 design section map below |
+| R110 | met (this document and the gates it cites; the findings/DELIVERY-LOG/Telegram tasks that round out the phase's remaining paperwork are tasks 035–037 — 035 and 036 landed as commits, 037 was a Telegram closing notification, which by its nature is sent, not committed to this repo) | 029, 030, 031, 032, 033, 034, 035, 036 (this report) | `a30accd`, `12e0e72`, `2d45ef3`, `204af7d`, `fbbda8f`, `2ad633d`, `b79228d`, `8b029e1`, `b4807ce`, `899af55`, `fe18ea9`, `7e8cf1c`, `d1d5f77`, `3a761d8` (035, `phase3j-findings.md` §8 gate dispositions), `3f658fe`, `028d25b`, `f0dee73`, `96716bb` (036, the DELIVERY-LOG.md Phase 3j paragraph) | `docs/reports/phase3j-findings.md`, `docs/DELIVERY-LOG.md`, `docs/reports/phase3j-030-fullsuite/`, `docs/reports/phase3j-031-fullsuite-verbose/`, `docs/reports/phase3j-032-stability10/`, `docs/reports/phase3j-033-guards/`, this document, the GH issue #20 design section map below |
 
 ## GH issue #20 design section map (task 034)
 
@@ -74,7 +77,7 @@ a fifth design section.
 
 ## Gate results
 
-**Whole-suite sweep (task 030, `a44ee32`, refreshed in place)** — `ci/run.sh go test -p=1
+**Whole-suite sweep (task 030, refreshed by task 058 at `b82e3de`)** — `ci/run.sh go test -p=1
 -count=1 ./...` at the final code sha above. Published at
 `docs/reports/phase3j-030-fullsuite/sweep.log` (`docs/reports/phase3j-030-fullsuite/README.md`).
 Exit status quoted verbatim from that README:
@@ -88,22 +91,23 @@ $ cat docs/reports/phase3j-030-fullsuite/README.md | sed -n '/## Exit status/,/`
 ```
 ```
 
-Every package result line is `ok` (13 packages) or `?` with `[no test files]` (`internal/notify`,
+Every package result line is `ok` (14 packages) or `?` with `[no test files]` (`internal/notify`,
 `internal/search`, `internal/unit`); no `t.Skip`, no godog `@wip`/skipped marker anywhere in the
-captured log. This refresh supersedes the earlier sweep published at `fbbda8f` per operator
-ruling `002-030` (task 030 was reset to pending and re-run once steps 1–3 of operator ruling
-001-011 — tasks 011, 013–019, 026 and 038 — were validated).
+captured log. This refresh supersedes the earlier refresh published at `a44ee32` (itself a
+supersession of `fbbda8f` per operator ruling `002-030`): review findings 1-3's fix commits
+(tasks 041–046) landed after `a44ee32`, advancing the final code sha to `b29afb8`, so task 058
+re-ran the sweep in place at the new sha; there is still no new numbered report directory.
 
-**Verbose companion tally (task 031, `b4807ce`, refreshed in place)** — the `-v` companion,
+**Verbose companion tally (task 031, refreshed by task 059 at `0fba55b`)** — the `-v` companion,
 same tree, same final code sha. Published at
 `docs/reports/phase3j-031-fullsuite-verbose/verbose.log`
 (`docs/reports/phase3j-031-fullsuite-verbose/verbose.log.exitstatus`,
 `docs/reports/phase3j-031-fullsuite-verbose/README.md`). This refresh supersedes the earlier
-tally published at `fbbda8f` per operator ruling `003-031`, polled with `sleep 60` and nothing
-longer throughout.
+tally published at `a44ee32` (itself a supersession of `fbbda8f` per operator ruling `003-031`),
+polled with `sleep 60` and nothing longer throughout.
 
-**Stability gate (task 032, `899af55`)** — `ci/stability.sh 10` from a clean state, at the
-final code sha above. Published at
+**Stability gate (task 032, refreshed by task 060 at `df4f768`)** — `ci/stability.sh 10` from a
+clean state, at the final code sha above. Published at
 `docs/reports/phase3j-032-stability10/summary.log`
 (`docs/reports/phase3j-032-stability10/README.md`). Final line quoted verbatim from that log:
 
@@ -113,18 +117,18 @@ $ tail -1 docs/reports/phase3j-032-stability10/summary.log
 ```
 
 The script's own captured exit status (recorded to a scratch path outside the tree at run
-time, per task 032's README) was `0`; every one of the ten runs is a `PASS`, and no failing
+time, per task 060's README) was `0`; every one of the ten runs is a `PASS`, and no failing
 run needs naming.
 
-**Protected-path audit and branch guards (task 033, `d1d5f77`)** — re-verified at the final
-code sha above. Published at `docs/reports/phase3j-033-guards/`. The audit command (computed
-`BASE`, not pasted) printed nothing; `git status --porcelain` was empty and
-`git rev-parse HEAD origin/main` agreed, both quoted verbatim in
+**Protected-path audit and branch guards (task 033, refreshed by task 061 at `ae62146`)** —
+re-verified at the final code sha above. Published at `docs/reports/phase3j-033-guards/`. The
+audit command (computed `BASE`, not pasted) printed nothing; `git status --porcelain` was empty
+and `git rev-parse HEAD origin/main` agreed, both quoted verbatim in
 `docs/reports/phase3j-033-guards/protected-path-audit.out`,
 `docs/reports/phase3j-033-guards/git-status-porcelain.out` and
 `docs/reports/phase3j-033-guards/rev-parse-head-origin-main.out`.
 
-**Both gates are green at the true final code sha `a44ee320b93186496d56364836b0aed00a6f1e0b`**:
+**Both gates are green at the true final code sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`**:
 the whole-suite sweep exits 0 with every package `ok`/`[no test files]`, and the stability gate
 is 10/10. Neither gate is qualified by an unresolved carried-forward finding from this phase's
 own R104–R109 work; the carried-forward advisories predate this phase (see
