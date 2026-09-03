@@ -103,8 +103,8 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 		t.Fatalf("instrument settings = %q, want absolute deck executable %q", argv[len(argv)-1], service.DeckExecutable)
 	}
 	envKeys := jsonStrings(launch["env_keys"])
-	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_ID,PATH,SECRET_TOKEN,VISIBLE" {
-		t.Fatalf("launch env_keys = %#v, want user and deck-owned launch keys", envKeys)
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,PATH,SECRET_TOKEN,VISIBLE" {
+		t.Fatalf("launch env_keys = %#v, want user, deck-owned session-context, and instrumentation keys", envKeys)
 	}
 	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", session.ID)
 	assertTMuxEnvironment(t, socket, session.Slug, "DECK_HOME", service.DeckHome)
@@ -193,8 +193,8 @@ func TestCreateAgentResolvesPATHInSPECOrder(t *testing.T) {
 			envKeys = jsonStrings(record["env_keys"])
 		}
 	}
-	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_ID,FROM_CONFIG,FROM_SESSION,PATH" {
-		t.Fatalf("launch env_keys = %#v, want config, session, and instrumentation keys present", envKeys)
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,FROM_CONFIG,FROM_SESSION,PATH" {
+		t.Fatalf("launch env_keys = %#v, want config, session, session-context, and instrumentation keys present", envKeys)
 	}
 }
 
@@ -307,8 +307,11 @@ func TestCreateAgentLoginShellInvocationForm(t *testing.T) {
 			t.Fatalf("login_shell launch env_keys = %#v, must not inject PATH (mutually exclusive with captured_path)", envKeys)
 		}
 	}
-	if strings.Join(envKeys, ",") != "FROM_SESSION" {
-		t.Fatalf("login_shell launch env_keys = %#v, want only FROM_SESSION", envKeys)
+	// SPEC §6.1 (R104): every launch, login_shell included, still carries
+	// deck's own session-context layer -- only the PATH-resolution layers
+	// (captured_path/config/session) are affected by login_shell.
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,FROM_SESSION" {
+		t.Fatalf("login_shell launch env_keys = %#v, want session-context keys plus only FROM_SESSION", envKeys)
 	}
 }
 
@@ -374,18 +377,19 @@ func TestCreateAgentShellHasNoInstrumentation(t *testing.T) {
 			continue
 		}
 		if argv := jsonStrings(record["argv"]); strings.Contains(strings.Join(argv, " "), "--settings") {
-			t.Fatalf("shell launch argv contains instrumentation: %#v", argv)
+			t.Fatalf("shell launch argv contains claude-only instrumentation: %#v", argv)
 		}
 		for _, key := range jsonStrings(record["env_keys"]) {
-			if strings.HasPrefix(key, "DECK_") {
-				t.Fatalf("shell launch environment contains instrumentation key %q", key)
+			if key == "DECK_LAUNCH_GENERATION" {
+				t.Fatalf("shell launch environment unexpectedly carries a launch generation (no lease taken on create): %#v", record["env_keys"])
 			}
 		}
 	}
-	out, err := exec.Command("tmux", "-L", socket, "show-environment", "-t", "deck_"+session.Slug, "DECK_SESSION_ID").CombinedOutput()
-	if err == nil {
-		t.Fatalf("shell tmux environment unexpectedly has DECK_SESSION_ID: %s", out)
-	}
+	// SPEC §6.1 (R104): every adapter, shell included, now carries the
+	// deck-owned session context -- this is the point of the requirement,
+	// not an exception to it.
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", session.ID)
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_HOME", service.DeckHome)
 }
 
 func assertTMuxEnvironment(t *testing.T, socket, slug, key, want string) {

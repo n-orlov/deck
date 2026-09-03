@@ -70,7 +70,7 @@ func TestCreateShellPersistsLaunchesAndAudits(t *testing.T) {
 	if starting["event"] != "starting" || starting["session_id"] != session.ID || starting["duration_ms"].(float64) < 1 {
 		t.Fatalf("starting transition = %#v", starting)
 	}
-	if launch["event"] != "launch" || launch["session_id"] != session.ID || strings.Join(jsonStrings(launch["argv"]), "\x00") != "/bin/sh" || strings.Join(jsonStrings(launch["env_keys"]), ",") != "SECRET_TOKEN,VISIBLE" {
+	if launch["event"] != "launch" || launch["session_id"] != session.ID || strings.Join(jsonStrings(launch["argv"]), "\x00") != "/bin/sh" || strings.Join(jsonStrings(launch["env_keys"]), ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,SECRET_TOKEN,VISIBLE" {
 		t.Fatalf("launch audit = %#v", launch)
 	}
 	if ready["event"] != "launch.ready" || ready["session_id"] != session.ID || ready["duration_ms"].(float64) < 1 {

@@ -94,10 +94,14 @@ func TestResumeExportsCurrentLaunchGenerationToThePane(t *testing.T) {
 }
 
 // TestResumeShellSessionCarriesNoLaunchGeneration keeps R74 off the shell
-// path: a shell has no hook source at all (Shell.Instrument returns nothing),
-// so nothing about it should acquire deck-owned environment. Its resume still
-// takes the launch lease, so the row does get a generation -- the point is
-// that the pane does not.
+// path: a shell has no Claude-specific hook source at all
+// (Shell.Instrument returns nothing), so DECK_LAUNCH_GENERATION -- which
+// only Claude's own Instrument sets -- never reaches its pane, even though
+// SPEC §6.1's deck-owned session context (DECK_SESSION_ID and friends) now
+// does, on every adapter alike (R104). Its resume still takes the launch
+// lease, so the row does get a generation -- the point is that the pane
+// does not carry a launch-generation token, not that the pane carries no
+// deck-owned environment at all.
 func TestResumeShellSessionCarriesNoLaunchGeneration(t *testing.T) {
 	cwd := t.TempDir()
 	service, db, logger, socket := newAgentTestService(t, nil, "launch-generation-shell")
@@ -125,15 +129,15 @@ func TestResumeShellSessionCarriesNoLaunchGeneration(t *testing.T) {
 		t.Fatal("resumed shell row carries no launch generation")
 	}
 	assertNoTMuxEnvironment(t, socket, session.Slug, "DECK_LAUNCH_GENERATION")
-	assertNoTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID")
+	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", created.ID)
 
 	for _, record := range auditRecords(t, logger.Path()) {
 		if record["event"] != "launch" {
 			continue
 		}
 		for _, key := range jsonStrings(record["env_keys"]) {
-			if strings.HasPrefix(key, "DECK_") {
-				t.Fatalf("shell launch environment contains deck-owned key %q", key)
+			if key == "DECK_LAUNCH_GENERATION" {
+				t.Fatalf("shell launch environment unexpectedly carries a launch generation: %#v", record["env_keys"])
 			}
 		}
 	}

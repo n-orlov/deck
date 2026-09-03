@@ -99,12 +99,12 @@ func TestClaude_InstrumentReturnsInlineHooksAndDeckEnvironmentWithoutIO(t *testi
 	if len(argv) != 2 || argv[0] != "--settings" {
 		t.Fatalf("Instrument argv = %#v, want one inline --settings value", argv)
 	}
-	wantEnv := map[string]string{
-		"DECK_SESSION_ID": "deck-row-42",
-		"DECK_HOME":       "/tmp/scenario-deck-home",
-	}
-	if !reflect.DeepEqual(env, wantEnv) {
-		t.Fatalf("Instrument env = %#v, want %#v", env, wantEnv)
+	// DECK_SESSION_ID and DECK_HOME moved to internal/service's own
+	// session-context map (SPEC §6.1, R104); with no LaunchGeneration set
+	// (this call's LaunchInput carries none), Claude's own instrumentation
+	// now contributes no environment at all.
+	if env != nil {
+		t.Fatalf("Instrument env = %#v, want nil (session context and launch generation both absent)", env)
 	}
 
 	var settings struct {
