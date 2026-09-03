@@ -2,26 +2,29 @@
 
 Companion to the phase closeout report task 034 writes (that task's own `successCriteria` in
 the run's own `/run/ralphd/tasks.json` names its path; it is deliberately not cited here, because
-every repo path this report cites is one already tracked in git — see §5): what the requirement
+every repo path this report cites is one already tracked in git — see §7): what the requirement
 table does not carry — a task that ended `failed` and the dependency doom it leaves behind, gaps
 a validation pass found that were then closed within the same task rather than left open, the
 protected-path audit's disposition over this run's own commit range, this phase's check for a
-disagreement between the tree and `SPEC.md`, and a placeholder for both gates' dispositions
-(tasks 030/032, filled in by tasks 033 and 034 per the plan).
+disagreement between the tree and `SPEC.md`, the schema-version pins in `features/` that task
+010's `SchemaVersion` bump left stale (one fixed in flight, two still failing), and a placeholder
+for both gates' dispositions (tasks 030/032, filled in by tasks 033 and 034 per the plan).
 
 Written by task 029 against the tree at commit `17cabb871d0c8c17dc742256632015ed1889db9b` (the
 last commit touching `*.go`/`*.feature` as of this writing; task 034's closeout report, and its
 own final-code-sha section, are the authority once they land — this section does not repeat that
 ancestry argument). Every sha cited resolves under `git cat-file -e` and every path cited is
 tracked under `git ls-files --error-unmatch`, both checked in
-[§5](#5-how-to-re-check-every-citation-in-this-report).
+[§7](#7-how-to-re-check-every-citation-in-this-report).
 
 - [1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
 - [2. Three tasks (002, 007, 023) had a validation-found gap that was closed within the same task's own follow-up commit, not left open](#2-three-tasks-002-007-023-had-a-validation-found-gap-that-was-closed-within-the-same-tasks-own-follow-up-commit-not-left-open)
 - [3. One SPEC-versus-tree disagreement found in R104–R109's landed work: CreateShell skips the hook composition and the config env layer](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work-createshell-skips-the-hook-composition-and-the-config-env-layer)
 - [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-not-yet-checked-against-a-whole-suite-run)
-- [5. How to re-check every citation in this report](#5-how-to-re-check-every-citation-in-this-report)
-- [6. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034](#6-placeholder-gate-dispositions-whole-suite-sweep-and-ten-run-stability-filled-in-by-tasks-033-and-034)
+- [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
+- [6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep)
+- [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
+- [8. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034](#8-placeholder-gate-dispositions-whole-suite-sweep-and-ten-run-stability-filled-in-by-tasks-033-and-034)
 
 ## 1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing
 
@@ -268,14 +271,114 @@ standing rules): F2 (golden-frame settle), F20 (`status_recovery` dup-pane), F22
 (`ByteArrivalPattern`), F37 (`sort_order` latent race), F7 (quantisation collisions), the
 `features/filter.feature` dd/undo race, and the OSC 52 clipboard-reliability question. Tasks
 001–028 ran only targeted package tests (`internal/service`, `internal/store`, `internal/tui`,
-single-feature `internal/features` runs), never the whole-suite sweep that would exercise the
+single-feature `features` runs), never the whole-suite sweep that would exercise the
 `features`/`internal/interactive` packages these seven findings live in — that sweep is task
 030's own job, not yet run as of this writing. **This section does not claim a recurrence check
 here**; task 035 ("Fill in the gate dispositions") is the task that runs the by-name recurrence
-grep against task 030's actual sweep log and records the result, in §6's disposition placeholder
-below.
+grep against task 030's actual sweep log and records the result, in §8's disposition placeholder
+below. One consequence of never having run a whole-`features` package test during 001–028 is
+[§6](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep):
+four `features/store.feature` scenarios fail at this very tree, and nothing in 001–028 would have
+noticed.
 
-## 5. How to re-check every citation in this report
+## 5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027
+
+Task 010 (`f60b5e4`, "store: add schemaV6 (`post_destroy`, `launch_dirty`), bump `SchemaVersion`
+to 6") moved `internal/store/store.go`'s `const SchemaVersion` from 5 to 6. Several *black-box*
+test literals under `features/` copy that number by hand rather than importing it (deliberately —
+that harness observes the released binary without importing `internal/...`), and task 010 did not
+sweep them.
+
+Task 027 (`895f58d`) hit one of them: `TestBlackBoxAssertionsObserveRealSession` in
+`features/assertions_test.go` called `databaseSchemaVersion(stepCtx, 5)`, which made task 027's
+own required command (`DECK_GODOG_PATHS=launch_hooks.feature go test ./features`) exit nonzero for
+a reason unrelated to the scenario it was adding. Task 027's commit message records the fix
+verbatim:
+
+> Also fixes a stale schema-version pin in TestBlackBoxAssertionsObserveRealSession
+> (features/assertions_test.go), hardcoded at 5 from before task 010 bumped
+> internal/store.SchemaVersion to 6 -- an unrelated pre-existing gap that
+> otherwise makes this task's own required command
+> (DECK_GODOG_PATHS=launch_hooks.feature go test ./features) exit nonzero
+> regardless of the new scenario's own correctness.
+
+Confirmed fresh against the committed code:
+
+```
+$ grep -n "SchemaVersion = " internal/store/store.go
+22:const SchemaVersion = 6
+$ grep -n "databaseSchemaVersion(stepCtx" features/assertions_test.go
+1095:	if err := databaseSchemaVersion(stepCtx, 6); err != nil {
+```
+
+**Disposition.** Fixed inside task 027, with a comment at the pin saying it must track
+`internal/store.SchemaVersion` exactly. It is recorded here because it is a *pre-existing* gap
+this phase inherited and repaired in passing rather than part of any task's own criteria, and
+because it is the same drift class as §6's two still-open literals below. Rule for any future
+phase that bumps `SchemaVersion`: grep `features/` for the old number before calling the bump
+done.
+
+## 6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep
+
+The drift of §5 survives in two more places that task 027's targeted single-feature run could not
+reach. Both were found by task 029 while writing this report, by running the one feature file
+nothing in tasks 001–028 had run (dev evidence, not a deliverable sweep):
+
+```
+$ ci/run.sh sh -c 'DECK_GODOG_PATHS=store.feature go test -count=1 ./features'   # exit 1
+--- FAIL: TestFeatures (4.59s)
+    --- FAIL: TestFeatures/initialize_a_private_v2_WAL_database
+        after scenario hook failed: schema version = 6, want 5
+    --- FAIL: TestFeatures/migrate_an_older_supported_database
+    --- FAIL: TestFeatures/migrate_a_v1_database_in_place_without_recreating_a_session_row
+    --- FAIL: TestFeatures/refuse_a_newer_database_without_corruption
+        released binary did not clearly refuse newer database: "deck event retention: read event
+        retention throttle: read ui_state event_retention_last_run_at: SQL logic error: no such
+        table: ui_state (1)"
+FAIL	github.com/n-orlov/deck/features	20.906s
+```
+
+**(a) `features/store.feature` pins schema version 5 in three scenarios.** Three steps read
+`the state database has schema version 5` while the binary now writes 6:
+
+```
+$ grep -n "schema version" features/store.feature
+9:    And the state database has schema version 5
+15:    Then the state database has schema version 5
+24:    Then the state database has schema version 5
+```
+
+That is the `schema version = 6, want 5` error above, in the first three scenarios.
+
+**(b) `features/store_feature_test.go`'s "newer unsupported" fixture is no longer newer.**
+`newerDatabaseFixture` writes `user_version` 6 — chosen as "one past `SchemaVersion`" back when
+`SchemaVersion` was 5, and stale since task 010 made 6 the *current* version:
+
+```
+$ grep -n "writeDatabaseFixture(h, 6)" features/store_feature_test.go
+58:	if err := writeDatabaseFixture(h, 6); err != nil {
+```
+
+Its own comment states the invariant it now violates ("One past internal/store.SchemaVersion
+(bumped to 5 by task 330) -- must always stay strictly newer than the binary understands, so a
+later SchemaVersion bump has to bump this literal too"). Because the fixture is no longer newer,
+the released binary does not refuse it: it opens it as a current-version database whose tables the
+fixture never created and fails with `no such table: ui_state` instead of the
+`newer than supported` refusal `clearlyRefusesNewerDatabase` asserts — so
+`refuse a newer database without corruption` fails for a second, distinct reason.
+
+**Disposition: open as of this writing, and a gate blocker rather than an advisory.** Task 030's
+`successCriteria` require the whole-suite sweep's recorded exit status to be 0; while these two
+literals are stale the `features` package fails, so that sweep cannot be green until both are
+corrected — (a) by moving `features/store.feature`'s three pins to 6, (b) by moving the fixture
+literal to one past the current `SchemaVersion`. Neither is a `SPEC.md` disagreement (§4 of
+`SPEC.md` fixes the schema and its migration invariant, not these black-box literals) and neither
+is a product bug: both are test literals that copy `internal/store.SchemaVersion` by hand, the
+drift point §5 warns about. Editing a `.feature` file requires the standing rules' `od -c` check
+for `\r` corruption. Nothing in this report performs those edits — task 029's criteria are
+documentary; the repair belongs to whichever task or planning pass takes task 030's gate to green.
+
+## 7. How to re-check every citation in this report
 
 Every backticked sha above resolves under `git cat-file -e`; every backticked repo-relative path
 names a file tracked under `git ls-files --error-unmatch`:
@@ -301,6 +404,9 @@ $ git ls-files --error-unmatch \
     internal/tui/hook_help_coverage_test.go \
     cmd/deck/main.go \
     features/launch_hooks.feature \
+    features/assertions_test.go \
+    features/store.feature \
+    features/store_feature_test.go \
     SPEC.md \
     prds/phase3j-launch-and-teardown-hooks.md
 (all resolve, this report's own path docs/reports/phase3j-findings.md included — it became
@@ -319,12 +425,12 @@ is a repo file and neither is claimed to be tracked.
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
 
-## 6. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034
+## 8. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034
 
 Both gates are pending as of this writing: task 030 (the whole-suite sweep), task 031 (its
 verbose Gherkin-tally companion) and task 032 (the ten-run stability gate) have not yet run, and
 so none of the report directories their own `successCriteria` name exists yet — which is why this
-section names those tasks rather than their paths (see §5). Per this phase's own plan, task 033
+section names those tasks rather than their paths (see §7). Per this phase's own plan, task 033
 re-verifies the protected-path audit and the branch guards at the true final code sha and task
 034 writes the phase closeout report (the requirement table and both gates' dispositions); task
 035 then replaces this placeholder with the actual disposition of the whole-suite sweep and the
