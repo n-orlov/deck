@@ -821,8 +821,8 @@ agreeing respectively
 ([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)). **No task in this plan
 rests `skipped`, and none rests `failed` at close**, though one did mid-run: task 011 ("Plumb
 `post_destroy` through the store's session write and read paths") exhausted its validation
-attempts on one residual gap —
-`ShellCreateInput` had no `PostDestroy` field, so a `CreateShell` row could never carry one,
+attempts on one residual gap — `ShellCreateInput` had no `PostDestroy` field, so a
+`CreateShell` row could never carry one,
 unlike a `CreateAgent` row — but the operator's own ruling `001-011` reopened it as a
 steer-originated pending task narrowed to exactly that gap, and it reached `validated` again
 once task 038 (`2e5fc6b`, `566cb6d`) closed it alongside its own scope, a §6.1 SPEC-conformance
