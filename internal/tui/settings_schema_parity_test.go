@@ -223,3 +223,42 @@ func TestSettingsViewIncludesGlobalPreLaunchField(t *testing.T) {
 		t.Error("pre_launch is rendered by settingsCategories() but config.FieldByFullKey cannot find it in config.Schema")
 	}
 }
+
+// TestSettingsViewIncludesGlobalPostDestroyField is task 012's own success
+// criterion: the settings takeover's view -- settingsCategories(), built by
+// walking config.Schema (see this file's own doc comment) -- must contain
+// the global post_destroy field because it is declared in config.Schema,
+// not because settings.go hand-builds an entry for it. Mirrors
+// TestSettingsViewIncludesGlobalPreLaunchField's shape, asserting kind,
+// default and scope, and that its description names it as the global
+// teardown hook.
+func TestSettingsViewIncludesGlobalPostDestroyField(t *testing.T) {
+	var found config.Field
+	ok := false
+	for _, cat := range settingsCategories() {
+		for _, f := range cat.Fields {
+			if f.FullKey() == "post_destroy" {
+				found = f
+				ok = true
+			}
+		}
+	}
+	if !ok {
+		t.Fatal("settingsCategories() (the settings view generated from config.Schema) does not contain post_destroy")
+	}
+	if found.Kind != config.KindString {
+		t.Errorf("post_destroy Kind = %q, want %q", found.Kind, config.KindString)
+	}
+	if found.Default != "" {
+		t.Errorf("post_destroy Default = %v, want \"\"", found.Default)
+	}
+	if found.Scope != config.ScopeRestartToApply {
+		t.Errorf("post_destroy Scope = %q, want %q", found.Scope, config.ScopeRestartToApply)
+	}
+	if !strings.Contains(found.Description, "global") {
+		t.Errorf("post_destroy Description does not say it is the global teardown hook: %q", found.Description)
+	}
+	if _, schemaOK := config.FieldByFullKey("post_destroy"); !schemaOK {
+		t.Error("post_destroy is rendered by settingsCategories() but config.FieldByFullKey cannot find it in config.Schema")
+	}
+}

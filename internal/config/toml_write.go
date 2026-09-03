@@ -254,6 +254,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.Quote(cfg.Theme)
 	case "pre_launch":
 		return strconv.Quote(cfg.PreLaunch)
+	case "post_destroy":
+		return strconv.Quote(cfg.PostDestroy)
 	default:
 		// Unreachable for a well-formed Schema: every flat (non-[env])
 		// field is one of the cases above. Fall back to the field's

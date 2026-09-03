@@ -542,6 +542,25 @@ var Schema = []Field{
 		Scope: ScopeRestartToApply,
 	},
 	{
+		Section: "",
+		Key:     "post_destroy",
+		Kind:    KindString,
+		Default: "",
+		Description: "The global teardown hook (task 012, phase3j): a shell command run " +
+			"once a session's pane is gone, the same way a session's own post_destroy " +
+			"already can, but for EVERY session rather than one chosen at create time. " +
+			"Empty by default -- nothing runs unless this is set. Restart-to-apply: " +
+			"saving here writes config.toml immediately, but the already-running " +
+			"client's teardown path keeps using whichever value it read at process " +
+			"start until deck restarts.",
+		// requirement 19: this key has no live consumer -- it is read once, at
+		// process start, into service.Service (cmd/deck/main.go), and every
+		// teardown for the lifetime of that process uses the value captured
+		// then. A save changes config.toml immediately but the already-running
+		// client keeps tearing down with the old value until deck restarts.
+		Scope: ScopeRestartToApply,
+	},
+	{
 		Section:     "env",
 		Key:         "",
 		Kind:        KindListOfStrings,
