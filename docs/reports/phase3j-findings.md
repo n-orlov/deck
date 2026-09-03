@@ -19,7 +19,7 @@ tracked under `git ls-files --error-unmatch`, both checked in
 
 - [1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
 - [2. Three tasks (002, 007, 023) had a validation-found gap that was closed within the same task's own follow-up commit, not left open](#2-three-tasks-002-007-023-had-a-validation-found-gap-that-was-closed-within-the-same-tasks-own-follow-up-commit-not-left-open)
-- [3. One SPEC-versus-tree disagreement found in R104–R109's landed work: CreateShell skips the hook composition and the config env layer](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work-createshell-skips-the-hook-composition-and-the-config-env-layer)
+- [3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b` and `566cb6d`](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work--closed-by-task-038-at-2e5fc6b-and-566cb6d)
 - [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-not-yet-checked-against-a-whole-suite-run)
 - [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
 - [6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep)
@@ -156,7 +156,7 @@ walking each task's own commit history, would see an apparently-unresolved criti
 `validated` task — this is the record that it was, in fact, resolved, by which commit, and how
 to check that fresh.
 
-## 3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b`
+## 3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b` and `566cb6d`
 
 **The disagreement, named with its SPEC sections and its repo-relative source path.**
 
@@ -164,7 +164,7 @@ to check that fresh.
 |---|---|
 | SPEC sections | §6.4 (`pre_launch` "runs in the pane, in the same shell that then execs the agent"; "A hook must be idempotent, because it runs on every launch … fires on create, on `r`, on `R`"), §6.5 ("The two hook keys are global defaults that compose with a session's own, never replace it. … Both run, **global first**"), §6.1 (the resolution order includes `[env]` in `config.toml` for every pane deck launches — "every adapter, `shell` included, on create and on resume alike"), §6.3 (`captured_path` sits **between** the server environment and `[env]`) |
 | Source path | `internal/service/shell.go` (`Service.CreateShell`) |
-| Disposition | **Fixed by task 038, commit `2e5fc6ba831300d1d9b259ded3f0cfcb842f899d`.** `CreateShell` now builds `launchEnv` through `resolveLaunchEnv(capturedPath, input.Env)` (the same PATH-resolution layering `CreateAgent`/`Resume` use — `captured_path`, then `config.toml`'s `[env]`, then the session's own env) and wraps its argv through `buildPaneCommand(s.GlobalPreLaunch, "", false, argv)` before handing it to tmux, so `Service.GlobalPreLaunch` now composes ahead of the shell binary on create exactly as §6.5 requires. `ShellCreateInput` still carries no per-session `pre_launch` field of its own (unlike `AgentCreateInput.PreLaunch`), so the session-hook slot `buildPaneCommand` is called with is always `""` on create — a shell row's own `pre_launch` (settable later via the launch-inputs editor, §11.4) still only takes effect starting from that row's first `r`/`R`, which is `Resume`'s pre-existing, adapter-agnostic composition, not a further gap in `CreateShell` itself. Evidence: `internal/service/shell_test.go`'s `TestCreateShellPaneCarriesSessionContextWithRowsOwnValues` (criterion a) and `TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained` (criterion b, mirroring `agent_test.go`'s `TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`), plus `TestCreateShellPersistsLaunchesAndAudits`'s updated `env_keys` assertion (now includes `PATH`, proving `resolveLaunchEnv` is in the loop). |
+| Disposition | **Fixed by task 038, commits `2e5fc6ba831300d1d9b259ded3f0cfcb842f899d` (env layering plus the global hook) and `566cb6d7216577540e7e2e7db98951db2e415d0e` (the session's own hook).** `CreateShell` now builds `launchEnv` through `resolveLaunchEnv(capturedPath, input.Env)` (the same PATH-resolution layering `CreateAgent`/`Resume` use — `captured_path`, then `config.toml`'s `[env]`, then the session's own env) and wraps its argv through `buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, false, argv)` before handing it to tmux, so both hook layers compose ahead of the shell binary on create, global-first, exactly as §6.5 requires. `ShellCreateInput` gained a `PreLaunch` field in `566cb6d`, which `CreateShell` also persists into the row's own `pre_launch` column, so the hook a shell create ran is the same line its later `r`/`R` re-runs through `Resume`'s pre-existing composition; the create modal's Pre-launch field, offered for every agent including `shell`, is now handed to `CreateShell` instead of dropped (`internal/tui/tui.go`'s `submitCreate`). Evidence: `internal/service/shell_test.go`'s `TestCreateShellPaneCarriesSessionContextWithRowsOwnValues` (criterion a), `TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained` and `TestCreateShellFailingOwnPreLaunchIsFailClosed` (criterion b, mirroring `agent_test.go`'s `TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`), `TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell` (global-first order, the durable `pre_launch` column and the launch-audit pane command), `internal/tui/create_shell_pre_launch_test.go`'s `TestCreateModalShellSubmitPassesPreLaunchThrough` (the UI seam), plus `TestCreateShellPersistsLaunchesAndAudits`'s updated `env_keys` assertion (now includes `PATH`, proving `resolveLaunchEnv` is in the loop). |
 
 `CreateShell` now builds its pane command through `buildPaneCommand` and its `launchEnv` through
 `resolveLaunchEnv`, the same two functions `CreateAgent` and `Resume` call. Confirmed fresh
@@ -172,8 +172,8 @@ against the committed code:
 
 ```
 $ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/shell.go
-183:	launchEnv := s.resolveLaunchEnv(capturedPath, input.Env)
-201:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, "", false, argv)
+191:	launchEnv := s.resolveLaunchEnv(capturedPath, input.Env)
+214:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, false, argv)
 $ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/agent.go internal/service/resume.go
 agent.go:133:	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
 agent.go:144:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, input.LoginShell, argv)
@@ -184,16 +184,24 @@ resume.go:268:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, session.P
 `CreateShell` is now among both functions' call sites, closing the three consequences the
 original finding named:
 
-- **The global hook now runs when a `shell` session is created.** `Service.GlobalPreLaunch` now
-  reaches a `shell` create through the same `buildPaneCommand` `Resume` already used, joined
-  ahead of the bare shell argv with `&&`, fail-closed on a non-zero exit exactly like the agent
-  paths (`TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`).
-  `ShellCreateInput` still has no per-session `pre_launch` field of its own (unlike
-  `AgentCreateInput.PreLaunch`), so `buildPaneCommand`'s session-hook argument is always `""` on
-  a shell create; a shell row's own `pre_launch`, set later via the launch-inputs editor, takes
-  effect starting from that row's first `r`/`R` through `Resume`'s pre-existing composition, not
-  through `CreateShell`. `login_shell` is likewise still not a `ShellCreateInput` field (shells
-  have no adapter argv of their own to need it), so it is passed as `false` on this path.
+- **Both hook layers now run when a `shell` session is created.**
+  `Service.GlobalPreLaunch` and the session's own `pre_launch` reach a `shell` create through
+  the same `buildPaneCommand` `Resume` already used, joined global-first ahead of the bare shell
+  argv with `&&`, fail-closed on a non-zero exit from either one exactly like the agent paths
+  (`TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell`,
+  `TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`,
+  `TestCreateShellFailingOwnPreLaunchIsFailClosed`; the two failure tests set `Service.Shell` to
+  a marker-writing stand-in shell so "the shell was never reached" is a discriminating
+  assertion rather than the absence of output a real idle `/bin/sh` also produces).
+  `ShellCreateInput.PreLaunch` is persisted into the row's `pre_launch` column, so the same hook
+  re-runs on every later `r`/`R` through `Resume`'s pre-existing composition rather than only on
+  create. `login_shell` remains not a `ShellCreateInput` field (a shell session's argv already
+  *is* the user's shell), so it is passed as `false` on this path; the create modal's `Login
+  shell` toggle and its `Env` field are likewise still not forwarded on the shell create path
+  (`internal/tui/tui.go`'s `submitCreate` passes name, cwd and `pre_launch` only) — a distinct,
+  pre-existing UI-seam gap outside task 038's criteria, recorded here as advisory rather than
+  fixed, and not a hook-composition gap: a shell row's `env` is settable after create through
+  the §11.4 env editor and takes effect on its next launch.
 - **`config.toml`'s `[env]` layer and `captured_path` are now present in a freshly created shell
   pane**, via `resolveLaunchEnv`, agreeing with §6.1's stated resolution order and §6.3's PATH
   mitigation. `TestCreateShellPersistsLaunchesAndAudits`'s launch-audit `env_keys` assertion now
@@ -203,8 +211,8 @@ This was the launch-side half of a shape whose storage-side half is
 [§1](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
 (task 011's residual gap: `ShellCreateInput` carried no per-session `PostDestroy`). Both halves
 are now closed: task 011 gave `ShellCreateInput` its `PostDestroy` field (commit `9fb6aec`), and
-task 038 (commit `2e5fc6b`, this section) routed `CreateShell` through `resolveLaunchEnv` and
-`buildPaneCommand`.
+task 038 (commits `2e5fc6b` and `566cb6d`, this section) routed `CreateShell` through
+`resolveLaunchEnv` and `buildPaneCommand` with both hook layers.
 
 **The rest of R104–R109's landed work agrees with `SPEC.md`.** The PRD's own instruction ("Where
 this PRD and `SPEC.md` disagree, `SPEC.md` wins and the disagreement is a finding … never an
@@ -384,11 +392,12 @@ names a file tracked under `git ls-files --error-unmatch`:
 ```
 $ for sha in 06ea5b7 be6e42b f1788b9 5bc6f3e c13a909 ed8b81e 38ad227 34f1560 db8d5c7 0316c51 \
     b50cc20 5ef971b f60b5e4 0299be9 66711eb 8931988 db2ea55 ad51022 325d00a 630ac90 9fb25f7 \
-    6b8f1d0 895f58d 17cabb8; do \
+    6b8f1d0 895f58d 17cabb8 9fb6aec 2e5fc6b 566cb6d; do \
     git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
 (all print "<sha> ok")
 $ git ls-files --error-unmatch \
     internal/service/shell.go \
+    internal/service/shell_test.go \
     internal/service/session_context.go \
     internal/service/session_context_test.go \
     internal/service/agent.go \
@@ -398,6 +407,7 @@ $ git ls-files --error-unmatch \
     internal/store/store.go \
     internal/config/schema.go \
     internal/tui/tui.go \
+    internal/tui/create_shell_pre_launch_test.go \
     internal/tui/launch_inputs.go \
     internal/tui/hook_help_coverage_test.go \
     cmd/deck/main.go \
