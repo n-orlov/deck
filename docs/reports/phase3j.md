@@ -91,8 +91,8 @@ $ cat docs/reports/phase3j-030-fullsuite/README.md | sed -n '/## Exit status/,/`
 Every package result line is `ok` (13 packages) or `?` with `[no test files]` (`internal/notify`,
 `internal/search`, `internal/unit`); no `t.Skip`, no godog `@wip`/skipped marker anywhere in the
 captured log. This refresh supersedes the earlier sweep published at `fbbda8f` per operator
-ruling `002-030` (task 030 was reset to pending and re-run once steps 1–3 of the operator's
-`001-unblock-011-gate-ordering.md` — tasks 011, 013–019, 026 and 038 — were validated).
+ruling `002-030` (task 030 was reset to pending and re-run once steps 1–3 of operator ruling
+001-011 — tasks 011, 013–019, 026 and 038 — were validated).
 
 **Verbose companion tally (task 031, `b4807ce`, refreshed in place)** — the `-v` companion,
 same tree, same final code sha. Published at
