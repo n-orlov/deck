@@ -203,6 +203,7 @@ func TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen(t *testing.T) {
 		LaunchArgs:        []string{"--extra", "flag"},
 		Env:               map[string]string{"FOO": "bar", "BAZ": "qux"},
 		PreLaunch:         "source secrets.sh",
+		PostDestroy:       "notify-teardown.sh",
 		LoginShell:        true,
 		PermissionProfile: "yolo",
 		ConversationID:    "11111111-1111-4111-8111-111111111111",
@@ -237,6 +238,9 @@ func TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen(t *testing.T) {
 		}
 		if session.PreLaunch != input.PreLaunch {
 			t.Fatalf("pre_launch = %q; want %q", session.PreLaunch, input.PreLaunch)
+		}
+		if session.PostDestroy != input.PostDestroy {
+			t.Fatalf("post_destroy = %q; want %q", session.PostDestroy, input.PostDestroy)
 		}
 		if !session.LoginShell {
 			t.Fatalf("login_shell = false; want true")
