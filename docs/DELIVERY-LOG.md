@@ -789,6 +789,51 @@ Evidence: [`docs/reports/phase3i.md`](reports/phase3i.md)
 protected-path audit disclosure, both gates' disposition quoted verbatim, the SPEC §11.3 footer
 finding (numbered finding 8, task 403), and this phase's own out-of-scope recurrence check).
 
+**Phase 3j** — `prds/phase3j-launch-and-teardown-hooks.md`, run `deck-phase3j`, 2026-09-03. Seven
+requirements, **R104–R110**, closing GH issue #20: every pane now carries its own session's
+`DECK_SESSION_*` context on both launch paths, including `CreateShell` (R104); a global
+`pre_launch` composes global-first with the session's own, fail-closed, on every launch path
+including `CreateShell` (R105); the hook's env-mutation contract — reaches the agent, not the
+tmux session table, not `state.db` — is stated and tested (R106); a global/per-session
+`post_destroy` runs session-then-global on `A`/`dd`, fail-open, bounded by a named 30s timeout,
+and never on `x` or a reap path (R107); the four editable launch inputs (`pre_launch`,
+`post_destroy`, `launch_args`, `login_shell`) are editable on a live row through a
+`launch_dirty` flag and `launch↻` badge, restart-to-apply, with `agent`/`cwd`/`slug`/
+`captured_path` enforced un-mutable by a source-scanning guard (R108); the hook rules are
+stated in user-reachable copy (R109); and the record — this document plus
+[`docs/reports/phase3j.md`](reports/phase3j.md) and
+[`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) — closes on the tree (R110).
+**Final code sha `a44ee320b93186496d56364836b0aed00a6f1e0b`** (task 030's own fix commit,
+updating `features/dialogs_test.go` and `features/agent_steps_test.go`'s create-modal
+keyboard-walk step helpers for task 026's new Post-destroy field — the last commit in the phase
+to touch a `*.go` or `*.feature` path; everything after it, including both gate refreshes and
+this paragraph, is a docs-only descendant). Both gates measured green at that sha, after an
+operator ruling (`001-unblock-011-gate-ordering.md`) reset and re-ran them once tasks 011,
+013–019, 026 and 038 landed: the mandated, unnarrowed whole-suite sweep
+(`ci/run.sh go test -p=1 -count=1 ./...`) exits **0**, all 13 packages `ok` plus 3
+`[no test files]`
+([`docs/reports/phase3j-030-fullsuite/README.md`](reports/phase3j-030-fullsuite/README.md));
+the stability gate's own `summary.log` final line reads, verbatim, **`10/10 passed`**, script
+exit **`0`**
+([`docs/reports/phase3j-032-stability10/README.md`](reports/phase3j-032-stability10/README.md)).
+The protected-path audit and both branch guards were re-verified at that same sha, empty and
+agreeing respectively
+([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)). **No task in this plan
+ended `skipped` or `failed`**: task 011 ("Plumb `post_destroy` through the store's session write
+and read paths") did end `failed` (validation-exhausted) mid-run on one residual gap —
+`ShellCreateInput` had no `PostDestroy` field, so a `CreateShell` row could never carry one,
+unlike a `CreateAgent` row — but the operator's own ruling `001-011` reopened it as a
+steer-originated pending task narrowed to exactly that gap, and it reached `validated` again
+once task 038 (`2e5fc6b`, `566cb6d`) closed it alongside its own scope, a §6.1 SPEC-conformance
+finding (findings §3): routing `CreateShell`'s pane through the same `resolveLaunchEnv` +
+`buildPaneCommand` composition the agent paths use, so a shell launch carries the session
+context and runs a fail-closed session+global `pre_launch` the same way an agent launch does.
+Evidence: [`docs/reports/phase3j.md`](reports/phase3j.md) (the per-requirement table and the GH
+issue #20 design-section map) and
+[`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) (task 011's history, three
+validation-found gaps closed within their own task, findings §3's SPEC-conformance fix, the
+protected-path/schema-version disclosures, and both gates' dispositions).
+
 ## Other milestones
 
 | Date | What |
