@@ -4517,6 +4517,14 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	if session.EnvDirty {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("env\u21bb", "env*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
+	// SPEC §6.2/R108, task 025: launch_dirty means a pending edit to one of
+	// the four launch inputs (pre_launch, post_destroy, launch_args,
+	// login_shell) has been persisted but not yet applied -- only `R`
+	// applies it and clears the badge. Shown beside env↻ (both may be set
+	// at once, per §6.2 step 2) so neither is lost to width.
+	if session.LaunchDirty {
+		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("launch\u21bb", "launch*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
+	}
 	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
 	line2 := m.settingsRenderRowOpen(line2Segs)
 	return []string{line1, line2}, bg
