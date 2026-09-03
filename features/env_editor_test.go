@@ -29,6 +29,7 @@ func registerEnvEditorSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" is captured as "([^"]+)"$`, livePaneProcessEnvironmentKeyIsCapturedAs)
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" still matches the captured "([^"]+)"$`, livePaneProcessEnvironmentKeyStillMatchesCaptured)
 	sc.Step(`^the live pane process environment for session "([^"]+)" key "([^"]+)" is "([^"]*)"$`, livePaneProcessEnvironmentKeyEquals)
+	sc.Step(`^the live pane process environment for session "([^"]+)" has no key "([^"]+)"$`, livePaneProcessEnvironmentHasNoKey)
 	sc.Step(`^the live pane pid for session "([^"]+)" is captured as "([^"]+)"$`, livePanePidIsCapturedAs)
 	sc.Step(`^the live pane pid for session "([^"]+)" still matches the captured "([^"]+)"$`, livePanePidStillMatchesCaptured)
 	sc.Step(`^the live pane pid for session "([^"]+)" no longer matches the captured "([^"]+)"$`, livePanePidDiffersFromCaptured)
@@ -235,27 +236,43 @@ func liveTmuxEnvironmentHasKeyWithValue(ctx context.Context, name, key, want str
 // task 021's write path could make agree with each other while still
 // disagreeing with the actual running process.
 func livePaneProcessEnvironmentKey(ctx context.Context, name, key string) (string, error) {
-	h, err := assertionHarness(ctx)
+	value, found, err := livePaneProcessEnvironmentLookup(ctx, name, key)
 	if err != nil {
 		return "", err
 	}
+	if !found {
+		return "", fmt.Errorf("live pane process environment for session %q has no key %q at all", name, key)
+	}
+	return value, nil
+}
+
+// livePaneProcessEnvironmentLookup is livePaneProcessEnvironmentKey's
+// found/not-found form, so an absence assertion (task 007's self-selecting
+// global hook: the non-matching session must carry no such variable at all,
+// not an empty one) can tell "the hook never exported this key" apart from
+// "the pane could not be read", which stays an error either way.
+func livePaneProcessEnvironmentLookup(ctx context.Context, name, key string) (string, bool, error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return "", false, err
+	}
 	slug, err := sessionSlugByName(h, name)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	target := "deck_" + slug
 	output, err := tmuxOutput(ctx, h, "list-panes", "-t", target, "-F", "#{pane_pid}")
 	if err != nil {
-		return "", fmt.Errorf("locate live pane process for session %q: %w", name, err)
+		return "", false, fmt.Errorf("locate live pane process for session %q: %w", name, err)
 	}
 	pidText := strings.TrimSpace(string(output))
 	pid, err := strconv.Atoi(pidText)
 	if err != nil {
-		return "", fmt.Errorf("parse pane_pid %q for session %q: %w", pidText, name, err)
+		return "", false, fmt.Errorf("parse pane_pid %q for session %q: %w", pidText, name, err)
 	}
 	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
 	if err != nil {
-		return "", fmt.Errorf("read /proc/%d/environ for session %q's live pane: %w", pid, name, err)
+		return "", false, fmt.Errorf("read /proc/%d/environ for session %q's live pane: %w", pid, name, err)
 	}
 	for _, entry := range strings.Split(string(raw), "\x00") {
 		if entry == "" {
@@ -263,10 +280,25 @@ func livePaneProcessEnvironmentKey(ctx context.Context, name, key string) (strin
 		}
 		k, v, ok := strings.Cut(entry, "=")
 		if ok && k == key {
-			return v, nil
+			return v, true, nil
 		}
 	}
-	return "", fmt.Errorf("live pane process environment for session %q has no key %q at all", name, key)
+	return "", false, nil
+}
+
+// livePaneProcessEnvironmentHasNoKey proves a variable is absent from the
+// running pane process's own environment block entirely -- the only honest
+// way to say a self-selecting hook did not fire for this session, since a
+// key exported with an empty value is present, not absent.
+func livePaneProcessEnvironmentHasNoKey(ctx context.Context, name, key string) error {
+	value, found, err := livePaneProcessEnvironmentLookup(ctx, name, key)
+	if err != nil {
+		return err
+	}
+	if found {
+		return fmt.Errorf("live pane process environment for session %q carries key %q = %q, want it absent entirely", name, key, value)
+	}
+	return nil
 }
 
 // livePaneProcessEnvironmentKeyIsCapturedAs snapshots one key's real,
