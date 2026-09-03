@@ -4,7 +4,7 @@
 
 This refresh supersedes the earlier sweep published at `fbbda8f6aea2243e2c1f312bf346f14044a82210`,
 per operator ruling `002-030` (task 030 was reset to pending and re-run after
-steps 1–3 of `001-unblock-011-gate-ordering.md` — tasks 011, 013–019, 026 and
+steps 1–3 of operator ruling 001-011 — tasks 011, 013–019, 026 and
 038 — were validated). This directory is refreshed in place; there is no new
 numbered report directory.
 

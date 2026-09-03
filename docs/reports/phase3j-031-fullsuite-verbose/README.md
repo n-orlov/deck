@@ -22,7 +22,7 @@ second, docs-only companion sweep.
 This refresh **supersedes the earlier tally published at
 `fbbda8f6aea2243e2c1f312bf346f14044a82210`**, per operator ruling `003-031` (task 031 was reset to
 pending and re-run after task 030 was itself re-run at the new final code sha per ruling
-`002-030`, following steps 1–3 of `001-unblock-011-gate-ordering.md`). This directory is refreshed
+`002-030`, following steps 1–3 of operator ruling 001-011). This directory is refreshed
 in place; there is no new numbered report directory.
 
 ## Code sha this run corresponds to
