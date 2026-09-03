@@ -51,15 +51,16 @@ type Model struct {
 	// this window instead of the modal ever truncating its own submit
 	// line away. Reset to 0 every time `n` opens the modal, same as the
 	// other two never sticking across a close/reopen.
-	createScroll     int
-	createName       string
-	createCWD        string
-	createAgent      string
-	createProfile    string
-	createLaunchArgs string
-	createEnv        string
-	createPreLaunch  string
-	createLoginShell bool
+	createScroll      int
+	createName        string
+	createCWD         string
+	createAgent       string
+	createProfile     string
+	createLaunchArgs  string
+	createEnv         string
+	createPreLaunch   string
+	createPostDestroy string
+	createLoginShell  bool
 	// createProfileTouched is true once the user has cycled the Permission
 	// profile field (field 3) itself in the currently open create modal. It
 	// gates cycleCreateField's Agent case (field 2): while false, the value
@@ -2691,7 +2692,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
 				m.createProfile = m.defaultCreateProfile(m.createAgent)
 				m.createProfileTouched = false
-				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createLoginShell = "", "", "", false
+				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createPostDestroy, m.createLoginShell = "", "", "", "", false
 			}
 		case "up", "k":
 			if next, ok := m.prevVisibleSelection(m.selected); ok {
@@ -6106,14 +6107,14 @@ func (m Model) createProfileOptionsFor(kind string, allowYolo bool) []string {
 	return options
 }
 
-const createFieldCount = 8
+const createFieldCount = 9
 
 // createFieldIsText reports whether field accepts free-typed runes, as
 // opposed to being a cycled selection (agent, permission profile, login
 // shell) that only left/right/space change.
 func createFieldIsText(field int) bool {
 	switch field {
-	case 0, 1, 4, 5, 6:
+	case 0, 1, 4, 5, 6, 7:
 		return true
 	default:
 		return false
@@ -6533,6 +6534,8 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.createEnv += string(runes)
 		case 6:
 			m.createPreLaunch += string(runes)
+		case 7:
+			m.createPostDestroy += string(runes)
 		}
 	}
 	return m, nil
@@ -6575,7 +6578,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		input := service.AgentCreateInput{
 			Name: name, CWD: resolvedCWD, Agent: m.createAgent,
 			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
-			PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell,
+			PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell, PostDestroy: m.createPostDestroy,
 		}
 		createAgentSession := m.createAgentSession
 		return func() tea.Msg {
@@ -6587,13 +6590,16 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = "shell creation is unavailable"
 		return nil
 	}
-	cwd, create, preLaunch := resolvedCWD, m.create, m.createPreLaunch
+	cwd, create, preLaunch, postDestroy := resolvedCWD, m.create, m.createPreLaunch, m.createPostDestroy
 	return func() tea.Msg {
 		// The modal's Pre-launch field is offered (and validated) for every
 		// agent, `shell` included, and SPEC §6.4's hook fires "on create" for
 		// every pane deck launches -- so a shell create passes it through
-		// rather than silently dropping what the user typed (task 038).
-		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch})
+		// rather than silently dropping what the user typed (task 038). Its
+		// Post-destroy field (task 026) is passed through the same way, so a
+		// shell session's own teardown hook can be set at create time exactly
+		// as an agent session's can.
+		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy})
 		return shellCreated{session: session, err: err}
 	}
 }
@@ -6684,7 +6690,7 @@ func (m *Model) cycleCreateField(delta int) {
 		if delta > 0 {
 			m.acceptCWDGhost()
 		}
-	case 7:
+	case 8:
 		m.createLoginShell = !m.createLoginShell
 	}
 }
@@ -6737,6 +6743,10 @@ func (m *Model) backspaceCreateField() {
 	case 6:
 		if len(m.createPreLaunch) > 0 {
 			m.createPreLaunch = m.createPreLaunch[:len(m.createPreLaunch)-1]
+		}
+	case 7:
+		if len(m.createPostDestroy) > 0 {
+			m.createPostDestroy = m.createPostDestroy[:len(m.createPostDestroy)-1]
 		}
 	}
 }
@@ -6881,6 +6891,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
 		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
+		{"Post-destroy command", m.createPostDestroy, "a command run after this session's own Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open)"},
 		{"Login shell", loginShell + " (space toggles)", "makes captured_path advisory only (not applied): runs via $SHELL -lc instead of the agent argv, so the login shell sets PATH"},
 	}
 }
