@@ -20,6 +20,14 @@ type ShellCreateInput struct {
 	Name string
 	CWD  string
 	Env  map[string]string
+	// PreLaunch is this shell session's own launch hook (SPEC §6.4), the
+	// per-session counterpart of Service.GlobalPreLaunch: one shell line run
+	// in the pane, after the global hook and before the shell itself, joined
+	// so a non-zero exit refuses the launch (§9.1's fail-closed rule). It is
+	// persisted verbatim into store.CreateSessionInput.PreLaunch, so the same
+	// hook runs again on every later r/R through Resume's own composition.
+	// Empty is the common, valid case of nothing configured.
+	PreLaunch string
 	// PostDestroy is this shell session's own teardown hook (SPEC §9.2,
 	// R107), persisted verbatim into store.CreateSessionInput.PostDestroy.
 	// Empty is the common, valid case of nothing configured. Running the
@@ -145,7 +153,7 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
-		PostDestroy: input.PostDestroy,
+		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable shell session: %w", err)
@@ -193,12 +201,17 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
 		launchEnv[key] = value
 	}
-	// SPEC §6.5: the global pre_launch composes with this session's own
-	// (empty here -- ShellCreateInput carries no per-session pre_launch of
-	// its own, matching the row's unset PreLaunch column), global first,
-	// through the same buildPaneCommand CreateAgent and Resume use, rather
-	// than handing tmux the bare shell argv unwrapped.
-	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, "", false, argv)
+	// SPEC §6.5: the global pre_launch composes with this session's own --
+	// both run, global first, joined so the global hook's failure
+	// short-circuits the session hook and the shell (§9.1's fail-closed
+	// launch) -- through the same buildPaneCommand CreateAgent and Resume
+	// use, rather than handing tmux the bare shell argv unwrapped. The
+	// session hook passed here is the same string persisted in the row's
+	// pre_launch column above, so the hook a shell create ran is exactly the
+	// one its later r/R re-runs through Resume. login_shell is not a
+	// ShellCreateInput field (a shell session's argv already is the user's
+	// shell), so this path never asks for the -lc wrapper.
+	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, false, argv)
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for shell session %q: %w", session.Name, err))
 	}

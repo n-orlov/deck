@@ -192,35 +192,134 @@ func TestCreateShellPaneCarriesSessionContextWithRowsOwnValues(t *testing.T) {
 	assertSessionContextEnv(t, socket, session, service.DeckHome, LaunchKindCreate)
 }
 
+// markerShell writes an executable stand-in for the user's $SHELL which
+// touches marker as its first act and then idles, and returns its absolute
+// path for Service.Shell. It is what makes "the shell was never reached"
+// discriminating on the CreateShell path: the real /bin/sh writes nothing
+// when it starts, so the absence of a marker could never distinguish a shell
+// that never ran from one that ran and sat idle. It plays the same role
+// agent_test.go's `LaunchArgs: {"-c", "touch " + agentMarker}` plays for the
+// agent paths.
+func markerShell(t *testing.T, dir, marker string) string {
+	t.Helper()
+	path := filepath.Join(dir, "marker_shell.sh")
+	script := "#!/bin/sh\ntouch " + marker + "\nsleep 5\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell covers the
+// remaining half of task 038's criterion: CreateShell calls buildPaneCommand
+// with the service's global pre_launch AND the session's own, global-first,
+// so a shell create behaves exactly like agent_test.go's
+// TestCreateAgentGlobalPreLaunchRunsBeforeSessionPreLaunchAndAgent -- the
+// session hook can only succeed if the global hook already ran, and the shell
+// itself only starts after both. The row's own pre_launch column must also
+// retain the hook, so the same line re-runs on every later r/R through
+// Resume's pre-existing composition.
+func TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, logger, _ := newAgentTestService(t, nil, "create-shell-pre-launch-order")
+	globalMarker := filepath.Join(cwd, "global_marker")
+	sessionMarker := filepath.Join(cwd, "session_marker")
+	shellMarker := filepath.Join(cwd, "shell_marker")
+	service.GlobalPreLaunch = "touch " + globalMarker
+	service.Shell = markerShell(t, cwd, shellMarker)
+	// The session hook only succeeds once the global marker already exists,
+	// proving the global hook ran first in the same shell.
+	sessionPreLaunch := "test -f " + globalMarker + " && touch " + sessionMarker
+
+	session, err := service.CreateShell(context.Background(), ShellCreateInput{
+		Name: "Shell: hook order", CWD: cwd, PreLaunch: sessionPreLaunch,
+	})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+	if !waitForFile(t, globalMarker, 5*time.Second) {
+		t.Fatalf("global pre_launch never ran on a shell create: %s missing", globalMarker)
+	}
+	if !waitForFile(t, sessionMarker, 5*time.Second) {
+		t.Fatalf("the shell session's own pre_launch never ran after the global hook: %s missing", sessionMarker)
+	}
+	if !waitForFile(t, shellMarker, 5*time.Second) {
+		t.Fatalf("the shell never started after both hooks succeeded: %s missing", shellMarker)
+	}
+
+	// Durable: the hook the create ran is the row's own pre_launch, read back
+	// from the store rather than from the input or the returned struct.
+	durable, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if durable.PreLaunch != sessionPreLaunch {
+		t.Fatalf("durable pre_launch = %q, want the shell create's own hook %q", durable.PreLaunch, sessionPreLaunch)
+	}
+
+	// The launch audit records the composed pane command with the global hook
+	// ahead of the session's own, both ahead of the shell.
+	var launch map[string]any
+	for _, record := range auditRecords(t, logger.Path()) {
+		if record["event"] == "launch" {
+			launch = record
+		}
+	}
+	if launch == nil {
+		t.Fatalf("no launch audit record for shell session %q", session.ID)
+	}
+	argv := jsonStrings(launch["argv"])
+	if len(argv) < 3 {
+		t.Fatalf("launch argv = %#v, want the buildPaneCommand shell wrapper", argv)
+	}
+	globalAt, sessionAt := strings.Index(argv[2], service.GlobalPreLaunch), strings.Index(argv[2], sessionPreLaunch)
+	if globalAt < 0 || sessionAt < 0 || globalAt > sessionAt {
+		t.Fatalf("pane command = %q, want the global hook at a lower index than the session hook (global-first)", argv[2])
+	}
+	if argv[len(argv)-1] != service.Shell {
+		t.Fatalf("pane command argv = %#v, want it to end in the session's shell %q", argv, service.Shell)
+	}
+}
+
 // TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained
 // covers task 038's criterion (b): once CreateShell routes its pane through
 // buildPaneCommand, a failing Service.GlobalPreLaunch on a shell create must
 // be fail-closed exactly like the agent paths (agent_test.go's
 // TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained) --
-// the shell binary itself must never run, the dead pane must be retained
-// with the hook's own stderr visible (deck's server-wide remain-on-exit
-// failed), and once Reconcile collects that retained corpse the durable row
-// must read error carrying the hook's own exit status and stderr.
+// neither the session's own pre_launch nor the shell binary itself may run,
+// the dead pane must be retained with the hook's own stderr visible (deck's
+// server-wide remain-on-exit failed), and once Reconcile collects that
+// retained corpse the durable row must read error carrying the hook's own
+// exit status and stderr.
 func TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained(t *testing.T) {
 	cwd := t.TempDir()
 	service, db, logger, _ := newAgentTestService(t, nil, "create-shell-global-pre-launch-fail")
 	service.GlobalPreLaunch = "echo shell-pre-launch-boom >&2; exit 9"
 	shellMarker := filepath.Join(cwd, "shell_marker")
-	service.Shell = "/bin/sh"
+	sessionMarker := filepath.Join(cwd, "session_marker")
+	// A shell that announces itself the moment it starts, so the marker's
+	// absence below really does prove the shell was never reached.
+	service.Shell = markerShell(t, cwd, shellMarker)
 
 	session, err := service.CreateShell(context.Background(), ShellCreateInput{
 		Name: "Shell: global pre-launch fail", CWD: cwd,
+		// This session hook, on its own, always succeeds: if it ever ran, the
+		// fixture would not be discriminating for a fail-closed global hook.
+		PreLaunch: "touch " + sessionMarker,
 	})
 	if err != nil {
 		t.Fatalf("create shell: %v", err)
 	}
 
-	// Fail-closed retention: the shell must never run (it would otherwise sit
-	// idle rather than write anything, so absence of the marker on its own
-	// would not be discriminating -- the dead, retained pane below is).
+	// Fail-closed retention: deck's tmux server keeps the dead pane around
+	// under remain-on-exit failed, and neither the session hook nor the shell
+	// ever ran -- the marker shell would have written its marker immediately.
 	waitForDeadPane(t, service.TMux, session.Slug, 9)
+	if _, err := os.Stat(sessionMarker); err == nil {
+		t.Fatalf("the session's own pre_launch ran despite a failing global pre_launch: %s exists", sessionMarker)
+	}
 	if _, err := os.Stat(shellMarker); err == nil {
-		t.Fatalf("shell marker exists despite a failing global pre_launch: %s", shellMarker)
+		t.Fatalf("the shell ran despite a failing global pre_launch: %s exists", shellMarker)
 	}
 
 	preReconcile, err := db.GetSession(context.Background(), session.ID)
@@ -267,6 +366,51 @@ func TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained(t *te
 	}
 	if !strings.Contains(got.CrashTail, "shell-pre-launch-boom") {
 		t.Fatalf("crash tail = %q, want it to carry the global pre_launch's own stderr", got.CrashTail)
+	}
+}
+
+// TestCreateShellFailingOwnPreLaunchIsFailClosed is criterion (b) for the
+// session's own half of the composition: a shell create whose own pre_launch
+// exits non-zero must refuse the launch the same way -- the shell is never
+// reached, the dead pane is retained, and the collected row reads error with
+// the hook's own exit status and stderr as its reason. (SPEC §9.1: "a session
+// that would start without the credential its hook was supposed to fetch is
+// worse than a session that refuses to start".)
+func TestCreateShellFailingOwnPreLaunchIsFailClosed(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, _ := newAgentTestService(t, nil, "create-shell-session-pre-launch-fail")
+	shellMarker := filepath.Join(cwd, "shell_marker")
+	service.Shell = markerShell(t, cwd, shellMarker)
+
+	session, err := service.CreateShell(context.Background(), ShellCreateInput{
+		Name: "Shell: own pre-launch fail", CWD: cwd,
+		PreLaunch: "echo shell-own-hook-boom >&2; exit 7",
+	})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+	waitForDeadPane(t, service.TMux, session.Slug, 7)
+	if _, err := os.Stat(shellMarker); err == nil {
+		t.Fatalf("the shell ran despite the session's own failing pre_launch: %s exists", shellMarker)
+	}
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile retained corpse: %v", err)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "error" {
+		t.Fatalf("collected row reads %q, want error after the session's own pre_launch refused the launch", got.Status)
+	}
+	if got.PaneExitStatus == nil || *got.PaneExitStatus != 7 {
+		t.Fatalf("pane exit status = %v, want the session hook's own exit code 7", got.PaneExitStatus)
+	}
+	if !strings.Contains(got.StatusReason, "7") {
+		t.Fatalf("status reason = %q, want it to carry the hook's own exit status 7", got.StatusReason)
+	}
+	if !strings.Contains(got.CrashTail, "shell-own-hook-boom") {
+		t.Fatalf("crash tail = %q, want it to carry the session pre_launch's own stderr", got.CrashTail)
 	}
 }
 
