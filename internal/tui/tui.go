@@ -7303,9 +7303,13 @@ Create dialog fields
   Launch args         extra argv appended after the adapter's own argv
   Env                 session-level environment variables (highest priority
                       in PATH resolution)
-  Pre-launch command  runs in the pane before the agent starts; the SPEC's
-                      intended use is loading secrets into the pane's
-                      environment without deck ever storing or logging them
+  Pre-launch command  runs in the pane before the agent starts, on EVERY
+                      launch, so it must be idempotent (safe to run again);
+                      the SPEC's intended use is loading secrets into the
+                      pane's environment without deck ever storing or
+                      logging them -- see "Hooks" below for the full
+                      fail-closed/fail-open contract and the safe way to
+                      export a secret
   Login shell         run the pane via $SHELL -lc instead of execing the
                       agent argv directly
   ↑/↓ changes field; ↵ advances or submits; Esc cancels
@@ -7322,6 +7326,30 @@ session -- attention then comes only from questions/needs-input
 notifications, not from waiting; this is expected, not deck failing to
 notice, and is worth remembering now that yolo_default can put a brand new
 session there without the user ever having chosen yolo by hand.
+
+Hooks (pre_launch/post_destroy, global in config.toml or per-session)
+  pre_launch is a launch hook: it runs in the pane before the agent
+  starts, on EVERY launch -- create, r, R, the r after a U, and the first
+  r after a host restart (a restart restores nothing; every row simply
+  reads stopped) -- so a hook that provisions something external must be
+  idempotent, safe to run again rather than only once. It is fail-closed:
+  a non-zero exit or a timeout means the agent never starts, the pane is
+  retained with the hook's own output visible, and the row lands in
+  error with that as the reason.
+  post_destroy is a teardown hook: it runs once a session's pane is
+  gone, after A (archive) or dd (delete) -- and not after x, which
+  leaves the row stopped and resumable with its external resources
+  expected to still be there. It is fail-open: a non-zero exit or a
+  timeout never blocks the archive/delete that already happened, only
+  raises a toast and records an event. If post_destroy ran and you then
+  undo (u), the row comes back stopped -- the next r rebuilds whatever
+  that post_destroy released.
+  The safe way for either hook to hand the agent a secret: print
+  "export K=V" on stdout for deck to eval into the pane's shell,
+  send any diagnostics to stderr, and never echo the value -- pane
+  scrollback is captured, so an echoed secret is written to disk. Mark
+  the session sensitive (in the env editor) if a hook cannot be that
+  careful.
 
 Settings takeover (opened with ,)
   Tab or Left/Right      switch focus between the category list and the
