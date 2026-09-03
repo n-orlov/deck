@@ -1,0 +1,8 @@
+$ git log -1 --format=%H -- '*.go' '*.feature'
+a44ee320b93186496d56364836b0aed00a6f1e0b
+$ BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase3j-launch-and-teardown-hooks.md); git log --oneline "$BASE..HEAD" -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+$ git status --porcelain
+$ git rev-parse HEAD origin/main
+fe18ea973592ab5b8683d37b9ed5b607ca76f3fe
+fe18ea973592ab5b8683d37b9ed5b607ca76f3fe
+$ 
