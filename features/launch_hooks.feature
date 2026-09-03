@@ -91,3 +91,24 @@ Feature: Every pane carries its own session's DECK_SESSION_* context (R104, SPEC
     # agent was never exec'd: the banner is nowhere in it.
     And deck client "A" screen does not contain "Fake Claude Code"
     When deck client "A" exits cleanly
+
+  @requirement-108-launch-edit-applies-only-on-restart
+  Scenario: a launch input edited on a live row shows launch↻ until R applies it and clears the badge
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "launch edit target" with permission profile "safe"
+    Then deck client "A" screen contains "launch edit target"
+    And the live pane process environment for session "launch edit target" has no key "DECK_LAUNCH_EDIT_MARKER"
+    When deck client "A" opens the launch inputs editor for session "launch edit target"
+    And deck client "A" types "export DECK_LAUNCH_EDIT_MARKER=applied" into the pre-launch field
+    And deck client "A" submits the launch inputs editor
+    And deck client "A" closes detail
+    Then deck client "A" screen contains "launch*"
+    And the state database session "launch edit target" is marked launch_dirty
+    And the live pane process environment for session "launch edit target" has no key "DECK_LAUNCH_EDIT_MARKER"
+    When deck client "A" presses R on session "launch edit target"
+    Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
+    And the state database session "launch edit target" is not marked launch_dirty
+    And deck client "A" screen does not contain "launch*"
+    And the live pane process environment for session "launch edit target" key "DECK_LAUNCH_EDIT_MARKER" is "applied"
+    When deck client "A" exits cleanly
