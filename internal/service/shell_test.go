@@ -70,7 +70,11 @@ func TestCreateShellPersistsLaunchesAndAudits(t *testing.T) {
 	if starting["event"] != "starting" || starting["session_id"] != session.ID || starting["duration_ms"].(float64) < 1 {
 		t.Fatalf("starting transition = %#v", starting)
 	}
-	if launch["event"] != "launch" || launch["session_id"] != session.ID || strings.Join(jsonStrings(launch["argv"]), "\x00") != "/bin/sh" || strings.Join(jsonStrings(launch["env_keys"]), ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,SECRET_TOKEN,VISIBLE" {
+	// PATH is present because CreateShell now resolves launchEnv through
+	// the same resolveLaunchEnv (task 038, SPEC §6.1/§6.3) CreateAgent and
+	// Resume use, which layers captured_path in ahead of the session's own
+	// env, rather than a launchEnv built from input.Env alone.
+	if launch["event"] != "launch" || launch["session_id"] != session.ID || strings.Join(jsonStrings(launch["argv"]), "\x00") != "/bin/sh" || strings.Join(jsonStrings(launch["env_keys"]), ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,PATH,SECRET_TOKEN,VISIBLE" {
 		t.Fatalf("launch audit = %#v", launch)
 	}
 	if ready["event"] != "launch.ready" || ready["session_id"] != session.ID || ready["duration_ms"].(float64) < 1 {
@@ -166,6 +170,103 @@ func TestCreateShellPromotesCWDToRecentCwds(t *testing.T) {
 	}
 	if len(recent) != 1 || recent[0].Path != session.CWD {
 		t.Fatalf("recent cwds after create shell = %+v, want exactly [%q]", recent, session.CWD)
+	}
+}
+
+// TestCreateShellPaneCarriesSessionContextWithRowsOwnValues covers task
+// 038's criterion (a): a shell session's create-path pane carries every one
+// of SPEC §6.1's nine DECK_SESSION_* variables plus DECK_HOME, each with
+// the row's own value, read back from the pane's own tmux environment
+// table -- the same assertSessionContextEnv/wantSessionContext evidence
+// shape session_context_test.go's agent-path assertions use.
+func TestCreateShellPaneCarriesSessionContextWithRowsOwnValues(t *testing.T) {
+	cwd := t.TempDir()
+	service, _, _, socket := newAgentTestService(t, nil, "create-shell-context")
+
+	session, err := service.CreateShell(context.Background(), ShellCreateInput{
+		Name: "Context: shell create", CWD: cwd,
+	})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+	assertSessionContextEnv(t, socket, session, service.DeckHome, LaunchKindCreate)
+}
+
+// TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained
+// covers task 038's criterion (b): once CreateShell routes its pane through
+// buildPaneCommand, a failing Service.GlobalPreLaunch on a shell create must
+// be fail-closed exactly like the agent paths (agent_test.go's
+// TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained) --
+// the shell binary itself must never run, the dead pane must be retained
+// with the hook's own stderr visible (deck's server-wide remain-on-exit
+// failed), and once Reconcile collects that retained corpse the durable row
+// must read error carrying the hook's own exit status and stderr.
+func TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, logger, _ := newAgentTestService(t, nil, "create-shell-global-pre-launch-fail")
+	service.GlobalPreLaunch = "echo shell-pre-launch-boom >&2; exit 9"
+	shellMarker := filepath.Join(cwd, "shell_marker")
+	service.Shell = "/bin/sh"
+
+	session, err := service.CreateShell(context.Background(), ShellCreateInput{
+		Name: "Shell: global pre-launch fail", CWD: cwd,
+	})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+
+	// Fail-closed retention: the shell must never run (it would otherwise sit
+	// idle rather than write anything, so absence of the marker on its own
+	// would not be discriminating -- the dead, retained pane below is).
+	waitForDeadPane(t, service.TMux, session.Slug, 9)
+	if _, err := os.Stat(shellMarker); err == nil {
+		t.Fatalf("shell marker exists despite a failing global pre_launch: %s", shellMarker)
+	}
+
+	preReconcile, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preReconcile.Status == "error" {
+		t.Fatalf("row already reads error before reconciliation collected the retained pane")
+	}
+
+	// The launch audit still captures the wrapped pane command (buildPaneCommand's
+	// output), even though the pre_launch hook prevented the shell from ever
+	// starting.
+	records := auditRecords(t, logger.Path())
+	var launch map[string]any
+	for _, record := range records {
+		if record["event"] == "launch" {
+			launch = record
+		}
+	}
+	if launch == nil {
+		t.Fatalf("no launch audit record among %#v", records)
+	}
+	argv := jsonStrings(launch["argv"])
+	if len(argv) < 3 || argv[0] != "/bin/sh" || argv[1] != "-c" || !strings.Contains(argv[2], service.GlobalPreLaunch) {
+		t.Fatalf("launch argv = %#v, want the shell wrapper carrying the global pre_launch", argv)
+	}
+
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile retained corpse: %v", err)
+	}
+	got, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "error" {
+		t.Fatalf("collected row reads %q, want error: the failing global pre_launch was not collected as a crash", got.Status)
+	}
+	if got.PaneExitStatus == nil || *got.PaneExitStatus != 9 {
+		t.Fatalf("pane exit status = %v, want the global hook's own exit code 9", got.PaneExitStatus)
+	}
+	if !strings.Contains(got.StatusReason, "9") {
+		t.Fatalf("status reason = %q, want it to carry the hook's own exit status 9", got.StatusReason)
+	}
+	if !strings.Contains(got.CrashTail, "shell-pre-launch-boom") {
+		t.Fatalf("crash tail = %q, want it to carry the global pre_launch's own stderr", got.CrashTail)
 	}
 }
 
