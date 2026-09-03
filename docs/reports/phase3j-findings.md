@@ -26,6 +26,7 @@ tracked under `git ls-files --error-unmatch`, both checked in
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
 - [8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)](#8-gate-dispositions-whole-suite-sweep-task-030-and-ten-run-stability-task-032)
 - [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
+- [10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed](#10-independent-reviews-blocking-findings-4-and-5-record-accuracy-and-gate-pollingone-sweep-discipline-are-closed)
 
 ## 1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing
 
@@ -546,3 +547,73 @@ ok  	github.com/n-orlov/deck/cmd/deck	7.612s
 
 This is docs-only: `git log -1 --format=%H -- '*.go' '*.feature'` still prints
 `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`, unchanged by this section's own commit.
+
+## 10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed
+
+The same independent review named in §9 raised two further blocking findings against the R110
+record itself, distinct from findings 1-3's product-code gaps: finding 4, that this phase's own
+reports carried inaccurate claims (record defects), and finding 5, that the gate tasks' own
+polling and one-sweep-per-iteration discipline was not evidenced as followed. Both are closed as
+of this writing.
+
+**Finding 4 — record defects, closed by tasks 062 (`2dca034`) and 063 (`807fe0a`).** Three
+inaccurate claims in `docs/reports/phase3j.md` and this file's own §8 were corrected by those two
+commits:
+
+- **Uncommitted-tasks wording.** `docs/reports/phase3j.md`'s R110 table row previously read
+  "the findings/DELIVERY-LOG/Telegram tasks that round out the phase's remaining paperwork are
+  tasks 035–037, not yet committed as of this writing" — inaccurate once those tasks landed.
+  Task 062 (`2dca034`) corrected it to name each task's actual disposition: "035 and 036 landed
+  as commits, 037 was a Telegram closing notification, which by its nature is sent, not
+  committed to this repo", with the commit shas for 035 and 036 added to the same row.
+- **Package counts.** Both `docs/reports/phase3j.md` and this file's own §8 previously stated
+  the whole-suite sweep's package count at the superseded `a44ee32` sha's figure as the current
+  one. Tasks 062 (`2dca034`) and 063 (`807fe0a`) corrected every occurrence naming the *current*
+  count to the figure `docs/reports/phase3j-030-fullsuite/sweep.log` actually shows at the final
+  code sha (`internal/tmux` split out as its own package between the two shas) — confirmed
+  fresh: `grep -c '^ok' docs/reports/phase3j-030-fullsuite/sweep.log` = 14, matching both files'
+  stated current count. §8 above still names the superseded `a44ee32`-sha figure once, explicitly
+  framed as history ("supersedes the `a44ee32`-sha disposition of 13 `ok` packages") — that
+  mention is the corrected record's own citation of what it superseded, not a surviving defect.
+- **Purged untracked citation, at `6a22181`.** Task 047 (`6a22181`, "docs: purge untracked
+  run-state citation from phase3j reports") removed a citation of an untracked run-state path
+  from `docs/reports/phase3j-030-fullsuite/README.md`, `docs/reports/phase3j-031-fullsuite-verbose/README.md`
+  and `docs/reports/phase3j.md`, ahead of tasks 062/063's own corrections, so that none of this
+  phase's reports names a path `git ls-files --error-unmatch` cannot resolve (the same rule §7
+  states for this document).
+
+All three corrections are confirmed fresh against the committed code: `git cat-file -e
+2dca034^{commit}`, `git cat-file -e 807fe0a^{commit}` and `git cat-file -e 6a22181^{commit}`
+each resolve, and `grep -c 'not yet committed as of this writing' docs/reports/phase3j.md` = 0.
+
+**Finding 5 — gate polling and one-sweep-per-iteration discipline, closed by the refreshed
+`phase3j-030-fullsuite` README's own polling record.** The refreshed
+`docs/reports/phase3j-030-fullsuite/README.md` (task 058) states its own polling discipline in
+its `## Command` section verbatim: "Backgrounded and polled with `sleep 60` only, never blocked
+on; total wall time was about 6 minutes (well under the 30-minute `timeout` and a small fraction
+of one iteration's cap)." That is the same discipline the standing rules require (a `sleep 60`
+poll interval and nothing else, one whole-suite sweep per iteration) and it is the gate's own
+report recording that it was followed, not a claim made about it from outside. No other
+whole-suite sweep command appears anywhere in this run's tracked reports for the same code sha,
+so the one-sweep-per-iteration half of the discipline is likewise satisfied by omission — there
+is nothing else to conflict with it.
+
+**Disposition.** Findings 4 and 5 are closed as of this writing. This section does not claim
+findings 1-3 (§9) or the residual items below are affected by it — those are separate
+dispositions covered elsewhere in this document.
+
+**Residuals this closure does not claim fixed.** This section closes findings 4 and 5 only. It
+does not claim to have fixed, and does not affect the disposition of:
+
+- the create-modal `Env`/`Login-shell` seam (§3's advisory: `internal/tui/tui.go`'s
+  `submitCreate` still does not forward a shell create's `Env` field or `Login shell` toggle to
+  `CreateShell`);
+- R109's copy-coverage evidence, which remains bounded to the assertions
+  `internal/tui/hook_help_coverage_test.go` itself makes (§9's finding-3 closure);
+- the carried-forward advisory items from §4: F2 (golden-frame settle), F20 (`status_recovery`
+  dup-pane), F22 (`ByteArrivalPattern`), F37 (`sort_order` latent race), F7 (quantisation
+  collisions), the `features/filter.feature` dd/undo race, and the OSC 52 clipboard-reliability
+  question.
+
+All of the above remain exactly as disclosed in §§3, 4 and 9 — advisory, not claimed fixed, and
+unchanged by this section.
