@@ -61,6 +61,7 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     When deck client "A" presses dd
     And deck client "A" submits the open dialog
     Then the state database session "teardown-failing-hook" is tombstoned
+    And deck client "A" screen contains "session post_destroy failed"
     And the state database session "teardown-failing-hook" has an event of kind "note" with reason containing "session post_destroy failed"
     When deck client "A" exits cleanly
 
