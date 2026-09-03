@@ -396,10 +396,16 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// 229 lines, re-measurable by rendering helpText at this width and
 	// height in internal/tui and counting the View()'s lines. R73 (task 014)
 	// added six help lines for the overlay scroll bindings and re-measured:
-	// 239 rendered lines at Cols: 100, so the 260-row window still has 21
-	// rows of headroom and stays as it is
-	// (artifacts/task014-help-height-probe.log).
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 260, Cols: 100})
+	// 239 rendered lines at Cols: 100, so the 260-row window still had 21
+	// rows of headroom -- but task 028's help "Hooks" section (pre_launch/
+	// post_destroy) pushed the wrapped body to 271 lines at Cols: 100
+	// (dialogContentBudget of 258 at Rows: 260 clipped the closing "q quits
+	// deck." sentence off the bottom, failing this test with no product
+	// regression involved), so this is raised again to 300, re-measured at
+	// 273 total View() lines including the border (task 030; re-measurable
+	// the same way: render helpText at this width/height in internal/tui and
+	// count the View()'s lines).
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 300, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
