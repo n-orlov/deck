@@ -250,9 +250,11 @@ CREATE TABLE sessions (
   agent              TEXT NOT NULL,         -- claude | pi | codex | shell
   launch_args        TEXT NOT NULL DEFAULT '[]', -- JSON array, extra agent args
   env                TEXT NOT NULL DEFAULT '{}', -- JSON map, per-session overrides
-  env_dirty          INTEGER NOT NULL DEFAULT 0, -- edited while running → restart to apply
+  env_dirty          INTEGER NOT NULL DEFAULT 0, -- env edited while running → restart to apply (§6.2)
+  launch_dirty       INTEGER NOT NULL DEFAULT 0, -- a launch input other than env edited while running (§6.2)
   captured_path      TEXT NOT NULL,         -- PATH at create time (§6.3)
-  pre_launch         TEXT,                  -- one shell line run in the pane before the agent
+  pre_launch         TEXT,                  -- one shell line run in the pane before the agent (§6.4)
+  post_destroy       TEXT,                  -- one shell line run after A or dd, never after x (§9.2)
   login_shell        INTEGER NOT NULL DEFAULT 0, -- run argv via `$SHELL -lc`
   permission_profile TEXT NOT NULL DEFAULT 'safe', -- safe|plan|edits|yolo (§5)
   permission_profile_reason TEXT,        -- why the profile degraded (§5); NULL = it didn't
@@ -392,20 +394,65 @@ Flat per-session overrides. No profiles, no bundles, no secret managers (non-goa
 ### 6.1 Layers
 
 Resolution, lowest to highest: environment of the process that started the tmux **server**
-→ `[env]` in `config.toml` → session `env` map. The env editor shows the effective value
-per key with its winning layer.
+→ `[env]` in `config.toml` → session `env` map → **deck's own session context**. The env
+editor shows the effective value per key with its winning layer.
+
+**The session context is deck-owned and unoverridable.** Every pane deck launches — every
+adapter, `shell` included, on create and on resume alike — carries the launching session's own
+row facts as `DECK_SESSION_*`. They are merged last, above the user's own layers, precisely so
+that a session `env` or a config `[env]` key of the same name cannot lie to a hook about which
+session it is running for:
+
+| variable | value |
+|---|---|
+| `DECK_SESSION_ID` | the row's uuid (§4) — the identity `_hook` already carries (§8.1) |
+| `DECK_SESSION_NAME` | the display `name` as of this launch |
+| `DECK_SESSION_SLUG` | `slug`, which is tmux's `deck_<slug>` identity (§3.2) |
+| `DECK_SESSION_CWD` | the directory the pane was launched in |
+| `DECK_SESSION_AGENT` | the adapter kind: `claude`, `pi`, `codex` or `shell` |
+| `DECK_SESSION_WORKSPACE` | the `workspace` grouping label (§11) |
+| `DECK_SESSION_PROFILE` | the **resolved** permission profile in force (§5), never the requested one |
+| `DECK_SESSION_CONVERSATION_ID` | the agent's own conversation id where the adapter assigns one before launch (§8), empty otherwise |
+| `DECK_SESSION_LAUNCH_KIND` | `create` on a first launch, `resume` on every relaunch — `r` and `R` are both `resume`, since first-launch-or-not is the distinction a hook can act on |
+
+Two rules make this usable from a shell hook. **Every variable is always exported**, empty
+rather than absent when the column behind it is unset, so a hook can branch on a value without
+first testing for existence — "unset" and "empty" being different states is a trap in shell.
+And it is a **launch-time snapshot, not a live view**: a rename (§9.2) or a profile switch (§5)
+reaches an already-running pane no more than an `env` edit does, which is precisely what §6.2
+is about.
+
+`DECK_HOME` and `DECK_LAUNCH_GENERATION` are not session properties and are unchanged — the
+first names the data root a hook writes to (§13.1), the second is the launch lease's own
+discriminator (§9.3) and is absent when a launch took no lease. Both are likewise deck-owned.
+Adapter *instrumentation* (§8.1) stays what it is, the facts an adapter owns such as Claude's
+`--settings` hook config, and never restates a session fact: a name or a cwd duplicated per
+adapter is a name or a cwd that will drift.
 
 ### 6.2 Editing while running
 
-tmux env changes reach only *new* processes, so a mid-flight edit is inherently
-restart-to-apply:
+tmux env changes reach only *new* processes, and a launch input is by definition consumed at
+launch, so a mid-flight edit of either is inherently restart-to-apply:
 
-1. Edit in the TUI (`e`) → writes the session `env` map, sets `env_dirty = 1`, mirrors to
-   `tmux set-environment -t`.
-2. The row shows an `env↻` badge: *changed, not yet applied*.
-3. `R` restarts the pane and relaunches with the **resume** argv — new environment, same
-   conversation. For `shell` sessions, `R` also offers "inject instead" (`export K=V` into
-   the live shell), which genuinely works there.
+1. Edit in the TUI → the row's own column is written and a dirty flag set. `e`'s env editor
+   writes the session `env` map, sets `env_dirty = 1` and mirrors to
+   `tmux set-environment -t`; the **launch-inputs editor** (§11.4, reached from `i` exactly as
+   rename is) writes `pre_launch`, `post_destroy`, `launch_args` or `login_shell` and sets
+   `launch_dirty = 1`.
+2. The row shows an `env↻` badge for the first and a `launch↻` badge for the second:
+   *changed, not yet applied*. Two flags rather than one because they are cleared by different
+   things — see 3 — and a row may legitimately carry both at once.
+3. `R` restarts the pane and relaunches with the **resume** argv — new environment, new launch
+   inputs, same conversation — and clears both flags. For `shell` sessions `R` also offers
+   "inject instead" (`export K=V` into the live shell), which genuinely works there and clears
+   `env_dirty` **alone**: typing an export into a live shell cannot retroactively re-run a
+   `pre_launch` that has already run, so an injected env never clears `launch_dirty`.
+
+**Not every launch input is editable, and the exclusions are identity rather than difficulty.**
+`agent` is the adapter's identity — changing it invalidates the conversation, the argv and the
+instrumentation in one move. `cwd` is create-time by R2, and `slug` is tmux's identity (§3.2),
+which is why a rename changes `name` alone. `captured_path` is derived (§6.3), not typed. Each
+of those is changed by creating a session, not by editing one.
 
 Nothing is applied silently. A restart is always an explicit keypress.
 
@@ -419,7 +466,8 @@ common reason a resumed session fails to launch. Mitigations, all three:
   **between** the server environment and `config.toml`'s `[env]` in the §6.1 order: it beats
   the (possibly thin) inherited `PATH` and loses to any `PATH` the user sets in `[env]` or
   in the session's own env map. Full order, lowest to highest: server env → `captured_path`
-  → config `[env]` → session `env`.
+  → config `[env]` → session `env` → §6.1's deck-owned session context (which contains no
+  `PATH` and so never participates in this resolution, but is above all of it).
 - `login_shell = true` runs the pane command through `$SHELL -lc`, giving a full login
   environment where that's wanted. **It also lets rc files rewrite `PATH`, discarding
   `captured_path`** — that is the trade, it is what the option is *for*, and the two are
@@ -440,6 +488,24 @@ Session `env` values are stored literally in `state.db`. Therefore:
 - `pre_launch` exists precisely so secrets need not be stored at all: one shell line run
   in the pane before the agent starts (typically sourcing a file the user already keeps
   outside deck). Recommended in help over putting tokens in `env`.
+- **A hook's exports reach that session's agent and nothing else.** `pre_launch` runs in the
+  pane, in the same shell that then execs the agent, so whatever it exports is inherited by
+  that agent by construction — and by nothing else: not deck's own process, not another
+  session, not the tmux server's environment, and not the tmux *session* environment table that
+  §3.2's `-e` mirror populates for future panes. None of it is in any column of `state.db`,
+  which is the whole reason this is the preferred home for a secret. That inheritance is a
+  promise, not an accident of the implementation.
+- **Scrollback is the one leak path, and the hook owns it.** The hook's output lands in the
+  pane and §9.4 captures the pane, so a hook that echoes a secret has written it under
+  `$DECK_HOME/captures/<session_id>/`. The safe shape, which help states: emit `export K=V` on
+  stdout for the caller to `eval "$(…)"`, send diagnostics to stderr, and never echo a value. A
+  session whose hook cannot be that careful sets `sensitive` (§8) and gives up capture.
+- **A hook must be idempotent, because it runs on every launch and not once per session.**
+  `pre_launch` fires on create, on `r`, on `R`, on the `r` after a `U`, and on the first `r`
+  after a host restart — §9.1 restores nothing at boot, so a reboot simply leaves every row
+  `stopped · resumable`. A hook that provisions an external resource therefore provisions it
+  again on the next launch, which is exactly what makes §9.2's fail-open teardown tolerable:
+  whatever a teardown released, the next launch rebuilds.
 
 ### 6.5 The config file
 
@@ -447,7 +513,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `group_by_workspace` (default true, §11), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
@@ -455,6 +521,16 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
 `[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
 this — the harness must be able to pin behaviour regardless of what a config file says).
+
+**The two hook keys are global defaults that compose with a session's own, never replace it.**
+A global hook is the *self-selecting* rule — one line, installed once, that reads §6.1's
+session context and decides for itself whether this session is one it cares about — and a
+session's own hook is the specific exception. Both run, **global first**, joined so that a
+failure of the first short-circuits the second (§9.1's fail-closed launch for `pre_launch`).
+Global-first is also what lets a session's hook observe whatever the global one exported, in
+the same shell, so the two compose instead of racing. The presence of a per-session hook never
+shadows the global one. Both keys are editable in settings (§11.5) like every other flat key,
+and labelled *restart-to-apply* there, because a hook is consumed at launch.
 
 Two rules that hold for every key, present and future:
 
@@ -738,8 +814,15 @@ collapses into the assigned-id path — see §14.2.
 There is no boot-time restore and no `autostart` (R3). After a reboot the list is intact,
 every session reads `stopped · resumable`, and `r` brings one back:
 
-- Create `deck_<slug>` at `cwd` on the deck socket; run `pre_launch` if set; launch the
-  agent with its **resume** argv and the session's env/permission profile.
+- Create `deck_<slug>` at `cwd` on the deck socket; run the launch hooks — the global
+  `pre_launch` from `config.toml` (§6.5) and then the session's own, either of which may be
+  empty; launch the agent with its **resume** argv and the session's env/permission profile.
+- **The launch hooks are fail-closed**, and this is the one place that says so: they run in the
+  pane, ahead of the agent, joined to it so that a non-zero exit short-circuits everything after
+  it. The agent is never started, the pane is retained with the hook's own output visible
+  (`remain-on-exit failed`, §3.2), and the row lands in `error` with that as its reason. A
+  session that would start *without* the credential its hook was supposed to fetch is worse than
+  a session that refuses to start, so refusing is the behaviour, not a failure mode of it.
 - A resumed session enters `starting` and becomes `running` on the agent's first signal,
   exactly as in §7 — there is no special post-resume status. Hook agents typically reach
   `running` within a second; probe agents may sit in `starting` until `stale_after`, which
@@ -787,6 +870,38 @@ also *remove the row from view* do:
 | bulk | `m` marks | `x` / `dd` act on the mark set. |
 
 deck never writes to or deletes anything inside a session's `cwd`.
+
+**`post_destroy` runs on `A` and `dd`, and on nothing else.** A session whose launch hook
+provisioned an external resource (§6.4) needs somewhere to release it, so those two actions —
+the ones above that remove the row from view, both of which confirm or are undoable, and both of
+which mean *I am done with this* — run the session's own `post_destroy` and then the global one
+from `config.toml` (§6.5). Its shape is the inverse of `pre_launch`'s at every point where the
+two could be confused:
+
+- **Not in a pane.** The pane is already dead, so the hook runs as a subprocess of deck under a
+  bounded timeout, with §6.1's session context in its environment — minus
+  `DECK_SESSION_LAUNCH_KIND`, which has no meaning here, and plus `DECK_TEARDOWN_KIND`
+  (`archive` or `delete`) so one hook can serve both. Its stdout is diagnostic; there is no
+  child process left to export to.
+- **Session's own first, then the global one** — the reverse of §6.5's launch order, and
+  deliberately so: teardown unwinds in the order that releases the specific before the general.
+  Each runs in its own subprocess, so neither observes the other's environment and, because both
+  are fail-open, the first one's exit status never suppresses the second.
+- **Fail-open, and reported.** `pre_launch` must be able to refuse a launch; a teardown hook
+  cannot be allowed to refuse a teardown that has already happened. A non-zero exit or a timeout
+  raises a toast and records an event, and never resurrects the row or reverses the action.
+- **`x` does not run it.** `x` is the cheap, unconfirmed, everyday action and the row it leaves
+  is `stopped · resumable`: the session has not stopped being a session, and its external
+  resources should still be there when it resumes.
+- **Reaping does not run it either.** A tombstone is reaped after its window by whichever process
+  happens to open the store next, and a create or rename that reuses the name reaps it early —
+  hanging a user-visible external effect off any of those is indefensible. The hook fires at the
+  keypress that decided it.
+- **Undo restores the row; the next `r` restores the resource.** `dd`'s 60 s undo, `A`'s undo and
+  `U` all return the row `stopped`, never running, so no undo re-runs anything at the moment it
+  happens — the next launch does, by §6.4's idempotency rule. The toast says exactly that, so the
+  user is not left guessing which half came back.
+- A bulk `dd` over a mark set runs it once per marked session.
 
 **What `dd` removes, exactly.** *Purge* was doing two unrelated jobs in that table, so they
 are named apart: the conversation purge is the checkbox, and the tombstone is **reaped**.
@@ -1155,8 +1270,9 @@ hold them side by side.
   attach. `stopped`, `archived`, and a `starting` row whose pane does not exist yet render
   a one-line placeholder naming the state. Stale bytes are never presented as live.
 - Since there is no CLI (R7), **every** capability is reachable and discoverable in the
-  UI: create modal (name, cwd picker, agent, permission profile, env, pre_launch, args),
-  env editor, permission switcher, pin/unpin, rename, notification rules editor, health
+  UI: create modal (name, cwd picker, agent, permission profile, env, pre_launch,
+  post_destroy, args), env editor, launch-inputs editor (§6.2), permission switcher,
+  pin/unpin, rename, notification rules editor, health
   view (tmux version, socket, agents on PATH, PATH resolvability, optional unit install),
   event log, search, **a settings view over every config key (§11.5)**, and a help overlay
   with the full keymap. A capability that can only be reached by editing a file by hand is
@@ -1164,9 +1280,9 @@ hold them side by side.
 
 Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
-`s` send message (§11.1) · `i` session detail (§11.4 — **rename is an action inside it**,
-not a top-level key) · `e` env editor · `P` permission profile · `p` pin conversation ·
-`E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
+`s` send message (§11.1) · `i` session detail (§11.4 — **rename and the launch-inputs editor
+are actions inside it**, not top-level keys) · `e` env editor · `P` permission profile ·
+`p` pin conversation · `E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
 filter list · `m` mark · `z` snooze · `A` archive
 (confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `,` settings
 (§11.5) · `t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) ·
@@ -1413,9 +1529,13 @@ it does**: §11.3's "never list a key that is not bound" applies here too, so a 
 unbuilt behaviour is simply absent rather than a stub that opens onto nothing
 (`docs/PLAN.md` is where each one is assigned to a phase). Create session · session detail
 `i` — which is where §5's degradation reason and §7's `last_message` live, and from which
-**rename** is reached · confirm (kill, delete, purge, archive) · delete options (tombstone
-vs purge) · permission profile picker · pin conversation · send message (§11.1) · env editor
-· snooze duration · notification rules · theme picker (§11.6) · event log · health view ·
+**rename** and the **launch-inputs editor** are reached · confirm (kill, delete, purge,
+archive) · delete options (tombstone vs purge) · permission profile picker · pin conversation ·
+send message (§11.1) · env editor · **launch-inputs editor** (§6.2 — `pre_launch`,
+`post_destroy`, `launch_args`, `login_shell`; every field labelled *restart-to-apply*. The two
+hook lines are shown verbatim rather than masked — they are commands, not values, and §6.4's
+whole recommendation is that the command *sources* a secret rather than containing one) ·
+snooze duration · notification rules · theme picker (§11.6) · event log · health view ·
 find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
 — see below.
 
