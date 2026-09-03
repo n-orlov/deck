@@ -123,6 +123,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerSettingsSteps(sc)
 	registerDialogsSteps(sc)
 	registerEnvEditorSteps(sc)
+	registerLaunchInputsEditorSteps(sc)
 	registerKillDeleteUndoSteps(sc)
 	registerKillDeleteUndoFingerprintSteps(sc)
 	registerAttachScrollSteps(sc)
