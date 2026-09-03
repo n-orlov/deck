@@ -394,6 +394,38 @@ type Model struct {
 	renameValue     string
 	renamePrefilled bool
 	renameNote      string
+	// launchInputsSetter is task 023's `i`-dialog-only launch-inputs editor
+	// action (SPEC §6.2/§11.4, PRD R108): it persists the four editable
+	// launch inputs (pre_launch, post_destroy, launch_args, login_shell)
+	// and marks the row launch_dirty -- store.Store.SetLaunchInputs is the
+	// mutator underneath it, never touching agent/cwd/slug/captured_path.
+	// nil means editing is unavailable and submitting states so rather
+	// than silently doing nothing, exactly like renamer/setSessionEnv.
+	launchInputsSetter func(context.Context, string, string, string, []string, bool) (store.Session, error)
+	// launchInputsEditing is true while the launch-inputs editor
+	// (reachable ONLY from inside the `i` detail dialog, never as a
+	// top-level key -- see updateDetailView) is open; m.detail stays true
+	// underneath it the whole time, mirroring m.renaming exactly.
+	// launchInputsField is the currently focused field, 0-3 in
+	// launchInputsFieldRows' own order. The three text fields
+	// (launchInputsPreLaunch/PostDestroy/LaunchArgs) hold exactly what was
+	// typed, verbatim -- the two hook commands are deliberately never run
+	// through maskEnvValue or any other masking, since SPEC §6.4/§11.4 are
+	// explicit that they are commands, not secret values.
+	// launchInputsLoginShell is the fourth field, toggled by left/right/
+	// space rather than typed. launchInputsNote is a validation error (bad
+	// launch_args JSON) or a failed-submit message, retained with the
+	// fields exactly as typed so nothing is lost. launchInputsScroll is
+	// this dialog's own PgUp/PgDn viewport offset (updateLaunchInputsDialog),
+	// reset to 0 every time `l` opens it fresh.
+	launchInputsEditing     bool
+	launchInputsField       int
+	launchInputsPreLaunch   string
+	launchInputsPostDestroy string
+	launchInputsLaunchArgs  string
+	launchInputsLoginShell  bool
+	launchInputsNote        string
+	launchInputsScroll      int
 	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a listing
 	// of the selected session's effective environment, one row per key,
 	// naming which layer (server env, captured_path, config [env], session
@@ -1131,6 +1163,15 @@ type sessionRenamed struct {
 // Service.SetSessionEnv's persisted-and-mirrored result, or the error that
 // kept the store/tmux state exactly as it was before the edit.
 type envEdited struct {
+	session store.Session
+	err     error
+}
+
+// launchInputsSaved is the reply to a committed launch-inputs editor
+// submit (task 023, SPEC §6.2/§11.4, PRD R108): launchInputsSetter's
+// persisted result (launch_dirty set), or the error that kept the row's
+// four launch-input columns exactly as they were before.
+type launchInputsSaved struct {
 	session store.Session
 	err     error
 }
@@ -2238,6 +2279,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.renaming = false
 		m.renameNote = ""
 		return m, m.loadSessions
+	case launchInputsSaved:
+		// Mirrors sessionRenamed exactly: a successful submit closes the
+		// launch-inputs editor (m.detail, underneath it, stays true -- this
+		// dialog is an action inside detail, so submitting it returns to
+		// detailView, never all the way out to the main list).
+		if msg.err != nil {
+			m.launchInputsNote = "Cannot save launch inputs: " + msg.err.Error()
+			return m, nil
+		}
+		m.launchInputsEditing = false
+		m.launchInputsNote = ""
+		return m, m.loadSessions
 	case envEdited:
 		// Unlike profileSwitched/resumeModeChanged, a committed edit does
 		// NOT close the dialog: SPEC §6.1/§6.3's env editor is a listing of
@@ -2427,6 +2480,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.renaming {
 			return m.updateRenameDialog(msg)
+		}
+		if m.launchInputsEditing {
+			return m.updateLaunchInputsDialog(msg)
 		}
 		if m.detail {
 			return m.updateDetailView(msg)
@@ -3142,7 +3198,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// and no dialog action is reachable by mouse alone, so every overlay
 		// that already makes the bare-letter keymap a no-op ignores the mouse
 		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive || m.lostAttach {
+		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.launchInputsEditing || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive || m.lostAttach {
 			return m, nil
 		}
 		return m.handleMouse(msg)
@@ -3334,6 +3390,9 @@ func (m Model) View() string {
 	}
 	if m.renaming && len(m.sessions) > 0 {
 		return m.renameView()
+	}
+	if m.launchInputsEditing && len(m.sessions) > 0 {
+		return m.launchInputsView()
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
@@ -5811,7 +5870,7 @@ func (m Model) detailBody() string {
 			fmt.Fprintf(&b, "\nCrash tail:\n%s\n", crashTail)
 		}
 	}
-	b.WriteString("\n" + m.glyph("r renames · i or Esc closes detail", "r renames - i or Esc closes detail") + "\n")
+	b.WriteString("\n" + m.glyph("r renames · l edits launch inputs · i or Esc closes detail", "r renames - l edits launch inputs - i or Esc closes detail") + "\n")
 	return b.String()
 }
 
