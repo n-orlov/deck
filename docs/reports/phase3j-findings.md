@@ -22,7 +22,7 @@ tracked under `git ls-files --error-unmatch`, both checked in
 - [3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b` and `566cb6d`](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work--closed-by-task-038-at-2e5fc6b-and-566cb6d)
 - [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-not-yet-checked-against-a-whole-suite-run)
 - [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
-- [6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep)
+- [6. Two stale schema-version literals in `features/` — fixed by task 030 at `204af7d`](#6-two-stale-schema-version-literals-in-features--fixed-by-task-030-at-204af7d)
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
 - [8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)](#8-gate-dispositions-whole-suite-sweep-task-030-and-ten-run-stability-task-032)
 - [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
@@ -285,9 +285,9 @@ single-feature `features` runs), never the whole-suite sweep that would exercise
 here**; task 035 ("Fill in the gate dispositions") is the task that runs the by-name recurrence
 grep against task 030's actual sweep log and records the result, in §8's disposition placeholder
 below. One consequence of never having run a whole-`features` package test during 001–028 is
-[§6](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep):
-four `features/store.feature` scenarios fail at this very tree, and nothing in 001–028 would have
-noticed.
+[§6](#6-two-stale-schema-version-literals-in-features--fixed-by-task-030-at-204af7d): four
+`features/store.feature` scenarios failed at that earlier tree (fixed since by task 030's commit
+`204af7d`, per §6 below), and nothing in 001–028 would have noticed.
 
 ## 5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027
 
@@ -322,69 +322,53 @@ $ grep -n "databaseSchemaVersion(stepCtx" features/assertions_test.go
 **Disposition.** Fixed inside task 027, with a comment at the pin saying it must track
 `internal/store.SchemaVersion` exactly. It is recorded here because it is a *pre-existing* gap
 this phase inherited and repaired in passing rather than part of any task's own criteria, and
-because it is the same drift class as §6's two still-open literals below. Rule for any future
+because it is the same drift class as §6's two literals, fixed below. Rule for any future
 phase that bumps `SchemaVersion`: grep `features/` for the old number before calling the bump
 done.
 
-## 6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep
+## 6. Two stale schema-version literals in `features/` — fixed by task 030 at `204af7d`
 
-The drift of §5 survives in two more places that task 027's targeted single-feature run could not
-reach. Both were found by task 029 while writing this report, by running the one feature file
-nothing in tasks 001–028 had run (dev evidence, not a deliverable sweep):
+The drift of §5 survived in two more places that task 027's targeted single-feature run could not
+reach. Both were found by task 029 while writing the earlier version of this report, by running
+the one feature file nothing in tasks 001–028 had run (dev evidence, not a deliverable sweep), and
+both were fixed by task 030's own commit `204af7dad3b4766ee82f80edf45f9f7f9c7d920b`
+("features: fix stale schema version literals in store.feature (task 030)").
 
-```
-$ ci/run.sh sh -c 'DECK_GODOG_PATHS=store.feature go test -count=1 ./features'   # exit 1
---- FAIL: TestFeatures (4.59s)
-    --- FAIL: TestFeatures/initialize_a_private_v2_WAL_database
-        after scenario hook failed: schema version = 6, want 5
-    --- FAIL: TestFeatures/migrate_an_older_supported_database
-    --- FAIL: TestFeatures/migrate_a_v1_database_in_place_without_recreating_a_session_row
-    --- FAIL: TestFeatures/refuse_a_newer_database_without_corruption
-        released binary did not clearly refuse newer database: "deck event retention: read event
-        retention throttle: read ui_state event_retention_last_run_at: SQL logic error: no such
-        table: ui_state (1)"
-FAIL	github.com/n-orlov/deck/features	20.906s
-```
-
-**(a) `features/store.feature` pins schema version 5 in three scenarios.** Three steps read
-`the state database has schema version 5` while the binary now writes 6:
+**(a) `features/store.feature` now pins schema version 6 in its three scenarios**, matching the
+binary's current `internal/store.SchemaVersion`:
 
 ```
 $ grep -n "schema version" features/store.feature
-9:    And the state database has schema version 5
-15:    Then the state database has schema version 5
-24:    Then the state database has schema version 5
+9:    And the state database has schema version 6
+15:    Then the state database has schema version 6
+24:    Then the state database has schema version 6
 ```
 
-That is the `schema version = 6, want 5` error above, in the first three scenarios.
-
-**(b) `features/store_feature_test.go`'s "newer unsupported" fixture is no longer newer.**
-`newerDatabaseFixture` writes `user_version` 6 — chosen as "one past `SchemaVersion`" back when
-`SchemaVersion` was 5, and stale since task 010 made 6 the *current* version:
+**(b) `features/store_feature_test.go`'s "newer unsupported" fixture now writes 7**, one past the
+current `SchemaVersion` of 6, restoring the invariant its own comment states ("One past
+`internal/store.SchemaVersion` (bumped to 6) -- must always stay strictly newer than the binary
+understands, so a later `SchemaVersion` bump has to bump this literal too"):
 
 ```
-$ grep -n "writeDatabaseFixture(h, 6)" features/store_feature_test.go
-58:	if err := writeDatabaseFixture(h, 6); err != nil {
+$ grep -n "writeDatabaseFixture(h, 7)" features/store_feature_test.go
+58:	if err := writeDatabaseFixture(h, 7); err != nil {
 ```
 
-Its own comment states the invariant it now violates ("One past internal/store.SchemaVersion
-(bumped to 5 by task 330) -- must always stay strictly newer than the binary understands, so a
-later SchemaVersion bump has to bump this literal too"). Because the fixture is no longer newer,
-the released binary does not refuse it: it opens it as a current-version database whose tables the
-fixture never created and fails with `no such table: ui_state` instead of the
-`newer than supported` refusal `clearlyRefusesNewerDatabase` asserts — so
-`refuse a newer database without corruption` fails for a second, distinct reason.
+Confirmed fresh against the committed code, re-running the same targeted evidence command §5 and
+the original version of this finding used:
 
-**Disposition: open as of this writing, and a gate blocker rather than an advisory.** Task 030's
-`successCriteria` require the whole-suite sweep's recorded exit status to be 0; while these two
-literals are stale the `features` package fails, so that sweep cannot be green until both are
-corrected — (a) by moving `features/store.feature`'s three pins to 6, (b) by moving the fixture
-literal to one past the current `SchemaVersion`. Neither is a `SPEC.md` disagreement (§4 of
-`SPEC.md` fixes the schema and its migration invariant, not these black-box literals) and neither
-is a product bug: both are test literals that copy `internal/store.SchemaVersion` by hand, the
-drift point §5 warns about. Editing a `.feature` file requires the standing rules' `od -c` check
-for `\r` corruption. Nothing in this report performs those edits — task 029's criteria are
-documentary; the repair belongs to whichever task or planning pass takes task 030's gate to green.
+```
+$ ci/run.sh sh -c 'DECK_GODOG_PATHS=store.feature go test -count=1 ./features'
+ok  	github.com/n-orlov/deck/features	17.745s
+```
+
+**Disposition: fixed by task 030's commit `204af7d`, no gate blocker remains.** Both literals now
+track `internal/store.SchemaVersion` (`features/store.feature`'s three pins moved to 6;
+`features/store_feature_test.go`'s fixture literal moved to 7, one past current), and the
+`features` package's `store.feature` scenarios pass at the current tree. This was never a
+`SPEC.md` disagreement (§4 of `SPEC.md` fixes the schema and its migration invariant, not these
+black-box literals) and never a product bug: both were test literals that copy
+`internal/store.SchemaVersion` by hand, the drift point §5 warns about.
 
 ## 7. How to re-check every citation in this report
 
@@ -394,7 +378,7 @@ names a file tracked under `git ls-files --error-unmatch`:
 ```
 $ for sha in 06ea5b7 be6e42b f1788b9 5bc6f3e c13a909 ed8b81e 38ad227 34f1560 db8d5c7 0316c51 \
     b50cc20 5ef971b f60b5e4 0299be9 66711eb 8931988 db2ea55 ad51022 325d00a 630ac90 9fb25f7 \
-    6b8f1d0 895f58d 17cabb8 9fb6aec 2e5fc6b 566cb6d; do \
+    6b8f1d0 895f58d 17cabb8 9fb6aec 2e5fc6b 566cb6d 204af7d; do \
     git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
 (all print "<sha> ok")
 $ git ls-files --error-unmatch \
