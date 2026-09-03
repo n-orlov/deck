@@ -3,9 +3,11 @@
 Companion to the phase closeout report task 034 writes (that task's own `successCriteria` in
 the run's own `/run/ralphd/tasks.json` names its path; it is deliberately not cited here, because
 every repo path this report cites is one already tracked in git — see §7): what the requirement
-table does not carry — a task that ended `failed`, was reopened by an operator ruling, and was
-then closed, with the tasks that had depended on it subsequently delivered, gaps
-a validation pass found that were then closed within the same task rather than left open, the
+table does not carry — task 011, which ended `failed`, was reopened by operator ruling 001-011,
+and was then closed by commit `9fb6aec`, after which the two tasks that had depended on it,
+013 and 026, were subsequently delivered (commits `259284b` and `6080c55`) rather than left
+unfinished (§1), gaps a validation pass found that were then closed within the same task rather
+than left open, the
 protected-path audit's disposition over this run's own commit range, this phase's check for a
 disagreement between the tree and `SPEC.md`, the schema-version pins in `features/` that task
 010's `SchemaVersion` bump left stale (one fixed in flight, two still failing), and a placeholder
