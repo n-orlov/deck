@@ -1921,3 +1921,151 @@ func TestListEventsQueryPlanUsesEventsAtIndexOnSeededLargeTable(t *testing.T) {
 		t.Fatalf("ListEvents(limit=1) over seeded table = %+v, want the newest row (at=%d)", events, seededRows-1)
 	}
 }
+
+// TestOpenMigratesV5FixtureAddsPostDestroyAndLaunchDirtyWithoutTouchingExistingRows
+// is task 010's migration proof: schemaV6 adds sessions.post_destroy and
+// sessions.launch_dirty (both plain ALTER TABLE ADD COLUMN statements) on
+// top of an existing v1-v5 database, and must do so without recreating or
+// altering any pre-existing session row's other columns. Two real session
+// rows (not zero, not one) are seeded so "the rows survive" is checked
+// against more than a single coincidental match.
+func TestOpenMigratesV5FixtureAddsPostDestroyAndLaunchDirtyWithoutTouchingExistingRows(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "deck")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, "state.db")
+	fixture, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range schemaV1 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV2 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV3 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV4 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range schemaV5 {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fixture.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', 5)`); err != nil {
+		t.Fatal(err)
+	}
+	const firstID = "v5-fixture-session-a"
+	const secondID = "v5-fixture-session-b"
+	if _, err := fixture.Exec(`INSERT INTO sessions (
+		id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at
+	) VALUES (?, 'kept-a', 'kept-a', '/tmp/a', 'shell', '/bin/sh', 'stopped', 'test', 1, 1)`, firstID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.Exec(`INSERT INTO sessions (
+		id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at
+	) VALUES (?, 'kept-b', 'kept-b', '/tmp/b', 'claude', '/bin/claude', 'running', 'test', 2, 2)`, secondID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var version int
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
+		t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
+	}
+	if SchemaVersion != 6 {
+		t.Fatalf("SchemaVersion = %d, want 6", SchemaVersion)
+	}
+
+	var sessionCount int
+	if err := store.DB().QueryRow(`SELECT count(*) FROM sessions`).Scan(&sessionCount); err != nil || sessionCount != 2 {
+		t.Fatalf("session count after v5->v6 migration = %d, %v; want 2 (no row added or dropped)", sessionCount, err)
+	}
+	for id, want := range map[string]struct {
+		name, cwd, agent, status string
+	}{
+		firstID:  {"kept-a", "/tmp/a", "shell", "stopped"},
+		secondID: {"kept-b", "/tmp/b", "claude", "running"},
+	} {
+		var name, cwd, agent, status string
+		var postDestroy sql.NullString
+		var launchDirty int
+		if err := store.DB().QueryRow(`SELECT name, cwd, agent, status, post_destroy, launch_dirty FROM sessions WHERE id = ?`, id).
+			Scan(&name, &cwd, &agent, &status, &postDestroy, &launchDirty); err != nil {
+			t.Fatalf("read migrated row %s: %v", id, err)
+		}
+		if name != want.name || cwd != want.cwd || agent != want.agent || status != want.status {
+			t.Fatalf("migrated row %s = {%q %q %q %q}, want %+v", id, name, cwd, agent, status, want)
+		}
+		if postDestroy.Valid {
+			t.Fatalf("migrated row %s post_destroy = %q, want NULL (unset default)", id, postDestroy.String)
+		}
+		if launchDirty != 0 {
+			t.Fatalf("migrated row %s launch_dirty = %d, want 0 (not-dirty default)", id, launchDirty)
+		}
+	}
+}
+
+// TestFreshDatabaseReportsSchemaVersion6WithPostDestroyAndLaunchDirtyColumns
+// is task 010's fresh-database half: a brand-new store (no fixture, no
+// migration path at all) must already report SchemaVersion 6 and already
+// carry both new sessions columns, exactly as schemaV1 through schemaV5's
+// own columns are already present on a fresh open.
+func TestFreshDatabaseReportsSchemaVersion6WithPostDestroyAndLaunchDirtyColumns(t *testing.T) {
+	home := t.TempDir()
+	store, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	var version int
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != 6 {
+		t.Fatalf("fresh database schema version = %d, %v; want 6", version, err)
+	}
+
+	rows, err := store.DB().Query(`PRAGMA table_info(sessions)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			t.Fatal(err)
+		}
+		seen[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"post_destroy", "launch_dirty"} {
+		if !seen[column] {
+			t.Fatalf("fresh database sessions table missing column %q", column)
+		}
+	}
+}
