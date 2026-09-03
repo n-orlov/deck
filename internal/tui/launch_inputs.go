@@ -95,7 +95,7 @@ func (m Model) launchInputsFieldRows() []struct{ label, value, help string } {
 		loginShell = "on"
 	}
 	return []struct{ label, value, help string }{
-		{"Pre-launch command", m.launchInputsPreLaunch, "runs before the agent starts on every launch and must be idempotent; a non-zero exit or timeout blocks the launch (fail-closed) -- restart-to-apply"},
+		{"Pre-launch command", m.launchInputsPreLaunch, "runs before the agent starts on every launch and must be idempotent; a non-zero exit blocks the launch (fail-closed) -- restart-to-apply"},
 		{"Post-destroy command", m.launchInputsPostDestroy, "runs after Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open) -- restart-to-apply"},
 		{"Launch args (JSON array)", m.launchInputsLaunchArgs, "extra arguments appended verbatim after the adapter's own argv -- restart-to-apply"},
 		{"Login shell", loginShell + " (space toggles)", "runs the pane command through $SHELL -lc, letting rc files rewrite PATH -- restart-to-apply"},
