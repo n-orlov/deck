@@ -131,20 +131,31 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
 	// Archive and Delete now also return SPEC §9.2's teardown-hook toast
-	// message (task 013); the TUI's archiveSvc/deleteSvc fields keep their
-	// pre-task-013 `func(context.Context, store.Session) error` shape (see
-	// footer_handler_agreement_test.go, which must keep passing unedited), so
-	// that message is discarded here rather than plumbed further -- wiring it
-	// into an on-screen toast is a later task's own addition, not this one's.
+	// message (task 013). WithTeardownHookReporters below wires that message
+	// through to an on-screen note (task 042); the constructor's own
+	// archiver/deleter params below still need the pre-task-013
+	// `func(context.Context, store.Session) error` shape (see
+	// footer_handler_agreement_test.go, which must keep passing unedited) so
+	// that Submit's nil-check knows archiving/deleting is available at all --
+	// these discard-adapters exist ONLY to satisfy that fallback signature.
+	// Once WithTeardownHookReporters is set, the model's submit handlers call
+	// exclusively the matching reporter and never these adapters, so
+	// sessions.Archive/Delete each still run exactly once per submit.
 	archiveAdapter := func(ctx context.Context, session store.Session) error {
-		_, err := sessions.Archive(ctx, session)
-		return err
+		_, callErr := sessions.Archive(ctx, session)
+		return callErr
 	}
 	deleteAdapter := func(ctx context.Context, session store.Session) error {
-		_, err := sessions.Delete(ctx, session)
-		return err
+		_, callErr := sessions.Delete(ctx, session)
+		return callErr
 	}
 	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, deleteAdapter, sessions.Restore, sessions.Reap, sessions.Purge, archiveAdapter, sessions.Rename, sessions.Unarchive)
+	// task 043: wire the message-carrying reporters themselves so the toast
+	// added by task 042 actually shows -- sessions.Archive/Delete already have
+	// the exact `func(context.Context, store.Session) (string, error)` shape
+	// WithTeardownHookReporters wants, so they are passed directly (no
+	// adapter, no discarding).
+	model = model.WithTeardownHookReporters(sessions.Archive, sessions.Delete)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
 	// dependency that needs the raw tmux.Client itself rather than one more
 	// narrow func field: window geometry, ownership and dispatcher/transport
