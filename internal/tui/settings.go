@@ -750,6 +750,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		RecentCwdLimit:       s.File.RecentCwdLimit,
 		EventRetentionDays:   s.File.EventRetentionDays,
 		Theme:                s.File.Theme,
+		PreLaunch:            s.File.PreLaunch,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
@@ -1036,18 +1037,25 @@ func settingsIntegerBoundsText(f config.Field) string {
 	return fmt.Sprintf("min %d", f.IntBounds.Min)
 }
 
-// settingsStringValue is KindString's get, generic across any future
-// schema field of that kind: config.Schema declares none today, so this
-// only ever falls through to the field's declared Default, but the
-// dispatch shape matches settingsToggleValue/settingsIntegerValue/
-// settingsEnumValue exactly so adding a real KindString field later is one
-// case here, not a new function.
+// settingsStringValue is KindString's get, generic across any schema
+// field of that kind, matching settingsToggleValue/settingsIntegerValue/
+// settingsEnumValue's own dispatch shape.
 func settingsStringValue(f config.Field, cfg config.FileConfig) string {
-	_ = cfg // no schema field of KindString exists yet to read out of cfg
 	switch f.FullKey() {
+	case "pre_launch":
+		return cfg.PreLaunch
 	default:
 		s, _ := f.Default.(string)
 		return s
+	}
+}
+
+// settingsSetString is settingsStringValue's set half, the KindString
+// counterpart to settingsSetToggle/settingsSetInteger/settingsSetEnum.
+func settingsSetString(cfg *config.FileConfig, f config.Field, v string) {
+	switch f.FullKey() {
+	case "pre_launch":
+		cfg.PreLaunch = v
 	}
 }
 

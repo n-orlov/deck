@@ -90,6 +90,15 @@ func TestSettingsEditsFromSettingsCoversEveryFlatKey(t *testing.T) {
 			// above; nothing else to probe generically.
 			continue
 
+		case config.KindString, config.KindPath:
+			want = "__task004_probe__"
+			settingsSetString(&cfg, f, want)
+			got := settingsStringValue(f, settingsEditsFromSettings(config.Settings{File: cfg}))
+			if got != want {
+				t.Errorf("%s (kind %s): settingsEditsFromSettings dropped the staged value (got %q, want %q)", full, f.Kind, got, want)
+			}
+			continue
+
 		default:
 			t.Errorf("%s: config.Schema declares a %s field with no settingsEditsFromSettings coverage check wired here -- add one before shipping this field", full, f.Kind)
 		}

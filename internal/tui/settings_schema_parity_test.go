@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
@@ -154,16 +155,71 @@ func settingsAssertFieldRoundTrips(t *testing.T, f config.Field) {
 		// that makes it panic on an empty map is still caught here.
 		_ = settingsListValueDisplay(f, config.FileConfig{})
 
-	case config.KindString, config.KindPath, config.KindLink:
-		// config.Schema declares no field of these kinds today (the
-		// only KindLink entry, [notify], is the synthetic
-		// settings-only exception the other test in this file
-		// excludes). If one is ever added, it must fail here loudly
-		// until a real get/set round-trip is wired for it, rather than
-		// silently passing because there was nothing to check.
+	case config.KindString, config.KindPath:
+		var cfg config.FileConfig
+		for _, probe := range []string{"__task004_probe_a__", "__task004_probe_b__"} {
+			settingsSetString(&cfg, f, probe)
+			if got := settingsStringValue(f, cfg); got != probe {
+				t.Errorf("%s (kind %s): set-then-get round-trip did not reflect the write (get after set(%q) = %q)", full, f.Kind, probe, got)
+			}
+		}
+
+	case config.KindLink:
+		// config.Schema declares no field of this kind today (the only
+		// KindLink entry, [notify], is the synthetic settings-only
+		// exception the other test in this file excludes). If one is ever
+		// added, it must fail here loudly until a real get/set round-trip
+		// is wired for it, rather than silently passing because there was
+		// nothing to check.
 		t.Errorf("%s: config.Schema declares a %s field, but settings has no generic get/set round-trip wired for that kind yet -- add one (and a case here) before shipping this field", full, f.Kind)
 
 	default:
 		t.Errorf("%s: unknown Kind %q", full, f.Kind)
+	}
+}
+
+// TestSettingsViewIncludesGlobalPreLaunchField is task 004's own success
+// criterion: the settings takeover's view -- settingsCategories(), built by
+// walking config.Schema (see this file's own doc comment) -- must contain
+// the global pre_launch field because it is declared in config.Schema, not
+// because settings.go hand-builds an entry for it. Asserts its kind,
+// default and scope match what task 004 documents, and that its
+// description names both "global" and "every session" (schema.go's own
+// wording requirement).
+func TestSettingsViewIncludesGlobalPreLaunchField(t *testing.T) {
+	var found config.Field
+	ok := false
+	for _, cat := range settingsCategories() {
+		for _, f := range cat.Fields {
+			if f.FullKey() == "pre_launch" {
+				found = f
+				ok = true
+			}
+		}
+	}
+	if !ok {
+		t.Fatal("settingsCategories() (the settings view generated from config.Schema) does not contain pre_launch")
+	}
+	if found.Kind != config.KindString {
+		t.Errorf("pre_launch Kind = %q, want %q", found.Kind, config.KindString)
+	}
+	if found.Default != "" {
+		t.Errorf("pre_launch Default = %v, want \"\"", found.Default)
+	}
+	if found.Scope != config.ScopeRestartToApply {
+		t.Errorf("pre_launch Scope = %q, want %q", found.Scope, config.ScopeRestartToApply)
+	}
+	if !strings.Contains(found.Description, "global") {
+		t.Errorf("pre_launch Description does not say it is the global launch hook: %q", found.Description)
+	}
+	if !strings.Contains(found.Description, "every session") {
+		t.Errorf("pre_launch Description does not say it runs for every session: %q", found.Description)
+	}
+	// Confirm this field is also reachable via the direct config.Schema
+	// walk (belt-and-suspenders with the reachability test above), so this
+	// test does not pass merely because settingsCategories() was hand-
+	// edited to add a synthetic entry that Schema never declared.
+	if _, schemaOK := config.FieldByFullKey("pre_launch"); !schemaOK {
+		t.Error("pre_launch is rendered by settingsCategories() but config.FieldByFullKey cannot find it in config.Schema")
 	}
 }

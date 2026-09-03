@@ -8,11 +8,12 @@ import (
 // TestSchemaPinsKeySet enumerates the schema and pins the exact set of
 // flat config.toml keys (task 010, extended by task 030's interactive_ms,
 // task 031's interactive_transport, steer 017 item 2's yolo_default,
-// steer 018 item 4/task 215's preview_fit, task 303's [ui] sort_order, and
-// steer 3e-001's event_retention_days, task 332):
+// steer 018 item 4/task 215's preview_fit, task 303's [ui] sort_order,
+// steer 3e-001's event_retention_days, task 332, and phase3j task 004's
+// pre_launch):
 // allow_yolo, yolo_default, stale_after, capture_min_interval,
 // interactive_ms, interactive_transport, tmux_mouse, event_retention_days,
-// [ui] theme, [ui] ascii, [ui] mouse, [ui] preview_fit,
+// pre_launch, [ui] theme, [ui] ascii, [ui] mouse, [ui] preview_fit,
 // [ui] group_by_workspace, [ui] sort_order, [ui] recent_cwd_limit, and the
 // [env] table. Adding, removing or renaming a key must be a deliberate edit
 // to this test alongside the schema, never a silent drift.
@@ -33,6 +34,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.group_by_workspace",
 		"ui.sort_order",
 		"ui.recent_cwd_limit",
+		"pre_launch",
 		"[env]",
 	}
 	var got []string
@@ -145,6 +147,10 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     refreshed config.Settings for that closure to read a saved value
 //     from, so a save changes config.toml immediately but the running
 //     client keeps purging on the old window until deck restarts.
+//   - pre_launch (task 004, phase3j): the sole consumer is
+//     cmd/deck/main.go, which reads settings.PreLaunch once into
+//     service.Service before the Model exists, the same restart-to-apply
+//     shape as stale_after/tmux_mouse/event_retention_days above.
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
 		"allow_yolo":            ScopeGlobal,
@@ -162,6 +168,7 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.group_by_workspace": ScopeRestartToApply,
 		"ui.sort_order":         ScopeGlobal,
 		"ui.recent_cwd_limit":   ScopeRestartToApply,
+		"pre_launch":            ScopeRestartToApply,
 		"[env]":                 ScopeRestartToApply,
 	}
 	for _, field := range Schema {

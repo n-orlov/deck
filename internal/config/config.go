@@ -105,6 +105,12 @@ type Settings struct {
 	// layered under the session env per SPEC §6.1/§6.3. Absent file or absent
 	// section both yield a nil map, never an error.
 	Env map[string]string
+	// PreLaunch mirrors config.toml's top-level pre_launch key (task 004,
+	// phase3j): the global launch hook, a shell command run in every
+	// session's pane before that session's own launch argv, in addition to
+	// (never instead of) a session's own pre_launch. Empty by default.
+	// Defaults per internal/config.Schema.
+	PreLaunch string
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
@@ -287,6 +293,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
+		PreLaunch:          fileCfg.PreLaunch,
 		GroupByWorkspace:   groupByWorkspace,
 		SortOrder:          fileCfg.SortOrder,
 		PreviewFit:         previewFit,

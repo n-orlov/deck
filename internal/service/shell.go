@@ -40,6 +40,14 @@ type Service struct {
 	// between captured_path and the session's own env in PATH resolution
 	// order. A nil map is the common, valid case of no configured overrides.
 	ConfigEnv map[string]string
+	// GlobalPreLaunch mirrors config.toml's top-level pre_launch key (task
+	// 004, phase3j): the global launch hook, a shell command run in every
+	// session's pane before that session's own launch argv, in addition to
+	// (never instead of) a session's own PreLaunch (store.Session/
+	// CreateAgentInput's own field of that name). Empty is the common, valid
+	// case of nothing configured. Composing this with a session's own
+	// pre_launch in buildPaneCommand is a later task's own scope.
+	GlobalPreLaunch string
 	// DeckExecutable and DeckHome are deck-owned launch facts supplied to
 	// adapters for hook instrumentation. They are never persisted as user
 	// launch arguments or session environment.

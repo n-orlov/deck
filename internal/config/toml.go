@@ -34,6 +34,7 @@ type FileConfig struct {
 	RecentCwdLimit       int
 	EventRetentionDays   int
 	Theme                string
+	PreLaunch            string
 	Env                  map[string]string
 }
 
@@ -158,6 +159,8 @@ func defaultFileConfig() FileConfig {
 			cfg.EventRetentionDays, _ = field.Default.(int)
 		case "ui.theme":
 			cfg.Theme, _ = field.Default.(string)
+		case "pre_launch":
+			cfg.PreLaunch, _ = field.Default.(string)
 		}
 	}
 	return cfg
@@ -240,6 +243,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.SortOrder = unquoted
 		case "interactive_transport":
 			cfg.InteractiveTransport = unquoted
+		case "pre_launch":
+			cfg.PreLaunch = unquoted
 		}
 	default:
 		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)
