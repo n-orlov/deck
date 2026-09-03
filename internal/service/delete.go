@@ -17,19 +17,26 @@ import (
 // remaining restorable within the grace window task 106 implements. It
 // never touches the session's cwd or its conversation id/transcript —
 // those are exactly what the confirm dialog states survives.
-func (s Service) Delete(ctx context.Context, session store.Session) error {
+//
+// Once the tombstone itself has durably committed, Delete runs SPEC §9.2's
+// teardown hooks (runPostDestroy, task 013), exactly as Archive does. The
+// returned string is the hook failure message for a caller's toast --
+// empty when nothing was configured or every configured hook ran cleanly
+// -- and is never an error: a teardown hook can never undo a delete that
+// has already happened.
+func (s Service) Delete(ctx context.Context, session store.Session) (string, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil {
-		return errors.New("session delete requires store, audit logger, and clock")
+		return "", errors.New("session delete requires store, audit logger, and clock")
 	}
 	if session.ID == "" {
-		return errors.New("session delete requires a durable session id")
+		return "", errors.New("session delete requires a durable session id")
 	}
 	if session.Status != "stopped" {
 		if session.Slug == "" {
-			return errors.New("session delete requires a durable slug to kill a live pane")
+			return "", errors.New("session delete requires a durable slug to kill a live pane")
 		}
 		if err := s.TMux.Kill(ctx, session.Slug); err != nil {
-			return fmt.Errorf("kill tmux session %q: %w", session.Name, err)
+			return "", fmt.Errorf("kill tmux session %q: %w", session.Name, err)
 		}
 		if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 			SessionID:    session.ID,
@@ -40,20 +47,20 @@ func (s Service) Delete(ctx context.Context, session store.Session) error {
 			EventKind:    "killed",
 			KilledByUser: true,
 		}); err != nil {
-			return fmt.Errorf("record killed session %q: %w", session.Name, err)
+			return "", fmt.Errorf("record killed session %q: %w", session.Name, err)
 		}
 		if err := s.Audit.Transition(session.ID, "killed"); err != nil {
-			return fmt.Errorf("audit killed session %q: %w", session.Name, err)
+			return "", fmt.Errorf("audit killed session %q: %w", session.Name, err)
 		}
 	}
 	at := s.Clock.Now().UnixMilli()
 	if err := s.Store.SoftDeleteSession(ctx, session.ID, at); err != nil {
-		return fmt.Errorf("tombstone session %q: %w", session.Name, err)
+		return "", fmt.Errorf("tombstone session %q: %w", session.Name, err)
 	}
 	if err := s.Audit.Transition(session.ID, "deleted"); err != nil {
-		return fmt.Errorf("audit deleted session %q: %w", session.Name, err)
+		return "", fmt.Errorf("audit deleted session %q: %w", session.Name, err)
 	}
-	return nil
+	return s.runPostDestroy(ctx, session, TeardownKindDelete), nil
 }
 
 // Restore is task 106's `u` undo for a completed dd: within

@@ -130,7 +130,21 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// restart-to-apply: a save changes config.toml immediately, but this already
 	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
-	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, sessions.Delete, sessions.Restore, sessions.Reap, sessions.Purge, sessions.Archive, sessions.Rename, sessions.Unarchive)
+	// Archive and Delete now also return SPEC §9.2's teardown-hook toast
+	// message (task 013); the TUI's archiveSvc/deleteSvc fields keep their
+	// pre-task-013 `func(context.Context, store.Session) error` shape (see
+	// footer_handler_agreement_test.go, which must keep passing unedited), so
+	// that message is discarded here rather than plumbed further -- wiring it
+	// into an on-screen toast is a later task's own addition, not this one's.
+	archiveAdapter := func(ctx context.Context, session store.Session) error {
+		_, err := sessions.Archive(ctx, session)
+		return err
+	}
+	deleteAdapter := func(ctx context.Context, session store.Session) error {
+		_, err := sessions.Delete(ctx, session)
+		return err
+	}
+	model := tui.NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver(db, settings, tui.TmuxHealth(settings), sessions.CreateShell, client.AttachCommand, sessions.Kill, tuiReconcile, sessions.Resume, sessions.SetPermissionProfile, sessions.ResumeMode, sessions.CreateAgent, registry, client.CapturePreview, sessions.SetSessionEnv, sessions.Restart, sessions.InjectEnv, deleteAdapter, sessions.Restore, sessions.Reap, sessions.Purge, archiveAdapter, sessions.Rename, sessions.Unarchive)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
 	// dependency that needs the raw tmux.Client itself rather than one more
 	// narrow func field: window geometry, ownership and dispatcher/transport

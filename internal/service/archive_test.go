@@ -51,7 +51,7 @@ func TestArchiveOnStoppedSessionOnlySetsArchivedAtAndLeavesStatus(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	if err := svc.Archive(context.Background(), stopped); err != nil {
+	if _, err := svc.Archive(context.Background(), stopped); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 
@@ -87,7 +87,7 @@ func TestArchiveOnNonStoppedSessionKillsThenArchivesAsOneAction(t *testing.T) {
 		t.Fatalf("fixture session unexpectedly already stopped: %+v", session)
 	}
 
-	if err := svc.Archive(context.Background(), session); err != nil {
+	if _, err := svc.Archive(context.Background(), session); err != nil {
 		t.Fatalf("archive (kill and archive): %v", err)
 	}
 
@@ -119,7 +119,7 @@ func TestArchiveOnNonStoppedSessionKillsThenArchivesAsOneAction(t *testing.T) {
 // caller cannot archive a session it never durably identified.
 func TestArchiveRefusesEmptySessionID(t *testing.T) {
 	svc := Service{}
-	if err := svc.Archive(context.Background(), store.Session{}); err == nil {
+	if _, err := svc.Archive(context.Background(), store.Session{}); err == nil {
 		t.Fatal("Archive with empty session, want error")
 	}
 }
