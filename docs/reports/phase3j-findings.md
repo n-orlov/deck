@@ -156,7 +156,7 @@ walking each task's own commit history, would see an apparently-unresolved criti
 `validated` task — this is the record that it was, in fact, resolved, by which commit, and how
 to check that fresh.
 
-## 3. One SPEC-versus-tree disagreement found in R104–R109's landed work: CreateShell skips the hook composition and the config env layer
+## 3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b`
 
 **The disagreement, named with its SPEC sections and its repo-relative source path.**
 
@@ -164,49 +164,47 @@ to check that fresh.
 |---|---|
 | SPEC sections | §6.4 (`pre_launch` "runs in the pane, in the same shell that then execs the agent"; "A hook must be idempotent, because it runs on every launch … fires on create, on `r`, on `R`"), §6.5 ("The two hook keys are global defaults that compose with a session's own, never replace it. … Both run, **global first**"), §6.1 (the resolution order includes `[env]` in `config.toml` for every pane deck launches — "every adapter, `shell` included, on create and on resume alike"), §6.3 (`captured_path` sits **between** the server environment and `[env]`) |
 | Source path | `internal/service/shell.go` (`Service.CreateShell`) |
-| Disposition | `SPEC.md` wins; recorded here as a finding, never edited — and **not fixed by this phase**, whose tasks 001–028 do not reach `CreateShell`'s launch path. The gap predates this phase's base commit `06ea5b72d98ce0dda251d16af452b7f6d87e2c2f`; R104's session-context merge (task 001) is the one part of §6 that `CreateShell` does honour. |
+| Disposition | **Fixed by task 038, commit `2e5fc6ba831300d1d9b259ded3f0cfcb842f899d`.** `CreateShell` now builds `launchEnv` through `resolveLaunchEnv(capturedPath, input.Env)` (the same PATH-resolution layering `CreateAgent`/`Resume` use — `captured_path`, then `config.toml`'s `[env]`, then the session's own env) and wraps its argv through `buildPaneCommand(s.GlobalPreLaunch, "", false, argv)` before handing it to tmux, so `Service.GlobalPreLaunch` now composes ahead of the shell binary on create exactly as §6.5 requires. `ShellCreateInput` still carries no per-session `pre_launch` field of its own (unlike `AgentCreateInput.PreLaunch`), so the session-hook slot `buildPaneCommand` is called with is always `""` on create — a shell row's own `pre_launch` (settable later via the launch-inputs editor, §11.4) still only takes effect starting from that row's first `r`/`R`, which is `Resume`'s pre-existing, adapter-agnostic composition, not a further gap in `CreateShell` itself. Evidence: `internal/service/shell_test.go`'s `TestCreateShellPaneCarriesSessionContextWithRowsOwnValues` (criterion a) and `TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained` (criterion b, mirroring `agent_test.go`'s `TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`), plus `TestCreateShellPersistsLaunchesAndAudits`'s updated `env_keys` assertion (now includes `PATH`, proving `resolveLaunchEnv` is in the loop). |
 
-`CreateShell` builds its pane command as the bare user shell and hands that argv straight to
-tmux, never through `buildPaneCommand` (`internal/service/agent.go` — the function that composes
-global-then-session `pre_launch` and applies `login_shell`), and it builds `launchEnv` from the
-caller's `input.Env` plus adapter instrumentation plus §6.1's session context alone, never
-through `resolveLaunchEnv` (the function that merges `Service.ConfigEnv`, i.e. `config.toml`'s
-`[env]` table, and `captured_path`). Confirmed fresh against the committed code:
+`CreateShell` now builds its pane command through `buildPaneCommand` and its `launchEnv` through
+`resolveLaunchEnv`, the same two functions `CreateAgent` and `Resume` call. Confirmed fresh
+against the committed code:
 
 ```
-$ grep -n 'argv := \[\]string{shell}\|s.TMux.Create(ctx, tmux.Launch' internal/service/shell.go
-175:	argv := []string{shell}
-187:	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: argv, Env: launchEnv}); err != nil {
 $ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/shell.go
-(no output — neither is called there; the file's only mention of buildPaneCommand is the prose of
- Service.GlobalPreLaunch's doc comment)
-$ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/resume.go
-250:	launchEnv := s.resolveLaunchEnv(envCapturedPath, session.Env)
-268:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, session.PreLaunch, session.LoginShell, argv)
+183:	launchEnv := s.resolveLaunchEnv(capturedPath, input.Env)
+201:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, "", false, argv)
+$ grep -n 'buildPaneCommand(\|resolveLaunchEnv(' internal/service/agent.go internal/service/resume.go
+agent.go:133:	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
+agent.go:144:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, input.LoginShell, argv)
+resume.go:250:	launchEnv := s.resolveLaunchEnv(envCapturedPath, session.Env)
+resume.go:268:	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, session.PreLaunch, session.LoginShell, argv)
 ```
 
-Three consequences, each disagreeing with the SPEC sentence named beside it:
+`CreateShell` is now among both functions' call sites, closing the three consequences the
+original finding named:
 
-- **Neither hook runs when a `shell` session is created.** §6.5 makes the global key a default
-  that composes with every session's own; `Service.GlobalPreLaunch` is plumbed into the service
-  (task 004, `ed8b81e`) and is consumed by `buildPaneCommand` (task 005, `38ad227`) and by
-  `Resume`, but a `shell` create reaches neither. `login_shell` (§6.3) is likewise not applied on
-  that path.
-- **A shell session's create and its own relaunches disagree with each other.**
-  `internal/service/resume.go` is adapter-agnostic, so the same row *does* get both hooks and the
-  full §6.1/§6.3 env layering on `r`/`R`. §6.4's idempotency sentence assumes the opposite — that
-  the hook "fires on create, on `r`, on `R`" alike — so for a `shell` session a configured hook
-  first runs on the first relaunch rather than at creation.
-- **`config.toml`'s `[env]` layer and `captured_path` are absent from a freshly created shell
-  pane**, contrary to §6.1's stated resolution order and §6.3's first mitigation, even though
-  `CreateShell` does persist `captured_path` to the row.
+- **The global hook now runs when a `shell` session is created.** `Service.GlobalPreLaunch` now
+  reaches a `shell` create through the same `buildPaneCommand` `Resume` already used, joined
+  ahead of the bare shell argv with `&&`, fail-closed on a non-zero exit exactly like the agent
+  paths (`TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`).
+  `ShellCreateInput` still has no per-session `pre_launch` field of its own (unlike
+  `AgentCreateInput.PreLaunch`), so `buildPaneCommand`'s session-hook argument is always `""` on
+  a shell create; a shell row's own `pre_launch`, set later via the launch-inputs editor, takes
+  effect starting from that row's first `r`/`R` through `Resume`'s pre-existing composition, not
+  through `CreateShell`. `login_shell` is likewise still not a `ShellCreateInput` field (shells
+  have no adapter argv of their own to need it), so it is passed as `false` on this path.
+- **`config.toml`'s `[env]` layer and `captured_path` are now present in a freshly created shell
+  pane**, via `resolveLaunchEnv`, agreeing with §6.1's stated resolution order and §6.3's PATH
+  mitigation. `TestCreateShellPersistsLaunchesAndAudits`'s launch-audit `env_keys` assertion now
+  includes `PATH` as evidence.
 
-This is the launch-side half of a shape whose storage-side half is
+This was the launch-side half of a shape whose storage-side half is
 [§1](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
-(task 011's residual gap: `ShellCreateInput` carries no per-session `PostDestroy`, so a `shell`
-row cannot even hold a teardown hook). A future phase that closes this needs both halves: route
-`CreateShell` through `resolveLaunchEnv` and `buildPaneCommand`, and give `ShellCreateInput` its
-`PostDestroy` field.
+(task 011's residual gap: `ShellCreateInput` carried no per-session `PostDestroy`). Both halves
+are now closed: task 011 gave `ShellCreateInput` its `PostDestroy` field (commit `9fb6aec`), and
+task 038 (commit `2e5fc6b`, this section) routed `CreateShell` through `resolveLaunchEnv` and
+`buildPaneCommand`.
 
 **The rest of R104–R109's landed work agrees with `SPEC.md`.** The PRD's own instruction ("Where
 this PRD and `SPEC.md` disagree, `SPEC.md` wins and the disagreement is a finding … never an
