@@ -242,3 +242,73 @@ func TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch(t *testing
 		t.Fatalf("the single batch u did not restore both deleted sessions: %#v", restored)
 	}
 }
+
+// TestBulkDeleteInvokesDeleterOncePerMarkedSessionWithItsOwnRow is task
+// 017's evidence that a bulk dd over a two-session mark set drives
+// deleteSvc -- and therefore internal/service's per-session post_destroy
+// hook chain (task 013) -- once for EACH marked session, each call
+// carrying that session's own row, rather than collapsing to a single
+// call. Unlike the map-keyed assertions above, invocations is an
+// append-only SLICE recorded in call order: a bulk delete that collapsed
+// to one call (even one that happened to touch both session IDs some
+// other way) would leave len(invocations) == 1 here and fail the count
+// check below, which a map of booleans could never catch.
+func TestBulkDeleteInvokesDeleterOncePerMarkedSessionWithItsOwnRow(t *testing.T) {
+	var invocations []store.Session
+
+	model := NewWithShellCreator(nil, config.Settings{DeleteGrace: time.Hour}, "", nil)
+	model.deleteSvc = func(_ context.Context, s store.Session) error {
+		invocations = append(invocations, s)
+		return nil
+	}
+	model.sessions = []store.Session{
+		{ID: "s1", Name: "alpha", Status: "stopped", CWD: "/tmp/work-a"},
+		{ID: "s2", Name: "beta", Status: "stopped", CWD: "/tmp/work-b"},
+	}
+	for _, idx := range []int{0, 1} {
+		model.selected = idx
+		got, _ := model.Update(key("m"))
+		model = got.(Model)
+	}
+	if len(model.marked) != 2 {
+		t.Fatalf("expected both sessions marked before dd, got %#v", model.marked)
+	}
+
+	got, _ := model.Update(key("d"))
+	model = got.(Model)
+	got, _ = model.Update(key("d"))
+	model = got.(Model)
+	if !model.deleteConfirming {
+		t.Fatal("second d did not open the bulk delete confirm dialog")
+	}
+
+	got, cmd := model.Update(key("enter"))
+	model = got.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	got, _ = model.Update(cmd())
+	_ = got.(Model)
+
+	// The core assertion: exactly one invocation per marked session, never
+	// one collapsed call for the whole batch.
+	if len(invocations) != 2 {
+		t.Fatalf("deleteSvc invoked %d time(s) for a 2-session bulk dd, want exactly 2 (one per marked session): %#v", len(invocations), invocations)
+	}
+
+	byID := map[string]store.Session{}
+	for _, s := range invocations {
+		if _, dup := byID[s.ID]; dup {
+			t.Fatalf("deleteSvc invoked more than once for session %q: %#v", s.ID, invocations)
+		}
+		byID[s.ID] = s
+	}
+	s1, ok := byID["s1"]
+	if !ok || s1.Name != "alpha" || s1.CWD != "/tmp/work-a" {
+		t.Fatalf("deleteSvc's s1 invocation did not carry s1's own row: %#v", s1)
+	}
+	s2, ok := byID["s2"]
+	if !ok || s2.Name != "beta" || s2.CWD != "/tmp/work-b" {
+		t.Fatalf("deleteSvc's s2 invocation did not carry s2's own row: %#v", s2)
+	}
+}
