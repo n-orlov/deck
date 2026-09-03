@@ -794,7 +794,8 @@ requirements, **R104–R110**, closing GH issue #20: every pane now carries its 
 `DECK_SESSION_*` context on both launch paths, including `CreateShell` (R104); a global
 `pre_launch` composes global-first with the session's own, fail-closed, on every launch path
 including `CreateShell` (R105); the hook's env-mutation contract — reaches the agent, not the
-tmux session table, not `state.db` — is stated and tested (R106); a global/per-session
+tmux session table, not deck's on-disk state database — is stated and tested (R106); a
+global/per-session
 `post_destroy` runs session-then-global on `A`/`dd`, fail-open, bounded by a named 30s timeout,
 and never on `x` or a reap path (R107); the four editable launch inputs (`pre_launch`,
 `post_destroy`, `launch_args`, `login_shell`) are editable on a live row through a
@@ -818,7 +819,9 @@ its verbose companion (run only because the non-verbose launcher prints no Gherk
 exits **0** and reports, byte-exact, **330 scenarios (330 passed)**, **3824 steps (3824
 passed)**
 ([`docs/reports/phase3j-031-fullsuite-verbose/README.md`](reports/phase3j-031-fullsuite-verbose/README.md));
-and the stability gate's own `summary.log` final line reads, verbatim, **`10/10 passed`**,
+and the stability gate's own
+[`docs/reports/phase3j-032-stability10/summary.log`](reports/phase3j-032-stability10/summary.log)
+ends, verbatim, **`10/10 passed`**,
 script exit **`0`**
 ([`docs/reports/phase3j-032-stability10/README.md`](reports/phase3j-032-stability10/README.md)).
 The protected-path audit and both branch guards were separately re-verified at that same sha,
