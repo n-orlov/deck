@@ -19,7 +19,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
@@ -2098,6 +2098,13 @@ func (s *Store) migrate(version int) error {
 				return fmt.Errorf("create schema v5: %w", err)
 			}
 		}
+		fallthrough
+	case 5:
+		for _, statement := range schemaV6 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v6: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2169,6 +2176,23 @@ var schemaV4 = []string{
 var schemaV5 = []string{
 	`CREATE INDEX IF NOT EXISTS events_at ON events(at DESC, seq DESC)`,
 	`CREATE INDEX IF NOT EXISTS events_session_kind ON events(session_id, kind)`,
+}
+
+// schemaV6 adds sessions.post_destroy (task 010, the per-session teardown
+// hook command SPEC §6.4 documents alongside pre_launch) and
+// sessions.launch_dirty (task 010's own launch-side counterpart to the
+// existing env_dirty column: whether a launch-affecting field has changed
+// since the pane last launched). Both are ALTER TABLE ADD COLUMN against
+// the existing sessions table -- neither touches sessions' PRIMARY KEY,
+// UNIQUE constraints, or any existing row's other columns -- applied on
+// top of schemaV1-5 for a fresh database and standalone for an existing
+// v1-v5 database. post_destroy defaults to NULL (unset, mirroring
+// pre_launch's own nullable TEXT shape: no hook configured is the common
+// case); launch_dirty defaults to 0 (not dirty), matching env_dirty's own
+// INTEGER NOT NULL DEFAULT 0 shape in schemaV1.
+var schemaV6 = []string{
+	`ALTER TABLE sessions ADD COLUMN post_destroy TEXT`,
+	`ALTER TABLE sessions ADD COLUMN launch_dirty INTEGER NOT NULL DEFAULT 0`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists
