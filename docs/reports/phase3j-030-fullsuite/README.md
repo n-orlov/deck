@@ -2,11 +2,12 @@
 
 ## Supersedes
 
-This refresh supersedes the earlier sweep published at `fbbda8f6aea2243e2c1f312bf346f14044a82210`,
-per operator ruling `002-030` (task 030 was reset to pending and re-run after
-steps 1–3 of operator ruling 001-011 — tasks 011, 013–019, 026 and
-038 — were validated). This directory is refreshed in place; there is no new
-numbered report directory.
+This refresh supersedes the earlier sweep published at `a44ee320b93186496d56364836b0aed00a6f1e0b`,
+per task 058 (approach 03): the final code sha advanced past `a44ee32` with the
+findings-1-3 fix commits (`1a4b9db`, `d71c02f`, `a936b30`, `52e529b`, `2042cb8`,
+`31e6aff`, `b29afb8`) landed after the earlier sweep was published, so this
+directory is re-run and refreshed in place at the new final code sha. There is
+no new numbered report directory.
 
 ## Command
 
@@ -14,10 +15,10 @@ Run exactly as the task's success criteria specify (no `-run`, no `DECK_GODOG_PA
 `features/godog_test.go`'s `defaultTags` unchanged: `~@real-agents && ~@nightly`):
 
 ```
-nohup sh -c 'timeout 1800 ci/run.sh go test -p=1 -count=1 ./... > /tmp/sweep-030.log 2>&1; echo $? > /tmp/sweep-030.log.exitstatus' >/dev/null 2>&1 &
+nohup sh -c 'timeout 1800 ci/run.sh go test -p=1 -count=1 ./... > /tmp/sweep-058.log 2>&1; echo $? > /tmp/sweep-058.log.exitstatus' >/dev/null 2>&1 &
 ```
 
-Backgrounded and polled with `sleep 60` rather than blocked on; total wall time was
+Backgrounded and polled with `sleep 60` only, never blocked on; total wall time was
 about 6 minutes (well under the 30-minute `timeout` and a small fraction of one
 iteration's cap).
 
@@ -27,25 +28,18 @@ The last commit touching `*.go` or `*.feature` at the time this sweep ran:
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
-a44ee320b93186496d56364836b0aed00a6f1e0b
+b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
 ```
 
-This matches `HEAD` and `origin/main` at run time (`git status --porcelain` empty,
-`git rev-parse HEAD origin/main` both `a44ee320b93186496d56364836b0aed00a6f1e0b`).
-It is a descendant of, and distinct from, the superseded `fbbda8f`.
+`HEAD` and `origin/main` at run time were `3e5241130d9354b73cd0178d6c97af0fd3d5c80a`,
+a docs-only descendant of `b29afb8` (task 057, `phase3j-findings.md` only) that does
+not touch any `*.go` or `*.feature` path; per the plan's standing rules a docs-only
+tail commit does not invalidate a gate. `git status --porcelain` was empty and
+`git rev-parse HEAD origin/main` agreed at both `3e5241130d9354b73cd0178d6c97af0fd3d5c80a`
+before this sweep launched.
 
-`a44ee32` fixes two feature-test step helpers (`features/dialogs_test.go`'s
-create-modal keyboard walk and `features/agent_steps_test.go`'s
-`clientCreatesAgentSessionWithProfileAndLoginShell`) that still assumed task
-026's pre-`Post-destroy` field layout: both drove a fixed count of down-arrows
-from Permission profile that landed one field short of Login shell once task
-026 inserted the Post-destroy command field ahead of it. The first sweep
-attempt this task ran (at `6080c55`, task 026's own commit) caught this as two
-real `features` package test failures
-(`create_dialog_--_every_field_is_reachable_by_keyboard_alone,...` and
-`login_shell_marks_captured_path_advisory_in_the_row_and_its_detail`); this
-commit fixes the step helpers to walk through the new field, and this is the
-sweep at the fixed sha.
+This sha supersedes, and is a descendant of, `a44ee320b93186496d56364836b0aed00a6f1e0b`
+(the previously published sweep sha).
 
 ## Exit status
 
@@ -57,38 +51,39 @@ sweep at the fixed sha.
 directory)
 
 ```
-ok  	github.com/n-orlov/deck/cmd/deck	7.573s
-ok  	github.com/n-orlov/deck/cmd/fake-claude	0.791s
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.775s
-ok  	github.com/n-orlov/deck/features	339.779s
-ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/cmd/deck	7.599s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.786s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.770s
+ok  	github.com/n-orlov/deck/features	346.704s
+ok  	github.com/n-orlov/deck/internal/agent	0.006s
 ok  	github.com/n-orlov/deck/internal/audit	0.018s
-ok  	github.com/n-orlov/deck/internal/config	0.025s
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.152s
-ok  	github.com/n-orlov/deck/internal/interactive	11.129s
+ok  	github.com/n-orlov/deck/internal/config	0.027s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.053s
+ok  	github.com/n-orlov/deck/internal/interactive	11.061s
 ?   	github.com/n-orlov/deck/internal/notify	[no test files]
 ?   	github.com/n-orlov/deck/internal/search	[no test files]
-ok  	github.com/n-orlov/deck/internal/service	6.473s
-ok  	github.com/n-orlov/deck/internal/store	2.513s
-ok  	github.com/n-orlov/deck/internal/theme	0.003s
-ok  	github.com/n-orlov/deck/internal/tmux	19.551s
-ok  	github.com/n-orlov/deck/internal/tui	3.615s
+ok  	github.com/n-orlov/deck/internal/service	6.447s
+ok  	github.com/n-orlov/deck/internal/store	2.637s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/tmux	19.763s
+ok  	github.com/n-orlov/deck/internal/tui	3.701s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
 ```
 
+`grep -c '^ok' sweep.log` = 14. `grep -c 'no test files' sweep.log` = 3
+(`internal/notify`, `internal/search`, `internal/unit`).
+
 ## Skipped markers / modules
 
-None. Every package line is either `ok` (13 packages, all passed) or `?` with
-`[no test files]` (`internal/notify`, `internal/search`, `internal/unit` — these three
-have no `_test.go` files in this tree at all, not a skip within a test run). `grep -i
-skip` against the full captured log (excluding the `[no test files]` lines) returns
-nothing — no individual test used `t.Skip` or a godog `@wip`/skipped-scenario marker
-either.
+`grep -in skip docs/reports/phase3j-030-fullsuite/sweep.log` returns nothing — no
+test or scenario was skipped. Every package line is either `ok` (14 packages, all
+passed) or `?` with `[no test files]` (`internal/notify`, `internal/search`,
+`internal/unit` — these three have no `_test.go` files in this tree at all, not a
+skip within a test run).
 
 ## Notes
 
-- This refresh's own first sweep attempt (at `6080c55`, before this task's fix
-  commit existed) surfaced the two `features` test failures described above; its
-  log was not published as this report (it is not this sweep) and the fix was
-  committed as `a44ee32` in the same task iteration before this passing sweep ran.
-- This run supersedes the earlier `fbbda8f` sweep per operator ruling `002-030`.
+- This refresh is a straight re-run of the same command at the advanced final code
+  sha; no test or step helper changes were needed this time (contrast the previous
+  refresh, which needed the `a44ee32` step-helper fix before it could pass).
+- This run supersedes the earlier `a44ee32` sweep, published at task 058.
