@@ -12,11 +12,16 @@ import (
 )
 
 // postDestroyTimeout is SPEC \u00a79.2's bounded teardown timeout: a code
-// constant applied independently to each of the (up to two) hooks a single
+// value applied independently to each of the (up to two) hooks a single
 // Archive/Delete runs, deliberately never a config key (unlike pre_launch,
 // a teardown hook cannot be allowed to hang the action that already
-// happened, so there is nothing for an operator to usefully tune here).
-const postDestroyTimeout = 30 * time.Second
+// happened, so there is nothing for an operator to usefully tune here). It
+// is a var rather than a const solely so a test proving the timeout-kill
+// path (task 015) can shorten this one named value directly -- restoring
+// it before returning -- instead of adding a second, test-only knob or
+// branch anywhere in this file; every non-test caller always sees the same
+// 30s value production ships with.
+var postDestroyTimeout = 30 * time.Second
 
 // TeardownKindArchive and TeardownKindDelete are the two DECK_TEARDOWN_KIND
 // values SPEC \u00a79.2 defines: which of the two actions that run post_destroy
