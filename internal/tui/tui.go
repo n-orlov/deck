@@ -6519,9 +6519,13 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = "shell creation is unavailable"
 		return nil
 	}
-	cwd, create := resolvedCWD, m.create
+	cwd, create, preLaunch := resolvedCWD, m.create, m.createPreLaunch
 	return func() tea.Msg {
-		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd})
+		// The modal's Pre-launch field is offered (and validated) for every
+		// agent, `shell` included, and SPEC §6.4's hook fires "on create" for
+		// every pane deck launches -- so a shell create passes it through
+		// rather than silently dropping what the user typed (task 038).
+		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch})
 		return shellCreated{session: session, err: err}
 	}
 }
