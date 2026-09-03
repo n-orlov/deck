@@ -140,6 +140,14 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// parameter list from growing a 22nd entry for a dependency of a
 	// genuinely different shape.
 	model = model.WithTmuxClient(client)
+	// The `i` detail dialog's launch-inputs editor (task 023, SPEC §6.2/§11.4,
+	// PRD R108) is wired the same way and for the same reason: one narrow
+	// dependency, added without growing the positional chain above any
+	// further. Without this line the dialog renders but every submit reports
+	// "editing launch inputs is unavailable"; with it, Enter persists all four
+	// editable launch inputs and marks the row launch_dirty, which only `R`
+	// clears once a relaunch has actually carried them into a live pane.
+	model = model.WithLaunchInputsSetter(sessions.SetLaunchInputs)
 	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
 	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
 	// whole program lifetime; §11.8's hit-testing and gesture handling land in
