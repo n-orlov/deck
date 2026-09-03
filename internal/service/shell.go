@@ -175,10 +175,12 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	launchInput := agent.LaunchInput{
 		CWD: session.CWD, DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
 	}
-	launchEnv := make(map[string]string, len(input.Env)+10)
-	for key, value := range input.Env {
-		launchEnv[key] = value
-	}
+	// SPEC §6.1/§6.3: resolveLaunchEnv is the single definition of the
+	// PATH-resolution layers (captured_path, then config.toml's [env],
+	// then the session's own env, highest priority) -- CreateAgent and
+	// Resume both build launchEnv through it and CreateShell now does too,
+	// rather than a second, drifting copy that only ever saw input.Env.
+	launchEnv := s.resolveLaunchEnv(capturedPath, input.Env)
 	argv := []string{shell}
 	argv, launchEnv, err = applyInstrumentation(shellAdapter, launchInput, argv, launchEnv)
 	if err != nil {
@@ -191,10 +193,19 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
 		launchEnv[key] = value
 	}
-	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: argv, Env: launchEnv}); err != nil {
+	// SPEC §6.5: the global pre_launch composes with this session's own
+	// (empty here -- ShellCreateInput carries no per-session pre_launch of
+	// its own, matching the row's unset PreLaunch column), global first,
+	// through the same buildPaneCommand CreateAgent and Resume use, rather
+	// than handing tmux the bare shell argv unwrapped.
+	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, "", false, argv)
+	if err != nil {
+		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for shell session %q: %w", session.Name, err))
+	}
+	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("launch shell session %q: %w", session.Name, err))
 	}
-	if err := s.Audit.Launch(session.ID, argv, launchEnv); err != nil {
+	if err := s.Audit.Launch(session.ID, paneCommand, launchEnv); err != nil {
 		// The pane is not a successful deck launch if its required audit record
 		// cannot be written, so remove it and leave an observable durable error.
 		_ = s.TMux.Kill(ctx, session.Slug)
