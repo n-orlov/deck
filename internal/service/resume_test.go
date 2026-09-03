@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/store"
 )
@@ -483,5 +484,52 @@ func assertOneLaunchRecorded(t *testing.T, path string) {
 	}
 	if launches != 1 {
 		t.Fatalf("launch records = %d, want 1 (create only; resume must never record a fresh-conversation launch)", launches)
+	}
+}
+
+// TestResumeUsesTheServicesGlobalPreLaunch proves task 005's second call
+// site: Resume (internal/service/resume.go), like CreateAgent, wraps its
+// pane command with the service's configured global hook ahead of the
+// session's own pre_launch, in the same global-first order.
+func TestResumeUsesTheServicesGlobalPreLaunch(t *testing.T) {
+	cwd := t.TempDir()
+	service, db, _, _ := newAgentTestService(t, nil, "resume-global-pre-launch")
+	globalMarker := filepath.Join(cwd, "global_marker")
+	sessionMarker := filepath.Join(cwd, "session_marker")
+	agentMarker := filepath.Join(cwd, "agent_marker")
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Shell: resume global pre-launch", CWD: cwd, Agent: "shell",
+		PreLaunch:  "test -f " + globalMarker + " && touch " + sessionMarker,
+		LaunchArgs: []string{"-c", "touch " + agentMarker + " && sleep 5"},
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
+		t.Fatalf("kill original pane: %v", err)
+	}
+	stopSession(t, db, created.ID)
+
+	// Set the service's global hook only now, after create, so the create
+	// above proves nothing about it: only the resume call below is under
+	// test.
+	service.GlobalPreLaunch = "touch " + globalMarker
+
+	_, outcome, err := service.Resume(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if outcome != ResumeStarted {
+		t.Fatalf("outcome = %v, want ResumeStarted", outcome)
+	}
+	if !waitForFile(t, globalMarker, 5*time.Second) {
+		t.Fatalf("global pre_launch never ran on resume: %s missing", globalMarker)
+	}
+	if !waitForFile(t, sessionMarker, 5*time.Second) {
+		t.Fatalf("session pre_launch never ran after the global hook on resume: %s missing", sessionMarker)
+	}
+	if !waitForFile(t, agentMarker, 5*time.Second) {
+		t.Fatalf("agent never started on resume after both hooks succeeded: %s missing", agentMarker)
 	}
 }

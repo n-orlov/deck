@@ -43,10 +43,11 @@ type Service struct {
 	// GlobalPreLaunch mirrors config.toml's top-level pre_launch key (task
 	// 004, phase3j): the global launch hook, a shell command run in every
 	// session's pane before that session's own launch argv, in addition to
-	// (never instead of) a session's own PreLaunch (store.Session/
+	// (never instead of) that session's own pre_launch (store.Session/
 	// CreateAgentInput's own field of that name). Empty is the common, valid
-	// case of nothing configured. Composing this with a session's own
-	// pre_launch in buildPaneCommand is a later task's own scope.
+	// case of nothing configured. buildPaneCommand (internal/service/agent.go)
+	// composes this with a session's own pre_launch, global first, joined by
+	// shell `&&`.
 	GlobalPreLaunch string
 	// DeckExecutable and DeckHome are deck-owned launch facts supplied to
 	// adapters for hook instrumentation. They are never persisted as user

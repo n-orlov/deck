@@ -265,7 +265,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	for key, value := range s.sessionContextEnv(contextSession, LaunchKindResume) {
 		launchEnv[key] = value
 	}
-	paneCommand, err := buildPaneCommand(session.PreLaunch, session.LoginShell, argv)
+	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, session.PreLaunch, session.LoginShell, argv)
 	if err != nil {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume pane command for session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr

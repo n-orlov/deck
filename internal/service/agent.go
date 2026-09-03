@@ -134,7 +134,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
 		launchEnv[key] = value
 	}
-	paneCommand, err := buildPaneCommand(input.PreLaunch, input.LoginShell, argv)
+	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, input.LoginShell, argv)
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err))
 	}
@@ -164,24 +164,27 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 }
 
 // buildPaneCommand wraps the adapter's launch/resume argv in a shell so
-// pre_launch (SPEC §6.4) runs first in the same pane, and so login_shell=1
-// runs the whole pane command via `$SHELL -lc` rather than execing the
-// adapter argv directly. When neither is requested the adapter argv passes
-// through unchanged, matching CreateAgent's pre-task-010 behavior exactly.
+// globalPreLaunch (config-wide) and preLaunch (per-session, SPEC §6.4) run
+// first in the same pane, and so login_shell=1 runs the whole pane command
+// via `$SHELL -lc` rather than execing the adapter argv directly. When
+// neither hook is set and login_shell is not requested, the adapter argv
+// passes through unchanged, matching CreateAgent's pre-task-010 behavior
+// exactly.
 //
-// pre_launch and the adapter argv are joined with a shell `&&`, so a
-// failing pre_launch short-circuits: the agent is never exec'd, the pane's
-// shell exits with pre_launch's own non-zero status, and (because deck's
-// tmux server runs with `remain-on-exit failed`) the pane is retained with
-// pre_launch's own output visible rather than silently starting the agent.
-// The launch audit record still captures the full wrapped command, so the
-// failure is recorded even though CreateAgent does not itself wait for
-// pre_launch to finish.
-func buildPaneCommand(preLaunch string, loginShell bool, argv []string) ([]string, error) {
+// globalPreLaunch, preLaunch and the adapter argv are joined with shell
+// `&&`, global first, so a failing hook short-circuits: neither the later
+// hook nor the agent is ever exec'd, the pane's shell exits with the
+// failing hook's own non-zero status, and (because deck's tmux server runs
+// with `remain-on-exit failed`) the pane is retained with the hook's own
+// output visible rather than silently starting the agent. The launch audit
+// record still captures the full wrapped command, so the failure is
+// recorded even though CreateAgent does not itself wait for either hook to
+// finish.
+func buildPaneCommand(globalPreLaunch, preLaunch string, loginShell bool, argv []string) ([]string, error) {
 	if len(argv) == 0 || argv[0] == "" {
 		return nil, errors.New("agent launch argv is empty")
 	}
-	if preLaunch == "" && !loginShell {
+	if globalPreLaunch == "" && preLaunch == "" && !loginShell {
 		return argv, nil
 	}
 	shell := "/bin/sh"
@@ -195,6 +198,9 @@ func buildPaneCommand(preLaunch string, loginShell bool, argv []string) ([]strin
 	script := "exec \"$@\""
 	if preLaunch != "" {
 		script = preLaunch + " && " + script
+	}
+	if globalPreLaunch != "" {
+		script = globalPreLaunch + " && " + script
 	}
 	// `$0` after the script is a dummy positional so `"$@"` inside the
 	// script starts at the real argv, not at the script text itself.
