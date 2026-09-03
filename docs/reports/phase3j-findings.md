@@ -25,6 +25,7 @@ tracked under `git ls-files --error-unmatch`, both checked in
 - [6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep)
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
 - [8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)](#8-gate-dispositions-whole-suite-sweep-task-030-and-ten-run-stability-task-032)
+- [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
 
 ## 1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing
 
@@ -475,3 +476,58 @@ disposition rather than a placeholder: neither gate failed, neither gate is pend
 is no recurrence to mark advisory. (The carried-forward items themselves remain advisory-only,
 as recorded in §4 and in the handoff notes' residuals list — this paragraph reports their
 non-recurrence in these two gate runs, not a change to their own disposition.)
+
+## 9. Independent review's blocking findings 1-3 (approach 01) are closed
+
+The independent review that rejected approach 01 (`/run/ralphd/approaches/01/review-findings.md`,
+not a tracked repo path and therefore not cited by filename below beyond this one mention) raised
+five blocking findings. Findings 4 and 5 are the R110 record-accuracy and task-030
+polling/one-sweep-discipline gaps tracked elsewhere in this document (see §§4-8 and
+`docs/reports/phase3j.md`'s own corrections). Findings 1, 2 and 3 are closed in this tree, by the
+following commits:
+
+- **Finding 1 — `post_destroy` failures could not raise a toast in the shipped application.**
+  Closed by `d71c02f` (route a teardown-hook failure into a visible note, `internal/tui`),
+  `a936b30` (wire the teardown-hook message through `cmd/deck/main.go`), and `52e529b` (a
+  `features/` scenario asserting a failing teardown hook's toast text on screen). A reader can
+  check the wiring directly: `cmd/deck/main.go` calls
+  `model = model.WithTeardownHookReporters(sessions.Archive, sessions.Delete)`, replacing the
+  discard-the-message adaptation the review observed.
+- **Finding 2 — the teardown timeout was not the required named constant.** Closed by `1a4b9db`
+  (make `postDestroyTimeout` an immutable constant). A reader can check
+  `internal/service/post_destroy.go`, which declares `const postDestroyTimeout = 30 * time.Second`
+  (no longer the mutable `var` the review found).
+- **Finding 3 — R109's user guidance was inaccurate and its coverage test missed the error.**
+  Closed by `2042cb8` (fix the R109 hook copy: caller-side eval, no `pre_launch` timeout claim),
+  `31e6aff` (drop the launch-inputs dialog's `pre_launch` timeout claim), and `b29afb8` (tighten
+  `internal/tui/hook_help_coverage_test.go` to catch the inaccurate copy). A reader can check
+  `internal/tui/hook_help_coverage_test.go`, whose assertions now require the caller-eval shape
+  (`t.Errorf` if `"caller to eval"` is absent), reject the old inaccurate phrasing (`t.Errorf` if
+  `"deck to eval"` is present), and reject any sentence combining `"fail-closed"` with
+  `"timeout"` (`pre_launch` is fail-closed on a non-zero exit only and has no timeout semantics;
+  only `post_destroy`'s fail-open sentence may mention a timeout).
+
+**Verification run for this section**
+(`ci/run.sh go test -count=1 ./internal/service ./internal/store ./internal/tui ./cmd/deck`):
+first attempt failed with the known load-sensitive pipe-pane fifo flake — not
+`TestStolenFromTeardownIssuesNoPipePaneDisarm` itself this time, but the same fifo-timeout
+failure class in the same package (`internal/tui`), on two unrelated stolen-pane tests:
+
+```
+--- FAIL: TestTwoSequentialStealsRestorePreEntryGeometry (5.08s)
+    double_steal_restore_test.go:71: first entry did not enter interactive mode: attachError="Cannot enter interactive mode: arm pipe-pane before seed capture: wait for pipe-pane's job to connect to /tmp/deck-interactive-pipe-1890924179/pane.fifo: timed out after 5s waiting for pipe-pane's job to open the fifo"
+--- FAIL: TestPreviewTickRaisesLostAttachOnStolenClaim (5.07s)
+    interactive_displacement_test.go:85: first entry did not enter interactive mode: attachError="Cannot enter interactive mode: arm pipe-pane before seed capture: wait for pipe-pane's job to connect to /tmp/deck-interactive-pipe-2155222583/pane.fifo: timed out after 5s waiting for pipe-pane's job to open the fifo"
+```
+
+The permitted rerun of the identical unnarrowed command exited 0 across all four packages:
+
+```
+ok  	github.com/n-orlov/deck/internal/service	7.072s
+ok  	github.com/n-orlov/deck/internal/store	3.728s
+ok  	github.com/n-orlov/deck/internal/tui	4.175s
+ok  	github.com/n-orlov/deck/cmd/deck	7.612s
+```
+
+This is docs-only: `git log -1 --format=%H -- '*.go' '*.feature'` still prints
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`, unchanged by this section's own commit.
