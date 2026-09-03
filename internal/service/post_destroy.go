@@ -16,12 +16,11 @@ import (
 // Archive/Delete runs, deliberately never a config key (unlike pre_launch,
 // a teardown hook cannot be allowed to hang the action that already
 // happened, so there is nothing for an operator to usefully tune here). It
-// is a var rather than a const solely so a test proving the timeout-kill
-// path (task 015) can shorten this one named value directly -- restoring
-// it before returning -- instead of adding a second, test-only knob or
-// branch anywhere in this file; every non-test caller always sees the same
-// 30s value production ships with.
-var postDestroyTimeout = 30 * time.Second
+// is an immutable constant -- every caller, test or production, sees the
+// same 30s value; a test that needs a shorter bound to prove the
+// timeout-kill path calls runOneTeardownHook directly with an explicit
+// timeout argument instead of mutating this value.
+const postDestroyTimeout = 30 * time.Second
 
 // TeardownKindArchive and TeardownKindDelete are the two DECK_TEARDOWN_KIND
 // values SPEC \u00a79.2 defines: which of the two actions that run post_destroy
@@ -62,7 +61,7 @@ func (s Service) runPostDestroy(ctx context.Context, session store.Session, tear
 	env := s.teardownEnv(session, teardownKind)
 	var failures []string
 	for _, hook := range hooks {
-		if failure := s.runOneTeardownHook(ctx, session, hook.label, hook.line, env); failure != "" {
+		if failure := s.runOneTeardownHook(ctx, session, hook.label, hook.line, env, postDestroyTimeout); failure != "" {
 			failures = append(failures, failure)
 		}
 	}
@@ -95,13 +94,18 @@ func (s Service) teardownEnv(session store.Session, teardownKind string) []strin
 }
 
 // runOneTeardownHook runs a single teardown hook line as its own deck
-// subprocess under postDestroyTimeout, records a durable "note" event on a
+// subprocess under the given timeout, records a durable "note" event on a
 // non-zero exit or a timeout, and returns a non-empty failure description
 // in that case (empty on success). ctx is the caller's own context (never
 // the hook's timeout-bound child context, which may already have expired
-// by the time the note is written).
-func (s Service) runOneTeardownHook(ctx context.Context, session store.Session, label, line string, env []string) string {
-	hookCtx, cancel := context.WithTimeout(ctx, postDestroyTimeout)
+// by the time the note is written). Every production caller passes the
+// package constant postDestroyTimeout; timeout is an explicit parameter
+// (rather than the helper reading the constant itself) solely so a test
+// proving the timeout-kill path can call this same helper directly with a
+// short bound, without mutating any production value or adding a second,
+// test-only knob or branch anywhere in this file.
+func (s Service) runOneTeardownHook(ctx context.Context, session store.Session, label, line string, env []string, timeout time.Duration) string {
+	hookCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(hookCtx, "/bin/sh", "-c", line)
 	cmd.Env = env
@@ -111,7 +115,7 @@ func (s Service) runOneTeardownHook(ctx context.Context, session store.Session, 
 	}
 	var message string
 	if errors.Is(hookCtx.Err(), context.DeadlineExceeded) {
-		message = fmt.Sprintf("%s post_destroy timed out after %s", label, postDestroyTimeout)
+		message = fmt.Sprintf("%s post_destroy timed out after %s", label, timeout)
 	} else {
 		message = fmt.Sprintf("%s post_destroy failed: %v", label, err)
 	}
