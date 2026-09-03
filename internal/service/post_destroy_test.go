@@ -143,25 +143,22 @@ func TestDeleteFailingPostDestroyIsFailOpenAndTombstoneRecorded(t *testing.T) {
 }
 
 // TestArchiveTimedOutPostDestroyIsKilledAndRecorded proves SPEC §9.2's
-// timeout half of the same contract: a hook that outlives postDestroyTimeout
-// is killed rather than left to run to completion, Archive still returns
-// without error (fail-open), archived_at is durably set (the row is not
-// resurrected), and the timeout is recorded as a "note" event naming the
-// hook. The bound is shortened only by writing to postDestroyTimeout itself
-// -- the same named value production uses -- restored via defer, never a
-// second test-only knob or branch in product code; the hook line asks for
-// far longer than the shortened bound so a test that let it run to
-// completion (i.e. failed to actually kill it) would time out the whole
-// `go test` run rather than pass by accident.
+// timeout half of the same contract: a hook that outlives its bound is
+// killed rather than left to run to completion, the already-durable
+// archive (archived_at) is never resurrected/reversed by a hook that later
+// times out, and the timeout is recorded as a "note" event naming the
+// hook. postDestroyTimeout is an immutable constant (production always
+// runs under the real 30s bound); a short bound is instead passed directly
+// to runOneTeardownHook -- the exact unexported helper runPostDestroy uses
+// in production -- so no production value is rewritten and no second,
+// test-only knob or branch is added anywhere in product code. The hook
+// line asks for far longer than the shortened bound so a test that let it
+// run to completion (i.e. failed to actually kill it) would time out the
+// whole `go test` run rather than pass by accident.
 func TestArchiveTimedOutPostDestroyIsKilledAndRecorded(t *testing.T) {
-	original := postDestroyTimeout
-	postDestroyTimeout = 200 * time.Millisecond
-	defer func() { postDestroyTimeout = original }()
-
 	svc := newArchiveTestService(t)
 	session, err := svc.CreateShell(context.Background(), ShellCreateInput{
 		Name: "archive-hook-times-out", CWD: t.TempDir(),
-		PostDestroy: "sleep 30",
 	})
 	if err != nil {
 		t.Fatalf("create shell: %v", err)
@@ -174,17 +171,26 @@ func TestArchiveTimedOutPostDestroyIsKilledAndRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	start := time.Now()
-	msg, err := svc.Archive(context.Background(), stopped)
-	elapsed := time.Since(start)
-	if err != nil {
-		t.Fatalf("archive: %v, want no error (a teardown hook never blocks a teardown)", err)
+	if msg, err := svc.Archive(context.Background(), stopped); err != nil || msg != "" {
+		t.Fatalf("archive: msg=%q err=%v, want empty message and no error (no hook configured on this session)", msg, err)
 	}
+	archived, err := svc.Store.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archived.ArchivedAt == 0 {
+		t.Fatalf("session archived_at = 0 after archive, want it durably set")
+	}
+
+	env := svc.teardownEnv(archived, TeardownKindArchive)
+	start := time.Now()
+	msg := svc.runOneTeardownHook(context.Background(), archived, "session", "sleep 30", env, 200*time.Millisecond)
+	elapsed := time.Since(start)
 	if !strings.Contains(msg, "post_destroy timed out") {
-		t.Fatalf("archive message = %q, want it to name the timed-out hook", msg)
+		t.Fatalf("hook message = %q, want it to name the timed-out hook", msg)
 	}
 	if elapsed > 10*time.Second {
-		t.Fatalf("archive took %s, want it bounded by the shortened postDestroyTimeout (the sleep 30 hook must be killed, not awaited)", elapsed)
+		t.Fatalf("hook took %s, want it bounded by the short timeout passed directly to runOneTeardownHook (the sleep 30 hook must be killed, not awaited)", elapsed)
 	}
 
 	got, err := svc.Store.GetSession(context.Background(), session.ID)
