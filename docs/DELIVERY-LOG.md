@@ -819,8 +819,9 @@ exit **`0`**
 The protected-path audit and both branch guards were re-verified at that same sha, empty and
 agreeing respectively
 ([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)). **No task in this plan
-ended `skipped` or `failed`**: task 011 ("Plumb `post_destroy` through the store's session write
-and read paths") did end `failed` (validation-exhausted) mid-run on one residual gap —
+rests `skipped`, and none rests `failed` at close**, though one did mid-run: task 011 ("Plumb
+`post_destroy` through the store's session write and read paths") exhausted its validation
+attempts on one residual gap —
 `ShellCreateInput` had no `PostDestroy` field, so a `CreateShell` row could never carry one,
 unlike a `CreateAgent` row — but the operator's own ruling `001-011` reopened it as a
 steer-originated pending task narrowed to exactly that gap, and it reached `validated` again
@@ -832,7 +833,18 @@ Evidence: [`docs/reports/phase3j.md`](reports/phase3j.md) (the per-requirement t
 issue #20 design-section map) and
 [`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) (task 011's history, three
 validation-found gaps closed within their own task, findings §3's SPEC-conformance fix, the
-protected-path/schema-version disclosures, and both gates' dispositions).
+protected-path/schema-version disclosures, and both gates' dispositions). One residual is left
+in the tree deliberately and recorded as advisory in findings §3 rather than fixed: the create
+modal's `Env` field and `Login shell` toggle are still not forwarded on the shell create path
+(`internal/tui/tui.go`'s `submitCreate` hands `CreateShell` name, cwd and `pre_launch` only) — a
+pre-existing UI-seam gap outside R104–R110, not a hook-composition gap, since a shell row's env
+is settable after create through the §11.4 env editor and applies on its next launch. R109's
+copy coverage is likewise bounded by design to the five hook claims task 028 asserts in
+`internal/tui/hook_help_coverage_test.go` (a launch hook runs on every launch and must be
+idempotent; a launch hook is fail-closed; a teardown hook is fail-open, runs on `A` and `dd` and
+not on `x`; `post_destroy` plus an undo brings the row back stopped; the safe secret shape —
+`export K=V` on stdout, diagnostics to stderr, never echo), each asserted present somewhere a
+user can reach rather than on one nominated surface.
 
 ## Other milestones
 
