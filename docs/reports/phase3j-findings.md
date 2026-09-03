@@ -24,7 +24,7 @@ tracked under `git ls-files --error-unmatch`, both checked in
 - [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
 - [6. Two stale schema-version literals in `features/` still fail at this tree and will fail task 030's sweep](#6-two-stale-schema-version-literals-in-features-still-fail-at-this-tree-and-will-fail-task-030s-sweep)
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
-- [8. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034](#8-placeholder-gate-dispositions-whole-suite-sweep-and-ten-run-stability-filled-in-by-tasks-033-and-034)
+- [8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)](#8-gate-dispositions-whole-suite-sweep-task-030-and-ten-run-stability-task-032)
 
 ## 1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing
 
@@ -433,18 +433,45 @@ is a repo file and neither is claimed to be tracked.
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
 
-## 8. Placeholder: gate dispositions (whole-suite sweep and ten-run stability), filled in by tasks 033 and 034
+## 8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)
 
-Both gates are pending as of this writing: task 030 (the whole-suite sweep), task 031 (its
-verbose Gherkin-tally companion) and task 032 (the ten-run stability gate) have not yet run, and
-so none of the report directories their own `successCriteria` name exists yet — which is why this
-section names those tasks rather than their paths (see §7). Per this phase's own plan, task 033
-re-verifies the protected-path audit and the branch guards at the true final code sha and task
-034 writes the phase closeout report (the requirement table and both gates' dispositions); task
-035 then replaces this placeholder with the actual disposition of the whole-suite sweep and the
-stability gate — their exit statuses, the code sha each ran at, their published report
-directories, and any recurrence of a §4 carried-forward finding, marked advisory.
+Both gates ran, at the recomputed final code sha `a44ee320b93186496d56364836b0aed00a6f1e0b`
+(the last commit touching `*.go`/`*.feature` as of task 035's own writing — confirmed
+unchanged since tasks 030/032/034 ran: `git log -1 --format=%H -- '*.go' '*.feature'` still
+resolves to the same sha). Both are re-runs superseding the earlier `fbbda8f` gates, per
+operator rulings `002-030`/`003-031`, after the reopened 011/013–019/026/038 chain landed.
 
-**This paragraph is intentionally not a disposition.** Do not read its absence as either gate
-having failed or been skipped; it means only that tasks 030–032 had not yet run as of the commit
-this report itself lands in.
+**Task 030 — whole-suite sweep.** Exit status `0`. Report directory
+`docs/reports/phase3j-030-fullsuite/` (refreshed in place, `README.md` + `sweep.log`). Every
+package result line is `ok` (13 packages, including `features` at 339.8s) or `?` with
+`[no test files]` (`internal/notify`, `internal/search`, `internal/unit`) — no skipped
+marker anywhere in the log. The README's own first attempt at this task (before its fix
+commit `a44ee32`) surfaced two `features` step-helper failures from task 026's field-order
+change; those are not a gate failure of the published run, since the fix landed in the same
+task iteration before the passing sweep this section cites.
+
+**Task 032 — ten-run stability gate.** Exit status `0` (`ci/stability.sh 10`'s own captured
+status, `/tmp/stability-032.log.exitstatus`). Report directory
+`docs/reports/phase3j-032-stability10/` (`README.md` + `summary.log`, the script's own
+combined summary published verbatim). Result: `10/10 passed` — every one of the 10 runs
+`PASS`, no failing run to name. Run at the same sha `a44ee32...`, HEAD/origin main at run time
+a docs-only descendant (`b4807ce1...`) that does not touch `*.go`/`*.feature`.
+
+**Recurrence check against §4's carried-forward findings.** Grepping both published logs
+(`docs/reports/phase3j-030-fullsuite/sweep.log` and
+`docs/reports/phase3j-032-stability10/summary.log`) for the carried-forward items — F2, F20,
+F22, F37, the F7 quantisation collisions, the `filter.feature` dd/undo race, OSC 52 clipboard
+reliability — finds no match in either log (both are all-`ok`/`[no test files]`, no failure
+output, no `skip` marker to search for a recurrence within):
+
+```
+$ grep -n -i "F2\b\|F20\b\|F22\b\|F37\b\|F7\b\|quantis\|filter.feature\|dd/undo\|OSC 52\|clipboard" \
+    docs/reports/phase3j-030-fullsuite/sweep.log docs/reports/phase3j-032-stability10/summary.log
+(no output)
+```
+
+No carried-forward finding recurred in either gate's run. This section is therefore the
+disposition rather than a placeholder: neither gate failed, neither gate is pending, and there
+is no recurrence to mark advisory. (The carried-forward items themselves remain advisory-only,
+as recorded in §4 and in the handoff notes' residuals list — this paragraph reports their
+non-recurrence in these two gate runs, not a change to their own disposition.)
