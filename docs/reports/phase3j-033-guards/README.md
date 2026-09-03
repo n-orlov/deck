@@ -1,26 +1,31 @@
 # Phase 3j task 033 — protected-path audit and branch guards re-verify
 
 Re-verified at the true final code sha, in a single iteration (2026-09-03), per
-task 033's `successCriteria`. This README refreshes this same directory in
-place, superseding its two earlier revisions:
+task 061's `successCriteria`. This README refreshes this same directory in
+place, superseding its earlier revision published at code sha
+`a44ee320b93186496d56364836b0aed00a6f1e0b`:
 
 - revision 1 rendered the two zero-output commands as the literal word
   `(empty)` (a summary, not exact output) and displayed an audit invocation
   that was not the one run;
 - revision 2 pasted exact output, but joined the PRD audit's two lines with
   `; ` and executed that semicolon-joined string, so the audit was not run
-  verbatim as the PRD writes it.
+  verbatim as the PRD writes it;
+- revision 3 fixed both defects and ran the audit correctly, but its code sha
+  (`a44ee320b93186496d56364836b0aed00a6f1e0b`) was superseded once tasks 057–060
+  landed further docs-only and code commits, moving the final code sha to
+  `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`.
 
-Both are history, not evidence. In this revision the audit is held and executed
-as the PRD's code block writes it — the `BASE=` assignment on the first line, the
-`git log` on the second, separated by a newline and nothing else — and every
-byte of output below is exact: the two commands that print nothing are shown as
-nothing, with their captured byte counts as corroboration.
+All three are history, not evidence. This revision re-runs the same
+`capture.sh` driver — unchanged since revision 3 — at the current tree, where
+the final code sha is now `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`: the same
+sha cited by the refreshed READMEs of `phase3j-030-fullsuite`,
+`phase3j-031-fullsuite-verbose` and `phase3j-032-stability10`.
 
 All four commands were run back-to-back in one iteration, on a clean tree, at
-`HEAD` = `origin/main` = `7e8cf1c7564034d0649b276225d407d3668a972c` (the commit
-publishing this README is a docs-only descendant of it and does not move the
-final code sha, which stays `a44ee320b93186496d56364836b0aed00a6f1e0b`).
+`HEAD` = `origin/main` = `df4f76857f0006427a247c7749cb58e7d46b7d93` (this
+README's own publishing commit is a docs-only descendant of it and does not
+move the final code sha, which stays `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`).
 
 ## Single-session transcript (verbatim)
 
@@ -43,13 +48,13 @@ output below is genuinely empty on a tracked-and-clean tree.
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
-a44ee320b93186496d56364836b0aed00a6f1e0b
+b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
 $ BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase3j-launch-and-teardown-hooks.md)
 git log --oneline "$BASE..HEAD" -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
 $ git status --porcelain
 $ git rev-parse HEAD origin/main
-7e8cf1c7564034d0649b276225d407d3668a972c
-7e8cf1c7564034d0649b276225d407d3668a972c
+df4f76857f0006427a247c7749cb58e7d46b7d93
+df4f76857f0006427a247c7749cb58e7d46b7d93
 $ 
 ```
 
@@ -71,7 +76,7 @@ git log -1 --format=%H -- '*.go' '*.feature'
 ```
 
 ```
-a44ee320b93186496d56364836b0aed00a6f1e0b
+b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
 ```
 
 ### 2. Protected-path audit, run verbatim — `protected-path-audit.out`
@@ -128,8 +133,8 @@ git rev-parse HEAD origin/main
 ```
 
 ```
-7e8cf1c7564034d0649b276225d407d3668a972c
-7e8cf1c7564034d0649b276225d407d3668a972c
+df4f76857f0006427a247c7749cb58e7d46b7d93
+df4f76857f0006427a247c7749cb58e7d46b7d93
 ```
 
 The two lines are identical, so `HEAD` and `origin/main` are the same commit:
