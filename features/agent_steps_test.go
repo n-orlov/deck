@@ -226,18 +226,19 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 
 // clientCreatesAgentSessionWithProfileAndLoginShell drives the real create
 // modal exactly like clientCreatesAgentSessionWithProfile, then continues
-// past Permission profile through Launch args, Env and Pre-launch command
-// (internal/tui.createFieldRows field order: 3 Permission profile, 4
-// Launch args, 5 Env, 6 Pre-launch command, 7 Login shell) onto the Login
-// shell field, toggles it on with space, and submits (task 017, SPEC
-// §6.3). It never types anything into the fields it moves through, so
-// they keep their empty defaults.
+// past Permission profile through Launch args, Env, Pre-launch command and
+// Post-destroy command (internal/tui.createFieldRows field order: 3
+// Permission profile, 4 Launch args, 5 Env, 6 Pre-launch command, 7
+// Post-destroy command (task 026), 8 Login shell) onto the Login shell
+// field, toggles it on with space, and submits (task 017, SPEC §6.3). It
+// never types anything into the fields it moves through, so they keep
+// their empty defaults.
 func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clientName, kind, name, profile string) error {
 	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\x1b[B\x1b[B\x1b[B\x1b[B"); err != nil {
+	if err := client.Send("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B"); err != nil {
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)

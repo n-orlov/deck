@@ -347,7 +347,15 @@ func clientWalksAndEditsEveryCreateFieldAssertingVisibility(ctx context.Context,
 	if err := assertVisible("typing into Pre-launch command", "walk-pre-launch"); err != nil {
 		return err
 	}
-	// Field 7 (Login shell): down-arrow onto it, then space toggles off -> on.
+	// Field 7 (Post-destroy command, task 026): down-arrow onto it, then type.
+	if err := client.Send("\x1b[Bwalk-post-destroy"); err != nil {
+		return err
+	}
+	if err := assertVisible("typing into Post-destroy command", "walk-post-destroy"); err != nil {
+		return err
+	}
+	// Field 8 (Login shell, moved from field 7 by task 026): down-arrow onto
+	// it, then space toggles off -> on.
 	if err := client.Send("\x1b[B "); err != nil {
 		return err
 	}
