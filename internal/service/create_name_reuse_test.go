@@ -48,7 +48,7 @@ func TestCreateShellReusingATombstonedNameCleansUpThatSessionsFiles(t *testing.T
 		t.Fatal(err)
 	}
 	capturesDir, historyFile := seedSessionFiles(t, svc, first.ID)
-	if err := svc.Delete(ctx, first); err != nil {
+	if _, err := svc.Delete(ctx, first); err != nil {
 		t.Fatal(err)
 	}
 	second, err := svc.CreateShell(ctx, ShellCreateInput{Name: "reused name", CWD: t.TempDir()})
@@ -86,7 +86,7 @@ func TestCreateAgentReusingATombstonedNameCleansUpThatSessionsFiles(t *testing.T
 		t.Fatal(err)
 	}
 	capturesDir, historyFile := seedSessionFiles(t, svc, first.ID)
-	if err := svc.Delete(ctx, first); err != nil {
+	if _, err := svc.Delete(ctx, first); err != nil {
 		t.Fatal(err)
 	}
 	second, err := svc.CreateAgent(ctx, AgentCreateInput{Name: "Shell: reuse", CWD: t.TempDir(), Agent: "shell"})
@@ -127,7 +127,7 @@ func TestRefusedCreateKeepsTheStillRestorableSessionsFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	keptCaptures, keptHistory := seedSessionFiles(t, svc, tombstoned.ID)
-	if err := svc.Delete(ctx, tombstoned); err != nil {
+	if _, err := svc.Delete(ctx, tombstoned); err != nil {
 		t.Fatal(err)
 	}
 

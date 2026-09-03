@@ -28,7 +28,7 @@ func TestRenameOntoATombstonedNameCleansUpThatSessionsFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	reapedCaptures, reapedHistory := seedSessionFiles(t, svc, reaped.ID)
-	if err := svc.Delete(ctx, reaped); err != nil {
+	if _, err := svc.Delete(ctx, reaped); err != nil {
 		t.Fatal(err)
 	}
 

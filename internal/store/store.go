@@ -855,6 +855,29 @@ func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error 
 
 // RecordOrphanEvent preserves a hook event which could not be resolved to a
 // session. NULL (not an empty id) is used so the foreign key remains honest.
+// RecordSessionNote appends one session-scoped "note" event (task 013,
+// SPEC §9.2's fail-open teardown report) without touching any other column
+// on the row: unlike UpdateSessionStatus it never rewrites status, source,
+// reason or any of the other fields that transition carries, because the
+// archive/delete this note follows has already durably committed and a
+// teardown hook's own failure must never be confused with -- or overwrite
+// the record of -- why the session itself stopped. It is deliberately not
+// RecordOrphanEvent: that helper always writes session_id = NULL, and this
+// note belongs to a specific, still-present row.
+func (s *Store) RecordSessionNote(ctx context.Context, sessionID, reason string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, 'note', ?, '')`, sessionID, at, reason); err != nil {
+		return fmt.Errorf("record session note: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) RecordOrphanEvent(ctx context.Context, input EventInput) error {
 	if input.At == 0 {
 		return errors.New("event timestamp is required")

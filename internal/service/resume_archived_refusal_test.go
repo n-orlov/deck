@@ -33,7 +33,7 @@ func TestResumeRefusesAnArchivedRowBeforeAnythingIsCreated(t *testing.T) {
 	// first: the result is exactly the state the operator hit -- stopped,
 	// archived, hidden from the default list, and still leasable as far as
 	// the store is concerned.
-	if err := svc.Archive(ctx, created); err != nil {
+	if _, err := svc.Archive(ctx, created); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
 	archived, err := db.GetSession(ctx, created.ID)

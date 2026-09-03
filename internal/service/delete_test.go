@@ -45,7 +45,7 @@ func TestDeleteKillsLivePaneAndTombstonesPreservingCWDAndConversation(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(context.Background(), session); err != nil {
+	if _, err := svc.Delete(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	live, err := svc.TMux.List(context.Background())
@@ -84,7 +84,7 @@ func TestDeleteKillsLivePaneAndTombstonesPreservingCWDAndConversation(t *testing
 // cannot tombstone a session it never durably identified.
 func TestDeleteRefusesEmptySessionID(t *testing.T) {
 	svc := Service{}
-	if err := svc.Delete(context.Background(), store.Session{}); err == nil {
+	if _, err := svc.Delete(context.Background(), store.Session{}); err == nil {
 		t.Fatal("Delete with empty session, want error")
 	}
 }
@@ -118,7 +118,7 @@ func TestRestoreClearsTombstoneAndReturnsToListSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(context.Background(), session); err != nil {
+	if _, err := svc.Delete(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := svc.Restore(context.Background(), session.ID)
@@ -156,7 +156,7 @@ func TestReapRemovesTombstonedRowPermanently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(context.Background(), session); err != nil {
+	if _, err := svc.Delete(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Reap(context.Background(), session.ID); err != nil {
@@ -202,7 +202,7 @@ func TestReapRemovesCapturesDirAndHistoryFile(t *testing.T) {
 	if err := os.WriteFile(historyFile, []byte("cd /work\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(context.Background(), session); err != nil {
+	if _, err := svc.Delete(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Reap(context.Background(), session.ID); err != nil {
@@ -226,7 +226,7 @@ func TestReapToleratesMissingCapturesDirAndHistoryFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(context.Background(), session); err != nil {
+	if _, err := svc.Delete(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Reap(context.Background(), session.ID); err != nil {
@@ -247,7 +247,7 @@ func TestReapLeavesEventsOutboxAndNotifyStateBehind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(context.Background(), session); err != nil {
+	if _, err := svc.Delete(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
 	var before int

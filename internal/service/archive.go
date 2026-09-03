@@ -18,19 +18,27 @@ import (
 // can instead offer "kill and archive" as one action (§4's invariant: a
 // live agent is never hidden by an archived row). It never touches the
 // session's cwd or its conversation id/transcript.
-func (s Service) Archive(ctx context.Context, session store.Session) error {
+//
+// Once the archive itself has durably committed, Archive runs SPEC §9.2's
+// teardown hooks (runPostDestroy, task 013): the session's own post_destroy
+// and then the global one, each its own deck subprocess, fail-open. The
+// returned string is the hook failure message for a caller's toast --
+// empty when nothing was configured or every configured hook ran cleanly
+// -- and is never an error: a teardown hook can never undo an archive that
+// has already happened.
+func (s Service) Archive(ctx context.Context, session store.Session) (string, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil {
-		return errors.New("session archive requires store, audit logger, and clock")
+		return "", errors.New("session archive requires store, audit logger, and clock")
 	}
 	if session.ID == "" {
-		return errors.New("session archive requires a durable session id")
+		return "", errors.New("session archive requires a durable session id")
 	}
 	if session.Status != "stopped" {
 		if session.Slug == "" {
-			return errors.New("session archive requires a durable slug to kill a live pane")
+			return "", errors.New("session archive requires a durable slug to kill a live pane")
 		}
 		if err := s.TMux.Kill(ctx, session.Slug); err != nil {
-			return fmt.Errorf("kill tmux session %q: %w", session.Name, err)
+			return "", fmt.Errorf("kill tmux session %q: %w", session.Name, err)
 		}
 		if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 			SessionID:    session.ID,
@@ -41,20 +49,20 @@ func (s Service) Archive(ctx context.Context, session store.Session) error {
 			EventKind:    "killed",
 			KilledByUser: true,
 		}); err != nil {
-			return fmt.Errorf("record killed session %q: %w", session.Name, err)
+			return "", fmt.Errorf("record killed session %q: %w", session.Name, err)
 		}
 		if err := s.Audit.Transition(session.ID, "killed"); err != nil {
-			return fmt.Errorf("audit killed session %q: %w", session.Name, err)
+			return "", fmt.Errorf("audit killed session %q: %w", session.Name, err)
 		}
 	}
 	at := s.Clock.Now().UnixMilli()
 	if err := s.Store.ArchiveSession(ctx, session.ID, at); err != nil {
-		return fmt.Errorf("archive session %q: %w", session.Name, err)
+		return "", fmt.Errorf("archive session %q: %w", session.Name, err)
 	}
 	if err := s.Audit.Transition(session.ID, "archived"); err != nil {
-		return fmt.Errorf("audit archived session %q: %w", session.Name, err)
+		return "", fmt.Errorf("audit archived session %q: %w", session.Name, err)
 	}
-	return nil
+	return s.runPostDestroy(ctx, session, TeardownKindArchive), nil
 }
 
 // Unarchive is R71's other half of `A` (SPEC.md:323-332, issue #8): the `U`
