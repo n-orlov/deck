@@ -807,9 +807,10 @@ stated in user-reachable copy (R109); and the record — this document plus
 updating `features/dialogs_test.go` and `features/agent_steps_test.go`'s create-modal
 keyboard-walk step helpers for task 026's new Post-destroy field — the last commit in the phase
 to touch a `*.go` or `*.feature` path; everything after it, including both gate refreshes and
-this paragraph, is a docs-only descendant). Both gates measured green at that sha, after an
-operator ruling (`001-unblock-011-gate-ordering.md`) reset and re-ran them once tasks 011,
-013–019, 026 and 038 landed: the mandated, unnarrowed whole-suite sweep
+this paragraph, is a docs-only descendant). Both gates measured green at that sha, after the
+operator's own gate rulings `002-030` and `003-031` — run-state records of this run, not files
+tracked in this repo — reset and re-ran them once tasks 011, 013–019, 026 and 038 landed:
+the mandated, unnarrowed whole-suite sweep
 (`ci/run.sh go test -p=1 -count=1 ./...`) exits **0**, all 13 packages `ok` plus 3
 `[no test files]`
 ([`docs/reports/phase3j-030-fullsuite/README.md`](reports/phase3j-030-fullsuite/README.md));
