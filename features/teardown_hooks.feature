@@ -8,9 +8,9 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
   still be there. This file proves both halves against a real file the
   hook's own subprocess writes under DECK_HOME, never a mock: x leaves it
   absent, dd writes it exactly once, and A followed by its own undo (u)
-  brings the row back stopped without a second hook run -- the row's
-  external resources stay released until the next r rebuilds them (help's
-  own Hooks section states this in as many words).
+  brings the row back stopped -- durably, in sessions.status -- without a
+  second hook run, and says so: the undo's own toast states that the hook
+  already ran and the next r rebuilds what it released (SPEC.md:508).
 
   Scenario: x never runs the teardown hook, but dd runs it exactly once
     Given deck client "A" is started
@@ -29,7 +29,10 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     When deck client "A" exits cleanly
 
   Scenario: A runs the teardown hook once, and its own undo leaves the row stopped with no second run
-    Given deck client "A" is started with terminal size 100x300
+    # 100 columns wide for launch_hooks.feature's own reason: both the
+    # editor's one-line hook field and the undo toast must render unwrapped
+    # for a literal-substring frame wait to see them.
+    Given deck client "A" is started with terminal size 100x40
     And deck client "A" creates shell session "teardown-archive-undo"
     When deck client "A" opens the launch inputs editor for session "teardown-archive-undo"
     And deck client "A" types "echo $DECK_SESSION_NAME >> $DECK_HOME/pd.txt" into the post-destroy field
@@ -41,9 +44,9 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     And deck client "A" screen contains "Killed and archived"
     And the teardown hook artefact file contains exactly one line "teardown-archive-undo"
     When deck client "A" undoes the archive with u for "teardown-archive-undo"
-    Then the state database session "teardown-archive-undo" is not archived
-    And deck client "A" screen contains "teardown-archive-undo stopped"
-    And the teardown hook artefact file contains exactly one line "teardown-archive-undo"
-    When deck client "A" opens help
     Then deck client "A" screen contains "the next r rebuilds"
+    And deck client "A" screen contains "teardown-archive-undo stopped"
+    And the state database session "teardown-archive-undo" is not archived
+    And the state database session "teardown-archive-undo" is "stopped" from "user" with killed_by_user=1
+    And the teardown hook artefact file contains exactly one line "teardown-archive-undo"
     When deck client "A" exits cleanly
