@@ -1,37 +1,71 @@
 # Phase 3j — stability10 gate (task 032)
 
-Run at code sha (final sha touching `*.go`/`*.feature`): `a44ee320b93186496d56364836b0aed00a6f1e0b`
-(HEAD/origin main at the time of this run: `b4807ce17a25010b3e4e301d2213e8dfad309b8c`,
-a docs-only descendant of the code sha above — confirmed clean tree, `git status --porcelain`
-empty, `git rev-parse HEAD origin/main` agreeing on `b4807ce17a25010b3e4e301d2213e8dfad309b8c`
-both before launch and after collection).
+## Supersedes
 
-Command launched exactly as specified by the task:
+This refresh supersedes the earlier gate published at code sha
+`a44ee320b93186496d56364836b0aed00a6f1e0b`, per task 060 (approach 03): the final
+code sha advanced past `a44ee32` with the findings-1-3 fix commits landed after the
+earlier gate was published, so this directory is re-run and refreshed **in place**
+at the new final code sha — no new numbered report directory.
+
+## Code sha and HEAD
+
+Final code sha (last commit touching `*.go` or `*.feature`) at the time this gate
+was launched:
 
 ```
-nohup sh -c 'timeout 7200 ci/stability.sh 10 > /tmp/stability-032.log 2>&1; echo $? > /tmp/stability-032.log.exitstatus' >/dev/null 2>&1 &
+$ git log -1 --format=%H -- '*.go' '*.feature'
+b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
 ```
 
-Launched 2026-09-03T15:24:18Z, polled with `sleep 120` only (never a longer interval), no
-narrowing of the command. Exit-status file appeared at 2026-09-03T16:31Z (~67 minutes for
-10 runs, matching the ~7 min/run estimate).
+`HEAD`/`origin/main` at launch time: `0fba55b2656a36dee681822dfa4d586f0ec7b3fe`, a
+docs-only descendant of `b29afb8` (task 059, `phase3j-031-fullsuite-verbose/`
+refresh only, no `*.go`/`*.feature` change) — per the plan's standing rules a
+docs-only tail commit does not invalidate a gate. `git status --porcelain` was
+empty and `git rev-parse HEAD origin/main` agreed on
+`0fba55b2656a36dee681822dfa4d586f0ec7b3fe` both before this gate launched and
+after collection.
+
+This sha supersedes, and is a descendant of, `a44ee320b93186496d56364836b0aed00a6f1e0b`
+(the previously published gate sha).
+
+## Command
+
+Launched exactly as this task's own success criteria specify, no other test or
+gate run in the same iteration:
+
+```
+nohup sh -c 'timeout 7200 ci/stability.sh 10 > /tmp/stability-060.log 2>&1; echo $? > /tmp/stability-060.log.exitstatus' >/dev/null 2>&1 &
+```
+
+Launched 2026-09-03T20:42:55Z, polled with `sleep 120` only (never a longer or
+shorter interval), no narrowing of the command. Exit-status file appeared at
+2026-09-03T21:49Z (~66 minutes for 10 runs — each run invokes the whole-suite
+sweep `ci/run.sh go test -p=1 -count=1 ./...`, ~6-7 min/run, matching the earlier
+gate's cadence).
 
 ## Script's own captured exit status
 
 ```
-$ cat /tmp/stability-032.log.exitstatus
+$ cat /tmp/stability-060.log.exitstatus
 0
 ```
 
 ## Result
 
-`10/10 passed` — every run PASS, no failing run to name.
+The committed `summary.log` in this directory is the script's own summary,
+copied byte-for-byte from `ci/stability.sh`'s own tmp dir
+`/tmp/deck-stability.qL4oSP/summary.log` (not retyped or reformatted). Its final
+line, quoted verbatim, never rounded up:
 
-`summary.log` in this directory is the verbatim combined summary the script itself wrote
-(copied byte-for-byte from `ci/stability.sh`'s own `$outdir/summary.log`, tmp dir
-`/tmp/deck-stability.ZC7l24`, not retyped or reformatted). Per-run logs `run-1.log`..`run-10.log`
-lived alongside `summary.log` in that same tmp directory; since the result is 10/10 (no
-failures), no individual failing-run log needs to be published per this task's own criteria.
+```
+10/10 passed
+```
 
-The published number (10/10) is exactly what the script reported and is not rounded up; the
-gate was not re-run to try to improve it.
+Every one of the 10 runs is labelled `PASS` in that same file (`=== RUN i: PASS
+(exit 0) ===` for `i` = 1..10) — no run is labelled `FAIL`, so there is no failing
+run to name and no per-run log needs to be published under this task's own
+criteria (that clause only applies when N is below 10).
+
+The published number (10/10) is exactly what the script reported; the gate was
+not re-run to try to improve or otherwise alter it.
