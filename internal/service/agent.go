@@ -180,6 +180,26 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 // record still captures the full wrapped command, so the failure is
 // recorded even though CreateAgent does not itself wait for either hook to
 // finish.
+//
+// SPEC §6.4's guarantee: "a hook's exports reach that session's agent and
+// nothing else." This is exactly what the `export K=V && ... && exec "$@"`
+// shape above delivers, and delivers by construction, not by extra plumbing:
+// export mutates the one shell process's own environment, and exec replaces
+// that process's image in place (same pid) with the adapter argv, which
+// therefore inherits the mutated environment automatically. Three boundaries
+// follow from that same mechanism:
+//   - the session's agent process: YES. It is the `exec`'d process, in the
+//     same shell, so whatever either hook exported is simply that process's
+//     own environment -- inheritance is automatic, not a deck feature to keep
+//     working.
+//   - the tmux *session* environment table (the one §3.2's `-e` mirror
+//     populates for future panes, read back with `tmux show-environment`):
+//     NO. Nothing here ever calls tmux's `set-environment`; a hook's export
+//     is invisible to that table and to any later pane tmux creates from it.
+//   - `state.db`: NO. Neither hook's output nor its exported values are
+//     written to any column; `pre_launch`/`GlobalPreLaunch` are stored only
+//     as the shell line itself, never as whatever it produces at runtime,
+//     which is the whole reason a hook is the preferred home for a secret.
 func buildPaneCommand(globalPreLaunch, preLaunch string, loginShell bool, argv []string) ([]string, error) {
 	if len(argv) == 0 || argv[0] == "" {
 		return nil, errors.New("agent launch argv is empty")

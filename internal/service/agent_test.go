@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -278,6 +280,99 @@ func TestCreateAgentFailingPreLaunchNeverStartsTheAgent(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("no launch audit record among %#v", records)
+	}
+}
+
+// TestCreateAgentPreLaunchExportReachesOnlyThePaneProcessEnvironment covers
+// task 008: SPEC §6.4's guarantee ("a hook's exports reach that session's
+// agent and nothing else") proved positive against a real tmux server on a
+// private test socket. A shell-kind session's own pre_launch exports a
+// value; the assertion reads it back not from deck's own store and not from
+// tmux's session environment table (show-environment), but straight out of
+// the pane process's own /proc/<pid>/environ, the same source
+// features/env_editor_test.go's livePaneProcessEnvironmentLookup uses and
+// for the same reason: it is the one place a bug in any mirrored table
+// could still disagree with the actually-running process.
+func TestCreateAgentPreLaunchExportReachesOnlyThePaneProcessEnvironment(t *testing.T) {
+	cwd := t.TempDir()
+	service, _, _, socket := newAgentTestService(t, nil, "pre-launch-export-reaches-pane")
+
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Shell: pre-launch export", CWD: cwd, Agent: "shell",
+		PreLaunch:  "export DECK_HOOK_EXPORT_TEST=reaches-the-agent-only",
+		LaunchArgs: []string{"-c", "sleep 5"},
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	value, found := waitForPaneProcessEnvironmentKey(t, socket, session.Slug, "DECK_HOOK_EXPORT_TEST", 5*time.Second)
+	if !found {
+		t.Fatalf("pane process environment for session %q never carried DECK_HOOK_EXPORT_TEST", session.Slug)
+	}
+	if value != "reaches-the-agent-only" {
+		t.Fatalf("pane process environment DECK_HOOK_EXPORT_TEST = %q, want %q", value, "reaches-the-agent-only")
+	}
+
+	// The one leak path SPEC §6.4 names as closed: the tmux *session*
+	// environment table (§3.2's -e mirror) never sees this export, because
+	// buildPaneCommand never calls tmux's set-environment for it.
+	out, showErr := exec.Command("tmux", "-L", socket, "show-environment", "-t", "deck_"+session.Slug, "DECK_HOOK_EXPORT_TEST").CombinedOutput()
+	if showErr == nil {
+		t.Fatalf("tmux session environment table unexpectedly carries the hook's export: %s", out)
+	}
+}
+
+// paneProcessPID resolves the running pane's own process id via tmux's
+// list-panes, the same server the rest of this file drives.
+func paneProcessPID(socket, slug string) (int, error) {
+	out, err := exec.Command("tmux", "-L", socket, "list-panes", "-t", "deck_"+slug, "-F", "#{pane_pid}").CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("list-panes: %w (%s)", err, out)
+	}
+	return strconv.Atoi(strings.TrimSpace(string(out)))
+}
+
+// paneProcessEnvironmentLookup reads a running pane process's own
+// /proc/<pid>/environ directly -- not deck's store and not tmux's mirrored
+// session environment table, either of which could still agree with each
+// other while disagreeing with the actually-running process.
+func paneProcessEnvironmentLookup(socket, slug, key string) (string, bool, error) {
+	pid, err := paneProcessPID(socket, slug)
+	if err != nil {
+		return "", false, err
+	}
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return "", false, err
+	}
+	for _, entry := range strings.Split(string(raw), "\x00") {
+		if entry == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(entry, "=")
+		if ok && k == key {
+			return v, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// waitForPaneProcessEnvironmentKey polls paneProcessEnvironmentLookup until
+// the key appears or the deadline passes, giving the pane's shell time to
+// actually run its pre_launch export in the real (test-socket) tmux server.
+func waitForPaneProcessEnvironmentKey(t *testing.T, socket, slug, key string, timeout time.Duration) (string, bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		value, found, err := paneProcessEnvironmentLookup(socket, slug, key)
+		if err == nil && found {
+			return value, true
+		}
+		if time.Now().After(deadline) {
+			return "", false
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
