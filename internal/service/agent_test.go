@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -277,6 +278,121 @@ func TestCreateAgentFailingPreLaunchNeverStartsTheAgent(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("no launch audit record among %#v", records)
+	}
+}
+
+func TestCreateAgentGlobalPreLaunchRunsBeforeSessionPreLaunchAndAgent(t *testing.T) {
+	cwd := t.TempDir()
+	service, _, _, _ := newAgentTestService(t, nil, "global-pre-launch-ok")
+	service.GlobalPreLaunch = "touch " + filepath.Join(cwd, "global_marker")
+	globalMarker := filepath.Join(cwd, "global_marker")
+	sessionMarker := filepath.Join(cwd, "session_marker")
+	agentMarker := filepath.Join(cwd, "agent_marker")
+
+	_, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Shell: global pre-launch ok", CWD: cwd, Agent: "shell",
+		// The session hook only succeeds once the global marker already
+		// exists, proving the global hook ran first.
+		PreLaunch:  "test -f " + globalMarker + " && touch " + sessionMarker,
+		LaunchArgs: []string{"-c", "touch " + agentMarker + " && sleep 2"},
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	if !waitForFile(t, globalMarker, 5*time.Second) {
+		t.Fatalf("global pre_launch never ran: %s missing", globalMarker)
+	}
+	if !waitForFile(t, sessionMarker, 5*time.Second) {
+		t.Fatalf("session pre_launch never ran after the global hook: %s missing", sessionMarker)
+	}
+	if !waitForFile(t, agentMarker, 5*time.Second) {
+		t.Fatalf("agent never started after both hooks succeeded: %s missing", agentMarker)
+	}
+}
+
+func TestCreateAgentFailingGlobalPreLaunchNeverReachesSessionHookOrAgent(t *testing.T) {
+	cwd := t.TempDir()
+	service, _, _, socket := newAgentTestService(t, nil, "global-pre-launch-fail")
+	service.GlobalPreLaunch = "echo global-pre-launch-boom >&2; exit 9"
+	sessionMarker := filepath.Join(cwd, "session_marker")
+	agentMarker := filepath.Join(cwd, "agent_marker")
+
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Shell: global pre-launch fail", CWD: cwd, Agent: "shell",
+		PreLaunch:  "touch " + sessionMarker,
+		LaunchArgs: []string{"-c", "touch " + agentMarker},
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	// Give the pane time to run and fail; neither the session hook nor the
+	// agent must ever have started.
+	time.Sleep(500 * time.Millisecond)
+	if _, err := os.Stat(sessionMarker); err == nil {
+		t.Fatalf("session pre_launch ran despite a failing global pre_launch: %s exists", sessionMarker)
+	}
+	if _, err := os.Stat(agentMarker); err == nil {
+		t.Fatalf("agent started despite a failing global pre_launch: %s exists", agentMarker)
+	}
+
+	out, capErr := exec.Command("tmux", "-L", socket, "capture-pane", "-p", "-S", "-", "-t", "deck_"+session.Slug).CombinedOutput()
+	if capErr != nil {
+		t.Fatalf("capture-pane: %v (%s)", capErr, out)
+	}
+	if !strings.Contains(string(out), "global-pre-launch-boom") {
+		t.Fatalf("pane output = %q, want it to show the global pre_launch failure", out)
+	}
+}
+
+// TestBuildPaneCommand covers task 005: buildPaneCommand joins a global
+// hook, a session hook and the adapter argv global-first with `&&`, without
+// disturbing any case that already worked before the global hook existed.
+func TestBuildPaneCommand(t *testing.T) {
+	argv := []string{"agent", "--flag"}
+
+	// Empty-global case, both sub-cases: byte-identical to pre-task-005
+	// output for the same session.
+	bareFastPath, err := buildPaneCommand("", "", false, argv)
+	if err != nil {
+		t.Fatalf("empty global, empty session, no login shell: %v", err)
+	}
+	if !reflect.DeepEqual(bareFastPath, argv) {
+		t.Fatalf("bare argv fast path = %#v, want the adapter argv unchanged: %#v", bareFastPath, argv)
+	}
+
+	sessionOnly, err := buildPaneCommand("", "touch session", false, argv)
+	if err != nil {
+		t.Fatalf("empty global, session hook set: %v", err)
+	}
+	wantSessionOnly := []string{"/bin/sh", "-c", `touch session && exec "$@"`, "deck-agent", "agent", "--flag"}
+	if !reflect.DeepEqual(sessionOnly, wantSessionOnly) {
+		t.Fatalf("empty-global pane command = %#v, want %#v (byte-identical to pre-task-005 shape)", sessionOnly, wantSessionOnly)
+	}
+
+	// Global-only: the global hook runs, joined to `exec "$@"` with `&&`.
+	globalOnly, err := buildPaneCommand("touch global", "", false, argv)
+	if err != nil {
+		t.Fatalf("global hook set, no session hook: %v", err)
+	}
+	wantGlobalOnly := []string{"/bin/sh", "-c", `touch global && exec "$@"`, "deck-agent", "agent", "--flag"}
+	if !reflect.DeepEqual(globalOnly, wantGlobalOnly) {
+		t.Fatalf("global-only pane command = %#v, want %#v", globalOnly, wantGlobalOnly)
+	}
+
+	// Both set: global runs first, then the session hook, then the agent.
+	both, err := buildPaneCommand("touch global", "touch session", false, argv)
+	if err != nil {
+		t.Fatalf("global and session hooks set: %v", err)
+	}
+	wantBoth := []string{"/bin/sh", "-c", `touch global && touch session && exec "$@"`, "deck-agent", "agent", "--flag"}
+	if !reflect.DeepEqual(both, wantBoth) {
+		t.Fatalf("global+session pane command = %#v, want %#v (global must run first)", both, wantBoth)
+	}
+
+	// A global hook alone, with no session hook and no login shell, still
+	// forces the shell-wrapped form rather than the bare-argv fast path.
+	if reflect.DeepEqual(globalOnly, argv) {
+		t.Fatalf("global-only pane command took the bare argv fast path, want the shell wrapper")
 	}
 }
 
