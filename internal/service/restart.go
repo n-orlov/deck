@@ -27,6 +27,14 @@ import (
 // as a first launch. An archived row is refused too, but by Resume's own
 // up-front guard rather than a second copy of it here (SPEC.md:718, #8:
 // "`R` routes through resume, so one guard covers both").
+//
+// Restart is also the only path that ever applies a pending launch-input
+// edit (task 020's pre_launch/post_destroy/launch_args/login_shell) to a
+// freshly relaunched pane, since Resume always re-reads the row from the
+// store before building that pane's command line -- so a successful
+// restart clears launch_dirty (the `launch↻` badge) right alongside
+// env_dirty. InjectEnv (inject.go) never relaunches a pane at all, so it
+// clears env_dirty alone and never touches launch_dirty.
 func (s Service) Restart(ctx context.Context, sessionID string) (store.Session, ResumeOutcome, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.Agents == nil {
 		return store.Session{}, ResumeStartingElsewhere, errors.New("restart requires store, audit logger, clock, and adapter registry")
@@ -78,9 +86,14 @@ func (s Service) Restart(ctx context.Context, sessionID string) (store.Session, 
 		return resumed, outcome, err
 	}
 
-	if err := s.Store.ClearEnvDirty(ctx, sessionID, s.Clock.Now().UnixMilli()); err != nil {
+	now := s.Clock.Now().UnixMilli()
+	if err := s.Store.ClearEnvDirty(ctx, sessionID, now); err != nil {
 		return resumed, outcome, fmt.Errorf("clear env_dirty after restarting session %q: %w", session.Name, err)
 	}
+	if err := s.Store.ClearLaunchDirty(ctx, sessionID, now); err != nil {
+		return resumed, outcome, fmt.Errorf("clear launch_dirty after restarting session %q: %w", session.Name, err)
+	}
 	resumed.EnvDirty = false
+	resumed.LaunchDirty = false
 	return resumed, outcome, nil
 }

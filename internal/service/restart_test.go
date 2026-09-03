@@ -97,6 +97,65 @@ func TestRestartKillsRelaunchesWithResumeArgvSameConversationIDAndClearsEnvDirty
 	assertTMuxEnvironment(t, socket, restarted.Slug, "RESTART_ENV_KEY", "after-restart")
 }
 
+// TestRestartClearsBothEnvDirtyAndLaunchDirty proves task 021's other half:
+// a successful restart clears launch_dirty (the `launch↻` badge for a
+// pending pre_launch/post_destroy/launch_args/login_shell edit) right
+// alongside env_dirty, on a row that starts with BOTH flags set, since
+// Restart's relaunch through Resume carries the row's current launch
+// inputs into the fresh pane exactly as it carries its current env.
+func TestRestartClearsBothEnvDirtyAndLaunchDirty(t *testing.T) {
+	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
+	service, db, _, _ := newAgentTestService(t, nil, "restart-both-dirty-test")
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: restart both dirty", CWD: cwd, Agent: "claude", PermissionProfile: "edits",
+	})
+	if err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+
+	if _, err := service.SetSessionEnv(context.Background(), created.ID, "BOTH_DIRTY_KEY", "v1"); err != nil {
+		t.Fatalf("set session env: %v", err)
+	}
+	if err := db.SetLaunchInputs(context.Background(), created.ID, "echo pre", "", nil, false, "user", 5); err != nil {
+		t.Fatalf("set launch inputs: %v", err)
+	}
+
+	dirty, err := db.GetSession(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if !dirty.EnvDirty || !dirty.LaunchDirty {
+		t.Fatalf("row before restart = env_dirty %v launch_dirty %v, want both true", dirty.EnvDirty, dirty.LaunchDirty)
+	}
+
+	restarted, outcome, err := service.Restart(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	if outcome != ResumeStarted {
+		t.Fatalf("outcome = %v, want ResumeStarted", outcome)
+	}
+	if restarted.EnvDirty {
+		t.Fatal("restart's own returned session has env_dirty = true, want false")
+	}
+	if restarted.LaunchDirty {
+		t.Fatal("restart's own returned session has launch_dirty = true, want false")
+	}
+
+	row, err := db.GetSession(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if row.EnvDirty {
+		t.Fatal("persisted env_dirty remains true after restart")
+	}
+	if row.LaunchDirty {
+		t.Fatal("persisted launch_dirty remains true after restart")
+	}
+}
+
 // TestRestartRefusesAnAlreadyStoppedSession proves Restart never
 // masquerades as a first launch: a row with no live pane to kill must be
 // resumed via Resume/`r` instead.
