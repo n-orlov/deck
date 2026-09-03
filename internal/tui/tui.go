@@ -839,6 +839,24 @@ func (m Model) WithTmuxClient(client tmux.Client) Model {
 	return m
 }
 
+// WithLaunchInputsSetter attaches task 023's launch-inputs editor action
+// (SPEC §6.2/§11.4, PRD R108): service.Service.SetLaunchInputs, which
+// persists the four editable launch inputs (pre_launch, post_destroy,
+// launch_args, login_shell) in one write and marks the row launch_dirty.
+// It is wired here, as a With... method, rather than as a 22nd parameter on
+// the NewWith...And-chain above for the same reason WithTmuxClient is (see
+// cmd/deck/main.go's own note at the chain's call site): the chain is
+// already at the limit of what a positional parameter list can be read at,
+// and this dialog reaches the shipped binary through exactly one
+// dependency. A Model built without it (every constructor above, and every
+// unit test that does not set the field itself) has a nil setter, so the
+// editor's Enter reports "editing launch inputs is unavailable" rather than
+// silently doing nothing -- see submitLaunchInputs.
+func (m Model) WithLaunchInputsSetter(setter func(context.Context, string, string, string, []string, bool) (store.Session, error)) Model {
+	m.launchInputsSetter = setter
+	return m
+}
+
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
 // caller does not supply one, so every existing constructor keeps working
 // unchanged.
