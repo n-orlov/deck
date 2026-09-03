@@ -7537,9 +7537,9 @@ Hooks (pre_launch/post_destroy, global in config.toml or per-session)
   r after a host restart (a restart restores nothing; every row simply
   reads stopped) -- so a hook that provisions something external must be
   idempotent, safe to run again rather than only once. It is fail-closed:
-  a non-zero exit or a timeout means the agent never starts, the pane is
-  retained with the hook's own output visible, and the row lands in
-  error with that as the reason.
+  a non-zero exit means the agent never starts, the pane is retained
+  with the hook's own output visible, and the row lands in error with
+  that as the reason.
   post_destroy is a teardown hook: it runs once a session's pane is
   gone, after A (archive) or dd (delete) -- and not after x, which
   leaves the row stopped and resumable with its external resources
@@ -7549,10 +7549,10 @@ Hooks (pre_launch/post_destroy, global in config.toml or per-session)
   undo (u), the row comes back stopped -- the next r rebuilds whatever
   that post_destroy released.
   The safe way for either hook to hand the agent a secret: print
-  "export K=V" on stdout for deck to eval into the pane's shell,
-  send any diagnostics to stderr, and never echo the value -- pane
-  scrollback is captured, so an echoed secret is written to disk. Mark
-  the session sensitive (in the env editor) if a hook cannot be that
+  "export K=V" on stdout for the caller to eval "$(...)", send any
+  diagnostics to stderr, and never echo the value -- pane scrollback
+  is captured, so an echoed secret is written to disk. Mark the
+  session sensitive (in the env editor) if a hook cannot be that
   careful.
 
 Settings takeover (opened with ,)
