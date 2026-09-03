@@ -85,6 +85,51 @@ func TestCreateShellPersistsLaunchesAndAudits(t *testing.T) {
 	}
 }
 
+// TestCreateShellPersistsPostDestroyDurably covers task 011's residual:
+// ShellCreateInput.PostDestroy must reach store.CreateSessionInput.PostDestroy
+// and survive a durable read-back, not merely echo the input struct.
+func TestCreateShellPersistsPostDestroyDurably(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.Paths{Home: home, LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
+	db, err := store.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	logger, err := audit.New(paths, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := "deck-service-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
+	service := Service{
+		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
+		IDs: config.NewIDGenerator("service-test"), Shell: "/bin/sh",
+	}
+
+	session, err := service.CreateShell(context.Background(), ShellCreateInput{
+		Name: "shell-post-destroy", CWD: cwd, PostDestroy: "rm -rf /tmp/scratch",
+	})
+	if err != nil {
+		t.Fatalf("create shell: %v", err)
+	}
+
+	// Read back from the store, not the input struct or CreateShell's
+	// return value, so this asserts durability rather than an in-memory echo.
+	stored, err := db.GetSession(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if stored.PostDestroy != "rm -rf /tmp/scratch" {
+		t.Fatalf("stored post_destroy = %q, want %q", stored.PostDestroy, "rm -rf /tmp/scratch")
+	}
+}
+
 // TestCreateShellPromotesCWDToRecentCwds covers task 007's service-level
 // requirement that creating a session (shell path) promotes its cwd into
 // the §11.7 directory history.
