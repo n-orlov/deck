@@ -197,6 +197,15 @@ type Session struct {
 	// any notion of "repo" — the column and this default are the only
 	// two sources.
 	Workspace string
+	// WorkspaceColumn is the sessions.workspace column verbatim: empty
+	// exactly when the row has never had one recorded, with no basename
+	// fallback applied. Workspace above is the §11 grouping label a
+	// reader displays; this is the column behind it, which SPEC §6.1's
+	// "empty rather than absent when the column behind it is unset" rule
+	// needs (DECK_SESSION_WORKSPACE must read the same on a create launch,
+	// where no read path has run yet, as on a resume launch of that same
+	// untouched row).
+	WorkspaceColumn string
 
 	KilledByUser   bool
 	PaneExitStatus *int
@@ -524,6 +533,7 @@ func scanSession(row interface {
 	// the generation is the discriminator a hook hands back (issue #11, R74).
 	_, session.LaunchGeneration = splitOwnerGeneration(leaseOwner)
 	session.EnvDirty = envDirty != 0
+	session.WorkspaceColumn = workspace.String
 	if workspace.Valid && workspace.String != "" {
 		session.Workspace = workspace.String
 	} else {

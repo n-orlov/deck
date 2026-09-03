@@ -79,7 +79,7 @@ func wantSessionContext(session store.Session, deckHome, launchKind string) map[
 		"DECK_SESSION_SLUG":            session.Slug,
 		"DECK_SESSION_CWD":             session.CWD,
 		"DECK_SESSION_AGENT":           session.Agent,
-		"DECK_SESSION_WORKSPACE":       session.Workspace,
+		"DECK_SESSION_WORKSPACE":       session.WorkspaceColumn,
 		"DECK_SESSION_PROFILE":         session.PermissionProfile,
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,
@@ -148,14 +148,12 @@ func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 				t.Fatalf("create %s session: %v", kind, err)
 			}
 			// A brand-new row's workspace column is never written by any
-			// service call, and the struct CreateAgent/CreateShell hand to
-			// sessionContextEnv is CreateSession's own return value (never
-			// re-fetched), which does not default it the way store.GetSession
-			// does -- so this is genuinely the row's own unset value here,
-			// the fixture this test uses to demonstrate R104's "empty rather
-			// than absent" rule for workspace.
-			if created.Workspace != "" {
-				t.Fatalf("%s: create-returned session workspace = %q, want unset -- this test's empty-not-absent fixture assumption no longer holds", kind, created.Workspace)
+			// service call (no INSERT and no UPDATE in internal/store names
+			// it), so it is genuinely unset here on both launches of this
+			// same row -- the fixture this test uses to demonstrate R104's
+			// "empty rather than absent" rule for workspace.
+			if created.WorkspaceColumn != "" {
+				t.Fatalf("%s: create-returned session workspace column = %q, want unset -- this test's empty-not-absent fixture assumption no longer holds", kind, created.WorkspaceColumn)
 			}
 
 			createEnv := assertSessionContextEnv(t, socket, created, service.DeckHome, LaunchKindCreate)
@@ -205,40 +203,37 @@ func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 				t.Fatalf("shell: resume DECK_SESSION_CONVERSATION_ID = %q, want present with an empty value", resumeEnv["DECK_SESSION_CONVERSATION_ID"])
 			}
 
-			// R104: create and resume are the same session's two launches
-			// and must differ in DECK_SESSION_LAUNCH_KIND and nothing else
-			// identity-bearing -- id, name, slug, cwd, agent, profile,
-			// conversation id and DECK_HOME must all agree between the two.
-			//
-			// DECK_SESSION_WORKSPACE is deliberately excluded from this
-			// equality check: store.GetSession (which Resume uses to load
-			// the row) defaults an unset workspace column to the cwd's
-			// basename via store.DefaultWorkspace, but the
-			// store.CreateSession return value CreateAgent/CreateShell hand
-			// to sessionContextEnv on create does not apply that same
-			// fallback -- so DECK_SESSION_WORKSPACE genuinely is "" on
-			// create and the cwd's basename on resume for this same,
-			// untouched row, a real, pre-existing (store-layer, not R104's
-			// own) discrepancy this test documents with its own explicit
-			// assertions above rather than hiding behind a blanket equality
-			// check. See this task's filed petition for the resulting
-			// tension against "no other key" as literally written.
-			identityKeys := []string{
-				"DECK_SESSION_ID", "DECK_SESSION_NAME", "DECK_SESSION_SLUG", "DECK_SESSION_CWD",
-				"DECK_SESSION_AGENT", "DECK_SESSION_PROFILE", "DECK_SESSION_CONVERSATION_ID", "DECK_HOME",
-			}
-			for _, key := range identityKeys {
-				if createEnv[key] != resumeEnv[key] {
-					t.Fatalf("%s: create/resume disagree on %s: %q vs %q, want identical", kind, key, createEnv[key], resumeEnv[key])
+			// R104: create and resume are the same session's two launches of
+			// one untouched row, so they must differ in
+			// DECK_SESSION_LAUNCH_KIND and in no other DECK_SESSION_* key (nor
+			// in DECK_HOME). This compares every key in sessionContextKeys
+			// except the launch kind itself -- no key is excluded -- in both
+			// directions, so a key present on only one of the two launches
+			// fails here as well.
+			for _, key := range sessionContextKeys {
+				if key == "DECK_SESSION_LAUNCH_KIND" {
+					continue
 				}
+				createValue, createPresent := createEnv[key]
+				resumeValue, resumePresent := resumeEnv[key]
+				if createPresent != resumePresent || createValue != resumeValue {
+					t.Fatalf("%s: create/resume disagree on %s: %q (present %v) vs %q (present %v), want identical -- only DECK_SESSION_LAUNCH_KIND may differ", kind, key, createValue, createPresent, resumeValue, resumePresent)
+				}
+			}
+			if len(createEnv) != len(resumeEnv) || len(createEnv) != len(sessionContextKeys) {
+				t.Fatalf("%s: create/resume key sets = %d/%d keys, want both %d (every sessionContextKeys entry present on both launches)", kind, len(createEnv), len(resumeEnv), len(sessionContextKeys))
 			}
 			if createEnv["DECK_SESSION_LAUNCH_KIND"] != LaunchKindCreate || resumeEnv["DECK_SESSION_LAUNCH_KIND"] != LaunchKindResume {
 				t.Fatalf("%s: launch kinds = %q/%q, want %q/%q", kind, createEnv["DECK_SESSION_LAUNCH_KIND"], resumeEnv["DECK_SESSION_LAUNCH_KIND"], LaunchKindCreate, LaunchKindResume)
 			}
-			// Documented, not hidden: show exactly what DECK_SESSION_WORKSPACE
-			// actually did between the two launches of this same row.
-			if createEnv["DECK_SESSION_WORKSPACE"] != "" || resumeEnv["DECK_SESSION_WORKSPACE"] == "" {
-				t.Fatalf("%s: expected the documented create=\"\" / resume=<cwd basename> workspace split, got create=%q resume=%q", kind, createEnv["DECK_SESSION_WORKSPACE"], resumeEnv["DECK_SESSION_WORKSPACE"])
+			// The unset workspace column is exported empty on the resume path
+			// too, not silently replaced by store.GetSession's §11 grouping
+			// fallback (the cwd's basename) on the way back out of the row.
+			if resumeEnv["DECK_SESSION_WORKSPACE"] != "" {
+				t.Fatalf("%s: resume DECK_SESSION_WORKSPACE = %q, want present with an empty value (workspace column still unset)", kind, resumeEnv["DECK_SESSION_WORKSPACE"])
+			}
+			if resumed.Workspace == "" {
+				t.Fatalf("%s: resumed row's §11 grouping label unexpectedly empty -- the DECK_SESSION_WORKSPACE assertion above would then be vacuous", kind)
 			}
 
 			_ = db

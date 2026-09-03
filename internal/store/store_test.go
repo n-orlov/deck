@@ -1159,6 +1159,16 @@ func TestListSessionsDefaultsWorkspaceToCWDBasename(t *testing.T) {
 	if sessions[1].Workspace != "team-shared" {
 		t.Fatalf("explicit workspace = %q, want the recorded value unchanged by the default", sessions[1].Workspace)
 	}
+	// WorkspaceColumn is the column verbatim beside that label: empty for
+	// the row that never recorded one (SPEC §6.1's DECK_SESSION_WORKSPACE
+	// reads it, so "unset" must stay distinguishable from the basename
+	// fallback), the recorded value for the row that did.
+	if sessions[0].WorkspaceColumn != "" {
+		t.Fatalf("defaulted workspace column = %q, want empty (no value ever recorded)", sessions[0].WorkspaceColumn)
+	}
+	if sessions[1].WorkspaceColumn != "team-shared" {
+		t.Fatalf("explicit workspace column = %q, want %q verbatim", sessions[1].WorkspaceColumn, "team-shared")
+	}
 	// GetSession goes through the same scanSession/sessionColumns path;
 	// prove it independently rather than assuming ListSessions and GetSession
 	// can never drift.
@@ -1168,6 +1178,9 @@ func TestListSessionsDefaultsWorkspaceToCWDBasename(t *testing.T) {
 	}
 	if got.Workspace != "svc-a" {
 		t.Fatalf("GetSession workspace = %q, want %q", got.Workspace, "svc-a")
+	}
+	if got.WorkspaceColumn != "" {
+		t.Fatalf("GetSession workspace column = %q, want empty (no value ever recorded)", got.WorkspaceColumn)
 	}
 }
 

@@ -25,7 +25,15 @@ const (
 // Every value is always exported -- empty rather than absent when the row's
 // own column is unset (e.g. an unset workspace or conversation id) -- so a
 // hook can branch on a value without first testing for existence, exactly
-// as the SPEC table requires.
+// as the SPEC table requires. DECK_SESSION_WORKSPACE therefore reads the
+// sessions.workspace column verbatim (store.Session.WorkspaceColumn), not
+// store.Session.Workspace's §11 grouping label with its basename-of-cwd
+// fallback: §6.1's rule is "empty rather than absent when the column behind
+// it is unset", and reading the label instead would make a row whose
+// workspace has never been recorded export "" on its create launch (where
+// no read path has applied the fallback) and the cwd's basename on every
+// resume of that same untouched row -- a launch-kind-dependent value for a
+// fact that did not change.
 func (s Service) sessionContextEnv(session store.Session, launchKind string) map[string]string {
 	return map[string]string{
 		"DECK_SESSION_ID":              session.ID,
@@ -33,7 +41,7 @@ func (s Service) sessionContextEnv(session store.Session, launchKind string) map
 		"DECK_SESSION_SLUG":            session.Slug,
 		"DECK_SESSION_CWD":             session.CWD,
 		"DECK_SESSION_AGENT":           session.Agent,
-		"DECK_SESSION_WORKSPACE":       session.Workspace,
+		"DECK_SESSION_WORKSPACE":       session.WorkspaceColumn,
 		"DECK_SESSION_PROFILE":         session.PermissionProfile,
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,
