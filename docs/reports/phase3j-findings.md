@@ -3,7 +3,8 @@
 Companion to the phase closeout report task 034 writes (that task's own `successCriteria` in
 the run's own `/run/ralphd/tasks.json` names its path; it is deliberately not cited here, because
 every repo path this report cites is one already tracked in git — see §7): what the requirement
-table does not carry — a task that ended `failed` and the dependency doom it leaves behind, gaps
+table does not carry — a task that ended `failed`, was reopened by an operator ruling, and was
+then closed, with the tasks that had depended on it subsequently delivered, gaps
 a validation pass found that were then closed within the same task rather than left open, the
 protected-path audit's disposition over this run's own commit range, this phase's check for a
 disagreement between the tree and `SPEC.md`, the schema-version pins in `features/` that task
@@ -17,79 +18,72 @@ ancestry argument). Every sha cited resolves under `git cat-file -e` and every p
 tracked under `git ls-files --error-unmatch`, both checked in
 [§7](#7-how-to-re-check-every-citation-in-this-report).
 
-- [1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
+- [1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered](#1-task-011-ended-failed-was-reopened-by-operator-ruling-001-011-and-was-closed-by-commit-9fb6aec-tasks-013-and-026-were-then-delivered)
 - [2. Three tasks (002, 007, 023) had a validation-found gap that was closed within the same task's own follow-up commit, not left open](#2-three-tasks-002-007-023-had-a-validation-found-gap-that-was-closed-within-the-same-tasks-own-follow-up-commit-not-left-open)
 - [3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b` and `566cb6d`](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work--closed-by-task-038-at-2e5fc6b-and-566cb6d)
 - [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-not-yet-checked-against-a-whole-suite-run)
 - [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
 - [6. Two stale schema-version literals in `features/` — fixed by task 030 at `204af7d`](#6-two-stale-schema-version-literals-in-features--fixed-by-task-030-at-204af7d)
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
-- [8. Gate dispositions: whole-suite sweep (task 030) and ten-run stability (task 032)](#8-gate-dispositions-whole-suite-sweep-task-030-and-ten-run-stability-task-032)
+- [8. Gate dispositions: whole-suite sweep (task 058), verbose tally companion (task 059) and ten-run stability (task 060)](#8-gate-dispositions-whole-suite-sweep-task-058-verbose-tally-companion-task-059-and-ten-run-stability-task-060)
 - [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
 - [10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed](#10-independent-reviews-blocking-findings-4-and-5-record-accuracy-and-gate-pollingone-sweep-discipline-are-closed)
 
-## 1. Task 011 ended `failed` (validation-exhausted); its residual gap dooms tasks 013 and 026 by dependency, unresolved as of this writing
+## 1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered
 
-Task 011 ("Plumb `post_destroy` through the store's session write and read paths") is `failed`
-in `tasks.json`, `failureKind: "validation-exhausted"`, after 3 validation attempts.
+Task 011 ("Plumb `post_destroy` through the store's session write and read paths") first ended
+`failed` in `tasks.json`, `failureKind: "validation-exhausted"`, after 3 validation attempts.
 
-**What failed, quoted verbatim from task 011's own `validationNotes`:**
+**What failed, quoted verbatim from task 011's own `validationNotes` at that time:**
 
 > Residual gap: CreateShell cannot accept or persist post_destroy because
 > internal/service/shell.go's ShellCreateInput has no PostDestroy field and its
 > store.CreateSessionInput omits PostDestroy; only CreateAgent propagates it.
 
-The same note confirms what task 011 *did* land and verify: `store.Session` and
-`store.CreateSessionInput` both carry `PostDestroy`; `CreateSession` writes the
+The same note confirmed what task 011 had already landed and verified: `store.Session` and
+`store.CreateSessionInput` both carried `PostDestroy`; `CreateSession` wrote the
 `post_destroy` column; `sessionColumns`/`scanSession` read it back;
-`TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen` proves a non-empty value survives
-`GetSession` and `ListSessions`; `CreateAgent` passes `input.PostDestroy` through; and
+`TestCreateSessionRoundTripsAllPhase1FieldsAcrossReopen` proved a non-empty value survived
+`GetSession` and `ListSessions`; `CreateAgent` passed `input.PostDestroy` through; and
 `ci/run.sh go test -count=1 ./internal/store ./internal/service` exited 0 against that state.
-Confirmed fresh against the committed code:
+Only the `ShellCreateInput`/`CreateShell` residual quoted above was missing at that point.
+
+**The operator then reopened task 011.** Steering message
+`001-unblock-011-gate-ordering.md` (ruling 001-011) reset task 011 from `failed` to `pending`
+with its criteria narrowed to exactly that residual: add `PostDestroy` to `ShellCreateInput`,
+pass it into `CreateShell`'s `store.CreateSessionInput`, add a service test proving a shell row
+created with a non-empty `post_destroy` retains it durably, and require
+`ci/run.sh go test -count=1 ./internal/service ./internal/store` to exit 0 — everything task 011
+had already landed and verified (the paragraph above) was left alone.
+
+**Task 011 was closed by commit `9fb6aec`** ("service: pass post_destroy through CreateShell
+(task 011)"), confirmed fresh against the committed code:
 
 ```
 $ grep -n "PostDestroy" internal/service/shell.go
-52:	// GlobalPostDestroy mirrors config.toml's top-level post_destroy key
-59:	GlobalPostDestroy string
+31:	// PostDestroy is this shell session's own teardown hook (SPEC §9.2,
+32:	// R107), persisted verbatim into store.CreateSessionInput.PostDestroy.
+36:	PostDestroy string
+66:	// GlobalPostDestroy mirrors config.toml's top-level post_destroy key
+73:	GlobalPostDestroy string
+156:		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy,
 ```
 
-The only `PostDestroy`-named field is `GlobalPostDestroy` (the config-level default, not a
-per-session value); `ShellCreateInput` itself has no per-session `PostDestroy` field, and
-`CreateShell`'s `store.CreateSessionInput{...}` construction (`internal/service/shell.go:139`)
-does not set one — a `shell` session created today can never
-carry a `post_destroy` value, while a `claude`/`pi` session created through `CreateAgent` can.
-Task 011's own record already proposes the discharge: a follow-up task, "Pass post_destroy
-through CreateShell", with its own success criteria (add `PostDestroy` to `ShellCreateInput`,
-pass it into `CreateShell`'s `store.CreateSessionInput`, add a service test creating a shell
-with a non-empty value and verifying the returned/durable row retains it, require
-`ci/run.sh go test -count=1 ./internal/service ./internal/store` to exit 0). No task in this
-plan (`tasks.json`, ids 001–037) currently carries that follow-up; task 029 does not create one
-— per the standing rules, resolving a `failed` task by carving its gap into a new task, or
-relabelling it `skipped`, is a distinct action from this findings report and is left to whichever
-future task or planning pass takes it up.
+`ShellCreateInput` now carries its own `PostDestroy` field (line 36), and `CreateShell`'s
+`store.CreateSessionInput{...}` construction now sets it (line 156). Commit `9fb6aec` also added
+`TestCreateShellPersistsPostDestroyDurably` (`internal/service/shell_test.go:95`), which creates
+a shell with `PostDestroy: "rm -rf /tmp/scratch"` and asserts the durable row returned from the
+store still carries it. A `shell` session created today can carry a `post_destroy` value exactly
+as a `claude`/`pi` session created through `CreateAgent` already could.
 
-**Dependency doom, checked fresh against `tasks.json`.** Task 011 is neither `completed` nor
-`validated`, so nothing that names it in `dependsOn` can ever be scheduled:
-
-```
-$ python3 -c "
-import json
-d = json.load(open('/run/ralphd/tasks.json'))
-for t in d['tasks']:
-    if '011' in (t.get('dependsOn') or []):
-        print(t['id'], t['status'], t['dependsOn'])
-"
-013 pending ['011', '012']
-026 pending ['011']
-```
-
-**Task 013** ("Run session-then-global `post_destroy` after Archive and Delete durably
-succeed") and **task 026** ("Add a `post_destroy` field to the create modal beside
-`pre_launch`") are both blocked forever by task 011's `failed` status, exactly as the harness's
-own `taskBlockedBy` derivation would report. Neither task 013 nor task 026 has itself been
-resolved (carved into a new task with `dependsOn` repointed, or relabelled) as of this writing —
-that repointing is a planning-pass action, not something this findings report performs. This
-section is the disclosure the standing rules call for; it does not itself clear the doom.
+**Tasks 013 and 026, once blocked by task 011's `failed` status, were subsequently delivered
+rather than left blocked.** Task 013 ("Run session-then-global `post_destroy` after Archive and
+Delete durably succeed") landed in commit `259284b` ("service: run session-then-global
+post_destroy after Archive/Delete commit (task 013)"). Task 026 ("Add a `post_destroy` field to
+the create modal beside `pre_launch`") landed in commit `6080c55` ("tui: add post_destroy field
+to create modal beside pre_launch (task 026)"). Both commits resolve under
+`git cat-file -e <sha>^{commit}` against this tree. This section is now a historical record of
+how the block was cleared, not a disclosure of an open one.
 
 ## 2. Three tasks (002, 007, 023) had a validation-found gap that was closed within the same task's own follow-up commit, not left open
 
@@ -210,7 +204,7 @@ original finding named:
   includes `PATH` as evidence.
 
 This was the launch-side half of a shape whose storage-side half is
-[§1](#1-task-011-ended-failed-validation-exhausted-its-residual-gap-dooms-tasks-013-and-026-by-dependency-unresolved-as-of-this-writing)
+[§1](#1-task-011-ended-failed-was-reopened-by-operator-ruling-001-011-and-was-closed-by-commit-9fb6aec-tasks-013-and-026-were-then-delivered)
 (task 011's residual gap: `ShellCreateInput` carried no per-session `PostDestroy`). Both halves
 are now closed: task 011 gave `ShellCreateInput` its `PostDestroy` field (commit `9fb6aec`), and
 task 038 (commits `2e5fc6b` and `566cb6d`, this section) routed `CreateShell` through
