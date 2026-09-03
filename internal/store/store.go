@@ -266,6 +266,14 @@ type Session struct {
 	// false. It is the row's queryable, persisted source for the `env↻`
 	// sidebar badge; nothing here ever touches the live pane itself.
 	EnvDirty bool
+	// LaunchDirty is the sessions.launch_dirty column (task 020): true once
+	// SetLaunchInputs has persisted an edit to one of the four editable
+	// launch inputs (PreLaunch, PostDestroy, LaunchArgs, LoginShell) but the
+	// change has not yet reached a live pane -- only a later relaunch does
+	// that, and clears it back to false via ClearLaunchDirty. Like EnvDirty,
+	// this never touches or implies anything about the live pane itself; it
+	// is only the row's queryable, persisted "pending launch change" flag.
+	LaunchDirty bool
 	// DeletedAt is the SPEC delete-tombstone timestamp (task 104): zero for a
 	// live row, and the wall-clock millisecond `dd`+confirm ran at once a row
 	// has been soft-deleted (SoftDeleteSession). A tombstoned row is excluded
@@ -530,14 +538,14 @@ func scanSession(row interface {
 	var launchArgsJSON, envJSON string
 	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace, postDestroy sql.NullString
 	var leaseOwner string
-	var loginShell, killedByUser, acknowledged, envDirty int
+	var loginShell, killedByUser, acknowledged, envDirty, launchDirty int
 	var paneExitStatus sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt,
+		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner); err != nil {
 		return Session{}, err
 	}
@@ -546,6 +554,7 @@ func scanSession(row interface {
 	// the generation is the discriminator a hook hands back (issue #11, R74).
 	_, session.LaunchGeneration = splitOwnerGeneration(leaseOwner)
 	session.EnvDirty = envDirty != 0
+	session.LaunchDirty = launchDirty != 0
 	session.WorkspaceColumn = workspace.String
 	if workspace.Valid && workspace.String != "" {
 		session.Workspace = workspace.String
@@ -594,7 +603,7 @@ const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace, last_probe_at, env_dirty, deleted_at, archived_at,
+		workspace, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, '')`
 
 // GetSession returns exactly one session by id, including every Phase 1
@@ -1101,6 +1110,47 @@ func (s *Store) DirtyEnvKeys(ctx context.Context, sessionID string) ([]string, e
 		return nil, fmt.Errorf("list changed env keys for session %q: %w", sessionID, err)
 	}
 	return keys, nil
+}
+
+// SetLaunchInputs persists a new value for all four editable launch inputs
+// -- PreLaunch, PostDestroy, LaunchArgs and LoginShell -- and marks the row
+// launch_dirty (task 020's own launch-side counterpart to SetSessionEnvValue
+// and env_dirty): a change has been durably written but not yet applied to
+// the live pane, because none of these four inputs can be changed on an
+// already-running pane without relaunching it. All four columns are written
+// in the same UPDATE as launch_dirty = 1 so a reader never observes one
+// without the other. Only an explicit relaunch clears launch_dirty back to
+// 0 (ClearLaunchDirty); this method itself never touches tmux.
+func (s *Store) SetLaunchInputs(ctx context.Context, sessionID, preLaunch, postDestroy string, launchArgs []string, loginShell bool, source string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	launchArgsJSON, err := marshalStrings(launchArgs)
+	if err != nil {
+		return fmt.Errorf("encode launch args for session %q: %w", sessionID, err)
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "launch_inputs", "set_launch_inputs", source, "", at,
+		`UPDATE sessions SET pre_launch = ?, post_destroy = ?, launch_args = ?, login_shell = ?, launch_dirty = 1 WHERE id = ?`,
+		nullableString(preLaunch), nullableString(postDestroy), launchArgsJSON, loginShell)
+}
+
+// ClearLaunchDirty resets launch_dirty back to false once a relaunch has
+// carried the session's persisted launch inputs into a live pane, so the
+// pending-change badge never outlives the change actually reaching a live
+// process. It never touches tmux or any of the four launch-input columns
+// themselves -- only the flag.
+func (s *Store) ClearLaunchDirty(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "launch_dirty", "launch_applied", "restart", "", at,
+		`UPDATE sessions SET launch_dirty = 0 WHERE id = ?`)
 }
 
 // SetResumePin pins a session to resume a specific conversation id going

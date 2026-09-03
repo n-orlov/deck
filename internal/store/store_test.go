@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1624,6 +1625,109 @@ func TestClearEnvDirtyRejectsMissingSessionOrUnknownID(t *testing.T) {
 	}
 	if err := st.ClearEnvDirty(ctx, "some-id", 0); err == nil {
 		t.Fatalf("expected an error for a missing timestamp")
+	}
+}
+
+// TestSetLaunchInputsRoundTripsAllFourColumnsAndMarksLaunchDirty is task
+// 020's own proof: SetLaunchInputs writes pre_launch, post_destroy,
+// launch_args and login_shell in the same UPDATE that sets launch_dirty = 1,
+// each of the four columns round-trips through GetSession afterward, and
+// ClearLaunchDirty then resets the flag back to 0 without touching any of
+// the four columns it just wrote -- both states surviving a close/reopen.
+func TestSetLaunchInputsRoundTripsAllFourColumnsAndMarksLaunchDirty(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	const id = "00000000-0000-4000-8000-000000000023"
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: id, Name: "launch-inputs", CWD: "/work/launch-inputs", Agent: "claude", CapturedPath: "/bin",
+		StatusAt: 1, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LaunchDirty {
+		t.Fatalf("launch_dirty = true on a freshly created row, want false")
+	}
+
+	wantArgs := []string{"--flag", "value"}
+	if err := st.SetLaunchInputs(ctx, id, "echo pre", "echo post", wantArgs, true, "user", 10); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PreLaunch != "echo pre" {
+		t.Fatalf("PreLaunch = %q, want %q", got.PreLaunch, "echo pre")
+	}
+	if got.PostDestroy != "echo post" {
+		t.Fatalf("PostDestroy = %q, want %q", got.PostDestroy, "echo post")
+	}
+	if !reflect.DeepEqual(got.LaunchArgs, wantArgs) {
+		t.Fatalf("LaunchArgs = %#v, want %#v", got.LaunchArgs, wantArgs)
+	}
+	if !got.LoginShell {
+		t.Fatalf("LoginShell = false, want true")
+	}
+	if !got.LaunchDirty {
+		t.Fatalf("launch_dirty = false, want true after SetLaunchInputs")
+	}
+
+	if err := st.ClearLaunchDirty(ctx, id, 20); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LaunchDirty {
+		t.Fatalf("launch_dirty = true, want false after ClearLaunchDirty")
+	}
+	if got.PreLaunch != "echo pre" || got.PostDestroy != "echo post" || !reflect.DeepEqual(got.LaunchArgs, wantArgs) || !got.LoginShell {
+		t.Fatalf("ClearLaunchDirty touched a launch-input column: %+v", got)
+	}
+
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	got, err = reopened.GetSession(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PreLaunch != "echo pre" || got.PostDestroy != "echo post" || !reflect.DeepEqual(got.LaunchArgs, wantArgs) || !got.LoginShell || got.LaunchDirty {
+		t.Fatalf("state did not survive reopen: %+v", got)
+	}
+}
+
+// TestSetLaunchInputsRejectsMissingSessionID mirrors every other Set*
+// mutator's input-validation shape.
+func TestSetLaunchInputsRejectsMissingSessionID(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.SetLaunchInputs(ctx, "", "pre", "post", nil, false, "user", 1); err == nil {
+		t.Fatalf("expected an error for a missing session id")
+	}
+	if err := st.SetLaunchInputs(ctx, "does-not-exist", "pre", "post", nil, false, "user", 1); err == nil {
+		t.Fatalf("expected an error for a session that does not exist")
 	}
 }
 
