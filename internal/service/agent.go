@@ -128,6 +128,12 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("instrument agent session %q: %w", session.Name, err))
 	}
+	// SPEC §6.1 (R104): deck's own session context is merged last, above the
+	// instrumentation adapters own, so a session `env` or config `[env]` key
+	// of the same name can never lie to a hook about which session it is.
+	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
+		launchEnv[key] = value
+	}
 	paneCommand, err := buildPaneCommand(input.PreLaunch, input.LoginShell, argv)
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err))

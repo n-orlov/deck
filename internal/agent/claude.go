@@ -115,6 +115,16 @@ type claudeHook struct {
 // this settings source with user and project settings, so deck adds its hooks
 // without reading or modifying either source. Marshal cannot fail for these
 // concrete string-only structures.
+//
+// DECK_SESSION_ID and DECK_HOME are no longer set here (SPEC §6.1, R104):
+// they moved to internal/service's own deck-owned session-context map,
+// which every adapter now carries -- including pi and shell, which never
+// had them before. Their VALUES are unchanged, since the new source reads
+// the identical row facts (session id, DeckHome) this adapter used to be
+// handed directly. What Claude keeps is what it alone owns: the --settings
+// hook JSON and DECK_LAUNCH_GENERATION, whose absent-when-no-lease
+// semantics (see below) are a Claude-specific hook-routing fact, not a
+// session property, and so are not part of that shared map.
 // Probe provides the sampled fallback used when Claude's live hook verdict is stale.
 func (Claude) Probe(pane string) (string, string) { return probe("claude", pane) }
 
@@ -127,18 +137,16 @@ func (Claude) Instrument(in LaunchInput) ([]string, map[string]string) {
 		}}}}
 	}
 	settings, _ := json.Marshal(claudeHookSettings{Hooks: hooks})
-	env := map[string]string{
-		"DECK_SESSION_ID": in.DeckSessionID,
-		"DECK_HOME":       in.DeckHome,
-	}
-	// The launch generation travels beside DECK_SESSION_ID so every hook this
-	// pane's agent runs can say WHICH launch of that row it belongs to (issue
-	// #11, R74): the session id alone cannot distinguish a hook from the pane
-	// deck just started from a late hook from the pane it replaced. Omitted
-	// when the launch holds no lease-minted token, so a hook never sees an
-	// empty token it would have to interpret.
+	// The launch generation lets every hook this pane's agent runs say WHICH
+	// launch of that row it belongs to (issue #11, R74): the session id
+	// alone cannot distinguish a hook from the pane deck just started from a
+	// late hook from the pane it replaced. Omitted when the launch holds no
+	// lease-minted token, so a hook never sees an empty token it would have
+	// to interpret, and there is otherwise nothing left for Claude to
+	// instrument into the environment at all.
+	var env map[string]string
 	if in.LaunchGeneration != "" {
-		env[LaunchGenerationEnv] = in.LaunchGeneration
+		env = map[string]string{LaunchGenerationEnv: in.LaunchGeneration}
 	}
 	return []string{"--settings", string(settings)}, env
 }

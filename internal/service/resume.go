@@ -253,6 +253,18 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("instrument resumed session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr
 	}
+	// SPEC section 6.1 (R104): deck's own session context is merged last,
+	// above the instrumentation adapters own; the launch kind is "resume"
+	// for every relaunch, including a fresh-once one, and the conversation
+	// id exported here is the one this very launch is using -- which may
+	// not yet be the session row's own field when a fresh-once launch just
+	// minted a new one (persisted only once this launch has actually
+	// succeeded, below).
+	contextSession := session
+	contextSession.ConversationID = conversationID
+	for key, value := range s.sessionContextEnv(contextSession, LaunchKindResume) {
+		launchEnv[key] = value
+	}
 	paneCommand, err := buildPaneCommand(session.PreLaunch, session.LoginShell, argv)
 	if err != nil {
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume pane command for session %q: %w", session.Name, err))

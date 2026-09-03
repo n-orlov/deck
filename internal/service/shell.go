@@ -133,10 +133,44 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
 		return session, fmt.Errorf("audit starting shell session %q: %w", session.Name, err)
 	}
-	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: []string{shell}, Env: input.Env}); err != nil {
+	// Route the shell adapter through the same applyInstrumentation call
+	// every other launch path uses (CreateAgent, Resume), even though
+	// Shell.Instrument always returns nil (SPEC §8.1: shell has no agent
+	// hook source) -- this keeps CreateShell on the identical
+	// applyInstrumentation-then-session-context sequence rather than a
+	// second, drifting copy of it. s.Agents is nil-tolerant (only agent
+	// creation requires it), so this falls back to constructing the
+	// adapter directly when no registry was supplied.
+	shellAdapter, ok := agent.Adapter(nil), false
+	if s.Agents != nil {
+		shellAdapter, ok = s.Agents.Lookup("shell")
+	}
+	if !ok {
+		shellAdapter = agent.NewShell()
+	}
+	launchInput := agent.LaunchInput{
+		CWD: session.CWD, DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
+	}
+	launchEnv := make(map[string]string, len(input.Env)+10)
+	for key, value := range input.Env {
+		launchEnv[key] = value
+	}
+	argv := []string{shell}
+	argv, launchEnv, err = applyInstrumentation(shellAdapter, launchInput, argv, launchEnv)
+	if err != nil {
+		return s.launchFailed(ctx, session, fmt.Errorf("instrument shell session %q: %w", session.Name, err))
+	}
+	// SPEC §6.1 (R104): deck's own session context is merged last, above
+	// the instrumentation adapter's own -- last here too, even though
+	// Shell's own instrumentation never adds anything, so a shell pane
+	// carries the same nine variables a claude pane does.
+	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
+		launchEnv[key] = value
+	}
+	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: argv, Env: launchEnv}); err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("launch shell session %q: %w", session.Name, err))
 	}
-	if err := s.Audit.Launch(session.ID, []string{shell}, input.Env); err != nil {
+	if err := s.Audit.Launch(session.ID, argv, launchEnv); err != nil {
 		// The pane is not a successful deck launch if its required audit record
 		// cannot be written, so remove it and leave an observable durable error.
 		_ = s.TMux.Kill(ctx, session.Slug)
