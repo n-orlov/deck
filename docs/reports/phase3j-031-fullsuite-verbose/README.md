@@ -2,7 +2,7 @@
 
 ## Why this exists (finding F34) — tally source only, not the deliverable sweep
 
-`ci/run.sh go test -p=1 -count=1 ./...` — task 030's (refreshed by task 058's) deliverable sweep —
+`ci/run.sh go test -p=1 -count=1 ./...` — task 030's deliverable sweep, refreshed by task 058 —
 never prints the godog scenario/step tally. Per phase 3g finding F34: with
 `features/godog_test.go:35`'s `godog.Options.TestingT` set to the enclosing `*testing.T`, Go's own
 `-v`-gated output-buffering behaviour (not anything godog does) discards a passing package's
@@ -10,37 +10,37 @@ stdout/stderr/`t.Log` entirely under the mandated non-verbose launcher, for any 
 any amount of re-running. The tally is readable only from a companion run whose sole command-line
 difference is `-v`.
 
-This report is **that companion only** — it exists solely to publish the Gherkin tally that the
-mandated non-verbose launcher structurally cannot print. **Task 058's sweep remains the
-deliverable gate**; this verbose run supersedes nothing about it and is not itself the gate. This
-follows the exact two-sweep discipline established by finding F34 and every later phase's own
-`-verbose` report (e.g. `phase3h-203-fullsuite-verbose/`, `phase3i-128-fullsuite-verbose/`): never
-fix (the launcher and `features/godog_test.go` are unedited, per standing rules), always disclose
-via a second, docs-only companion sweep.
+**This companion exists only because the non-verbose launcher cannot print the tally (finding
+F34).** It publishes nothing else and gates nothing: **task 058's sweep remains the deliverable
+gate**, and this verbose run supersedes nothing about it. That is the two-sweep discipline F34
+established and every later phase's own `-verbose` report follows (e.g.
+`docs/reports/phase3h-203-fullsuite-verbose/`, `docs/reports/phase3i-128-fullsuite-verbose/`):
+never fix (the launcher and `features/godog_test.go` are unedited, per standing rules), always
+disclose via a second, docs-only companion sweep.
 
 ## Supersedes
 
-This refresh **supersedes the earlier tally published at code sha
-`a44ee320b93186496d56364836b0aed00a6f1e0b`** (the previous refresh of this same directory, task
-031 per operator ruling `003-031`). Task 058 re-ran the deliverable sweep at the new final code
-sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` (tasks 041–046 landed between the two shas); this
-companion is re-run at that same sha to keep the tally current with the deliverable gate. This
-directory is refreshed **in place**; there is no new numbered report directory.
+This refresh **supersedes the tally published at code sha
+`a44ee320b93186496d56364836b0aed00a6f1e0b`** (the earlier state of this same directory, task 031
+per operator ruling 003-031); tasks 041–046 landed between that sha and the current code sha, so
+that tally is stale. An intermediate refresh of this directory was committed as
+`8bba297625a5cc8411d37a6f80232d8eb1067265` at the same code sha as this one, but its quoted tally
+lines dropped the ESC bytes godog emits and were therefore not verbatim; this run's captures and
+the byte-exact quoting below replace it. This directory is refreshed **in place** — there is no
+new numbered report directory.
 
-## Code sha this run corresponds to
+## Code sha this run ran at
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
 b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
 ```
 
-This is task 058's own final code sha (its refreshed report at
-`docs/reports/phase3j-030-fullsuite/README.md` cites the same sha). `git status --porcelain` was
-empty and `git rev-parse HEAD origin/main` agreed (`b82e3de49e1540d59c56adfad89957d044c403d1`
-both) immediately before this sweep started; `b82e3de` is itself a docs-only descendant of
-`b29afb8` (task 058's own docs-only publish commit) — nothing code-side (`*.go`/`*.feature`) has
-moved between the two. The only change since is this report directory itself (untracked until
-this row's own commit, which is likewise docs-only).
+That is task 058's own final code sha (its refreshed report at
+`docs/reports/phase3j-030-fullsuite/README.md` cites the same sha), so this tally is current with
+the deliverable gate. `git status --porcelain` was empty and `git rev-parse HEAD origin/main`
+agreed (`8bba297625a5cc8411d37a6f80232d8eb1067265` both) while this sweep ran; `8bba297` is a
+docs-only descendant of `b29afb8` — nothing under `*.go` or `*.feature` moved between them.
 
 ## Command run (verbatim; only difference from task 058's sweep is `-v`)
 
@@ -50,64 +50,78 @@ ci/run.sh go test -p=1 -count=1 -v ./...
 
 ## Execution shape
 
-Launched exactly as the standing rules mandate, backgrounded under `timeout 2400` and never
-blocked on, polled EXCLUSIVELY with `sleep 60` loops (checking only for the exit-status file's
-existence/content, never reading progress through a pipe; no sleep longer than 60s anywhere in the
-polling loop):
+Launched exactly once, backgrounded under `timeout 2400`, never blocked on, and polled
+EXCLUSIVELY with `sleep 60` — no other interval anywhere, and no inspection of the log or the
+exit-status file before the first `sleep 60`:
 
 ```
 nohup sh -c 'timeout 2400 ci/run.sh go test -p=1 -count=1 -v ./... > /tmp/verbose-059.log 2>&1; echo $? > /tmp/verbose-059.log.exitstatus' >/dev/null 2>&1 &
 ```
 
-Started 2026-09-03T20:05:58Z. Polled with `sleep 60` at 20:07:03Z, 20:08:05Z, 20:09:07Z,
-20:10:10Z, 20:11:13Z (log growing each time, no exit-status file yet), then found the exit-status
-file present on the poll at 20:13:29Z (file's own mtime: 20:12). Total wall time about 6m30s, well
-under the 40-minute `timeout` and consistent with task 058's non-verbose sweep at ~6 minutes plus
-`-v`'s output overhead (the `features` package alone took 338.333s / ~5m38s here).
+Started 2026-09-03T20:16:17Z. The launch call inspected nothing; the first look at the output came
+after a `sleep 60`, and every later look after another `sleep 60` (seven polls in all, at
+~20:17Z through ~20:23Z, each showing only the log's size growing until the seventh found
+`/tmp/verbose-059.log.exitstatus` present at 2026-09-03T20:23Z). Total wall time about 7m30s, far
+under the 40-minute `timeout`, consistent with task 058's ~6-minute non-verbose sweep plus `-v`'s
+output overhead (the `features` package alone took 363.749s / ~6m04s here).
 
 ## Exit status
 
-`verbose.log.exitstatus` contains:
+`verbose.log.exitstatus` in this directory contains:
 
 ```
 0
 ```
 
-`verbose.log` in this directory is the full, unedited stdout+stderr of the run (9961 lines,
-including raw ANSI colour codes godog emits — nothing stripped, nothing truncated).
+`verbose.log` is the full, unedited stdout+stderr of the run (9961 lines, raw ANSI colour
+codes included — nothing stripped, nothing truncated).
 
-## Gherkin tally — quoted verbatim with line numbers in the log
+## Gherkin tally — quoted verbatim from verbose.log
 
-```
-$ grep -a -n -E '^[0-9]+ scenarios \(|^[0-9]+ steps \(' verbose.log
-5842:330 scenarios ([32m330 passed[0m)
-5843:3824 steps ([32m3824 passed[0m)
-6181:1 scenarios ([33m1 undefined[0m)
-6182:1 steps ([33m1 undefined[0m)
-6206:1 scenarios ([31m1 failed[0m)
-6207:1 steps ([31m1 failed[0m)
-```
-
-The two tallies at lines **5842-5843** are the suite's own feature run (`TestFeatures`), ANSI
-codes stripped for readability here:
+Byte-exact copy of the tally lines, ESC bytes and all (12 ESC bytes across the six lines;
+your pager or browser may render the colour codes rather than show them):
 
 ```
-5842:330 scenarios (330 passed)
-5843:3824 steps (3824 passed)
+$ grep -a -E '^[0-9]+ scenarios \(|^[0-9]+ steps \(' verbose.log
+330 scenarios ([32m330 passed[0m)
+3824 steps ([32m3824 passed[0m)
+1 scenarios ([33m1 undefined[0m)
+1 steps ([33m1 undefined[0m)
+1 scenarios ([31m1 failed[0m)
+1 steps ([31m1 failed[0m)
+```
+
+The same six lines with their log line numbers (`grep -a -n`), still byte-exact after the
+`NNN:` prefix:
+
+```
+5842:330 scenarios ([32m330 passed[0m)
+5843:3824 steps ([32m3824 passed[0m)
+6181:1 scenarios ([33m1 undefined[0m)
+6182:1 steps ([33m1 undefined[0m)
+6206:1 scenarios ([31m1 failed[0m)
+6207:1 steps ([31m1 failed[0m)
+```
+
+The suite's own feature run (`TestFeatures`) is the first pair, at log lines 5842–5843. With the
+ANSI escapes stripped for readability — this block is a transcription, not the verbatim quote
+above:
+
+```
+330 scenarios (330 passed)
+3824 steps (3824 passed)
 ```
 
 Publishing the numbers exactly as measured, not an expected pair: **330 scenarios (330 passed)**,
-**3824 steps (3824 passed)**. (Grown by one step from the superseded `a44ee32` tally's 330
-scenarios / 3823 steps: `features/teardown_hooks.feature` gained one step assertion in task 044,
-commit `52e529b`, "features: assert failing teardown hook's toast text" — same scenario count,
-one more step in the existing scenario.)
+**3824 steps (3824 passed)**. (One step more than the superseded `a44ee32` tally's 330 scenarios /
+3823 steps: `features/teardown_hooks.feature` gained one step assertion in commit `52e529b`,
+"features: assert failing teardown hook's toast text" — same scenario count, one more step inside
+an existing scenario.)
 
-The remaining four tally lines (6181-6182, 6206-6207) belong to
-`TestGodogRejectsUndefinedAndFailedSteps`, a self-test of the godog runner itself that
-deliberately feeds it one undefined step and one failing step to prove they're rejected; each of
-its two subtests prints its own tiny godog tally (`1 scenarios (1 undefined)`, `1 scenarios (1
-failed)`). Those four lines are fixture output, not the suite's own tally, and the outer test is
-itself `--- PASS`:
+The remaining four tally lines (6181–6182, 6206–6207) belong to
+`TestGodogRejectsUndefinedAndFailedSteps`, a self-test of the godog runner that deliberately feeds
+it one undefined step and one failing step to prove both are rejected; each subtest prints its own
+one-scenario tally. Those are fixture output, not the suite's tally, and the outer test passes:
 
 ```
 $ sed -n '6209,6211p' verbose.log
@@ -120,29 +134,31 @@ $ sed -n '6209,6211p' verbose.log
 
 ```
 $ grep -aE '^(ok|FAIL|\?)' verbose.log
-ok  	github.com/n-orlov/deck/cmd/deck	7.435s
-ok  	github.com/n-orlov/deck/cmd/fake-claude	0.794s
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.767s
-ok  	github.com/n-orlov/deck/features	338.333s
-ok  	github.com/n-orlov/deck/internal/agent	0.004s
-ok  	github.com/n-orlov/deck/internal/audit	0.018s
-ok  	github.com/n-orlov/deck/internal/config	0.023s
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.193s
-ok  	github.com/n-orlov/deck/internal/interactive	10.990s
+ok  	github.com/n-orlov/deck/cmd/deck	7.492s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.790s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.770s
+ok  	github.com/n-orlov/deck/features	363.749s
+ok  	github.com/n-orlov/deck/internal/agent	0.005s
+ok  	github.com/n-orlov/deck/internal/audit	0.021s
+ok  	github.com/n-orlov/deck/internal/config	0.032s
+ok  	github.com/n-orlov/deck/internal/hookrecv	5.656s
+ok  	github.com/n-orlov/deck/internal/interactive	13.268s
 ?   	github.com/n-orlov/deck/internal/notify	[no test files]
 ?   	github.com/n-orlov/deck/internal/search	[no test files]
-ok  	github.com/n-orlov/deck/internal/service	6.530s
-ok  	github.com/n-orlov/deck/internal/store	2.547s
-ok  	github.com/n-orlov/deck/internal/theme	0.006s
-ok  	github.com/n-orlov/deck/internal/tmux	19.672s
-ok  	github.com/n-orlov/deck/internal/tui	3.561s
+ok  	github.com/n-orlov/deck/internal/service	6.374s
+ok  	github.com/n-orlov/deck/internal/store	2.538s
+ok  	github.com/n-orlov/deck/internal/theme	0.004s
+ok  	github.com/n-orlov/deck/internal/tmux	19.527s
+ok  	github.com/n-orlov/deck/internal/tui	3.453s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
 ```
 
-17 package result lines (`grep -acE '^(ok|FAIL|\?)' verbose.log` → 17), matching task 058's
-non-verbose sweep exactly: same 15 `ok` packages, same 3 `[no test files]` packages
-(`internal/notify`, `internal/search`, `internal/unit`). No `FAIL` line anywhere in the log. One
-`--- SKIP` line, unrelated to the tally, pre-existing and out of scope for this plan:
+17 result lines in all (`grep -acE '^(ok|FAIL|\?)' verbose.log` → 17): **14** `ok` packages
+(`grep -ac '^ok' verbose.log` → 14) and **3** `[no test files]` packages
+(`grep -ac 'no test files' verbose.log` → 3: `internal/notify`, `internal/search`,
+`internal/unit`), the same 14 + 3 split task 058's refreshed non-verbose sweep report publishes.
+No `FAIL` line anywhere in the log (`grep -ac FAIL verbose.log` → 0). One `--- SKIP` line,
+unrelated to the tally:
 
 ```
 $ grep -a -n -e '^--- SKIP' verbose.log
@@ -150,9 +166,9 @@ $ grep -a -n -e '^--- SKIP' verbose.log
 ```
 
 (`TestI1KeystrokeDropReproduction` is an opt-in reproduction driver gated on `DECK_I1_REPRO=1`,
-pre-existing, not part of this plan — same disposition every earlier verbose companion recorded,
-including task 058's own non-verbose sweep report which found no skip markers at all under its
-non-verbose launcher because `-v`-gated output is exactly what F34 says is suppressed there.)
+pre-existing and out of this plan's scope — the same disposition every earlier verbose companion
+recorded. Task 058's non-verbose sweep sees no skip marker at all, because `-v`-gated output is
+exactly what F34 says is suppressed there.)
 
 ## Confirmation nothing was narrowed
 
@@ -161,22 +177,21 @@ $ grep -c -e ' -run ' -e DECK_GODOG_PATHS verbose.log
 0
 ```
 
-No `-run`, no `DECK_GODOG_PATHS` anywhere in the command or the log — the full, un-narrowed
-`./...` shape, exactly as task 058's own sweep and the standing rules require.
+No `-run`, no `DECK_GODOG_PATHS` in the command or the log — the full, un-narrowed `./...` shape,
+the deliverable command plus `-v` and nothing else.
 
 ## Outcome
 
 Exit status **0**. Gherkin tally as measured: **330 scenarios (330 passed)**, **3824 steps (3824
-passed)** — at log lines 5842 and 5843 respectively. All 17 packages `ok` or `[no test files]`;
+passed)**, at log lines 5842 and 5843. All 17 package result lines are `ok` or `[no test files]`;
 nothing failed.
 
-**This run is the Gherkin tally source only** (phase 3g finding F34): the mandated non-verbose
-launcher can never print `N scenarios (N passed)` for any tree or any duration, so the tally is
-read from this `-v` companion instead. **Task 058's sweep remains the deliverable gate** — its own
-`docs/reports/phase3j-030-fullsuite/` report, captured at the same code sha
-(`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`) with exit status 0 and all 15 testable packages `ok`,
-is the gate this plan's termination rule cites; this report adds only the scenario/step count that
-sweep's own log cannot contain. This refresh supersedes the earlier tally published at code sha
+This run is the Gherkin tally source only, and exists only because the mandated non-verbose
+launcher structurally cannot print `N scenarios (N passed)` (finding F34). **Task 058's sweep
+remains the deliverable gate** — its report at `docs/reports/phase3j-030-fullsuite/README.md`,
+captured at this same code sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` with exit status 0, is
+what this plan's termination rule cites; this companion adds only the scenario/step count that
+sweep's own log cannot contain. It supersedes the tally previously published here at code sha
 `a44ee320b93186496d56364836b0aed00a6f1e0b`.
 
 ## Contents
