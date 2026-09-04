@@ -33,7 +33,7 @@ every path cited is tracked under `git ls-files --error-unmatch`, both checked i
 - [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
 - [6. Two stale schema-version literals in `features/` — fixed by task 030 at `204af7d`](#6-two-stale-schema-version-literals-in-features--fixed-by-task-030-at-204af7d)
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
-- [8. Gate dispositions: whole-suite sweep (task 058), verbose tally companion (task 059) and ten-run stability (task 060)](#8-gate-dispositions-whole-suite-sweep-task-058-verbose-tally-companion-task-059-and-ten-run-stability-task-060)
+- [8. Gate dispositions: whole-suite sweep (task 081), verbose tally companion (task 082) and ten-run stability (task 083)](#8-gate-dispositions-whole-suite-sweep-task-081-verbose-tally-companion-task-082-and-ten-run-stability-task-083)
 - [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
 - [10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed](#10-independent-reviews-blocking-findings-4-and-5-record-accuracy-and-gate-pollingone-sweep-discipline-are-closed)
 - [11. Approach 04's independent review finding 3 (R110 record still did not match the tree) is closed](#11-approach-04s-independent-review-finding-3-r110-record-still-did-not-match-the-tree-is-closed)
