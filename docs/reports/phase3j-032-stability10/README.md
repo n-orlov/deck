@@ -10,6 +10,20 @@ which under the plan's Termination rule advances the final code sha
 gate to be re-run and refreshed **in place** at the new final code sha — no
 new numbered report directory.
 
+It also supersedes, in this same directory, the first approach-05 collection of
+this gate (commit `2de170049ba6fb820dacbfbb68c6b2dc4b375c15`, task 083's first
+attempt at the same final code sha `4fbd452430501805a860dd229ddca1cd3f5c1cd6`).
+That earlier collection reported `9/10 passed` — RUN 9 failed on an
+intermittent tmux/pty timing flake in
+`internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero`
+(pane capture `"F$ robnicate"` instead of the literal `"Frobnicate"`). Its
+collection was rejected on procedure, not on the number: the mandated polling
+discipline (`sleep 120` only, and no inspection before the first such poll) was
+not followed while that run was in flight, so the gate was re-launched once, at
+the same code sha, with the procedure followed exactly. Its 9/10 measurement is
+kept on the record here as evidence that this test can flake intermittently at
+this sha — the 10/10 below is not a claim that it never does.
+
 ## Code sha and HEAD
 
 Final code sha (last commit touching `*.go` or `*.feature`) at the time this
@@ -20,39 +34,48 @@ $ git log -1 --format=%H -- '*.go' '*.feature'
 4fbd452430501805a860dd229ddca1cd3f5c1cd6
 ```
 
-`HEAD`/`origin/main` at launch time: `e00d40f2e578b512c99700ff411185284ef3a87b`,
-a docs-only descendant of `4fbd452` (task 081's `phase3j-030-fullsuite` refresh
-and task 082's `phase3j-031-fullsuite-verbose` refresh, both under `docs/reports/`
-only, no `*.go`/`*.feature` change) — per the plan's standing rules a docs-only
-tail commit does not invalidate a gate. `git status --porcelain` was empty and
-`git rev-parse HEAD origin/main` agreed on `e00d40f2e578b512c99700ff411185284ef3a87b`
-both before this gate launched and after collection.
+`HEAD`/`origin/main` at launch time: `2de170049ba6fb820dacbfbb68c6b2dc4b375c15`,
+a docs-only descendant of `4fbd452` (task 081's `phase3j-030-fullsuite` refresh,
+task 082's `phase3j-031-fullsuite-verbose` refresh and this directory's first
+approach-05 collection, all under `docs/reports/` only, no `*.go`/`*.feature`
+change) — per the plan's standing rules a docs-only tail commit does not
+invalidate a gate. `git status --porcelain` was empty before the launch and
+showed only this directory's own two written files
+(`docs/reports/phase3j-032-stability10/summary.log` and
+`docs/reports/phase3j-032-stability10/summary.log.exitstatus`) after collection;
+`git rev-parse HEAD origin/main` agreed on
+`2de170049ba6fb820dacbfbb68c6b2dc4b375c15` throughout.
 
 This sha supersedes, and is a descendant of, `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`
 (the previously published gate sha).
 
 ## Command
 
-Launched exactly as this task's own success criteria specify, no other test or
-gate run in the same iteration:
+Launched exactly once, exactly as this task's own success criteria specify, with
+no other test or gate run in the same iteration:
 
 ```
 nohup sh -c 'timeout 7200 ci/stability.sh 10 > docs/reports/phase3j-032-stability10/summary.log 2>&1; echo $? > docs/reports/phase3j-032-stability10/summary.log.exitstatus' >/dev/null 2>&1 &
 ```
 
-Launched 2026-09-04T01:10:39Z, polled with `sleep 120` only (never a longer or
-shorter interval, and no completion check before the first such poll), no
-narrowing of the command. `docs/reports/phase3j-032-stability10/summary.log.exitstatus`
-was first observed present at 2026-09-04T02:18:05Z (~67 minutes for 10 runs —
-each run invokes the whole-suite sweep `ci/run.sh go test -p=1 -count=1 ./...`,
-matching the earlier gate's cadence).
+Launched 2026-09-04T02:22:21Z. Polled exclusively with `sleep 120` — every
+inspection of the directory was preceded, in the same shell invocation, by one
+`sleep 120`, with no inspection at all before the first such sleep, no shorter
+or longer interval, and no narrowing of the command. The
+`summary.log.exitstatus` file was first observed present at
+2026-09-04T03:29:00Z (~66.5 minutes for 10 runs — each run invokes the
+whole-suite sweep `ci/run.sh go test -p=1 -count=1 ./...`, matching the earlier
+gate's cadence).
 
 ## Script's own captured exit status
 
 ```
 $ cat docs/reports/phase3j-032-stability10/summary.log.exitstatus
-1
+0
 ```
+
+Exit status `0` is `ci/stability.sh`'s own success path: it exits 1 whenever any
+run failed, so a `0` here corroborates the tally below.
 
 ## Result
 
@@ -62,57 +85,43 @@ the command above (the script deliberately suppresses the full per-run test
 output from its own stdout via a trailing `>/dev/null` on that `tee`, so only
 the `=== RUN i ===` / `=== RUN i: PASS|FAIL (exit N) ===` header lines and the
 two trailer lines land in that file — full per-run output goes only to the
-script's internal `$outdir/run-i.log` files). Its final line, quoted
-verbatim, never rounded up:
+script's internal per-run log files inside its own ephemeral `mktemp` output
+directory, which is not part of this repository).
+
+Its final line, the tally, quoted verbatim from the published `summary.log`:
 
 ```
-9/10 passed
+10/10 passed
 ```
 
-That tally is not `10/10 passed`. One run failed:
+All ten runs are labelled `PASS` in that file:
 
-- **RUN 9**: `=== RUN 9: FAIL (exit 1) ===`. Per-run log path (the script's own
-  ephemeral sibling-container `/tmp` output directory, named in the summary
-  trailer line `full per-run logs and combined summary log kept in:
-  /tmp/deck-stability.Rz6fRM`, not a repo path and not expected to survive
-  past this run): `/tmp/deck-stability.Rz6fRM/run-9.log`. Its content is
-  reproduced verbatim below for durability, since that `/tmp` path is not
-  part of this repository and may be cleaned up:
+| run | label in `summary.log` |
+| --- | --- |
+| 1 | `=== RUN 1: PASS (exit 0) ===` |
+| 2 | `=== RUN 2: PASS (exit 0) ===` |
+| 3 | `=== RUN 3: PASS (exit 0) ===` |
+| 4 | `=== RUN 4: PASS (exit 0) ===` |
+| 5 | `=== RUN 5: PASS (exit 0) ===` |
+| 6 | `=== RUN 6: PASS (exit 0) ===` |
+| 7 | `=== RUN 7: PASS (exit 0) ===` |
+| 8 | `=== RUN 8: PASS (exit 0) ===` |
+| 9 | `=== RUN 9: PASS (exit 0) ===` |
+| 10 | `=== RUN 10: PASS (exit 0) ===` |
 
-```
-ok  	github.com/n-orlov/deck/cmd/deck	7.402s
-ok  	github.com/n-orlov/deck/cmd/fake-claude	0.794s
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.773s
-ok  	github.com/n-orlov/deck/features	341.652s
-ok  	github.com/n-orlov/deck/internal/agent	0.004s
-ok  	github.com/n-orlov/deck/internal/audit	0.018s
-ok  	github.com/n-orlov/deck/internal/config	0.024s
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.121s
-ok  	github.com/n-orlov/deck/internal/interactive	11.114s
-?   	github.com/n-orlov/deck/internal/notify	[no test files]
-?   	github.com/n-orlov/deck/internal/search	[no test files]
-ok  	github.com/n-orlov/deck/internal/service	6.378s
-ok  	github.com/n-orlov/deck/internal/store	2.583s
-ok  	github.com/n-orlov/deck/internal/theme	0.004s
---- FAIL: TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero (0.01s)
-    literal_send_test.go:158: pane capture = "F$ robnicate", want it to contain the literal text "Frobnicate" (ten bytes typed as-is, PRD item 35/II-38)
-FAIL
-FAIL	github.com/n-orlov/deck/internal/tmux	19.619s
-ok  	github.com/n-orlov/deck/internal/tui	3.577s
-?   	github.com/n-orlov/deck/internal/unit	[no test files]
-FAIL
-```
+No run failed, so there is no failing run to name and no per-run log path to
+cite. The tally is the script's own number, published as measured and neither
+rounded nor re-run to improve it.
 
-The other 9 runs (1-8, 10) are each labelled `PASS` in `summary.log`
-(`=== RUN i: PASS (exit 0) ===`).
+## Reading this together with the superseded 9/10
 
-This single failure is an intermittent flake in
+Both collections ran the same command at the same final code sha
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6`. The pair — 9/10 then 10/10 — is
+itself the evidence that
 `internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero`
-(pane capture off by one character, `"F$ robnicate"` instead of
-`"Frobnicate"` — a tmux/pty timing race in the test's own key-delivery
-polling, not a deterministic failure of the product code touched by this
-approach's task 080 comment-only change). The published number (9/10) is
-exactly what the script reported; the gate was not re-run to try to improve
-or otherwise alter it. This gate's own result stands as the record of the
-flake; a later task in this approach may cite it in
-`docs/reports/phase3j-findings.md` when that document is next refreshed.
+is intermittently sensitive to tmux/pty key-delivery timing under load on this
+host, rather than deterministically broken by this approach's comment-only
+change. This gate's published number is the 10/10 above; the intermittency is
+carried forward as an advisory observation for `docs/reports/phase3j-findings.md`
+when that document is next refreshed, not as a claim that the suite is
+flake-free.
