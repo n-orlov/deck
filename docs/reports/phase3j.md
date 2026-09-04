@@ -337,7 +337,7 @@ if __name__ == "__main__":
 Run against this tree, at the four documents' final committed text (this section included):
 
 ```
-=== 1. backticked shas: 184 unique candidates ===
+=== 1. backticked shas: 186 unique candidates ===
 non-resolving under git cat-file -e <sha>^{commit}: (none)
 
 === 2. backticked path-like tokens: 208 candidates, 36 unresolved ===
@@ -393,18 +393,27 @@ section's own approach-04 commit and stale afterwards. Commit
 
 ### This section's own scope
 
-Task 093 landed four commits, each scoped to a single tracked path:
+Task 093's work landed as six commits. Every commit carrying this section's substance touches
+`docs/reports/phase3j.md` and nothing else; the two that touch another path are the prerequisite
+document fixes the audit's own criteria required, each confined to one file:
 
+- `70436937e0a44a7c177586ecb47ff6950962588e` — `docs/reports/phase3j.md` only — the first draft of
+  this section, whose audit *exempted* twelve non-resolving object ids rather than curing them.
+  Superseded by everything below; kept as history, not force-pushed away.
 - `e36dbe99634a6000e4a965fd21b769002328dc40` — `docs/DELIVERY-LOG.md` only — the prerequisite
   described above: the twelve blob / foreign-repository object ids written as non-commit ids, plus
   the citation convention that keeps them that way.
 - `7ba4343c0fb9f86e80d92932142b020b90ff1949` — `docs/reports/phase3j.md` only — this closing
   section (what tasks 090, 091 and 092 delivered, the final code sha the gates and the guard
-  capture ran at, the citation audit above and its `b29afb8` check), plus three sentences elsewhere
-  in this same document that task 092 made stale: the `## Gate results` paragraphs and the R110 row
-  all said the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` was still a later
-  task's scope, and they now name task 092's `a98cbb6` as that refresh.
+  capture ran at, the citation audit and its `b29afb8` check), plus three sentences elsewhere in
+  this same document that task 092 had made stale: the `## Gate results` paragraphs and the R110
+  row all said the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` was still a
+  later task's scope, and they now name task 092's `a98cbb6` as that refresh.
 - `f9334817f231dd3f9cba3fd3c5ecd0b4168a4cf8` — `docs/reports/phase3j-findings.md` only — the §9
   present-tense final-code-sha sentence scoped to its own commit, as described just above.
-- this commit — `docs/reports/phase3j.md` only — this list and the note about that §9 fix, so the
-  audit's own record of what task 093 touched is complete.
+- `f215191d0bf847335be16d3a9fa55cd1665985cc` — `docs/reports/phase3j.md` only — the sweep's
+  fence-parity and path-probe defects fixed, the script republished and its counts re-derived
+  (184 shas / 208 path candidates / 36 unresolved at that commit; the two full shas this final
+  commit adds to the list below are what make the published sha count 186).
+- this commit — `docs/reports/phase3j.md` only — this list, so the audit's own record of what task
+  093 touched is complete and current.
