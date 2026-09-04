@@ -127,8 +127,9 @@ $ tail -1 docs/reports/phase3j-032-stability10/summary.log
 
 Every one of the ten runs is a `PASS`, and no failing run needs naming. This same directory's
 first collection at this sha (`2de1700`) reported 9/10 — RUN 9 failed on an intermittent
-tmux/pty timing flake in
-`internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero` — and was rejected
+tmux/pty timing flake in `internal/tmux`'s
+`TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero`
+(`internal/tmux/literal_send_test.go`) — and was rejected
 on polling procedure, not on the number; it is kept on the record in the README as evidence the
 test can flake intermittently at this sha, carried forward as an advisory, not as a claim the
 suite is flake-free.
