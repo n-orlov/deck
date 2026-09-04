@@ -43,7 +43,7 @@ task 088's own commit, the most recent verified boundary check before this one.
 | R107 | met | 010 (`schemaV6`, shared with R108), 011 (both the store round-trip and the CreateShell residual), 012, 013, 014, 015, 016, 017, 018, 019, 041 (`postDestroyTimeout` made an immutable constant), 042 (a failing teardown hook routed into a visible note), 043 (the note wired through `cmd/deck/main.go`), 044 (the feature step asserting the failing-hook toast text). The approach-01 commits (`f60b5e4`…`b9132c9`) alone left the immutable timeout and the production toast seam unmet; 041–044 closed both. | `f60b5e4`, `0299be9`, `9fb6aec`, `66711eb`, `259284b`, `720dafc`, `8876ad8`, `7ba666c`, `0e73841`, `3aa0fe3`, `c8e5911`, `b9132c9`, `1a4b9db`, `d71c02f`, `a936b30`, `52e529b` | `internal/store/store.go`, `internal/store/store_test.go`, `internal/config/schema.go`, `internal/service/post_destroy.go` (the immutable const), `internal/service/post_destroy_test.go`, `internal/service/post_destroy_no_hook_paths_test.go`, `internal/tui/mark_test.go`, `features/teardown_hooks.feature`, `features/teardown_hooks_test.go`, `internal/tui/archive_undo_rebuild_note_test.go`, `internal/tui/tui.go`, `internal/tui/teardown_hook_note_test.go`, `cmd/deck/main.go`, `internal/service/shell.go`, `internal/service/shell_test.go` |
 | R108 | met | 010 (`launch_dirty`, shared with R107), 020, 021, 022, 023, 024, 025, 026, 027, 030 (`a44ee32`, the create-modal keyboard-walk step helpers updated for task 026's Post-destroy field) | `f60b5e4`, `8931988`, `db2ea55`, `ad51022`, `325d00a`, `630ac90`, `9fb25f7`, `6b8f1d0`, `6080c55`, `a44ee32`, `895f58d` | `internal/store/store.go`, `internal/store/store_test.go`, `internal/service/inject_launch_dirty_test.go`, `internal/service/restart.go`, `internal/service/restart_test.go`, `internal/store/no_forbidden_update_columns_test.go`, `internal/tui/launch_inputs.go`, `internal/service/launch_inputs.go`, `internal/service/launch_inputs_test.go`, `internal/tui/launch_inputs_wiring_test.go`, `internal/tui/launch_badge_test.go`, `internal/tui/create_post_destroy_test.go`, `features/dialogs_test.go`, `features/agent_steps_test.go`, `features/launch_inputs_editor_test.go`, `features/launch_hooks.feature` |
 | R109 | met | 028, 045 (`2042cb8` correcting the caller-side-eval/no-pre_launch-timeout claim, `31e6aff` dropping the launch-inputs dialog's own pre_launch timeout claim), 046 (`b29afb8` tightening the coverage test to catch the inaccuracy) | `17cabb8`, `2042cb8`, `31e6aff`, `b29afb8` | `internal/tui/hook_help_coverage_test.go`, `internal/tui/tui.go`, `internal/tui/launch_inputs.go` (the idempotency claim, the fail-closed claim, the not-on-`x` claim and the never-echo claim, each asserted present somewhere a user can reach — `?` help, create-modal field help, the launch-inputs editor, settings' descriptions); `17cabb8`'s copy was inaccurate (it claimed a `pre_launch` timeout and mis-stated caller-side evaluation) until `2042cb8`, `31e6aff` and `b29afb8` landed |
-| R110 | met (this document and the gates it cites; the findings/DELIVERY-LOG/Telegram tasks that round out the phase's remaining paperwork are tasks 035–037 — 035 and 036 landed as commits, 037 was a Telegram closing notification, which by its nature is sent, not committed to this repo) | 029, 030, 031, 032, 033, 034, 035, 036, 047 (purges an untracked run-state citation from these reports), 057 (records review findings 1-3's closure), 058, 059, 060, 061 (refreshed the three gate directories and the guard capture at the then-final code sha `b29afb8`, since superseded at `4fbd452` by approach 05's tasks 081, 082 and 083), 062 (this document, refreshed to the re-run gates), 063 (refreshes findings §8's gate dispositions to the three re-run gates), 064 (records review findings 4-5's closure), 065 (this report, and refreshes the DELIVERY-LOG.md Phase 3j paragraph), 067 (closes `docs/reports/phase3j-findings.md` §6 to match the tree), 070 (attributes task 011's `post_destroy` closure in DELIVERY-LOG.md to `9fb6aec`, not task 038), 071 (attributes `docs/reports/phase3j-030-fullsuite/`'s `a44ee32` sweep to task 030 and the `b29afb8` refresh to task 058), 072 (names R107's 041–044 commits and the residual they closed, in this document's own R107 row), 073 (names R109's actual discharging commits `2042cb8`/`31e6aff`/`b29afb8`, in this document's own R109 row), 074 (this row's own then-current refresh to the eleven post-review-fix gate/report commits, itself superseded by this refresh), 080 (the comment-accuracy fix commit that advanced the final code sha past `b29afb8`), 081, 082, 083 (the three gates re-run and republished at task 080's sha, superseding 058/059/060), 084, 085, 086 (`docs/reports/phase3j-findings.md`'s opening paragraph, §4 and §8 refreshed to the re-run gates, superseding 062/063/064's own then-current wording), 087, 088 (the DELIVERY-LOG.md Phase 3j paragraph's false status claim removed and then refreshed to the re-run gates, superseding 065), 089 (this document's own `## Final code sha` and `## Gate results` sections refreshed to task 080's sha, superseding 062) | `a30accd`, `12e0e72`, `2d45ef3`, `204af7d`, `fbbda8f` (fbbda8f-era gate commit, superseded by `b82e3de`), `2ad633d` (fbbda8f-era, superseded by `b82e3de`), `b79228d` (a44ee32-era refresh, itself superseded by `b82e3de`), `8b029e1` (fbbda8f-era, superseded by `0fba55b`), `b4807ce` (a44ee32-era refresh, superseded by `0fba55b`), `899af55` (a44ee32-era, superseded by `df4f768`), `fe18ea9`, `7e8cf1c`, `d1d5f77` (pre-review-fix era, superseded by `ae62146`), `3a761d8` (035, `docs/reports/phase3j-findings.md` §8 gate dispositions, superseded by `807fe0a`), `3f658fe`, `028d25b`, `f0dee73`, `96716bb` (036, the DELIVERY-LOG.md Phase 3j paragraph, superseded by `cd53da0`/`b599346`), `6a22181` (047, purges an untracked run-state citation), `3e52411` (057, records review findings 1-3's closure), `b82e3de` (058, refreshed `docs/reports/phase3j-030-fullsuite/` at the then-final code sha `b29afb8`, superseding `fbbda8f`/`a44ee32`; itself superseded by task 081's `680237e` at `4fbd452`), `0fba55b` (059, refreshed `docs/reports/phase3j-031-fullsuite-verbose/` at the then-final code sha `b29afb8`, superseding `fbbda8f`/`a44ee32`; itself superseded by task 082's `e00d40f` at `4fbd452`), `df4f768` (060, refreshed `docs/reports/phase3j-032-stability10/` at the then-final code sha `b29afb8`, superseding `a44ee32`; itself superseded by task 083's `7617eef` at `4fbd452`), `ae62146` (061, refreshed `docs/reports/phase3j-033-guards/` at the now-superseded `b29afb8`, superseding the pre-review-fix era; that directory's own re-verification at the current final code sha `4fbd452` is a later task's scope, so this is the last published revision of the guard capture and not traceability for the current final code sha), `2dca034` (062, refreshes this document to the re-run gates and corrected package counts), `807fe0a` (063, refreshes findings §8's gate dispositions to the three re-run gates), `c32a0c7` (064, records review findings 4-5's closure), `cd53da0`, `b599346` (065, refreshes the DELIVERY-LOG.md Phase 3j paragraph to the re-run gates and closed findings), `01c2770` (067, closes `docs/reports/phase3j-findings.md` §6), `4b89580` (070, DELIVERY-LOG.md attribution fix), `44e3d8f` (071, `docs/reports/phase3j-030-fullsuite/` README attribution fix), `66f2c75` (072, this document's R107 row), `23d6e86` (073, this document's R109 row), `cf5b691` (074, this document's own R110 row, then-current at `b29afb8`; superseded by this refresh), `4fbd452` (080, the final code sha), `680237e` (081, refreshed `docs/reports/phase3j-030-fullsuite/` at `4fbd452`, superseding `b82e3de`), `e00d40f` (082, refreshed `docs/reports/phase3j-031-fullsuite-verbose/` at `4fbd452`, superseding `0fba55b`), `7617eef` (083, refreshed `docs/reports/phase3j-032-stability10/` at `4fbd452`, superseding `df4f768`; a first collection at the same sha, `2de1700`, reported 9/10 on an intermittent tmux/pty flake in `internal/tmux` and was re-run per the poll PROCEDURE rejection, not the number), `5bc097d` (084, `docs/reports/phase3j-findings.md` opening paragraph), `2028ff8` (085, `docs/reports/phase3j-findings.md` §4), `eab14d0` (086, `docs/reports/phase3j-findings.md` §8, superseding 062/063/064's own then-current wording there), `b8672bc` (087, removed the DELIVERY-LOG.md false status claim), `b430a01` (088, refreshed the DELIVERY-LOG.md Phase 3j paragraph to `4fbd452` and the three re-run gates, superseding 065), `64128d4` (089, refreshed this document's `## Final code sha` and `## Gate results` sections to `4fbd452`, superseding 062, with residuals cured by `b7a9bf1` and `36fc59c`) | `docs/reports/phase3j-findings.md`, `docs/DELIVERY-LOG.md`, `docs/reports/phase3j-030-fullsuite/`, `docs/reports/phase3j-031-fullsuite-verbose/`, `docs/reports/phase3j-032-stability10/`, `docs/reports/phase3j-033-guards/`, this document, the GH issue #20 design section map below |
+| R110 | met (this document and the gates it cites; the findings/DELIVERY-LOG/Telegram tasks that round out the phase's remaining paperwork are tasks 035–037 — 035 and 036 landed as commits, 037 was a Telegram closing notification, which by its nature is sent, not committed to this repo) | 029, 030, 031, 032, 033, 034, 035, 036, 047 (purges an untracked run-state citation from these reports), 057 (records review findings 1-3's closure), 058, 059, 060, 061 (refreshed the three gate directories and the guard capture at the then-final code sha `b29afb8`, since superseded at `4fbd452` by approach 05's tasks 081, 082 and 083), 062 (this document, refreshed to the re-run gates), 063 (refreshes findings §8's gate dispositions to the three re-run gates), 064 (records review findings 4-5's closure), 065 (this report, and refreshes the DELIVERY-LOG.md Phase 3j paragraph), 067 (closes `docs/reports/phase3j-findings.md` §6 to match the tree), 070 (attributes task 011's `post_destroy` closure in DELIVERY-LOG.md to `9fb6aec`, not task 038), 071 (attributes `docs/reports/phase3j-030-fullsuite/`'s `a44ee32` sweep to task 030 and the `b29afb8` refresh to task 058), 072 (names R107's 041–044 commits and the residual they closed, in this document's own R107 row), 073 (names R109's actual discharging commits `2042cb8`/`31e6aff`/`b29afb8`, in this document's own R109 row), 074 (this row's own then-current refresh to the eleven post-review-fix gate/report commits, itself superseded by this refresh), 080 (the comment-accuracy fix commit that advanced the final code sha past `b29afb8`), 081, 082, 083 (the three gates re-run and republished at task 080's sha, superseding 058/059/060), 084, 085, 086 (`docs/reports/phase3j-findings.md`'s opening paragraph, §4 and §8 refreshed to the re-run gates, superseding 062/063/064's own then-current wording), 087, 088 (the DELIVERY-LOG.md Phase 3j paragraph's false status claim removed and then refreshed to the re-run gates, superseding 065), 089 (this document's own `## Final code sha` and `## Gate results` sections refreshed to task 080's sha, superseding 062) | `a30accd`, `12e0e72`, `2d45ef3`, `204af7d`, `fbbda8f` (fbbda8f-era gate commit, superseded by `b82e3de`), `2ad633d` (fbbda8f-era, superseded by `b82e3de`), `b79228d` (a44ee32-era refresh, itself superseded by `b82e3de`), `8b029e1` (fbbda8f-era, superseded by `0fba55b`), `b4807ce` (a44ee32-era refresh, superseded by `0fba55b`), `899af55` (a44ee32-era, superseded by `df4f768`), `fe18ea9`, `7e8cf1c`, `d1d5f77` (pre-review-fix era, superseded by `ae62146`), `3a761d8` (035, `docs/reports/phase3j-findings.md` §8 gate dispositions, superseded by `807fe0a`), `3f658fe`, `028d25b`, `f0dee73`, `96716bb` (036, the DELIVERY-LOG.md Phase 3j paragraph, superseded by `cd53da0`/`b599346`), `6a22181` (047, purges an untracked run-state citation), `3e52411` (057, records review findings 1-3's closure), `b82e3de` (058, refreshed `docs/reports/phase3j-030-fullsuite/` at the then-final code sha `b29afb8`, superseding `fbbda8f`/`a44ee32`; itself superseded by task 081's `680237e` at `4fbd452`), `0fba55b` (059, refreshed `docs/reports/phase3j-031-fullsuite-verbose/` at the then-final code sha `b29afb8`, superseding `fbbda8f`/`a44ee32`; itself superseded by task 082's `e00d40f` at `4fbd452`), `df4f768` (060, refreshed `docs/reports/phase3j-032-stability10/` at the then-final code sha `b29afb8`, superseding `a44ee32`; itself superseded by task 083's `7617eef` at `4fbd452`), `ae62146` (061, refreshed `docs/reports/phase3j-033-guards/` at the now-superseded `b29afb8`, superseding the pre-review-fix era; itself superseded by task 092's `a98cbb6` at `4fbd452`, which re-verified that directory at the current final code sha, so `ae62146` is history rather than current traceability), `2dca034` (062, refreshes this document to the re-run gates and corrected package counts), `807fe0a` (063, refreshes findings §8's gate dispositions to the three re-run gates), `c32a0c7` (064, records review findings 4-5's closure), `cd53da0`, `b599346` (065, refreshes the DELIVERY-LOG.md Phase 3j paragraph to the re-run gates and closed findings), `01c2770` (067, closes `docs/reports/phase3j-findings.md` §6), `4b89580` (070, DELIVERY-LOG.md attribution fix), `44e3d8f` (071, `docs/reports/phase3j-030-fullsuite/` README attribution fix), `66f2c75` (072, this document's R107 row), `23d6e86` (073, this document's R109 row), `cf5b691` (074, this document's own R110 row, then-current at `b29afb8`; superseded by this refresh), `4fbd452` (080, the final code sha), `680237e` (081, refreshed `docs/reports/phase3j-030-fullsuite/` at `4fbd452`, superseding `b82e3de`), `e00d40f` (082, refreshed `docs/reports/phase3j-031-fullsuite-verbose/` at `4fbd452`, superseding `0fba55b`), `7617eef` (083, refreshed `docs/reports/phase3j-032-stability10/` at `4fbd452`, superseding `df4f768`; a first collection at the same sha, `2de1700`, reported 9/10 on an intermittent tmux/pty flake in `internal/tmux` and was re-run per the poll PROCEDURE rejection, not the number), `5bc097d` (084, `docs/reports/phase3j-findings.md` opening paragraph), `2028ff8` (085, `docs/reports/phase3j-findings.md` §4), `eab14d0` (086, `docs/reports/phase3j-findings.md` §8, superseding 062/063/064's own then-current wording there), `b8672bc` (087, removed the DELIVERY-LOG.md false status claim), `b430a01` (088, refreshed the DELIVERY-LOG.md Phase 3j paragraph to `4fbd452` and the three re-run gates, superseding 065), `64128d4` (089, refreshed this document's `## Final code sha` and `## Gate results` sections to `4fbd452`, superseding 062, with residuals cured by `b7a9bf1` and `36fc59c`) | `docs/reports/phase3j-findings.md`, `docs/DELIVERY-LOG.md`, `docs/reports/phase3j-030-fullsuite/`, `docs/reports/phase3j-031-fullsuite-verbose/`, `docs/reports/phase3j-032-stability10/`, `docs/reports/phase3j-033-guards/`, this document, the GH issue #20 design section map below |
 
 ## GH issue #20 design section map (task 034)
 
@@ -83,9 +83,11 @@ a fifth design section.
 Three gates were re-run at the current final code sha `4fbd452430501805a860dd229ddca1cd3f5c1cd6`
 (task 080), superseding their earlier publication at `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`
 (itself historical — the sha the phase closed at through approach 04). The fourth,
-protected-path/branch-guard gate below is **not yet refreshed** at `4fbd452` — its own refresh is
-a later task's scope, not this one's — and its citation of `b29afb8` reflects that still-pending
-refresh, not a current claim.
+protected-path/branch-guard gate below was refreshed in place at `4fbd452` too, by task 092
+(`a98cbb6e57de80554ec09c15e156d37d7a0b49a4`): `docs/reports/phase3j-033-guards/README.md` now
+cites task 080's sha as the final code sha and narrates its own `b29afb8`-era revision as
+superseded. (This paragraph previously recorded that refresh as still pending, which it was when
+the `## Gate results` section was first written and is not any more.)
 
 **Whole-suite sweep (task 030, refreshed by task 081 at `680237e`)** — `ci/run.sh go test -p=1
 -count=1 ./...` at the final code sha above. Published at
@@ -134,9 +136,12 @@ on polling procedure, not on the number; it is kept on the record in the README 
 test can flake intermittently at this sha, carried forward as an advisory, not as a claim the
 suite is flake-free.
 
-**Protected-path audit and branch guards (task 033, last refreshed by task 061 at `ae62146`, at
-the now-superseded `b29afb8`)** — published at `docs/reports/phase3j-033-guards/`; that
-directory's own re-verification at the current final code sha `4fbd452` is a later task's scope.
+**Protected-path audit and branch guards (task 033, refreshed by task 092 at
+`a98cbb6e57de80554ec09c15e156d37d7a0b49a4`, at the current final code sha `4fbd452`; its previous
+refresh was task 061's `ae62146` at the now-superseded `b29afb8`)** — published at
+`docs/reports/phase3j-033-guards/`; task 092 re-ran that directory's `capture.sh` on a clean tree,
+copied in all six captures unedited, and left the earlier revision's history narrated as
+superseded rather than deleted.
 
 **All three re-run gates are green at the current final code sha
 `4fbd452430501805a860dd229ddca1cd3f5c1cd6`**: the whole-suite sweep exits 0 with every package
@@ -178,21 +183,49 @@ commit, a docs-only descendant that does not move the final code sha).
 
 ### Citation audit over the four record documents
 
-This audit covers exactly `docs/reports/phase3j.md` (this document), `docs/reports/phase3j-findings.md`,
-`docs/DELIVERY-LOG.md` and `docs/reports/phase3j-033-guards/README.md`. It extracts every
-single-backtick code span in each file with a CommonMark-style tokenizer (an opening run of N
-backticks is closed only by the next run of exactly N backticks, so triple-backtick fenced
-blocks are excluded — they are code, not citations, and a fence's internal single backticks
-never pair across the fence boundary), then checks every span that looks like a 7–40-hex-char
-sha under `git cat-file -e <sha>^{commit}`, and every span that looks like a repository path
-(contains `/`, or ends in a known extension, optionally followed by `:line` or `:line-line`)
-under `git ls-files --error-unmatch` (with a small set of established fallback base directories
-for bare filenames whose surrounding prose already names their directory — `features/`,
-`internal/tui/`, or a `docs/reports/...` subdirectory named a few words earlier — checked by a
-recursive filename search under `docs/reports/`). The script:
+This audit covers exactly `docs/reports/phase3j.md` (this document),
+`docs/reports/phase3j-findings.md`, `docs/DELIVERY-LOG.md` and
+`docs/reports/phase3j-033-guards/README.md`. It extracts every single-backtick code span in each
+file with a CommonMark-style tokenizer (an opening run of N backticks is closed only by the next
+run of exactly N backticks, so triple-backtick fenced blocks are excluded — a fence is code, not a
+citation, and its internal single backticks never pair across the fence boundary), then
+
+1. checks every span that is a bare 7–40-hex-character sha under
+   `git cat-file -e <sha>^{commit}`, and
+2. checks every span that looks like a repository path (contains a slash, or ends in a known
+   source/report extension, optionally followed by `:line` or `:line-line`) under
+   `git ls-files --error-unmatch` — with two established fallbacks for a bare filename whose
+   directory the surrounding prose already names: the same name under `features/`, and a
+   recursive filename search under `docs/reports/`.
+
+Both halves are checked by `git` itself. (The path half of an earlier revision of this script used
+a filesystem existence test as its first probe, which silently "resolved" absolute tokens such as
+`/bin/sh` because joining an absolute path onto the repo root discards the root; it now calls
+`git ls-files --error-unmatch`, which is what this wave's citation rule actually says, and the
+unresolved list below is correspondingly longer and honest.)
+
+**One prerequisite fix, in a separate commit, was needed before the sha half could hold.**
+`docs/DELIVERY-LOG.md` is a cross-phase document, and its `PRD blob` column plus two lines of its
+cross-run narrative carried twelve backticked object ids that are *not* commits of this
+repository: eight are **blob** ids of PRD files (the column's stated purpose — for example the
+blob whose content begins `# Phase 0 — BDD harness and walking skeleton`), two are commit ids of
+another repository (`n-orlov/ralphd`), and two are blob ids of a *run's own* PRD snapshot, which
+lives in that run's directory and was never in this repo. Under
+`git cat-file -e <sha>^{commit}` all twelve therefore failed — eight resolving to blobs, four
+absent — while reading, in backticks, exactly like the commit citations around them. Commit
+`e36dbe99634a6000e4a965fd21b769002328dc40` rewrites those twelve as plain text with their kind
+named ("blob 40af336", "commit 08ce400 of `n-orlov/ralphd`") and states the convention explicitly
+above the notes section: in `docs/DELIVERY-LOG.md`, a backticked object id is a commit of this
+repository, and a blob or foreign-repository id is written unbackticked with its kind. That commit
+touches `docs/DELIVERY-LOG.md` and nothing else, which is why it is a separate commit from this
+section's own — see `### This section's own scope` below. After it, no backticked sha in the four
+documents fails to resolve as a commit.
+
+The script, verbatim:
 
 ```python
 #!/usr/bin/env python3
+"""Citation sweep over the four phase 3j record documents."""
 import re, subprocess, os
 
 REPO = "/workspace"
@@ -204,6 +237,7 @@ FILES = [
 ]
 
 def find_code_spans(text):
+    """CommonMark-ish: an opening run of N backticks closes on the next run of exactly N."""
     runs = [(m.start(), len(m.group(0))) for m in re.finditer(r"`+", text)]
     used = [False] * len(runs)
     spans = []
@@ -215,39 +249,30 @@ def find_code_spans(text):
                 continue
             pos2, length2 = runs[j]
             if length2 == length:
-                spans.append((length, text[pos+length:pos2]))
+                spans.append((length, text[pos + length:pos2]))
                 used[i] = True
                 used[j] = True
                 break
     return spans
 
 def main():
-    texts = {f: open(os.path.join(REPO, f), encoding='utf-8').read() for f in FILES}
+    texts = {f: open(os.path.join(REPO, f), encoding="utf-8").read() for f in FILES}
     single = {f: [c for n, c in find_code_spans(t) if n == 1] for f, t in texts.items()}
 
-    # 1. shas
+    # 1. every backticked sha must resolve as a commit of THIS repository
     sha_re = re.compile(r"^[0-9a-f]{7,40}$")
-    shas = set()
+    shas = {}
     for f in FILES:
         for c in single[f]:
             if sha_re.match(c):
-                shas.add(c)
+                shas.setdefault(c, set()).add(f)
     bad = [s for s in sorted(shas) if subprocess.run(
-        ["git", "cat-file", "-e", s + "^{commit}"], cwd=REPO, capture_output=True).returncode != 0]
-    other_repo_snapshot_ids = {
-        "40af336", "9b23161", "588c7fa", "a1951f8", "322a7e0", "6aea36f", "3f7c1eb",
-        "7331492", "db465ad", "7ae5e05", "a5a18d2", "08ce400",
-    }
-    print(f"=== 1. shas: {len(shas)} unique candidates ===")
-    print(f"non-resolving under git cat-file -e: {bad}")
-    print(f"of those, {sorted(other_repo_snapshot_ids & set(bad))} are DELIVERY-LOG's pre-existing "
-          "in-run-snapshot identifiers for OTHER runs/repos (deck-phase0/1/2/2b1/2b2, n-orlov/ralphd), "
-          "each already parenthetically labelled as such in the same table cell/sentence -- not claims "
-          "about a commit in THIS repository's history, so not a defect in this repo's own citations.")
-    remaining_bad = sorted(set(bad) - other_repo_snapshot_ids)
-    print(f"still-bad after that disclosure: {remaining_bad if remaining_bad else '(none)'}")
+        ["git", "cat-file", "-e", s + "^{commit}"],
+        cwd=REPO, capture_output=True).returncode != 0]
+    print(f"=== 1. backticked shas: {len(shas)} unique candidates ===")
+    print(f"non-resolving under git cat-file -e <sha>^{{commit}}: {bad if bad else '(none)'}")
 
-    # 2. paths
+    # 2. every backticked repo-relative path must be tracked
     def looks_like_path(s):
         if " " in s or "\n" in s:
             return False
@@ -262,85 +287,95 @@ def main():
             if looks_like_path(s):
                 cands.add(s.rstrip(",."))
 
-    bases = [REPO, os.path.join(REPO, "features")]
     unresolved = []
     for s in sorted(cands):
         base_path = re.sub(r":[\d,-]+$", "", s)
-        found = any(os.path.exists(os.path.join(b, base_path)) for b in bases)
-        if not found:
-            r = subprocess.run(["git", "ls-files", "--error-unmatch", base_path], cwd=REPO, capture_output=True)
-            found = r.returncode == 0
-        if not found:
-            base_name = os.path.basename(base_path)
-            hits = []
+        found = subprocess.run(["git", "ls-files", "--error-unmatch", base_path],
+                               cwd=REPO, capture_output=True).returncode == 0
+        if not found:  # bare filename whose directory the prose names: try features/
+            found = subprocess.run(["git", "ls-files", "--error-unmatch",
+                                    os.path.join("features", base_path)],
+                                   cwd=REPO, capture_output=True).returncode == 0
+        if not found:  # or a docs/reports/... subdirectory named a few words earlier
+            name = os.path.basename(base_path)
             for root, _d, filenames in os.walk(os.path.join(REPO, "docs", "reports")):
-                if base_name in filenames:
-                    hits.append(os.path.relpath(os.path.join(root, base_name), REPO))
-            if hits:
-                found = True
+                if name in filenames:
+                    found = True
+                    break
         if not found:
             unresolved.append(s)
 
-    print(f"\n=== 2. paths: {len(cands)} candidates, {len(unresolved)} unresolved by "
-          "base-dir/ls-files/recursive-filename search ===")
+    print(f"\n=== 2. backticked path-like tokens: {len(cands)} candidates, "
+          f"{len(unresolved)} unresolved ===")
     for s in unresolved:
-        print(" ", repr(s))
+        print(" ", s)
 
 if __name__ == "__main__":
     main()
 ```
 
-Run fresh against this tree:
+Run against this tree, at the four documents' final committed text (this section included):
 
 ```
-=== 1. shas: 192 unique candidates ===
-non-resolving under git cat-file -e: ['08ce400', '322a7e0', '3f7c1eb', '40af336', '588c7fa', '6aea36f', '7331492', '7ae5e05', '9b23161', 'a1951f8', 'a5a18d2', 'db465ad']
-of those, all 12 are DELIVERY-LOG's pre-existing in-run-snapshot identifiers for OTHER
-repos/runs (deck-phase0/1/2/2b1/2b2, n-orlov/ralphd), each already parenthetically labelled
-as an in-run snapshot in the same table cell/sentence — not claims about a commit in THIS
-repository's history, so not a defect in this repo's own citations, and none of them is a
-phase3j (080–093) sha. This count and this list are taken from running the script above
-against this document's own final, committed text (this section included), not against an
-earlier draft — the fixed point was reached in one iteration: adding this section's own
-backtick citations changed the candidate count but not the set of non-resolving tokens.
-still-bad after that disclosure: (none)
+=== 1. backticked shas: 182 unique candidates ===
+non-resolving under git cat-file -e <sha>^{commit}: (none)
 
-=== 2. paths: 208 candidates, 30 unresolved by base-dir/ls-files/recursive-filename search ===
+=== 2. backticked path-like tokens: 207 candidates, 36 unresolved ===
 ```
 
-Every one of the 30 unresolved path-like tokens is disclosed below, by class, with none left
-unclassified:
+(the sweep then prints the 36 unresolved path names; they are reproduced in full, classified, in
+the table below.)
 
-| class | tokens | why they are not repository-path defects |
-|---|---|---|
-| absolute/env-var system path | `$DECK_HOME/captures/<session_id>/`, `$XDG_CONFIG_HOME/deck/config.toml`, `/proc/<pid>/environ`, `~/.git-credentials`, `~/.ralphd/runs/<id>/prd.md` | placeholders or paths on the user's/run's own filesystem, never claimed to be tracked in this repo |
-| ralphd run-dir / engine file | `job.yaml`, `loop.py`, `notes.md`, `tasks.json`, `status.json`, `prd.md`, `vigilant-verified.json`, `iterations/0001/output.jsonl`, `engine/faults.py:88-101`, `engine/loop.py:219`, `engine/loop.py:640` | files of the ralphd harness or this run's own state, outside this repository (`docs/DELIVERY-LOG.md`'s retrospective narrative of earlier phases' runs, predating and outside this task's own single-path commit scope) |
-| other-repo / external identifier | `n-orlov/deck`, `n-orlov/ralphd`, `agent-of-empires/agent-of-empires`, `amazon-bedrock/eu.anthropic.claude-sonnet-5`, `src/tui/responsive.rs`, `DESIGN.md` | a GitHub org/repo slug, a model id, or a file of the external reference project named alongside it — none is a deck path |
-| not a path at all | `origin/main`, `10/10`, `TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict`, `internal/store.SchemaVersion`, `internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero` | a git ref, a result fraction, a godog scenario name and two package-qualified Go symbol/test names — all falsely flagged by the sweep's `/`-or-extension heuristic |
-| bare filename, directory named a few words earlier | `tui.go:1990-2021`, `tui.go:351` (→ `internal/tui/tui.go`), `capture.sh`, `transcript.log`, `byte-counts.out`, `final-code-sha.out`, `git-status-porcelain.out`, `protected-path-audit.out`, `rev-parse-head-origin-main.out` (→ `docs/reports/phase3j-033-guards/`), `sweep.log` (→ the fullsuite directory named immediately before it) | resolves once the base directory the surrounding sentence already names is tried |
-| deliberately-wrong / non-repo identifier | `permissions.feature` (DELIVERY-LOG quotes this exact wrong name to record a past PRD's own mistake — the tree has `permission_modes.feature`), `001-202.md` (an operator-ruling id delivered to this run outside the repository, not a file) | non-resolution is the point, not a defect |
+So **every backticked sha in the four documents resolves as a commit of this repository** — no
+exemption list, no disclosed remainder.
 
-No token was left unclassified. This audit therefore shows every backticked sha in the four
-documents resolves under `git cat-file -e <sha>^{commit}` (once the twelve pre-existing,
-already-disclosed other-repo/other-run snapshot identifiers in `docs/DELIVERY-LOG.md`'s
-cross-phase retrospective are read for what they say they are), and every backticked token that
-is actually a repository path resolves under `git ls-files --error-unmatch`.
+The 36 path-like tokens the sweep cannot resolve are listed below in full, by class, with
+none left unclassified. They are deliberately reproduced here **without** backticks: adding a
+backticked copy of a non-resolving token to this document would create the very defect the audit
+reports, and several of them are run-state filenames this wave's rules forbid backticking in a
+tracked document at all. The document each one comes from is named in the last column.
+
+| class | tokens | why they are not repository-path defects | from |
+|---|---|---|---|
+| absolute or environment-variable path on the host / in a container | /, /bin/sh, /config/amendments/, /proc/\<pid\>/environ, /run/ralphd/artifacts/, /run/ralphd/prd.md, /tmp/phase3j-033-capture, $DECK_HOME/captures/\<session_id\>/, $XDG_CONFIG_HOME/deck/config.toml, ~/.git-credentials, ~/.ralphd/runs/\<id\>/prd.md | filesystem locations, placeholders or a path separator used as a glyph — none is claimed to be tracked here | findings.md, phase3j.md, DELIVERY-LOG.md, guards README |
+| ralphd harness or run-directory file | engine/faults.py:88-101, engine/loop.py:219, engine/loop.py:640, iterations/0001/output.jsonl, job.yaml, loop.py, prd.md, status.json, tasks.json, vigilant-verified.json | files of the ralphd engine or of a run's own state directory, outside this repository, in DELIVERY-LOG's retrospective narrative of earlier runs | DELIVERY-LOG.md |
+| other-repository or external identifier | n-orlov/deck, n-orlov/ralphd, agent-of-empires/agent-of-empires, amazon-bedrock/eu.anthropic.claude-sonnet-5, src/tui/responsive.rs, DESIGN.md | a GitHub org/repo slug, a model id, and two files of the external reference project named alongside them | DELIVERY-LOG.md |
+| not a path at all | origin/main, 10/10, TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict, internal/store.SchemaVersion, internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero | a git ref, a result fraction, a godog scenario name and two package-qualified Go symbol names — all flagged only by the sweep's slash-or-extension heuristic | phase3j.md, findings.md, guards README |
+| bare filename whose directory the prose names, outside docs/reports | tui.go:1990-2021, tui.go:351 | both are `internal/tui/tui.go`, which the same sentences name; the sweep's bare-filename fallbacks only cover `features/` and `docs/reports/` | DELIVERY-LOG.md |
+| deliberately wrong, or an identifier that is not a file | permissions.feature, 001-202.md | DELIVERY-LOG quotes the first exact wrong name to record a past PRD's own mistake (the tree has `features/permission_modes.feature`); the second is an operator-ruling id delivered to a run outside the repository | DELIVERY-LOG.md |
+
+Every backticked token in the four documents that *is* a repository path resolves under
+`git ls-files --error-unmatch`; the tokens above are the complete set the heuristic flags, and each
+is accounted for.
 
 ### `b29afb8` is never presented as the current final code sha
 
-`grep -rn b29afb8 docs/` matches only inside these same four documents plus the three re-run
-gate directories' own READMEs (`phase3j-030-fullsuite`, `phase3j-031-fullsuite-verbose`,
-`phase3j-032-stability10`) — seven files, 38 lines total. Every occurrence is one of: (a) a
-historical/superseded framing ("superseded", "now-superseded", "then-final", "supersedes",
-"until task 080's ... superseded it", "advancing the final code sha past `b29afb8`"); or (b) a
-citation of `b29afb8` as the specific commit sha of task 046 (the R109 coverage-test fix), which
-is a correct citation of that one commit, not a claim about the phase's current final code sha.
-None reads as "the current final code sha is `b29afb8`" — every current-final-code-sha statement
-in all four documents names `4fbd452430501805a860dd229ddca1cd3f5c1cd6` (task 080's commit)
-instead.
+`grep -rn b29afb8 docs/` matches seven files and 45 lines: the four audited documents
+above and the three re-run gate directories' READMEs
+(`docs/reports/phase3j-030-fullsuite/README.md`,
+`docs/reports/phase3j-031-fullsuite-verbose/README.md`,
+`docs/reports/phase3j-032-stability10/README.md`). Every occurrence is one of
+
+- a historical or superseded framing — "superseded", "now-superseded", "then-final code sha",
+  "supersedes", "until task 080's commit superseded it", "advancing the final code sha past
+  `b29afb8`" — or
+- a citation of `b29afb8` as the sha of **task 046's own commit** (the R109 coverage-test fix),
+  which is a correct citation of that one commit and says nothing about the phase's final code
+  sha.
+
+None reads as "the current final code sha is `b29afb8`". Every current-final-code-sha statement in
+all four documents names `4fbd452430501805a860dd229ddca1cd3f5c1cd6`, task 080's commit, instead.
 
 ### This section's own scope
 
-This section, `## Approach 05 close: tasks 090–092 and a citation audit of the record documents
-(task 093)`, is task 093's entire contribution to this document; task 093 touches no other
-tracked path.
+Task 093 landed two commits, each scoped to a single tracked path:
+
+- `e36dbe99634a6000e4a965fd21b769002328dc40` — `docs/DELIVERY-LOG.md` only — the prerequisite
+  described above: the twelve blob / foreign-repository object ids written as non-commit ids, plus
+  the citation convention that keeps them that way.
+- this section's own commit — `docs/reports/phase3j.md` only — this closing section (what tasks
+  090, 091 and 092 delivered, the final code sha the gates and the guard capture ran at, the
+  citation audit above and its `b29afb8` check), plus three sentences elsewhere in this same
+  document that task 092 made stale: the `## Gate results` paragraphs and the R110 row all said
+  the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` was still a later task's
+  scope, and they now name task 092's `a98cbb6` as that refresh.
