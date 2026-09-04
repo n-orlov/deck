@@ -606,8 +606,11 @@ ok  	github.com/n-orlov/deck/internal/tui	4.175s
 ok  	github.com/n-orlov/deck/cmd/deck	7.612s
 ```
 
-This is docs-only: `git log -1 --format=%H -- '*.go' '*.feature'` still prints
-`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`, unchanged by this section's own commit.
+This section's own commit is docs-only: `git log -1 --format=%H -- '*.go' '*.feature'` printed
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` at that commit and was unchanged by it. That is a
+statement about the tree as it stood then, not about the phase's final code sha now: task 080 later
+edited a comment in `features/launch_hooks.feature`, so the final code sha is now
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` (see §11 and `docs/reports/phase3j.md`).
 
 ## 10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed
 
