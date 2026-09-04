@@ -36,6 +36,7 @@ every path cited is tracked under `git ls-files --error-unmatch`, both checked i
 - [8. Gate dispositions: whole-suite sweep (task 058), verbose tally companion (task 059) and ten-run stability (task 060)](#8-gate-dispositions-whole-suite-sweep-task-058-verbose-tally-companion-task-059-and-ten-run-stability-task-060)
 - [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
 - [10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed](#10-independent-reviews-blocking-findings-4-and-5-record-accuracy-and-gate-pollingone-sweep-discipline-are-closed)
+- [11. Approach 04's independent review finding 3 (R110 record still did not match the tree) is closed](#11-approach-04s-independent-review-finding-3-r110-record-still-did-not-match-the-tree-is-closed)
 
 ## 1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered
 
@@ -677,3 +678,71 @@ does not claim to have fixed, and does not affect the disposition of:
 
 All of the above remain exactly as disclosed in §§3, 4 and 9 — advisory, not claimed fixed, and
 unchanged by this section.
+
+## 11. Approach 04's independent review finding 3 (R110 record still did not match the tree) is closed
+
+Approach 04's independent review (its run-state review findings, cited here by approach number
+rather than by a backticked run-state filename, per §7's rule) rejected that approach on, among
+other grounds, its own finding 3: "R110's closeout record still does not match the tree or
+current run state." That finding's evidence named five concrete defects. Each is closed in this
+tree, by the commit named below; every sha resolves under `git cat-file -e <sha>^{commit}`.
+
+1. **The findings-file opening's failing-literals/placeholder claim.** The finding quoted this
+   file's own opening paragraph still saying the two schema-version literals were failing and
+   both gate dispositions were an unfilled placeholder, although §6 already recorded the
+   literals fixed and §8 already published the gates. Closed by commit
+   `5bc097d6b5b796a15b74d03c0a4bb547c4694aa5` (task 084), which rewrote the opening paragraph to
+   state the literals were fixed by task 030's commit and all three gate dispositions are
+   published, matching §6 and §8.
+2. **The §4 not-yet-run claim.** The finding quoted this file's §4 heading and body (as they
+   stood at review time) saying the whole-suite recurrence check against the carried-forward
+   findings had not yet run and remained a placeholder for a later task to fill in. Closed by
+   commit `2028ff8e9aba81f2a1f7ffe6a4afeac0b76714b3` (task 085), which rewrote §4's heading and
+   body to run the by-name recurrence grep against `docs/reports/phase3j-030-fullsuite/sweep.log`
+   fresh and record its (empty, i.e. non-recurring) result in place, rather than deferring it.
+3. **The `features/launch_hooks.feature` CreateShell comment.** The finding quoted that file's
+   comment block (then at lines 49–50) asserting CreateShell "never composes pre_launch at
+   all", although `internal/service/shell.go` already routed `CreateShell` through
+   `buildPaneCommand` and the fresh suite already passed
+   `TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell` and both shell fail-closed
+   tests. Closed by commit `4fbd452430501805a860dd229ddca1cd3f5c1cd6` (task 080), which rewrote
+   the comment to state CreateShell composes global-then-session `pre_launch` through
+   `buildPaneCommand` exactly like every other launch path, and explains why the surrounding
+   scenarios still exercise `claude` rather than `shell` (the suite's step vocabulary has no
+   "creates shell session … with pre-launch command …" step, not because shell's own launch
+   skips the composition).
+4. **The DELIVERY-LOG skipped/failed claim.** The finding quoted `docs/DELIVERY-LOG.md` (then
+   at lines 835–836) claiming "No task in this plan rests `skipped`, and none rests `failed` at
+   close", although the run's own task-state record already held tasks ended `skipped`. Closed
+   by commit `b8672bcf9f8833312a978db29a0347e7d23ae598` (task 087), which removed that sentence
+   from the Phase 3j paragraph without substituting another status-counting claim, so the
+   paragraph no longer asserts anything about which tasks rest `skipped` or `failed`.
+5. **The R110 row stopping short of the approach-04 record work.** The finding observed that
+   `docs/reports/phase3j.md`'s R110 row stopped at approach-03's task 065 and omitted the
+   record-repair work of tasks 067–074 (approach 04) and, by the time of this closure, tasks
+   080–089 (approach 05). Closed by commit `536d898940328e3e9868416c6a7c0d6a63a317cd` (task
+   090), which extended the R110 row's task-ids and shas columns with 067, 070, 071, 072, 073,
+   074 and 080–089, each with a parenthetical of what it discharged.
+
+**Approach 03's review findings 1 and 2 are terminally refuted petition re-files and were not
+re-filed by this closure.** Those two findings — the Task 204 whole-suite-sweep obligation and
+the create/resume-context obligation — were each adjudicated REFUTED before approach 03 ran, are
+named as such in this document's own standing rules, and are prohibited from being re-filed by
+any task in this plan (approach 04's own findings 1 and 2 repeated the same two obligations, and
+were likewise prohibited re-files, not new merits hearings). Neither is addressed by this section,
+and this section makes no claim about either one.
+
+**Verification.** Every sha backticked in this section resolves fresh:
+
+```
+$ for sha in 5bc097d6b5b796a15b74d03c0a4bb547c4694aa5 2028ff8e9aba81f2a1f7ffe6a4afeac0b76714b3 \
+    4fbd452430501805a860dd229ddca1cd3f5c1cd6 b8672bcf9f8833312a978db29a0347e7d23ae598 \
+    536d898940328e3e9868416c6a7c0d6a63a317cd; do \
+    git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
+(all print "<sha> ok")
+```
+
+**Disposition.** All five defects named by approach 04's review finding 3 are closed as of this
+writing. This section does not claim any other finding, from any review, is affected by it —
+approach 01's findings 1–5 (§§9–10) and approach 03's findings 1 and 2 (prohibited re-files,
+above) remain exactly as disclosed elsewhere in this document.
