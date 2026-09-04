@@ -257,11 +257,14 @@ it — five checks, none of which produced a further disagreement:
   the `export K=V`-on-stdout/`sensitive` shape).
 
 None of the five bullets above produced a further disagreement; each product statement matches
-the SPEC section it claims to satisfy. This section will be revisited if another disagreement
-surfaces while R107/R108's remaining tasks (013–019, 026) land, since those consume §9.2's
+the SPEC section it claims to satisfy. Tasks 013–019 and 026, which consume §9.2's
 teardown-order sentence ("run the session's own `post_destroy` and then the global one from
-config.toml (§6.5)" — the *reverse* of §6.5's launch order), which no landed task yet
-exercises.
+config.toml (§6.5)" — the *reverse* of §6.5's launch order), have since landed (commits
+`259284b`…`6080c55`), and `internal/service/post_destroy_test.go`'s
+`TestArchiveRunsSessionThenGlobalPostDestroyExactlyOnce` and
+`TestDeleteRunsSessionThenGlobalPostDestroyExactlyOnce` are the tests that exercise that exact
+session-then-global order on `A` and `dd` respectively — no disagreement surfaced against §9.2
+in that landed work.
 
 ## 4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings checked by name against task 030's whole-suite sweep, none recurred
 

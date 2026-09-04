@@ -407,8 +407,8 @@ document fixes the audit's own criteria required, each confined to one file:
   section (what tasks 090, 091 and 092 delivered, the final code sha the gates and the guard
   capture ran at, the citation audit and its `b29afb8` check), plus three sentences elsewhere in
   this same document that task 092 had made stale: the `## Gate results` paragraphs and the R110
-  row all said the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` was still a
-  later task's scope, and they now name task 092's `a98cbb6` as that refresh.
+  row previously deferred the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` to
+  a future task, and they now name task 092's `a98cbb6` as the commit that already delivered it.
 - `f9334817f231dd3f9cba3fd3c5ecd0b4168a4cf8` — `docs/reports/phase3j-findings.md` only — the §9
   present-tense final-code-sha sentence scoped to its own commit, as described just above.
 - `f215191d0bf847335be16d3a9fa55cd1665985cc` — `docs/reports/phase3j.md` only — the sweep's
