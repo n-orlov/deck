@@ -37,6 +37,7 @@ every path cited is tracked under `git ls-files --error-unmatch`, both checked i
 - [9. Independent review's blocking findings 1-3 (approach 01) are closed](#9-independent-reviews-blocking-findings-1-3-approach-01-are-closed)
 - [10. Independent review's blocking findings 4 and 5 (record accuracy and gate-polling/one-sweep discipline) are closed](#10-independent-reviews-blocking-findings-4-and-5-record-accuracy-and-gate-pollingone-sweep-discipline-are-closed)
 - [11. Approach 04's independent review finding 3 (R110 record still did not match the tree) is closed](#11-approach-04s-independent-review-finding-3-r110-record-still-did-not-match-the-tree-is-closed)
+- [12. Why approaches 03, 04 and 05 were rejected, and how each cause was closed](#12-why-approaches-03-04-and-05-were-rejected-and-how-each-cause-was-closed)
 
 ## 1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered
 
@@ -752,3 +753,46 @@ $ for sha in 5bc097d6b5b796a15b74d03c0a4bb547c4694aa5 2028ff8e9aba81f2a1f7ffe6a4
 writing. This section does not claim any other finding, from any review, is affected by it —
 approach 01's findings 1–5 (§§9–10) and approach 03's findings 1 and 2 (prohibited re-files,
 above) remain exactly as disclosed elsewhere in this document.
+
+## 12. Why approaches 03, 04 and 05 were rejected, and how each cause was closed
+
+Approaches 03 and 04 were each rejected on the same two review findings, and neither finding was
+a repository defect: the `Task 204` whole-suite obligation and the create/resume-context
+obligation. Both had already been adjudicated REFUTED before approach 03 ran (§11 above names
+them the same way), yet review re-presented both as open, blocking findings at every subsequent
+review pass. The cause was not in this tree: the run engine wrote a petition's CONFIRMED
+adjudication back into its own record but never wrote a REFUTED one back, so a REFUTED petition
+kept surfacing to review as though it were open, on every approach that ran after the REFUTED
+adjudication. The operator closed that gap directly, by operator steer 002, writing both REFUTED
+adjudications into the run's own untracked petitions record. That write touched no file this
+repository tracks, and it changed no `*.go` or `*.feature` file, so the final code sha
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` did not move.
+
+Approach 05, and its independent-review re-run, were rejected on a single blocking finding, and
+that one finding was a real record defect rather than a re-filed petition: R110 record staleness,
+sentences in `docs/reports/phase3j.md`, this file, and the Phase 3j paragraph of
+`docs/DELIVERY-LOG.md` that asserted a not-yet-current state the tree had already superseded.
+Operator steer 003 ordered a systematic cure rather than another line-by-line patch. Approach 06
+closed that finding with two tasks: task 103's systematic marker audit over all three record
+documents (commit `f01f2f95e5962ffeb1cd5cbbfd0d47f33b14150b`), which found and rewrote every
+stale present-tense sentence the marker grep turned up, or marked the enclosing section a dated
+superseded snapshot where a rewrite would have falsified history; and task 097's
+table-of-contents fix (commit `6acf6cafd48af03cb649f27dcaf70890fd56969f`), which corrected this
+file's own §8 entry to name the task ids its heading actually carries.
+
+This section makes no claim about either prohibited-petition obligation's merits — both are
+terminally REFUTED, as of the operator's own writeback, and neither is re-filed here — and it makes no claim about this run's own
+verdict; it states only why approaches 03 through 05 were rejected and which commits closed each
+cause.
+
+**Verification.** The final code sha is unaffected by the operator's petitions-record write,
+since that record is not a file this repository tracks:
+
+```
+$ git log -1 --format=%H -- '*.go' '*.feature'
+4fbd452430501805a860dd229ddca1cd3f5c1cd6
+$ git cat-file -e f01f2f95e5962ffeb1cd5cbbfd0d47f33b14150b^{commit} && echo ok
+ok
+$ git cat-file -e 6acf6cafd48af03cb649f27dcaf70890fd56969f^{commit} && echo ok
+ok
+```
