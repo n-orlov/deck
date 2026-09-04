@@ -51,10 +51,10 @@ The same note confirmed what task 011 had already landed and verified: `store.Se
 `ci/run.sh go test -count=1 ./internal/store ./internal/service` exited 0 against that state.
 Only the `ShellCreateInput`/`CreateShell` residual quoted above was missing at that point.
 
-**The operator then reopened task 011.** Steering message
-`001-unblock-011-gate-ordering.md` (ruling 001-011) reset task 011 from `failed` to `pending`
-with its criteria narrowed to exactly that residual: add `PostDestroy` to `ShellCreateInput`,
-pass it into `CreateShell`'s `store.CreateSessionInput`, add a service test proving a shell row
+**The operator then reopened task 011.** Operator ruling 001-011 — delivered as a steering
+message to the run, cited here by its ruling id rather than by its run-state filename — reset
+task 011 from `failed` to `pending` with its criteria narrowed to exactly that residual: add
+`PostDestroy` to `ShellCreateInput`, pass it into `CreateShell`'s `store.CreateSessionInput`, add a service test proving a shell row
 created with a non-empty `post_destroy` retains it durably, and require
 `ci/run.sh go test -count=1 ./internal/service ./internal/store` to exit 0 — everything task 011
 had already landed and verified (the paragraph above) was left alone.
@@ -74,7 +74,7 @@ $ grep -n "PostDestroy" internal/service/shell.go
 
 `ShellCreateInput` now carries its own `PostDestroy` field (line 36), and `CreateShell`'s
 `store.CreateSessionInput{...}` construction now sets it (line 156). Commit `9fb6aec` also added
-`TestCreateShellPersistsPostDestroyDurably` (`internal/service/shell_test.go:95`), which creates
+`TestCreateShellPersistsPostDestroyDurably` (`internal/service/shell_test.go`, line 95), which creates
 a shell with `PostDestroy: "rm -rf /tmp/scratch"` and asserts the durable row returned from the
 store still carries it. A `shell` session created today can carry a `post_destroy` value exactly
 as a `claude`/`pi` session created through `CreateAgent` already could.
@@ -161,9 +161,9 @@ to check that fresh.
 
 | | |
 |---|---|
-| SPEC sections | §6.4 (`pre_launch` "runs in the pane, in the same shell that then execs the agent"; "A hook must be idempotent, because it runs on every launch … fires on create, on `r`, on `R`"), §6.5 ("The two hook keys are global defaults that compose with a session's own, never replace it. … Both run, **global first**"), §6.1 (the resolution order includes `[env]` in `config.toml` for every pane deck launches — "every adapter, `shell` included, on create and on resume alike"), §6.3 (`captured_path` sits **between** the server environment and `[env]`) |
+| SPEC sections | §6.4 (`pre_launch` "runs in the pane, in the same shell that then execs the agent"; "A hook must be idempotent, because it runs on every launch … fires on create, on `r`, on `R`"), §6.5 ("The two hook keys are global defaults that compose with a session's own, never replace it. … Both run, **global first**"), §6.1 (the resolution order includes `[env]` in the user's config.toml for every pane deck launches — "every adapter, `shell` included, on create and on resume alike"), §6.3 (`captured_path` sits **between** the server environment and `[env]`) |
 | Source path | `internal/service/shell.go` (`Service.CreateShell`) |
-| Disposition | **Fixed by task 038, commits `2e5fc6ba831300d1d9b259ded3f0cfcb842f899d` (env layering plus the global hook) and `566cb6d7216577540e7e2e7db98951db2e415d0e` (the session's own hook).** `CreateShell` now builds `launchEnv` through `resolveLaunchEnv(capturedPath, input.Env)` (the same PATH-resolution layering `CreateAgent`/`Resume` use — `captured_path`, then `config.toml`'s `[env]`, then the session's own env) and wraps its argv through `buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, false, argv)` before handing it to tmux, so both hook layers compose ahead of the shell binary on create, global-first, exactly as §6.5 requires. `ShellCreateInput` gained a `PreLaunch` field in `566cb6d`, which `CreateShell` also persists into the row's own `pre_launch` column, so the hook a shell create ran is the same line its later `r`/`R` re-runs through `Resume`'s pre-existing composition; the create modal's Pre-launch field, offered for every agent including `shell`, is now handed to `CreateShell` instead of dropped (`internal/tui/tui.go`'s `submitCreate`). Evidence: `internal/service/shell_test.go`'s `TestCreateShellPaneCarriesSessionContextWithRowsOwnValues` (criterion a), `TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained` and `TestCreateShellFailingOwnPreLaunchIsFailClosed` (criterion b, mirroring `agent_test.go`'s `TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`), `TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell` (global-first order, the durable `pre_launch` column and the launch-audit pane command), `internal/tui/create_shell_pre_launch_test.go`'s `TestCreateModalShellSubmitPassesPreLaunchThrough` (the UI seam), plus `TestCreateShellPersistsLaunchesAndAudits`'s updated `env_keys` assertion (now includes `PATH`, proving `resolveLaunchEnv` is in the loop). |
+| Disposition | **Fixed by task 038, commits `2e5fc6ba831300d1d9b259ded3f0cfcb842f899d` (env layering plus the global hook) and `566cb6d7216577540e7e2e7db98951db2e415d0e` (the session's own hook).** `CreateShell` now builds `launchEnv` through `resolveLaunchEnv(capturedPath, input.Env)` (the same PATH-resolution layering `CreateAgent`/`Resume` use — `captured_path`, then the user's config.toml `[env]` table, then the session's own env) and wraps its argv through `buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, false, argv)` before handing it to tmux, so both hook layers compose ahead of the shell binary on create, global-first, exactly as §6.5 requires. `ShellCreateInput` gained a `PreLaunch` field in `566cb6d`, which `CreateShell` also persists into the row's own `pre_launch` column, so the hook a shell create ran is the same line its later `r`/`R` re-runs through `Resume`'s pre-existing composition; the create modal's Pre-launch field, offered for every agent including `shell`, is now handed to `CreateShell` instead of dropped (`internal/tui/tui.go`'s `submitCreate`). Evidence: `internal/service/shell_test.go`'s `TestCreateShellPaneCarriesSessionContextWithRowsOwnValues` (criterion a), `TestCreateShellFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained` and `TestCreateShellFailingOwnPreLaunchIsFailClosed` (criterion b, mirroring `internal/service/agent_test.go`'s `TestCreateAgentFailingGlobalPreLaunchLeavesRowInErrorWithPaneRetained`), `TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell` (global-first order, the durable `pre_launch` column and the launch-audit pane command), `internal/tui/create_shell_pre_launch_test.go`'s `TestCreateModalShellSubmitPassesPreLaunchThrough` (the UI seam), plus `TestCreateShellPersistsLaunchesAndAudits`'s updated `env_keys` assertion (now includes `PATH`, proving `resolveLaunchEnv` is in the loop). |
 
 `CreateShell` now builds its pane command through `buildPaneCommand` and its `launchEnv` through
 `resolveLaunchEnv`, the same two functions `CreateAgent` and `Resume` call. Confirmed fresh
@@ -201,7 +201,7 @@ original finding named:
   pre-existing UI-seam gap outside task 038's criteria, recorded here as advisory rather than
   fixed, and not a hook-composition gap: a shell row's `env` is settable after create through
   the §11.4 env editor and takes effect on its next launch.
-- **`config.toml`'s `[env]` layer and `captured_path` are now present in a freshly created shell
+- **The user's config.toml `[env]` layer and `captured_path` are now present in a freshly created shell
   pane**, via `resolveLaunchEnv`, agreeing with §6.1's stated resolution order and §6.3's PATH
   mitigation. `TestCreateShellPersistsLaunchesAndAudits`'s launch-audit `env_keys` assertion now
   includes `PATH` as evidence.
@@ -253,7 +253,7 @@ None of the five bullets above produced a further disagreement; each product sta
 the SPEC section it claims to satisfy. This section will be revisited if another disagreement
 surfaces while R107/R108's remaining tasks (013–019, 026) land, since those consume §9.2's
 teardown-order sentence ("run the session's own `post_destroy` and then the global one from
-`config.toml` (§6.5)" — the *reverse* of §6.5's launch order), which no landed task yet
+config.toml (§6.5)" — the *reverse* of §6.5's launch order), which no landed task yet
 exercises.
 
 ## 4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run
@@ -362,7 +362,7 @@ ok  	github.com/n-orlov/deck/features	17.745s
 **Disposition: fixed by task 030's commit `204af7d`, no gate blocker remains.** Both literals now
 track `internal/store.SchemaVersion` (`features/store.feature`'s three pins moved to 6;
 `features/store_feature_test.go`'s fixture literal moved to 7, one past current), and the
-`features` package's `store.feature` scenarios pass at the current tree. This was never a
+`features` package's `features/store.feature` scenarios pass at the current tree. This was never a
 `SPEC.md` disagreement (§4 of `SPEC.md` fixes the schema and its migration invariant, not these
 black-box literals) and never a product bug: both were test literals that copy
 `internal/store.SchemaVersion` by hand, the drift point §5 warns about.
@@ -373,46 +373,66 @@ Every backticked sha above resolves under `git cat-file -e`; every backticked re
 names a file tracked under `git ls-files --error-unmatch`:
 
 ```
-$ for sha in 06ea5b7 be6e42b f1788b9 5bc6f3e c13a909 ed8b81e 38ad227 34f1560 db8d5c7 0316c51 \
-    b50cc20 5ef971b f60b5e4 0299be9 66711eb 8931988 db2ea55 ad51022 325d00a 630ac90 9fb25f7 \
-    6b8f1d0 895f58d 17cabb8 9fb6aec 2e5fc6b 566cb6d 204af7d; do \
+$ for sha in 0316c51 17cabb8 1a4b9db 2042cb8 204af7d 259284b 2dca034 2e5fc6b 31e6aff \
+    38ad227 52e529b 566cb6d 5bc6f3e 6080c55 630ac90 6a22181 6bb64b2 807fe0a 895f58d \
+    9fb6aec a44ee32 a936b30 b29afb8 d71c02f f1788b9 f60b5e4 fbbda8f \
+    06ea5b7 be6e42b c13a909 ed8b81e 34f1560 db8d5c7 b50cc20 5ef971b 0299be9 66711eb \
+    8931988 db2ea55 ad51022 325d00a 9fb25f7 6b8f1d0; do \
     git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
 (all print "<sha> ok")
 $ git ls-files --error-unmatch \
-    internal/service/shell.go \
-    internal/service/shell_test.go \
-    internal/service/session_context.go \
-    internal/service/session_context_test.go \
-    internal/service/agent.go \
-    internal/service/agent_test.go \
-    internal/service/resume.go \
-    internal/service/launch_inputs.go \
-    internal/store/store.go \
-    internal/config/schema.go \
-    internal/tui/tui.go \
-    internal/tui/create_shell_pre_launch_test.go \
-    internal/tui/launch_inputs.go \
-    internal/tui/hook_help_coverage_test.go \
+    SPEC.md \
+    prds/phase3j-launch-and-teardown-hooks.md \
     cmd/deck/main.go \
-    features/launch_hooks.feature \
+    docs/reports/phase3j.md \
+    docs/reports/phase3j-030-fullsuite \
+    docs/reports/phase3j-030-fullsuite/README.md \
+    docs/reports/phase3j-030-fullsuite/sweep.log \
+    docs/reports/phase3j-031-fullsuite-verbose \
+    docs/reports/phase3j-031-fullsuite-verbose/README.md \
+    docs/reports/phase3j-031-fullsuite-verbose/verbose.log \
+    docs/reports/phase3j-031-fullsuite-verbose/verbose.log.exitstatus \
+    docs/reports/phase3j-032-stability10 \
+    docs/reports/phase3j-032-stability10/README.md \
+    docs/reports/phase3j-032-stability10/summary.log \
+    features \
     features/assertions_test.go \
+    features/filter.feature \
+    features/launch_hooks.feature \
     features/store.feature \
     features/store_feature_test.go \
-    SPEC.md \
-    prds/phase3j-launch-and-teardown-hooks.md
+    features/teardown_hooks.feature \
+    internal/interactive internal/notify internal/search internal/tmux internal/unit \
+    internal/service internal/store internal/tui \
+    internal/service/agent.go \
+    internal/service/agent_test.go \
+    internal/service/post_destroy.go \
+    internal/service/session_context.go \
+    internal/service/shell.go \
+    internal/service/shell_test.go \
+    internal/store/store.go \
+    internal/tui/create_shell_pre_launch_test.go \
+    internal/tui/hook_help_coverage_test.go \
+    internal/tui/launch_inputs.go \
+    internal/tui/tui.go
 (all resolve, this report's own path docs/reports/phase3j-findings.md included — it became
 tracked in commit a30accd, task 029's first commit.)
 ```
 
 **No repo path in this report names an untracked file or a not-yet-generated directory.** The
-closeout report of task 034 and the three gate report directories of tasks 030–032 are referred
-to by the task that publishes them, never by a path, precisely because
-`git ls-files --error-unmatch` cannot succeed for a path that does not exist yet. The only
-non-repo path referred to anywhere above is this run's own loop state — named in prose, as the
-run's own task-state record, rather than backticked as a repo path, because it is not a repo file
-and is never claimed to be tracked — and paths that appear *inside* a quoted SPEC sentence
-(`$XDG_CONFIG_HOME/deck/config.toml`, `$DECK_HOME/captures/<session_id>/`); neither kind is a
-repo file and neither is claimed to be tracked.
+three gate report directories of tasks 058–060 are now cited by path because they exist and are
+tracked; the closeout report of task 034 is still referred to by the task that publishes it,
+never by a path, precisely because `git ls-files --error-unmatch` cannot succeed for a path that
+does not exist yet. Four kinds of backticked token above are deliberately *not* repo-relative
+paths and are never claimed to be tracked: a Go package glob or import path fragment
+(`internal/...`), a qualified Go symbol (`internal/store.SchemaVersion`), an absolute system path
+(`/bin/sh`, `/proc/<pid>/environ`), and a path inside a quoted SPEC sentence
+(`$XDG_CONFIG_HOME/deck/config.toml`, `$DECK_HOME/captures/<session_id>/`). The user's own
+config.toml is likewise a runtime configuration file, not a repo file, and is named in plain prose
+rather than backticked. This report also refers to the run's own loop state — its task-state
+record, its review findings and the operator's rulings, cited by ruling id (for example ruling
+001-011) — always in prose and never as a backticked filename, because that state is not part of
+the repository and no path of it is quoted anywhere in this document.
 
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
@@ -431,7 +451,8 @@ current tree; the current disposition is the one below.
 **Task 058 — whole-suite sweep.** Exit status `0`. Code sha it ran at:
 `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` (the final code sha, per
 `git log -1 --format=%H -- '*.go' '*.feature'`). Report path
-`docs/reports/phase3j-030-fullsuite/` (refreshed in place, `README.md` + `sweep.log`). Every package
+`docs/reports/phase3j-030-fullsuite/` (refreshed in place: `docs/reports/phase3j-030-fullsuite/README.md`
++ `docs/reports/phase3j-030-fullsuite/sweep.log`). Every package
 result line is `ok` (14 packages, including `features` at 346.7s) or `?` with `[no test files]`
 (`internal/notify`, `internal/search`, `internal/unit`) — no skipped marker anywhere in the log. This
 supersedes the `a44ee32`-sha disposition of 13 `ok` packages: the count grew to 14 with `internal/tmux`
@@ -441,7 +462,9 @@ docs/reports/phase3j-030-fullsuite/sweep.log` = 3, matching the refreshed README
 
 **Task 059 — verbose tally companion.** Exit status `0`. Code sha it ran at: the same
 `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`. Report path `docs/reports/phase3j-031-fullsuite-verbose/`
-(refreshed in place, `README.md` + `verbose.log` + `verbose.log.exitstatus`). This companion exists only
+(refreshed in place: `docs/reports/phase3j-031-fullsuite-verbose/README.md` +
+`docs/reports/phase3j-031-fullsuite-verbose/verbose.log` +
+`docs/reports/phase3j-031-fullsuite-verbose/verbose.log.exitstatus`). This companion exists only
 because the non-verbose launcher cannot print the godog scenario/step tally (finding F34); task 058's
 sweep remains the deliverable gate. Tally as measured, quoted byte-exact (ESC bytes included) in the
 refreshed README: **330 scenarios (330 passed)**, **3824 steps (3824 passed)** — one step more than the
@@ -451,7 +474,8 @@ commit `52e529b`; scenario count unchanged). Package result lines match task 058
 
 **Task 060 — ten-run stability gate.** Exit status `0` (`ci/stability.sh 10`'s own captured status).
 Code sha it ran at: the same `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`. Report path
-`docs/reports/phase3j-032-stability10/` (refreshed in place, `README.md` + `summary.log`, the script's
+`docs/reports/phase3j-032-stability10/` (refreshed in place: `docs/reports/phase3j-032-stability10/README.md`
++ `docs/reports/phase3j-032-stability10/summary.log`, the script's
 own combined summary published verbatim). Result: `10/10 passed` — every one of the 10 runs `PASS`, no
 failing run to name. This supersedes the `a44ee32`-sha disposition (also `10/10 passed`, but at the
 earlier sha and an earlier, now-superseded HEAD `b4807ce1...`); HEAD/origin main at this run's launch
@@ -460,7 +484,7 @@ time was `6bb64b29a6043d006dbed266eb4467766d9bbed8`, a docs-only descendant of `
 **Recurrence check against §4's carried-forward findings, re-run against the new logs.** Grepping the
 refreshed logs (`docs/reports/phase3j-030-fullsuite/sweep.log` and
 `docs/reports/phase3j-032-stability10/summary.log`) for the carried-forward items — F2, F20, F22, F37,
-the F7 quantisation collisions, the `filter.feature` dd/undo race, OSC 52 clipboard reliability — finds
+the F7 quantisation collisions, the `features/filter.feature` dd/undo race, OSC 52 clipboard reliability — finds
 no match in either log:
 
 ```
