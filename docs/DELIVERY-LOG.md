@@ -804,29 +804,39 @@ and never on `x` or a reap path (R107); the four editable launch inputs (`pre_la
 stated in user-reachable copy (R109); and the record — this document plus
 [`docs/reports/phase3j.md`](reports/phase3j.md) and
 [`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) — closes on the tree (R110).
-**Final code sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`** — the last commit in the phase to
-touch a `*.go` or `*.feature` path. It supersedes the earlier `a44ee32` sha (task 030's own
+**Final code sha `4fbd452430501805a860dd229ddca1cd3f5c1cd6`** — the last commit in the phase to
+touch a `*.go` or `*.feature` path, task 080's own commit (a comment-only correction to a stale
+`CreateShell` `pre_launch` description in `features/launch_hooks.feature`). It supersedes the
+earlier `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` sha: task 080 changed only a comment inside a
+`*.feature` file, but the plan's own Termination rule still counts that as touching a
+`*.go`/`*.feature` path, so the final code sha moves past `b29afb8` regardless of the change
+being comment-only. `b29afb8` had itself superseded the earlier `a44ee32` sha (task 030's own
 create-modal keyboard-walk fix for task 026's Post-destroy field): a second, independent review
 raised five blocking findings against the `a44ee32` tree, and the fix commits for the first
 three of them (`1a4b9db`, `d71c02f`, `a936b30`, `52e529b`, `2042cb8`, `31e6aff`, `b29afb8`)
-advanced the final code sha to `b29afb8`; everything after it — the three re-run gates below,
-the guard re-verification, the findings-4-and-5 record fixes, and this paragraph itself — is a
-docs-only descendant. Three gates were re-run at `b29afb8` and their existing report
-directories refreshed in place: the mandated, unnarrowed whole-suite sweep
-(`ci/run.sh go test -p=1 -count=1 ./...`) exits **0**, 14 packages `ok` plus 3 `[no test files]`
+advanced the final code sha to `b29afb8`, which then stood as final code sha until task 080's
+comment fix superseded it in turn. Three gates were re-run at task 080's sha
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` and their existing report directories refreshed in
+place, never renumbered: task 081 refreshed the mandated, unnarrowed whole-suite sweep
+(`ci/run.sh go test -p=1 -count=1 ./...`), exit **0**, 14 packages `ok` plus 3 `[no test files]`
 ([`docs/reports/phase3j-030-fullsuite/README.md`](reports/phase3j-030-fullsuite/README.md));
-its verbose companion (run only because the non-verbose launcher prints no Gherkin tally) also
-exits **0** and reports, byte-exact, **330 scenarios (330 passed)**, **3824 steps (3824
-passed)**
+task 082 refreshed its verbose companion (run only because the non-verbose launcher prints no
+Gherkin tally), exit **0**, reporting byte-exact **330 scenarios (330 passed)**, **3824 steps
+(3824 passed)**
 ([`docs/reports/phase3j-031-fullsuite-verbose/README.md`](reports/phase3j-031-fullsuite-verbose/README.md));
-and the stability gate's own
+and task 083 refreshed the stability gate, whose
 [`docs/reports/phase3j-032-stability10/summary.log`](reports/phase3j-032-stability10/summary.log)
 ends, verbatim, **`10/10 passed`**,
 script exit **`0`**
-([`docs/reports/phase3j-032-stability10/README.md`](reports/phase3j-032-stability10/README.md)).
-The protected-path audit and both branch guards were separately re-verified at that same sha,
-empty and agreeing respectively
-([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)). All five of that second
+([`docs/reports/phase3j-032-stability10/README.md`](reports/phase3j-032-stability10/README.md)) —
+task 083's own first collection at this same sha (commit `2de1700`) had reported 9/10, rejected
+on poll-discipline procedure rather than on the number, with that 9/10 kept on the record as
+evidence the suite's tmux/pty timing can flake intermittently rather than as a claim the suite
+is flake-free. The protected-path audit and both branch guards were separately re-verified and
+found empty and agreeing at the then-current final code sha
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`
+([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)); refreshing that gate to the
+current final code sha above is a later task's scope, not this paragraph's. All five of that second
 review's blocking findings are closed on the tree: findings 1–3 (a teardown-hook failure could
 not raise a visible toast; the teardown timeout was a mutable `var`, not the required named
 constant; R109's user-reachable hook copy was inaccurate and its coverage test missed the
