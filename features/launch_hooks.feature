@@ -46,10 +46,15 @@ Feature: Every pane carries its own session's DECK_SESSION_* context (R104, SPEC
 
   @requirement-105-global-hook-self-selects-on-name
   Scenario: a global pre_launch that self-selects on the session's own name exports a variable only for the matching session
-    # CreateShell (the plain `shell` kind) never composes pre_launch at all
-    # (a separate, already-noted gap) -- claude is the kind whose launch
-    # path actually runs through buildPaneCommand's global-then-session
-    # composition, so it is what these three scenarios use throughout.
+    # CreateShell (the plain `shell` kind) also composes global-then-session
+    # pre_launch through buildPaneCommand, exactly like internal/service/
+    # shell.go's CreateShell does for every launch. These three
+    # requirement-105 scenarios still use claude throughout, not because
+    # shell's own launch skips that composition, but because no
+    # "creates shell session ... with pre-launch command ..." step exists in
+    # this suite's step vocabulary (only the agent-session create steps in
+    # agent_steps_test.go accept a pre-launch command) -- claude is simply
+    # the kind these scenarios can drive a configured pre_launch through.
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And the deck config runs global pre_launch command "case $DECK_SESSION_NAME in global-hook-match) export DECK_GLOBAL_PRELAUNCH_MARKER=matched ;; esac"
     And deck client "A" is started
