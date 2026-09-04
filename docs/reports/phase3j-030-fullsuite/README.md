@@ -3,11 +3,11 @@
 ## Supersedes
 
 This refresh supersedes the earlier sweep published at `a44ee320b93186496d56364836b0aed00a6f1e0b`,
-per task 058 (approach 03): the final code sha advanced past `a44ee32` with the
+per task 030: the final code sha advanced past `a44ee32` with the
 findings-1-3 fix commits (`1a4b9db`, `d71c02f`, `a936b30`, `52e529b`, `2042cb8`,
 `31e6aff`, `b29afb8`) landed after the earlier sweep was published, so this
-directory is re-run and refreshed in place at the new final code sha. There is
-no new numbered report directory.
+directory is re-run and refreshed in place at the new final code sha (task 058).
+There is no new numbered report directory.
 
 ## Command
 
@@ -86,4 +86,4 @@ skip within a test run).
 - This refresh is a straight re-run of the same command at the advanced final code
   sha; no test or step helper changes were needed this time (contrast the previous
   refresh, which needed the `a44ee32` step-helper fix before it could pass).
-- This run supersedes the earlier `a44ee32` sweep, published at task 058.
+- This run (task 058) supersedes the earlier `a44ee32` sweep, published at task 030.
