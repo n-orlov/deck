@@ -474,49 +474,65 @@ the repository and no path of it is quoted anywhere in this document.
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
 
-## 8. Gate dispositions: whole-suite sweep (task 058), verbose tally companion (task 059) and ten-run stability (task 060)
+## 8. Gate dispositions: whole-suite sweep (task 081), verbose tally companion (task 082) and ten-run stability (task 083)
 
-**The dispositions below supersede, rather than delete, the earlier `a44ee320b93186496d56364836b0aed00a6f1e0b`
-dispositions this section previously recorded for tasks 030 and 032** (13-package counts, `b4807ce1...`
-HEAD, `fbbda8f`-superseding language). Approach 02's findings-1-3 fix commits (`1a4b9db`, `d71c02f`,
-`a936b30`, `52e529b`, `2042cb8`, `31e6aff`, `b29afb8`) landed after the `a44ee32` gates were published,
-advancing the final code sha; tasks 058, 059 and 060 (approach 03) re-ran all three gates at the new
-final code sha and refreshed their report directories **in place** (no new numbered directories). The
-`a44ee32`-sha dispositions are historical record of what ran at that earlier sha, not a claim about the
-current tree; the current disposition is the one below.
+**The dispositions below supersede, rather than delete, the earlier dispositions this section
+previously recorded for tasks 058, 059 and 060 (approach 03) at code sha
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`**, which themselves superseded task 030/032's original
+`a44ee320b93186496d56364836b0aed00a6f1e0b` dispositions. Task 080 of this approach (05) corrected a
+stale comment in `features/launch_hooks.feature`; per the PRD's "Termination" rule that comment-only
+change still moves the final code sha (`git log -1 --format=%H -- '*.go' '*.feature'`) forward from
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` to task 080's own commit,
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` — the final code sha for this document. Tasks 081, 082
+and 083 re-ran all three gates at that new final code sha and refreshed their report directories
+**in place** (no new numbered directories). Both `a44ee32` and `b29afb8` are historical record of
+what ran at those earlier shas, never a claim about the current tree; the current disposition is
+the one below.
 
-**Task 058 — whole-suite sweep.** Exit status `0`. Code sha it ran at:
-`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` (the final code sha, per
-`git log -1 --format=%H -- '*.go' '*.feature'`). Report path
-`docs/reports/phase3j-030-fullsuite/` (refreshed in place: `docs/reports/phase3j-030-fullsuite/README.md`
+**Task 081 — whole-suite sweep.** Exit status `0`. Code sha it ran at:
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` (the final code sha, per
+`git log -1 --format=%H -- '*.go' '*.feature'`; HEAD and origin/main at run time were the same sha).
+Report path `docs/reports/phase3j-030-fullsuite/` (refreshed in place: `docs/reports/phase3j-030-fullsuite/README.md`
 + `docs/reports/phase3j-030-fullsuite/sweep.log`). Every package
-result line is `ok` (14 packages, including `features` at 346.7s) or `?` with `[no test files]`
-(`internal/notify`, `internal/search`, `internal/unit`) — no skipped marker anywhere in the log. This
-supersedes the `a44ee32`-sha disposition of 13 `ok` packages: the count grew to 14 with `internal/tmux`
-splitting out as its own package between the two shas (verified: `grep -c '^ok'
-docs/reports/phase3j-030-fullsuite/sweep.log` = 14, `grep -c 'no test files'
+result line is `ok` (14 packages, including `features` at 339.455s) or `?` with `[no test files]`
+(`internal/notify`, `internal/search`, `internal/unit`) — no skipped marker anywhere in the log
+(`grep -c '^ok' docs/reports/phase3j-030-fullsuite/sweep.log` = 14, `grep -c 'no test files'
 docs/reports/phase3j-030-fullsuite/sweep.log` = 3, matching the refreshed README's own stated counts).
+This supersedes the superseded `b29afb8`-sha disposition (task 058), which reported the same 14/3
+split — the re-run at the advanced sha changed no package result.
 
-**Task 059 — verbose tally companion.** Exit status `0`. Code sha it ran at: the same
-`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`. Report path `docs/reports/phase3j-031-fullsuite-verbose/`
+**Task 082 — verbose tally companion.** Exit status `0`. Code sha it ran at: the same
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` (HEAD/origin main at run time was
+`680237e45b73b3666c81571e56065a41c9e81c0b`, task 081's docs-only refresh commit, a docs-only
+descendant of that sha). Report path `docs/reports/phase3j-031-fullsuite-verbose/`
 (refreshed in place: `docs/reports/phase3j-031-fullsuite-verbose/README.md` +
 `docs/reports/phase3j-031-fullsuite-verbose/verbose.log` +
 `docs/reports/phase3j-031-fullsuite-verbose/verbose.log.exitstatus`). This companion exists only
-because the non-verbose launcher cannot print the godog scenario/step tally (finding F34); task 058's
+because the non-verbose launcher cannot print the godog scenario/step tally (finding F34); task 081's
 sweep remains the deliverable gate. Tally as measured, quoted byte-exact (ESC bytes included) in the
-refreshed README: **330 scenarios (330 passed)**, **3824 steps (3824 passed)** — one step more than the
-superseded `a44ee32` tally's 3823 steps (`features/teardown_hooks.feature` gained one step assertion in
-commit `52e529b`; scenario count unchanged). Package result lines match task 058's non-verbose sweep
-(14 `ok`, 3 `[no test files]`).
+refreshed README: **330 scenarios (330 passed)**, **3824 steps (3824 passed)** — unchanged from the
+superseded `b29afb8` tally (task 080 touched only a comment block, adding and removing no scenario or
+step). Package result lines match task 081's non-verbose sweep (14 `ok`, 3 `[no test files]`).
 
-**Task 060 — ten-run stability gate.** Exit status `0` (`ci/stability.sh 10`'s own captured status).
-Code sha it ran at: the same `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`. Report path
+**Task 083 — ten-run stability gate.** Exit status `0` (`ci/stability.sh 10`'s own captured status).
+Code sha it ran at: the same `4fbd452430501805a860dd229ddca1cd3f5c1cd6`. Report path
 `docs/reports/phase3j-032-stability10/` (refreshed in place: `docs/reports/phase3j-032-stability10/README.md`
 + `docs/reports/phase3j-032-stability10/summary.log`, the script's
-own combined summary published verbatim). Result: `10/10 passed` — every one of the 10 runs `PASS`, no
-failing run to name. This supersedes the `a44ee32`-sha disposition (also `10/10 passed`, but at the
-earlier sha and an earlier, now-superseded HEAD `b4807ce1...`); HEAD/origin main at this run's launch
-time was `6bb64b29a6043d006dbed266eb4467766d9bbed8`, a docs-only descendant of `b29afb8`.
+own combined summary published verbatim). Published result: `10/10 passed` — every one of the 10
+runs `PASS`, no failing run to name; HEAD/origin main at this run's launch time was
+`2de170049ba6fb820dacbfbb68c6b2dc4b375c15`, a docs-only descendant of `4fbd452430501805a860dd229ddca1cd3f5c1cd6`.
+This supersedes the superseded `b29afb8`-sha disposition (task 060, also `10/10 passed`).
+
+**Carried forward: task 083's first collection reported 9/10, not 10/10, at this same code sha.**
+The FIRST collection under this directory (commit `2de1700`) reported `9/10 passed` — RUN 9 failed
+on an intermittent tmux/pty timing flake in
+`internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero` (pane capture
+`"F$ robnicate"` instead of the literal `"Frobnicate"`). That collection was rejected on polling
+PROCEDURE, not on the number, and the gate was re-launched once at the same code sha with the
+mandated `sleep 120`-only poll discipline followed exactly, giving the published `10/10` (commit
+`7617eef`). The pair — 9/10 then 10/10 — is evidence that this test can flake intermittently under
+load on this host; it is carried forward here as an advisory observation, never as a claim that the
+suite is flake-free.
 
 **Recurrence check against §4's carried-forward findings, re-run against the new logs.** Grepping the
 refreshed logs (`docs/reports/phase3j-030-fullsuite/sweep.log` and
