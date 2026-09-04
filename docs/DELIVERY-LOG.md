@@ -840,11 +840,12 @@ script exit **`0`**
 task 083's own first collection at this same sha (commit `2de1700`) had reported 9/10, rejected
 on poll-discipline procedure rather than on the number, with that 9/10 kept on the record as
 evidence the suite's tmux/pty timing can flake intermittently rather than as a claim the suite
-is flake-free. The protected-path audit and both branch guards were separately re-verified and
-found empty and agreeing at the then-current final code sha
-`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`
-([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/)); refreshing that gate to the
-current final code sha above is a later task's scope, not this paragraph's. All five of that second
+is flake-free. The protected-path audit and both branch guards were first verified and found empty and
+agreeing at the then-current final code sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`, and
+task 092's commit `a98cbb6` (`docs/reports/phase3j-033-guards/README.md`) re-ran that same audit
+and guard capture at the current final code sha above, again finding both empty and agreeing
+([`docs/reports/phase3j-033-guards/`](reports/phase3j-033-guards/); its own
+`final-code-sha.out` reads `4fbd452430501805a860dd229ddca1cd3f5c1cd6`). All five of that second
 review's blocking findings are closed on the tree: findings 1–3 (a teardown-hook failure could
 not raise a visible toast; the teardown timeout was a mutable `var`, not the required named
 constant; R109's user-reachable hook copy was inaccurate and its coverage test missed the
