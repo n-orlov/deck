@@ -839,10 +839,11 @@ attempts on one residual gap — `ShellCreateInput` had no `PostDestroy` field, 
 `CreateShell` row could never carry one,
 unlike a `CreateAgent` row — but the operator's own ruling `001-011` reopened it as a
 steer-originated pending task narrowed to exactly that gap, and it reached `validated` again
-once task 038 (`2e5fc6b`, `566cb6d`) closed it alongside its own scope, a §6.1 SPEC-conformance
-finding (findings §3): routing `CreateShell`'s pane through the same `resolveLaunchEnv` +
-`buildPaneCommand` composition the agent paths use, so a shell launch carries the session
-context and runs a fail-closed session+global `pre_launch` the same way an agent launch does.
+once commit `9fb6aec` added the field and threaded it through. Separately, task 038
+(`2e5fc6b`, `566cb6d`) closed a §6.1 SPEC-conformance finding (findings §3) alongside its own
+scope: routing `CreateShell`'s pane through the same `resolveLaunchEnv` + `buildPaneCommand`
+composition the agent paths use, so a shell launch carries the session context and runs a
+fail-closed session+global `pre_launch` the same way an agent launch does.
 Evidence: [`docs/reports/phase3j.md`](reports/phase3j.md) (the per-requirement table and the GH
 issue #20 design-section map) and
 [`docs/reports/phase3j-findings.md`](reports/phase3j-findings.md) (task 011's history, three
