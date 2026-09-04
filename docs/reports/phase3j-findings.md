@@ -29,7 +29,7 @@ every path cited is tracked under `git ls-files --error-unmatch`, both checked i
 - [1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered](#1-task-011-ended-failed-was-reopened-by-operator-ruling-001-011-and-was-closed-by-commit-9fb6aec-tasks-013-and-026-were-then-delivered)
 - [2. Three tasks (002, 007, 023) had a validation-found gap that was closed within the same task's own follow-up commit, not left open](#2-three-tasks-002-007-023-had-a-validation-found-gap-that-was-closed-within-the-same-tasks-own-follow-up-commit-not-left-open)
 - [3. One SPEC-versus-tree disagreement found in R104–R109's landed work — closed by task 038 at `2e5fc6b` and `566cb6d`](#3-one-spec-versus-tree-disagreement-found-in-r104r109s-landed-work--closed-by-task-038-at-2e5fc6b-and-566cb6d)
-- [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-not-yet-checked-against-a-whole-suite-run)
+- [4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings checked by name against task 030's whole-suite sweep, none recurred](#4-protected-path-audit-over-this-phases-commit-range-is-clean-carried-forward-out-of-scope-findings-checked-by-name-against-task-030s-whole-suite-sweep-none-recurred)
 - [5. A pre-existing stale schema-version pin in `features/assertions_test.go`, found and fixed in flight by task 027](#5-a-pre-existing-stale-schema-version-pin-in-featuresassertions_testgo-found-and-fixed-in-flight-by-task-027)
 - [6. Two stale schema-version literals in `features/` — fixed by task 030 at `204af7d`](#6-two-stale-schema-version-literals-in-features--fixed-by-task-030-at-204af7d)
 - [7. How to re-check every citation in this report](#7-how-to-re-check-every-citation-in-this-report)
@@ -262,7 +262,7 @@ teardown-order sentence ("run the session's own `post_destroy` and then the glob
 config.toml (§6.5)" — the *reverse* of §6.5's launch order), which no landed task yet
 exercises.
 
-## 4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings not yet checked against a whole-suite run
+## 4. Protected-path audit over this phase's commit range is clean; carried-forward out-of-scope findings checked by name against task 030's whole-suite sweep, none recurred
 
 **Protected-path audit**, run fresh at this report's own tree, exactly as the PRD states it
 (base computed, not pasted):
@@ -283,11 +283,42 @@ standing rules): F2 (golden-frame settle), F20 (`status_recovery` dup-pane), F22
 `features/filter.feature` dd/undo race, and the OSC 52 clipboard-reliability question. Tasks
 001–028 ran only targeted package tests (`internal/service`, `internal/store`, `internal/tui`,
 single-feature `features` runs), never the whole-suite sweep that would exercise the
-`features`/`internal/interactive` packages these seven findings live in — that sweep is task
-030's own job, not yet run as of this writing. **This section does not claim a recurrence check
-here**; task 035 ("Fill in the gate dispositions") is the task that runs the by-name recurrence
-grep against task 030's actual sweep log and records the result, in §8's disposition placeholder
-below. One consequence of never having run a whole-`features` package test during 001–028 is
+`features`/`internal/interactive` packages these seven findings live in. Task 030 (refreshed at
+the final code sha by task 081) supplied that sweep, at
+`docs/reports/phase3j-030-fullsuite/sweep.log`. This section now records the by-name recurrence
+check against that log, run fresh against the tree at this report's own commit:
+
+```
+$ grep -n -i "F2\b\|F20\b\|F22\b\|F37\b\|F7\b\|quantis\|filter.feature\|dd/undo\|OSC 52\|clipboard" \
+    docs/reports/phase3j-030-fullsuite/sweep.log
+(no output)
+```
+
+`sweep.log` is the non-verbose `go test -p=1 -count=1 ./...` package-summary log (17 lines: 14
+`ok`, 3 `[no test files]`, no per-scenario or per-step names) — none of the seven carried-forward
+items' names, or the substrings that would identify a recurrence of them, appear anywhere in it.
+The result for each, checked by name against that log:
+
+- **F2** (golden-frame settle) — no match; the packages that would surface it
+  (`internal/interactive`, `features`) both show `ok`, no failure to attribute to it.
+- **F20** (`status_recovery` dup-pane) — no match; same two packages `ok`.
+- **F22** (`ByteArrivalPattern`) — no match; `internal/tmux` (`ok`) and `features` (`ok`) are the
+  packages that would surface it.
+- **F37** (`sort_order` latent race) — no match; `internal/store` (`ok`) and `internal/service`
+  (`ok`) are the packages that would surface it.
+- **F7** (quantisation collisions) — no match; `internal/theme` (`ok`) is the package that would
+  surface it.
+- **The `features/filter.feature` dd/undo race** — no match; `features` (`ok`, 339.455s, all
+  scenarios/steps passing per §8's verbose tally).
+- **OSC 52 clipboard reliability** — no match; `internal/tmux` (`ok`) and `features` (`ok`) are
+  the packages that would surface it.
+
+None of the seven recurred as a named or attributable failure in this sweep. This is a
+non-recurrence check against one whole-suite run, not a claim that any of the seven is fixed,
+resolved, or no longer a live concern — they remain advisory-only carried-forward items, as the
+PRD's "For the planner" section and the standing rules require; §8 records the same check
+re-run against the refreshed gate logs at the final code sha. One consequence of never having
+run a whole-`features` package test during 001–028 is
 [§6](#6-two-stale-schema-version-literals-in-features--fixed-by-task-030-at-204af7d): four
 `features/store.feature` scenarios failed at that earlier tree (fixed since by task 030's commit
 `204af7d`, per §6 below), and nothing in 001–028 would have noticed.
