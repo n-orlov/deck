@@ -1,7 +1,7 @@
 # Phase 3j findings
 
 Companion to the phase closeout report task 034 writes (that task's own `successCriteria` in
-the run's own `/run/ralphd/tasks.json` names its path; it is deliberately not cited here, because
+the run's own task-state record names its path in prose rather than by a backticked path, because
 every repo path this report cites is one already tracked in git — see §7): what the requirement
 table does not carry — task 011, which ended `failed`, was reopened by operator ruling 001-011,
 and was then closed by commit `9fb6aec`, after which the two tasks that had depended on it,
@@ -34,7 +34,8 @@ tracked under `git ls-files --error-unmatch`, both checked in
 ## 1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered
 
 Task 011 ("Plumb `post_destroy` through the store's session write and read paths") first ended
-`failed` in `tasks.json`, `failureKind: "validation-exhausted"`, after 3 validation attempts.
+`failed` in the run's own task-state record, with `failureKind: "validation-exhausted"`, after 3
+validation attempts.
 
 **What failed, quoted verbatim from task 011's own `validationNotes` at that time:**
 
@@ -149,8 +150,8 @@ shows the constructor call in `cmd/deck/main.go` and the method's definition in
 `internal/tui/tui.go`.
 
 **Disposition.** All three tasks are `validated`; none has an open residual as of this writing.
-This section exists because a reader of `tasks.json`'s `validationNotes` field alone, without
-walking each task's own commit history, would see an apparently-unresolved criticism on a
+This section exists because a reader of the run's own task-state record's `validationNotes`
+field alone, without walking each task's own commit history, would see an apparently-unresolved criticism on a
 `validated` task — this is the record that it was, in fact, resolved, by which commit, and how
 to check that fresh.
 
@@ -407,10 +408,11 @@ tracked in commit a30accd, task 029's first commit.)
 closeout report of task 034 and the three gate report directories of tasks 030–032 are referred
 to by the task that publishes them, never by a path, precisely because
 `git ls-files --error-unmatch` cannot succeed for a path that does not exist yet. The only
-non-repo paths quoted anywhere above are this run's own loop state — `/run/ralphd/tasks.json`,
-quoted as a record rather than as a repo file — and paths that appear *inside* a quoted SPEC
-sentence (`$XDG_CONFIG_HOME/deck/config.toml`, `$DECK_HOME/captures/<session_id>/`); neither kind
-is a repo file and neither is claimed to be tracked.
+non-repo path referred to anywhere above is this run's own loop state — named in prose, as the
+run's own task-state record, rather than backticked as a repo path, because it is not a repo file
+and is never claimed to be tracked — and paths that appear *inside* a quoted SPEC sentence
+(`$XDG_CONFIG_HOME/deck/config.toml`, `$DECK_HOME/captures/<session_id>/`); neither kind is a
+repo file and neither is claimed to be tracked.
 
 `SPEC.md` and `prds/phase3j-launch-and-teardown-hooks.md` are quoted throughout this report,
 never edited by it — nothing in this findings report writes to a protected path.
@@ -475,8 +477,9 @@ refreshed gate runs, not a change to their own disposition.)
 
 ## 9. Independent review's blocking findings 1-3 (approach 01) are closed
 
-The independent review that rejected approach 01 (`/run/ralphd/approaches/01/review-findings.md`,
-not a tracked repo path and therefore not cited by filename below beyond this one mention) raised
+The independent review that rejected approach 01 (the run's own review-findings record under
+approach 01, named in prose rather than backticked, not a tracked repo path and therefore not
+cited by filename below beyond this one mention) raised
 five blocking findings. Findings 4 and 5 are the R110 record-accuracy and task-030
 polling/one-sweep-discipline gaps tracked elsewhere in this document (see §§4-8 and
 `docs/reports/phase3j.md`'s own corrections). Findings 1, 2 and 3 are closed in this tree, by the
