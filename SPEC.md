@@ -383,7 +383,12 @@ support until one is confirmed.
   then comes only from questions / needs-input notifications. Document this in help; it is
   a frequent "status is broken" false alarm.
 - Adapter capabilities are declared, not assumed: each adapter reports which profiles it
-  supports, and the create modal only offers those.
+  supports, and the create modal only offers those. An adapter likewise declares the
+  **executable** its launch argv starts, and the create modal offers only the kinds whose
+  executable resolves on the launch `PATH` at the moment the modal opens (§6.3) — a kind that
+  is registered but not installed is absent from the field, not listed and doomed. `shell`
+  declares no executable and is always offered: it is the floor, the one session kind a fresh
+  host can always create.
 
 ---
 
@@ -473,6 +478,15 @@ common reason a resumed session fails to launch. Mitigations, all three:
   `captured_path`** — that is the trade, it is what the option is *for*, and the two are
   therefore mutually exclusive by design: enabling `login_shell` marks `captured_path`
   advisory and the health view says so.
+- **Availability is probed, not assumed, before a launch is attempted.** The create modal
+  lists only the kinds whose declared executable (§5) resolves on the `PATH` a new pane would
+  get — deck's own `PATH` as `captured_path`, then `[env]`'s override if any — probed when the
+  modal opens, never per frame (§11.4). Create and resume both refuse, before any pane exists,
+  an agent whose executable does not resolve on the pane's resolved `PATH`: create reports it
+  in-dialog and writes nothing; resume lands the row in `error` with that reason (§9.1). When
+  `login_shell` is on, the login shell's own rc files decide `PATH` and deck cannot judge
+  membership, so the refusal is skipped on both paths and the modal's listing is the best guess
+  the non-login `PATH` gives — `shell` remains as the floor either way.
 - The health view flags any session whose agent binary is not resolvable from the
   environment the server will actually use, and flags a session where `login_shell` and an
   explicit `PATH` override disagree.
@@ -1270,7 +1284,7 @@ hold them side by side.
   attach. `stopped`, `archived`, and a `starting` row whose pane does not exist yet render
   a one-line placeholder naming the state. Stale bytes are never presented as live.
 - Since there is no CLI (R7), **every** capability is reachable and discoverable in the
-  UI: create modal (name, cwd picker, agent, permission profile, env, pre_launch,
+  UI: create modal (name, cwd picker, agent — available kinds only, §6.3 — permission profile, env, pre_launch,
   post_destroy, args), env editor, launch-inputs editor (§6.2), permission switcher,
   pin/unpin, rename, notification rules editor, health
   view (tmux version, socket, agents on PATH, PATH resolvability, optional unit install),
@@ -1504,8 +1518,9 @@ contract so learning any one of them teaches the rest:
   last-used prefill (§11.7), the create modal's **agent**, and §5's `yolo_default`. The
   remembered value is machine-local UI state (§11.2's `ui_state`), promoted only when an
   action *succeeds* — an abandoned dialog changes no default — validated against what is
-  currently available (an agent whose adapter is no longer registered falls back to the
-  built-in default), and re-derives anything computed from it, since a permission profile is a
+  currently available (an agent whose adapter is no longer registered, or whose executable no
+  longer resolves on the launch `PATH` (§6.3), falls back to the built-in default and drops the
+  *last used* label), and re-derives anything computed from it, since a permission profile is a
   function of the agent it applies to. Repetition is the norm in this product: the same agent
   in the same directory, over and over, is what a session manager is *for*, and a dialog that
   forgets makes the user re-state it every time.
