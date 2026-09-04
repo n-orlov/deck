@@ -664,6 +664,26 @@ type Model struct {
 	// opened) masks every secret-shaped entry's value via maskEnvValue;
 	// "r" while browsing the entries list (not mid-edit) flips it.
 	settingsEnvReveal bool
+	// settingsStringEditing/settingsStringEditKey/settingsStringEditValue
+	// are the free-text (KindString/KindPath) inline editor SPEC.md:532
+	// already requires for the two global hook keys: "Both keys are
+	// editable in settings (§11.5) like every other flat key". config.Schema
+	// declared pre_launch/post_destroy and settings.go's settingsSetString
+	// existed, but no keypress ever reached it -- settingsActivateField
+	// handled toggle/list/link only -- so the two rows rendered and refused
+	// every key, the exact "display-only field" defect requirement 22 and
+	// task 003's [env] editor both exist to forbid. settingsStringEditing is
+	// true while the selected field's value is being typed;
+	// settingsStringEditValue is that in-progress text (committed into
+	// settingsEdits through settingsSetString only on enter, so esc costs
+	// nothing) and settingsStringEditKey pins the FullKey the editor opened
+	// on, so a commit can never land on a field other than the one whose
+	// value is on screen. Like every other kind's edit, this only ever
+	// mutates settingsEdits: ctrl+s/esc still govern whether it reaches
+	// config.toml.
+	settingsStringEditing   bool
+	settingsStringEditKey   string
+	settingsStringEditValue string
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -2802,6 +2822,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsEnvOpen = false
 				m.settingsEnvEditing = false
 				m.settingsEnvIndex = 0
+				m.settingsStringEditing = false
+				m.settingsStringEditKey = ""
+				m.settingsStringEditValue = ""
 			}
 		case "t":
 			if !m.help {

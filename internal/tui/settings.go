@@ -217,6 +217,19 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.settingsEnvOpen {
 		return m.updateSettingsEnvList(msg)
 	}
+	// The free-text (KindString/KindPath) editor SPEC.md:532 requires for
+	// pre_launch/post_destroy takes over the whole keymap for exactly the
+	// same reason the [env] entry editor above does: the value being typed
+	// is an arbitrary shell command, so `j`, `k`, `/`, `-` and `+` are text
+	// here, never navigation/adjust/search -- a mode that let them through
+	// would move the selection out from under the value it is about to
+	// commit. It cannot be simultaneously true with either settingsEnv*
+	// mode (each is entered only from the field list, which the other has
+	// already taken over), so the order between them is arbitrary; it sits
+	// with them, above `/` search, rather than inside the main switch.
+	if m.settingsStringEditing {
+		return m.updateSettingsStringEditing(msg)
+	}
 	if m.settingsSearchActive {
 		return m.updateSettingsSearch(msg)
 	}
@@ -488,7 +501,12 @@ func (m *Model) settingsSelectedField() (config.Field, bool) {
 // editor for the KindListOfStrings [env] field (requirement 17 -- the
 // field list itself has no room to edit a KEY=VALUE map inline, so enter
 // hands focus to a dedicated entries list rather than leaving [env]
-// display-only), and otherwise does nothing -- notably including the
+// display-only), opens the free-text editor for a KindString/KindPath
+// field (SPEC.md:532: pre_launch/post_destroy are "editable in settings
+// (§11.5) like every other flat key" -- before this, KindString fell
+// through this switch to a silent no-op, so the schema's only two
+// free-text keys rendered but refused every key), and otherwise does
+// nothing -- notably including the
 // [notify] KindLink entry, which §11.5 would have open the notification-
 // rules dialog if one existed. Task 029 adds no such dialog this phase, so
 // activating that entry is a documented no-op rather than a key that
@@ -509,6 +527,19 @@ func (m *Model) settingsActivateField() {
 			m.settingsEnvEditing = false
 			m.settingsEnvReveal = false
 		}
+	case config.KindString, config.KindPath:
+		// Prefilled from the STAGED value (settingsEdits, via
+		// settingsStringValue), never from m.settings.File: an edit made
+		// earlier this takeover and not yet saved is what the row is
+		// showing, so reopening the editor must start from that, not from
+		// the file's older value. Both kinds are plain free text to type;
+		// KindPath differs only in how settingsFieldValueDisplay renders
+		// the committed value (settingsCollapseTilde), which is why one
+		// editor serves both -- no schema field is KindPath today, so this
+		// arm is exercised only through pre_launch/post_destroy.
+		m.settingsStringEditKey = f.FullKey()
+		m.settingsStringEditValue = settingsStringValue(f, m.settingsEdits)
+		m.settingsStringEditing = true
 	case config.KindLink:
 		if f.FullKey() == "ui.clear_recent_cwds" {
 			m.settingsClearRecentCwds()
@@ -688,6 +719,95 @@ func (m *Model) settingsEnvCommitEdit() {
 			break
 		}
 	}
+}
+
+// updateSettingsStringEditing handles key input while a KindString/KindPath
+// field's value is being typed (m.settingsStringEditing), the free-text
+// counterpart to updateSettingsEnvEditing and deliberately the same shape:
+// typed runes extend settingsStringEditValue, backspace shortens it BY ONE
+// RUNE (a []rune round-trip, never a byte slice -- a hook command may well
+// contain multi-byte text, and trimming one byte off a multi-byte rune
+// would stage invalid UTF-8 into config.toml), enter commits through
+// settingsSetString and returns to the field list, and esc discards the
+// buffer without touching settingsEdits at all.
+//
+// A committed EMPTY string is a real value here, not a cancel: "" is
+// exactly how a user says "no global hook" (schema.go's own default), so
+// enter on an emptied buffer must clear the key -- unlike
+// settingsEnvCommitEdit, where an empty KEY names no variable and so can
+// only be an abandoned entry. esc remains the only way to leave without
+// staging anything.
+//
+// ctrl+s is deliberately swallowed rather than treated as "commit, then
+// save": the takeover's save writes every staged edit to config.toml, and
+// doing that from inside a half-typed command would put text the user was
+// still editing on disk behind their back. Enter is this mode's single,
+// explicit commit gesture (the footer says so), and ctrl+s works the
+// instant it is pressed -- the same one-keystroke cost the [env] entry
+// editor already imposes, which swallows ctrl+s for the same reason.
+func (m Model) updateSettingsStringEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.settingsStringEditing = false
+		return m, nil
+	case "enter":
+		m.settingsStringCommitEdit()
+		m.settingsStringEditing = false
+		return m, nil
+	case "backspace", "ctrl+h":
+		if r := []rune(m.settingsStringEditValue); len(r) > 0 {
+			m.settingsStringEditValue = string(r[:len(r)-1])
+		}
+		return m, nil
+	case "ctrl+s":
+		return m, nil
+	}
+	// Every printable keystroke -- including a lone space, which bubbletea
+	// reports as tea.KeySpace but still carries in Runes (key.go's own
+	// "for backwards compatibility" naming), and each rune of a keystroke
+	// burst Update already split rune-by-rune (task 118) -- is text.
+	if runes := msg.Runes; len(runes) > 0 {
+		m.settingsStringEditValue += string(runes)
+	}
+	return m, nil
+}
+
+// settingsStringCommitEdit stages the typed value into m.settingsEdits
+// through settingsSetString -- the same generic per-kind setter
+// settingsSave and task 018's parity test already drive, so nothing about
+// the dirty/save flow needs to know this editor exists: settingsDirty()
+// compares settingsEdits against settingsSavedEdits and therefore goes
+// true on its own the moment this writes a different value, and ctrl+s
+// then writes it through config.WriteConfigFile like any other field's
+// edit.
+//
+// It commits only when the still-selected field is the one the editor was
+// opened on (settingsStringEditField): the editing mode owns the whole
+// keymap, so the selection cannot move while it is active, and this guard
+// exists so that if that ever stops being true the value lands nowhere
+// rather than on some other key.
+func (m *Model) settingsStringCommitEdit() {
+	f, ok := m.settingsStringEditField()
+	if !ok {
+		return
+	}
+	settingsSetString(&m.settingsEdits, f, m.settingsStringEditValue)
+}
+
+// settingsStringEditField resolves the schema field the free-text editor is
+// open on, from the live settingsCategories() walk rather than a
+// config.Field copied into the Model when the editor opened -- the same
+// "read the schema, never a second copy of it" rule settingsCategories'
+// own doc comment sets for this file. settingsStringEditKey (the FullKey
+// captured on open) is checked against the current selection so a
+// mismatch is reported as "no field" instead of silently committing to
+// whatever is selected now.
+func (m Model) settingsStringEditField() (config.Field, bool) {
+	f, ok := m.settingsSelectedField()
+	if !ok || f.FullKey() != m.settingsStringEditKey {
+		return config.Field{}, false
+	}
+	return f, true
 }
 
 // settingsAdjustField is +/-'s effect on the focused field: step a
@@ -1006,9 +1126,9 @@ func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 		}
 		return v
 	case config.KindString:
-		return settingsStringValue(f, cfg)
+		return settingsStringPlaceholder(settingsStringValue(f, cfg))
 	case config.KindPath:
-		return settingsCollapseTilde(settingsStringValue(f, cfg))
+		return settingsStringPlaceholder(settingsCollapseTilde(settingsStringValue(f, cfg)))
 	case config.KindListOfStrings:
 		return settingsListValueDisplay(f, cfg)
 	case config.KindLink:
@@ -1051,6 +1171,22 @@ func settingsStringValue(f config.Field, cfg config.FileConfig) string {
 		s, _ := f.Default.(string)
 		return s
 	}
+}
+
+// settingsStringPlaceholder renders an empty free-text value as
+// "(not set)" rather than as nothing at all, borrowing KindEnum's existing
+// "(default)" idiom above for the same reason: both hook keys default to ""
+// (schema.go), and a row that rendered "Pre Launch: " with an empty value
+// read as a broken row rather than an unset one -- there was no way to tell
+// "no hook configured" from "settings failed to render this". The
+// parenthesised form can never be mistaken for a real value, since a shell
+// command a user typed is staged verbatim and only ever displayed through
+// this, never re-parsed from it.
+func settingsStringPlaceholder(v string) string {
+	if v == "" {
+		return "(not set)"
+	}
+	return v
 }
 
 // settingsSetString is settingsStringValue's set half, the KindString
@@ -1441,6 +1577,9 @@ func (m Model) settingsView() string {
 	if m.settingsEnvOpen {
 		return m.settingsEnvViewLines(categories, leftWidth, rightWidth, contentRows, height)
 	}
+	if m.settingsStringEditing {
+		return m.settingsStringEditViewLines(categories, leftWidth, rightWidth, contentRows, height)
+	}
 
 	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
 	leftLines := make([]settingsListLine, len(categories))
@@ -1541,6 +1680,15 @@ func (m Model) settingsFooterLine() string {
 	if m.settingsEnvOpen {
 		return truncateToWidth("up/down move - enter edit/add - - remove - r reveal/mask - esc back to fields", width)
 	}
+	if m.settingsStringEditing {
+		// Names ctrl+s too, even though this mode swallows it
+		// (updateSettingsStringEditing): "ctrl+s saves after enter" states
+		// the one thing an operator mid-edit would otherwise get wrong, and
+		// a footer that stayed silent about the takeover's own save key
+		// while a mode disabled it would be the same "binds a key it does
+		// not name" defect in reverse.
+		return truncateToWidth("type to edit - enter stages the value - esc cancels - ctrl+s saves after enter", width)
+	}
 	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
 	if m.settingsNote != "" {
 		footer = m.settingsNote + " - " + footer
@@ -1625,6 +1773,117 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
 	lines = append(lines, m.settingsFooterLine())
 	return strings.Join(lines, "\n")
+}
+
+// settingsTextCursor is the trailing cursor indicator every free-text field
+// this package draws already uses (env_editor.go's session [env] value row,
+// filter.go's `/` query line): a single "_" after the last typed rune. It
+// is a plain ASCII byte, so it needs no m.settings.ASCII fallback and costs
+// exactly one display column wherever it lands.
+const settingsTextCursor = "_"
+
+// settingsStringEditViewLines renders the takeover while the free-text
+// (KindString/KindPath) editor SPEC.md:532 requires has taken over the
+// field panel (m.settingsStringEditing): the left panel keeps showing the
+// category list unchanged and unfocused (typing a hook command never moves
+// the category selection), exactly as settingsEnvViewLines does, and the
+// right panel becomes the single value being typed -- panel title "Edit
+// <label>" so the row's identity survives leaving the field list, the text
+// itself with settingsTextCursor at the end, and the field's own kind/
+// scope/description detail lines beneath, because a hook is
+// restart-to-apply (schema.go) and that is worth stating while the value is
+// being typed rather than only before and after.
+//
+// The value is hard-wrapped (settingsWrapVerbatim) rather than word-wrapped
+// through wrapText: wrapText splits on strings.Fields, which collapses runs
+// of whitespace, so a command with two spaces between its arguments would
+// be DISPLAYED differently from the text about to be staged. A wrapped
+// value can also never widen the panel -- each row is built to the panel's
+// own inner width and settingsRightContentLine's padTrunc still bounds it
+// -- and fitLines below caps the row count at the frame's budget, so an
+// absurdly long command cannot push the bottom border off screen either.
+func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
+	const leftFocused, rightFocused = false, true
+
+	leftLines := make([]settingsListLine, len(categories))
+	for i, cat := range categories {
+		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: "  " + cat.Name, Tok: theme.Text}})}
+	}
+	leftLines = fitLines(leftLines, contentRows)
+
+	innerWidth := rightWidth - 4
+	title := "Edit value"
+	f, haveField := m.settingsStringEditField()
+	if haveField {
+		title = "Edit " + settingsFieldLabel(f)
+	}
+
+	var rightLines []settingsListLine
+	// The whole typed block carries the `selection` background, not just
+	// its first row: it is one field receiving keystrokes, so a highlight
+	// that stopped at the first wrapped row would read as two rows, one of
+	// them inert (requirement 42's focus cue names the surface that has
+	// the keystrokes, not a single line of it).
+	for i, chunk := range settingsWrapVerbatim(m.settingsStringEditValue+settingsTextCursor, innerWidth-2) {
+		marker := "  "
+		if i == 0 {
+			marker = "> "
+		}
+		rightLines = append(rightLines, settingsListLine{
+			text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: marker + chunk, Tok: theme.Text}}),
+			bg:   theme.Selection,
+		})
+	}
+	if haveField {
+		envVar, _ := settingsFieldEnvOverride(f, m.settings)
+		fileValue := settingsFieldValueDisplay(f, m.settingsEdits)
+		runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
+		for _, detail := range settingsFieldDetailLines(f, innerWidth-2, envVar, fileValue, runningValue) {
+			rightLines = append(rightLines, settingsListLine{text: "    " + detail})
+		}
+	}
+	rightLines = fitLines(rightLines, contentRows)
+
+	lines := make([]string, 0, height)
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
+	for i := 0; i < contentRows; i++ {
+		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
+	}
+	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
+	lines = append(lines, m.settingsFooterLine())
+	return strings.Join(lines, "\n")
+}
+
+// settingsWrapVerbatim breaks s into rows of at most width DISPLAY COLUMNS
+// (stringWidth, the same measure wrapText and padTrunc use, so a wide rune
+// counts as the two cells it actually occupies) without altering a single
+// byte of s: no word boundaries, no whitespace collapsing, nothing dropped.
+// That is the whole reason it exists alongside wrapText -- text a user is
+// still typing must be displayed exactly as it will be staged, and
+// wrapText's strings.Fields pass rewrites internal whitespace. A width
+// below 1 is treated as 1 so a pathologically narrow panel still terminates
+// (one rune per row) rather than looping forever on a zero-width chunk.
+func settingsWrapVerbatim(s string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	var rows []string
+	var cur strings.Builder
+	curWidth := 0
+	for _, r := range s {
+		w := stringWidth(string(r))
+		if curWidth+w > width && cur.Len() > 0 {
+			rows = append(rows, cur.String())
+			cur.Reset()
+			curWidth = 0
+		}
+		cur.WriteRune(r)
+		curWidth += w
+	}
+	if cur.Len() > 0 || len(rows) == 0 {
+		rows = append(rows, cur.String())
+	}
+	return rows
 }
 
 // settingsSearchViewLines renders the takeover while `/`'s search box is
