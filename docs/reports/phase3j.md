@@ -185,10 +185,10 @@ commit, a docs-only descendant that does not move the final code sha).
 
 This audit covers exactly `docs/reports/phase3j.md` (this document),
 `docs/reports/phase3j-findings.md`, `docs/DELIVERY-LOG.md` and
-`docs/reports/phase3j-033-guards/README.md`. It extracts every single-backtick code span in each
-file with a CommonMark-style tokenizer (an opening run of N backticks is closed only by the next
-run of exactly N backticks, so triple-backtick fenced blocks are excluded — a fence is code, not a
-citation, and its internal single backticks never pair across the fence boundary), then
+`docs/reports/phase3j-033-guards/README.md`. It first removes every triple-backtick fenced block
+from each file — a fence is captured output or a script, not a citation — then extracts every
+single-backtick code span from what remains with a CommonMark-style tokenizer (an opening run of N
+backticks is closed only by the next run of exactly N backticks), and then
 
 1. checks every span that is a bare 7–40-hex-character sha under
    `git cat-file -e <sha>^{commit}`, and
@@ -198,11 +198,18 @@ citation, and its internal single backticks never pair across the fence boundary
    directory the surrounding prose already names: the same name under `features/`, and a
    recursive filename search under `docs/reports/`.
 
-Both halves are checked by `git` itself. (The path half of an earlier revision of this script used
-a filesystem existence test as its first probe, which silently "resolved" absolute tokens such as
-`/bin/sh` because joining an absolute path onto the repo root discards the root; it now calls
-`git ls-files --error-unmatch`, which is what this wave's citation rule actually says, and the
-unresolved list below is correspondingly longer and honest.)
+Both halves are checked by `git` itself. Two defects in the earlier revision of this script are
+fixed here, and named rather than quietly dropped, because each made its output too flattering:
+
+- *Fenced blocks were assumed to pair around themselves instead of being removed.* A fenced block
+  containing an odd number of single backticks — the script below contains exactly one, inside its
+  own backtick-run regex — flips the opener/closer parity of every span after it, so the sweep went
+  on to extract the prose *between* citations instead of the citations. Fences are now stripped
+  line-by-line before any span is paired.
+- *The path half probed the filesystem before asking git.* Joining an absolute token such as
+  `/bin/sh` onto the repository root discards the root, so absolute paths "resolved" as if they were
+  tracked. Only `git ls-files --error-unmatch` decides now, which is what this wave's citation rule
+  says, and the unresolved list below is correspondingly longer and honest.
 
 **One prerequisite fix, in a separate commit, was needed before the sha half could hold.**
 `docs/DELIVERY-LOG.md` is a cross-phase document, and its `PRD blob` column plus two lines of its
@@ -236,6 +243,18 @@ FILES = [
     "docs/reports/phase3j-033-guards/README.md",
 ]
 
+def strip_fenced_blocks(text):
+    """Drop triple-backtick fenced blocks entirely: they are code, not citations, and a stray
+    single backtick inside one would otherwise flip the parity of every span after it."""
+    out, in_fence = [], False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            out.append(line)
+    return "\n".join(out)
+
 def find_code_spans(text):
     """CommonMark-ish: an opening run of N backticks closes on the next run of exactly N."""
     runs = [(m.start(), len(m.group(0))) for m in re.finditer(r"`+", text)]
@@ -257,7 +276,8 @@ def find_code_spans(text):
 
 def main():
     texts = {f: open(os.path.join(REPO, f), encoding="utf-8").read() for f in FILES}
-    single = {f: [c for n, c in find_code_spans(t) if n == 1] for f, t in texts.items()}
+    single = {f: [c for n, c in find_code_spans(strip_fenced_blocks(t)) if n == 1]
+              for f, t in texts.items()}
 
     # 1. every backticked sha must resolve as a commit of THIS repository
     sha_re = re.compile(r"^[0-9a-f]{7,40}$")
@@ -317,10 +337,10 @@ if __name__ == "__main__":
 Run against this tree, at the four documents' final committed text (this section included):
 
 ```
-=== 1. backticked shas: 182 unique candidates ===
+=== 1. backticked shas: 184 unique candidates ===
 non-resolving under git cat-file -e <sha>^{commit}: (none)
 
-=== 2. backticked path-like tokens: 207 candidates, 36 unresolved ===
+=== 2. backticked path-like tokens: 208 candidates, 36 unresolved ===
 ```
 
 (the sweep then prints the 36 unresolved path names; they are reproduced in full, classified, in
@@ -365,17 +385,26 @@ above and the three re-run gate directories' READMEs
 
 None reads as "the current final code sha is `b29afb8`". Every current-final-code-sha statement in
 all four documents names `4fbd452430501805a860dd229ddca1cd3f5c1cd6`, task 080's commit, instead.
+One sentence needed a fix to make that true: §9 of `docs/reports/phase3j-findings.md` said the
+final-code-sha command "still prints" the older sha, in the present tense, which was true at that
+section's own approach-04 commit and stale afterwards. Commit
+`f9334817f231dd3f9cba3fd3c5ecd0b4168a4cf8` scopes it to the tree as it stood then and names task
+080's sha as the current one.
 
 ### This section's own scope
 
-Task 093 landed two commits, each scoped to a single tracked path:
+Task 093 landed four commits, each scoped to a single tracked path:
 
 - `e36dbe99634a6000e4a965fd21b769002328dc40` — `docs/DELIVERY-LOG.md` only — the prerequisite
   described above: the twelve blob / foreign-repository object ids written as non-commit ids, plus
   the citation convention that keeps them that way.
-- this section's own commit — `docs/reports/phase3j.md` only — this closing section (what tasks
-  090, 091 and 092 delivered, the final code sha the gates and the guard capture ran at, the
-  citation audit above and its `b29afb8` check), plus three sentences elsewhere in this same
-  document that task 092 made stale: the `## Gate results` paragraphs and the R110 row all said
-  the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` was still a later task's
-  scope, and they now name task 092's `a98cbb6` as that refresh.
+- `7ba4343c0fb9f86e80d92932142b020b90ff1949` — `docs/reports/phase3j.md` only — this closing
+  section (what tasks 090, 091 and 092 delivered, the final code sha the gates and the guard
+  capture ran at, the citation audit above and its `b29afb8` check), plus three sentences elsewhere
+  in this same document that task 092 made stale: the `## Gate results` paragraphs and the R110 row
+  all said the fourth (protected-path/branch-guard) gate's refresh at `4fbd452` was still a later
+  task's scope, and they now name task 092's `a98cbb6` as that refresh.
+- `f9334817f231dd3f9cba3fd3c5ecd0b4168a4cf8` — `docs/reports/phase3j-findings.md` only — the §9
+  present-tense final-code-sha sentence scoped to its own commit, as described just above.
+- this commit — `docs/reports/phase3j.md` only — this list and the note about that §9 fix, so the
+  audit's own record of what task 093 touched is complete.
