@@ -832,14 +832,15 @@ not raise a visible toast; the teardown timeout was a mutable `var`, not the req
 constant; R109's user-reachable hook copy was inaccurate and its coverage test missed the
 inaccuracy) by `d71c02f`/`a936b30`/`52e529b`, `1a4b9db`, and `2042cb8`/`31e6aff`/`b29afb8`
 respectively; findings 4 and 5 (record defects in this phase's own reports, and undemonstrated
-gate-polling/one-sweep discipline) by `2dca034`, `807fe0a` and `c32a0c7`. **No task in this
-plan rests `skipped`, and none rests `failed` at close**, though one did mid-run: task 011 ("Plumb
-`post_destroy` through the store's session write and read paths") exhausted its validation
-attempts on one residual gap — `ShellCreateInput` had no `PostDestroy` field, so a
-`CreateShell` row could never carry one,
-unlike a `CreateAgent` row — but the operator's own ruling `001-011` reopened it as a
-steer-originated pending task narrowed to exactly that gap, and it reached `validated` again
-once commit `9fb6aec` added the field and threaded it through. Separately, task 038
+gate-polling/one-sweep discipline) by `2dca034`, `807fe0a` and `c32a0c7`; approach 04's own
+findings-file record repairs — closing section 1's history and purging backticked run-state
+paths from `docs/reports/phase3j-findings.md` — landed in `4351a0e`, `82c498e`, `341798f` and
+`bf560cd`. Task 011 ("Plumb `post_destroy` through the store's session write and read paths")
+exhausted its validation attempts on one residual gap — `ShellCreateInput` had no
+`PostDestroy` field, so a `CreateShell` row could never carry one, unlike a `CreateAgent`
+row — but the operator's own ruling `001-011` reopened it as a steer-originated pending task
+narrowed to exactly that gap, and it reached `validated` again once commit `9fb6aec` added the
+field and threaded it through. Separately, task 038
 (`2e5fc6b`, `566cb6d`) closed a §6.1 SPEC-conformance finding (findings §3) alongside its own
 scope: routing `CreateShell`'s pane through the same `resolveLaunchEnv` + `buildPaneCommand`
 composition the agent paths use, so a shell launch carries the session context and runs a
