@@ -758,14 +758,14 @@ above) remain exactly as disclosed elsewhere in this document.
 
 Approaches 03 and 04 were each rejected on the same two review findings, and neither finding was
 a repository defect: the `Task 204` whole-suite obligation and the create/resume-context
-obligation. Both had already been adjudicated REFUTED before approach 03 ran (§11 above names
-them the same way), yet review re-presented both as open, blocking findings at every subsequent
-review pass. The cause was not in this tree: the run engine wrote a petition's CONFIRMED
-adjudication back into its own record but never wrote a REFUTED one back, so a REFUTED petition
-kept surfacing to review as though it were open, on every approach that ran after the REFUTED
-adjudication. The operator closed that gap directly, by operator steer 002, writing both REFUTED
-adjudications into the run's own untracked petitions record. That write touched no file this
-repository tracks, and it changed no `*.go` or `*.feature` file, so the final code sha
+obligation. Both had already been adjudicated REFUTED before approach 03 ran, under the same
+identification §11 above gives them, yet review re-presented both as open, blocking findings at
+every subsequent review pass. The cause was not in this tree: the run engine wrote a petition's
+CONFIRMED adjudication back into its own record but never wrote a REFUTED one back, so a REFUTED
+petition kept surfacing to review as though it were open, on every approach that ran after the
+REFUTED adjudication. The operator closed that gap directly, by operator steer 002, writing both
+REFUTED adjudications into the run's own untracked petitions record. That write touched no file
+tracked by this repository, and it changed no `*.go` or `*.feature` file, so the final code sha
 `4fbd452430501805a860dd229ddca1cd3f5c1cd6` did not move.
 
 Approach 05, and its independent-review re-run, were rejected on a single blocking finding, and
@@ -778,15 +778,15 @@ documents (commit `f01f2f95e5962ffeb1cd5cbbfd0d47f33b14150b`), which found and r
 stale present-tense sentence the marker grep turned up, or marked the enclosing section a dated
 superseded snapshot where a rewrite would have falsified history; and task 097's
 table-of-contents fix (commit `6acf6cafd48af03cb649f27dcaf70890fd56969f`), which corrected this
-file's own §8 entry to name the task ids its heading actually carries.
+file's own §8 entry to name the task ids its heading carries.
 
-This section makes no claim about either prohibited-petition obligation's merits — both are
-terminally REFUTED, as of the operator's own writeback, and neither is re-filed here — and it makes no claim about this run's own
-verdict; it states only why approaches 03 through 05 were rejected and which commits closed each
-cause.
+This paragraph made no claim about either prohibited-petition obligation's merits — each was
+terminally REFUTED, as of the operator's own writeback, and neither was re-filed here — nor did
+it claim anything about this run's own verdict; it recorded only why approaches 03 through 05
+were rejected and which commits closed each cause.
 
-**Verification.** The final code sha is unaffected by the operator's petitions-record write,
-since that record is not a file this repository tracks:
+**Verification.** The operator's petitions-record write did not affect the final code sha, since
+the petitions record is untracked by this repository:
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
