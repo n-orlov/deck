@@ -17,18 +17,21 @@ un-mutable by a source-scanning guard (R108); the hook rules are stated in user-
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
-b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7
+4fbd452430501805a860dd229ddca1cd3f5c1cd6
 ```
 
-This is task 046's fix commit (tightening `internal/tui/hook_help_coverage_test.go` to catch the
-inaccurate R109 hook copy the independent review's finding 3 identified), the last commit in
-this phase to touch a `*.go` or `*.feature` path. It supersedes task 030's earlier `a44ee32`:
-review findings 1-3's fix commits (tasks 041-047 — `1a4b9db`, `d71c02f`, `a936b30`, `52e529b`,
-`2042cb8`, `31e6aff`, `b29afb8`, `6a22181`) landed after `a44ee32`, advancing the final code sha.
-Everything after `b29afb8` — including this report and the three refreshed gate directories
+This is task 080's fix commit (`features: correct stale CreateShell pre_launch comment`,
+correcting a stale comment in `features/launch_hooks.feature`), the last commit in this phase
+to touch a `*.go` or `*.feature` path. It supersedes the earlier final code sha
+`b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7` (task 046's fix commit, current as of approach 04):
+task 080 landed after `b29afb8`, and even though its change is comment-only, the PRD's
+"Termination" rule (`git log -1 --format=%H -- '*.go' '*.feature'`) counts any commit touching
+a `*.feature` path, so the final code sha advances regardless. `b29afb8` is now historical —
+the sha the phase closed at through approach 04, superseded by this approach's task 080.
+Everything after `4fbd452` — including this report and the three re-run gate directories
 below — is a docs-only descendant; `git status --porcelain` was empty and
-`git rev-parse HEAD origin/main` agreed at `ae62146b1534c136dcb1a25d30ac906594b66746` as of
-task 061's own commit, the most recent verified boundary check before this one.
+`git rev-parse HEAD origin/main` agreed at `b430a012cf6ce89c93dfb5fc69fd096859447827` as of
+task 088's own commit, the most recent verified boundary check before this one.
 
 ## Per-requirement table
 
@@ -77,36 +80,42 @@ a fifth design section.
 
 ## Gate results
 
-**Whole-suite sweep (task 030, refreshed by task 058 at `b82e3de`)** — `ci/run.sh go test -p=1
+Three gates were re-run at the current final code sha `4fbd452430501805a860dd229ddca1cd3f5c1cd6`
+(task 080), superseding their earlier publication at `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`
+(itself historical — the sha the phase closed at through approach 04). The fourth,
+protected-path/branch-guard gate below is **not yet refreshed** at `4fbd452` — its own refresh is
+a later task's scope, not this one's — and its citation of `b29afb8` reflects that still-pending
+refresh, not a current claim.
+
+**Whole-suite sweep (task 030, refreshed by task 081 at `680237e`)** — `ci/run.sh go test -p=1
 -count=1 ./...` at the final code sha above. Published at
 `docs/reports/phase3j-030-fullsuite/sweep.log` (`docs/reports/phase3j-030-fullsuite/README.md`).
-Exit status quoted verbatim from that README:
+Exit status quoted verbatim from that log:
 
 ```
-$ cat docs/reports/phase3j-030-fullsuite/README.md | sed -n '/## Exit status/,/```/p'
-## Exit status
-
-```
+$ cat docs/reports/phase3j-030-fullsuite/sweep.log.exitstatus
 0
-```
 ```
 
 Every package result line is `ok` (14 packages) or `?` with `[no test files]` (`internal/notify`,
 `internal/search`, `internal/unit`); no `t.Skip`, no godog `@wip`/skipped marker anywhere in the
-captured log. This refresh supersedes the earlier refresh published at `a44ee32` (itself a
-supersession of `fbbda8f` per operator ruling `002-030`): review findings 1-3's fix commits
-(tasks 041–046) landed after `a44ee32`, advancing the final code sha to `b29afb8`, so task 058
-re-ran the sweep in place at the new sha; there is still no new numbered report directory.
+captured log. This refresh supersedes the earlier refresh published at `b29afb8` (task 058's
+refresh, current as of approach 04): task 080 landed after `b29afb8`, advancing the final code
+sha to `4fbd452`, so task 081 re-ran the sweep in place at the new sha; there is still no new
+numbered report directory.
 
-**Verbose companion tally (task 031, refreshed by task 059 at `0fba55b`)** — the `-v` companion,
+**Verbose companion tally (task 031, refreshed by task 082 at `e00d40f`)** — the `-v` companion,
 same tree, same final code sha. Published at
 `docs/reports/phase3j-031-fullsuite-verbose/verbose.log`
 (`docs/reports/phase3j-031-fullsuite-verbose/verbose.log.exitstatus`,
-`docs/reports/phase3j-031-fullsuite-verbose/README.md`). This refresh supersedes the earlier
-tally published at `a44ee32` (itself a supersession of `fbbda8f` per operator ruling `003-031`),
-polled with `sleep 60` and nothing longer throughout.
+`docs/reports/phase3j-031-fullsuite-verbose/README.md`). Exit status **0**; Gherkin tally as
+measured, unchanged from the superseded `b29afb8` tally: **330 scenarios (330 passed)**, **3824
+steps (3824 passed)** — the 1-undefined/1-failed pair alongside them is
+`TestGodogRejectsUndefinedAndFailedSteps`'s own passing negative self-test, not a suite failure.
+This refresh supersedes the earlier tally published at `b29afb8` (task 059's refresh, current as
+of approach 04), polled with `sleep 60` and nothing longer throughout.
 
-**Stability gate (task 032, refreshed by task 060 at `df4f768`)** — `ci/stability.sh 10` from a
+**Stability gate (task 032, refreshed by task 083 at `7617eef`)** — `ci/stability.sh 10` from a
 clean state, at the final code sha above. Published at
 `docs/reports/phase3j-032-stability10/summary.log`
 (`docs/reports/phase3j-032-stability10/README.md`). Final line quoted verbatim from that log:
@@ -116,20 +125,21 @@ $ tail -1 docs/reports/phase3j-032-stability10/summary.log
 10/10 passed
 ```
 
-The script's own captured exit status (recorded to a scratch path outside the tree at run
-time, per task 060's README) was `0`; every one of the ten runs is a `PASS`, and no failing
-run needs naming.
+Every one of the ten runs is a `PASS`, and no failing run needs naming. This same directory's
+first collection at this sha (`2de1700`) reported 9/10 — RUN 9 failed on an intermittent
+tmux/pty timing flake in
+`internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero` — and was rejected
+on polling procedure, not on the number; it is kept on the record in the README as evidence the
+test can flake intermittently at this sha, carried forward as an advisory, not as a claim the
+suite is flake-free.
 
-**Protected-path audit and branch guards (task 033, refreshed by task 061 at `ae62146`)** —
-re-verified at the final code sha above. Published at `docs/reports/phase3j-033-guards/`. The
-audit command (computed `BASE`, not pasted) printed nothing; `git status --porcelain` was empty
-and `git rev-parse HEAD origin/main` agreed, both quoted verbatim in
-`docs/reports/phase3j-033-guards/protected-path-audit.out`,
-`docs/reports/phase3j-033-guards/git-status-porcelain.out` and
-`docs/reports/phase3j-033-guards/rev-parse-head-origin-main.out`.
+**Protected-path audit and branch guards (task 033, last refreshed by task 061 at `ae62146`, at
+the now-superseded `b29afb8`)** — published at `docs/reports/phase3j-033-guards/`; that
+directory's own re-verification at the current final code sha `4fbd452` is a later task's scope.
 
-**Both gates are green at the true final code sha `b29afb8c4fd8a1cf193c7efef5c5f7e1456481f7`**:
-the whole-suite sweep exits 0 with every package `ok`/`[no test files]`, and the stability gate
-is 10/10. Neither gate is qualified by an unresolved carried-forward finding from this phase's
-own R104–R109 work; the carried-forward advisories predate this phase (see
-`docs/reports/phase3j-findings.md` §4).
+**All three re-run gates are green at the current final code sha
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6`**: the whole-suite sweep exits 0 with every package
+`ok`/`[no test files]`, the verbose companion tallies 330/330 scenarios and 3824/3824 steps
+passed, and the stability gate is 10/10. Neither gate is qualified by an unresolved
+carried-forward finding from this phase's own R104–R109 work; the carried-forward advisories
+predate this phase (see `docs/reports/phase3j-findings.md` §4).
