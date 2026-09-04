@@ -10,14 +10,20 @@ unfinished (§1), gaps a validation pass found that were then closed within the 
 than left open, the
 protected-path audit's disposition over this run's own commit range, this phase's check for a
 disagreement between the tree and `SPEC.md`, the schema-version pins in `features/` that task
-010's `SchemaVersion` bump left stale (one fixed in flight, two still failing), and a placeholder
-for both gates' dispositions (tasks 030/032, filled in by tasks 033 and 034 per the plan).
+010's `SchemaVersion` bump left stale: the two stale schema-version literals in `features/` were
+fixed by task 030's own commit `204af7dad3b4766ee82f80edf45f9f7f9c7d920b` (§6 has the full
+disposition), and all three gate dispositions — the whole-suite sweep, the verbose tally
+companion and the ten-run stability gate — are published, not pending: each was re-run at task
+080's final code sha `4fbd452430501805a860dd229ddca1cd3f5c1cd6` and its disposition is recorded
+in §8.
 
 Written by task 029 against the tree at commit `17cabb871d0c8c17dc742256632015ed1889db9b` (the
-last commit touching `*.go`/`*.feature` as of this writing; task 034's closeout report, and its
-own final-code-sha section, are the authority once they land — this section does not repeat that
-ancestry argument). Every sha cited resolves under `git cat-file -e` and every path cited is
-tracked under `git ls-files --error-unmatch`, both checked in
+last commit touching `*.go`/`*.feature` as of that writing) and kept current since by later tasks
+in this same run, most recently approach 05's task 080, whose own comment-accuracy commit
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6` is now the final code sha per
+`git log -1 --format=%H -- '*.go' '*.feature'` — this opening section is updated in place rather
+than repeating a stale ancestry argument. Every sha cited resolves under `git cat-file -e` and
+every path cited is tracked under `git ls-files --error-unmatch`, both checked in
 [§7](#7-how-to-re-check-every-citation-in-this-report).
 
 - [1. Task 011 ended `failed`, was reopened by operator ruling 001-011, and was closed by commit `9fb6aec`; tasks 013 and 026 were then delivered](#1-task-011-ended-failed-was-reopened-by-operator-ruling-001-011-and-was-closed-by-commit-9fb6aec-tasks-013-and-026-were-then-delivered)
