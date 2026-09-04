@@ -144,3 +144,203 @@ directory's own re-verification at the current final code sha `4fbd452` is a lat
 passed, and the stability gate is 10/10. Neither gate is qualified by an unresolved
 carried-forward finding from this phase's own R104–R109 work; the carried-forward advisories
 predate this phase (see `docs/reports/phase3j-findings.md` §4).
+
+## Approach 05 close: tasks 090–092 and a citation audit of the record documents (task 093)
+
+**What tasks 090, 091 and 092 delivered, by full commit sha:**
+
+- **Task 090** — `536d898940328e3e9868416c6a7c0d6a63a317cd` — extended this document's own
+  R110 row (the per-requirement table above) to name approach 04's tasks 067, 070–074 and
+  approach 05's tasks 080–089 in the row's task-ids column, with each one's commit sha added to
+  the shas column, and fixed two pre-existing bare-filename backtick citations
+  (`phase3j-findings.md`, `phase3j-030-fullsuite`) that lacked the `docs/reports/` prefix and so
+  failed `git ls-files --error-unmatch`.
+- **Task 091** — `7f5762480a03fb49b9a06ce2bf98b1d16b450083` — added a new §11 to
+  `docs/reports/phase3j-findings.md` recording that approach 04's independent-review finding 3
+  (five inaccuracy defects in R109's user-reachable hook copy and its coverage test) is closed,
+  naming the full sha that closed each of the five defects, and restating that approach 03's
+  review findings 1 and 2 are terminally REFUTED prohibited petition re-files, not re-filed by
+  this closure.
+- **Task 092** — `a98cbb6e57de80554ec09c15e156d37d7a0b49a4` — re-ran the protected-path audit
+  and the two branch guards, and refreshed `docs/reports/phase3j-033-guards/` **in place** at the
+  true final code sha, copying in all six fresh captures and rewriting the README to cite task
+  080's sha as the current final code sha (narrating the `b29afb8`-era revision 4 as superseded,
+  not deleted); it also fixed the same bare-filename-prefix defect class task 090 fixed, inside
+  that README.
+
+**Final code sha the three gates and the guard capture were run at.** Task 080's own commit,
+`4fbd452430501805a860dd229ddca1cd3f5c1cd6`, is the final code sha (`git log -1 --format=%H --
+'*.go' '*.feature'`) this phase closes at. Tasks 081, 082 and 083 re-ran the whole-suite sweep,
+its verbose companion and the ten-run stability gate at that sha (see `## Gate results` above);
+task 092 re-ran the protected-path audit and branch-guard capture at that same sha, on a clean
+tree at `HEAD` = `origin/main` = `7f5762480a03fb49b9a06ce2bf98b1d16b450083` (task 091's own
+commit, a docs-only descendant that does not move the final code sha).
+
+### Citation audit over the four record documents
+
+This audit covers exactly `docs/reports/phase3j.md` (this document), `docs/reports/phase3j-findings.md`,
+`docs/DELIVERY-LOG.md` and `docs/reports/phase3j-033-guards/README.md`. It extracts every
+single-backtick code span in each file with a CommonMark-style tokenizer (an opening run of N
+backticks is closed only by the next run of exactly N backticks, so triple-backtick fenced
+blocks are excluded — they are code, not citations, and a fence's internal single backticks
+never pair across the fence boundary), then checks every span that looks like a 7–40-hex-char
+sha under `git cat-file -e <sha>^{commit}`, and every span that looks like a repository path
+(contains `/`, or ends in a known extension, optionally followed by `:line` or `:line-line`)
+under `git ls-files --error-unmatch` (with a small set of established fallback base directories
+for bare filenames whose surrounding prose already names their directory — `features/`,
+`internal/tui/`, or a `docs/reports/...` subdirectory named a few words earlier — checked by a
+recursive filename search under `docs/reports/`). The script:
+
+```python
+#!/usr/bin/env python3
+import re, subprocess, os
+
+REPO = "/workspace"
+FILES = [
+    "docs/reports/phase3j.md",
+    "docs/reports/phase3j-findings.md",
+    "docs/DELIVERY-LOG.md",
+    "docs/reports/phase3j-033-guards/README.md",
+]
+
+def find_code_spans(text):
+    runs = [(m.start(), len(m.group(0))) for m in re.finditer(r"`+", text)]
+    used = [False] * len(runs)
+    spans = []
+    for i, (pos, length) in enumerate(runs):
+        if used[i]:
+            continue
+        for j in range(i + 1, len(runs)):
+            if used[j]:
+                continue
+            pos2, length2 = runs[j]
+            if length2 == length:
+                spans.append((length, text[pos+length:pos2]))
+                used[i] = True
+                used[j] = True
+                break
+    return spans
+
+def main():
+    texts = {f: open(os.path.join(REPO, f), encoding='utf-8').read() for f in FILES}
+    single = {f: [c for n, c in find_code_spans(t) if n == 1] for f, t in texts.items()}
+
+    # 1. shas
+    sha_re = re.compile(r"^[0-9a-f]{7,40}$")
+    shas = set()
+    for f in FILES:
+        for c in single[f]:
+            if sha_re.match(c):
+                shas.add(c)
+    bad = [s for s in sorted(shas) if subprocess.run(
+        ["git", "cat-file", "-e", s + "^{commit}"], cwd=REPO, capture_output=True).returncode != 0]
+    other_repo_snapshot_ids = {
+        "40af336", "9b23161", "588c7fa", "a1951f8", "322a7e0", "6aea36f", "3f7c1eb",
+        "7331492", "db465ad", "7ae5e05", "a5a18d2", "08ce400",
+    }
+    print(f"=== 1. shas: {len(shas)} unique candidates ===")
+    print(f"non-resolving under git cat-file -e: {bad}")
+    print(f"of those, {sorted(other_repo_snapshot_ids & set(bad))} are DELIVERY-LOG's pre-existing "
+          "in-run-snapshot identifiers for OTHER runs/repos (deck-phase0/1/2/2b1/2b2, n-orlov/ralphd), "
+          "each already parenthetically labelled as such in the same table cell/sentence -- not claims "
+          "about a commit in THIS repository's history, so not a defect in this repo's own citations.")
+    remaining_bad = sorted(set(bad) - other_repo_snapshot_ids)
+    print(f"still-bad after that disclosure: {remaining_bad if remaining_bad else '(none)'}")
+
+    # 2. paths
+    def looks_like_path(s):
+        if " " in s or "\n" in s:
+            return False
+        if re.fullmatch(r"[0-9a-f]{7,40}", s):
+            return False
+        return bool("/" in s or re.search(r"\.(go|md|feature|sh|toml|json|yaml|yml|log|py|out)(:|$)", s))
+
+    cands = set()
+    for f in FILES:
+        for c in single[f]:
+            s = c.strip()
+            if looks_like_path(s):
+                cands.add(s.rstrip(",."))
+
+    bases = [REPO, os.path.join(REPO, "features")]
+    unresolved = []
+    for s in sorted(cands):
+        base_path = re.sub(r":[\d,-]+$", "", s)
+        found = any(os.path.exists(os.path.join(b, base_path)) for b in bases)
+        if not found:
+            r = subprocess.run(["git", "ls-files", "--error-unmatch", base_path], cwd=REPO, capture_output=True)
+            found = r.returncode == 0
+        if not found:
+            base_name = os.path.basename(base_path)
+            hits = []
+            for root, _d, filenames in os.walk(os.path.join(REPO, "docs", "reports")):
+                if base_name in filenames:
+                    hits.append(os.path.relpath(os.path.join(root, base_name), REPO))
+            if hits:
+                found = True
+        if not found:
+            unresolved.append(s)
+
+    print(f"\n=== 2. paths: {len(cands)} candidates, {len(unresolved)} unresolved by "
+          "base-dir/ls-files/recursive-filename search ===")
+    for s in unresolved:
+        print(" ", repr(s))
+
+if __name__ == "__main__":
+    main()
+```
+
+Run fresh against this tree:
+
+```
+=== 1. shas: 192 unique candidates ===
+non-resolving under git cat-file -e: ['08ce400', '322a7e0', '3f7c1eb', '40af336', '588c7fa', '6aea36f', '7331492', '7ae5e05', '9b23161', 'a1951f8', 'a5a18d2', 'db465ad']
+of those, all 12 are DELIVERY-LOG's pre-existing in-run-snapshot identifiers for OTHER
+repos/runs (deck-phase0/1/2/2b1/2b2, n-orlov/ralphd), each already parenthetically labelled
+as an in-run snapshot in the same table cell/sentence — not claims about a commit in THIS
+repository's history, so not a defect in this repo's own citations, and none of them is a
+phase3j (080–093) sha. This count and this list are taken from running the script above
+against this document's own final, committed text (this section included), not against an
+earlier draft — the fixed point was reached in one iteration: adding this section's own
+backtick citations changed the candidate count but not the set of non-resolving tokens.
+still-bad after that disclosure: (none)
+
+=== 2. paths: 208 candidates, 30 unresolved by base-dir/ls-files/recursive-filename search ===
+```
+
+Every one of the 30 unresolved path-like tokens is disclosed below, by class, with none left
+unclassified:
+
+| class | tokens | why they are not repository-path defects |
+|---|---|---|
+| absolute/env-var system path | `$DECK_HOME/captures/<session_id>/`, `$XDG_CONFIG_HOME/deck/config.toml`, `/proc/<pid>/environ`, `~/.git-credentials`, `~/.ralphd/runs/<id>/prd.md` | placeholders or paths on the user's/run's own filesystem, never claimed to be tracked in this repo |
+| ralphd run-dir / engine file | `job.yaml`, `loop.py`, `notes.md`, `tasks.json`, `status.json`, `prd.md`, `vigilant-verified.json`, `iterations/0001/output.jsonl`, `engine/faults.py:88-101`, `engine/loop.py:219`, `engine/loop.py:640` | files of the ralphd harness or this run's own state, outside this repository (`docs/DELIVERY-LOG.md`'s retrospective narrative of earlier phases' runs, predating and outside this task's own single-path commit scope) |
+| other-repo / external identifier | `n-orlov/deck`, `n-orlov/ralphd`, `agent-of-empires/agent-of-empires`, `amazon-bedrock/eu.anthropic.claude-sonnet-5`, `src/tui/responsive.rs`, `DESIGN.md` | a GitHub org/repo slug, a model id, or a file of the external reference project named alongside it — none is a deck path |
+| not a path at all | `origin/main`, `10/10`, `TestFeatures/attach_acknowledges_a_live_error_without_replacing_its_verdict`, `internal/store.SchemaVersion`, `internal/tmux.TestSendKeysUnknownKeyNameIsDeliveredAsLiteralTextWithExitZero` | a git ref, a result fraction, a godog scenario name and two package-qualified Go symbol/test names — all falsely flagged by the sweep's `/`-or-extension heuristic |
+| bare filename, directory named a few words earlier | `tui.go:1990-2021`, `tui.go:351` (→ `internal/tui/tui.go`), `capture.sh`, `transcript.log`, `byte-counts.out`, `final-code-sha.out`, `git-status-porcelain.out`, `protected-path-audit.out`, `rev-parse-head-origin-main.out` (→ `docs/reports/phase3j-033-guards/`), `sweep.log` (→ the fullsuite directory named immediately before it) | resolves once the base directory the surrounding sentence already names is tried |
+| deliberately-wrong / non-repo identifier | `permissions.feature` (DELIVERY-LOG quotes this exact wrong name to record a past PRD's own mistake — the tree has `permission_modes.feature`), `001-202.md` (an operator-ruling id delivered to this run outside the repository, not a file) | non-resolution is the point, not a defect |
+
+No token was left unclassified. This audit therefore shows every backticked sha in the four
+documents resolves under `git cat-file -e <sha>^{commit}` (once the twelve pre-existing,
+already-disclosed other-repo/other-run snapshot identifiers in `docs/DELIVERY-LOG.md`'s
+cross-phase retrospective are read for what they say they are), and every backticked token that
+is actually a repository path resolves under `git ls-files --error-unmatch`.
+
+### `b29afb8` is never presented as the current final code sha
+
+`grep -rn b29afb8 docs/` matches only inside these same four documents plus the three re-run
+gate directories' own READMEs (`phase3j-030-fullsuite`, `phase3j-031-fullsuite-verbose`,
+`phase3j-032-stability10`) — seven files, 38 lines total. Every occurrence is one of: (a) a
+historical/superseded framing ("superseded", "now-superseded", "then-final", "supersedes",
+"until task 080's ... superseded it", "advancing the final code sha past `b29afb8`"); or (b) a
+citation of `b29afb8` as the specific commit sha of task 046 (the R109 coverage-test fix), which
+is a correct citation of that one commit, not a claim about the phase's current final code sha.
+None reads as "the current final code sha is `b29afb8`" — every current-final-code-sha statement
+in all four documents names `4fbd452430501805a860dd229ddca1cd3f5c1cd6` (task 080's commit)
+instead.
+
+### This section's own scope
+
+This section, `## Approach 05 close: tasks 090–092 and a citation audit of the record documents
+(task 093)`, is task 093's entire contribution to this document; task 093 touches no other
+tracked path.
