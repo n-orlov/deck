@@ -881,6 +881,19 @@ not on `x`; `post_destroy` plus an undo brings the row back stopped; the safe se
 `export K=V` on stdout, diagnostics to stderr, never echo), each asserted present somewhere a
 user can reach rather than on one nominated surface.
 
+A final closeout tail added no code and re-ran no gate: it was docs-only from its first commit
+to its last, leaving the final code sha `4fbd452430501805a860dd229ddca1cd3f5c1cd6` unmoved. Task
+103 (`f01f2f95e5962ffeb1cd5cbbfd0d47f33b14150b`) cured stale present-tense claims across the
+three record documents with a systematic marker audit; task 097
+(`6acf6cafd48af03cb649f27dcaf70890fd56969f`) cured a findings-file table-of-contents entry that
+misnamed the tasks behind its §8 heading; task 098 (`71f6f2f9fc994fc8fcb810cadd7d43e34d52f4ac`)
+cured the missing record of why approaches 03–05 were rejected, tracing that rejection to the
+review engine's own petition re-file gap, which the operator closed outside the tracked tree;
+task 141 (`f0bedf6a3141efa6c8f5dd4244878031da18d6af`) cured nine present-tense clauses left inside
+findings §12 by task 098's own commit; and task 142 (`48a172a45853a607a91ebbf7db00b9b922ec4a64`)
+cured phase3j.md's R110 row and added its closing subsection, naming the four commits above and
+describing, in the past tense, what each one cured.
+
 ## Other milestones
 
 | Date | What |
