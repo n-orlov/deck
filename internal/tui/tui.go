@@ -1118,6 +1118,16 @@ type sessionsBulkResumed struct {
 type sessionsBulkDeleted struct {
 	sessions []store.Session
 	errs     []error
+	// hookMessages is index-aligned with sessions, exactly as errs is: entry
+	// i is the teardown-hook message service.Delete reported for
+	// sessions[i], or "" when that row's hooks all succeeded (or no
+	// reporter was wired). A bulk dd runs each row's own post_destroy plus
+	// the global one just as a single dd does (SPEC §9.2), so discarding
+	// these was the one place a hook failure ran but was never surfaced
+	// (task 048: durable `note` events were still written; only the toast
+	// was lost). The sessionsBulkDeleted branch joins the non-empty ones,
+	// name-prefixed, into the same teardownHookNote a single dd raises.
+	hookMessages []string
 }
 
 // batchDeleteGraceExpired mirrors deleteGraceExpired exactly, but for the
@@ -2257,7 +2267,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionsBulkDeleted:
 		var succeeded []string
 		var firstErr error
+		// task 048: the hook messages are collected for EVERY row, whether
+		// that row's delete errored or not -- runPostDestroy is fail-open
+		// and its message is about the hook, not about the delete, so a row
+		// that failed to delete can still have a hook worth reporting.
+		var hookNotes []string
 		for i, s := range msg.sessions {
+			if i < len(msg.hookMessages) && msg.hookMessages[i] != "" {
+				// Name-prefixed here and bare in the single-row branch: a
+				// bulk dd's note can carry several rows, so which row a
+				// failure belongs to is only recoverable from the prefix.
+				label := s.Name
+				if label == "" {
+					label = s.ID
+				}
+				hookNotes = append(hookNotes, label+": "+msg.hookMessages[i])
+			}
 			if msg.errs[i] != nil {
 				if firstErr == nil {
 					firstErr = msg.errs[i]
@@ -2273,13 +2298,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.attachError = ""
 		}
+		cmds := []tea.Cmd{m.loadSessions}
+		if len(hookNotes) > 0 {
+			// Same DECK_UNDO_MS window and same generation counter as the
+			// single-row A/dd toasts above (never DeleteGrace, which reaps
+			// the tombstones rather than clearing this note).
+			m.teardownHookNote = strings.Join(hookNotes, "; ")
+			m.teardownHookNoteGeneration++
+			teardownGeneration := m.teardownHookNoteGeneration
+			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		}
 		if len(succeeded) == 0 {
-			return m, m.loadSessions
+			return m, tea.Batch(cmds...)
 		}
 		m.batchDeleteUndoSessionIDs = succeeded
 		m.batchDeleteUndoGeneration++
 		generation := m.batchDeleteUndoGeneration
-		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
+		cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
+		return m, tea.Batch(cmds...)
 	case batchDeleteGraceExpired:
 		if int(msg) != m.batchDeleteUndoGeneration || len(m.batchDeleteUndoSessionIDs) == 0 {
 			return m, nil
@@ -5458,12 +5494,26 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return nil
 			}
 			deleteSvc := m.deleteSvc
+			// Prefer the message-carrying reporter exactly as the
+			// single-row delete submit does, so a bulk dd's teardown
+			// hook failures reach the toast instead of being dropped
+			// on the floor (task 048). deleteSvc stays the fallback
+			// for every constructor that wires only the plain shape.
+			deleteHookReporter := m.deleteHookReporter
 			m.marked = nil
 			return func() tea.Msg {
 				result := sessionsBulkDeleted{}
 				for _, s := range sessions {
+					var err error
+					var hookMessage string
+					if deleteHookReporter != nil {
+						hookMessage, err = deleteHookReporter(context.Background(), s)
+					} else {
+						err = deleteSvc(context.Background(), s)
+					}
 					result.sessions = append(result.sessions, s)
-					result.errs = append(result.errs, deleteSvc(context.Background(), s))
+					result.errs = append(result.errs, err)
+					result.hookMessages = append(result.hookMessages, hookMessage)
 				}
 				return result
 			}
