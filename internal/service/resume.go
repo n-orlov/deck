@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/store"
@@ -345,35 +343,4 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	}
 	session.StatusSource = "tmux"
 	return session, ResumeStarted, nil
-}
-
-// lookPathIn reports whether file (an adapter launch argv[0], e.g. "claude")
-// is executable under pathEnv (a colon-separated PATH value, not the current
-// process's own environment), mirroring exec.LookPath's search rules but
-// against an arbitrary PATH string rather than os.Getenv("PATH"). A file
-// containing a path separator is checked directly instead of searched.
-func lookPathIn(file, pathEnv string) error {
-	if file == "" {
-		return errors.New("empty command")
-	}
-	if strings.ContainsRune(file, os.PathSeparator) || strings.Contains(file, "/") {
-		info, err := os.Stat(file)
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return fmt.Errorf("%s is a directory", file)
-		}
-		return nil
-	}
-	for _, dir := range filepath.SplitList(pathEnv) {
-		if dir == "" {
-			dir = "."
-		}
-		candidate := filepath.Join(dir, file)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return nil
-		}
-	}
-	return fmt.Errorf("%s: executable file not found in $PATH", file)
 }
