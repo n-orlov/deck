@@ -78,37 +78,63 @@ included — nothing stripped, nothing truncated).
 
 ## Gherkin tally — quoted verbatim from verbose.log
 
+`verbose.log` lines 5819–5820 are the tally this report publishes. They are quoted below
+**byte for byte, including the raw ANSI ESC (0x1b) bytes godog wrote** — this block is the
+unmodified output of `sed -n '5819,5820p' verbose.log`, so a viewer that interprets escapes
+will render `335 passed` / `3888 passed` in green, and a byte comparison against the log
+succeeds:
+
 ```
-$ grep -a -n -E '^[0-9]+ scenarios \(|^[0-9]+ steps \(' verbose.log
-5819:335 scenarios ([32m335 passed[0m)
-5820:3888 steps ([32m3888 passed[0m)
-6163:1 scenarios ([33m1 undefined[0m)
-6164:1 steps ([33m1 undefined[0m)
-6188:1 scenarios ([31m1 failed[0m)
-6189:1 steps ([31m1 failed[0m)
+335 scenarios ([32m335 passed[0m)
+3888 steps ([32m3888 passed[0m)
+```
+
+Proof that the two lines above are byte-identical to the log's own (each `grep -aF` searches
+`README.md` for the exact bytes of the corresponding log line, ESC bytes included):
+
+```
+$ grep -c -aF "$(sed -n 5819p verbose.log)" README.md
+1
+$ grep -c -aF "$(sed -n 5820p verbose.log)" README.md
+1
+```
+
+The same two lines with every byte made visible (`cat -v` renders ESC as `^[`), so the escape
+bytes are legible in a plain reader as well — a rendering of the bytes above, not a second
+quotation:
+
+```
+$ sed -n '5819,5820p' verbose.log | cat -v
+335 scenarios (^[[32m335 passed^[[0m)
+3888 steps (^[[32m3888 passed^[[0m)
 ```
 
 **Which lines are the suite's own tally, and which are the documented passing negative
-self-test:** the first pair (lines 5819–5820, "335 scenarios (335 passed)" / "3888 steps (3888
-passed)") is the suite's own feature run (`TestFeatures`) and is the tally this report
-publishes. The remaining four lines (6163–6164, 6188–6189 — the "1 undefined" and "1 failed"
-pairs) belong to `TestGodogRejectsUndefinedAndFailedSteps`, a self-test of the godog runner that
-deliberately feeds it one undefined step and one failing step to prove both are rejected; each
-subtest prints its own one-scenario tally as fixture output, and the outer test itself passes:
+self-test** — all six tally-shaped lines in the log, ESC bytes stripped here purely so the line
+numbers are readable (this listing is an index, the verbatim quotation is the block above):
+
+```
+$ grep -a -n -E '^[0-9]+ scenarios \(|^[0-9]+ steps \(' verbose.log | sed $'s/\x1b\\[[0-9;]*m//g'
+5819:335 scenarios (335 passed)
+5820:3888 steps (3888 passed)
+6163:1 scenarios (1 undefined)
+6164:1 steps (1 undefined)
+6188:1 scenarios (1 failed)
+6189:1 steps (1 failed)
+```
+
+The first pair (lines 5819–5820) is the suite's own feature run (`TestFeatures`) and is the tally
+this report publishes. The remaining four lines (6163–6164, 6188–6189 — the "1 undefined" and
+"1 failed" pairs) belong to `TestGodogRejectsUndefinedAndFailedSteps`, a self-test of the godog
+runner that deliberately feeds it one undefined step and one failing step to prove both are
+rejected; each subtest prints its own one-scenario tally as fixture output, and the outer test
+itself passes:
 
 ```
 $ sed -n '6191,6193p' verbose.log
 --- PASS: TestGodogRejectsUndefinedAndFailedSteps (0.00s)
     --- PASS: TestGodogRejectsUndefinedAndFailedSteps/undefined (0.00s)
     --- PASS: TestGodogRejectsUndefinedAndFailedSteps/failed (0.00s)
-```
-
-With the ANSI escapes stripped for readability — this block is a transcription, not the verbatim
-quote above:
-
-```
-335 scenarios (335 passed)
-3888 steps (3888 passed)
 ```
 
 Publishing the numbers exactly as measured: **335 scenarios (335 passed)**, **3888 steps (3888
