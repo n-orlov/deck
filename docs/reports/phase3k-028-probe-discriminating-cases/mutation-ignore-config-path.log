@@ -7,6 +7,8 @@
 === RUN   TestAvailDirectoryNamedPiDoesNotCount
 --- PASS: TestAvailDirectoryNamedPiDoesNotCount (0.00s)
 === RUN   TestAvailConfigEnvPathWinsOverProcessPath
---- PASS: TestAvailConfigEnvPathWinsOverProcessPath (0.00s)
-PASS
-ok  	github.com/n-orlov/deck/internal/service	0.004s
+    availability_test.go:88: AvailableKinds() with pi only on config PATH "/tmp/TestAvailConfigEnvPathWinsOverProcessPath168653884/001" (process PATH "/tmp/TestAvailConfigEnvPathWinsOverProcessPath168653884/003" has none) = [], want [pi]
+--- FAIL: TestAvailConfigEnvPathWinsOverProcessPath (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.003s
+FAIL
