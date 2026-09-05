@@ -46,9 +46,14 @@ func TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue(t *testing.T
 	db := openStoreForLastCreateAgent(t)
 	ctx := context.Background()
 
-	// Missing: no create has ever succeeded.
+	// Missing: no create has ever succeeded. The available set is
+	// injected explicitly (task 015) rather than left to
+	// computeAvailableAgentKinds' implicit no-prober fallback, so this
+	// test's assumption about what is "available" does not quietly
+	// depend on the host or on that fallback ever staying registry-wide.
 	fresh := New(db, config.Settings{}, "")
 	kinds := fresh.registry().Kinds()
+	fresh = fresh.WithAvailableAgentKindsProber(func() []string { return kinds })
 	agent, lastUsed := fresh.pickCreateAgent()
 	if lastUsed {
 		t.Fatalf("pickCreateAgent reported lastUsed=true with nothing persisted")
@@ -63,6 +68,7 @@ func TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue(t *testing.T
 		t.Fatal(err)
 	}
 	stale := New(db, config.Settings{}, "")
+	stale = stale.WithAvailableAgentKindsProber(func() []string { return kinds })
 	agent, lastUsed = stale.pickCreateAgent()
 	if lastUsed {
 		t.Fatalf("pickCreateAgent reported lastUsed=true for an unregistered persisted value")
@@ -76,6 +82,7 @@ func TestPickCreateAgentDegradesToDefaultOnMissingUnregisteredValue(t *testing.T
 		t.Fatal(err)
 	}
 	valid := New(db, config.Settings{}, "")
+	valid = valid.WithAvailableAgentKindsProber(func() []string { return kinds })
 	agent, lastUsed = valid.pickCreateAgent()
 	if !lastUsed {
 		t.Fatalf("pickCreateAgent reported lastUsed=false for a still-registered persisted value")
@@ -103,6 +110,10 @@ func TestCreateModalOpensOnLastCreateAgentLabelled(t *testing.T) {
 	if m.lastCreateAgent != "claude" {
 		t.Fatalf("New() did not read the persisted last-create-agent: got %q", m.lastCreateAgent)
 	}
+	// Injected explicitly (task 015) rather than relying on the implicit
+	// no-prober fallback, since this test asserts claude -- a non-shell
+	// kind -- is honoured as the remembered agent.
+	m = m.WithAvailableAgentKindsProber(func() []string { return []string{"shell", "claude", "pi"} })
 
 	updated, _ := m.Update(key("n"))
 	m = updated.(Model)
@@ -161,6 +172,10 @@ func TestCyclingAgentFieldClearsLastUsedLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := New(db, config.Settings{}, "")
+	// Injected explicitly (task 015): this setup asserts claude -- a
+	// non-shell kind -- is honoured as the remembered agent before the
+	// cycle under test.
+	m = m.WithAvailableAgentKindsProber(func() []string { return []string{"shell", "claude", "pi"} })
 	updated, _ := m.Update(key("n"))
 	m = updated.(Model)
 	if !m.createAgentLastUsed {
@@ -194,6 +209,10 @@ func TestCycledThenAbandonedCreateModalDoesNotPersistLastCreateAgent(t *testing.
 	}
 
 	m := New(db, config.Settings{}, "")
+	// Injected explicitly (task 015): cycling needs more than one
+	// available kind to cycle through, so the set is stated rather than
+	// left to the implicit fallback.
+	m = m.WithAvailableAgentKindsProber(func() []string { return []string{"shell", "claude", "pi"} })
 	updated, _ := m.Update(key("n"))
 	m = updated.(Model)
 	m.createField = 2
@@ -226,6 +245,10 @@ func TestSuccessfulCreatePersistsLastCreateAgent(t *testing.T) {
 	ctx := context.Background()
 
 	m := New(db, config.Settings{}, "")
+	// Injected explicitly (task 015): pi -- a non-shell kind -- must be
+	// listed for the final "n" open below to honour it as the just-
+	// persisted last-used agent.
+	m = m.WithAvailableAgentKindsProber(func() []string { return []string{"shell", "claude", "pi"} })
 	updated, cmd := m.Update(shellCreated{session: store.Session{ID: "sess-1", Agent: "pi"}})
 	m = updated.(Model)
 	if cmd == nil {

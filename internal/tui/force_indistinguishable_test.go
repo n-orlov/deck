@@ -30,14 +30,16 @@ import (
 // reported, for the fit the real entry performed, not for a rehearsal.
 func newTmuxWireLogger(t *testing.T) (binary, logPath string) {
 	t.Helper()
-	realTmux, err := exec.LookPath("tmux")
-	if err != nil {
-		t.Fatalf("locate the real tmux binary: %v", err)
-	}
 	dir := t.TempDir()
 	logPath = filepath.Join(dir, "wire.log")
 	binary = filepath.Join(dir, "tmux")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + logPath + "\nexec " + realTmux + " \"$@\"\n"
+	// The shim execs the unqualified "tmux" name and lets the shell
+	// resolve it against the process's own inherited PATH at run time --
+	// no explicit lookup here (task 015: this test does not itself
+	// assume where the host's real tmux lives, the same ambient PATH
+	// every other tmux.Client{Binary: ""} test in this package already
+	// leans on).
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + logPath + "\nexec tmux \"$@\"\n"
 	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
 		t.Fatalf("write tmux wire-logging shim: %v", err)
 	}
