@@ -30,6 +30,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
   Scenario: pi maps only its declared permission profiles to argv
     Given the deck config allows yolo
     And a fake "claude" binary is on PATH for future deck clients
+    And a fake "pi" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates pi session "psafe" with permission profile "safe"
     And deck client "A" creates pi session "pedits" with permission profile "edits"
@@ -41,6 +42,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
 
   Scenario: an unsupported profile degrades visibly rather than lying
     Given a fake "claude" binary is on PATH for future deck clients
+    And a fake "pi" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates pi session "drift" with permission profile "safe"
     And the state database session "drift" is marked degraded from requesting permission profile "plan" on agent "pi"
