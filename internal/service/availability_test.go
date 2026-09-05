@@ -60,35 +60,48 @@ func TestAvailDirectoryNamedPiDoesNotCount(t *testing.T) {
 // PATH (Service.ConfigEnv) participates in the probe AvailableKinds runs
 // and takes priority over the process's own PATH (SPEC §6.3,
 // resolveLaunchEnv): pi installed only on the config PATH is available,
-// and pi installed only on the process PATH (with a different config PATH
-// set) is not, because resolveLaunchEnv's config layer wins.
+// and pi installed only on the process PATH is NOT available once config
+// [env] sets a PATH that does not contain it, because resolveLaunchEnv's
+// config layer replaces captured_path's PATH outright.
 func TestAvailConfigEnvPathWinsOverProcessPath(t *testing.T) {
-	configDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "pi"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	// configDirWithPi holds the only pi executable for the positive half;
+	// processDirWithPi holds the only one for the negative half;
+	// configDirWithoutPi never holds one at all.
+	configDirWithPi := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDirWithPi, "pi"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write fake pi executable on config PATH: %v", err)
 	}
-	processDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(processDir, "pi"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	processDirWithPi := t.TempDir()
+	if err := os.WriteFile(filepath.Join(processDirWithPi, "pi"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write fake pi executable on process PATH: %v", err)
 	}
+	configDirWithoutPi := t.TempDir() // empty: no pi is ever written here
 
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewPi())
 
-	t.Setenv("PATH", "")
-	availableViaConfig := Service{Agents: registry, ConfigEnv: map[string]string{"PATH": configDir}}.AvailableKinds()
+	// (a) pi installed ONLY on the config [env] PATH -- the process PATH
+	// holds no pi -- is available: the config PATH participates in the probe.
+	t.Setenv("PATH", configDirWithoutPi)
+	availableViaConfig := Service{Agents: registry, ConfigEnv: map[string]string{"PATH": configDirWithPi}}.AvailableKinds()
 	if len(availableViaConfig) != 1 || availableViaConfig[0] != "pi" {
-		t.Fatalf("AvailableKinds() with pi only on config PATH = %v, want [pi]", availableViaConfig)
+		t.Fatalf("AvailableKinds() with pi only on config PATH %q (process PATH %q has none) = %v, want [pi]", configDirWithPi, configDirWithoutPi, availableViaConfig)
 	}
 
-	t.Setenv("PATH", processDir)
+	// (b) Sanity: with no config [env] PATH at all, the process PATH is what
+	// the probe sees, so this same process-PATH-only pi IS available. Without
+	// this, (c) could pass for the wrong reason (an unfindable fake pi).
+	t.Setenv("PATH", processDirWithPi)
 	unconfiguredProcessOnly := Service{Agents: registry}.AvailableKinds()
 	if len(unconfiguredProcessOnly) != 1 || unconfiguredProcessOnly[0] != "pi" {
-		t.Fatalf("AvailableKinds() with pi on process PATH and no config PATH = %v, want [pi] (sanity check)", unconfiguredProcessOnly)
+		t.Fatalf("AvailableKinds() with pi on process PATH %q and no config PATH = %v, want [pi] (sanity check)", processDirWithPi, unconfiguredProcessOnly)
 	}
 
-	availableWithConfigOverride := Service{Agents: registry, ConfigEnv: map[string]string{"PATH": configDir}}.AvailableKinds()
-	if len(availableWithConfigOverride) != 1 || availableWithConfigOverride[0] != "pi" {
-		t.Fatalf("AvailableKinds() with process PATH=%q and config PATH=%q = %v, want [pi] (config PATH wins, process-only pi must not leak availability)", processDir, configDir, availableWithConfigOverride)
+	// (c) The discriminating case: the same process PATH still holds the only
+	// pi, but config [env] sets a PATH without one. Config wins, so pi
+	// installed only on the process PATH must NOT be reported available.
+	processOnlyUnderConfigOverride := Service{Agents: registry, ConfigEnv: map[string]string{"PATH": configDirWithoutPi}}.AvailableKinds()
+	if len(processOnlyUnderConfigOverride) != 0 {
+		t.Fatalf("AvailableKinds() with pi only on process PATH %q and config PATH=%q (no pi there) = %v, want [] (config PATH wins; a process-only pi must not leak availability)", processDirWithPi, configDirWithoutPi, processOnlyUnderConfigOverride)
 	}
 }

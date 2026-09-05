@@ -9,4 +9,4 @@
 === RUN   TestAvailConfigEnvPathWinsOverProcessPath
 --- PASS: TestAvailConfigEnvPathWinsOverProcessPath (0.00s)
 PASS
-ok  	github.com/n-orlov/deck/internal/service	0.002s
+ok  	github.com/n-orlov/deck/internal/service	0.004s
