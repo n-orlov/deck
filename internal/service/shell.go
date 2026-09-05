@@ -113,6 +113,51 @@ func (s Service) promoteRecentCwd(ctx context.Context, cwd string) {
 	_ = s.Store.PromoteRecentCwd(ctx, abs, s.RecentCwdLimit)
 }
 
+// resolveUserShell returns the absolute path of the shell a pane with no
+// declared executable runs: Service.Shell when an embedded caller set one,
+// else $SHELL, else /bin/sh.
+//
+// This is the ONE definition of that resolution (R111's no-two-copies rule).
+// The `shell` adapter declares no executable (SPEC §5) and so produces no
+// argv[0] of its own, which means every launcher -- CreateShell here,
+// CreateAgent, and Resume -- asks this function instead, and a shell pane
+// created can never disagree with the same shell pane resumed about which
+// shell binary it is.
+func (s Service) resolveUserShell() (string, error) {
+	shell := s.Shell
+	if shell == "" {
+		shell = os.Getenv("SHELL")
+	}
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	if !filepath.IsAbs(shell) {
+		return "", fmt.Errorf("user shell %q must be an absolute path", shell)
+	}
+	return shell, nil
+}
+
+// paneArgv returns the argv a pane must exec for an adapter whose Launch or
+// Resume produced argv: unchanged for an adapter that declares its own
+// executable ("claude", "pi"), and with the empty leading executable slot
+// filled by the resolved user shell for one that declares none (`shell`,
+// SPEC §5). Every launch path goes through this, so "who supplies the shell
+// binary" has exactly one answer for create and resume alike, and no copy of
+// that resolution can drift from the adapter's declaration (R111).
+func (s Service) paneArgv(caps agent.Caps, argv []string) ([]string, error) {
+	if caps.Executable != "" {
+		return argv, nil
+	}
+	shell, err := s.resolveUserShell()
+	if err != nil {
+		return nil, err
+	}
+	if len(argv) == 0 {
+		return []string{shell}, nil
+	}
+	return append([]string{shell}, argv[1:]...), nil
+}
+
 // CreateShell creates the durable row before starting its one-pane private
 // tmux session. A failed tmux launch is represented as an error row plus a
 // transition event, rather than leaving a misleading "starting" row behind.
@@ -127,15 +172,9 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	if err != nil {
 		return store.Session{}, fmt.Errorf("generate shell session id: %w", err)
 	}
-	shell := s.Shell
-	if shell == "" {
-		shell = os.Getenv("SHELL")
-	}
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	if !filepath.IsAbs(shell) {
-		return store.Session{}, fmt.Errorf("user shell %q must be an absolute path", shell)
+	shell, err := s.resolveUserShell()
+	if err != nil {
+		return store.Session{}, err
 	}
 	capturedPath := os.Getenv("PATH")
 	if capturedPath == "" {

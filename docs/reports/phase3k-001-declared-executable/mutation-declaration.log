@@ -1,0 +1,8 @@
+--- FAIL: TestDeclaredExecutableEqualsLaunchArgv0 (0.00s)
+    --- FAIL: TestDeclaredExecutableEqualsLaunchArgv0/shell (0.00s)
+        agent_test.go:129: Capabilities().Executable = "sh", want ""
+--- FAIL: TestRegisteredAdaptersDeclareTheirLaunchExecutable (0.00s)
+    agent_test.go:174: shell: Launch() argv = [""], want argv[0] to be the declared executable "sh"
+FAIL
+FAIL	github.com/n-orlov/deck/internal/agent	0.003s
+FAIL

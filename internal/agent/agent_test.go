@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"os"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -99,86 +97,81 @@ func (f fakeAdapter) Instrument(LaunchInput) ([]string, map[string]string) { ret
 func (f fakeAdapter) Probe(string) (string, string)                        { return "", "" }
 func (f fakeAdapter) TranscriptPaths(TranscriptInput) (string, bool)       { return "", false }
 
-// pathLookupName is the executable name that PATH resolution would have to
-// find for an argv[0] to exec, i.e. exactly what R111's declared Executable
-// names for a probe. An argv[0] that contains a path separator (shell's
-// resolved $SHELL, "/bin/sh") is used verbatim by exec and is never looked
-// up on PATH, so its lookup name is the empty string -- which is precisely
-// why R111 has shell declare the empty executable ("nothing to probe"). A
-// bare name ("claude", "pi") is its own lookup name.
-func pathLookupName(argv0 string) string {
-	if strings.ContainsAny(argv0, `/\`) {
-		return ""
-	}
-	return argv0
-}
-
-// TestCaps_ExecutablePinnedToLaunchArgv0 pins R111's declared-executable
-// requirement for all three registered adapters: the Executable each one
-// reports from Capabilities() must never drift from the executable its own
-// Launch actually puts in argv[0], as PATH would have to resolve it
-// (pathLookupName). claude and pi put a bare literal there, so the
-// comparison is against "claude" and "pi" directly; shell puts the user's
-// resolved $SHELL there, an absolute path that exec runs without consulting
-// PATH, whose lookup name is the empty string shell declares. No adapter is
-// exempted from the comparison: every case below runs it, shell included,
-// under both an explicitly set absolute $SHELL and userShell()'s /bin/sh
-// fallback.
-func TestCaps_ExecutablePinnedToLaunchArgv0(t *testing.T) {
-	cases := []struct {
+// TestDeclaredExecutableEqualsLaunchArgv0 pins R111's declared-executable
+// requirement for all three registered adapters -- shell, claude and pi --
+// with no adapter exempted and nothing derived in between: the Executable
+// each one reports from Capabilities() is compared directly against the
+// first element of the argv its own Launch produces. claude and pi put their
+// binary there; shell declares no executable (SPEC 5) and puts the empty
+// string there, because a shell pane's binary is resolved by the launcher
+// (internal/service's paneArgv/resolveUserShell), never by the adapter.
+// Resume is held to the same equality: an adapter whose two argv builders
+// disagreed would preflight one binary and exec another.
+//
+// $SHELL is deliberately set here: shell's argv[0] must stay equal to its
+// (empty) declaration whatever the environment says, which is exactly what
+// keeping shell resolution out of the adapter buys.
+func TestDeclaredExecutableEqualsLaunchArgv0(t *testing.T) {
+	t.Setenv("SHELL", "/bin/zsh")
+	for _, tc := range []struct {
 		name     string
 		adapter  Adapter
-		in       LaunchInput
 		wantExec string
-		// shellEnv, when non-nil, is the $SHELL values to run this
-		// adapter's comparison under: "" means unset, exercising
-		// userShell()'s /bin/sh fallback.
-		shellEnv []string
 	}{
-		{name: "shell", adapter: NewShell(), in: LaunchInput{}, wantExec: "", shellEnv: []string{"/bin/zsh", ""}},
-		{name: "claude", adapter: NewClaude(), in: LaunchInput{ConversationID: "conv-1", Profile: "safe"}, wantExec: "claude"},
-		{name: "pi", adapter: NewPi(), in: LaunchInput{ConversationID: "conv-1", Profile: "safe"}, wantExec: "pi"},
-	}
-	for _, tc := range cases {
+		{name: "shell", adapter: NewShell(), wantExec: ""},
+		{name: "claude", adapter: NewClaude(), wantExec: "claude"},
+		{name: "pi", adapter: NewPi(), wantExec: "pi"},
+	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			gotExec := tc.adapter.Capabilities().Executable
-			if gotExec != tc.wantExec {
-				t.Fatalf("Capabilities().Executable = %q, want %q", gotExec, tc.wantExec)
+			declared := tc.adapter.Capabilities().Executable
+			if declared != tc.wantExec {
+				t.Fatalf("Capabilities().Executable = %q, want %q", declared, tc.wantExec)
 			}
-
-			check := func(t *testing.T) {
-				argv, err := tc.adapter.Launch(tc.in)
-				if err != nil {
-					t.Fatalf("Launch() error = %v", err)
-				}
-				if len(argv) == 0 {
-					t.Fatalf("Launch() returned empty argv")
-				}
-				if got := pathLookupName(argv[0]); got != gotExec {
-					t.Fatalf("Launch() argv[0] = %q resolves on PATH as %q, want declared Capabilities().Executable %q",
-						argv[0], got, gotExec)
-				}
+			in := LaunchInput{CWD: "/tmp/wherever", ConversationID: "conv-1", Profile: "safe", ExtraArgs: []string{"-x"}}
+			launchArgv, err := tc.adapter.Launch(in)
+			if err != nil {
+				t.Fatalf("Launch() error = %v", err)
 			}
-
-			if tc.shellEnv == nil {
-				check(t)
-				return
+			if len(launchArgv) == 0 {
+				t.Fatalf("Launch() produced an argv with no first element; want its first element to be the declared executable %q", declared)
 			}
-			for _, sh := range tc.shellEnv {
-				name := "SHELL=" + sh
-				if sh == "" {
-					name = "SHELL unset"
-				}
-				t.Run(name, func(t *testing.T) {
-					t.Setenv("SHELL", sh)
-					if sh == "" {
-						if err := os.Unsetenv("SHELL"); err != nil {
-							t.Fatalf("Unsetenv(SHELL) = %v", err)
-						}
-					}
-					check(t)
-				})
+			if launchArgv[0] != declared {
+				t.Fatalf("Launch() argv[0] = %q, want declared Capabilities().Executable %q (full argv %q)", launchArgv[0], declared, launchArgv)
+			}
+			resumeArgv, err := tc.adapter.Resume(ResumeInput{CWD: in.CWD, ConversationID: in.ConversationID, Profile: in.Profile, ExtraArgs: in.ExtraArgs})
+			if err != nil {
+				t.Fatalf("Resume() error = %v", err)
+			}
+			if len(resumeArgv) == 0 {
+				t.Fatalf("Resume() produced an argv with no first element; want its first element to be the declared executable %q", declared)
+			}
+			if resumeArgv[0] != declared {
+				t.Fatalf("Resume() argv[0] = %q, want declared Capabilities().Executable %q (full argv %q)", resumeArgv[0], declared, resumeArgv)
 			}
 		})
+	}
+}
+
+// TestRegisteredAdaptersDeclareTheirLaunchExecutable extends that same
+// equality to every kind a registry holds, so a fourth adapter cannot be
+// registered with a declaration its own Launch contradicts.
+func TestRegisteredAdaptersDeclareTheirLaunchExecutable(t *testing.T) {
+	r := NewRegistry()
+	r.Register(NewShell())
+	r.Register(NewClaude())
+	r.Register(NewPi())
+	for _, kind := range r.Kinds() {
+		adapter, ok := r.Lookup(kind)
+		if !ok {
+			t.Fatalf("Lookup(%q) missing from the registry that listed it", kind)
+		}
+		argv, err := adapter.Launch(LaunchInput{CWD: "/tmp/wherever", ConversationID: "conv-1", Profile: "safe"})
+		if err != nil {
+			t.Fatalf("%s Launch() error = %v", kind, err)
+		}
+		if len(argv) == 0 || argv[0] != adapter.Capabilities().Executable {
+			t.Fatalf("%s: Launch() argv = %q, want argv[0] to be the declared executable %q", kind, argv, adapter.Capabilities().Executable)
+		}
 	}
 }

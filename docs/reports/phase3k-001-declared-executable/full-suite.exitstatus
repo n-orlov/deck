@@ -1,0 +1,1 @@
+0 (derived from full-suite.log: every package line is "ok" or "no test files" and there is no FAIL line; the run was backgrounded with nohup so the shell exit status itself was not captured)

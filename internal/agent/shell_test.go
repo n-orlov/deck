@@ -1,9 +1,6 @@
 package agent
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 func TestShellCapsNoProfilesNoAssignedID(t *testing.T) {
 	s := NewShell()
@@ -22,16 +19,13 @@ func TestShellCapsNoProfilesNoAssignedID(t *testing.T) {
 	}
 }
 
-func TestShellLaunchArgvIsShellOnly(t *testing.T) {
-	old, hadOld := os.LookupEnv("SHELL")
-	os.Setenv("SHELL", "/bin/zsh")
-	defer func() {
-		if hadOld {
-			os.Setenv("SHELL", old)
-		} else {
-			os.Unsetenv("SHELL")
-		}
-	}()
+// TestShellLaunchArgvIsTheEmptyExecutableAndArgs pins that shell's Launch
+// names no binary of its own whatever $SHELL says: argv[0] is the empty
+// executable it declares (SPEC 5) and the launcher fills that slot
+// (internal/service's paneArgv), so there is no second copy of shell
+// resolution to drift from the declaration (R111).
+func TestShellLaunchArgvIsTheEmptyExecutableAndArgs(t *testing.T) {
+	t.Setenv("SHELL", "/bin/zsh")
 
 	s := NewShell()
 	argv, err := s.Launch(LaunchInput{
@@ -43,9 +37,9 @@ func TestShellLaunchArgvIsShellOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	want := []string{"/bin/zsh", "-x"}
+	want := []string{"", "-x"}
 	if !equalArgv(argv, want) {
-		t.Fatalf("Launch argv = %v, want %v", argv, want)
+		t.Fatalf("Launch argv = %q, want %q", argv, want)
 	}
 }
 
@@ -60,16 +54,8 @@ func TestShellInstrumentIsEmpty(t *testing.T) {
 	}
 }
 
-func TestShellResumeArgvIsShellOnly(t *testing.T) {
-	old, hadOld := os.LookupEnv("SHELL")
-	os.Setenv("SHELL", "/bin/bash")
-	defer func() {
-		if hadOld {
-			os.Setenv("SHELL", old)
-		} else {
-			os.Unsetenv("SHELL")
-		}
-	}()
+func TestShellResumeArgvIsTheEmptyExecutableAndArgs(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
 
 	s := NewShell()
 	argv, err := s.Resume(ResumeInput{
@@ -81,9 +67,9 @@ func TestShellResumeArgvIsShellOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
-	want := []string{"/bin/bash", "-l"}
+	want := []string{"", "-l"}
 	if !equalArgv(argv, want) {
-		t.Fatalf("Resume argv = %v, want %v", argv, want)
+		t.Fatalf("Resume argv = %q, want %q", argv, want)
 	}
 }
 
