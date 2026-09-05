@@ -11,7 +11,9 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     When deck client "A" opens the create modal
     Then deck client "A" screen contains "Agent: shell (left/right cycles: shell)"
     And deck client "A" screen contains "not on PATH: claude, pi"
-    When deck client "A" cycles the Agent field right 2 times
+    When deck client "A" presses down 2 times in the open dialog
+    And deck client "A" cycles the open dialog's field right
+    And deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "Agent: shell (left/right cycles: shell)"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
