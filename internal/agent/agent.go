@@ -38,6 +38,13 @@ type Caps struct {
 	// docs/reports/phase3-findings.md's provenance section for the exact,
 	// non-inferred convention each declares.
 	HasTranscript bool
+	// Executable is the executable name this adapter's Launch/Resume argv
+	// starts with (argv[0]) -- "claude", "pi" -- declared once here so it
+	// cannot drift from what those methods actually put in argv (SPEC
+	// R111). An adapter with no executable to probe (shell) declares the
+	// empty string, which callers must treat as "always available": there
+	// is nothing to look up on PATH.
+	Executable string
 }
 
 // SupportsProfile reports whether p is one of the profiles Caps declares.

@@ -21,6 +21,7 @@ func (Shell) Capabilities() Caps {
 		AssignsConversationID: false,
 		Resumable:             false,
 		HasTranscript:         false,
+		Executable:            "",
 	}
 }
 
