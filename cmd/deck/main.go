@@ -173,6 +173,14 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	// editable launch inputs and marks the row launch_dirty, which only `R`
 	// clears once a relaunch has actually carried them into a live pane.
 	model = model.WithLaunchInputsSetter(sessions.SetLaunchInputs)
+	// Task 006/PRD R111-R112: wire task 002's shared availability probe
+	// (sessions.AvailableKinds, itself backed by internal/service's
+	// lookPathIn against the launch PATH) into task 005's seam, so the
+	// create dialog's Agent field cycles only kinds actually on PATH
+	// instead of the full registry. Every other caller of the seam
+	// (registry_guard_test.go, TestBlackBoxRegistrySwapNeedsNoTUIEdit) still
+	// injects its own prober in setup; this is the one production wiring.
+	model = model.WithAvailableAgentKindsProber(sessions.AvailableKinds)
 	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
 	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
 	// whole program lifetime; §11.8's hit-testing and gesture handling land in
