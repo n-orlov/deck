@@ -1,13 +1,22 @@
 package agent
 
-import "os"
-
 // Shell is the adapter for a plain interactive login shell. Unlike the
 // agent adapters, shell has no notion of a conversation: it declares no
 // permission profiles and does not accept a caller-assigned conversation
-// id (SPEC §5/§8). Its launch and resume argv are simply the user's shell
-// plus any extra launch_args, ignoring Profile and ConversationID
-// entirely.
+// id (SPEC §5/§8). Its launch and resume argv are simply any extra
+// launch_args behind an empty executable slot, ignoring Profile and
+// ConversationID entirely.
+//
+// Shell declares no executable at all (SPEC §5: "`shell` declares no
+// executable and is always offered: it is the floor, the one session kind a
+// fresh host can always create"), and its argv[0] is therefore the empty
+// string, never a binary: resolving which shell a pane runs ($SHELL,
+// /bin/sh, or an embedded caller's override) belongs to the launcher, which
+// already owned that one resolution for created shell panes. That is what
+// keeps declaration and argv honest for every adapter without exception --
+// an adapter's declared executable IS the first element of the argv it
+// produces, "claude", "pi", and "" for shell, whose empty slot
+// internal/service fills in one place for create and resume alike.
 type Shell struct{}
 
 // NewShell returns the Shell adapter.
@@ -25,28 +34,20 @@ func (Shell) Capabilities() Caps {
 	}
 }
 
-// userShell returns the user's login shell, falling back to /bin/sh when
-// $SHELL is unset.
-func userShell() string {
-	if s := os.Getenv("SHELL"); s != "" {
-		return s
-	}
-	return "/bin/sh"
-}
-
-// Launch returns the user shell argv only, plus any ExtraArgs. It ignores
-// Profile and ConversationID: shell has no notion of either.
+// Launch returns an argv whose first element is this adapter's declared
+// executable -- the empty string, because shell declares none -- followed by
+// any ExtraArgs. That leading slot is the launcher's to fill with the shell
+// it resolves for the pane (see the type comment). It ignores Profile and
+// ConversationID: shell has no notion of either.
 func (Shell) Launch(in LaunchInput) ([]string, error) {
-	argv := []string{userShell()}
-	return append(argv, in.ExtraArgs...), nil
+	return append([]string{""}, in.ExtraArgs...), nil
 }
 
-// Resume returns the user shell argv only, plus any ExtraArgs. Callers
-// must not call this when Capabilities().Resumable is false; shell
+// Resume returns the same argv Launch does, empty executable slot included.
+// Callers must not call this when Capabilities().Resumable is false; shell
 // implements it anyway as a harmless pass-through equivalent to Launch.
 func (Shell) Resume(in ResumeInput) ([]string, error) {
-	argv := []string{userShell()}
-	return append(argv, in.ExtraArgs...), nil
+	return append([]string{""}, in.ExtraArgs...), nil
 }
 
 // Instrument deliberately returns nothing: a shell has no agent hook source.

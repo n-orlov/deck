@@ -240,6 +240,16 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("build resume argv for session %q: %w", session.Name, err))
 		return session, ResumeStarted, failErr
 	}
+	// An adapter that declares no executable (`shell`) names no argv[0] of
+	// its own, so the launcher supplies the shell it resolves for the pane --
+	// the same single resolution CreateShell used when this row was created
+	// (paneArgv/resolveUserShell), which is why a resumed shell pane cannot
+	// disagree with its own create about which shell it runs.
+	argv, err = s.paneArgv(caps, argv)
+	if err != nil {
+		session, failErr := s.launchFailed(ctx, session, fmt.Errorf("resolve resume argv for session %q: %w", session.Name, err))
+		return session, ResumeStarted, failErr
+	}
 
 	// login_shell=1 is mutually exclusive with relying on captured_path, as
 	// at create time (SPEC §6.4).

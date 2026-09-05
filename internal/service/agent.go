@@ -122,6 +122,13 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	if err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("build launch argv for agent session %q: %w", session.Name, err))
 	}
+	// An adapter that declares no executable (`shell`) names no argv[0] of its
+	// own, so the launcher supplies the shell it resolves for the pane -- the
+	// same single resolution CreateShell uses (paneArgv/resolveUserShell).
+	argv, err = s.paneArgv(caps, argv)
+	if err != nil {
+		return s.launchFailed(ctx, session, fmt.Errorf("resolve launch argv for agent session %q: %w", session.Name, err))
+	}
 
 	// login_shell=1 is mutually exclusive with relying on captured_path: the
 	// login shell resolves its own PATH via its own profile/rc scripts, so
