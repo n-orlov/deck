@@ -7067,10 +7067,35 @@ func (m Model) createCWDDisplayValue() string {
 // framedDialog's word-wrap can split a value-suffixed label unpredictably.
 func (m Model) createAgentHelp() string {
 	help := "which coding agent adapter launches this session"
+	if missing := m.createUnavailableAgentKinds(); len(missing) > 0 {
+		help += "; not on PATH: " + strings.Join(missing, ", ")
+	}
 	if m.createAgentLastUsed {
 		return "(last used) " + help
 	}
 	return help
+}
+
+// createUnavailableAgentKinds names the registered kinds the Agent field's
+// left/right cycle does NOT offer -- m.registry().Kinds() minus the
+// per-open available set (m.createAvailableAgentKinds when the "n"
+// handler has already populated it, else m.computeAvailableAgentKinds()'s
+// own fallback, mirroring pickCreateAgent's identical choice above) --
+// preserving the registry's own order, so createAgentHelp can say why a
+// kind the user might expect (e.g. from a previous install) is missing
+// from the cycle instead of leaving it unexplained (task 008).
+func (m Model) createUnavailableAgentKinds() []string {
+	available := m.createAvailableAgentKinds
+	if available == nil {
+		available = m.computeAvailableAgentKinds()
+	}
+	var missing []string
+	for _, k := range m.registry().Kinds() {
+		if !contains(available, k) {
+			missing = append(missing, k)
+		}
+	}
+	return missing
 }
 
 func (m Model) createCWDHelp() string {
