@@ -117,6 +117,17 @@ func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	// wide-enough viewport keeps the Agent field's full cycle list off a
 	// word-wrap boundary and on one physical line.
 	m.width = 100
+	// Task 005/PRD R112: the Agent field's cycle and row now read
+	// m.createAvailableAgentKinds, populated only on the "n" open path
+	// (WithAvailableAgentKindsProber -> computeAvailableAgentKinds). This
+	// test drives the modal by setting fields directly rather than
+	// pressing "n", so it injects an all-available prober (every
+	// registered kind is "available" -- guardAdapter has no binary of its
+	// own to probe) and populates the field the same way "n" would, so
+	// the assertions below still exercise the real registry-swap
+	// membership rather than this seam.
+	m = m.WithAvailableAgentKindsProber(func() []string { return registry.Kinds() })
+	m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 	m.creating = true
 	m.createName = "guard-session"
 	m.createCWD = t.TempDir()
