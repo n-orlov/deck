@@ -1025,13 +1025,24 @@ func defaultCreateAgent(kinds []string) string {
 // built-in fallback. "Still valid" covers every way the remembered value
 // can go stale at once: missing (never set, ""), or present but no longer
 // registered (an adapter removed since, or a hand-edited/unparseable
-// state.db value) -- all three degrade identically to the fallback rather
-// than opening on an agent the registry cannot create. The second result
+// state.db value), or registered but not currently AVAILABLE (task 007,
+// PRD R112/R113: an adapter the registry knows but whose binary is not on
+// PATH right now) -- all of these degrade identically to the fallback
+// rather than opening on an agent the modal cannot actually offer. The set
+// checked against is the same per-open availability set the Agent field
+// itself cycles through: m.createAvailableAgentKinds when the "n" handler
+// has already populated it (the normal path -- see the caller in Update),
+// else m.computeAvailableAgentKinds()'s own fallback (no prober wired ->
+// every registered kind), so a direct call before that field exists still
+// behaves exactly as it did before task 005/007. The second result
 // reports whether the picked value came from lastCreateAgent, so callers
 // can drive the "(last used)" label without re-deriving this comparison
 // themselves.
 func (m Model) pickCreateAgent() (string, bool) {
-	kinds := m.registry().Kinds()
+	kinds := m.createAvailableAgentKinds
+	if kinds == nil {
+		kinds = m.computeAvailableAgentKinds()
+	}
 	if m.lastCreateAgent != "" && contains(kinds, m.lastCreateAgent) {
 		return m.lastCreateAgent, true
 	}
