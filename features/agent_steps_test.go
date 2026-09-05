@@ -77,6 +77,44 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has an event of kind "([^"]+)" with reason containing "([^"]+)"$`, sessionHasEventOfKindWithReasonContaining)
 	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session "([^"]+)" with permission profile "([^"]+)" and pre-launch command "([^"]+)"$`, clientCreatesAgentSessionWithSucceedingPreLaunch)
 	sc.Step(`^the private tmux session for "([^"]+)" shows "([^"]+)" before "([^"]+)"$`, privateTMuxSessionShowsTextBeforeOtherText)
+	sc.Step(`^deck client "([^"]+)" cycles the Agent field right (\d+) times?$`, clientCyclesAgentFieldRightNTimes)
+}
+
+// clientCyclesAgentFieldRightNTimes moves a just-opened create modal's
+// focus from Name onto the Agent field (two down-arrows: Name -> Working
+// directory -> Agent, task 025's field order, the same two presses
+// clientOpensCreateModalForAgent/cycleCreateFieldToValue use to reach it)
+// and presses right arrow n times, pausing between presses exactly as
+// clientPressesKeyNTimes (features/layout_modes_test.go) does for any other
+// repeated keystroke. It asserts nothing itself; callers state what they
+// expect the Agent row to read afterwards separately (task 016, R114's
+// nothing-installed scenario: cycling right must leave a single-kind Agent
+// field unchanged).
+func clientCyclesAgentFieldRightNTimes(ctx context.Context, name string, n int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\x1b[B\x1b[B"); err != nil {
+		return err
+	}
+	time.Sleep(60 * time.Millisecond)
+	for i := 0; i < n; i++ {
+		if err := client.Send("\x1b[C"); err != nil {
+			return err
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+	// Back up to Name, which is where every other create-modal caller
+	// expects focus to be (mirrors ensureCreateModalAgent's own final hop).
+	if err := client.Send("\x1b[A\x1b[A"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "> Name:")
 }
 
 // fakeClaudeOnPATHForFutureClients builds the repository's fake-claude
