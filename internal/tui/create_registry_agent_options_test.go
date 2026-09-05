@@ -28,11 +28,21 @@ func (throwawayAdapter) TranscriptPaths(agent.TranscriptInput) (string, bool) { 
 
 // newModelWithRegistry builds a Model wired to registry via the
 // registry-accepting constructor (task 001), with the create modal open.
+// Task 005/PRD R112: the Agent field's cycle/row now read
+// m.createAvailableAgentKinds rather than m.registry().Kinds() directly,
+// and this helper drives the modal by setting fields rather than pressing
+// "n" (the only path that otherwise populates it) -- so it injects an
+// all-available prober (every registered kind counts as available; none
+// of these stub adapters has a real binary to probe) and populates the
+// field the same way "n" would, keeping every existing assertion here
+// about registry membership, not this seam.
 func newModelWithRegistry(t *testing.T, registry *agent.Registry) Model {
 	t.Helper()
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, registry,
 	)
+	m = m.WithAvailableAgentKindsProber(func() []string { return registry.Kinds() })
+	m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 	m.creating = true
 	m.createName = "my session"
 	m.createCWD = t.TempDir()

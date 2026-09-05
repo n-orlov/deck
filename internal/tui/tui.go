@@ -106,6 +106,24 @@ type Model struct {
 	// cycleCreateField), since the value showing is then a deliberate
 	// choice, not the remembered one.
 	createAgentLastUsed bool
+	// createAvailableAgentKinds is task 005/PRD R112's per-open availability
+	// set: computed exactly once, on the "n" open path, by calling
+	// availableAgentKindsProber (or falling back to m.registry().Kinds()
+	// when no prober has been wired -- every constructor before task 006,
+	// and any test that never injects one), and then held here unchanged
+	// for the life of the open dialog -- never recomputed from a render
+	// path such as createView/createFieldRows, exactly as R112 requires.
+	// The Agent field's cycle (cycleCreateField case 2) and its row in
+	// createFieldRows both read this instead of m.registry().Kinds(), so
+	// the modal only ever offers/cycles a kind that was actually available
+	// at the moment "n" was pressed.
+	createAvailableAgentKinds []string
+	// availableAgentKindsProber is the seam (WithAvailableAgentKindsProber)
+	// a caller uses to supply real availability as kind-name data -- e.g.
+	// cmd/deck wiring service.Service.AvailableKinds (task 006). nil means
+	// "no probe wired", in which case computeAvailableAgentKinds falls back
+	// to every registered kind, the exact pre-task-005 behaviour.
+	availableAgentKindsProber func() []string
 	// createCWDRecents is the §11.7 recent_cwds snapshot the cwd field is
 	// currently cycling through (task 009), fetched once when Ctrl+P/Ctrl+N
 	// (task 025) first starts a cycle rather than re-queried on every
@@ -937,6 +955,36 @@ func (m Model) WithTeardownHookReporters(archiveReporter, deleteReporter func(co
 	m.archiveHookReporter = archiveReporter
 	m.deleteHookReporter = deleteReporter
 	return m
+}
+
+// WithAvailableAgentKindsProber attaches task 005/PRD R111-R112's per-open
+// availability seam: a func returning the kind names available right now,
+// called exactly once per "n" press (never from View() or any other render
+// path -- computeAvailableAgentKinds is the only caller) and held in
+// m.createAvailableAgentKinds for the life of the open create dialog. The
+// TUI never learns a binary name this way -- the prober hands back kind
+// names, the same data shape m.registry().Kinds() already returns, so
+// swapping what is available never requires touching internal/tui (PRD
+// requirement 1, same rationale as WithTmuxClient above). A Model built
+// without this (every constructor above it, and any test that does not
+// call it) computes availability as m.registry().Kinds() instead -- every
+// registered kind, i.e. the exact pre-task-005 behaviour -- since wiring
+// the real service-backed probe in from cmd/deck is task 006.
+func (m Model) WithAvailableAgentKindsProber(prober func() []string) Model {
+	m.availableAgentKindsProber = prober
+	return m
+}
+
+// computeAvailableAgentKinds runs m.availableAgentKindsProber if one has
+// been wired, else falls back to every registered kind. Called only from
+// the "n" key handler (Update), so its result can be cached once in
+// m.createAvailableAgentKinds rather than re-probed on every keystroke or
+// render.
+func (m Model) computeAvailableAgentKinds() []string {
+	if m.availableAgentKindsProber != nil {
+		return m.availableAgentKindsProber()
+	}
+	return m.registry().Kinds()
 }
 
 // defaultAgentRegistry returns the stock shell/claude/pi registry used when a
@@ -2840,6 +2888,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
 				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
 				m.closeCreateCWDCandidates()
+				m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 				m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
 				m.createProfile = m.defaultCreateProfile(m.createAgent)
 				m.createProfileTouched = false
@@ -6849,7 +6898,7 @@ func (m *Model) resolveCreateName(resolvedCWD string) string {
 func (m *Model) cycleCreateField(delta int) {
 	switch m.createField {
 	case 2:
-		m.createAgent = cycleOption(m.registry().Kinds(), m.createAgent, delta)
+		m.createAgent = cycleOption(m.createAvailableAgentKinds, m.createAgent, delta)
 		// The value showing is now a deliberate cycle, not the remembered
 		// one (task 024) -- clear the "(last used)" label regardless of
 		// which way the cycle landed, even back on the original value,
@@ -7080,7 +7129,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
 		{"Working directory", m.createCWDDisplayValue(), m.createCWDHelp()},
-		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.registry().Kinds(), ", ") + ")", m.createAgentHelp()},
+		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.createAvailableAgentKinds, ", ") + ")", m.createAgentHelp()},
 		{"Permission profile", profileValue, profileHelp},
 		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
 		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
