@@ -27,6 +27,7 @@ import (
 func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
+	sc.Step(`^a fake "pi" binary is on PATH for future deck clients$`, fakePiOnPATHForFutureClients)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
 	sc.Step(`^the deck config defaults new sessions to yolo without allowing it$`, deckConfigDefaultsYoloWithoutAllowing)
@@ -91,6 +92,59 @@ func fakeClaudeOnPATHForFutureClients(ctx context.Context) error {
 
 func longRunningFakeClaudeOnPATHForFutureClients(ctx context.Context) error {
 	return installFakeClaudeOnPATH(ctx, true)
+}
+
+// fakePiOnPATHForFutureClients builds the repository's fake-pi fixture into
+// its own directory named exactly "pi" and records that directory on the
+// harness so every subsequently started named client gets it prepended to a
+// real PATH, mirroring fakeClaudeOnPATHForFutureClients/
+// installFakeClaudeOnPATH for the pi adapter (task 012).
+func fakePiOnPATHForFutureClients(ctx context.Context) error {
+	return installFakePiOnPATH(ctx, false)
+}
+
+// installFakePiOnPATH is installFakeClaudeOnPATH's pi counterpart: same
+// directory, same set-environment race (deck's own CreateAgent/Resume mirror
+// the launch env into the tmux session via a second round-trip tmux command
+// AFTER the pane's process has already started, which races an instant-exit
+// fixture unless it lingers briefly after doing its own observable work --
+// see installFakeClaudeOnPATH's doc comment for the full explanation), and
+// the same lingering wrapper, built from ./cmd/fake-pi instead of
+// ./cmd/fake-claude.
+func installFakePiOnPATH(ctx context.Context, longRunning bool) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(h.Home, "fake-agent-path")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create fake agent PATH directory: %w", err)
+	}
+	realBinary := filepath.Join(dir, "fake-pi-real")
+	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-pi")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("build fake pi fixture: %w\n%s", err, output)
+	}
+	piWrapper := filepath.Join(dir, "pi")
+	script := "#!/bin/sh\n\"" + realBinary + "\" \"$@\"\ncode=$?\nsleep 0.5\nexit \"$code\"\n"
+	if longRunning {
+		script = "#!/bin/sh\nFAKE_PI_COMMANDS=1 exec \"" + realBinary + "\" \"$@\"\n"
+	}
+	if err := os.WriteFile(piWrapper, []byte(script), 0o700); err != nil {
+		return fmt.Errorf("write pi fixture wrapper: %w", err)
+	}
+	h.agentPATHDir = dir
+	homeDir := filepath.Join(h.Home, "agent-fixture-home")
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
+		return fmt.Errorf("create fixture HOME directory: %w", err)
+	}
+	h.agentHOMEDir = homeDir
+	return nil
 }
 
 func installFakeClaudeOnPATH(ctx context.Context, longRunning bool) error {
