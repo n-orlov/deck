@@ -793,12 +793,12 @@ func TestCreateAgentShellHasNoInstrumentation(t *testing.T) {
 	assertTMuxEnvironment(t, socket, session.Slug, "DECK_HOME", service.DeckHome)
 }
 
-// TestCreateAgentFailsOnAgentBinaryNotOnPathBeforeAnyRowExists is task
-// 010's own evidence: an adapter whose declared executable is not on the
-// PATH this pane would launch under must never get as far as a durable
-// row or a tmux pane -- CreateAgent's preflight has to run and fail before
+// TestCreateAgentPreflightRefusesAgentBinaryNotFoundOnPath is task 010/011's
+// own evidence: an adapter whose declared executable is not on the PATH
+// this pane would launch under must never get as far as a durable row or
+// a tmux pane -- CreateAgent's preflight has to run and fail before
 // Store.CreateSession, not after.
-func TestCreateAgentFailsOnAgentBinaryNotOnPathBeforeAnyRowExists(t *testing.T) {
+func TestCreateAgentPreflightRefusesAgentBinaryNotFoundOnPath(t *testing.T) {
 	cwd := t.TempDir()
 	// Deliberately no stubExecutableOnPath: the CI toolchain never installs
 	// claude, so PATH genuinely lacks it.
@@ -851,6 +851,57 @@ func TestCreateAgentLoginShellSkipsBinaryPreflight(t *testing.T) {
 	rows, listErr := db.ListSessions(context.Background())
 	if listErr != nil || len(rows) != 1 || rows[0].ID != session.ID {
 		t.Fatalf("durable rows = %#v, %v, want exactly the created row", rows, listErr)
+	}
+}
+
+// TestCreateAgentPreflightLeavesInstalledAgentPaneCommandUnchanged is task
+// 011's third case: for an agent kind whose declared executable IS on
+// PATH, R111's preflight (task 010) must be a pure pass-through -- create
+// still succeeds, and the pane command it records is byte-identical to
+// what today's tree (the adapter's own public Launch/Instrument contract,
+// which the preflight never touches) produces for the same input. Rather
+// than hand-duplicating Claude's --settings JSON shape (fragile, and would
+// drift the moment claude.go's hook wiring changes), this recomputes the
+// expected argv independently by calling the same public agent.Adapter
+// methods CreateAgent itself calls, against the identical launch input,
+// and requires exact (not merely prefix) equality with what got audited.
+func TestCreateAgentPreflightLeavesInstalledAgentPaneCommandUnchanged(t *testing.T) {
+	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
+	service, _, logger, _ := newAgentTestService(t, nil, "create-agent-preflight-installed")
+
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: preflight installed", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create agent for an installed kind: %v", err)
+	}
+
+	claude := agent.NewClaude()
+	launchInput := agent.LaunchInput{
+		CWD: cwd, ConversationID: session.ConversationID, Profile: "safe",
+		DeckExecutable: service.DeckExecutable, DeckSessionID: session.ID, DeckHome: service.DeckHome,
+	}
+	wantArgv, err := claude.Launch(launchInput)
+	if err != nil {
+		t.Fatalf("claude launch: %v", err)
+	}
+	instrumentArgv, _ := claude.Instrument(launchInput)
+	wantArgv = append(wantArgv, instrumentArgv...)
+
+	records := auditRecords(t, logger.Path())
+	var launch map[string]any
+	for _, record := range records {
+		if record["event"] == "launch" {
+			launch = record
+		}
+	}
+	if launch == nil {
+		t.Fatalf("no launch audit record among %#v", records)
+	}
+	gotArgv := jsonStrings(launch["argv"])
+	if !reflect.DeepEqual(gotArgv, wantArgv) {
+		t.Fatalf("recorded pane command = %#v, want byte-identical to today's tree's own adapter.Launch+Instrument output for the same input: %#v", gotArgv, wantArgv)
 	}
 }
 
