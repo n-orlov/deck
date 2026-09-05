@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -97,25 +99,43 @@ func (f fakeAdapter) Instrument(LaunchInput) ([]string, map[string]string) { ret
 func (f fakeAdapter) Probe(string) (string, string)                        { return "", "" }
 func (f fakeAdapter) TranscriptPaths(TranscriptInput) (string, bool)       { return "", false }
 
+// pathLookupName is the executable name that PATH resolution would have to
+// find for an argv[0] to exec, i.e. exactly what R111's declared Executable
+// names for a probe. An argv[0] that contains a path separator (shell's
+// resolved $SHELL, "/bin/sh") is used verbatim by exec and is never looked
+// up on PATH, so its lookup name is the empty string -- which is precisely
+// why R111 has shell declare the empty executable ("nothing to probe"). A
+// bare name ("claude", "pi") is its own lookup name.
+func pathLookupName(argv0 string) string {
+	if strings.ContainsAny(argv0, `/\`) {
+		return ""
+	}
+	return argv0
+}
+
 // TestCaps_ExecutablePinnedToLaunchArgv0 pins R111's declared-executable
-// requirement: the Executable each adapter reports from Capabilities() must
-// never drift from what its own Launch actually puts in argv[0]. For claude
-// and pi, Launch hardcodes a literal ("claude", "pi") as argv[0], so the
-// declared value is checked against that literal directly. Shell has
-// nothing to probe (its Capabilities().Executable is "" -- R111: "shell
-// declares the empty executable: nothing to probe"): its own Launch argv[0]
-// is the user's resolved $SHELL, not a fixed binary name, so there is no
-// literal for the declared value to be pinned against; the assertion for
-// shell is simply that the declared value is the empty string R111 calls
-// for.
+// requirement for all three registered adapters: the Executable each one
+// reports from Capabilities() must never drift from the executable its own
+// Launch actually puts in argv[0], as PATH would have to resolve it
+// (pathLookupName). claude and pi put a bare literal there, so the
+// comparison is against "claude" and "pi" directly; shell puts the user's
+// resolved $SHELL there, an absolute path that exec runs without consulting
+// PATH, whose lookup name is the empty string shell declares. No adapter is
+// exempted from the comparison: every case below runs it, shell included,
+// under both an explicitly set absolute $SHELL and userShell()'s /bin/sh
+// fallback.
 func TestCaps_ExecutablePinnedToLaunchArgv0(t *testing.T) {
 	cases := []struct {
 		name     string
 		adapter  Adapter
 		in       LaunchInput
 		wantExec string
+		// shellEnv, when non-nil, is the $SHELL values to run this
+		// adapter's comparison under: "" means unset, exercising
+		// userShell()'s /bin/sh fallback.
+		shellEnv []string
 	}{
-		{name: "shell", adapter: NewShell(), in: LaunchInput{}, wantExec: ""},
+		{name: "shell", adapter: NewShell(), in: LaunchInput{}, wantExec: "", shellEnv: []string{"/bin/zsh", ""}},
 		{name: "claude", adapter: NewClaude(), in: LaunchInput{ConversationID: "conv-1", Profile: "safe"}, wantExec: "claude"},
 		{name: "pi", adapter: NewPi(), in: LaunchInput{ConversationID: "conv-1", Profile: "safe"}, wantExec: "pi"},
 	}
@@ -126,26 +146,38 @@ func TestCaps_ExecutablePinnedToLaunchArgv0(t *testing.T) {
 				t.Fatalf("Capabilities().Executable = %q, want %q", gotExec, tc.wantExec)
 			}
 
-			argv, err := tc.adapter.Launch(tc.in)
-			if err != nil {
-				t.Fatalf("Launch() error = %v", err)
-			}
-			if len(argv) == 0 {
-				t.Fatalf("Launch() returned empty argv")
+			check := func(t *testing.T) {
+				argv, err := tc.adapter.Launch(tc.in)
+				if err != nil {
+					t.Fatalf("Launch() error = %v", err)
+				}
+				if len(argv) == 0 {
+					t.Fatalf("Launch() returned empty argv")
+				}
+				if got := pathLookupName(argv[0]); got != gotExec {
+					t.Fatalf("Launch() argv[0] = %q resolves on PATH as %q, want declared Capabilities().Executable %q",
+						argv[0], got, gotExec)
+				}
 			}
 
-			if tc.wantExec == "" {
-				// Nothing to pin for shell: its Launch argv[0] is the
-				// user's resolved shell, never the empty string, so the
-				// declared-empty case is exempted from the argv[0]
-				// equality check by design (see doc comment above).
+			if tc.shellEnv == nil {
+				check(t)
 				return
 			}
-			if argv[0] != tc.wantExec {
-				t.Fatalf("Launch() argv[0] = %q, want declared executable %q", argv[0], tc.wantExec)
-			}
-			if argv[0] != gotExec {
-				t.Fatalf("Launch() argv[0] = %q, does not match Capabilities().Executable = %q", argv[0], gotExec)
+			for _, sh := range tc.shellEnv {
+				name := "SHELL=" + sh
+				if sh == "" {
+					name = "SHELL unset"
+				}
+				t.Run(name, func(t *testing.T) {
+					t.Setenv("SHELL", sh)
+					if sh == "" {
+						if err := os.Unsetenv("SHELL"); err != nil {
+							t.Fatalf("Unsetenv(SHELL) = %v", err)
+						}
+					}
+					check(t)
+				})
 			}
 		})
 	}
