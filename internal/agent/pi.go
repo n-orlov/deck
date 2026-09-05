@@ -37,6 +37,7 @@ func (Pi) Capabilities() Caps {
 		AssignsConversationID: true,
 		Resumable:             true,
 		HasTranscript:         true,
+		Executable:            "pi",
 	}
 }
 
