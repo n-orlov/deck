@@ -11,6 +11,22 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
+// writeStubExecutable creates a trivial, real, executable file named name
+// in dir (which the caller controls; it does not touch $PATH), so a
+// genuine PATH/lookPathIn search can find something without a real agent
+// actually being installed (claude/pi are never installed in CI). It
+// returns the file's full path so a caller can later remove it to simulate
+// the binary vanishing after it was found once.
+func writeStubExecutable(t *testing.T, dir, name string) string {
+	t.Helper()
+	script := "#!/bin/sh\nsleep 5\n"
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write stub %s: %v", name, err)
+	}
+	return path
+}
+
 // stubExecutableOnPath creates a trivial, real, executable file named name
 // in a private directory and prepends that directory to $PATH for the
 // duration of the test, so an adapter binary that isn't really installed
@@ -19,11 +35,7 @@ import (
 func stubExecutableOnPath(t *testing.T, name string) {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\nsleep 5\n"
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("write stub %s: %v", name, err)
-	}
+	writeStubExecutable(t, dir, name)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
@@ -121,6 +133,7 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 
 func TestResumeLosingLeaseCreatesNoTMuxSession(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, db, _, _ := newAgentTestService(t, nil, "resume-race")
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
@@ -165,6 +178,7 @@ func TestResumeLosingLeaseCreatesNoTMuxSession(t *testing.T) {
 
 func TestResumeNonLeasableReturnsActualStatusAndReason(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, db, _, _ := newAgentTestService(t, nil, "resume-not-leasable")
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
@@ -407,8 +421,15 @@ func TestResumeFailsOnMissingCWD(t *testing.T) {
 
 func TestResumeFailsOnAgentBinaryNotOnPath(t *testing.T) {
 	cwd := t.TempDir()
-	// Deliberately no stubExecutableOnPath: the CI toolchain never
-	// installs claude/pi, so PATH genuinely lacks the "claude" binary.
+	// The binary exists at create time (so CreateAgent's own preflight,
+	// which probes the same PATH, passes) but is removed from disk before
+	// resume: CapturedPath is the create-time string captured onto the row,
+	// so a live $PATH never changes it -- only the file backing one of its
+	// directories can, which is exactly what "an agent binary uninstalled
+	// after create" looks like by resume time.
+	dir := t.TempDir()
+	stubPath := writeStubExecutable(t, dir, "claude")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	service, db, logger, _ := newAgentTestService(t, nil, "resume-missing-binary")
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
@@ -421,6 +442,12 @@ func TestResumeFailsOnAgentBinaryNotOnPath(t *testing.T) {
 		t.Fatalf("kill original pane: %v", err)
 	}
 	stopSession(t, db, created.ID)
+
+	// The binary disappears -- e.g. an uninstall -- while the row's stored
+	// CapturedPath string (captured at create time) still names dir.
+	if err := os.Remove(stubPath); err != nil {
+		t.Fatalf("remove stub claude: %v", err)
+	}
 
 	_, outcome, err := service.Resume(context.Background(), created.ID)
 	if err == nil {

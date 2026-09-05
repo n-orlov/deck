@@ -83,6 +83,27 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		return store.Session{}, errors.New("PATH is required to create an agent session")
 	}
 
+	// R111: probe the adapter's declared executable against the PATH this
+	// session's own pane would launch under, before any row or pane
+	// exists, so a doomed create never gets as far as a durable "starting"
+	// row (task 010). This is the same lookPathIn (availability.go) that
+	// resume's own preflight (resume.go) and AvailableKinds use, against
+	// the same resolveLaunchEnv PATH resume's preflight checks against, so
+	// create and resume can never disagree about whether a binary is on
+	// PATH. An adapter with no declared executable (shell) has nothing to
+	// probe, same as kindAvailable.
+	//
+	// A login shell resolves its own PATH via its own profile/rc scripts
+	// (SPEC §6.4), so deck cannot judge PATH membership for it and must
+	// not fail create on that basis -- the same exemption resume.go's own
+	// preflight makes for a resumed login shell.
+	if !input.LoginShell && caps.Executable != "" {
+		launchPath := s.resolveLaunchEnv(capturedPath, input.Env)["PATH"]
+		if lookErr := lookPathIn(caps.Executable, launchPath); lookErr != nil {
+			return store.Session{}, fmt.Errorf("create agent session %q: agent binary %q not found on PATH: %w", input.Name, caps.Executable, lookErr)
+		}
+	}
+
 	now := s.Clock.Now().UnixMilli()
 	// SPEC §9.2 (R77), as in CreateShell: note which tombstoned rows hold
 	// this name before the create reaps them in its own transaction, and

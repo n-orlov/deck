@@ -13,6 +13,7 @@ import (
 // uses) -- never into config.toml, never into any other session's row.
 func TestSetSessionEnvPersistsMarksDirtyAndMirrorsToTmux(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, db, _, socket := newAgentTestService(t, nil, "set-session-env-test")
 
 	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
@@ -54,6 +55,7 @@ func TestSetSessionEnvPersistsMarksDirtyAndMirrorsToTmux(t *testing.T) {
 // up in the session's own highest-priority layer once edited here.
 func TestSetSessionEnvOnANewKeyAddsItRatherThanRefusing(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, _, _, _ := newAgentTestService(t, map[string]string{"CONFIG_ONLY_KEY": "config-value"}, "set-session-env-new-key")
 
 	session, err := service.CreateAgent(context.Background(), AgentCreateInput{

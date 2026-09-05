@@ -52,6 +52,7 @@ func newAgentTestService(t *testing.T, configEnv map[string]string, idSeed strin
 
 func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, db, logger, socket := newAgentTestService(t, nil, "create-agent-test")
 
 	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
@@ -125,6 +126,7 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 // the §11.7 directory history.
 func TestCreateAgentPromotesCWDToRecentCwds(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, db, _, _ := newAgentTestService(t, nil, "create-agent-recent-test")
 	service.RecentCwdLimit = 5
 
@@ -145,6 +147,7 @@ func TestCreateAgentPromotesCWDToRecentCwds(t *testing.T) {
 
 func TestCreateAgentDegradesUnsupportedProfileForPi(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "pi")
 	service, db, logger, _ := newAgentTestService(t, nil, "create-agent-pi")
 
 	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
@@ -179,7 +182,13 @@ func TestCreateAgentDegradesUnsupportedProfileForPi(t *testing.T) {
 
 func TestCreateAgentResolvesPATHInSPECOrder(t *testing.T) {
 	cwd := t.TempDir()
-	service, _, logger, _ := newAgentTestService(t, map[string]string{"PATH": "/config/bin", "FROM_CONFIG": "1"}, "create-agent-path")
+	// Config's own PATH entirely overrides captured_path in the merged
+	// launch env (SPEC §6.3), including for CreateAgent's own preflight, so
+	// the stub claude the preflight needs to find has to live in this same
+	// config-owned directory, not on the real $PATH.
+	configPath := t.TempDir()
+	writeStubExecutable(t, configPath, "claude")
+	service, _, logger, _ := newAgentTestService(t, map[string]string{"PATH": configPath, "FROM_CONFIG": "1"}, "create-agent-path")
 
 	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
 		Name: "Claude: path", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
@@ -782,6 +791,67 @@ func TestCreateAgentShellHasNoInstrumentation(t *testing.T) {
 	// not an exception to it.
 	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", session.ID)
 	assertTMuxEnvironment(t, socket, session.Slug, "DECK_HOME", service.DeckHome)
+}
+
+// TestCreateAgentFailsOnAgentBinaryNotOnPathBeforeAnyRowExists is task
+// 010's own evidence: an adapter whose declared executable is not on the
+// PATH this pane would launch under must never get as far as a durable
+// row or a tmux pane -- CreateAgent's preflight has to run and fail before
+// Store.CreateSession, not after.
+func TestCreateAgentFailsOnAgentBinaryNotOnPathBeforeAnyRowExists(t *testing.T) {
+	cwd := t.TempDir()
+	// Deliberately no stubExecutableOnPath: the CI toolchain never installs
+	// claude, so PATH genuinely lacks it.
+	service, db, _, _ := newAgentTestService(t, nil, "create-agent-missing-binary")
+
+	_, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: missing binary", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err == nil {
+		t.Fatalf("create agent: want error for an agent binary not on PATH, got none")
+	}
+	if !strings.Contains(err.Error(), `agent binary "claude" not found on PATH`) {
+		t.Fatalf("create agent error = %q, want it to name the kind/executable in the shape agent binary %q not found on PATH", err.Error(), "claude")
+	}
+
+	rows, listErr := db.ListSessions(context.Background())
+	if listErr != nil {
+		t.Fatalf("list sessions: %v", listErr)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("durable rows = %#v, want none: the preflight must run before Store.CreateSession", rows)
+	}
+
+	live, listTmuxErr := service.TMux.List(context.Background())
+	if listTmuxErr != nil {
+		t.Fatalf("list tmux: %v", listTmuxErr)
+	}
+	if len(live) != 0 {
+		t.Fatalf("live tmux sessions = %#v, want none: the preflight must run before any pane is created", live)
+	}
+}
+
+// TestCreateAgentLoginShellSkipsBinaryPreflight proves the login_shell=1
+// exemption: a login shell resolves its own PATH via its own profile/rc
+// scripts (SPEC §6.4), so CreateAgent must not preflight-check the
+// adapter's declared executable for it, mirroring resume.go's own
+// exemption for a resumed login shell.
+func TestCreateAgentLoginShellSkipsBinaryPreflight(t *testing.T) {
+	cwd := t.TempDir()
+	// Deliberately no stubExecutableOnPath: claude is not on PATH, but
+	// login_shell=1 must make CreateAgent skip the preflight entirely.
+	service, db, _, _ := newAgentTestService(t, nil, "create-agent-login-shell-skip")
+
+	session, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: login shell", CWD: cwd, Agent: "claude", PermissionProfile: "safe", LoginShell: true,
+	})
+	if err != nil {
+		t.Fatalf("create agent with login_shell=1: %v", err)
+	}
+	rows, listErr := db.ListSessions(context.Background())
+	if listErr != nil || len(rows) != 1 || rows[0].ID != session.ID {
+		t.Fatalf("durable rows = %#v, %v, want exactly the created row", rows, listErr)
+	}
 }
 
 func assertTMuxEnvironment(t *testing.T, socket, slug, key, want string) {
