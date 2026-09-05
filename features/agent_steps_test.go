@@ -28,6 +28,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a fake "pi" binary is on PATH for future deck clients$`, fakePiOnPATHForFutureClients)
+	sc.Step(`^the fake "claude" binary is removed from PATH$`, fakeClaudeRemovedFromPATH)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
 	sc.Step(`^the deck config defaults new sessions to yolo without allowing it$`, deckConfigDefaultsYoloWithoutAllowing)
@@ -144,6 +145,32 @@ func installFakePiOnPATH(ctx context.Context, longRunning bool) error {
 		return fmt.Errorf("create fixture HOME directory: %w", err)
 	}
 	h.agentHOMEDir = homeDir
+	return nil
+}
+
+// fakeClaudeRemovedFromPATH deletes the "claude" wrapper
+// fakeClaudeOnPATHForFutureClients wrote into the scenario's shared fake
+// agent PATH directory (h.agentPATHDir), without touching any
+// already-started client's env: PATH is fixed once at process start (the
+// same exemption every other agentPATHDir consumer relies on), but the
+// binary FILE the create modal's live preflight (internal/service.CreateAgent,
+// task 010) looks up lives on disk in that same directory for the whole
+// process lifetime, so deleting it here reaches every already-running
+// client immediately. This proves the create-preflight race: the Agent
+// field can list claude (it was probed once, at client start) while the
+// binary that would actually be exec'd has since vanished from PATH.
+func fakeClaudeRemovedFromPATH(ctx context.Context) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if h.agentPATHDir == "" {
+		return errors.New("no fake agent PATH directory has been installed for this scenario")
+	}
+	claudeWrapper := filepath.Join(h.agentPATHDir, "claude")
+	if err := os.Remove(claudeWrapper); err != nil {
+		return fmt.Errorf("remove fake claude binary from PATH: %w", err)
+	}
 	return nil
 }
 
