@@ -149,6 +149,7 @@ func TestFreshOnceStartsFreshConversationThenRevertsToAuto(t *testing.T) {
 // store state as calling PinResume/SetResumeAuto/ArmFreshOnce directly.
 func TestResumeModeDispatchesToPinAutoAndFreshOnce(t *testing.T) {
 	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
 	service, _, _, _ := newAgentTestService(t, nil, "resume-mode-test")
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
