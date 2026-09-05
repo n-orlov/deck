@@ -75,3 +75,35 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     And the state database does not contain session "preflight-race"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
+
+  @requirement-114-remembered-agent-falls-back
+  Scenario: an agent remembered from a previous create falls back to shell, unlabelled, once it is no longer installed
+    # Task 024's persisted "last create agent" (SPEC.md:1364-1367) is read
+    # once per client at store-open time and never re-checked against
+    # PATH until the NEXT client opens the create modal (pickCreateAgent):
+    # client "A" creates a pi session while the pi fake is installed,
+    # persisting pi as the remembered agent to the shared state.db, then
+    # the fake is removed from PATH before client "B" starts. "B" must
+    # still open on shell, exactly like nothing had ever been remembered,
+    # because pickCreateAgent degrades identically whether lastCreateAgent
+    # is empty or merely no longer available -- and the help text must
+    # carry no "(last used)" prefix, which createAgentHelp only ever adds
+    # when pickCreateAgent's second return says the remembered value was
+    # actually used.
+    Given a fake "pi" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates pi session "piremembered" with permission profile "safe"
+    And deck client "A" exits cleanly
+    And the fake "pi" binary is removed from PATH
+    And deck client "B" is started
+    When deck client "B" opens the create modal
+    Then deck client "B" screen contains "Agent: shell (left/right cycles: shell)"
+    And deck client "B" screen contains "not on PATH: claude, pi"
+    # Disambiguated exactly like settings.feature's clear-recent-cwds
+    # scenario: "(last used) " prefixes whichever field's help currently
+    # carries a remembered value, so this must pin the Agent field's own
+    # full help text, not the bare shared prefix, or a stale cwd prefill
+    # from this same session's create would satisfy it vacuously.
+    And deck client "B" screen does not contain "(last used) which coding agent adapter launches this session"
+    When deck client "B" closes the create modal
+    And deck client "B" exits cleanly
