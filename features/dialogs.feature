@@ -26,7 +26,8 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
 
   @requirement-7-every-field-reachable-editable-described
   Scenario: create dialog -- every field is reachable by keyboard alone, editable, and each edit is visible
-    Given deck client "A" is started
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
     When deck client "A" walks and edits every create modal field by keyboard, asserting each change is visible
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
