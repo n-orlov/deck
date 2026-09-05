@@ -55,6 +55,16 @@
 
 Both mutations were reverted immediately; `internal/agent` is green again (log below).
 
+## The task's required command, verbatim
+
+    $ ci/run.sh go test -count=1 ./internal/agent/
+    ok  	github.com/n-orlov/deck/internal/agent	0.003s
+    exit 0
+
+Captured in `agent-package.log` / `agent-package.exitstatus` at commit `8c624ab`. The commit body
+quotes the same command's output from an earlier run in the same iteration (`0.004s`): only go
+test's own per-run duration differs, the `ok` verdict and the exit status are identical.
+
 ## Logs in this directory
 
 - `agent-package.log` / `agent-package.exitstatus` — `ci/run.sh go test -count=1 ./internal/agent/`
