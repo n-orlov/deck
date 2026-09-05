@@ -29,6 +29,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a fake "pi" binary is on PATH for future deck clients$`, fakePiOnPATHForFutureClients)
 	sc.Step(`^the fake "claude" binary is removed from PATH$`, fakeClaudeRemovedFromPATH)
+	sc.Step(`^the fake "pi" binary is removed from PATH$`, fakePiRemovedFromPATH)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
 	sc.Step(`^the deck config defaults new sessions to yolo without allowing it$`, deckConfigDefaultsYoloWithoutAllowing)
@@ -170,6 +171,28 @@ func fakeClaudeRemovedFromPATH(ctx context.Context) error {
 	claudeWrapper := filepath.Join(h.agentPATHDir, "claude")
 	if err := os.Remove(claudeWrapper); err != nil {
 		return fmt.Errorf("remove fake claude binary from PATH: %w", err)
+	}
+	return nil
+}
+
+// fakePiRemovedFromPATH is fakeClaudeRemovedFromPATH's pi counterpart
+// (task 020): deletes only the "pi" wrapper from the scenario's shared fake
+// agent PATH directory, leaving any other already-installed fixture (e.g.
+// claude) untouched, so a client started AFTER this step genuinely has no
+// pi binary reachable on PATH -- unlike an already-running client, whose
+// env (and thus its create modal's per-open availability probe) was fixed
+// at process start and is unaffected either way.
+func fakePiRemovedFromPATH(ctx context.Context) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if h.agentPATHDir == "" {
+		return errors.New("no fake agent PATH directory has been installed for this scenario")
+	}
+	piWrapper := filepath.Join(h.agentPATHDir, "pi")
+	if err := os.Remove(piWrapper); err != nil {
+		return fmt.Errorf("remove fake pi binary from PATH: %w", err)
 	}
 	return nil
 }

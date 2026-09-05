@@ -1,0 +1,266 @@
+=== RUN   TestBlackBoxAssertionsObserveRealSession
+--- PASS: TestBlackBoxAssertionsObserveRealSession (0.90s)
+=== RUN   TestTokenFormAssertionsResolveThroughPinnedThemeAndCanFail
+token-form assertions discriminate: accent=#00ff00
+--- PASS: TestTokenFormAssertionsResolveThroughPinnedThemeAndCanFail (0.00s)
+=== RUN   TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth
+--- PASS: TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth (0.51s)
+=== RUN   TestClientFrameHasNoColourAnywhereCanFail
+    color_depth_no_colour_floor_test.go:53: clientFrameHasNoColourAnywhere correctly failed against a colour-enabled client: client "floor-proof" cell at row 0 column 0 has foreground #0d9488 under NO_COLOR, want none
+--- PASS: TestClientFrameHasNoColourAnywhereCanFail (0.35s)
+=== RUN   TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation
+--- PASS: TestCreateModalKeyboardOnlyReachesEveryFieldAndExplanation (0.53s)
+=== RUN   TestCreateModalWarnsBeforeReusingADeletedSessionsName
+--- PASS: TestCreateModalWarnsBeforeReusingADeletedSessionsName (0.56s)
+=== RUN   TestCellAttributeAssertionsCanFail
+--- PASS: TestCellAttributeAssertionsCanFail (0.00s)
+=== RUN   TestNoFeatureFileUsesTheI16RedDemoStep
+--- PASS: TestNoFeatureFileUsesTheI16RedDemoStep (0.00s)
+=== RUN   TestFingerprintDetectsMutations
+=== RUN   TestFingerprintDetectsMutations/content_change
+=== RUN   TestFingerprintDetectsMutations/mtime_touch
+=== RUN   TestFingerprintDetectsMutations/added_file
+=== RUN   TestFingerprintDetectsMutations/mode_change
+=== RUN   TestFingerprintDetectsMutations/symlink_target_swap
+=== RUN   TestFingerprintDetectsMutations/removed_file
+=== RUN   TestFingerprintDetectsMutations/root_directory_mode_change
+--- PASS: TestFingerprintDetectsMutations (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/content_change (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/mtime_touch (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/added_file (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/mode_change (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/symlink_target_swap (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/removed_file (0.00s)
+    --- PASS: TestFingerprintDetectsMutations/root_directory_mode_change (0.00s)
+=== RUN   TestFrameBudgetCanFail
+--- PASS: TestFrameBudgetCanFail (0.00s)
+=== RUN   TestFeatures
+[1;37mFeature:[0m Nothing installed means the Agent field offers only shell (requirement 114)
+  A deck client started with no coding-agent binary on PATH still has a
+  usable create modal: the Agent field's cycle is exactly {shell}, cycling
+  never advances off it, and the help text says which registered kinds are
+  hidden and why.
+=== RUN   TestFeatures/with_nothing_installed_the_Agent_field_offers_only_shell
+
+  [1;37mScenario:[0m with nothing installed the Agent field offers only shell               [1;30m# agent_availability.feature:9[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                    [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: shell)"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "not on PATH: claude, pi"[0m                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                   [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                       [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                       [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: shell)"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                   [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/installing_an_agent_after_a_client_starts_does_not_change_that_client,_but_a_new_client_sees_it
+
+  [1;37mScenario:[0m installing an agent after a client starts does not change that client, but a new client sees it [1;30m# agent_availability.feature:22[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: shell)"[0m                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                           [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "B" opens the create modal[0m                                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "B" screen contains "Agent: shell (left/right cycles: claude, shell)"[0m                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "B" closes the create modal[0m                                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/with_only_claude_installed_the_Agent_field_offers_shell_and_claude_but_not_pi
+
+  [1;37mScenario:[0m with only claude installed the Agent field offers shell and claude but not pi   [1;30m# agent_availability.feature:40[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                         [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"[0m  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "not on PATH: pi"[0m                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                            [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: claude (left/right cycles: claude, shell)"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" cycles the open dialog's field right[0m                               [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"[0m  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_agent_removed_from_PATH_after_the_create_modal_opens_is_refused_at_submit,_in-dialog,_with_nothing_persisted
+
+  [1;37mScenario:[0m an agent removed from PATH after the create modal opens is refused at submit, in-dialog, with nothing persisted [1;30m# agent_availability.feature:55[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                         [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "preflight-race" into the create modal name field[0m                                             [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                                                             [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                                                [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: claude"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mthe fake "claude" binary is removed from PATH[0m                                                                      [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.fakeClaudeRemovedFromPATH[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal expecting rejection[0m                                                        [1;30m# create_validation_test.go:30 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains "not found on PATH"[0m                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Agent: claude"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "preflight-race"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database does not contain session "preflight-race"[0m                                                        [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.stateDatabaseDoesNotContainSession[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_agent_remembered_from_a_previous_create_falls_back_to_shell,_unlabelled,_once_it_is_no_longer_installed
+
+  [1;37mScenario:[0m an agent remembered from a previous create falls back to shell, unlabelled, once it is no longer installed [1;30m# agent_availability.feature:80[0m
+    [32mGiven[0m [32ma fake "pi" binary is on PATH for future deck clients[0m                                                        [1;30m# agent_steps_test.go:30 -> github.com/n-orlov/deck/features.fakePiOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates pi session "piremembered" with permission profile "safe"[0m                              [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mthe fake "pi" binary is removed from PATH[0m                                                                      [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.fakePiRemovedFromPATH[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "B" opens the create modal[0m                                                                        [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "B" screen contains "Agent: shell (left/right cycles: shell)"[0m                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "B" screen contains "not on PATH: claude, pi"[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "B" screen does not contain "(last used) which coding agent adapter launches this session"[0m         [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "B" closes the create modal[0m                                                                       [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+5 scenarios ([32m5 passed[0m)
+60 steps ([32m60 passed[0m)
+3.423110174s
+--- PASS: TestFeatures (3.42s)
+    --- PASS: TestFeatures/with_nothing_installed_the_Agent_field_offers_only_shell (0.49s)
+    --- PASS: TestFeatures/installing_an_agent_after_a_client_starts_does_not_change_that_client,_but_a_new_client_sees_it (0.65s)
+    --- PASS: TestFeatures/with_only_claude_installed_the_Agent_field_offers_shell_and_claude_but_not_pi (0.65s)
+    --- PASS: TestFeatures/an_agent_removed_from_PATH_after_the_create_modal_opens_is_refused_at_submit,_in-dialog,_with_nothing_persisted (0.69s)
+    --- PASS: TestFeatures/an_agent_remembered_from_a_previous_create_falls_back_to_shell,_unlabelled,_once_it_is_no_longer_installed (0.93s)
+=== RUN   TestGodogRejectsUndefinedAndFailedSteps
+=== RUN   TestGodogRejectsUndefinedAndFailedSteps/undefined
+[33mU[0m 1
+
+
+1 scenarios ([33m1 undefined[0m)
+1 steps ([33m1 undefined[0m)
+33.23µs
+
+[33mYou can implement step definitions for undefined steps with these snippets:[0m
+[33m
+func anUnregisteredStep() error {
+	return godog.ErrPending
+}
+
+func InitializeScenario(ctx *godog.ScenarioContext) {
+	ctx.Step(`^an unregistered step$`, anUnregisteredStep)
+}
+[0m
+=== RUN   TestGodogRejectsUndefinedAndFailedSteps/failed
+[31mF[0m 1
+
+
+--- [31mFailed steps:[0m
+
+  [31mScenario: error binding[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed3836349049/001/failure.feature:2[0m
+    [31mGiven a failing step[0m[1;30m # /tmp/TestGodogRejectsUndefinedAndFailedStepsfailed3836349049/001/failure.feature:3[0m
+      [31mError: [0m[1;31mdeliberate step failure[0m
+
+
+1 scenarios ([31m1 failed[0m)
+1 steps ([31m1 failed[0m)
+51.252µs
+--- PASS: TestGodogRejectsUndefinedAndFailedSteps (0.00s)
+    --- PASS: TestGodogRejectsUndefinedAndFailedSteps/undefined (0.00s)
+    --- PASS: TestGodogRejectsUndefinedAndFailedSteps/failed (0.00s)
+=== RUN   TestGoldenMinimumFrame
+=== RUN   TestGoldenMinimumFrame/run-1
+    golden_frame_test.go:75: rendered frame sha256 67a48237fcb1b2f052a397d36f33d7b1511f2c634e0b7f8137f7ff391e5ab5b6 (1937 bytes, theme "empire", DECK_COLOR_DEPTH "truecolor")
+=== RUN   TestGoldenMinimumFrame/run-2
+    golden_frame_test.go:75: rendered frame sha256 67a48237fcb1b2f052a397d36f33d7b1511f2c634e0b7f8137f7ff391e5ab5b6 (1937 bytes, theme "empire", DECK_COLOR_DEPTH "truecolor")
+--- PASS: TestGoldenMinimumFrame (2.00s)
+    --- PASS: TestGoldenMinimumFrame/run-1 (1.00s)
+    --- PASS: TestGoldenMinimumFrame/run-2 (1.00s)
+=== RUN   TestGoldenMinimumFrameRowCount
+--- PASS: TestGoldenMinimumFrameRowCount (0.00s)
+=== RUN   TestI1KeystrokeDropReproduction
+    i1_repro_test.go:37: opt-in reproduction driver for I-1 (task 004); set DECK_I1_REPRO=1 to run. See docs/reports/phase3d-i1-repro.log for a committed run.
+--- SKIP: TestI1KeystrokeDropReproduction (0.00s)
+=== RUN   TestInputCountInstrumentCountsRealKeystrokesThroughARealPTY
+--- PASS: TestInputCountInstrumentCountsRealKeystrokesThroughARealPTY (0.52s)
+=== RUN   TestScenarioHarnessTeardownReportsLeaks
+=== RUN   TestScenarioHarnessTeardownReportsLeaks/surviving_child
+=== RUN   TestScenarioHarnessTeardownReportsLeaks/responding_socket
+=== RUN   TestScenarioHarnessTeardownReportsLeaks/surviving_root
+--- PASS: TestScenarioHarnessTeardownReportsLeaks (1.94s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_child (1.36s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/responding_socket (0.29s)
+    --- PASS: TestScenarioHarnessTeardownReportsLeaks/surviving_root (0.29s)
+=== RUN   TestScenarioHarnessSharesIsolationAndCleansUp
+--- PASS: TestScenarioHarnessSharesIsolationAndCleansUp (0.39s)
+=== RUN   TestMouseReportingEnablesSGRExtendedMode
+--- PASS: TestMouseReportingEnablesSGRExtendedMode (0.35s)
+=== RUN   TestMouseReportingDisabledOnNormalQuit
+--- PASS: TestMouseReportingDisabledOnNormalQuit (0.35s)
+=== RUN   TestMouseReportingDisabledOnSignalledExit
+--- PASS: TestMouseReportingDisabledOnSignalledExit (0.35s)
+=== RUN   TestMouseReportingDisabledOnPanic
+--- PASS: TestMouseReportingDisabledOnPanic (0.43s)
+=== RUN   TestMouseFeatureNeverRegainsMillisecondsPass
+--- PASS: TestMouseFeatureNeverRegainsMillisecondsPass (0.00s)
+=== RUN   TestMouseReportingReenabledAfterAttachDetachCycle
+--- PASS: TestMouseReportingReenabledAfterAttachDetachCycle (1.85s)
+=== RUN   TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled
+--- PASS: TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled (1.81s)
+=== RUN   TestSGRMouseEncodesColumnsPastX10Ceiling
+=== RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/press_at_column_224
+=== RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/press_at_column_300
+=== RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/release_at_column_224
+=== RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/motion_at_column_224
+=== RUN   TestSGRMouseEncodesColumnsPastX10Ceiling/wheel_up_at_column_224
+--- PASS: TestSGRMouseEncodesColumnsPastX10Ceiling (0.00s)
+    --- PASS: TestSGRMouseEncodesColumnsPastX10Ceiling/press_at_column_224 (0.00s)
+    --- PASS: TestSGRMouseEncodesColumnsPastX10Ceiling/press_at_column_300 (0.00s)
+    --- PASS: TestSGRMouseEncodesColumnsPastX10Ceiling/release_at_column_224 (0.00s)
+    --- PASS: TestSGRMouseEncodesColumnsPastX10Ceiling/motion_at_column_224 (0.00s)
+    --- PASS: TestSGRMouseEncodesColumnsPastX10Ceiling/wheel_up_at_column_224 (0.00s)
+=== RUN   TestNavigationHelperNeverSleeps
+--- PASS: TestNavigationHelperNeverSleeps (0.00s)
+=== RUN   TestHomeFileLeaksFindsAnUnmaskedControlValueAndIgnoresAnAbsentOne
+--- PASS: TestHomeFileLeaksFindsAnUnmaskedControlValueAndIgnoresAnAbsentOne (0.00s)
+=== RUN   TestReadPaneHistoryLimitDistinguishesTmuxDefaultFromADeckValue
+--- PASS: TestReadPaneHistoryLimitDistinguishesTmuxDefaultFromADeckValue (0.02s)
+=== RUN   TestAssertPaneHistoryLimitFailsAgainstTheWrongValue
+--- PASS: TestAssertPaneHistoryLimitFailsAgainstTheWrongValue (0.02s)
+=== RUN   TestScreenDriverLaunchesDeckAndAnswersTerminalProbes
+--- PASS: TestScreenDriverLaunchesDeckAndAnswersTerminalProbes (0.35s)
+=== RUN   TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone
+--- PASS: TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone (0.40s)
+=== RUN   TestNormalizeFrame
+=== RUN   TestNormalizeFrame/unfrozen_timestamp_and_just_now
+=== RUN   TestNormalizeFrame/unfrozen_numeric_minute_age
+=== RUN   TestNormalizeFrame/unfrozen_numeric_hour_age
+=== RUN   TestNormalizeFrame/unfrozen_numeric_day_age
+=== RUN   TestNormalizeFrame/frozen_values_preserved
+--- PASS: TestNormalizeFrame (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_timestamp_and_just_now (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_numeric_minute_age (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_numeric_hour_age (0.00s)
+    --- PASS: TestNormalizeFrame/unfrozen_numeric_day_age (0.00s)
+    --- PASS: TestNormalizeFrame/frozen_values_preserved (0.00s)
+=== RUN   TestRequireRealClaudeHookFieldsIsStrictAboutUpstreamContract
+--- PASS: TestRequireRealClaudeHookFieldsIsStrictAboutUpstreamContract (0.00s)
+=== RUN   TestSigwinchCountDistinguishesTwoFromThree
+--- PASS: TestSigwinchCountDistinguishesTwoFromThree (0.23s)
+=== RUN   TestThemeChangesAttributesButNotFrameGeometry
+=== RUN   TestThemeChangesAttributesButNotFrameGeometry/unicode
+    theme_geometry_test.go:196: themes "cobalt" vs "daylight" differ in colour at 249 of 1920 cells
+    theme_geometry_test.go:196: themes "cobalt" vs "empire" differ in colour at 249 of 1920 cells
+    theme_geometry_test.go:196: themes "cobalt" vs "matrix" differ in colour at 249 of 1920 cells
+    theme_geometry_test.go:196: themes "cobalt" vs "parchment" differ in colour at 249 of 1920 cells
+=== RUN   TestThemeChangesAttributesButNotFrameGeometry/ascii
+    theme_geometry_test.go:196: themes "cobalt" vs "daylight" differ in colour at 253 of 1920 cells
+    theme_geometry_test.go:196: themes "cobalt" vs "empire" differ in colour at 253 of 1920 cells
+    theme_geometry_test.go:196: themes "cobalt" vs "matrix" differ in colour at 253 of 1920 cells
+    theme_geometry_test.go:196: themes "cobalt" vs "parchment" differ in colour at 253 of 1920 cells
+--- PASS: TestThemeChangesAttributesButNotFrameGeometry (1.80s)
+    --- PASS: TestThemeChangesAttributesButNotFrameGeometry/unicode (0.75s)
+    --- PASS: TestThemeChangesAttributesButNotFrameGeometry/ascii (0.75s)
+=== RUN   TestReadTmuxOptionInScopeTreatsBothUnsetShapesAsNone
+--- PASS: TestReadTmuxOptionInScopeTreatsBothUnsetShapesAsNone (0.02s)
+=== RUN   TestAssertTmuxOptionInScopeDistinguishesGlobalFromWindow
+--- PASS: TestAssertTmuxOptionInScopeDistinguishesGlobalFromWindow (0.02s)
+=== RUN   TestAssertTmuxOptionInScopeFailsWhenValueIsInTheWrongScope
+--- PASS: TestAssertTmuxOptionInScopeFailsWhenValueIsInTheWrongScope (0.03s)
+=== RUN   TestAssertTmuxOptionUnsetInScope
+--- PASS: TestAssertTmuxOptionUnsetInScope (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/features	19.217s
