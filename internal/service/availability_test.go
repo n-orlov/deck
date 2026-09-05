@@ -56,6 +56,41 @@ func TestAvailDirectoryNamedPiDoesNotCount(t *testing.T) {
 	}
 }
 
+// TestLookPathInFindsExecutableOnPath asserts the direct, package-private
+// contract of lookPathIn itself: given a name that resolves to an
+// executable file in one of pathEnv's directories, it returns a nil error.
+func TestLookPathInFindsExecutableOnPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pi"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake pi executable: %v", err)
+	}
+	if err := lookPathIn("pi", dir); err != nil {
+		t.Fatalf("lookPathIn(\"pi\", %q) = %v, want nil (pi executable is on that PATH)", dir, err)
+	}
+}
+
+// TestLookPathInErrorsWhenNameAbsentFromPath asserts that lookPathIn
+// returns a non-nil error when the requested name is nowhere on pathEnv.
+func TestLookPathInErrorsWhenNameAbsentFromPath(t *testing.T) {
+	dir := t.TempDir() // empty: no "pi" written into it
+	if err := lookPathIn("pi", dir); err == nil {
+		t.Fatalf("lookPathIn(\"pi\", %q) = nil, want a non-nil error (no pi on that PATH)", dir)
+	}
+}
+
+// TestLookPathInErrorsWhenNameIsADirectory asserts that lookPathIn returns
+// a non-nil error when the requested name matches a *directory* entry in
+// one of pathEnv's directories, rather than an executable file.
+func TestLookPathInErrorsWhenNameIsADirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "pi"), 0o755); err != nil {
+		t.Fatalf("mkdir fake pi directory: %v", err)
+	}
+	if err := lookPathIn("pi", dir); err == nil {
+		t.Fatalf("lookPathIn(\"pi\", %q) = nil, want a non-nil error (PATH entry named pi is a directory, not an executable)", dir)
+	}
+}
+
 // TestAvailConfigEnvPathWinsOverProcessPath asserts that config [env]'s
 // PATH (Service.ConfigEnv) participates in the probe AvailableKinds runs
 // and takes priority over the process's own PATH (SPEC §6.3,
