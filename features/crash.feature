@@ -44,7 +44,8 @@ Feature: Clean exits and crashed agent panes
     And deck client "C" exits cleanly
 
   Scenario: a failing pre_launch leaves visible evidence without attaching
-    Given deck client "A" is started
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
     When deck client "A" creates claude session "pre-launch fails" with permission profile "safe" and failing pre-launch command "exit 1"
     Then within one configured reconcile interval deck client "A" screen contains "error"
     And the state database session "pre-launch fails" has an event of kind "tmux.pane_dead" with reason containing "exited with status 1"
