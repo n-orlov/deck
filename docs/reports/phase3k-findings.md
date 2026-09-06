@@ -17,7 +17,7 @@ The PRD's own inventory command, re-run fresh against this tree:
 $ grep -n 'creates \(claude\|pi\) session\|opens the create modal for agent' features/*.feature
 ```
 
-hits 29 feature files. Reading every hit, three files needed a **new** fixture step installed
+hits 33 feature files. Reading every hit, three files needed a **new** fixture step installed
 ahead of a scenario that drives the create modal to a non-shell kind (the pre-existing fixture
 step, `a fake "claude" binary is on PATH for future deck clients`, already covered most claude
 scenarios from earlier phases — the gap this phase closed is `pi` and the handful of scenarios
@@ -40,7 +40,7 @@ left unchanged: it already built both fakes into the same `agentPATHDir` before 
 covers them.
 
 **Files checked and found to need no fixture edit**, with the reason recorded so a later reader
-does not re-walk the same 29-file list from scratch: every other `permission_modes.feature`
+does not re-walk the same 33-file list from scratch: every other `permission_modes.feature`
 scenario, and every scenario in `agent_session.feature`, `attention_sort.feature`,
 `concurrency.feature`, `create_session.feature`, `durable_identity.feature`,
 `environment.feature`, `event_log.feature`, `harness.feature`,
@@ -54,8 +54,14 @@ scenario, and every scenario in `agent_session.feature`, `attention_sort.feature
 their own `Given`/`Background` from before this phase (confirmed by the whole-suite sweep at
 `d88c6625c4ccca71b0d31f7b5864ba030ed39e53` passing with every one of them exercised — none of
 these files' scenarios create a `pi` session, so R112's narrower field never had anything to
-refuse them on). `features/attach_scroll.feature` and `features/interactive_scroll.feature`
-create only `shell` sessions and never reach the Agent field's non-shell kinds at all.
+refuse them on). `features/attach_scroll.feature` and `features/interactive_scroll.feature` each
+do create one `claude` session — `sp-claude` (`attach_scroll.feature:43`) and `ig-claude`
+(`interactive_scroll.feature:90`) — but neither needed a fixture edit: each scenario's own
+probe-fixture setup step (`Given probe fixture agents for attach-scroll are configured`,
+`attach_scroll.feature:40`, calling `configureAttachScrollProbeScenario`; and `Given probe
+fixture agents for interactive-scroll are configured`, `interactive_scroll.feature:87`, calling
+the same function) already installs the fake `claude` binary on `PATH` before the create step
+runs, independently of the shared `a fake "claude" binary is on PATH...` step used elsewhere.
 `features/real_agent_smoke.feature` is `@real-agents` (excluded by
 `features/godog_test.go`'s `defaultTags`, per the standing rule against editing it) and uses a
 real installed `claude`, never a fake — left alone, per the PRD's own instruction.
