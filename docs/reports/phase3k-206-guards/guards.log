@@ -1,0 +1,126 @@
+=== RUN   TestFooterHandlerAgreementCoversEveryEligibilityGatedFooterKey
+--- PASS: TestFooterHandlerAgreementCoversEveryEligibilityGatedFooterKey (0.00s)
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/↵
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/a
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/i
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/↵
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/a
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/live/running/i
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/↵
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/a
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/stopped/i
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/↵
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/a
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/archived/i
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/↵
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/a
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/i
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/Y
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/x
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/r
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/R
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/A
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/U
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/dd
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/↵
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/a
+=== RUN   TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/i
+--- PASS: TestFooterHandlerAgreementAcrossEveryRowClass (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/↵ (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/a (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/empty_list/i (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/↵ (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/a (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/live/running/i (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/↵ (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/a (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/stopped/i (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/↵ (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/a (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/archived/i (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/↵ (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/a (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/attention-pending/i (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/Y (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/x (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/r (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/R (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/A (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/U (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/dd (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/↵ (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/a (0.00s)
+    --- PASS: TestFooterHandlerAgreementAcrossEveryRowClass/non-empty_mark_set:_selected_row_differs_from_the_marked_row/i (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.012s
