@@ -1,5 +1,12 @@
 # Task 205 — ten-run stability gate at the new final code sha
 
+> **Superseded.** The retained gate for the final code sha
+> `4e09f2de90dcde04bd8fc20c77097e593f2fee5b` is now
+> [`docs/reports/phase3k-cure-02-01-stability10/`](../phase3k-cure-02-01-stability10/README.md).
+> This run's launch `HEAD` (`38f4ffe7008b45a6f023b3f915f6946d494f371e`) restores identical
+> tree content but is not the final code sha or a docs-only descendant of it (task
+> cure-02-01's finding) — kept here as history, not as current gate evidence.
+
 Final code sha (`git log -1 --format=%H -- '*.go' '*.feature'`):
 `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`
 
