@@ -31,10 +31,15 @@ this task's own wording ("a `-v` companion run of the **features package**"), ra
 whole-repo `./...` some earlier phases' companions used; nothing in this task's success criteria
 asks for the other 16 packages' result lines, only the scenario/step tally and the two shas.
 
-## Code sha this run ran at, and the unchanged final code sha
+## Code shas this run ran at (its final-code-sha claim superseded 2026-09-06, task 209)
 
-The unchanged final code sha (`git log -1 --format=%H -- '*.go' '*.feature'`), the same sha task
-021's deliverable sweep and task 022's disposition README cite:
+The sha task 021's deliverable sweep and task 022's disposition README cite, which was the last
+`*.go`/`*.feature` commit (`git log -1 --format=%H -- '*.go' '*.feature'`) **when this run was
+made**. It is no longer: approach 02's cures `c8b00cc` (task 201) and `4e09f2d` (task 202) landed
+`*.go` changes afterwards, so the phase's final code sha is now
+`4e09f2de90dcde04bd8fc20c77097e593f2fee5b` and the current verbose companion is
+`docs/reports/phase3k-204-fullsuite-verbose/` (whole-suite gate of record:
+`docs/reports/phase3k-203-fullsuite/`):
 
 ```
 d88c6625c4ccca71b0d31f7b5864ba030ed39e53
@@ -50,8 +55,8 @@ This run itself was made at:
 (`28dc76129c6dd8548a72ca1d0b16c94ead29dd5a` both) while this run executed, and
 `git diff --stat d88c6625c4ccca71b0d31f7b5864ba030ed39e53..28dc76129c6dd8548a72ca1d0b16c94ead29dd5a`
 touches only `docs/reports/phase3k-021-fullsuite/{README.md,sweep.log,sweep.log.exitstatus}` —
-docs-only, nothing under `*.go` or `*.feature` — so `28dc761` is a docs-only descendant of the
-final code sha `d88c662`, exactly as this task requires.
+docs-only, nothing under `*.go` or `*.feature` — so `28dc761` is a docs-only descendant of
+`d88c662`, which was the final code sha at the time this task ran, exactly as this task required.
 
 ## Command run (verbatim)
 
@@ -185,10 +190,12 @@ Exit status **0**. Gherkin tally as measured: **335 scenarios (335 passed)**, **
 
 This run is the Gherkin tally source only, and exists only because the mandated non-verbose
 launcher structurally cannot print `N scenarios (N passed)` (finding F34). **Task 021's sweep
-remains the deliverable gate** — its report at `docs/reports/phase3k-021-fullsuite/README.md`,
-captured at final code sha `d88c6625c4ccca71b0d31f7b5864ba030ed39e53` with exit status 0, is what
-this plan's termination rule cites; this companion adds only the scenario/step count that sweep's
-own log cannot contain.
+remains the deliverable gate of approach 01** — its report at
+`docs/reports/phase3k-021-fullsuite/README.md`, captured with exit status 0 at
+`d88c6625c4ccca71b0d31f7b5864ba030ed39e53`, the final code sha *at that time* and since superseded
+by `4e09f2de90dcde04bd8fc20c77097e593f2fee5b` (current whole-suite gate of record:
+`docs/reports/phase3k-203-fullsuite/`) — is what this plan's termination rule cited; this
+companion adds only the scenario/step count that sweep's own log cannot contain.
 
 ## Contents
 
