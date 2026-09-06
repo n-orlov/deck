@@ -1,0 +1,6 @@
+=== RUN   TestLookPathInRejectsFIFOEvenWithExecuteBits
+    availability_test.go:202: lookPathIn("pi", "/tmp/TestLookPathInRejectsFIFOEvenWithExecuteBits4041181107/001") = nil, want a non-nil error (pi on that PATH is a FIFO, not a regular file)
+--- FAIL: TestLookPathInRejectsFIFOEvenWithExecuteBits (0.00s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/service	0.003s
+FAIL
