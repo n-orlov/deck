@@ -24,9 +24,13 @@ import (
 	"github.com/n-orlov/deck/internal/tui"
 )
 
-func main() { os.Exit(run(os.Args, os.Stdin, os.Stderr)) }
+func main() { os.Exit(run(os.Args, os.Stdin, os.Stdout, os.Stderr)) }
 
-func run(args []string, stdin io.Reader, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if isVersionRequest(args) {
+		printVersion(stdout)
+		return 0
+	}
 	isHook := len(args) == 2 && args[1] == "_hook"
 	settings, err := config.Load()
 	if err != nil {
