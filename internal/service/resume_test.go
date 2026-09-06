@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -427,9 +428,20 @@ func TestResumeFailsOnAgentBinaryNotOnPath(t *testing.T) {
 	// so a live $PATH never changes it -- only the file backing one of its
 	// directories can, which is exactly what "an agent binary uninstalled
 	// after create" looks like by resume time.
+	//
+	// PATH is restricted to the stub's directory plus tmux's own, rather
+	// than prepended to the host's PATH: on a host that really has claude
+	// installed (the operator's, unlike CI) an inherited PATH would still
+	// resolve the real binary after the stub is removed and the refusal
+	// under test would never fire. tmux's directory stays so the pane's
+	// launch itself still works.
 	dir := t.TempDir()
 	stubPath := writeStubExecutable(t, dir, "claude")
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	tmuxPath, err := exec.LookPath("tmux")
+	if err != nil {
+		t.Fatalf("tmux is required on PATH for this test: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+filepath.Dir(tmuxPath))
 	service, db, logger, _ := newAgentTestService(t, nil, "resume-missing-binary")
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
