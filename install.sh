@@ -6,8 +6,7 @@
 # Env:  DECK_VERSION=vX.Y.Z   pin a release (default: latest)
 #       DECK_INSTALL_DIR=DIR  where to put the binary (default: ~/.local/bin)
 #
-# Uses an authenticated `gh` when present (required while the repo is private),
-# otherwise plain curl. Linux and macOS only; on Windows run it inside WSL.
+# Uses an authenticated `gh` when present, otherwise plain curl. Linux and macOS only; on Windows run it inside WSL.
 set -eu
 
 REPO=n-orlov/deck

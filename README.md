@@ -9,12 +9,6 @@ Named sessions, durable conversations, resume on demand.
 curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
 ```
 
-While the repo is private, use an authenticated `gh` instead:
-
-```sh
-gh api repos/n-orlov/deck/contents/install.sh -H 'Accept: application/vnd.github.raw' | sh
-```
-
 - Installs to `~/.local/bin/deck`. Override: `DECK_INSTALL_DIR`, `DECK_VERSION=vX.Y.Z`.
 - Requires **tmux >= 3.2**. Agents (`claude`, `pi`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
