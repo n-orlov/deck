@@ -33,6 +33,9 @@ func lookPathIn(file, pathEnv string) error {
 		if info.IsDir() {
 			return fmt.Errorf("%s is a directory", file)
 		}
+		if !isExecutable(info) {
+			return fmt.Errorf("%s: not executable", file)
+		}
 		return nil
 	}
 	for _, dir := range filepath.SplitList(pathEnv) {
@@ -40,11 +43,20 @@ func lookPathIn(file, pathEnv string) error {
 			dir = "."
 		}
 		candidate := filepath.Join(dir, file)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && isExecutable(info) {
 			return nil
 		}
 	}
 	return fmt.Errorf("%s: executable file not found in $PATH", file)
+}
+
+// isExecutable reports whether info's mode has at least one of the POSIX
+// executable bits (owner, group or other) set, mirroring the check
+// exec.LookPath performs on the file it finds: a regular file that merely
+// exists and is not a directory (mode 0644, say) is not itself sufficient
+// -- R111 requires resolving an executable, not any same-named file.
+func isExecutable(info os.FileInfo) bool {
+	return info.Mode()&0111 != 0
 }
 
 // kindAvailable reports whether kind's declared executable is available

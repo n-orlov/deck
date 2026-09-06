@@ -56,6 +56,22 @@ func TestAvailDirectoryNamedPiDoesNotCount(t *testing.T) {
 	}
 }
 
+// TestAvailPiUnavailableWhenModeNonExecutable asserts the R111 gap an
+// independent review caught (docs/reports/phase3k-findings.md finding 1):
+// a mode-0644 regular file named "pi" on the probed PATH exists and is not
+// a directory, but it is not executable, so kindAvailable must report it
+// unavailable rather than treating mere existence as availability.
+func TestAvailPiUnavailableWhenModeNonExecutable(t *testing.T) {
+	dir := t.TempDir()
+	piPath := filepath.Join(dir, "pi")
+	if err := os.WriteFile(piPath, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("write non-executable fake pi file: %v", err)
+	}
+	if kindAvailable(agent.NewPi(), dir) {
+		t.Fatalf("kindAvailable(pi, %q) = true, want false (pi on that PATH is mode 0644, not executable)", dir)
+	}
+}
+
 // TestLookPathInFindsExecutableOnPath asserts the direct, package-private
 // contract of lookPathIn itself: given a name that resolves to an
 // executable file in one of pathEnv's directories, it returns a nil error.
@@ -88,6 +104,33 @@ func TestLookPathInErrorsWhenNameIsADirectory(t *testing.T) {
 	}
 	if err := lookPathIn("pi", dir); err == nil {
 		t.Fatalf("lookPathIn(\"pi\", %q) = nil, want a non-nil error (PATH entry named pi is a directory, not an executable)", dir)
+	}
+}
+
+// TestLookPathInErrorsWhenNameIsModeNonExecutable asserts that lookPathIn's
+// PATH-search branch rejects a mode-0644 regular file: existing and not a
+// directory is not enough, it must also carry an executable bit (R111).
+func TestLookPathInErrorsWhenNameIsModeNonExecutable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pi"), []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("write non-executable fake pi file: %v", err)
+	}
+	if err := lookPathIn("pi", dir); err == nil {
+		t.Fatalf("lookPathIn(\"pi\", %q) = nil, want a non-nil error (pi on that PATH is mode 0644, not executable)", dir)
+	}
+}
+
+// TestLookPathInErrorsWhenDirectPathIsModeNonExecutable asserts that
+// lookPathIn's direct-path branch (file containing a path separator) also
+// rejects a mode-0644 regular file, not just the PATH-search branch above.
+func TestLookPathInErrorsWhenDirectPathIsModeNonExecutable(t *testing.T) {
+	dir := t.TempDir()
+	claudePath := filepath.Join(dir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("write non-executable fake claude file: %v", err)
+	}
+	if err := lookPathIn(claudePath, ""); err == nil {
+		t.Fatalf("lookPathIn(%q, \"\") = nil, want a non-nil error (direct path is mode 0644, not executable)", claudePath)
 	}
 }
 

@@ -831,6 +831,48 @@ func TestCreateAgentPreflightRefusesAgentBinaryNotFoundOnPath(t *testing.T) {
 	}
 }
 
+// TestCreateAgentPreflightRefusesModeNonExecutableBinary is the R113 half
+// of docs/reports/phase3k-findings.md finding 1 (independent review's
+// second reproduction, review-nonexec-create.log): a mode-0644 regular
+// file named "claude" on the launch PATH exists and is not a directory,
+// but it is not executable, so the preflight (which shares lookPathIn with
+// AvailableKinds) must still refuse before any durable row or tmux pane.
+func TestCreateAgentPreflightRefusesModeNonExecutableBinary(t *testing.T) {
+	cwd := t.TempDir()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("write non-executable fake claude file: %v", err)
+	}
+	service, db, _, _ := newAgentTestService(t, nil, "create-agent-nonexec-binary")
+	service.ConfigEnv = map[string]string{"PATH": dir}
+
+	_, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: mode 0644", CWD: cwd, Agent: "claude", PermissionProfile: "safe",
+	})
+	if err == nil {
+		t.Fatalf("create agent: want error for a mode-0644 claude on PATH, got none")
+	}
+	if !strings.Contains(err.Error(), `agent binary "claude" not found on PATH`) {
+		t.Fatalf("create agent error = %q, want it to name the kind/executable in the shape agent binary %q not found on PATH", err.Error(), "claude")
+	}
+
+	rows, listErr := db.ListSessions(context.Background())
+	if listErr != nil {
+		t.Fatalf("list sessions: %v", listErr)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("durable rows = %#v, want none: the preflight must run before Store.CreateSession", rows)
+	}
+
+	live, listTmuxErr := service.TMux.List(context.Background())
+	if listTmuxErr != nil {
+		t.Fatalf("list tmux: %v", listTmuxErr)
+	}
+	if len(live) != 0 {
+		t.Fatalf("live tmux sessions = %#v, want none: the preflight must run before any pane is created", live)
+	}
+}
+
 // TestCreateAgentLoginShellSkipsBinaryPreflight proves the login_shell=1
 // exemption: a login shell resolves its own PATH via its own profile/rc
 // scripts (SPEC §6.4), so CreateAgent must not preflight-check the
