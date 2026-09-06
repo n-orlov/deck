@@ -1,5 +1,16 @@
 # Task 024: ten-run stability gate at the final code sha
 
+> **Superseded 2026-09-06 (task cure-02-02).** An independent review found two remaining probe
+> gaps after this run (`lookPathIn` accepted a mode-0644 regular file and a FIFO named like an
+> agent's binary); approach 02 cured both (`cure-01-01` `7349dd6`, `201` `c8b00cc`, `202`
+> `4e09f2d`), moving the phase's final code sha to `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`.
+> This report's ten-run measurement at `d88c6625c4ccca71b0d31f7b5864ba030ed39e53` is preserved
+> below unchanged as history; it is **not** the gate of record. Task 205's own attempt to re-run
+> this gate at the new final code sha ended terminal `failed` (launch-form grounds an operator
+> ruling later held were never a rejection basis). The current stability-gate evidence is
+> `docs/reports/phase3k-cure-02-01-stability10/` (commit `0bb7a03`, 10/10 passed, exit status 0,
+> exact final code sha).
+
 ## Command launched (exactly once, from a clean tree)
 
 ```

@@ -941,6 +941,34 @@ see [`docs/reports/phase3k-findings.md`](reports/phase3k-findings.md) §3.
 [`docs/reports/phase3k.md`](reports/phase3k.md) maps the phase both ways against GH #21's
 numbered `## Design` items — item 1–7 → requirement, and each of R111, R112, R113, R114 and R115
 → the numbered items it discharges — so the issue closes on a reading of that pair of tables.
+**This citation of `d88c6625c4ccca71b0d31f7b5864ba030ed39e53` as Phase 3k's final code sha is
+superseded — 3k's true final code sha is `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`** (task 202's
+commit), per an independent review that found two remaining probe gaps in `lookPathIn` after this
+paragraph was first written: it accepted a mode-0644 regular file with no execute bit, and it
+accepted a non-regular file (a FIFO) named like an agent's binary. Both were cured, docs-only
+from `internal/service/availability.go`'s point of view outward — `cure-01-01` (`7349dd6`)
+required an executable bit, `201` (`c8b00cc`) rejected non-regular files, and `202` (`4e09f2d`)
+added the FIFO regression case to the create preflight, which shares the same probe. All four
+gates were re-measured at the new sha and are green: the whole-suite sweep exits **0**, 14
+packages `ok` plus 3 `[no test files]`, no skip
+([`docs/reports/phase3k-203-fullsuite/README.md`](reports/phase3k-203-fullsuite/README.md), task
+203); its verbose companion again reports **335 scenarios (335 passed)**, **3888 steps (3888
+passed)** — unchanged, since the cures added no scenario
+([`docs/reports/phase3k-204-fullsuite-verbose/README.md`](reports/phase3k-204-fullsuite-verbose/README.md),
+task 204); the ten-run stability gate, launched from a clean detached git worktree checked out at
+the exact final code sha with the literal inner line `nohup timeout 7200 ci/stability.sh 10 >
+log 2>&1 &` and polled with `sleep 120` only, ends **`10/10 passed`**, script exit **`0`**
+([`docs/reports/phase3k-cure-02-01-stability10/summary.log`](reports/phase3k-cure-02-01-stability10/summary.log),
+commit `0bb7a03`, task cure-02-01 — task 205's own attempt at this same re-run ended terminal
+`failed` on launch-form grounds an operator ruling later held were never a rejection basis, so
+this record discharges 205's obligation); the protected-path audit again prints nothing
+([`docs/reports/phase3k-207-audit/README.md`](reports/phase3k-207-audit/README.md), task 207);
+and the three parity guards still pass unedited
+([`docs/reports/phase3k-206-guards/README.md`](reports/phase3k-206-guards/README.md), task 206).
+The approach-01 measurements at `d88c662` cited above are preserved as history, each now carrying
+its own dated supersession note pointing at the record above. [`docs/reports/phase3k.md`](reports/phase3k.md)
+and [`docs/reports/phase3k-findings.md`](reports/phase3k-findings.md) are re-closed at the new sha
+(task cure-02-02); the R111/R113 rows there additionally name the two cure commits.
 
 ## Other milestones
 
