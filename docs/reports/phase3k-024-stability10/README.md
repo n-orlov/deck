@@ -106,24 +106,34 @@ full per-run logs and combined summary log kept in: /tmp/deck-stability.gPcigR
 
 ## Failures
 
-None. All ten runs passed. Quoted verbatim from `summary.log` (the line the
-gate itself prints as its final disposition):
+None. All ten runs passed. Quoted verbatim from the tracked
+`docs/reports/phase3k-024-stability10/summary.log` (the line the gate itself
+prints as its final disposition):
 
 ```
 10/10 passed
 ```
 
-There is no per-run FAIL line and no non-zero per-run exit code anywhere in
-`summary.log` (every `=== RUN N: PASS (exit 0) ===` line above is the same
-file, quoted in full in the "Result" section), so there is no failing run to
-name and no `/tmp` per-run log to copy out.
+Because that line reports ten of ten runs passing, this section names no
+failing run and copies out no per-run log: there is no per-run FAIL line and no
+non-zero per-run exit code anywhere in
+`docs/reports/phase3k-024-stability10/summary.log` (every
+`=== RUN N: PASS (exit 0) ===` line above comes from that same file, quoted in
+full in the "Result" section).
 
-**Pass count, exactly as `summary.log` states it: `10/10 passed`.** Ten of ten
+**Pass count, exactly as that file states it: `10/10 passed`.** Ten of ten
 runs, no FAIL line, no non-zero per-run exit code — nothing rounded up.
 
-The `/tmp/deck-stability.gPcigR` per-run logs named by the script's own final
-line are ephemeral scratch state inside this run's container (per
-`ci/stability.sh`'s `mktemp -d` design) and are not copied here; the combined
-`summary.log` committed in this directory is the complete, authoritative record
-of every run's PASS/FAIL decision and is exactly what the gate command
-produced.
+Every path this section cites is tracked in git:
+
+- `docs/reports/phase3k-024-stability10/summary.log` — the combined gate log,
+  the authoritative record of every run's PASS/FAIL decision.
+- `docs/reports/phase3k-024-stability10/summary.log.exitstatus` — the gate
+  command's exit status, `0`.
+- `docs/reports/phase3k-024-stability10/poll.log` — the timestamped poll log for
+  the gate run.
+
+The scratch directory that `ci/stability.sh` creates with `mktemp -d`, echoed in
+the script's own final line quoted in the "Result" section above, is ephemeral
+container state and is deliberately not cited as evidence here; no failing run
+existed, so nothing from it needed copying into this report directory.
