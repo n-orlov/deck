@@ -47,15 +47,6 @@ outdir=$(mktemp -d "${TMPDIR:-/tmp}/deck-stability.XXXXXX")
 summary_log="$outdir/summary.log"
 : > "$summary_log"
 
-# Record THIS script's own exit status beside the summary log, on every exit
-# path, so a caller that backgrounds the script (`nohup timeout N
-# ci/stability.sh 10 > log 2>&1 &`) can read the real status without having to
-# be the job's parent shell. A `wait` issued from any later shell is never the
-# job's parent and reports 127 instead of the truth, and wrapping the run in
-# `bash -c '...; echo $? > file'` moves `nohup` off the `timeout` invocation;
-# self-recording keeps the launch command itself exactly as the gate specifies.
-trap 'deck_st=$?; echo "$deck_st" > "$summary_log.exitstatus"' EXIT
-
 pass=0
 fail=0
 
