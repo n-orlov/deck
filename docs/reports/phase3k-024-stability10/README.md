@@ -1,4 +1,4 @@
-# Task 024: ten-run stability gate at the final code sha
+# Task 024: ten-run stability gate at the then-final code sha `d88c662` (superseded)
 
 > **Superseded 2026-09-06 (task cure-02-02).** An independent review found two remaining probe
 > gaps after this run (`lookPathIn` accepted a mode-0644 regular file and a FIFO named like an
@@ -35,9 +35,8 @@ An earlier attempt at this task (commit `c748abb`) recorded a first poll of
 `sleep 5` and was rejected for exactly that; this iteration **relaunched the
 gate from scratch** on a clean tree and polled with `sleep 120` only. The
 `summary.log` / `summary.log.exitstatus` committed here are the new run's,
-not that attempt's (the new run's scratch dir is
-`/tmp/deck-stability.gPcigR`; the rejected attempt's was
-`/tmp/deck-stability.5WgkJO`).
+not that attempt's (the two runs used different ephemeral scratch directories;
+the new run's is the one named in the `summary.log` quote reproduced below).
 
 | Poll | Interval slept | Wall clock (UTC) | Last line of `summary.log` at that moment |
 |------|----------------|------------------|--------------------------------------------|
@@ -75,7 +74,9 @@ not that attempt's (the new run's scratch dir is
 | 32 | `sleep 120` | Sun Sep  6 00:23:33 UTC 2026 | `=== RUN 10 ===` |
 | 33 | `sleep 120` | Sun Sep  6 00:25:36 UTC 2026 | `10/10 passed` |
 
-## Final code sha
+## Code sha at the time of this gate (superseded 2026-09-06, task 209)
+
+Quoted verbatim as it was captured when this gate ran:
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
@@ -83,8 +84,12 @@ d88c6625c4ccca71b0d31f7b5864ba030ed39e53
 ```
 
 The gate ran against a tree whose HEAD at launch time
-(`c748abbd7d1371c1f5df3542a534119edf719f95`) is a docs-only descendant of that
-final code sha — no `*.go` or `*.feature` file has changed since `d88c662`.
+(`c748abbd7d1371c1f5df3542a534119edf719f95`) was a docs-only descendant of the
+then-current final code sha. `*.go` files **have** changed since `d88c662` —
+approach 02's cures `c8b00cc` (task 201) and `4e09f2d` (task 202) — so
+the phase's final code sha is now `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`
+and the ten-run stability gate of record is
+`docs/reports/phase3k-cure-02-01-stability10/` (commit `0bb7a03`).
 
 ## Result — quoted verbatim from `summary.log`
 

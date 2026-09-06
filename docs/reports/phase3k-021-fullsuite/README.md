@@ -17,8 +17,10 @@ nohup sh -c 'timeout 1800 ci/run.sh go test -p=1 -count=1 ./... > docs/reports/p
 Launched disowned/backgrounded, then polled with `sleep 60`/`sleep 120` rather
 than blocked on, per the standing rule ("always backgrounded under `timeout`
 ... and polled with `sleep`, never blocked on"). The run started on a clean
-tree at commit `d88c662` (the code sha that turned out to be final for this
-sweep — see below) and finished green.
+tree at commit `d88c662` (the last `*.go`/`*.feature` commit **at the time of
+this sweep**; superseded 2026-09-06 — the phase's final code sha is now
+`4e09f2de90dcde04bd8fc20c77097e593f2fee5b`, see the note at the top of this
+file — and see below) and finished green.
 
 ## Poll table
 
@@ -39,17 +41,24 @@ Total elapsed until completion: ~6.7 minutes (~403s), consistent with
 below (longest single package: `features` at 331.211s) and with the
 `~7 min expected` estimate in task 021's own success criteria.
 
-## Final code sha
+## Code sha at the time of this sweep (superseded 2026-09-06, task 209)
+
+Quoted verbatim as it was captured when this sweep ran:
 
 ```
 $ git log -1 --format=%H -- '*.go' '*.feature'
 d88c6625c4ccca71b0d31f7b5864ba030ed39e53
 ```
 
-This is the last commit touching any `*.go` or `*.feature` file as of this
-writing; the sweep itself was launched and completed at this same sha (commit
-`8bd2646`, which added the sweep log and exit-status file to this directory,
-is a docs-only tail commit after it and does not change this citation).
+That **was** the last commit touching any `*.go` or `*.feature` file when this
+sweep ran; it is no longer. Approach 02's cures landed further `*.go` changes
+afterwards (`c8b00cc` task 201, `4e09f2d` task 202), so the same command today
+prints `4e09f2de90dcde04bd8fc20c77097e593f2fee5b` — this phase's final code
+sha — and the gate of record is `docs/reports/phase3k-203-fullsuite/` (whole
+suite) with `docs/reports/phase3k-cure-02-01-stability10/` (ten-run stability).
+The sweep itself was launched and completed at `d88c662` (commit `8bd2646`,
+which added the sweep log and exit-status file to this directory, is a
+docs-only tail commit after it and does not change that).
 
 ## Per-package result lines (copied verbatim from `sweep.log`)
 
