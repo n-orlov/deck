@@ -104,6 +104,20 @@ full per-run logs and combined summary log kept in: /tmp/deck-stability.gPcigR
 
 `summary.log.exitstatus` reads `0`.
 
+## Failures
+
+None. All ten runs passed. Quoted verbatim from `summary.log` (the line the
+gate itself prints as its final disposition):
+
+```
+10/10 passed
+```
+
+There is no per-run FAIL line and no non-zero per-run exit code anywhere in
+`summary.log` (every `=== RUN N: PASS (exit 0) ===` line above is the same
+file, quoted in full in the "Result" section), so there is no failing run to
+name and no `/tmp` per-run log to copy out.
+
 **Pass count, exactly as `summary.log` states it: `10/10 passed`.** Ten of ten
 runs, no FAIL line, no non-zero per-run exit code — nothing rounded up.
 
