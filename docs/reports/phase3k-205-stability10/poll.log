@@ -1,0 +1,25 @@
+2026-09-06T01:59:21+00:00 launched: nohup bash -c 'timeout 7200 ci/stability.sh 10 > /tmp/deck-205/log 2>&1; echo $? > /tmp/deck-205/log.exitstatus' & (pid 17812; wraps in bash -c per task-203 gotcha to capture exit status atomically in same backgrounded shell)
+2026-09-06T02:01:28+00:00 poll: process alive=yes; log_tail==== RUN 1 ===
+2026-09-06T02:03:31+00:00 poll: process alive=yes; log_tail==== RUN 1 ===
+2026-09-06T02:05:36+00:00 poll: process alive=yes; log_tail==== RUN 1 ===
+2026-09-06T02:07:38+00:00 poll: process alive=yes; log_tail==== RUN 2 ===
+2026-09-06T02:11:43+00:00 poll: process alive=yes; log_tail==== RUN 2 ===
+2026-09-06T02:13:46+00:00 poll: process alive=yes; log_tail==== RUN 3 ===
+2026-09-06T02:17:51+00:00 poll: process alive=yes; log_tail==== RUN 3 ===
+2026-09-06T02:19:54+00:00 poll: process alive=yes; log_tail==== RUN 4 ===
+2026-09-06T02:24:00+00:00 poll: process alive=yes; log_tail==== RUN 4 ===
+2026-09-06T02:26:02+00:00 poll: process alive=yes; log_tail==== RUN 5 ===
+2026-09-06T02:30:07+00:00 poll: process alive=yes; log_tail==== RUN 5 ===
+2026-09-06T02:32:09+00:00 poll: process alive=yes; log_tail==== RUN 6 ===
+2026-09-06T02:36:14+00:00 poll: process alive=yes; log_tail==== RUN 6 ===
+2026-09-06T02:38:16+00:00 poll: process alive=yes; log_tail==== RUN 6 ===
+2026-09-06T02:42:22+00:00 poll: process alive=yes; log_tail==== RUN 7 ===
+2026-09-06T02:44:25+00:00 poll: process alive=yes; log_tail==== RUN 7 ===
+2026-09-06T02:48:29+00:00 poll: process alive=yes; log_tail==== RUN 8 ===
+2026-09-06T02:50:31+00:00 poll: process alive=yes; log_tail==== RUN 8 ===
+2026-09-06T02:54:36+00:00 poll: process alive=yes; log_tail==== RUN 9 ===
+2026-09-06T02:56:38+00:00 poll: process alive=yes; log_tail==== RUN 9 ===
+2026-09-06T03:00:43+00:00 poll: process alive=yes; log_tail==== RUN 10 ===
+2026-09-06T03:02:45+00:00 poll: process alive=yes; log_tail==== RUN 10 ===
+2026-09-06T03:06:50+00:00 poll: process alive=no; log_tail=10/10 passed
+2026-09-06T03:08:53+00:00 poll: process alive=no; log_tail=10/10 passed
