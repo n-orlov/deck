@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -862,6 +863,54 @@ func TestCreateAgentPreflightRefusesModeNonExecutableBinary(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("durable rows = %#v, want none: the preflight must run before Store.CreateSession", rows)
+	}
+
+	live, listTmuxErr := service.TMux.List(context.Background())
+	if listTmuxErr != nil {
+		t.Fatalf("list tmux: %v", listTmuxErr)
+	}
+	if len(live) != 0 {
+		t.Fatalf("live tmux sessions = %#v, want none: the preflight must run before any pane is created", live)
+	}
+}
+
+// TestCreateAgentPreflightRefusesFIFONamedLikeAgentBinary is task 202's own
+// pin: a mode-0755 FIFO named "claude" on the launch PATH this pane would
+// resolve is not a regular file, so lookPathIn (hardened by task 201) must
+// still refuse it, and CreateAgent's own preflight (which shares
+// lookPathIn with AvailableKinds and resume.go's preflight) must never get
+// as far as a durable row or a tmux pane for it -- the same non-regression
+// shape TestCreateAgentPreflightRefusesAgentBinaryNotFoundOnPath and
+// TestCreateAgentPreflightRefusesModeNonExecutableBinary already assert
+// for the not-on-PATH and non-executable-mode cases.
+func TestCreateAgentPreflightRefusesFIFONamedLikeAgentBinary(t *testing.T) {
+	cwd := t.TempDir()
+	dir := t.TempDir()
+	fifoPath := filepath.Join(dir, "claude")
+	if err := syscall.Mkfifo(fifoPath, 0o755); err != nil {
+		t.Fatalf("mkfifo %s: %v", fifoPath, err)
+	}
+	service, db, _, _ := newAgentTestService(t, nil, "create-agent-fifo-binary")
+	service.ConfigEnv = map[string]string{"PATH": dir}
+
+	_, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: fifo", CWD: cwd, Agent: "claude", PermissionProfile: "safe", LoginShell: false,
+	})
+	if err == nil {
+		t.Fatalf("create agent: want error for a FIFO named claude on PATH, got none")
+	}
+	if !strings.Contains(err.Error(), "not found on PATH") {
+		t.Fatalf("create agent error = %q, want it to contain %q", err.Error(), "not found on PATH")
+	}
+
+	rows, listErr := db.ListSessions(context.Background())
+	if listErr != nil {
+		t.Fatalf("list sessions: %v", listErr)
+	}
+	for _, row := range rows {
+		if row.Name == "Claude: fifo" {
+			t.Fatalf("durable rows = %#v, want no row named %q: the preflight must run before Store.CreateSession", rows, "Claude: fifo")
+		}
 	}
 
 	live, listTmuxErr := service.TMux.List(context.Background())
