@@ -894,6 +894,51 @@ findings §12 by task 098's own commit; and task 142 (`48a172a45853a607a91ebbf7d
 cured phase3j.md's R110 row and added its closing subsection, naming the four commits above and
 describing, in the past tense, what each one cured.
 
+**Phase 3k** — `prds/phase3k-agent-availability.md`, run `deck-phase3k`, 2026-09-05. Five
+requirements, **R111–R115**, closing GH issue #21: each adapter declares the executable its
+launch argv starts, and one probe function (`lookPathIn`, moved beside `AvailableKinds` in
+`internal/service`) is shared by the create modal's listing and both create's and resume's
+preflight, so the two can never disagree about a binary (R111); the create modal's Agent field
+cycles only the kinds whose declared executable resolves on the launch `PATH` when `n` opens
+(never re-probed from `View()`), `shell` is always in it, a remembered agent that is registered
+but unavailable falls back to the default without the "(last used)" label, and the row's help
+names the hidden kinds (R112); `CreateAgent` now preflights the executable exactly as `resume.go`
+already does — a missing binary is a no-row, no-tmux-session refusal named in-dialog, exempted
+when `login_shell` is on — the direct fix for GH #21's `127` crash-row report (R113); the
+`features/` harness gained a `pi` fixture step in the shape of the existing `claude` one, and
+every scenario that drives the modal to a non-shell kind now installs that kind's fake first —
+three files needed a fixture edit (`permission_modes.feature`'s two `pi`-creating scenarios,
+`crash.feature`'s failing-`pre_launch` scenario, and `dialogs.feature`'s every-field-reachable
+walk, found while chasing the whole-suite sweep green) plus five new scenarios in the new
+`features/agent_availability.feature` (R114); and the record — this document plus
+[`docs/reports/phase3k.md`](reports/phase3k.md) and
+[`docs/reports/phase3k-findings.md`](reports/phase3k-findings.md) — closes on the tree (R115).
+**Final code sha `d88c6625c4ccca71b0d31f7b5864ba030ed39e53`** — task 021's own fixture-fix commit
+to `features/dialogs.feature`, the last commit in the phase to touch a `*.go` or `*.feature`
+path. All gates are green at that sha: the mandated, unnarrowed whole-suite sweep
+(`ci/run.sh go test -p=1 -count=1 ./...`) exits **0**, 14 packages `ok` plus 3
+`[no test files]`, no skip anywhere
+([`docs/reports/phase3k-021-fullsuite/README.md`](reports/phase3k-021-fullsuite/README.md)); its
+verbose companion (run only because the non-verbose launcher prints no Gherkin tally) exits
+**0**, reporting byte-exact **335 scenarios (335 passed)**, **3888 steps (3888 passed)** — up
+from phase 3j's 330/3824, consistent with the 5 new scenarios
+([`docs/reports/phase3k-023-fullsuite-verbose/README.md`](reports/phase3k-023-fullsuite-verbose/README.md));
+and the stability gate, relaunched from a clean tree and polled with `sleep 120` only across 33
+polls after an earlier attempt's `sleep 5` first poll was rejected, ends with
+[`docs/reports/phase3k-024-stability10/summary.log`](reports/phase3k-024-stability10/summary.log)
+reading, verbatim, **`10/10 passed`**, script exit **`0`**
+([`docs/reports/phase3k-024-stability10/README.md`](reports/phase3k-024-stability10/README.md)).
+The protected-path audit (`git log --oneline 150d7d6..HEAD -- SPEC.md prds/ ci/Dockerfile
+ci/SPIKE.md`, base computed as the commit adding this phase's own PRD) printed **no output** —
+no commit in the run touched a protected path
+([`docs/reports/phase3k-025-audit/README.md`](reports/phase3k-025-audit/README.md)) — and the
+three parity guards (`TestHelpKeymapParity`, `TestFooterBindingsParity`,
+`TestFooterHandlerAgreement`) still pass unedited, confirmed with a fresh run plus an empty
+`git diff --stat` over their own three test files since the phase baseline
+([`docs/reports/phase3k-026-guards/README.md`](reports/phase3k-026-guards/README.md)). No SPEC
+disagreement was found while checking R111–R114's landed work against §5, §6.3 and §11/§11.4 —
+see [`docs/reports/phase3k-findings.md`](reports/phase3k-findings.md) §3.
+
 ## Other milestones
 
 | Date | What |
