@@ -1,73 +1,103 @@
 # Task 205 — ten-run stability gate at the new final code sha
 
-Final code sha (`git log -1 --format=%H -- '*.go' '*.feature'`): `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`
+Final code sha (`git log -1 --format=%H -- '*.go' '*.feature'`):
+`4e09f2de90dcde04bd8fc20c77097e593f2fee5b`
 
-HEAD at the time this gate ran: `0aa9837785eccc39eda55730e42c15c1a185740d` — a
-docs/ci-only descendant of the final code sha (`git log --oneline
-4e09f2de90dcde04bd8fc20c77097e593f2fee5b..0aa9837785eccc39eda55730e42c15c1a185740d
--- '*.go' '*.feature'` is empty, so no Go or feature source moved). The tree was
-clean (`git status --porcelain` empty) and `HEAD == origin/main` before the run
-started and remained so throughout: the gate only invokes `go test` inside a
-throwaway sibling container and never writes into the workspace tree.
+HEAD at the time this gate ran: `38f4ffe7008b45a6f023b3f915f6946d494f371e`.
+That commit restores `ci/stability.sh` byte-for-byte to its content at the final
+code sha, so the tree the gate ran from carries **no non-docs drift at all**
+against `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`:
+
+```
+$ git diff --stat 4e09f2de90dcde04bd8fc20c77097e593f2fee5b..38f4ffe7008b45a6f023b3f915f6946d494f371e -- . ':(exclude)docs/**'
+(no output)
+$ git diff --quiet 4e09f2de90dcde04bd8fc20c77097e593f2fee5b 38f4ffe7008b45a6f023b3f915f6946d494f371e -- . ':(exclude)docs/**'; echo $?
+0
+```
+
+`git status --porcelain` was empty and `git rev-parse HEAD origin/main` printed
+the same sha immediately before the launch. The gate never writes into the
+workspace tree — it only invokes `go test` inside a throwaway sibling container
+— so the tree stayed clean for the whole run.
+
+An earlier attempt at this gate ran from a tree in which `ci/stability.sh`
+carried an added `EXIT` trap (commit `0aa9837785eccc39eda55730e42c15c1a185740d`).
+That is non-docs drift against the final code sha, so this run was made again
+from the restored tree, and the exit status is captured outside the script
+instead (see below).
 
 ## Command
 
 Launched from the clean tree in `/workspace`, exactly as the gate specifies —
 `nohup` directly on the `timeout` invocation, output redirected to a log,
-backgrounded, and then polled with `sleep 120` and nothing else. No other test
-command ran in this iteration.
+backgrounded:
 
 ```
 nohup timeout 7200 ci/stability.sh 10 > log 2>&1 &
 ```
 
-(the redirect target was an absolute scratch path so nothing lands in the
-workspace tree; the launch line is recorded verbatim on the first line of
-[`poll.log`](./poll.log), pid 18789.)
+The launch line, with the absolute scratch redirect target actually used and the
+job's pid (19699), is recorded verbatim on the first line of
+[`poll.log`](./poll.log). The redirect target was an absolute scratch path so
+nothing landed in the workspace tree; that captured stdout is preserved here as
+[`launch-stdout.log`](./launch-stdout.log).
 
-The script's exit status is **not** captured by wrapping the launch in
-`bash -c '...; echo $? > file'` — that would move `nohup` off the `timeout`
-invocation, and a `wait` from any later bash call is never the job's parent so
-it reports 127 instead of the truth. Instead `ci/stability.sh` now records its
-own exit status on every exit path, beside its `summary.log`, via an `EXIT`
-trap added in commit `0aa9837785eccc39eda55730e42c15c1a185740d` (a ci-only
-change; the FAIL path was proven to write `1` using the script's
-`DECK_STABILITY_SELFTEST_FAIL=1` self-test hook on a copy outside the repo,
-which never invokes the suite). `summary.log.exitstatus` in this directory is
-that self-recorded file, copied unmodified from the script's own output
-directory.
+Nothing but `sleep 120` was used to wait on it: 32 poll entries follow the launch
+line in [`poll.log`](./poll.log), one per `sleep 120` interval, each recording a
+timestamp, whether the pid was still alive, and the last `=== RUN n ===` line
+seen in the log. **No other test command of any kind ran in this iteration** — no
+targeted package run, no self-test, no second suite run.
 
-Poll log: [`poll.log`](./poll.log) — 34 entries, each a `sleep 120` followed by
-a liveness check on the launched pid and a one-line tail of the running log.
-Wall time ≈ 66 min (launched 03:13:19Z, finished by the 04:19:33Z poll).
+### How the exit status was captured
+
+The launch command above is left exactly as specified, so it is not wrapped in
+`bash -c '...; echo $? > file'`. A `wait` issued from any later shell cannot
+report the truth either: each tool call is a fresh shell and is never the job's
+parent, so it returns 127 once the job has exited. Instead the backgrounded job
+was started by a detached launcher shell (`setsid sh -c '...'`) that stays alive
+solely to be the job's parent: it runs the stipulated `nohup timeout 7200
+ci/stability.sh 10 > log 2>&1 &` line unchanged, then `wait`s on that pid and
+writes the reaped status to a file. `summary.log.exitstatus` in this directory is
+that file, copied unmodified. It is the status of the `timeout 7200
+ci/stability.sh 10` job itself, which is `ci/stability.sh`'s own exit status
+whenever `timeout` did not fire (a timeout would have shown as `124`).
 
 ## Result
 
-`ci/stability.sh`'s own exit status (`summary.log.exitstatus`'s content,
-verbatim):
-
-```
-0
-```
-
-Final tally, quoted verbatim from the last line of `summary.log` (copied
-unmodified from the script's own `mktemp` output directory):
+`summary.log` was copied unmodified from the script's own output directory, and
+its final tally line, quoted verbatim, is:
 
 ```
 10/10 passed
 ```
 
-`grep -c '=== RUN .*: PASS' summary.log` is `10`. The tally is not below 10/10,
-so nothing was re-run and there is no failing run number to report:
-`grep -n -i fail summary.log` prints nothing and exits 1 against the copied
-`summary.log`, so no per-run log needed to be attached.
+`summary.log.exitstatus` — the script's captured exit status — holds:
 
-## Files in this directory
+```
+0
+```
 
-- `summary.log` — copied verbatim from `ci/stability.sh 10`'s own output
-  directory (`$(mktemp -d "${TMPDIR:-/tmp}/deck-stability.XXXXXX")`); combined
-  log across all 10 runs plus each run's PASS/FAIL line and the final tally.
-- `summary.log.exitstatus` — the script's own captured exit status (`0`), written
-  by `ci/stability.sh`'s `EXIT` trap beside its `summary.log` and copied here
-  unmodified.
-- `poll.log` — the launch line and the `sleep 120` polling log for this run.
+Failure check on the copied log:
+
+```
+$ grep -n -i fail docs/reports/phase3k-205-stability10/summary.log
+$ echo $?
+1
+```
+
+No match (grep exit 1), so there are no failing run numbers to list and no
+per-run log to attach. Every one of the ten runs is labelled `PASS (exit 0)` in
+`summary.log`. Per the gate's own rule, the tally above is published as it came
+out and was not re-run to improve it — it did not need to be.
+
+## Files
+
+- [`summary.log`](./summary.log) — combined summary log, copied unmodified from
+  the script's output directory (all ten runs, each with its package results and
+  its `=== RUN n: PASS (exit 0) ===` label, then the final tally).
+- [`summary.log.exitstatus`](./summary.log.exitstatus) — the captured exit status
+  of the backgrounded `ci/stability.sh 10` job (`0`).
+- [`poll.log`](./poll.log) — 33 lines: the verbatim launch line plus 32 `sleep
+  120` poll entries, ending with `alive=no; log_tail=10/10 passed`.
+- [`launch-stdout.log`](./launch-stdout.log) — the log the launch command
+  redirected to (the script's own stdout: per-run labels and the final tally).
