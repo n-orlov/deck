@@ -938,6 +938,9 @@ three parity guards (`TestHelpKeymapParity`, `TestFooterBindingsParity`,
 ([`docs/reports/phase3k-026-guards/README.md`](reports/phase3k-026-guards/README.md)). No SPEC
 disagreement was found while checking R111–R114's landed work against §5, §6.3 and §11/§11.4 —
 see [`docs/reports/phase3k-findings.md`](reports/phase3k-findings.md) §3.
+[`docs/reports/phase3k.md`](reports/phase3k.md) maps the phase both ways against GH #21's
+numbered `## Design` items — item 1–7 → requirement, and each of R111, R112, R113, R114 and R115
+→ the numbered items it discharges — so the issue closes on a reading of that pair of tables.
 
 ## Other milestones
 

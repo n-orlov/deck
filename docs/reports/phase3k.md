@@ -54,14 +54,26 @@ this table, not an argument:
 | 3 | "Probe on `n` (modal open), not per render" — cached for the dialog's life, re-probed on the next `n` | R112 | 005, 009 | `internal/tui/tui.go`, `internal/tui/view_never_probes_test.go` |
 | 4 | "Add the missing create preflight" — the same `login_shell` exemption resume already has | R113 | 010, 011 | `internal/service/agent.go`, `internal/service/agent_test.go` |
 | 5 | "Remembered agent … falls back to the built-in default when its adapter is registered but currently unavailable", no "(last used)" label on the fallback | R112 | 007, 015 | `internal/tui/tui.go` (`pickCreateAgent`), `internal/tui/pick_create_agent_availability_test.go`, `internal/tui/create_last_used_agent_test.go` |
-| 6 | "Existing rows are untouched." | non-goal — honoured by omission; no task changes existing-row listing, preview, archive or delete behaviour | — | — |
+| 6 | "Existing rows are untouched." | R114 (regression side), R115 (gate side) | 021, 023, 024 | no task changes existing-row listing, preview, archive or delete behaviour; the untouched existing scenarios across `features/*.feature` still pass at the final code sha (`docs/reports/phase3k-021-fullsuite/sweep.log`, `docs/reports/phase3k-023-fullsuite-verbose/verbose.log`, `docs/reports/phase3k-024-stability10/summary.log`) |
 | 7 | "`login_shell` caveat" — list against the non-login `PATH` as the best guess, skip the submit preflight exactly as resume does | R113 | 010, 011 | `internal/service/agent.go`, `internal/service/agent_test.go` |
+
+The same mapping read the other way, so that **each of this phase's five requirements** names the
+numbered design item(s) of `## Design` it discharges — no requirement is unmapped, and no
+numbered item is unclaimed:
+
+| req | numbered design items it discharges | how |
+|---|---|---|
+| R111 | 1 | the one shared probe: `lookPathIn` under the create-time launch `PATH` layering item 1 spells out (`resolveLaunchEnv(os.Getenv("PATH"), nil)`, config `[env]` participating, session env not), plus each adapter's declared launch executable it probes |
+| R112 | 2, 3, 5 | `shell` exempt and always listed (2); probed once on `n`, cached for the dialog's life, never from `View()`, re-probed on the next open (3); a remembered-but-unavailable agent falls back to the default with no "(last used)" label (5) |
+| R113 | 4, 7 | the missing create preflight, in-dialog `createError` instead of a `127` crash row (4), with resume's own `login_shell` exemption on the submit path while listing still probes the non-login `PATH` (7) |
+| R114 | 1, 2, 3, 4, 5 at the `features/` level, and 6 | the black-box half of items 1–5: `features/agent_availability.feature`'s five scenarios drive the real modal with fakes absent/present (nothing installed → `shell` only; only `claude` → `claude, shell` with `pi` named hidden; installed between opens; preflight refusal with nothing persisted; remembered `pi` falls back), and the fixture repairs to `permission_modes`/`crash`/`dialogs` keep every pre-existing scenario honest under item 6's "existing rows are untouched" — this is exactly the issue's `## Verification` `features/:` bullet ("a create-modal scenario run with `fake-pi` removed from `PATH`… a scenario with all fakes removed — only `shell`; the `@real-agents` subset unaffected") |
+| R115 | 1–7 collectively, plus the `## Verification` section's closing bullet | no single numbered item is R115's alone: it is the record that lets the issue be closed by reading — this document's per-item table above walks all seven, `docs/reports/phase3k-findings.md` carries the fixture inventory and the SPEC-versus-tree check, `docs/DELIVERY-LOG.md` carries the phase paragraph, and the closing bullet's "full suite green via `ci/run.sh go test -p=1 -count=1 ./...`" is the task-021 gate quoted below (its SPEC-amendment clause needs no operator commit this phase — see the findings' §3, SPEC already carries the available-kinds wording) |
 
 The issue's `## Verification` section enumerates the same unit/`features/` shapes the PRD's own
 per-requirement bullets already state (probe unit evidence, TUI unit evidence, `features/`
-scenarios with a fake removed from `PATH`) and is discharged by R111–R114's rows above; it is not
-an eighth design item. Its `## Out of scope` subsection (the health view, a per-agent
-command/path config key) matches this phase's PRD Non-goals and is honoured by omission, not by
+scenarios with a fake removed from `PATH`, and a green full suite) and is discharged by the
+R111–R115 rows above; it is not an eighth design item. Its `## Out of scope` subsection (the
+health view, a per-agent command/path config key) matches this phase's PRD Non-goals and is honoured by omission, not by
 a citable commit.
 
 ## Gate results
