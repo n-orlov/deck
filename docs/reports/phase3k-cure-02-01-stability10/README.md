@@ -1,5 +1,9 @@
 # Task cure-02-01 — ten-run stability gate re-launched from a tree whose HEAD is literally the final code sha
 
+Re-launched 2026-09-06 (this report replaces this task's own first attempt, whose only
+defect was that its prose called an abbreviated redirect target "verbatim"; see
+"Launch command" below).
+
 ## The finding this cures
 
 `docs/reports/phase3k-205-stability10/README.md` (task 205, `fe4618e`) launched the
@@ -16,9 +20,11 @@ tree whose HEAD resolves to the exact final code sha.
 
 The same finding also flagged that the iteration which produced `fe4618e` ran `sleep 3`
 and `ps -p` immediately after the launch call, before starting the stipulated
-`sleep 120` polling cadence. This run's launch call is followed by nothing else in the
-same or an adjoining step; the very first wait after launching is a full `sleep 120`,
-and every poll entry thereafter is itself a `sleep 120` interval (see `poll.log`).
+`sleep 120` polling cadence. In the run recorded here the launch call is the last thing
+in its own step; the first wait after it is a full `sleep 120`, every later poll entry is
+another `sleep 120` interval, and no `ps`, `pgrep` or other liveness probe was used at
+any point — each poll reads only the launcher's `status` file and the log's last
+`=== RUN n ===` line (see `poll.log`).
 
 ## Tree
 
@@ -29,70 +35,92 @@ This run was launched from a **detached git worktree checked out at that exact s
 created with:
 
 ```
-$ git worktree add /tmp/deck-worktree-4e09f2d 4e09f2de90dcde04bd8fc20c77097e593f2fee5b --detach
-$ cd /tmp/deck-worktree-4e09f2d && git rev-parse HEAD
+$ git worktree add /tmp/deck-wt-cure0201b 4e09f2de90dcde04bd8fc20c77097e593f2fee5b --detach
+Preparing worktree (detached HEAD 4e09f2d)
+HEAD is now at 4e09f2de service: pin create preflight against FIFO named like agent binary (task 202)
+$ cd /tmp/deck-wt-cure0201b && git rev-parse HEAD
 4e09f2de90dcde04bd8fc20c77097e593f2fee5b
 $ git status --porcelain
 (no output)
 ```
 
 So `HEAD` there is the final code sha itself, not a descendant of any kind — the
-strongest reading of the criterion.
+strongest reading of the criterion. The worktree lives outside the repository tree and
+was removed afterwards, so nothing about it is (or should be) tracked here.
 
 **Honest mechanism note.** `ci/run.sh` (unedited by this task) always binds `docker run`
 to `${RALPHD_HOST_WORKSPACE:-$PWD}`, a fixed environment variable pointing at the host
 path of `/workspace`, regardless of the caller's own working directory. Launching
-`ci/stability.sh` from the `/tmp` worktree therefore does not, by itself, sandbox which
-tree's *content* the sibling containers test — every run still executes against
-whatever is on disk at host `/workspace` at that moment. This was verified not to be a
-gap here: immediately before launch,
+`ci/stability.sh` from the worktree therefore does not, by itself, sandbox which tree's
+*content* the sibling containers test — every run still executes against whatever is on
+disk at host `/workspace` at that moment. This was verified not to be a gap here: in the
+same call as the launch, immediately before it,
 
 ```
-$ cd /workspace && git diff --quiet 4e09f2de90dcde04bd8fc20c77097e593f2fee5b HEAD -- . ':(exclude)docs/**'; echo $?
+$ cd /workspace; git diff --quiet 4e09f2de90dcde04bd8fc20c77097e593f2fee5b HEAD -- . ':(exclude)docs/**'; echo $?
 0
 ```
 
-confirmed `/workspace`'s own HEAD (`f046d51`, a docs-only-content-equivalent descendant)
-carries zero non-docs drift against the final code sha, so the code the sibling
+confirmed `/workspace`'s own HEAD (`3eaeecc`, a docs-only descendant of the final code
+sha) carries zero non-docs drift against the final code sha, so the code the sibling
 containers actually compiled and ran is provably byte-identical to the final code sha
-either way. The worktree's purpose here is narrower and honest: it makes the launch
+either way. That check's result is recorded on the first line of `poll.log`, beside the
+launch line. The worktree's purpose here is narrower and honest: it makes the launch
 tree's own `HEAD` literally equal to the final code sha, which the prior run's restored
 tree — real as its content match was — did not.
 
-## Command
+## Launch command
+
+The inner launch line, quoted exactly as it was executed, character for character:
 
 ```
 nohup timeout 7200 ci/stability.sh 10 > log 2>&1 &
 ```
 
-launched unchanged, from the worktree, with nothing else in the same call. The launch
-line with the job's pid (`21895`) is recorded verbatim on the first line of
-[`poll.log`](./poll.log). Nothing but `sleep 120` was used to wait on it afterwards: 32
-poll entries follow, one per `sleep 120` interval, each recording a timestamp, whether
-the pid was still alive, and the last `=== RUN n ===` line seen in the log — the same
-shape as the prior (accepted) poll-log format. No other test command of any kind ran in
-this iteration.
+The redirect target is the bare relative path `log`, in the worktree's own working
+directory (`ci/stability.sh` is likewise the bare relative path, resolved from that same
+directory) — no directory prefix, nothing abbreviated in this quotation and nothing
+rewritten in the execution. That file is published unmodified here as
+[`launch-stdout.log`](./launch-stdout.log). The line appears verbatim on the first line
+of [`poll.log`](./poll.log) as well.
 
-An earlier launch attempt in this same iteration (before this one) did add a `sleep 2`
-plus a `ps` check right after backgrounding — the exact pattern this task exists to cure
-— and was aborted before it reached its first `sleep 120` poll: the launcher's pid was
-killed by exact pid (verified via `ps` to be the process this iteration itself had just
-spawned, then the docker sibling it had started was `docker stop`'d by exact container
-id), the scratch output directory was removed, and the run below was relaunched clean.
-No output from that aborted attempt is published here.
+**Why the first attempt of this task was rejected, and what changed.** The first attempt
+(commit `3eaeecc`) executed
+`nohup timeout 7200 ci/stability.sh 10 > /tmp/deck-stability-cure0201/log 2>&1 &` — the
+same command with an absolute redirect target — while its report quoted the short form
+and called it "launched unchanged". The result it measured was sound, but the quotation
+was not accurate, so that gate is not the evidence of record; the run documented here
+replaces it and uses the literal short form, with the working directory (not a path
+prefix) placing `log` in the worktree.
 
 ### How the exit status was captured
 
-Same mechanism as the prior report: a detached `setsid sh -c '...'` launcher stays alive
+Same mechanism as the prior reports: a detached `setsid sh -c '...'` launcher stays alive
 solely to be the backgrounded job's parent, runs the stipulated launch line unchanged,
-`wait`s on it, and writes the reaped status to a file — `summary.log.exitstatus` here is
-that file, copied unmodified.
+`wait`s on it, and writes the reaped status to a file. The launcher, in full:
+
+```
+setsid sh -c 'trap "" HUP; cd /tmp/deck-wt-cure0201b; nohup timeout 7200 ci/stability.sh 10 > log 2>&1 & pid=$!; wait "$pid"; echo $? > status' </dev/null >/dev/null 2>&1 &
+```
+
+`summary.log.exitstatus` in this directory is that `status` file, copied unmodified.
+
+### One earlier call in the same iteration, for the record
+
+Before the launch above, one shell call in this iteration attempted to create the
+worktree and launch in a single `&&` chain; the trailing `&` backgrounded the *whole*
+chain, which the harness then terminated when the call returned, part-way through
+`git worktree add`. No gate process was started by it (no new `/tmp/deck-stability.*`
+directory appeared, no sibling container was created, nothing was signalled or killed),
+`git worktree prune` restored a clean state, and the worktree was then created in a call
+of its own. Nothing from that call is published here because it produced no measurement.
 
 ## Result
 
 `summary.log` was copied unmodified from the script's own output directory
-(`/tmp/deck-stability.rBUO1q`, not tracked — cited here for provenance only, the copy in
-this directory is authoritative). Its final tally line, quoted verbatim:
+(`/tmp/deck-stability.bTLi2p`, ephemeral scratch, not tracked — cited for provenance
+only; the copy in this directory is authoritative). Its final tally line, quoted
+verbatim:
 
 ```
 10/10 passed
@@ -111,10 +139,10 @@ $ grep -n -i fail docs/reports/phase3k-cure-02-01-stability10/summary.log; echo 
 1
 ```
 
-No match (grep exit 1), so there are no failing run numbers to list and no per-run log
-to attach. Every one of the ten runs is labelled `PASS (exit 0)`. Per the gate's own
-rule the tally is published as it came out and was not re-run to improve it — it did not
-need to be.
+No match (grep exit 1), so there are no failing run numbers to list and no per-run log to
+attach. All ten runs are labelled `PASS (exit 0)` (`grep -c 'PASS (exit 0)'` → 10). Per
+the gate's own rule the tally is published as it came out and was not re-run to improve
+it — it did not need to be.
 
 ## Files
 
@@ -123,15 +151,23 @@ need to be.
   `=== RUN n: PASS (exit 0) ===` label, then the final tally).
 - [`summary.log.exitstatus`](./summary.log.exitstatus) — the captured exit status of the
   backgrounded `ci/stability.sh 10` job (`0`).
-- [`poll.log`](./poll.log) — 33 lines: the verbatim launch line plus 32 `sleep 120` poll
-  entries, ending with `alive=no`.
-- [`launch-stdout.log`](./launch-stdout.log) — the log the launch command redirected to
-  (the script's own stdout: per-run labels and the final tally).
+- [`poll.log`](./poll.log) — 35 lines: the verbatim launch line plus 34 poll entries, one
+  per `sleep 120` interval, the last one recording `status_file=0` and
+  `=== RUN 10: PASS (exit 0) ===`.
+- [`launch-stdout.log`](./launch-stdout.log) — the `log` file the launch command
+  redirected to (the script's own stdout: per-run labels and the final tally).
+
+## Timeline
+
+Launched 2026-09-06T07:08:33Z, finished by 2026-09-06T08:16:48Z (~68 min for ten runs,
+in line with the measured ~66.5 min), all within one iteration with no other test command
+of any kind run in it.
 
 ## Disposition
 
-This report supersedes `docs/reports/phase3k-205-stability10/` as the retained ten-run
-stability gate evidence for the final code sha `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`.
-Task 205 itself is left `failed` in the task record (its validation ladder was already
-exhausted before this cure task was created); this report is the corrected gate evidence
-that discharges the underlying "Green when" stability requirement at the correct sha.
+This report supersedes `docs/reports/phase3k-205-stability10/` **and this task's own
+first attempt (`3eaeecc`)** as the retained ten-run stability gate evidence for the final
+code sha `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`. Task 205 itself is left `failed` in
+the task record (its validation ladder was already exhausted before this cure task was
+created); this report is the corrected gate evidence that discharges the underlying
+"Green when" stability requirement at the correct sha.
