@@ -8,6 +8,7 @@ and `SPEC.md`.
 - [1. R114 fixture inventory: which scenarios needed a fixture and which commit gave it to them](#1-r114-fixture-inventory-which-scenarios-needed-a-fixture-and-which-commit-gave-it-to-them)
 - [2. Protected-path audit (task 025), output reproduced](#2-protected-path-audit-task-025-output-reproduced)
 - [3. Tree-versus-`SPEC.md` disagreement check: none found](#3-tree-versus-specmd-disagreement-check-none-found)
+- [4. Approach-02 review-cure: the independent review's three findings, what cured each, and task 207's audit](#4-approach-02-review-cure-the-independent-reviews-three-findings-what-cured-each-and-task-207s-audit)
 
 ## 1. R114 fixture inventory: which scenarios needed a fixture and which commit gave it to them
 
@@ -138,3 +139,37 @@ per-render claim about what is listed right now — the row's own help clause ad
 general enumeration to change, and no requirement's criteria touch it — recorded here as an
 observation, not a finding of disagreement, and not curable-in-place against any stated
 criterion.
+
+## 4. Approach-02 review-cure: the independent review's three findings, what cured each, and task 207's audit
+
+An independent review of approach 01's close-out (target `f046d513a11135367da6fb2cac8cf9d173a56348`,
+recorded at `/run/ralphd/review-findings.md`) returned two blocking findings and one residual, on
+top of confirming R111–R114 as PASS against the independently re-run tests. This section is that
+review's own closing record: which finding, which cure, which evidence.
+
+| # | severity | finding (short) | cured by | evidence |
+|---|---|---|---|---|
+| 1 | blocking | the ten-run stability gate was not run at the required final-code commit — the retained task-205 run launched from `38f4ffe`, a non-docs-only descendant of the final code sha `4e09f2d` (two commits touching `ci/stability.sh` sit between them), and its poll loop ran a `sleep 3`/`ps -p` liveness check before the stipulated `sleep 120`-only cadence | cure-02-01 (`0bb7a03`, validated), per operator ruling `/config/amendments/001-cure-02-01.md` | `docs/reports/phase3k-cure-02-01-stability10/` — clean detached worktree at exact sha `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`, literal inner launch line `nohup timeout 7200 ci/stability.sh 10 > log 2>&1 &`, `sleep 120`-only polling, `10/10 passed`, exit status `0`. Task 205 itself stays terminal `failed` as history; the operator ruling holds that the gate's four `10/10`/exit-`0` measurements were rejected on launch **form** alone (log path, wrapper shell, a relaunched first attempt, a liveness check) and that form is never a rejection or re-run basis — this record is the gate of record |
+| 2 | blocking | R115's closing record still described the superseded pre-cure tree: `docs/reports/phase3k.md` and `docs/DELIVERY-LOG.md` named `d88c662` (not `4e09f2d`) as final, omitted the executable-bit/FIFO cure commits `7349dd6`/`c8b00cc`/`4e09f2d` from R111/R113, quoted only approach-01 gate evidence, and `docs/reports/phase3k-findings.md` lacked this section; the four approach-01 gate READMEs still asserted `d88c662` as final outside a verbatim log quote | cure-02-02 (this document's own commit) and task 209 | `docs/reports/phase3k.md` (final-code-sha section, R111/R113/R115 rows, gate-results section — all re-closed at `4e09f2d`), `docs/DELIVERY-LOG.md` (Phase 3k paragraph superseding note), this §4, and the dated supersession notes on `docs/reports/phase3k-021-fullsuite/README.md`, `phase3k-023-fullsuite-verbose/README.md`, `phase3k-024-stability10/README.md` and `phase3k-026-guards/README.md` |
+| 3 | residual | the operator completion notification (PRD "For the planner", task 211) had not been sent | task 211 (pending at the time of this writing — advisory per the PRD's own Materiality section, never blocking) | `/run/ralphd/artifacts/` (send record, once task 211 lands) |
+
+**Task 207's protected-path re-audit, output reproduced.** The review's own accounting noted
+tasks 209/210 as "no delivery commit" at review time; task 207 independently re-ran the
+protected-path audit over the widened range and found it still clean:
+
+```
+$ BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase3k-agent-availability.md); echo "$BASE"
+150d7d6f26c9fa47648214dc1a446c36ff23a376
+$ HEAD=$(git rev-parse HEAD); echo "$HEAD"
+04a7e261f55814637393deba05fd0ded2266ce58
+$ git log --oneline "$BASE..HEAD" -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md
+(no output)
+```
+
+(`docs/reports/phase3k-207-audit/README.md`, `audit.log`.) Zero commits across the whole run —
+approach 01's tasks 001–029 and approach 02's tasks 201–206 alike — touch a protected path. This
+matches §2 above, re-run over a wider range and a later `HEAD`, and finds the same clean result.
+
+The review's requirement-by-requirement independent check found R111–R114 PASS and R115 FAIL (the
+two blocking findings above); this section, together with the updated `docs/reports/phase3k.md`
+and `docs/DELIVERY-LOG.md`, is R115's re-closure.

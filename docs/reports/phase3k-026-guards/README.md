@@ -1,5 +1,13 @@
 # Phase 3k task 026 — re-verify the three untouched parity guards at the final code sha
 
+> **Superseded 2026-09-06 (task cure-02-02).** An independent review found two remaining probe
+> gaps after this run (`lookPathIn` accepted a mode-0644 regular file and a FIFO named like an
+> agent's binary); approach 02 cured both (`cure-01-01` `7349dd6`, `201` `c8b00cc`, `202`
+> `4e09f2d`), moving the phase's final code sha to `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`.
+> This report's guard run at `d88c6625c4ccca71b0d31f7b5864ba030ed39e53` is preserved below
+> unchanged as history; it is **not** the gate of record. The current parity-guard evidence is
+> `docs/reports/phase3k-206-guards/` (task 206, same guards, current final code sha).
+
 ## Final code sha
 
 Last commit touching `*.go` or `*.feature` (matches notes.md):

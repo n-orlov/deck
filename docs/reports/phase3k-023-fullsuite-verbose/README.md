@@ -1,5 +1,13 @@
 # Phase 3k task 023 — verbose companion run, Gherkin scenario/step tally
 
+> **Superseded 2026-09-06 (task cure-02-02).** An independent review found two remaining probe
+> gaps after this run (`lookPathIn` accepted a mode-0644 regular file and a FIFO named like an
+> agent's binary); approach 02 cured both (`cure-01-01` `7349dd6`, `201` `c8b00cc`, `202`
+> `4e09f2d`), moving the phase's final code sha to `4e09f2de90dcde04bd8fc20c77097e593f2fee5b`.
+> This report's tally at `d88c6625c4ccca71b0d31f7b5864ba030ed39e53` is preserved below unchanged
+> as history; it is **not** the gate of record. The current verbose-companion evidence is
+> `docs/reports/phase3k-204-fullsuite-verbose/` (task 204, same tally, current final code sha).
+
 ## Why this exists (finding F34) — tally source only, not the deliverable sweep
 
 `ci/run.sh go test -p=1 -count=1 ./...` — task 021's deliverable sweep — never prints the godog
