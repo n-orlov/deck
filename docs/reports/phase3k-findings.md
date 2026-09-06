@@ -8,7 +8,6 @@ and `SPEC.md`.
 - [1. R114 fixture inventory: which scenarios needed a fixture and which commit gave it to them](#1-r114-fixture-inventory-which-scenarios-needed-a-fixture-and-which-commit-gave-it-to-them)
 - [2. Protected-path audit (task 025), output reproduced](#2-protected-path-audit-task-025-output-reproduced)
 - [3. Tree-versus-`SPEC.md` disagreement check: none found](#3-tree-versus-specmd-disagreement-check-none-found)
-- [4. How to re-check every citation in this report](#4-how-to-re-check-every-citation-in-this-report)
 
 ## 1. R114 fixture inventory: which scenarios needed a fixture and which commit gave it to them
 
@@ -133,33 +132,3 @@ per-render claim about what is listed right now — the row's own help clause ad
 general enumeration to change, and no requirement's criteria touch it — recorded here as an
 observation, not a finding of disagreement, and not curable-in-place against any stated
 criterion.
-
-## 4. How to re-check every citation in this report
-
-Every backticked sha above resolves under `git cat-file -e`; every backticked repo-relative path
-names a file tracked under `git ls-files --error-unmatch`:
-
-```
-$ for sha in 150d7d6 dc4963f 858e7de 095f02d d88c662 310db5e 23ea250 4744bcc 85168ea f014ee4 \
-    3f8a42c a542e25 d88c6625c4ccca71b0d31f7b5864ba030ed39e53; do \
-    git cat-file -e "$sha^{commit}" && echo "$sha ok"; done
-(all print "<sha> ok")
-$ git ls-files --error-unmatch \
-    SPEC.md prds/phase3k-agent-availability.md \
-    features/permission_modes.feature features/crash.feature features/dialogs.feature \
-    features/agent_availability.feature features/agent_steps_test.go \
-    features/status_probe.feature features/status_probe_test.go \
-    features/attach_scroll.feature features/interactive_scroll.feature \
-    features/real_agent_smoke.feature features/godog_test.go \
-    internal/agent/agent.go internal/agent/agent_test.go \
-    internal/service/availability.go internal/service/agent.go \
-    internal/tui/tui.go internal/tui/pick_create_agent_availability_test.go \
-    internal/tui/create_agent_unavailable_help_test.go internal/tui/view_never_probes_test.go \
-    docs/reports/phase3k.md docs/reports/phase3k-025-audit/audit.log \
-    docs/reports/phase3k-025-audit/README.md
-(all resolve)
-```
-
-No repo path in this report names an untracked file or a not-yet-generated directory. The run's
-own task-state record and its handoff notes are cited by task id and prose only, never by a
-backticked run-state filename, since that state is not part of this repository.
