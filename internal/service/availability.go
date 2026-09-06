@@ -17,6 +17,15 @@ import (
 // os.Getenv("PATH"). A file containing a path separator is checked directly
 // instead of searched.
 //
+// A candidate must also be a regular file (info.Mode().IsRegular()) in both
+// branches: a FIFO, socket, device or other non-regular node with the
+// executable bits set (mode 0755, say) is rejected even though its mode bits
+// alone would pass isExecutable. This is a deliberate tightening beyond what
+// exec.LookPath itself guarantees on some Go releases (older stdlib
+// implementations accept non-regular-but-executable-mode files) -- it is not
+// a restoration of stdlib parity. os.Stat follows symlinks, so a symlink to
+// a real regular executable still passes IsRegular.
+//
 // This is the one probe R111 requires: resume's preflight (resume.go),
 // CreateAgent's preflight and AvailableKinds below all call this same
 // function so two copies can never disagree about whether a binary is on
@@ -33,6 +42,9 @@ func lookPathIn(file, pathEnv string) error {
 		if info.IsDir() {
 			return fmt.Errorf("%s is a directory", file)
 		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s: not a regular file", file)
+		}
 		if !isExecutable(info) {
 			return fmt.Errorf("%s: not executable", file)
 		}
@@ -43,7 +55,7 @@ func lookPathIn(file, pathEnv string) error {
 			dir = "."
 		}
 		candidate := filepath.Join(dir, file)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && isExecutable(info) {
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && isExecutable(info) {
 			return nil
 		}
 	}

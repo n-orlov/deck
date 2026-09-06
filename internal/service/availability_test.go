@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/agent"
@@ -181,5 +182,33 @@ func TestAvailConfigEnvPathWinsOverProcessPath(t *testing.T) {
 	processOnlyUnderConfigOverride := Service{Agents: registry, ConfigEnv: map[string]string{"PATH": configDirWithoutPi}}.AvailableKinds()
 	if len(processOnlyUnderConfigOverride) != 0 {
 		t.Fatalf("AvailableKinds() with pi only on process PATH %q and config PATH=%q (no pi there) = %v, want [] (config PATH wins; a process-only pi must not leak availability)", processDirWithPi, configDirWithoutPi, processOnlyUnderConfigOverride)
+	}
+}
+
+// TestLookPathInRejectsFIFOEvenWithExecuteBits asserts the finding-1
+// hardening (docs/reports/phase3k-201-regular-file-probe/): a FIFO named
+// "pi" with mode 0755 on the probed PATH has the executable bits set, but
+// it is not a regular file, so lookPathIn must still reject it and it must
+// not appear in the available-kind set AvailableKinds computes for a
+// registry that registers pi under that same PATH.
+func TestLookPathInRejectsFIFOEvenWithExecuteBits(t *testing.T) {
+	dir := t.TempDir()
+	fifoPath := filepath.Join(dir, "pi")
+	if err := syscall.Mkfifo(fifoPath, 0o755); err != nil {
+		t.Fatalf("mkfifo %q: %v", fifoPath, err)
+	}
+
+	if err := lookPathIn("pi", dir); err == nil {
+		t.Fatalf("lookPathIn(\"pi\", %q) = nil, want a non-nil error (pi on that PATH is a FIFO, not a regular file)", dir)
+	}
+
+	registry := agent.NewRegistry()
+	registry.Register(agent.NewPi())
+	t.Setenv("PATH", dir)
+	available := Service{Agents: registry}.AvailableKinds()
+	for _, kind := range available {
+		if kind == "pi" {
+			t.Fatalf("AvailableKinds() = %v, want pi absent (its PATH entry %q is a FIFO, not a regular file)", available, fifoPath)
+		}
 	}
 }
