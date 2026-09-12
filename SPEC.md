@@ -109,7 +109,7 @@ internal/audit/           JSONL structured log incl. the launch audit (§13.1)
 internal/agent/           Adapter interface + registry
 internal/agent/claude.go  hook injection, assigned session id
 internal/agent/pi.go      assigned session id
-internal/agent/codex.go   post-launch id discovery
+internal/agent/codex.go   hook injection, id reported by the first hook
 internal/agent/shell.go   bash/zsh/fish session, history + scrollback + cwd
 internal/hookrecv/        stdin JSON → store event → notify dispatch
 internal/notify/          channel abstraction: webhook | command | desktop
@@ -149,9 +149,13 @@ the agent's own hook system spawns. Notifications are dispatched by that same pr
 (§10). If no TUI is running, hook-instrumented agents still record status and still
 notify. Liveness is reconciled by whichever TUI is running, and lazily by `_hook`.
 
-**Honest limitation to surface in the UI:** agents without a hook mechanism (Pi, Codex,
-`bash`) are classified by pane heuristics, which only run while a TUI is open. Their rows
-show a "sampled" indicator; a Claude row shows "live". Do not paper over this.
+**Honest limitation to surface in the UI:** agents without a hook mechanism (Pi, `bash`)
+are classified by pane heuristics, which only run while a TUI is open. Their rows show a
+"sampled" indicator; a hook-instrumented row shows "live". Do not paper over this. The
+badge follows the **event source of the row's last verdict, never the agent kind** — which
+is exactly what keeps it honest for Codex, whose hooks are real but do not begin firing
+until the session's first prompt (§8.2): such a row reads "sampled" until then and "live"
+after, with no special case anywhere in the code.
 
 ### 3.1 Hidden internal verbs
 
@@ -197,7 +201,7 @@ Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
   enforced in SQLite. Rename renames both. **`.` and `:` are excluded from slugs** —
   tmux rejects them in session names because they are target-syntax separators.
 - **A blank name in the create modal is filled in, not rejected.** deck defaults it to
-  `<workspace>-<MMDD-HHMM>` from local wall-clock time (`deck-0820-1443`), because the
+  `<basename of cwd>-<MMDD-HHMM>` from local wall-clock time (`deck-0820-1443`), because the
   common case is "start something here, now", and making the user invent a name first is a
   toll on the product's fastest path. Names are unique, so a collision appends the smallest
   free `-2`, `-3` suffix rather than failing the create. Two consequences worth stating: the
@@ -273,7 +277,7 @@ CREATE TABLE sessions (
   sensitive          INTEGER NOT NULL DEFAULT 0, -- suppress scrollback capture (§8)
   notify_rules       TEXT,                  -- JSON override of global rules (§10); NULL = inherit
   important          INTEGER NOT NULL DEFAULT 0, -- eligible for "milestones only" rules
-  workspace          TEXT,                  -- free-text grouping label
+  group_id           INTEGER,               -- manual group (§11); NULL = the implicit "default"
   snoozed_until      INTEGER NOT NULL DEFAULT 0,
   acknowledged       INTEGER NOT NULL DEFAULT 1,
   launch_lease_owner TEXT,                  -- pid@boot_id#generation holding a start (§9.3)
@@ -309,8 +313,13 @@ CREATE TABLE outbox (               -- notifications; dispatched inline, retried
   last_error TEXT
 );
 
+CREATE TABLE groups (               -- manual session groups (§11); machine-local, not config.toml
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE COLLATE NOCASE  -- "default" is reserved: it is group_id IS NULL
+);                                  -- membership is sessions.group_id, so a rename carries it
+
 CREATE TABLE ui_state (             -- machine-local UI state, never in config.toml (§6.5)
-  key        TEXT PRIMARY KEY,      -- layout_mode, sidebar_width (§11.2)
+  key        TEXT PRIMARY KEY,      -- layout_mode, sidebar_width (§11.2), collapsed_groups (§11)
   value      TEXT NOT NULL
 );
 
@@ -351,17 +360,32 @@ A deck-level profile per session, translated per adapter — never a boolean.
 The flag names below are upstream contracts, not deck's: Claude's `--permission-mode`
 accepts `manual | plan | acceptEdits | auto | dontAsk | bypassPermissions`. Keeping this
 table true as those CLIs move is the job of the `@real-agents` suite (§13.5), never of a
-reader's memory. Codex's approval surface is **unverified** — candidates are
-`--ask-for-approval`, `--full-auto`,
-`--dangerously-bypass-approvals-and-sandbox`; the adapter declares no `edits`/`yolo`
-support until one is confirmed.
+reader's memory — and the `safe` row is the standing proof that it has to be: Claude renamed
+its own default mode from `default` to `manual` between 2.1.71 and 2.1.259, so a deck that
+names the mode explicitly refuses to launch on one of those versions. **`safe` therefore
+passes no mode flag at all.** Claude's built-in default *is* the interactive-approval mode on
+every release, old and new, so naming it buys nothing and costs a version dependency. The
+three non-default profiles keep their explicit flags, whose names have been stable.
+
+Codex's approval surface was **verified against codex-cli 0.154.0**: `-a/--ask-for-approval`
+accepts `on-request | never` (only those two — the older `untrusted`/`on-failure` values and
+`--full-auto` are gone), and `-s/--sandbox` accepts
+`read-only | workspace-write | danger-full-access`. Per the structured-flag preference below,
+`yolo` composes `-a never -s danger-full-access` rather than
+`--dangerously-bypass-approvals-and-sandbox`, which is the same effect under a name that
+churns. **Codex's `safe` passes its flags explicitly and never relies on the CLI's own
+default**, because that default is user-configurable: `approval_policy` and `sandbox_mode` in
+the user's `~/.codex/config.toml` can — and on real installations do — set `never` and
+`danger-full-access` globally, so a `safe` session that omitted the flags would silently
+inherit full access. A profile named `safe` that depends on the user's config not being
+permissive is not a profile, it is a wish.
 
 | deck profile | Claude Code | Pi | Codex | shell |
 |---|---|---|---|---|
-| `safe` (default) | `--permission-mode manual` | default | default | n/a |
-| `plan` | `--permission-mode plan` | n/a → falls back to `safe`, shown in UI | n/a | n/a |
-| `edits` | `--permission-mode acceptEdits` | `--approve` | unverified → unsupported | n/a |
-| `yolo` | `--permission-mode bypassPermissions` | `--approve` | unverified → unsupported | n/a |
+| `safe` (default) | **no flag** — Claude's own default mode | default | `-a on-request -s workspace-write` (explicit, never the CLI default) | n/a |
+| `plan` | `--permission-mode plan` | n/a → falls back to `safe`, shown in UI | n/a → falls back to `safe`, shown in UI | n/a |
+| `edits` | `--permission-mode acceptEdits` | `--approve` | `-a never -s workspace-write` | n/a |
+| `yolo` | `--permission-mode bypassPermissions` | `--approve` | `-a never -s danger-full-access` | n/a |
 
 - Prefer the structured mode flag over a `--dangerously-*` flag where both exist: same
   effect, less flag-name churn. Unsupported profiles degrade to the nearest safe one and
@@ -378,7 +402,12 @@ support until one is confirmed.
   habituation is that the profile is *visible* everywhere it applies (below), not that it is
   tedious to choose.
 - Claude hook payloads carry `permission_mode`, so if the user changes it in-session the
-  row is reconciled from the hook instead of drifting.
+  row is reconciled from the hook instead of drifting. **Codex's payloads carry a field of
+  the same name and it must not be used this way.** Verified on 0.154.0 it reports only
+  `default` or `bypassPermissions`, tracks the approval policy alone, and is blind to `-s`
+  entirely — so reconciling a codex row from it would re-label deck's own `edits` session
+  (`-a never -s workspace-write`) as `yolo`. A field being present is not the same as it
+  being the same field.
 - In `yolo`, permission prompts never fire, so the `waiting` column goes quiet — attention
   then comes only from questions / needs-input notifications. Document this in help; it is
   a frequent "status is broken" false alarm.
@@ -415,7 +444,7 @@ session it is running for:
 | `DECK_SESSION_SLUG` | `slug`, which is tmux's `deck_<slug>` identity (§3.2) |
 | `DECK_SESSION_CWD` | the directory the pane was launched in |
 | `DECK_SESSION_AGENT` | the adapter kind: `claude`, `pi`, `codex` or `shell` |
-| `DECK_SESSION_WORKSPACE` | the `workspace` grouping label (§11) |
+| `DECK_SESSION_GROUP` | the manual group's name (§11), empty for the implicit `default` group |
 | `DECK_SESSION_PROFILE` | the **resolved** permission profile in force (§5), never the requested one |
 | `DECK_SESSION_CONVERSATION_ID` | the agent's own conversation id where the adapter assigns one before launch (§8), empty otherwise |
 | `DECK_SESSION_LAUNCH_KIND` | `create` on a first launch, `resume` on every relaunch — `r` and `R` are both `resume`, since first-launch-or-not is the distinction a hook can act on |
@@ -529,7 +558,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `group_by_workspace` (default true, §11), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -743,15 +772,14 @@ than faking it:
 |---|---|
 | `Instrument(in LaunchInput) (argv []string, env map[string]string)` | per-session hook injection (§8.1) |
 | `Probe(pane string) (status, reason string)` | pane-text classification where no hook exists (§7) |
-| `DiscoverID(ctx, in, since) (string, error)` | post-launch conversation-id discovery (§8.2) |
 | `TranscriptPaths(in) ([]string, error)` | cross-session search over transcripts (§12) |
 
 | | Claude Code | Pi / oh-my-pi | Codex CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|
-| **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it | none |
+| **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | none |
 | **resume** | `--resume <uuid>` (fork = new id, offered explicitly) | `--session-id <id>` | `resume <id>` by id | recreate shell (§9.1) |
-| **id discovery** | not needed | not needed | **§8.2** — serialised, claim-based; ambiguity is a first-class outcome | n/a |
-| **status** | **hooks → `deck _hook`** (live) | probe (sampled) | probe (sampled) | probe (sampled) |
+| **id discovery** | not needed | not needed | **§8.2** — `SessionStart` reports it; no filesystem search, no lease | n/a |
+| **status** | **hooks → `deck _hook`** (live) | probe (sampled) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | probe (sampled) |
 | **banned** | `--continue` | `--continue` | `resume --last` | — |
 
 ### 8.1 Claude instrumentation
@@ -788,36 +816,99 @@ by `@real-agents` (§13.5) rather than trusted indefinitely, and every one of th
 fallback (§7) — so an upstream change degrades a row from live to sampled instead of
 breaking it.
 
-Adapter-specific event sources for Pi and Codex (both have plausible hooks — an extension
-API and a notify command respectively) are deferred; until then they are honestly labelled
-"sampled" in the UI.
+Codex's own event source is real, verified and specified in §8.2. Pi's (an extension API)
+is still deferred; until it exists a pi row is honestly labelled "sampled" in the UI.
 
-### 8.2 Codex conversation-id discovery
+### 8.2 Codex instrumentation
 
-Codex mints its own id, so it must be discovered after launch. R2 makes the naive rule
-unsound: with two Codex sessions launched in the *same* directory seconds apart,
-"a transcript created after launch whose cwd matches" matches both candidates for both
-sessions — which is the banned "most recent" rule wearing a cwd filter. Therefore:
+Codex mints its own conversation id, which is why this subsection used to specify id
+*discovery*: a serialised, claim-based search for a transcript written after launch, because
+R2 makes the naive rule unsound — with two Codex sessions started in the *same* directory
+seconds apart, "a transcript created after launch whose cwd matches" matches both candidates
+for both sessions, which is the banned "most recent" rule wearing a cwd filter.
 
-1. **Serialise — store-backed, not process-wide.** At most one Codex launch is in its
-   discovery window at a time, enforced by a CAS discovery lease in `state.db` with the
-   same shape as the §9.3 launch lease (owner `pid@boot_id`, TTL, stale-break on dead
-   owner). A process-local mutex would be unsound under R4's own model: N concurrent TUIs
-   are N processes, each holding its *own* mutex, and the banned ambiguity returns
-   silently. A second Codex launch — from any client — queues behind the lease.
-   Queue position is visible in the UI (`starting · awaiting id`).
-2. **Claim.** Every transcript path already bound to a session is excluded from candidacy,
-   and a discovered path is written to the row in the same transaction that clears the
-   mutex, so no two sessions can ever hold one transcript.
-3. **Ambiguity is an outcome, not a coin flip.** If the window closes with zero or more than
-   one unclaimed candidate, the session stays live with `conversation_id = NULL`, is shown
-   as `id unresolved`, and offers two explicit actions: pick from the candidate list
-   (showing first lines and timestamps), or leave unresolved. An unresolved session is
-   usable but not resumable, and says so.
-4. **Never** fall back to "most recent" and never guess (R2).
+**That machinery is not built, and is not going to be.** Verified against codex-cli 0.154.0,
+codex's own `SessionStart` hook payload carries `session_id`, `transcript_path` and `cwd`, so
+the id arrives *from the agent*, already addressed to the pane deck launched — the ambiguity
+never arises, so nothing has to be serialised, claimed or adjudicated. `DiscoverID` is
+therefore not part of the adapter interface and `internal/agent/codex.go` performs no
+filesystem search.
 
-If a future Codex accepts a caller-assigned id or name at launch, this entire subsection
-collapses into the assigned-id path — see §14.2.
+deck adopts the id through the receiver path that already exists: `deck _hook` resolves the
+session by the row id in its environment when the payload's conversation id is not one deck
+knows, and a `SessionStart` whose id differs from the row's writes it to the row (§8.1's own
+rule, unchanged). None of that is codex-specific.
+
+**Hooks are injected inline; nothing is written to disk.** Codex accepts an entire hook
+configuration as a command-line override — `-c 'hooks.<Event>=[{hooks=[{type="command",
+command="…"}]}]'` — which buys §8.1's guarantee for codex too: a deck session is
+instrumented, the user's `$CODEX_HOME` is untouched, and an ordinary codex run in the same
+directory is unaffected. Per-session facts never go in the hook *command*, which is a
+constant `deck _hook`, because codex's trust hash covers the command string (below); they
+arrive in the payload and in the pane environment the hook process inherits (verified:
+`DECK_SESSION_ID` is visible to the hook).
+
+**Codex will not run an untrusted hook, and deck buys trust with
+`--dangerously-bypass-hook-trust`.** An untrusted hook is **skipped silently** — no warning,
+no error, no exit code, nothing deck could detect from codex's output. Trust is otherwise a
+`[hooks.state."<source>:<event>:<group>:<hook>"] trusted_hash = "sha256:…"` entry in the
+`$CODEX_HOME` `config.toml`, and that hash is a function of the event, the group's matcher
+and the normalised hook definition only — portable and constant for a *fixed* command
+string, but deck's command embeds deck's own absolute executable path, and the preimage
+algorithm was not recoverable from the binary, so deck cannot compute the entry it would
+need. The two alternatives are worse: harvesting the hash once by driving codex's
+interactive trust UI writes to the user's config and breaks on any codex release that
+changes the hash, and running codex out of a deck-owned `$CODEX_HOME` splits the user's
+session history and credentials in two, since `codex resume <id>` only works in the
+`$CODEX_HOME` that owns the rollout file. One flag on deck's own launch is the smaller
+price.
+
+It is a real reduction and is recorded as one: for the duration of a deck-launched codex,
+the user's *own* configured hooks also run without review. deck's mitigation is that it
+writes no hooks anywhere — every hook deck adds is visible in the pane's own command line —
+and that the flag affects nothing else: approvals and the sandbox are governed by §5's
+profile flags, never by this one.
+
+Subscribed events — the same shape as §8.1, and deliberately **not**
+`PreToolUse`/`PostToolUse`, which fire once per tool call and carry the tool's whole output:
+
+| event | → status | notes |
+|---|---|---|
+| `SessionStart` | `running` | carries `session_id` — the id deck adopts — and `source` (`startup` \| `resume` \| `clear` \| `compact`) |
+| `UserPromptSubmit` | `running` | also feeds prompt count |
+| `PermissionRequest` | `waiting` | **the golden signal**, codex's analogue of Claude's notification: `tool_name` (`Bash` for a command approval, `apply_patch` for a file edit) plus `tool_input.command`, and `tool_input.description` when the model supplied a justification |
+| `Stop` | `idle` | carries the final assistant text under `last_assistant_message` — the same field name Claude uses; nullable when the turn produced no text |
+| `SessionEnd` | `stopped` | `reason` observed only as `other`, on both `/quit` and a double `Ctrl+C`. The one event with no output schema: fire-and-forget, it cannot influence codex |
+
+Where the two agents overlap, codex uses **the same event names and the same payload field
+names** as Claude (`session_id`, `cwd`, `transcript_path`, `hook_event_name`,
+`last_assistant_message`, `permission_mode`, `source`): its hook surface is a deliberate
+Claude-compatible shim, so the receiver parses codex payloads with no new payload work.
+`PermissionRequest` is the only genuinely new event name. Codex has no analogue of Claude's
+stop-failure event, so a codex row's `error` comes from the probe or from process death, not
+from a hook.
+
+**The one hard limitation: in the interactive TUI `SessionStart` does not fire at launch — it
+fires when the first prompt is submitted.** A freshly launched, never-prompted codex is
+uninstrumented, so for that window:
+
+- status comes from the probe and the row honestly reads "sampled" (§3), with no special
+  case: the badge already follows the last verdict's source;
+- the row has **no conversation id**, says so, and is not resumable — `r` refuses with that
+  reason rather than guessing. Nothing of value is lost: a codex session that has never been
+  prompted has no conversation to resume.
+
+Resume is otherwise stable, verified end to end: `codex resume <id>` replays the
+conversation, and `SessionStart` fires again with the same `session_id`, the same
+`transcript_path` (the rollout file is appended, not rotated) and `source: "resume"`.
+`resume --last` stays banned (R2). Two upstream facts deck depends on: resume needs a TTY,
+which a tmux pane always is; and it finds a session only in the `$CODEX_HOME` that owns
+`sessions/<yyyy>/<mm>/<dd>/rollout-<ISO>-<id>.jsonl` — one more reason deck uses the user's
+own `$CODEX_HOME` rather than one of its own.
+
+Every contract above is upstream, re-verified by `@real-agents` (§13.5) rather than trusted
+indefinitely, and every one has the probe fallback (§7): if a codex release stops firing
+deck's hooks, a codex row degrades from live to sampled instead of breaking.
 
 ---
 
@@ -1068,7 +1159,7 @@ Declared in `config.toml`. Three types, all generic:
 | `desktop` | Convenience wrapper over `command` for a freedesktop notification. **Does not degrade silently:** unreachability is recorded as a channel error on the outbox row and surfaced in the health view. This matters because a `_hook` spawned from a tmux server that systemd started has no session bus, so the channel is unavailable in precisely the deployment §6.3 warns about — the health view therefore probes the bus alongside `PATH`. |
 
 Body rendering is a text template over a documented, versioned payload:
-`{session: {name, cwd, agent, status, reason, permission_profile, workspace, important},
+`{session: {name, cwd, agent, status, reason, permission_profile, group, important},
 event: {kind, at, message}, deck: {host, version}}`. Templates are user-authored, so any
 JSON shape a target expects can be produced — including nesting the message inside a
 service-specific envelope. Rendered bodies are size-capped and redacted per §6.4.
@@ -1119,10 +1210,11 @@ a footnote:
 1. **Retry needs a next event.** A delivery that fails at 02:00, with no TUI open and no
    further hook activity for that session, sits in the outbox until morning. There is no
    timer, because a timer is a daemon.
-2. **Probe-classified agents notify only while a TUI runs.** Pi, Codex and shell sessions
-   have no event source of their own (§8), so unattended they change status — and therefore
-   notify — never. Claude sessions notify unattended, including turn and API failures via
-   the stop-failure hook.
+2. **Probe-classified agents notify only while a TUI runs.** Pi and shell sessions have no
+   event source of their own (§8), so unattended they change status — and therefore
+   notify — never. Claude and Codex sessions notify unattended (Codex from its first prompt
+   on, §8.2). Only Claude reports turn and API failures that way, via the stop-failure hook:
+   Codex has no equivalent event, so an unattended codex failure waits for a TUI.
 3. **Process death is detected late.** A `SIGKILL`ed or OOM-killed agent of any kind fires
    no hook, so its `error` notification waits for the next tick or hook (§7).
 
@@ -1144,7 +1236,7 @@ listener.
 │ ● api-refactor   claude  live    waiting 2m    │                                        │
 │ ● flaky-tests    claude  live    waiting 6m    │ > run the benchmark suite              │
 │ ◐ perf-sweep     claude  live    running 4s    │   ⠋ bench/throughput … 14/31           │
-│ ○ dep-audit      codex   sampled idle   31m    │                                        │
+│ ○ dep-audit      codex   live    idle   31m    │                                        │
 │  infra                  ~/work/infra           │ (live pane capture, escapes preserved, │
 │ ✗ tf-migrate  yolo claude live   error   1h    │  1 s tick, selected row only — never   │
 │ ■ notes           shell   —      stopped 2d    │  interactive; ↵ for a real terminal)   │
@@ -1156,7 +1248,8 @@ listener.
 
 That frame is an illustration drawn at 91 columns with the sidebar widened to 49; the
 default width, the floors, and what happens at deck's 80-column minimum are §11.2's, not
-this drawing's.
+this drawing's — and a session's real **two-line** composition is stated in the bullets
+below rather than drawn here, because at the default 35 columns it does not fit on one.
 
 The shape is a **session sidebar beside a live preview**, not a full-width list. The
 sidebar is the permanent spine of the product — it is what you scan to answer "which
@@ -1164,14 +1257,45 @@ session needs me" — and the preview is what makes an answer actionable without
 Both are described below; §11.2 covers what happens when the terminal is too narrow to
 hold them side by side.
 
-- Grouping by `workspace` (default: basename of `cwd`), collapsible, and **optional**:
-  `[ui] group_by_workspace` (default `true`, §6.5). Never by repo. With grouping off the
-  sidebar renders one flat list in the sort order below with **no header rows**, which is a
-  different row budget for §11.2's page-size and elision maths — the flat list is specified
-  here rather than left to a job to invent. Collapse state is meaningless in flat mode and is
-  absent rather than inert. Grouping is *preference*, not machine-local UI state: it is edited
-  in settings (§11.5) with an explicit save, so §6.5's rule that a keypress never rewrites
-  `config.toml` still holds, and it is not in `ui_state` alongside `layout_mode`.
+- **Grouping is by manually defined groups, never derived from the filesystem.** A group is a
+  name the user chose — `sprint work`, `tooling maintenance` — held in §4's `groups` table with
+  membership on `sessions.group_id`. Deriving groups from `cwd` (deck's earlier behaviour)
+  grouped by an accident of where a session was started, which is not how anyone organises
+  work; and never by repo, which was never the shape either.
+  - **`default` is not a row.** It is `group_id IS NULL`, which is what makes "it always
+    exists", "it is always last", "it cannot be renamed" and "it cannot be deleted"
+    structural facts rather than four rules to enforce. A session belongs to `default` until
+    the user says otherwise, and a `group_id` that no longer resolves — another client deleted
+    it between this client's load and its render — renders under `default` rather than
+    vanishing.
+  - **Order is alphabetical, case-insensitive, with `default` always last** regardless of
+    where its name would sort. Rows *within* a group follow the sort order below. Group order
+    is deliberately not attention-ranked: a manual group is a stable place the user learns the
+    position of, and a list whose headers reshuffle when a session starts waiting is a list
+    you cannot navigate from memory. The cost is real and accepted — a `waiting` row can sit
+    below the fold in an alphabetically-late group — and it is paid for by the same two things
+    that make a non-`attention` sort order safe: the attention-walk key and the collapsed
+    strip's count.
+  - **Every header carries its member count, including `(0)`.** A group the user defined but
+    has not filled yet still renders: it is how they see the group exists and where to put
+    something. Under an active filter (§11.10) only groups with a match render, and the count
+    is what is shown — an empty group is a standing place in the default list, not a row to
+    pad filter results with.
+  - **Groups collapse; rows do not.** `c` toggles the selected row's group, a header click does
+    the same (§11.8), and **collapse state persists in `ui_state`** so a group collapsed
+    yesterday is still collapsed today — a durable named group is not a transient view the way
+    the old derived buckets were. Selection never lands on a hidden row.
+  - **Membership is set where the session is.** The create modal has a `Group` field that
+    cycles the available groups exactly as the `Agent` field cycles kinds (§11.4), defaulting
+    to the last group created into; the `i` detail dialog moves an existing session between
+    groups. The marked set is **not** extended to moves: `x` and `dd` remain the only batch
+    verbs.
+  - **The group list is edited in settings (§11.5)**, which is where deleting one lives too.
+    Deleting a group asks which of two things to do with its members — move them all to
+    `default`, or delete them — and the destructive branch is `dd`'s own batch path (§9.2),
+    confirm dialog, tombstone, transcript-purge offer and single-`u` restore included, never a
+    second implementation of deletion. An empty group needs no prompt. deck never mass-kills
+    sessions as a side effect of a list edit.
 - Sort: **configurable**, `[ui] sort_order` (§6.5), four values, `attention` the default:
   - `attention` (default) — `waiting` (oldest first) → `error` → `running` → `starting` →
     `idle` → `stopped`. This is the order every earlier phase shipped and the one the list
@@ -1192,8 +1316,10 @@ hold them side by side.
   reachable in every order through §11's own attention-walk key and the collapsed strip's
   count, which are what make a non-attention order safe to offer rather than a way to lose a
   waiting prompt. Sort order is *preference*, not machine-local UI state: edited in settings
-  (§11.5) with an explicit save, like `group_by_workspace` above, so §6.5's rule that a
-  keypress never rewrites `config.toml` still holds, and it is not in `ui_state`.
+  (§11.5) with an explicit save, so §6.5's rule that a keypress never rewrites `config.toml`
+  still holds, and it is not in `ui_state`. The **group list**, by contrast, is machine-local
+  and lives in `state.db` (§4) — a group is a place on this machine, not a preference that
+  travels with a config file.
 - **A re-sort never moves the selection.** Selection follows the session, not the row index —
   whatever was selected before a reload, a re-group or a sort-order change is still selected
   after it, and the viewport scrolls to keep it visible rather than the selection sliding to
@@ -1207,7 +1333,20 @@ hold them side by side.
   not finish. It is a one-shot intent tied to that session's id, not a standing rule — it is
   satisfied once, by the first load that contains the row, and a later reload does not
   re-steal a selection the user has since moved. If the session never appears, nothing moves.
-- Live/sampled badge per row (§3), permission badge for non-`safe`, `env↻` when dirty.
+- **A session is a two-line row, and the order within each line is fixed.** Line 1 carries
+  the §11.3 gutter, the status glyph, the name, then the unseen marker, the live/sampled
+  quality badge (§3) and the status word. Line 2 carries the gutter, `env↻` and `launch↻`
+  when either is dirty, the row's age, and the permission badge for non-`safe` **last**. The
+  transient badges come before the age because they are news; the permission badge is
+  standing configuration and goes at the end, where it is still visible without displacing
+  anything that changes.
+- **The age is rendered bare** — `2m ago`, `just now` — with no `created` label. It is the
+  only timestamp on a row, so the word says nothing the column position does not, at a cost
+  of eight of the sidebar's ~33 content columns on every row in the list.
+- **The marked set is shown in the gutter, never as a text badge.** A `✓` on the second line
+  of §11.3's gutter bar, with the selection arrow on the first, so both cues coexist. A badge
+  at the end of line 1's badge run is the first thing truncation drops, which loses the cue
+  precisely when the sidebar is too narrow to count marked rows by eye.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. One column, always in the same column, so the shape of the
   list is readable before any text is. **No glyph deck renders may have East Asian Width
@@ -1236,7 +1375,13 @@ hold them side by side.
   a session rather than a courtesy window onto someone else's. Three properties make that
   affordable: the fit
   is **coalesced against the preview tick**, so walking a list fits the row the user settles
-  on and not every row passed on the way; it is **skipped below §11.9's 7-row inner floor**,
+  on and not every row passed on the way — but the coalescing is per *pane*, not per row:
+  **a relaunch invalidates it.** `r`, `R` and the `u` that undoes a kill all replace the
+  window with a new one at tmux's own default size, and they do it without moving the
+  selection, so a fit already satisfied for the selected session must not suppress the fit
+  the new pane needs. Otherwise the one row the user is watching is the one row that stays
+  80×24 until they select away and back, which is the opposite of what coalescing is for;
+  it is **skipped below §11.9's 7-row inner floor**,
   leaving the pane cropped, because a box that small has no transcript in it worth reflowing
   for; and it is **best-effort, owning and restoring nothing** — a session the user looked at
   is left at the size deck last chose, and any attaching client re-expresses its own size
@@ -1427,7 +1572,35 @@ truncated-but-honest frame beats an unpredictable one.
   is the one thing §11's glyph column exists to protect. It also must not extend *past* that
   inner width: a background left open across the seam paints a column that belongs to another
   panel, so **every truncated coloured run re-emits its own reset** — truncation that drops a
-  trailing SGR reset is a defect in the truncation, not a rendering trade-off. **Colour is not sufficient on its own.**
+  trailing SGR reset is a defect in the truncation, not a rendering trade-off.
+- **deck paints its own canvas.** The `background` token (§11.6) is painted across every cell
+  deck draws — borders, padding, row bodies, headers, the footer, dialog interiors, the empty
+  state — rather than left to whatever the terminal's own background happens to be. A theme
+  that only ever sets foregrounds is not a theme, it is a suggestion: a `light` palette on a
+  terminal configured dark renders near-black text on near-black, and the only rows that stay
+  legible are the ones the `surface` stripe happens to paint. That failure is not the
+  stripe's fault and is not fixed by softening it — with the stripe removed, *every* row
+  becomes unreadable rather than every second one. It also makes §11.6's contrast floor
+  meaningful: a ratio computed against `background` is a claim about a colour pair no cell
+  displays until deck paints it. Because a reset (`\x1b[0m`) clears the background along with
+  the foreground, painting the canvas means **re-opening it after every inner reset**, not
+  prefixing one escape per line and hoping.
+  **One deliberate exception: captured pane output is never repainted.** An agent's own
+  bright-on-dark output composed onto a light canvas is destroyed, not themed, so deck paints
+  the frame and the padding columns around a capture and emits a reset after it — the pane's
+  colours must not leak into deck's frame either.
+- **The selected row has a gutter, not only a background.** The row's leftmost columns are a
+  painted bar in `accent`, carrying `>` on the row's first line with `background` as its
+  *foreground*; §11's marked set puts its `✓` on the second line of the same bar, so a row
+  that is both selected and marked shows both cues at once without either competing for a
+  cell. A `selection` background alone is a low-contrast cue in several palettes — it is by
+  design a close relative of `surface`, which the stripe already uses — and "which row am I
+  on" is the single most-asked question of the list. The marker text lives in its **own
+  columns**, outside the row's text run, so that truncating a long name can never synthesise
+  a reset inside the highlight and break the rectangle above. `background`-on-`accent` and
+  `background`-on-`badge` therefore join §11.6's contrast floor, and both glyphs survive
+  `NO_COLOR` because they are text in a fixed column, not a colour.
+  **Colour is not sufficient on its own.**
   `NO_COLOR` drops deck to monochrome, and deck's own golden frames are captured that way,
   so a focus indication carried only by a border colour is invisible to the user *and* to
   the tests. While interactive, the preview's top border therefore carries the target
@@ -1580,13 +1753,28 @@ the TUI must be the place it is edited.
 - **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
   changes on `esc`, and the write is atomic — settings must never be able to leave an
   unparseable `config.toml` behind.
+- **The group list (§11) is the one section that is not staged.** Groups live in `state.db`,
+  not `config.toml`, so creating, renaming or deleting one takes effect immediately and there
+  is nothing for `ctrl+s` to write or for the discard prompt to revert. That difference is
+  **stated in the section itself** rather than left for the user to discover, and `esc` must
+  not offer to discard group edits it cannot discard: a prompt that claims to undo something
+  it has already committed is worse than no prompt.
 - **Scope is labelled per field**: global (`config.toml`), or per-session override where
   one exists (§6.1). A field that only takes effect on the next launch says
   *restart-to-apply*, consistent with §6.2 and `P` (§5). A setting that claims to have
   taken effect on a live pane when it has not is the same class of lie as a fabricated
   status.
-- Settings edits configuration and nothing else: it cannot create, kill, resume or delete a
-  session, and nothing in a session's lifecycle (§9) is reachable from it.
+- Settings edits configuration and nothing else: it cannot create, kill or resume a session,
+  and nothing in a session's lifecycle (§9) is reachable from it — **with exactly one
+  carve-out, and it is not a loophole.** Deleting a group (§11) must say what becomes of its
+  members, and "move them all to `default`" cannot be the only answer offered: a user retiring
+  a group of finished work would then have to empty it by hand first. So the delete prompt
+  offers the destructive branch too, and when it is chosen the deletion runs through §9.2's
+  own `dd` batch path — the same confirm dialog naming what survives, the same tombstone, the
+  same `DECK_DELETE_GRACE_MS` window in which one `u` restores the whole batch. Settings never
+  gains a deletion of its own, nothing is destroyed without the confirm the list would have
+  shown, and every such delete is reversible for as long as any other `dd` is. An empty group
+  is deleted with no prompt at all, because there is nothing to decide.
 
 ### 11.6 Themes
 
@@ -1618,7 +1806,7 @@ name = "empire"
 appearance = "dark"            # "dark" | "light" — drives contrast direction
 
 [colors]
-background        = "#0f172a"  # panel interiors
+background        = "#0f172a"  # the canvas deck paints (§11.3), not the terminal's
 surface           = "#172033"  # elevated rows, footer, dialog interiors
 border            = "#334155"
 border_focus      = "#0d9488"  # the focused panel (§11.3)
@@ -1630,7 +1818,7 @@ dimmed            = "#64748b"  # starting rows, elided detail
 hint              = "#94a3b8"  # footer descriptions
 key               = "#d97706"  # footer/help keycaps
 accent            = "#d97706"
-group             = "#cbd5e1"  # workspace headers
+group             = "#cbd5e1"  # group headers
 search_match      = "#fbbf24"
 badge             = "#94a3b8"  # live/sampled, env↻
 badge_warn        = "#fbbf24"  # non-safe permission profiles, yolo
@@ -1655,9 +1843,10 @@ archived          = "#475569"
   `7f7f7f ff0000 00ff00 ffff00 5c5cff ff00ff 00ffff ffffff` (8–15). The quantised palette
   is what renders. Legibility after quantisation is a tested property with a stated
   method: for every built-in theme, `text`, `hint`, `title` and each of the seven status
-  tokens must hold a WCAG contrast ratio ≥ 3:1 against `background`, and `text` against
-  `selection`, computed over **both** the hex palette and its quantisation to the
-  reference palette. This is a loader-level golden test, like §7's probe fixtures — the
+  tokens must hold a WCAG contrast ratio ≥ 3:1 against `background`, `text` against
+  `selection`, and `background` against both `accent` and `badge` — the two backgrounds
+  §11.3's selection gutter paints its markers on — computed over **both** the hex palette and
+  its quantisation to the reference palette. This is a loader-level golden test, like §7's probe fixtures — the
   spec's black-box rule (§13) applies to behaviour, and palette arithmetic is data.
   Rendering under the quantised palette *is* behaviour, so §13.1 gains
   `DECK_COLOR_DEPTH=truecolor|16` to force either path deterministically in a pty test
@@ -1734,7 +1923,7 @@ scroll, no close button that is the only way to dismiss.
 | event | effect | key it duplicates |
 |---|---|---|
 | click a sidebar row | selects that row **and enters §11.9's interactive preview on it** | `↑`/`↓` then `↵` |
-| click a workspace group header | toggle collapse | the grouping key (§11) |
+| click a group header | toggle collapse | `c` (§11) |
 | wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
 | drag over the preview | select text; release copies it | `a`, then tmux's own copy-mode |
@@ -1942,7 +2131,7 @@ must be restored afterwards.
 ### 11.10 The list filter
 
 `/` narrows the list as you type, incrementally, over what a row already shows — name, `cwd`,
-workspace and status. It is a **view over the list and never a mutation**: nothing about a
+group and status. It is a **view over the list and never a mutation**: nothing about a
 session changes because it is hidden or shown.
 
 - **It widens the pool to archived rows** while a query is in force, and only then. Archived
@@ -1967,7 +2156,7 @@ session changes because it is hidden or shown.
 
 `f` opens a search view over three corpora, ranked and grouped by session:
 
-1. session metadata (name, cwd, workspace, args),
+1. session metadata (name, cwd, group, args),
 2. the event log (statuses, reasons, last messages),
 3. **agent transcripts**, located per adapter via `TranscriptPaths` — the agents' own
    on-disk conversation files, read-only.
@@ -2064,7 +2253,10 @@ in the help view.
   therefore named here: **`list-clients` is empty** while a preview is live, and
   `#{window_width}x#{window_height}` is unchanged across any amount of previewing.
 - **Fake agents.** `fake-claude`, `fake-pi`, `fake-codex` on `PATH`: tiny programs that
-  honour the real argument contracts (`--session-id`, `--resume`, `--permission-mode`),
+  honour the real argument contracts (`--session-id`, `--resume`, `--permission-mode` — and,
+  for `fake-codex`, the differently-shaped one codex actually has: no id at launch,
+  `resume <id>`, `-a`/`-s`, and hooks arriving as an inline `-c hooks.…` override instead of
+  a settings file),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,
@@ -2134,13 +2326,17 @@ features/
                                 reap leaves no trace, the agent's transcript survives `dd`
   shell_state.feature           §9.4 — history, scrollback replay, cwd restore, sensitive
   notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
-  codex_discovery.feature       §8.2 — serialised discovery, claims, ambiguity, unresolved
+  codex_hooks.feature           §8.2 — inline hook injection, the id adopted from
+                                SessionStart, PermissionRequest → waiting, and no id (so no
+                                resume) before the first prompt
   layout_modes.feature          §11.2 — auto selection, | cycling, resize re-choice, floors
   preview.feature               §11 — coalesced fit, floor-skip, preview_fit=false is passive,
                                 no attached client, no scroll, crop when unfitted, crash tail
                                 for error, placeholder with no pane
   attention_sort.feature        §7/§11 — attention order, the collapsed strip's count,
-                                workspace grouping and collapse, space walks what needs me
+                                space walks what needs me
+  session_groups.feature        §11 — manual groups: alphabetical with default last, counts
+                                including (0), collapse persisted, create/move/edit/delete
   mouse.feature                 §11.8 — click selects and enters interactive, wheel scrolls
                                 without selecting, seam drag resizes, preview drag selects and
                                 release copies, DECK_MOUSE=0 disables
@@ -2216,20 +2412,22 @@ Scenario: a crashed agent is an error with its exit status               # §7
   And the launch count for "api" is still 1                   # never auto-relaunch
 
 @codex
-Scenario: two Codex sessions in one directory get distinct ids           # R2 + §8.2
+Scenario: a Codex row adopts the id its own first hook reports           # R2 + §8.2
   Given a working directory "~/work/svc"
   When I create Codex sessions "one" and "two" there within 2s
-  Then discovery is serialised and each ends with a distinct conversation id
-  And neither id is the other's transcript
-  When discovery for a third session finds no unclaimed candidate
-  Then it shows "id unresolved" and offers a candidate picker
-  And it is not resumable while unresolved
+  Then each row has no conversation id, reads "sampled", and refuses resume
+  When each session is prompted once
+  Then each row reads "live" with the distinct id its own SessionStart carried
+  And neither row's id is the other's transcript
+  When "one" asks to run a command that needs approval
+  Then "one" shows "waiting" with the requested tool name as its status reason
 ```
 
 ### 13.5 Coverage beyond the headline scenarios
 
 Also specified as features, one scenario per rule: resume-argv per adapter (including
-Codex's serialised discovery and the ban on "most recent"); `_hook`'s store write inside its
+Codex's refusal to resume a row whose first hook has not yet reported an id, and the ban on
+"most recent"); `_hook`'s store write inside its
 budget, measured from monotonic log durations, with a separate scenario for the session-end
 enqueue-only path; store migration from the previous schema version; scrollback replay
 identical modulo the cap, absent entirely when `sensitive`, and off by default for agent
@@ -2262,14 +2460,20 @@ redesign upstream is a one-fixture fix.
 
 ## 14. Open questions
 
-1. **Pi and Codex event sources.** Both plausibly support real event hooks (extension API;
-   notify command). Each removes a probe path and upgrades a row from sampled to live.
-   Worth a spike each: `Instrument` is part of the adapter interface by design (§8), so an
-   event source is additive per adapter rather than a redesign — but the answer decides
-   whether the probe corpus for those kinds is a permanent fixture or a stopgap.
-2. **Codex conversation naming.** Its resume path accepts a name as well as an id; if a
-   name can be assigned at launch, Codex joins the assigned-id group and `DiscoverID`
-   disappears.
+1. **Pi's event source.** Pi plausibly supports real event hooks (an extension API). It
+   would remove a probe path and upgrade a row from sampled to live. Worth a spike:
+   `Instrument` is part of the adapter interface by design (§8), so an event source is
+   additive per adapter rather than a redesign — but the answer decides whether pi's probe
+   corpus is a permanent fixture or a stopgap. **Codex's spike has been run** and its answer
+   is §8.2.
+2. **Codex hook trust without a dangerous flag.** §8.2 pays `--dangerously-bypass-hook-trust`
+   because the `trusted_hash` preimage was not recoverable and deck's hook command embeds a
+   machine-specific path. If a future codex exposes a non-interactive trust command, or if
+   the hash algorithm becomes known, deck can seed trust instead and drop the flag. Related
+   and also open: whether `acceptEdits`, `plan` or `dontAsk` are reachable at all on codex
+   (no flag combination produced them; `--approve-for-me` and the config's own
+   `permission_profile` keys are untested), which is the only route to a real `plan` profile
+   for codex rather than §5's degrade-to-`safe`.
 3. **Scrollback default.** 5 000 lines with escapes is generous and writes screen contents
    to disk. Smaller default, or `sensitive` inverted (opt-in capture)?
 4. **Probe cadence when no TUI runs.** Non-hook agents go unclassified while unattended.
