@@ -1,0 +1,50 @@
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp" (codex_home: AbsolutePathBuf("/tmp/codex-spike/homes/q6"))
+╭──────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)               │
+│                                          │
+│ model:     fake-model   /model to change │
+│ directory: /tmp/codex-spike/work         │
+╰──────────────────────────────────────────╯
+
+  Tip: [tui.keymap] in ~/.codex/config.toml lets you rebind supported shortcuts.
+
+
+› summarise this directory
+
+
+⚠ Model metadata for `fake-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+
+• I listed the directory: hello.txt is the only file.
+
+
+› Ask Codex to do anything
+
+  fake-model default · /tmp/codex-spike/work
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

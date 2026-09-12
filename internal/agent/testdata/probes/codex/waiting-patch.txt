@@ -1,0 +1,50 @@
+╭──────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)               │
+│                                          │
+│ model:     fake-model   /model to change │
+│ directory: /tmp/codex-spike/work         │
+╰──────────────────────────────────────────╯
+
+  Tip: New Build faster with Codex.
+
+⚠ 1 startup issue · ctrl + t for details
+
+⚠ `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.
+
+
+› edit hello.txt
+
+
+⚠ Model metadata for `fake-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+
+• Edited hello.txt (+1 -0)
+    1 +added by codex spike
+
+
+  Would you like to make the following edits?
+
+  Description: Apply proposed file edits
+  Destination: /tmp/codex-spike/work/hello.txt
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for these files (a)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
