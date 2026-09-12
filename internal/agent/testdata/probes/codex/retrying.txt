@@ -1,0 +1,50 @@
+WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp" (codex_home: AbsolutePathBuf("/tmp/codex-spike/homes/q6e401"))
+╭───────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                    │
+│                                               │
+│ model:     local-model low   /model to change │
+│ directory: /tmp/codex-spike/work              │
+╰───────────────────────────────────────────────╯
+
+  Tip: New Build faster with Codex.
+
+
+› hello
+
+
+• Reconnecting... 4/5 (2s • esc to interrupt)
+  └ Unexpected status 401 Unauthorized: {"detail":"Invalid bearer token"}, url: https://api.example.invalid/v1/responses
+
+
+› Ask Codex to do anything
+
+  local-model low · /tmp/codex-spike/work · local-model · Context 0% used
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
