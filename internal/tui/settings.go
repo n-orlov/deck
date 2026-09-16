@@ -1495,24 +1495,31 @@ func (m Model) settingsLeftTopLine(width int, title string, focused bool) string
 	bc := m.box()
 	inner := width - 1
 	label, remain := m.borderLabel(title, inner)
-	return m.settingsBorderColor(focused, bc.topLeft) + label + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain))
+	return m.canvasBackground(theme.Background,
+		m.settingsBorderColor(focused, bc.topLeft), label, m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain)))
 }
 
 func (m Model) settingsLeftBottomLine(width int, focused bool) string {
 	bc := m.box()
-	return m.settingsBorderColor(focused, bc.bottomLeft) + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, width-1))
+	return m.canvasBackground(theme.Background,
+		m.settingsBorderColor(focused, bc.bottomLeft), m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, width-1)))
 }
 
+// settingsLeftContentLine mirrors sidebarContentLine's own bg fallback
+// (task 004/005, R118): l.bg == "" resolves to theme.Background rather
+// than to no background at all, so the border+pad+text+pad span composes
+// through ONE canvasBackground call the same way sidebarContentLine's
+// does, instead of the hand-rolled per-call "seq + text + reset" this
+// used before task 005.
 func (m Model) settingsLeftContentLine(width int, l settingsListLine, focused bool) string {
 	bc := m.box()
 	border := m.settingsBorderColor(focused, bc.vertical)
 	padded := m.padTrunc(l.text, width-3)
-	if l.bg != "" {
-		if seq, ok := m.backgroundSGR(l.bg); ok {
-			return border + seq + " " + padded + " " + "\x1b[0m"
-		}
+	base := l.bg
+	if base == "" {
+		base = theme.Background
 	}
-	return border + " " + padded + " "
+	return m.canvasBackground(base, border, " ", padded, " ")
 }
 
 // settingsRightTopLine/settingsRightBottomLine/settingsRightContentLine
@@ -1523,26 +1530,32 @@ func (m Model) settingsRightTopLine(width int, title string, focused bool) strin
 	bc := m.box()
 	inner := width - 2
 	label, remain := m.borderLabel(title, inner)
-	return m.settingsBorderColor(focused, bc.seamTop) + label + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain)) + m.settingsBorderColor(focused, bc.topRight)
+	return m.canvasBackground(theme.Background,
+		m.settingsBorderColor(focused, bc.seamTop), label, m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain)), m.settingsBorderColor(focused, bc.topRight))
 }
 
 func (m Model) settingsRightBottomLine(width int, focused bool) string {
 	bc := m.box()
 	inner := width - 2
-	return m.settingsBorderColor(focused, bc.seamBottom) + m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, inner)) + m.settingsBorderColor(focused, bc.bottomRight)
+	return m.canvasBackground(theme.Background,
+		m.settingsBorderColor(focused, bc.seamBottom), m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, inner)), m.settingsBorderColor(focused, bc.bottomRight))
 }
 
+// settingsRightContentLine mirrors fullBoxContentLine's own bg fallback
+// (task 004/005, R118): l.bg == "" resolves to theme.Background, and the
+// whole border+pad+text+pad+border span composes through ONE
+// canvasBackground call instead of the hand-rolled per-call
+// "seq + text + reset" this used before task 005.
 func (m Model) settingsRightContentLine(width int, l settingsListLine, focused bool) string {
 	bc := m.box()
 	border := m.settingsBorderColor(focused, bc.vertical)
 	inner := width - 4
 	padded := m.padTrunc(l.text, inner)
-	if l.bg != "" {
-		if seq, ok := m.backgroundSGR(l.bg); ok {
-			return border + seq + " " + padded + " " + "\x1b[0m" + border
-		}
+	base := l.bg
+	if base == "" {
+		base = theme.Background
 	}
-	return border + " " + padded + " " + border
+	return m.canvasBackground(base, border, " ", padded, " ", border)
 }
 
 // settingsView renders the full-screen takeover: a category list panel and
