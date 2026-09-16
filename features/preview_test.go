@@ -37,6 +37,7 @@ func registerPreviewSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake claude agent's size log is captured as "([^"]+)"$`, fakeClaudeAgentSizeLogIsCapturedAs)
 	sc.Step(`^the fake claude agent's size log still matches "([^"]+)"$`, fakeClaudeAgentSizeLogStillMatches)
 	sc.Step(`^deck client "([^"]+)" screen stops containing "([^"]+)"$`, clientScreenStopsContaining)
+	sc.Step(`^the private tmux window for session "([^"]+)" does not report geometry "([^"]+)"$`, privateTMuxWindowForSessionDoesNotReportGeometry)
 }
 
 // clientHasNeverBeenTallerThan asserts this client's terminal has never, in
@@ -452,6 +453,28 @@ func privateTMuxWindowForSessionStillMatches(ctx context.Context, name, label st
 	}
 	if got != want {
 		return fmt.Errorf("private tmux window for session %q geometry changed: captured %q as %q, now %q", name, label, want, got)
+	}
+	return nil
+}
+
+// privateTMuxWindowForSessionDoesNotReportGeometry is the direct,
+// no-snapshot-needed half of task 003/117's own claim: the resumed
+// session's private tmux window's real #{window_width}x#{window_height}
+// (the same geometry privateWindowGeometry reads for the capture/still-
+// matches pair above) is not tmux new-session's own unfit default, rather
+// than merely "whatever it was before" as still-matches only ever proves
+// relative to an earlier snapshot.
+func privateTMuxWindowForSessionDoesNotReportGeometry(ctx context.Context, name, unwanted string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	got, err := privateWindowGeometry(ctx, h, name)
+	if err != nil {
+		return err
+	}
+	if got == unwanted {
+		return fmt.Errorf("private tmux window for session %q reports geometry %q, want anything but %q", name, got, unwanted)
 	}
 	return nil
 }
