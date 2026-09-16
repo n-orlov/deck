@@ -36,9 +36,9 @@ func TestClaude_LaunchAndResumeArgv(t *testing.T) {
 
 	cases := []struct {
 		profile  string
-		wantFlag string
+		wantFlag string // empty means no --permission-mode flag at all (R116)
 	}{
-		{"safe", "manual"},
+		{"safe", ""},
 		{"plan", "plan"},
 		{"edits", "acceptEdits"},
 		{"yolo", "bypassPermissions"},
@@ -56,7 +56,11 @@ func TestClaude_LaunchAndResumeArgv(t *testing.T) {
 				t.Fatalf("Launch: %v", err)
 			}
 			assertContainsPair(t, argv, "--session-id", uuid)
-			assertContainsPair(t, argv, "--permission-mode", tc.wantFlag)
+			if tc.wantFlag == "" {
+				assertNoPermissionModeFlag(t, argv)
+			} else {
+				assertContainsPair(t, argv, "--permission-mode", tc.wantFlag)
+			}
 			assertNoContinueOrResume(t, argv)
 		})
 		t.Run(tc.profile+"/resume", func(t *testing.T) {
@@ -69,7 +73,11 @@ func TestClaude_LaunchAndResumeArgv(t *testing.T) {
 				t.Fatalf("Resume: %v", err)
 			}
 			assertContainsPair(t, argv, "--resume", uuid)
-			assertContainsPair(t, argv, "--permission-mode", tc.wantFlag)
+			if tc.wantFlag == "" {
+				assertNoPermissionModeFlag(t, argv)
+			} else {
+				assertContainsPair(t, argv, "--permission-mode", tc.wantFlag)
+			}
 			assertNoContinueOrResume(t, argv)
 			for _, a := range argv {
 				if a == "--session-id" {
@@ -162,6 +170,17 @@ func TestClaude_UnsupportedProfileErrors(t *testing.T) {
 	}
 	if _, err := (Claude{}).Resume(ResumeInput{ConversationID: "x", Profile: "nonsense"}); err == nil {
 		t.Fatalf("Resume with unsupported profile: want error, got nil")
+	}
+}
+
+// assertNoPermissionModeFlag fails the test if argv contains a
+// --permission-mode flag at all (R116: the "safe" profile composes none).
+func assertNoPermissionModeFlag(t *testing.T, argv []string) {
+	t.Helper()
+	for _, a := range argv {
+		if a == "--permission-mode" {
+			t.Fatalf("argv %v unexpectedly contains --permission-mode", argv)
+		}
 	}
 }
 
