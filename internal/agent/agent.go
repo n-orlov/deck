@@ -130,6 +130,18 @@ type TranscriptInput struct {
 	CWD string
 	// ConversationID is the conversation id to locate.
 	ConversationID string
+	// CodexHome is the codex home directory resolved by the caller from
+	// the session's own §6.1 env layering (server env -> config [env] ->
+	// session env), i.e. the effective $CODEX_HOME for this session, or
+	// empty when none of those layers set it. Only the Codex adapter
+	// consults this field; every other adapter ignores it. The adapter
+	// itself never reads the ambient environment to fill this in -- a
+	// session that overrides CODEX_HOME is exactly the case that would
+	// make guessing from this process's own environment wrong, so the
+	// caller resolves it once, per-session, and hands it in here. Empty
+	// means "no override at any layer", in which case Codex defaults to
+	// Home + "/.codex".
+	CodexHome string
 }
 
 // Adapter is implemented by each supported agent kind. It declares its
