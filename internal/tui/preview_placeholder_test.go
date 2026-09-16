@@ -57,7 +57,7 @@ func TestPreviewBodyLinesNoLivePaneStates(t *testing.T) {
 			// Never captured for this session id: previewLive stays false
 			// so the placeholder branch, never the live crop, is exercised.
 
-			lines := m.previewBodyLines(width, height)
+			lines, _ := m.previewBodyLines(width, height)
 			if len(lines) != height {
 				t.Fatalf("len(lines) = %d, want %d", len(lines), height)
 			}

@@ -4447,7 +4447,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 			sidebarBg[i] = e.bg
 		}
 	}
-	preview := m.previewBodyLines(max(pw-4, 0), contentRows)
+	preview, previewOwners := m.previewBodyLines(max(pw-4, 0), contentRows)
 	lines := make([]string, 0, height)
 	lines = append(lines, sidebarTop+m.previewTopLine(pw, m.previewTitle(), true))
 	for i := 0; i < contentRows; i++ {
@@ -4457,7 +4457,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 		} else {
 			sidebarLine = m.sidebarContentLine(sw, sidebarGutter[i], sidebar[i], sidebarBg[i])
 		}
-		lines = append(lines, sidebarLine+m.previewContentLine(pw, preview[i]))
+		lines = append(lines, sidebarLine+m.previewContentLine(pw, preview[i], bool(previewOwners[i])))
 	}
 	lines = append(lines, m.sidebarBottomLine(sw)+m.previewBottomLine(pw, true))
 	return lines
@@ -4554,14 +4554,17 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 	}
 	if ph >= 2 {
 		previewRows := ph - 2
-		body := m.previewBodyLines(max(pw-4, 0), previewRows)
+		body, bodyOwners := m.previewBodyLines(max(pw-4, 0), previewRows)
 		previewFocused := m.previewFocused()
 		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), previewFocused))
 		for i := 0; i < previewRows; i++ {
-			// fullBoxPreviewContentLine, not fullBoxContentLine: body[i] is a
-			// captured tmux pane's own screen content, which must never be
+			// fullBoxPreviewContentLine, not fullBoxContentLine: body[i] MAY be
+			// a captured tmux pane's own screen content, which must never be
 			// repainted (task 006/R118) -- see that function's own doc comment.
-			lines = append(lines, m.fullBoxPreviewContentLine(pw, body[i], previewFocused))
+			// bodyOwners[i] (task 002/B1) is how it tells deck's own placeholder
+			// copy apart from that foreign content, since this loop's body[i]
+			// alone can no longer distinguish them.
+			lines = append(lines, m.fullBoxPreviewContentLine(pw, body[i], previewFocused, bool(bodyOwners[i])))
 		}
 		lines = append(lines, m.fullBoxBottom(pw, previewFocused))
 	}
@@ -5089,18 +5092,32 @@ func (m Model) previewTitle() string {
 // been attempted yet). It always returns exactly contentHeight lines, each
 // exactly contentWidth runes, so callers no longer need their own fitLines
 // pass for the preview panel.
-func (m Model) previewBodyLines(contentWidth, contentHeight int) []string {
+//
+// The second return is that same slice's own per-row provenance (task
+// 002/B1): every branch here is entirely one owner or the other, never a
+// per-branch mix -- the no-session sentence and previewPlaceholderLines'
+// copy (blank fitLines pad included) are deck's own composed text, while a
+// live capture (cropPreviewBottomLeft) and the live interactive grid
+// (interactiveBodyLines) are foreign screen content this function never
+// wrote a byte of. previewContentLine/fullBoxPreviewContentLine are the
+// only callers that act on it, and only to decide how to paint, never to
+// alter what these lines actually say.
+func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
 	if m.interactive && m.interactiveGrid != nil {
-		return m.interactiveBodyLines(contentWidth, contentHeight)
+		lines := m.interactiveBodyLines(contentWidth, contentHeight)
+		return lines, foreignPreviewLines(len(lines))
 	}
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
-		return fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
+		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
+		return lines, deckOwnedPreviewLines(len(lines))
 	}
 	session := m.sessions[m.selected]
 	if m.previewLive && m.previewSessionID == session.ID {
-		return m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
+		lines := m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
+		return lines, foreignPreviewLines(len(lines))
 	}
-	return fitLines(m.previewPlaceholderLines(session, contentWidth, contentHeight), contentHeight)
+	lines := fitLines(m.previewPlaceholderLines(session, contentWidth, contentHeight), contentHeight)
+	return lines, deckOwnedPreviewLines(len(lines))
 }
 
 // previewPlaceholderLines names, rather than papers over, why the preview

@@ -671,32 +671,75 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 		m.borderColor(leftTok, left), m.borderColor(tok, strings.Repeat(bc.horizontal, inner)), m.borderColor(tok, bc.bottomRight))
 }
 
+// previewLineOwner records, per previewBodyLines row, whether the row is
+// deck's OWN composed copy (the no-session sentence, previewPlaceholderLines'
+// text, and the blank fitLines pad around either) -- which paints exactly
+// like every other chrome cell in this file -- or a foreign captured tmux
+// pane's own screen content (task 006/R118: "captured pane content is never
+// repainted"), which previewContentLine/fullBoxPreviewContentLine below must
+// leave exactly as the pane left it. previewBodyLines is the one place that
+// decides which a given row is; the two content-line builders only ever act
+// on what it tells them, never re-derive it from the text itself.
+type previewLineOwner bool
+
+const (
+	previewLineForeign   previewLineOwner = false
+	previewLineDeckOwned previewLineOwner = true
+)
+
+// deckOwnedPreviewLines/foreignPreviewLines build a previewBodyLines
+// provenance slice of length n, all one owner -- previewBodyLines' own
+// branches are each entirely one or the other (never a per-branch mix), so
+// neither helper takes a predicate.
+func deckOwnedPreviewLines(n int) []previewLineOwner {
+	owners := make([]previewLineOwner, n)
+	for i := range owners {
+		owners[i] = previewLineDeckOwned
+	}
+	return owners
+}
+
+func foreignPreviewLines(n int) []previewLineOwner {
+	return make([]previewLineOwner, n) // zero value is previewLineForeign
+}
+
 // previewContentLine draws one content row inside the preview: left border
 // (the seam in side-by-side mode -- coloured by seamBorderToken, the
 // shared either-panel-focused rule, not previewBorderToken), one column of
 // padding, text, one column of padding, right border coloured by
 // previewBorderToken as always (SPEC requirement 17).
 //
-// text is a captured tmux pane's own screen content (cropPreviewBottomLeft)
-// carrying the PANE's own SGR bytes, not deck's -- task 006/R118's "captured
-// pane content is never repainted" means this is deliberately NOT one
-// canvasBackground call spanning border+pad+text the way every other
-// content-line builder in this file now is: doing that would scan text
-// itself for "\x1b[0m" and re-open deck's background right after any reset
-// the PANE emitted, repainting the pane's own colours with deck's. Instead
-// the left border+pad and right pad+border are each their own, separate
+// owned (previewBodyLines' own per-row provenance, task 002/B1) tells this
+// function which of the two compositions applies. When owned, text is
+// deck's own composed copy (the no-session sentence, a placeholder line, or
+// blank pad) and the WHOLE row -- both borders, both pad columns and text --
+// is one canvasBackground span, exactly like every other chrome line in
+// this file. When not owned, text is a captured tmux pane's own screen
+// content (cropPreviewBottomLeft) carrying the PANE's own SGR bytes, not
+// deck's -- task 006/R118's "captured pane content is never repainted"
+// means this is deliberately NOT one canvasBackground call spanning
+// border+pad+text: doing that would scan text itself for "\x1b[0m" and
+// re-open deck's background right after any reset the PANE emitted,
+// repainting the pane's own colours with deck's. Instead the left
+// border+pad and right pad+border are each their own, separate
 // canvasBackground span (so they still carry theme.Background, and still
 // survive borderColor's own embedded reset correctly), and an explicit
 // "\x1b[0m" is emitted right after text -- before the right span's own
 // background-open -- so nothing text leaves attribute-wise (bold,
 // underline, a foreground it never reset) can bleed into deck's own
 // padding/border past it either.
-func (m Model) previewContentLine(width int, text string) string {
+func (m Model) previewContentLine(width int, text string, owned bool) string {
 	bc := m.box()
 	inner := width - 4
-	left := m.canvasBackground(theme.Background, m.borderColor(m.seamBorderToken(), bc.vertical), " ")
-	right := m.canvasBackground(theme.Background, " ", m.borderColor(m.previewBorderToken(), bc.vertical))
-	return left + m.padTrunc(text, inner) + m.canvasResetIfPainting(theme.Background) + right
+	leftBorder := m.borderColor(m.seamBorderToken(), bc.vertical)
+	rightBorder := m.borderColor(m.previewBorderToken(), bc.vertical)
+	padded := m.padTrunc(text, inner)
+	if owned {
+		return m.canvasBackground(theme.Background, leftBorder, " ", padded, " ", rightBorder)
+	}
+	left := m.canvasBackground(theme.Background, leftBorder, " ")
+	right := m.canvasBackground(theme.Background, " ", rightBorder)
+	return left + padded + m.canvasResetIfPainting(theme.Background) + right
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
@@ -925,7 +968,14 @@ func (m Model) fullBoxContentLine(width int, gutter, text string, focused bool, 
 // "\x1b[0m" and never repainted, and nothing it leaves open (colour, bold,
 // underline) bleeds into deck's own trailing padding/border (task 006,
 // R118: "captured pane content is never repainted").
-func (m Model) fullBoxPreviewContentLine(width int, text string, focused bool) string {
+//
+// owned (previewBodyLines' own per-row provenance, task 002/B1) selects
+// between that composition and the one every OTHER row in this file
+// already gets: when text is deck's own composed copy -- the no-session
+// sentence, a placeholder line, or blank pad, never a captured pane's own
+// bytes -- the whole row (both borders, both pad columns and text) is one
+// canvasBackground span instead, exactly like fullBoxContentLine's own.
+func (m Model) fullBoxPreviewContentLine(width int, text string, focused bool, owned bool) string {
 	bc := m.box()
 	inner := width - 4
 	tok := theme.Border
@@ -933,9 +983,13 @@ func (m Model) fullBoxPreviewContentLine(width int, text string, focused bool) s
 		tok = theme.BorderFocus
 	}
 	border := m.borderColor(tok, bc.vertical)
+	padded := m.padTrunc(text, inner)
+	if owned {
+		return m.canvasBackground(theme.Background, border, " ", padded, " ", border)
+	}
 	left := m.canvasBackground(theme.Background, border, " ")
 	right := m.canvasBackground(theme.Background, " ", border)
-	return left + m.padTrunc(text, inner) + m.canvasResetIfPainting(theme.Background) + right
+	return left + padded + m.canvasResetIfPainting(theme.Background) + right
 }
 
 // dialogWidth is every §11.4 dialog/overlay's box width (SPEC.md:1070,
