@@ -570,13 +570,24 @@ func (m Model) canvasResetIfPainting(tok theme.Token) string {
 }
 
 // sidebarContentLine draws one content row inside the sidebar: left border,
-// one column of padding (SPEC requirement 17), text padded/truncated to fill
-// the rest, then a trailing column of padding so sidebar content never
-// touches the seam — that column, one past the trailing padding, belongs to
-// the preview's left border, the single seam (requirement 18). Only the
-// real sidebar (width >= SidebarWidthFloor) reserves this trailing column;
-// collapsedStripContentLine below covers the 3-wide collapsed strip, which
-// has no spare column to give up.
+// one column of padding (SPEC requirement 17), an optional gutter (task
+// 008/R119), text padded/truncated to fill the rest, then a trailing
+// column of padding so sidebar content never touches the seam — that
+// column, one past the trailing padding, belongs to the preview's left
+// border, the single seam (requirement 18). Only the real sidebar (width
+// >= SidebarWidthFloor) reserves this trailing column; collapsedStripContentLine
+// below covers the 3-wide collapsed strip, which has no spare column to
+// give up.
+//
+// gutter (task 008/R119) is a sidebarLineRow entry's own reserved leftmost
+// columns — the selection arrow, and (from task 009 on) the mark cue —
+// laid down here, OUTSIDE the call to padTrunc below: text never carries
+// it, so truncating a long name can never synthesise a reset inside the
+// gutter's own span, and the row's actual content budget is width-3 MINUS
+// the gutter's own width, never width-3 itself (SPEC §11.3: "The marker
+// text lives in its own columns, outside the row's text run"). "" for
+// every line that reserves no gutter (headers, the empty-state message,
+// the socket line), which keeps exactly the old width-3 budget.
 //
 // bg (task 321, R58b) is the row's selection/selection_idle/surface-stripe
 // background token, or "" for lines that carry none (headers, the empty-
@@ -590,18 +601,24 @@ func (m Model) canvasResetIfPainting(tok theme.Token) string {
 // inner reset a coloured segment of text embeds -- the reset-clears-
 // background trap canvasBackground's own doc comment names), so it spans
 // every column from the border to the trailing pad column before the seam
-// — the leading pad column, the text itself (or its pad-fill when the name
-// is short), AND the trailing pad column — rather than stopping the moment
-// sidebarRowLines' own text ends the way a per-segment reset used to.
-func (m Model) sidebarContentLine(width int, text string, bg theme.Token) string {
+// — the leading pad column, the gutter, the text itself (or its pad-fill
+// when the name is short), AND the trailing pad column — rather than
+// stopping the moment sidebarRowLines' own text ends the way a per-segment
+// reset used to.
+func (m Model) sidebarContentLine(width int, gutter, text string, bg theme.Token) string {
 	bc := m.box()
 	border := m.borderColor(m.sidebarBorderToken(), bc.vertical)
-	padded := m.padTrunc(text, width-3)
+	gutterWidth := stringWidth(gutter)
+	textWidth := width - 3 - gutterWidth
+	if textWidth < 0 {
+		textWidth = 0
+	}
+	padded := m.padTrunc(text, textWidth)
 	base := bg
 	if base == "" {
 		base = theme.Background
 	}
-	return m.canvasBackground(base, border, " ", padded, " ")
+	return m.canvasBackground(base, border, " ", gutter, padded, " ")
 }
 
 // collapsedStripContentLine draws one content row of the 3-column

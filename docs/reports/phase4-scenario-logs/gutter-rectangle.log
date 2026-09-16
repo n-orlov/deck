@@ -1,0 +1,151 @@
+=== RUN   TestFeatures
+Feature: A selected/striped sidebar row's background fills a real rectangle, and the seam stays clear (requirement 58, task 323)
+  Tasks 320-322 (R58a-c) fixed truncateToWidth/padTrunc so a highlighted
+  row's background span closes itself instead of leaking past a
+  truncation point or a padded line's own end, and made every row's
+  background span the WHOLE inner width rather than stopping at the
+  text. This file is R58d's godog evidence for the same claim, read
+  per-cell off a real running client (never text-scraping): every column
+  from the first after the sidebar's left border to the last before the
+  seam carries the row's background on BOTH physical lines of a
+  two-line row, for both the selection highlight and the alternating
+  surface stripe, even on a row whose name is long enough to actually
+  truncate (the fixture trap R58's own tasks documented: a fixture where
+  nothing truncates cannot discriminate a leak fix from no fix at all,
+  since there is nothing to leak past). The seam column itself, one
+  column further, belongs to the PREVIEW's own left border -- task
+  004/R118's global canvas paint gives every border cell, seam included,
+  deck's own `background` token (task 007's own commit message already
+  named this as the correct, not the stale, expectation), so the seam
+  assertion below checks `background` there rather than "no background
+  set": the claim this file exists to protect is that the row's
+  highlight rectangle stops exactly at the seam, never that the seam
+  itself is unpainted.
+  
+  `[ui] sort_order = "name"` pins a deterministic row order (case-
+  insensitive ascending) so this file does not depend on attention-sort
+  tie-break behaviour: rec-aaa, rec-bbb-selected-..., rec-ccc, rec-ddd-
+  stripe land in that literal order, at sidebar positions 0-3.
+  `group_by_workspace = false` is set alongside it so no synthetic group
+  header row shifts that position math by a line.
+  
+  Two harness steps that key off frame TEXT cannot be used on rec-bbb's
+  own row once it truncates: "selects session" looks for the marker
+  "> " + the FULL name (never rendered once truncated), and the plain
+  "screen shows sessions in this order" step needs a substring that
+  actually appears on the frame -- so its rec-bbb row uses the literal
+  truncated prefix ("rec-bbb-selected-session-wi", the text this fixture
+  is shown to render before the ellipsis), not the full 79-character
+  name, while still proving the ordering. Reaching rec-bbb's row for the
+  background assertions instead relies on task 301's newest-session
+  auto-select landing on rec-ddd-stripe (position 3, alphabetically
+  last) right after creation, then two plain "k" (up) presses to
+  position 1 -- arithmetic, not text search.
+  
+  At the harness's default terminal (100 columns) and the default
+  sidebar_width (35, per features/seam_focus.feature's own seam-column
+  proof), the sidebar's content columns run 1-34 inclusive (column 0 is
+  the left border, column 34 is the trailing pad column task 017 added,
+  column 35 is the shared seam). Frame row 0 is the sidebar's top
+  border and row 1 is the socket-info header line -- both proved by a
+  literal frame dump in the task 323 commit message -- so the FIRST
+  session's two lines start at row 2, not row 1: position 0 (rec-aaa)
+  occupies rows 2-3, position 1 (rec-bbb-selected-...) rows 4-5,
+  position 2 (rec-ccc) rows 6-7, position 3 (rec-ddd-stripe) rows 8-9.
+  Position 1 is selected; position 3 sits at an odd stripe phase (task
+  084's pos%2==1 rule).
+  
+  rec-bbb's name is
+  "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"
+  (79 characters) against a sidebar content width of 32 columns
+  (width-3, per panel.go's sidebarContentLine) -- provably long enough
+  that its first line truncates, per padTrunc's own ellipsis rule (the
+  rendered first line is observed as "rec-bbb-selected-session-wi...",
+  i.e. 28 characters of the name plus a 3-character ellipsis, at the
+  35-column sidebar_width/100-column terminal this file uses), giving
+  the selection-background rectangle assertion something to leak past
+  if the R58 fixes were ever reverted.
+  
+  Both scenarios go red with tasks 320-322 reverted (a selected/striped
+  row's background then stops at the text instead of filling the
+  rectangle, or leaks a reset that opens a gap) -- see the task 323
+  commit message for the quoted red output.
+=== RUN   TestFeatures/a_selected_row's_background_fills_every_content_column_on_both_lines,_even_with_a_truncating_name,_and_the_seam_stays_clear
+
+  Scenario: a selected row's background fills every content column on both lines, even with a truncating name, and the seam stays clear # panel_background_rectangle.feature:75
+    Given the scenario's config.toml is written with:                                                                                   # config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML
+      """
+      [ui]
+      sort_order = "name"
+      group_by_workspace = false
+      """
+    And deck client "A" is started with colour enabled                                                                                  # cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour
+    When deck client "A" creates shell session "rec-aaa"                                                                                # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"          # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-ccc"                                                                                 # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-ddd-stripe"                                                                          # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    Then within one configured reconcile interval deck client "A" screen contains "running"                                             # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    And deck client "A" screen shows sessions in this order:                                                                            # attention_sort_test.go:26 -> github.com/n-orlov/deck/features.clientShowsSessionsInOrder
+      | rec-aaa                     |
+      | rec-bbb-selected-session-wi |
+      | rec-ccc                     |
+      | rec-ddd-stripe              |
+    When deck client "A" sends "k"                                                                                                      # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "A" sends "k"                                                                                                       # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "A" cells at row 4 columns 1 to 34 have background token "selection"                                                # cell_attributes_test.go:48 -> github.com/n-orlov/deck/features.cellsRangeHaveBackgroundToken
+    And deck client "A" cells at row 5 columns 1 to 34 have background token "selection"                                                # cell_attributes_test.go:48 -> github.com/n-orlov/deck/features.cellsRangeHaveBackgroundToken
+    And deck client "A" cell at row 4 column 35 has background token "background"                                                       # cell_attributes_test.go:41 -> github.com/n-orlov/deck/features.cellHasBackgroundToken
+    And deck client "A" cell at row 5 column 35 has background token "background"                                                       # cell_attributes_test.go:41 -> github.com/n-orlov/deck/features.cellHasBackgroundToken
+    When deck client "A" exits cleanly                                                                                                  # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+=== RUN   TestFeatures/the_alternating_surface_stripe_fills_every_content_column_on_both_lines_of_a_non-selected_row
+
+  Scenario: the alternating surface stripe fills every content column on both lines of a non-selected row                      # panel_background_rectangle.feature:102
+    Given the scenario's config.toml is written with:                                                                          # config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML
+      """
+      [ui]
+      sort_order = "name"
+      group_by_workspace = false
+      """
+    And deck client "A" is started with colour enabled                                                                         # cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour
+    When deck client "A" creates shell session "rec-aaa"                                                                       # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all" # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-ccc"                                                                        # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-ddd-stripe"                                                                 # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    Then within one configured reconcile interval deck client "A" screen contains "running"                                    # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    And deck client "A" selects session "rec-aaa"                                                                              # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "A" cells at row 8 columns 1 to 34 have background token "surface"                                         # cell_attributes_test.go:48 -> github.com/n-orlov/deck/features.cellsRangeHaveBackgroundToken
+    And deck client "A" cells at row 9 columns 1 to 34 have background token "surface"                                         # cell_attributes_test.go:48 -> github.com/n-orlov/deck/features.cellsRangeHaveBackgroundToken
+    When deck client "A" exits cleanly                                                                                         # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+=== RUN   TestFeatures/a_truncating_row's_background_rectangle_stays_unbroken_with_the_R119_gutter_in_its_own_columns,_at_the_sidebar's_minimum_width
+
+  Scenario: a truncating row's background rectangle stays unbroken with the R119 gutter in its own columns, at the sidebar's minimum width # panel_background_rectangle.feature:121
+    Given the scenario's config.toml is written with:                                                                                      # config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML
+      """
+      [ui]
+      sort_order = "name"
+      group_by_workspace = false
+      """
+    And deck client "A" is started with colour enabled                                                                                     # cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour
+    When deck client "A" creates shell session "rec-aaa"                                                                                   # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"             # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-ccc"                                                                                    # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    And deck client "A" creates shell session "rec-ddd-stripe"                                                                             # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    Then within one configured reconcile interval deck client "A" screen contains "running"                                                # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    When deck client "A" presses "<" 11 times                                                                                              # layout_modes_test.go:26 -> github.com/n-orlov/deck/features.clientPressesKeyNTimes
+    And deck client "A" sends "k"                                                                                                          # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "A" sends "k"                                                                                                          # assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys
+    And deck client "A" cells at row 5 columns 1 to 23 have background token "selection"                                                   # cell_attributes_test.go:48 -> github.com/n-orlov/deck/features.cellsRangeHaveBackgroundToken
+    And deck client "A" cells at row 6 columns 1 to 23 have background token "selection"                                                   # cell_attributes_test.go:48 -> github.com/n-orlov/deck/features.cellsRangeHaveBackgroundToken
+    And deck client "A" cell at row 5 column 24 has background token "background"                                                          # cell_attributes_test.go:41 -> github.com/n-orlov/deck/features.cellHasBackgroundToken
+    And deck client "A" cell at row 6 column 24 has background token "background"                                                          # cell_attributes_test.go:41 -> github.com/n-orlov/deck/features.cellHasBackgroundToken
+    When deck client "A" exits cleanly                                                                                                     # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+3 scenarios (3 passed)
+41 steps (41 passed)
+3.314989723s
+--- PASS: TestFeatures (3.32s)
+    --- PASS: TestFeatures/a_selected_row's_background_fills_every_content_column_on_both_lines,_even_with_a_truncating_name,_and_the_seam_stays_clear (0.91s)
+    --- PASS: TestFeatures/the_alternating_surface_stripe_fills_every_content_column_on_both_lines_of_a_non-selected_row (0.84s)
+    --- PASS: TestFeatures/a_truncating_row's_background_rectangle_stays_unbroken_with_the_R119_gutter_in_its_own_columns,_at_the_sidebar's_minimum_width (1.54s)
+PASS
+ok  	github.com/n-orlov/deck/features	3.329s

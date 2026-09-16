@@ -160,10 +160,12 @@ func TestElisionMathAgreesInBothGroupingModesAt80x24(t *testing.T) {
 			contentWidth := layout.Sidebar.Width - 2
 			entries := m.sidebarEntries(contentWidth)
 			var rowText string
+			var rowGutter string
 			found := false
 			for _, e := range entries {
 				if e.kind == sidebarLineRow {
 					rowText = e.text
+					rowGutter = e.gutter
 					found = true
 					break
 				}
@@ -176,7 +178,7 @@ func TestElisionMathAgreesInBothGroupingModesAt80x24(t *testing.T) {
 			// crops it to the panel's content width (task 019's doc on
 			// sidebarRowLines) -- so the ellipsis assertion is against the
 			// cropped line, not the raw entry.
-			cropped := m.sidebarContentLine(layout.Sidebar.Width, rowText, theme.Token(""))
+			cropped := m.sidebarContentLine(layout.Sidebar.Width, rowGutter, rowText, theme.Token(""))
 			if !strings.Contains(cropped, "\u2026") {
 				t.Fatalf("%s mode: long name row %q was not ellipsis-truncated at 80x24's sidebar width %d:\n%q", tc.name, rowText, layout.Sidebar.Width, cropped)
 			}

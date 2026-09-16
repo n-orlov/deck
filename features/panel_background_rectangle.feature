@@ -9,11 +9,18 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
   from the first after the sidebar's left border to the last before the
   seam carries the row's background on BOTH physical lines of a
   two-line row, for both the selection highlight and the alternating
-  surface stripe -- and the seam column itself, one column further,
-  never carries any background at all, even on a row whose name is long
-  enough to actually truncate (the fixture trap R58's own tasks
-  documented: a fixture where nothing truncates cannot discriminate a
-  leak fix from no fix at all, since there is nothing to leak past).
+  surface stripe, even on a row whose name is long enough to actually
+  truncate (the fixture trap R58's own tasks documented: a fixture where
+  nothing truncates cannot discriminate a leak fix from no fix at all,
+  since there is nothing to leak past). The seam column itself, one
+  column further, belongs to the PREVIEW's own left border -- task
+  004/R118's global canvas paint gives every border cell, seam included,
+  deck's own `background` token (task 007's own commit message already
+  named this as the correct, not the stale, expectation), so the seam
+  assertion below checks `background` there rather than "no background
+  set": the claim this file exists to protect is that the row's
+  highlight rectangle stops exactly at the seam, never that the seam
+  itself is unpainted.
 
   `[ui] sort_order = "name"` pins a deterministic row order (case-
   insensitive ascending) so this file does not depend on attention-sort
@@ -87,8 +94,8 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     And deck client "A" sends "k"
     And deck client "A" cells at row 4 columns 1 to 34 have background token "selection"
     And deck client "A" cells at row 5 columns 1 to 34 have background token "selection"
-    And deck client "A" cell at row 4 column 35 has no background set
-    And deck client "A" cell at row 5 column 35 has no background set
+    And deck client "A" cell at row 4 column 35 has background token "background"
+    And deck client "A" cell at row 5 column 35 has background token "background"
     When deck client "A" exits cleanly
 
   @requirement-58-surface-stripe-fills-rectangle
@@ -108,4 +115,47 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     And deck client "A" selects session "rec-aaa"
     And deck client "A" cells at row 8 columns 1 to 34 have background token "surface"
     And deck client "A" cells at row 9 columns 1 to 34 have background token "surface"
+    When deck client "A" exits cleanly
+
+  @requirement-119-gutter-outside-text-run
+  Scenario: a truncating row's background rectangle stays unbroken with the R119 gutter in its own columns, at the sidebar's minimum width
+    Task 008/R119 moved the selection arrow out of the text handed to
+    padTrunc into its own reserved gutter columns, composed before the
+    text rather than inside it, and shrank the row's own content budget
+    by the gutter's width. This is exactly the scenario the SPEC §11.3
+    passage that motivates the move names as the risk: "if the marker is
+    composed inside the text ... truncateToWidth can cut inside that
+    background span on a long name and synthesise a reset there" --
+    proved here at `SidebarWidthFloor` (24 columns, internal/tui/layout.go),
+    the tightest budget the gutter and a truncating name ever share, by
+    pressing "<" 11 times from the default 35-column sidebar_width. At
+    width 24 the sidebar's content columns run 1-23 (column 0 is the left
+    border, column 24 is the shared seam). Unlike the two scenarios above,
+    the row math here is NOT rows 4-5: at this width the sidebar's own
+    "socket: <name>" header line (sidebarEntries' first entry) no longer
+    fits `contentWidth` (22) -- "socket: deck_test_<pid>_<seq>" runs past
+    22 columns for any realistic pid/sequence -- so wrapText splits it
+    across TWO physical rows instead of one, pushing every session row
+    down by one line versus the 35-column case: rec-bbb (selected at
+    visual position 1, after two "k" presses from rec-ddd-stripe's
+    auto-selected position 3) lands on rows 5-6, not 4-5.
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      sort_order = "name"
+      group_by_workspace = false
+      """
+    And deck client "A" is started with colour enabled
+    When deck client "A" creates shell session "rec-aaa"
+    And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"
+    And deck client "A" creates shell session "rec-ccc"
+    And deck client "A" creates shell session "rec-ddd-stripe"
+    Then within one configured reconcile interval deck client "A" screen contains "running"
+    When deck client "A" presses "<" 11 times
+    And deck client "A" sends "k"
+    And deck client "A" sends "k"
+    And deck client "A" cells at row 5 columns 1 to 23 have background token "selection"
+    And deck client "A" cells at row 6 columns 1 to 23 have background token "selection"
+    And deck client "A" cell at row 5 column 24 has background token "background"
+    And deck client "A" cell at row 6 column 24 has background token "background"
     When deck client "A" exits cleanly

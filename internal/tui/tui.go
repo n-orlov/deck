@@ -4390,6 +4390,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 	collapsed := layout.Effective == LayoutCollapsed
 	sidebarTop := m.sidebarTopLine(sw, m.sidebarTitleText())
 	var sidebar []string
+	var sidebarGutter []string
 	var sidebarBg []theme.Token
 	if collapsed {
 		// The 3-column strip has no room for the "deck — sessions" title
@@ -4402,9 +4403,11 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 		// through the identical entries hitTest resolves clicks against.
 		visible := m.sidebarVisibleEntries(max(sw-2, 0), contentRows)
 		sidebar = make([]string, len(visible))
+		sidebarGutter = make([]string, len(visible))
 		sidebarBg = make([]theme.Token, len(visible))
 		for i, e := range visible {
 			sidebar[i] = e.text
+			sidebarGutter[i] = e.gutter
 			sidebarBg[i] = e.bg
 		}
 	}
@@ -4416,7 +4419,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 		if collapsed {
 			sidebarLine = m.collapsedStripContentLine(sw, sidebar[i])
 		} else {
-			sidebarLine = m.sidebarContentLine(sw, sidebar[i], sidebarBg[i])
+			sidebarLine = m.sidebarContentLine(sw, sidebarGutter[i], sidebar[i], sidebarBg[i])
 		}
 		lines = append(lines, sidebarLine+m.previewContentLine(pw, preview[i]))
 	}
@@ -4576,6 +4579,14 @@ type sidebarEntry struct {
 	// every non-row entry (headers, the socket line, the empty-state
 	// message), which never carry a background.
 	bg theme.Token
+	// gutter (task 008/R119) is a sidebarLineRow entry's own reserved
+	// leftmost columns -- the selection arrow/mark cue -- composed by
+	// sidebarRowLines OUTSIDE text, so sidebarContentLine's padTrunc never
+	// sees it and the row's own content budget shrinks by its width
+	// (SPEC §11.3). "" (the zero value) for every non-row entry, which
+	// reserves no gutter and gets the panel's full content width, exactly
+	// as before this task.
+	gutter string
 }
 
 // sidebarEntries is sidebarBodyLines' one real implementation: every line
@@ -4619,9 +4630,9 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		// rendered session rows" idea in both branches means a group
 		// toggle never has to reconcile two different phase sources.
 		for pos, idx := range m.visualOrder() {
-			lines, bg := m.sidebarRowLines(idx, m.sessions[idx], pos%2 == 1)
-			for _, line := range lines {
-				entries = append(entries, sidebarEntry{text: line, kind: sidebarLineRow, sessionIndex: idx, bg: bg})
+			lines, gutter, bg := m.sidebarRowLines(idx, m.sessions[idx], pos%2 == 1)
+			for i, line := range lines {
+				entries = append(entries, sidebarEntry{text: line, gutter: gutter[i], kind: sidebarLineRow, sessionIndex: idx, bg: bg})
 			}
 		}
 		return entries
@@ -4638,9 +4649,9 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 			continue
 		}
 		for _, is := range group.Sessions {
-			lines, bg := m.sidebarRowLines(is.Index, is.Session, sessionPos%2 == 1)
-			for _, line := range lines {
-				entries = append(entries, sidebarEntry{text: line, kind: sidebarLineRow, sessionIndex: is.Index, bg: bg})
+			lines, gutter, bg := m.sidebarRowLines(is.Index, is.Session, sessionPos%2 == 1)
+			for i, line := range lines {
+				entries = append(entries, sidebarEntry{text: line, gutter: gutter[i], kind: sidebarLineRow, sessionIndex: is.Index, bg: bg})
 			}
 			sessionPos++
 		}
@@ -4787,12 +4798,22 @@ func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarE
 // inside 33 columns; nothing tested requires the profile badge on that same
 // line, so it is the one dropped rather than risk ellipsis-truncating a
 // word an assertion depends on.
-func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([]string, theme.Token) {
-	marker := "  "
+func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([]string, []string, theme.Token) {
 	selected := index == m.selected
+	// R119: the gutter is the row's own reserved leftmost columns, composed
+	// OUTSIDE the text handed to padTrunc -- sidebarContentLine's job, never
+	// this function's -- so a long name's truncation can never synthesise a
+	// reset inside it and the gutter's own width never eats into the text's
+	// content budget (SPEC §11.3: "The marker text lives in its own
+	// columns, outside the row's text run"). Line 1 carries the selection
+	// arrow; line 2 is blank here -- task 009 gives it the mark glyph and
+	// gives both lines the accent/badge colouring the four gutter states
+	// need, neither of which this task touches.
+	gutter1 := "  "
 	if selected {
-		marker = "> "
+		gutter1 = "> "
 	}
+	gutter2 := "  "
 	// Task 084 (steer 006 item 2): the alternating background stripe uses
 	// theme.Surface for every row in this session's block (both lines
 	// share the one phase the caller computed). Task 321 (R58b) moved the
@@ -4824,7 +4845,7 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// trailing \x1b[0m clear that background again immediately (the
 	// gotcha theme_color.go's foregroundSGR/backgroundSGR doc already
 	// warns about).
-	segs := []settingsRowSegment{{Text: marker + session.Name + " ", Tok: nameTok}}
+	segs := []settingsRowSegment{{Text: session.Name + " ", Tok: nameTok}}
 	var parts []settingsRowSegment
 	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
 		unseen := m.glyph("●", "!")
@@ -4852,13 +4873,12 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	if session.ArchivedAt != 0 {
 		parts = append(parts, settingsRowSegment{Text: m.glyph("\u25a3", "[archived]"), Tok: theme.Archived})
 	}
-	// Task 112: the mark badge is driven from m.marked by session id
-	// alone -- never a visual index -- so it stays attached to the right
-	// row through a re-sort or re-group exactly like every other lookup
-	// keyed off m.marked (markedSessions()).
-	if m.marked[session.ID] {
-		parts = append(parts, settingsRowSegment{Text: m.glyph("\u2713 marked", "[marked]"), Tok: theme.Badge})
-	}
+	// R119: the `\u2713 marked` text badge used to be appended to line 1's
+	// badge run here (task 112) -- the last segment there, and therefore
+	// the first thing padTrunc dropped on a narrow sidebar, which lost the
+	// mark cue exactly when it mattered most. SPEC §11.3 moves the mark
+	// cue into the gutter's own second line instead (task 009 gives it the
+	// glyph and colour); this line 1 badge run carries it no longer.
 	for i, p := range parts {
 		if i > 0 {
 			segs = append(segs, settingsRowSegment{Text: " ", Tok: theme.Text})
@@ -4872,7 +4892,7 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// nothing left for a starting row to override on line 2 -- unlike
 	// nameTok above, where Title vs. Dimmed still differ.
 	line2Tok := theme.Dimmed
-	line2Segs := []settingsRowSegment{{Text: "  ", Tok: theme.Text}}
+	var line2Segs []settingsRowSegment
 	if text, tok, ok := m.profileBadgeSegment(session); ok {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: text, Tok: tok}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
@@ -4895,7 +4915,7 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	}
 	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
 	line2 := m.settingsRenderRowOpen(line2Segs)
-	return []string{line1, line2}, bg
+	return []string{line1, line2}, []string{gutter1, gutter2}, bg
 }
 
 // sidebarRowBackground (task 321/R58b) answers which background token, if
