@@ -1,5 +1,48 @@
 # Tier 1 → Tier 2 decision
 
+## Approach 2 re-affirmation (cure-and-reverify)
+
+This run's approach 1 (recorded above) already decided Tier 2 (R128–R131) is
+not started; approach 2 is a bounded cure of review's B0–B3 and R1 findings
+over Tier 1's already-landed work (tasks 001–011), not a rebuild, and it
+changes nothing about that decision. **Tier 2 (R128–R131) is still NOT
+started in this approach, and no Tier 2 code has landed.**
+
+Budget at the moment this section was written (`/run/ralphd/status.json`,
+approach 2, iteration 173): `iterationsBudget` 800, `iterationsUsed` 167 →
+**633 iterations remaining**; `deadlineAt` `2026-09-17T11:00:06Z` against
+`updatedAt` `2026-09-16T23:24:11Z` → **~11h36m of wall-clock remaining**.
+Approach 2's own scope was exactly review's B1, B2, B3 and R1 (plus the B0
+measurement protocol already answered in approach 1) — ten small,
+single-purpose tasks (002–011), each a bounded fix or regression test over
+already-shipped code, not a new feature surface. Tier 2's four requirements
+(a Go store-schema migration that is explicitly all-or-nothing, a sidebar
+grouping-model replacement across four call sites with flat mode removed
+outright, a create-modal field and an `i`-dialog move path, and a full
+settings CRUD surface) remain, requirement-for-requirement, the same
+materially larger, higher-risk body of work approach 1 already declined to
+start under a comparable wall-clock deadline; nothing about curing B0–B3/R1
+narrows that gap, and starting Tier 2 now would still leave no safety margin
+to land the mandatory tail (013 full gate, 014 guards, 015 stability sweep,
+016–018 report/findings/DELIVERY-LOG) if a migration ran out of wall-clock
+mid-flight.
+
+**This approach's last code-touching task is task 011** (`tui: sidebar
+row's permission badge follows SPEC §11's non-safe rule`, commit
+`e93a790`), per the freeze line: task 012 (this record) onward is
+record-only (`docs/reports/`, `docs/DELIVERY-LOG.md`, `docs/roadmap.md`
+only).
+
+The resulting gap is unchanged and remains a disclosed non-finding, not a
+finding: SPEC.md describes group-based, manually-organized session
+organization (R128–R131 — user-defined groups, group CRUD, moving a
+session between groups), while the shipped code still groups sessions by
+workspace (`store.go`'s `DefaultWorkspace`, `internal/tui`'s
+workspace-based grouping gated by `ui.group_by_workspace`); this gap is
+explicitly disclosed here — once at approach 1's decision above and
+re-affirmed in this paragraph — and is never scored in
+`docs/reports/phase4-findings.md`, and never "cured" by editing SPEC.md.
+
 ## Decision
 
 **Tier 2 (R128–R131, tasks 029–038) is NOT being started this run.** Every
