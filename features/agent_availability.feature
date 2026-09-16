@@ -10,7 +10,12 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     Given deck client "A" is started
     When deck client "A" opens the create modal
     Then deck client "A" screen contains "Agent: shell (left/right cycles: shell)"
-    And deck client "A" screen contains "not on PATH: claude, pi"
+    # "not on PATH: claude, codex, pi" no longer fits framedDialog's wrapped
+    # help line as one substring now that codex is a 3rd missing kind (it
+    # wraps between "claude," and "codex, pi"), so the check is split across
+    # the wrap point rather than asserted as one contiguous string.
+    And deck client "A" screen contains "not on PATH: claude,"
+    And deck client "A" screen contains "codex, pi"
     When deck client "A" presses down 2 times in the open dialog
     And deck client "A" cycles the open dialog's field right
     And deck client "A" cycles the open dialog's field right
@@ -37,17 +42,38 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     And deck client "B" exits cleanly
 
   @requirement-114-only-claude-installed
-  Scenario: with only claude installed the Agent field offers shell and claude but not pi
+  Scenario: with only claude installed the Agent field offers shell and claude but not codex or pi
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" opens the create modal
     Then deck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"
-    And deck client "A" screen contains "not on PATH: pi"
+    And deck client "A" screen contains "not on PATH: codex, pi"
     When deck client "A" presses down 2 times in the open dialog
     And deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "Agent: claude (left/right cycles: claude, shell)"
     When deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
+
+  @requirement-114-only-codex-installed
+  Scenario: with only codex installed the Agent field offers shell and codex but not claude or pi
+    # R114's mechanism (the availability seam probed once at client start,
+    # task 005/006) applied to codex exactly like the claude scenario
+    # above -- codex resolving on the launch PATH is the only thing that
+    # puts it in the cycle; nothing in internal/tui names "codex" itself
+    # (that would violate the "no internal/tui edit required to add an
+    # agent kind" prohibition).
+    Given a fake "codex" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" opens the create modal
+    Then deck client "A" screen contains "Agent: shell (left/right cycles: codex, shell)"
+    And deck client "A" screen contains "not on PATH: claude, pi"
+    When deck client "A" presses down 2 times in the open dialog
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Agent: codex (left/right cycles: codex, shell)"
+    When deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Agent: shell (left/right cycles: codex, shell)"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
 
@@ -98,7 +124,9 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     And deck client "B" is started
     When deck client "B" opens the create modal
     Then deck client "B" screen contains "Agent: shell (left/right cycles: shell)"
-    And deck client "B" screen contains "not on PATH: claude, pi"
+    # Same wrap split as the "with nothing installed" scenario above.
+    And deck client "B" screen contains "not on PATH: claude,"
+    And deck client "B" screen contains "codex, pi"
     # Disambiguated exactly like settings.feature's clear-recent-cwds
     # scenario: "(last used) " prefixes whichever field's help currently
     # carries a remembered value, so this must pin the Agent field's own

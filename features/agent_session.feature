@@ -52,6 +52,32 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch argv for session "restart claude" contains session "restart claude"'s conversation id
     When deck client "A" exits cleanly
 
+  Scenario: R restarts a running codex session with the resume argv, never composing --last
+    # R127: codex's resume argv is always the positional `resume <id>`
+    # subcommand form -- never `--last` (product-side guarded already by
+    # task 016's codex_forbidden_flags_test.go) -- proven end to end here
+    # through the R restart path, mirroring the claude scenario above.
+    # Unlike claude/pi, codex mints its own conversation id only once
+    # prompted (task 021's cmd/fake-codex, task 024's codex_hooks.feature),
+    # so the session is prompted once via the fixture's own "prompt" pane
+    # command (registerCodexHooksSteps) before R is pressed.
+    Given a long-running fake "codex" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates codex session "restart codex" with permission profile "safe"
+    Then deck client "A" screen contains "restart codex"
+    And the state database session "restart codex" has no conversation id
+    When fake Codex session "restart codex" is prompted with "hello from restart codex"
+    Then within 3 seconds deck client "A" row "restart codex" contains "live"
+    And the state database session "restart codex" has a non-empty conversation id
+    And the audit log has 1 launch record for session "restart codex"
+    When deck client "A" presses R on session "restart codex"
+    Then within one configured reconcile interval deck client "A" screen contains "fake-codex resume:"
+    And within one configured reconcile interval the audit log has 2 launch records for session "restart codex"
+    And the audit log's most recent launch argv for session "restart codex" contains "resume"
+    And the audit log's most recent launch argv for session "restart codex" does not contain "--last"
+    And the audit log's most recent launch argv for session "restart codex" contains session "restart codex"'s conversation id
+    When deck client "A" exits cleanly
+
   Scenario: login_shell marks captured_path advisory in the row and its detail
     # SPEC §6.3: enabling login_shell is mutually exclusive with relying on
     # captured_path (rc files may rewrite PATH), so the two are always
