@@ -1,0 +1,33 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m Real Claude agent session smoke test
+  This scenario proves, against an actually installed Claude CLI (not the
+  fake-claude fixture used everywhere else), that deck assigns a UUID
+  conversation id at create time and passes that exact id back on resume.
+  It deliberately runs only when a real `claude` binary is on PATH, so the
+  default suite (which has none) is unaffected. Run it from the repository root
+  with `DECK_GODOG_TAGS=@real-agents go test -run TestFeatures -v ./features/...`
+  (also documented in docs/reports/phase1.md). Upstream fields are asserted
+  without aliases or coercion: an incompatible Claude upgrade is a visible
+  conformance failure, not something the harness silently normalizes.
+=== RUN   TestFeatures/create_a_real_codex_session_and_confirm_the_injected_hook_contract,_skipping_cleanly_without_an_installed_CLI
+    testingt.go:112: skipping real Codex conformance scenario: no installed codex CLI on PATH: exec: "codex": executable file not found in $PATH
+
+  [1;37mScenario:[0m create a real codex session and confirm the injected hook contract, skipping cleanly without an installed CLI               [1;30m# real_agent_smoke.feature:27[0m
+    [36mGiven[0m [36mthe installed Codex CLI resolves on PATH, or this scenario is skipped with a stated reason[0m                                    [1;30m# real_agent_hooks_test.go:59 -> github.com/n-orlov/deck/features.installedCodexResolvesOnPATHOrSkipsScenario[0m
+    [36mAnd[0m [36mdeck client "A" is started[0m                                                                                                      [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [36mWhen[0m [36mdeck client "A" creates codex session "real codex one" with permission profile "safe"[0m                                          [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [36mThen[0m [36msession "real codex one"'s launch instrumentation routes "SessionStart" to the released deck _hook via codex's -c overrides[0m    [1;30m# real_agent_hooks_test.go:60 -> github.com/n-orlov/deck/features.realCodexInstrumentationRoutesHook[0m
+    [36mAnd[0m [36msession "real codex one"'s launch instrumentation routes "UserPromptSubmit" to the released deck _hook via codex's -c overrides[0m [1;30m# real_agent_hooks_test.go:60 -> github.com/n-orlov/deck/features.realCodexInstrumentationRoutesHook[0m
+    [36mWhen[0m [36msession "real codex one" submits the prompt "Reply with OK only." to real Codex[0m                                                [1;30m# real_agent_hooks_test.go:62 -> github.com/n-orlov/deck/features.submitRealCodexPrompt[0m
+    [36mThen[0m [36msession "real codex one" receives a real Codex "SessionStart" hook[0m                                                             [1;30m# real_agent_hooks_test.go:61 -> github.com/n-orlov/deck/features.realCodexHookDelivered[0m
+    [36mAnd[0m [36msession "real codex one" receives a conforming real Codex "UserPromptSubmit" hook[0m                                               [1;30m# real_agent_hooks_test.go:63 -> github.com/n-orlov/deck/features.realCodexHookConforms[0m
+    [36mWhen[0m [36mdeck client "A" exits cleanly[0m                                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+1 scenarios ([32m1 passed[0m)
+9 steps ([36m9 skipped[0m)
+294.585559ms
+--- PASS: TestFeatures (0.29s)
+    --- PASS: TestFeatures/create_a_real_codex_session_and_confirm_the_injected_hook_contract,_skipping_cleanly_without_an_installed_CLI (0.29s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.303s
+exit=0
