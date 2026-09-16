@@ -207,3 +207,57 @@ func TestReceiveCodexSupersededSessionStartDoesNotMoveTheConversationID(t *testi
 		t.Fatalf("superseded SessionStart moved the row's status to %q", row.Status)
 	}
 }
+
+// TestReceiveCodexSecondSessionStartWithTheSameIDIsANoOpThatLogsNoChange
+// proves PRD R125's own idempotency requirement: once a row has adopted a
+// conversation id from its first SessionStart, a second SessionStart
+// carrying that exact same id (a resumed session's own SessionStart fires
+// again, source: "resume") must not re-run SetConversationID -- the row
+// already carries that id, so there is nothing to move it to, and no
+// set_conversation_id event should be recorded a second time.
+func TestReceiveCodexSecondSessionStartWithTheSameIDIsANoOpThatLogsNoChange(t *testing.T) {
+	db := newHookStore(t)
+	const id = "codex-repeat-row"
+	createHookSession(t, db, id, "codex", "")
+	if _, err := db.DB().Exec(`UPDATE sessions SET status = 'starting', status_source = 'user', status_at = 1 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+
+	// First SessionStart adopts the id (requirement 44).
+	if _, err := Receive(context.Background(), db, []byte(codexSessionStartPayload), id, "", 30); err != nil {
+		t.Fatalf("first SessionStart: %v", err)
+	}
+	row, err := db.GetSession(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ConversationID != codexConversationID {
+		t.Fatalf("conversation_id after first SessionStart = %q, want %q", row.ConversationID, codexConversationID)
+	}
+
+	// Second SessionStart, same payload/id, later timestamp -- a resumed
+	// session's own SessionStart, or a duplicate delivery.
+	result, err := Receive(context.Background(), db, []byte(codexSessionStartPayload), id, "", 60)
+	if err != nil {
+		t.Fatalf("second SessionStart: %v", err)
+	}
+	if result.SessionID != id {
+		t.Fatalf("second SessionStart resolved session = %q, want %q", result.SessionID, id)
+	}
+
+	row2, err := db.GetSession(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row2.ConversationID != codexConversationID {
+		t.Fatalf("conversation_id changed on a second, identical SessionStart: %q", row2.ConversationID)
+	}
+
+	var setConversationIDEvents int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind = 'set_conversation_id'`, id).Scan(&setConversationIDEvents); err != nil {
+		t.Fatal(err)
+	}
+	if setConversationIDEvents != 1 {
+		t.Fatalf("set_conversation_id events = %d, want exactly 1 (the first adoption only, second is a logged no-op)", setConversationIDEvents)
+	}
+}

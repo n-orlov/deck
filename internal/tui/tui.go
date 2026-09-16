@@ -1973,6 +1973,23 @@ func (m Model) canPinResume(session store.Session) bool {
 	return applicable && caps.AssignsConversationID
 }
 
+// resumableWithNoConversationIDYet reports whether session's adapter is
+// resumable but never assigns its own conversation id up front
+// (Caps.AssignsConversationID false -- SPEC §8.2/PRD R125, codex today) and
+// the row has not yet had one adopted from its own first hook. This is a
+// normal, transient STATE, not a launch failure: codex mints its
+// conversation id on the agent's first prompt, never at launch, so a row
+// can sit here for a while with a live pane and nothing yet to resume. `r`
+// and `R` both consult this before ever calling Resume/Restart, so a press
+// during that window is refused with a human-worded reason instead of
+// reaching the adapter's own Resume (which itself refuses an empty id, no
+// guess, no "most recent" scan) through a launch attempt that would flip
+// the row through `starting` into `error` for a state that is not one.
+func (m Model) resumableWithNoConversationIDYet(session store.Session) bool {
+	caps, applicable := m.agentCapabilities(session.Agent)
+	return applicable && caps.Resumable && !caps.AssignsConversationID && session.ConversationID == ""
+}
+
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	i1Trace("enter", message, m.selected)
 	i1TraceSessions(m)
@@ -3243,6 +3260,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.attachError = "Cannot resume: session is not stopped"
 				return m, nil
 			}
+			if m.resumableWithNoConversationIDYet(session) {
+				m.attachError = "Cannot resume: " + session.Agent + " has not started a conversation yet (no id to resume)"
+				return m, nil
+			}
 			sessionID := session.ID
 			return m, func() tea.Msg {
 				resumed, outcome, err := m.resume(context.Background(), sessionID)
@@ -3255,6 +3276,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			session := m.sessions[m.selected]
 			if !canRestart(session) {
 				m.attachError = "Cannot restart: session is not running (use r to resume it)"
+				return m, nil
+			}
+			if m.resumableWithNoConversationIDYet(session) {
+				m.attachError = "Cannot restart: " + session.Agent + " has not started a conversation yet (no id to resume)"
 				return m, nil
 			}
 			if session.Agent == "shell" {
@@ -6346,6 +6371,12 @@ func (m Model) detailBody() string {
 	}
 	if session.ConversationID != "" {
 		fmt.Fprintf(&b, "%s\n", m.detailField("Conversation id:    ", session.ConversationID))
+	} else if m.resumableWithNoConversationIDYet(session) {
+		// R125: honest about the gap rather than a blank field -- codex
+		// mints its own conversation id on the agent's first prompt, never
+		// at launch, so this is a normal, named state for a live row, not
+		// an omission.
+		fmt.Fprintf(&b, "%s\n", m.detailField("Conversation id:    ", "none yet (assigned on first prompt)"))
 	}
 	if m.detailDroppedHookFound && m.detailDroppedHookSessionID == session.ID {
 		// R90/task 033: supersededLaunch (internal/hookrecv) recorded this
