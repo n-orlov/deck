@@ -1,1 +1,136 @@
-ok  	github.com/n-orlov/deck/features	9.636s
+# ci/run.sh sh -c 'DECK_GODOG_PATHS=permission_modes.feature go test -count=1 -v -run TestFeatures ./features/'
+# task 025 (R127), rerun in full after this task's own internal/tui degrade-note change (the
+# earlier one-line logs measured a tree without it); wrapper exit status 0.
+=== RUN   TestFeatures
+[1;37mFeature:[0m Permission profile mapping, degradation and the yolo gate
+  SPEC §5's permission profile is a deck-level concept translated per
+  adapter, never a boolean: each declared profile maps to a specific argv, an
+  adapter that does not support a requested profile degrades to safe and
+  says so, yolo stays behind an `allow_yolo` config gate (steer 017 item 2
+  removed the separate per-launch confirm keystroke this feature used to
+  require once allow_yolo was already enabled), and the resolved profile is
+  persisted so it survives a resume. `yolo_default` (inert unless
+  `allow_yolo` is also true) opens the create modal already on yolo.
+=== RUN   TestFeatures/claude_maps_every_declared_permission_profile_to_its_own_argv
+
+  [1;37mScenario:[0m claude maps every declared permission profile to its own argv                                 [1;30m# permission_modes.feature:11[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                                     [1;30m# agent_steps_test.go:36 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                         [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "csafe" with permission profile "safe"[0m                    [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "cplan" with permission profile "plan"[0m                     [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "cedits" with permission profile "edits"[0m                   [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates claude session "cyolo" with permission profile "yolo"[0m                     [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mthe audit log's most recent launch argv for session "csafe" does not contain "--permission-mode"[0m [1;30m# agent_steps_test.go:58 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cplan" contains "--permission-mode"[0m          [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cplan" contains "plan"[0m                       [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cedits" contains "--permission-mode"[0m         [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cedits" contains "acceptEdits"[0m               [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cyolo" contains "--permission-mode"[0m          [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cyolo" contains "bypassPermissions"[0m          [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "cyolo" does not contain "--dangerously"[0m      [1;30m# agent_steps_test.go:58 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/pi_maps_only_its_declared_permission_profiles_to_argv
+
+  [1;37mScenario:[0m pi maps only its declared permission profiles to argv                                 [1;30m# permission_modes.feature:29[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                             [1;30m# agent_steps_test.go:36 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                 [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32ma fake "pi" binary is on PATH for future deck clients[0m                                     [1;30m# agent_steps_test.go:30 -> github.com/n-orlov/deck/features.fakePiOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates pi session "psafe" with permission profile "safe"[0m                [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates pi session "pedits" with permission profile "edits"[0m               [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates pi session "pyolo" with permission profile "yolo"[0m                 [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mthe audit log's most recent launch argv for session "psafe" does not contain "--approve"[0m [1;30m# agent_steps_test.go:58 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "pedits" contains "--approve"[0m         [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "pyolo" contains "--approve"[0m          [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_unsupported_profile_degrades_visibly_rather_than_lying
+
+  [1;37mScenario:[0m an unsupported profile degrades visibly rather than lying                                                 [1;30m# permission_modes.feature:42[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                   [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32ma fake "pi" binary is on PATH for future deck clients[0m                                                         [1;30m# agent_steps_test.go:30 -> github.com/n-orlov/deck/features.fakePiOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates pi session "drift" with permission profile "safe"[0m                                    [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mthe state database session "drift" is marked degraded from requesting permission profile "plan" on agent "pi"[0m [1;30m# agent_steps_test.go:44 -> github.com/n-orlov/deck/features.sessionMarkedDegraded[0m
+    [32mAnd[0m [32mdeck client "A" opens detail for session "drift"[0m                                                              [1;30m# agent_steps_test.go:43 -> github.com/n-orlov/deck/features.clientOpensDetailForSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "degraded: pi does not support permission profile"[0m                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "falling back to"[0m                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen matches the pattern "falling back to\s*\|[^\n]*\n\|\s*safe\b"[0m                          [1;30m# preview_test.go:28 -> github.com/n-orlov/deck/features.clientScreenMatchesPattern[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/codex_degrades_an_unsupported_plan_profile_to_safe,_visibly,_through_ResolveProfile
+
+  [1;37mScenario:[0m codex degrades an unsupported plan profile to safe, visibly, through ResolveProfile                           [1;30m# permission_modes.feature:66[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                       [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32ma fake "codex" binary is on PATH for future deck clients[0m                                                          [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.fakeCodexOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started with terminal size 220x30[0m                                                              [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal on agent "claude" for session "codex-plan" with permission profile "plan"[0m [1;30m# permission_modes_codex_test.go:24 -> github.com/n-orlov/deck/features.clientOpensCreateModalWithProfileUnsubmitted[0m
+    [32mAnd[0m [32mdeck client "A" cycles the create modal's Agent field to "codex"[0m                                                  [1;30m# permission_modes_codex_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesCreateModalAgentField[0m
+    [32mThen[0m [32mdeck client "A" screen contains "codex does not support permission profile"[0m                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen matches the pattern "falling back to(\s*\|[^\n]*\n\|)?\s*safe\b"[0m                           [1;30m# preview_test.go:28 -> github.com/n-orlov/deck/features.clientScreenMatchesPattern[0m
+    [32mWhen[0m [32mdeck client "A" submits the create modal[0m                                                                         [1;30m# create_cwd_ghost_test.go:31 -> github.com/n-orlov/deck/features.clientSubmitsCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "codex-plan" has permission profile "safe"[0m                                             [1;30m# agent_steps_test.go:45 -> github.com/n-orlov/deck/features.sessionHasPermissionProfile[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "codex-plan" contains "on-request"[0m                            [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "codex-plan" contains "workspace-write"[0m                       [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "codex-plan" does not contain "plan"[0m                          [1;30m# agent_steps_test.go:58 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "codex-plan" does not contain "--last"[0m                        [1;30m# agent_steps_test.go:58 -> github.com/n-orlov/deck/features.launchArgvForSessionDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/yolo_is_unavailable_without_allow_yolo_enabled
+
+  [1;37mScenario:[0m yolo is unavailable without allow_yolo enabled                                                      [1;30m# permission_modes.feature:110[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                             [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started with terminal size 220x30[0m                                                    [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal for agent "claude"[0m                                              [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientOpensCreateModalForAgent[0m
+    [32mThen[0m [32mdeck client "A" screen contains "yolo is not offered because allow_yolo is not enabled in config.toml"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "yolo (left/right cycles"[0m                                       [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/yolo_takes_effect_immediately_with_no_confirm_once_allow_yolo_is_enabled
+
+  [1;37mScenario:[0m yolo takes effect immediately with no confirm once allow_yolo is enabled       [1;30m# permission_modes.feature:130[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                      [1;30m# agent_steps_test.go:36 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                          [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "confirmed" with permission profile "yolo"[0m [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "confirmed" has permission profile "yolo"[0m               [1;30m# agent_steps_test.go:45 -> github.com/n-orlov/deck/features.sessionHasPermissionProfile[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/yolo_default_opens_the_create_modal_already_on_yolo_once_allow_yolo_is_enabled
+
+  [1;37mScenario:[0m yolo_default opens the create modal already on yolo once allow_yolo is enabled [1;30m# permission_modes.feature:147[0m
+    [32mGiven[0m [32mthe deck config allows yolo and defaults new sessions to it[0m                      [1;30m# agent_steps_test.go:37 -> github.com/n-orlov/deck/features.deckConfigAllowsYoloWithDefault[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                          [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started with terminal size 220x30[0m                               [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal for agent "claude"[0m                         [1;30m# agent_steps_test.go:40 -> github.com/n-orlov/deck/features.clientOpensCreateModalForAgent[0m
+    [32mThen[0m [32mdeck client "A" screen contains "yolo (left/right cycles"[0m                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                           [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_permission_profile_survives_a_resume
+
+  [1;37mScenario:[0m the permission profile survives a resume                                              [1;30m# permission_modes.feature:159[0m
+    [32mGiven[0m [32mthe deck config allows yolo[0m                                                             [1;30m# agent_steps_test.go:36 -> github.com/n-orlov/deck/features.deckConfigAllowsYolo[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                 [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "sticky" with permission profile "yolo"[0m           [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses r on session "sticky"[0m                                            [1;30m# agent_steps_test.go:52 -> github.com/n-orlov/deck/features.clientPressesResumeOnNamedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "sticky" contains "--permission-mode"[0m [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "sticky" contains "bypassPermissions"[0m [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mAnd[0m [32mthe audit log's most recent launch argv for session "sticky" contains "--resume"[0m          [1;30m# agent_steps_test.go:57 -> github.com/n-orlov/deck/features.launchArgvForSessionContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+8 scenarios ([32m8 passed[0m)
+84 steps ([32m84 passed[0m)
+9.630293892s
+--- PASS: TestFeatures (9.63s)
+    --- PASS: TestFeatures/claude_maps_every_declared_permission_profile_to_its_own_argv (1.71s)
+    --- PASS: TestFeatures/pi_maps_only_its_declared_permission_profiles_to_argv (1.54s)
+    --- PASS: TestFeatures/an_unsupported_profile_degrades_visibly_rather_than_lying (1.13s)
+    --- PASS: TestFeatures/codex_degrades_an_unsupported_plan_profile_to_safe,_visibly,_through_ResolveProfile (1.09s)
+    --- PASS: TestFeatures/yolo_is_unavailable_without_allow_yolo_enabled (0.67s)
+    --- PASS: TestFeatures/yolo_takes_effect_immediately_with_no_confirm_once_allow_yolo_is_enabled (0.91s)
+    --- PASS: TestFeatures/yolo_default_opens_the_create_modal_already_on_yolo_once_allow_yolo_is_enabled (0.67s)
+    --- PASS: TestFeatures/the_permission_profile_survives_a_resume (1.86s)
+PASS
+ok  	github.com/n-orlov/deck/features	9.648s

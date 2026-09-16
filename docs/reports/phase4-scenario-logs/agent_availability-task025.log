@@ -1,1 +1,114 @@
-ok  	github.com/n-orlov/deck/features	4.182s
+# ci/run.sh sh -c 'DECK_GODOG_PATHS=agent_availability.feature go test -count=1 -v -run TestFeatures ./features/'
+# task 025 (R127), rerun in full after this task's own internal/tui degrade-note change (the
+# earlier one-line logs measured a tree without it); wrapper exit status 0.
+=== RUN   TestFeatures
+[1;37mFeature:[0m Nothing installed means the Agent field offers only shell (requirement 114)
+  A deck client started with no coding-agent binary on PATH still has a
+  usable create modal: the Agent field's cycle is exactly {shell}, cycling
+  never advances off it, and the help text says which registered kinds are
+  hidden and why.
+=== RUN   TestFeatures/with_nothing_installed_the_Agent_field_offers_only_shell
+
+  [1;37mScenario:[0m with nothing installed the Agent field offers only shell               [1;30m# agent_availability.feature:9[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                    [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: shell)"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "not on PATH: claude,"[0m                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "codex, pi"[0m                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                   [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                       [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                       [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: shell)"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                   [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/installing_an_agent_after_a_client_starts_does_not_change_that_client,_but_a_new_client_sees_it
+
+  [1;37mScenario:[0m installing an agent after a client starts does not change that client, but a new client sees it [1;30m# agent_availability.feature:27[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: shell)"[0m                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                           [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "B" opens the create modal[0m                                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "B" screen contains "Agent: shell (left/right cycles: claude, shell)"[0m                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "B" closes the create modal[0m                                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/with_only_claude_installed_the_Agent_field_offers_shell_and_claude_but_not_codex_or_pi
+
+  [1;37mScenario:[0m with only claude installed the Agent field offers shell and claude but not codex or pi [1;30m# agent_availability.feature:45[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                    [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"[0m         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "not on PATH: codex, pi"[0m                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                                   [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                       [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: claude (left/right cycles: claude, shell)"[0m        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" cycles the open dialog's field right[0m                                      [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"[0m         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                   [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/with_only_codex_installed_the_Agent_field_offers_shell_and_codex_but_not_claude_or_pi
+
+  [1;37mScenario:[0m with only codex installed the Agent field offers shell and codex but not claude or pi [1;30m# agent_availability.feature:60[0m
+    [32mGiven[0m [32ma fake "codex" binary is on PATH for future deck clients[0m                                [1;30m# agent_steps_test.go:31 -> github.com/n-orlov/deck/features.fakeCodexOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                   [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: codex, shell)"[0m         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "not on PATH: claude, pi"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                                  [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                      [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: codex (left/right cycles: codex, shell)"[0m         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" cycles the open dialog's field right[0m                                     [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: shell (left/right cycles: codex, shell)"[0m         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                  [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_agent_removed_from_PATH_after_the_create_modal_opens_is_refused_at_submit,_in-dialog,_with_nothing_persisted
+
+  [1;37mScenario:[0m an agent removed from PATH after the create modal opens is refused at submit, in-dialog, with nothing persisted [1;30m# agent_availability.feature:81[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                         [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                                             [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "preflight-race" into the create modal name field[0m                                             [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" presses down 2 times in the open dialog[0m                                                             [1;30m# dialogs_test.go:29 -> github.com/n-orlov/deck/features.clientPressesArrowInOpenDialog[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                                                [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Agent: claude"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mthe fake "claude" binary is removed from PATH[0m                                                                      [1;30m# agent_steps_test.go:33 -> github.com/n-orlov/deck/features.fakeClaudeRemovedFromPATH[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal expecting rejection[0m                                                        [1;30m# create_validation_test.go:30 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains "not found on PATH"[0m                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Agent: claude"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "preflight-race"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database does not contain session "preflight-race"[0m                                                        [1;30m# agent_steps_test.go:46 -> github.com/n-orlov/deck/features.stateDatabaseDoesNotContainSession[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                            [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_agent_remembered_from_a_previous_create_falls_back_to_shell,_unlabelled,_once_it_is_no_longer_installed
+
+  [1;37mScenario:[0m an agent remembered from a previous create falls back to shell, unlabelled, once it is no longer installed [1;30m# agent_availability.feature:106[0m
+    [32mGiven[0m [32ma fake "pi" binary is on PATH for future deck clients[0m                                                        [1;30m# agent_steps_test.go:30 -> github.com/n-orlov/deck/features.fakePiOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates pi session "piremembered" with permission profile "safe"[0m                              [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+    [32mAnd[0m [32mthe fake "pi" binary is removed from PATH[0m                                                                      [1;30m# agent_steps_test.go:34 -> github.com/n-orlov/deck/features.fakePiRemovedFromPATH[0m
+    [32mAnd[0m [32mdeck client "B" is started[0m                                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "B" opens the create modal[0m                                                                        [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "B" screen contains "Agent: shell (left/right cycles: shell)"[0m                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "B" screen contains "not on PATH: claude,"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "B" screen contains "codex, pi"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "B" screen does not contain "(last used) which coding agent adapter launches this session"[0m         [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "B" closes the create modal[0m                                                                       [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "B" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+6 scenarios ([32m6 passed[0m)
+74 steps ([32m74 passed[0m)
+3.972068909s
+--- PASS: TestFeatures (3.97s)
+    --- PASS: TestFeatures/with_nothing_installed_the_Agent_field_offers_only_shell (0.49s)
+    --- PASS: TestFeatures/installing_an_agent_after_a_client_starts_does_not_change_that_client,_but_a_new_client_sees_it (0.60s)
+    --- PASS: TestFeatures/with_only_claude_installed_the_Agent_field_offers_shell_and_claude_but_not_codex_or_pi (0.63s)
+    --- PASS: TestFeatures/with_only_codex_installed_the_Agent_field_offers_shell_and_codex_but_not_claude_or_pi (0.64s)
+    --- PASS: TestFeatures/an_agent_removed_from_PATH_after_the_create_modal_opens_is_refused_at_submit,_in-dialog,_with_nothing_persisted (0.69s)
+    --- PASS: TestFeatures/an_agent_remembered_from_a_previous_create_falls_back_to_shell,_unlabelled,_once_it_is_no_longer_installed (0.88s)
+PASS
+ok  	github.com/n-orlov/deck/features	3.990s
