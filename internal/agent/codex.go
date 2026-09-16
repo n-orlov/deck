@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // codexProfileFlags maps SPEC §5 permission profile names to the exact
@@ -81,10 +82,86 @@ func (Codex) Resume(in ResumeInput) ([]string, error) {
 	return append(argv, in.ExtraArgs...), nil
 }
 
-// Instrument is left empty by this task: codex's inline hook injection
-// (SPEC §8.2, `-c 'hooks...'` plus `--dangerously-bypass-hook-trust`) is
-// task 017's own deliverable (R122).
-func (Codex) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+// codexHookEvents is the subscribed event set (SPEC §8.2's table), a
+// deliberate 5 of the 12 codex hook events actually exist (verified,
+// docs/reports/codex-cli-0.154.0-spike.md Q3a). The other seven are
+// excluded on purpose, not by omission:
+//   - PreToolUse, PostToolUse fire once per tool call and carry the
+//     tool's whole input/output — SPEC §8.2 explicitly excludes them, the
+//     same reason §8.1 never subscribes Claude's analogous pair.
+//   - PreCompact, PostCompact, SubagentStart, SubagentStop have no SPEC
+//     §8.2 status mapping at all: nothing deck's status model does with a
+//     compaction or subagent boundary, so subscribing them would be a
+//     hook deck receives and immediately discards.
+//   - Interrupt fires when an interrupted turn is aborted — a transient,
+//     mid-turn event with no status of its own; the eventual SessionEnd
+//     or the probe fallback already covers the row once the process
+//     actually stops.
+var codexHookEvents = []string{
+	"SessionStart",
+	"UserPromptSubmit",
+	"PermissionRequest",
+	"Stop",
+	"SessionEnd",
+}
+
+// codexHookCommand builds the constant `deck _hook` command string embedded
+// in every codex inline hook. Per-session facts never go here (SPEC §8.2):
+// codex's trust hash is a function of the command string itself, so a
+// session-specific command would mean a fresh, unhashable/untrusted
+// command every launch. Per-session facts arrive at the hook process via
+// its payload and inherited environment instead (deck's own env, verified
+// to reach the hook unchanged).
+func codexHookCommand(deckExecutable string) string {
+	return deckExecutable + " _hook"
+}
+
+// codexHookOverride encodes the -c override VALUE (never the "-c" flag
+// itself) for one codex hook event: a single hook group containing exactly
+// one hook of type "command" (SPEC §8.2). This is a narrow, single-purpose
+// TOML encoder, not a general one — it exists only to produce this one
+// shape, and only escapes what a TOML basic string needs escaped
+// (backslash, double quote) so a command string carrying either (or a
+// literal space, which needs no escaping at all) still round-trips.
+func codexHookOverride(event, command string) string {
+	return "hooks." + event + `=[{hooks=[{type="command",command="` + codexTOMLEscapeString(command) + `"}]}]`
+}
+
+// codexTOMLEscapeString escapes s for use inside a TOML basic string
+// ("..."): backslash and double-quote are the only bytes that are both
+// possible in an absolute executable path and meaningful to a TOML
+// string. Everything else, including spaces, passes through unescaped.
+func codexTOMLEscapeString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
+// Instrument returns codex's inline hook injection (SPEC §8.2): one -c
+// override per codexHookEvents entry, plus the trailing
+// --dangerously-bypass-hook-trust every profile needs to make an untrusted
+// inline hook run at all (SPEC §8.2's "trust" section; unconditional here
+// because Instrument's argv never depends on in.Profile). Nothing is
+// written to disk — every value returned is a plain string this function
+// builds and hands back; $CODEX_HOME is never opened, let alone written.
+func (Codex) Instrument(in LaunchInput) ([]string, map[string]string) {
+	command := codexHookCommand(in.DeckExecutable)
+	argv := make([]string, 0, len(codexHookEvents)*2+1)
+	for _, event := range codexHookEvents {
+		argv = append(argv, "-c", codexHookOverride(event, command))
+	}
+	argv = append(argv, "--dangerously-bypass-hook-trust")
+
+	// Same absent-when-no-lease semantics as Claude's (task 013/claude.go):
+	// omitted entirely when this launch holds no lease-minted generation
+	// token, so a hook never sees an empty token it would have to
+	// interpret.
+	var env map[string]string
+	if in.LaunchGeneration != "" {
+		env = map[string]string{LaunchGenerationEnv: in.LaunchGeneration}
+	}
+	return argv, env
+}
 
 // Probe is codex's sampled status source for the pre-hook window (SPEC
 // §8.2) and as the fallback once hooks exist. No "codex" rules exist in
