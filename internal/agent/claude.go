@@ -11,8 +11,12 @@ import (
 // claudeProfileFlags maps SPEC §5 permission profile names to the exact
 // `--permission-mode` value Claude Code accepts. Only structured mode flags
 // are ever used — never a `--dangerously-*` flag (SPEC §8 table, ~line 262).
+// "safe" carries no entry here (R116): Claude Code's own unflagged default
+// already behaves as deck's "safe" profile, and "manual" is not a mode
+// value the real CLI accepts, so composing `--permission-mode manual` was
+// always a lie about what Claude was asked for. claudePermissionArgs below
+// treats "safe" as a valid profile that simply contributes no flag.
 var claudeProfileFlags = map[string]string{
-	"safe":  "manual",
 	"plan":  "plan",
 	"edits": "acceptEdits",
 	"yolo":  "bypassPermissions",
@@ -70,11 +74,11 @@ func (c Claude) Launch(in LaunchInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("claude: launch requires a caller-assigned conversation id")
 	}
-	flag, err := claudePermissionFlag(in.Profile)
+	permArgs, err := claudePermissionArgs(in.Profile)
 	if err != nil {
 		return nil, err
 	}
-	argv := []string{"claude", "--session-id", in.ConversationID, "--permission-mode", flag}
+	argv := append([]string{"claude", "--session-id", in.ConversationID}, permArgs...)
 	return append(argv, in.ExtraArgs...), nil
 }
 
@@ -82,11 +86,11 @@ func (c Claude) Resume(in ResumeInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("claude: resume requires a conversation id")
 	}
-	flag, err := claudePermissionFlag(in.Profile)
+	permArgs, err := claudePermissionArgs(in.Profile)
 	if err != nil {
 		return nil, err
 	}
-	argv := []string{"claude", "--resume", in.ConversationID, "--permission-mode", flag}
+	argv := append([]string{"claude", "--resume", in.ConversationID}, permArgs...)
 	return append(argv, in.ExtraArgs...), nil
 }
 
@@ -158,10 +162,17 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func claudePermissionFlag(profile string) (string, error) {
+// claudePermissionArgs returns the `--permission-mode` argument pair to
+// append for profile, or nil for "safe" (R116): "safe" is a supported
+// profile (see claudeProfiles) that simply composes no --permission-mode
+// flag at all, rather than a `manual` value the real CLI does not accept.
+func claudePermissionArgs(profile string) ([]string, error) {
+	if profile == "safe" {
+		return nil, nil
+	}
 	flag, ok := claudeProfileFlags[profile]
 	if !ok {
-		return "", fmt.Errorf("claude: unsupported permission profile %q", profile)
+		return nil, fmt.Errorf("claude: unsupported permission profile %q", profile)
 	}
-	return flag, nil
+	return []string{"--permission-mode", flag}, nil
 }
