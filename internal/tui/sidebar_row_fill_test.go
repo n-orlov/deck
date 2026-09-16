@@ -54,19 +54,37 @@ func findRowContainingInSidebar(t *testing.T, term *vt.Emulator, sw int, want st
 // assertRowBackgroundFillsFullWidth checks, for both lines of the row
 // starting at rowLine1, that every column from the first after the
 // sidebar's left border (column 1) to the last before the seam (column
-// sw-1, sidebarContentLine's own trailing pad column) carries wantHex.
+// sw-1, sidebarContentLine's own trailing pad column) carries wantHex --
+// EXCEPT the row's own gutter columns (2 and 3, task 008/R119's own
+// reserved leftmost span) when gutterHex is non-empty, which carry
+// gutterHex instead. Task 009 gives a selected row's gutter its own
+// `accent` bar (SPEC §11.3), which is deliberately a DIFFERENT colour
+// from `selection`/`selection_idle` on that same row -- gutterHex==""
+// (every caller but the two selected-row tests below) means "no
+// exception", so a row with no gutter bar of its own (unselected,
+// unmarked -- TestSidebarStripeBackgroundFillsFullPanelWidth's case)
+// still gets the ORIGINAL uniform-width assertion, unchanged.
 func assertRowBackgroundFillsFullWidth(t *testing.T, m Model, rowLine1, sw int, wantHex, label string) {
+	t.Helper()
+	assertRowBackgroundFillsFullWidthWithGutter(t, m, rowLine1, sw, wantHex, "", label)
+}
+
+func assertRowBackgroundFillsFullWidthWithGutter(t *testing.T, m Model, rowLine1, sw int, wantHex, gutterHex, label string) {
 	t.Helper()
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 	for _, row := range []int{rowLine1, rowLine1 + 1} {
 		for col := 1; col <= sw-1; col++ {
+			want := wantHex
+			if gutterHex != "" && (col == 2 || col == 3) {
+				want = gutterHex
+			}
 			hex, ok := cellBgHex(t, term, col, row)
 			if !ok {
-				t.Fatalf("%s: row %d col %d has no background at all, want %s", label, row, col, wantHex)
+				t.Fatalf("%s: row %d col %d has no background at all, want %s", label, row, col, want)
 			}
-			if hex != wantHex {
-				t.Fatalf("%s: row %d col %d background = %s, want %s (border=col0, seam starts col%d)", label, row, col, hex, wantHex, sw)
+			if hex != want {
+				t.Fatalf("%s: row %d col %d background = %s, want %s (border=col0, seam starts col%d)", label, row, col, hex, want, sw)
 			}
 		}
 	}
@@ -90,7 +108,7 @@ func TestSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 	row := findRowContaining(t, term, "a")
 
-	assertRowBackgroundFillsFullWidth(t, m, row, sw, selectionHex, "selected row")
+	assertRowBackgroundFillsFullWidthWithGutter(t, m, row, sw, selectionHex, tokenHex(t, m, theme.Accent), "selected row")
 }
 
 // TestSidebarSelectionIdleBackgroundFillsFullPanelWidth mirrors the above
@@ -109,7 +127,7 @@ func TestSidebarSelectionIdleBackgroundFillsFullPanelWidth(t *testing.T) {
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 	row := findRowContainingInSidebar(t, term, sw, "a")
 
-	assertRowBackgroundFillsFullWidth(t, m, row, sw, selIdleHex, "selection_idle row")
+	assertRowBackgroundFillsFullWidthWithGutter(t, m, row, sw, selIdleHex, tokenHex(t, m, theme.Accent), "selection_idle row")
 }
 
 // TestSidebarStripeBackgroundFillsFullPanelWidth mirrors the above for the

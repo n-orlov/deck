@@ -4773,6 +4773,45 @@ func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarE
 	return out
 }
 
+// sidebarGutterBar renders the two-line gutter bar SPEC §11.3 requires for
+// a session row's leftmost columns: line 1 carries `>` when selected, line
+// 2 carries the mark glyph (`✓`, `*` under DECK_ASCII) when marked, and
+// BOTH lines of the bar share one background -- `accent` when selected
+// (selection wins over marked when a row is both, so the same bar never
+// carries two different colours across its own two lines), `badge` when
+// marked but not selected, or no painted background at all when the row
+// is neither (plain "  "/"  ", inheriting whatever background
+// sidebarContentLine's outer canvasBackground span already has open --
+// the row's stripe/selection background, never a bar colour of its own).
+// `background` is the glyph's own FOREGROUND in either painted case (SPEC:
+// "carrying `>` on the row's first line with `background` as its
+// foreground"), read through colorToken so NO_COLOR/DECK_COLOR_DEPTH gate
+// it exactly like every other coloured run in this file; canvasBackground
+// re-opens the bar's own background after colorToken's inner reset, so the
+// trailing space in each 2-column glyph run keeps the bar's colour rather
+// than falling back to whatever this call's caller has open.
+func (m Model) sidebarGutterBar(selected, marked bool) (string, string) {
+	glyph1 := "  "
+	if selected {
+		glyph1 = "> "
+	}
+	glyph2 := "  "
+	if marked {
+		glyph2 = m.glyph("\u2713", "*") + " "
+	}
+	var barTok theme.Token
+	switch {
+	case selected:
+		barTok = theme.Accent
+	case marked:
+		barTok = theme.Badge
+	default:
+		return glyph1, glyph2
+	}
+	return m.canvasBackground(barTok, m.colorToken(theme.Background, glyph1)),
+		m.canvasBackground(barTok, m.colorToken(theme.Background, glyph2))
+}
+
 // sidebarRowLines is one session's two-line row: glyph/marker, name, its
 // unseen glyph and status/quality badges on the first line (SPEC §11.3,
 // task 012 — no reason text), and its permission-profile badge plus
@@ -4800,20 +4839,20 @@ func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarE
 // word an assertion depends on.
 func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([]string, []string, theme.Token) {
 	selected := index == m.selected
+	marked := m.marked[session.ID]
 	// R119: the gutter is the row's own reserved leftmost columns, composed
 	// OUTSIDE the text handed to padTrunc -- sidebarContentLine's job, never
 	// this function's -- so a long name's truncation can never synthesise a
 	// reset inside it and the gutter's own width never eats into the text's
 	// content budget (SPEC §11.3: "The marker text lives in its own
 	// columns, outside the row's text run"). Line 1 carries the selection
-	// arrow; line 2 is blank here -- task 009 gives it the mark glyph and
-	// gives both lines the accent/badge colouring the four gutter states
-	// need, neither of which this task touches.
-	gutter1 := "  "
-	if selected {
-		gutter1 = "> "
-	}
-	gutter2 := "  "
+	// arrow, line 2 the mark glyph; sidebarGutterBar below paints both
+	// lines of the same bar in one colour -- `accent` when selected,
+	// `badge` when marked but not selected, unpainted otherwise -- per
+	// SPEC §11.3: "a row that is both selected and marked shows both cues
+	// at once without either competing for a cell", selection winning the
+	// bar's own colour.
+	gutter1, gutter2 := m.sidebarGutterBar(selected, marked)
 	// Task 084 (steer 006 item 2): the alternating background stripe uses
 	// theme.Surface for every row in this session's block (both lines
 	// share the one phase the caller computed). Task 321 (R58b) moved the
