@@ -203,6 +203,50 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" leaves interactive mode
     And deck client "solo" exits cleanly
 
+  @requirement-23-preview-crop-geometry
+  @requirement-46-interactive-fitted-geometry
+  Scenario: r resumes the selected stopped row and passive preview re-fits away from tmux's unfit 80x24 default
+    # Task 117/002's fix (internal/tui/tui.go's sessionResumed/
+    # sessionRestarted branch): a resume that actually creates a pane
+    # clears previewFitSessionID for that same session id, so the very
+    # next previewTick's previewFit (steer 018 item 4) re-fits the fresh
+    # pane to the panel's own content box instead of leaving it wedged at
+    # tmux new-session's own unfit 80x24 default (no -x/-y is ever passed,
+    # internal/tmux/tmux.go's Create) for the rest of the model's
+    # lifetime. Reverting that clear makes previewFit's own eligibility
+    # guard (`session.ID == m.previewFitSessionID`) refuse every fit
+    # attempt forever once this exact session id has settled once before
+    # -- which it already did, below, the moment "alpha" was created and
+    # auto-selected -- so the crop line's second, real-geometry pair below
+    # would never stop reading "80x24" after the resume. Checked by hand:
+    # reverting f9de4a5/815f2ea and rerunning this scenario times out on
+    # "deck client \"solo\" screen stops containing \"of 80x24\"" after the
+    # resume instead of passing.
+    Given deck client "solo" is started
+    And deck client "solo" creates shell session "alpha"
+    Then within one configured reconcile interval deck client "solo" screen contains "running"
+    # "alpha" is the only row: it was auto-selected on creation and stays
+    # selected through everything below, so nothing in this scenario ever
+    # changes the selection -- the one condition the criterion this
+    # scenario proves requires. Waiting out the FIRST passive fit here (it
+    # settles "alpha" away from its own newly-created-pane 80x24) gives
+    # this scenario a real, already-fitted baseline rather than racing the
+    # very first fit any selected row ever gets.
+    And deck client "solo" screen stops containing "of 80x24"
+    And the private tmux window for session "alpha" is captured as "fitted-before-stop"
+    When shell session "alpha" exits with status zero
+    Then within one configured reconcile interval deck client "solo" screen contains "stopped"
+    When deck client "solo" presses r on session "alpha"
+    Then within one configured reconcile interval deck client "solo" screen contains "running"
+    # The resume above created a brand-new tmux window (task 117/002's own
+    # scope: a relaunch's new pane), which starts life back at tmux's own
+    # unfit 80x24 default -- exactly the state task 002's latch clear
+    # exists to escape a second time for this same still-selected session.
+    Then deck client "solo" screen stops containing "of 80x24"
+    And the private tmux window for session "alpha" still matches "fitted-before-stop"
+    And the private tmux window for session "alpha" does not report geometry "80x24"
+    And deck client "solo" exits cleanly
+
   @requirement-24-preview-wide-cell-boundary
   Scenario: wide glyphs in a cropped pane never shear the preview's border
     Given deck client "solo" is started
