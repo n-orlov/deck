@@ -38,17 +38,28 @@ Feature: every built-in theme paints its own `background` token across the whole
   left border *is* the divider"), column 36 is the preview's own leading
   pad column, and columns 98-99 are the preview's own trailing pad and
   right border. Columns 37-97 are the preview's own INNER text/capture
-  area, which this file deliberately never asserts a background over:
-  panel.go's previewContentLine composes that span withOUT canvasBackground
-  by design (SPEC §11.3's "one deliberate exception: captured pane output
-  is never repainted" -- task 006), on purpose, whether or not a real pane
-  capture is actually present, so those columns are not "deck-owned" for
-  this claim's purposes even when what happens to be sitting there right
-  now is deck's own placeholder copy rather than a foreign pane's bytes.
-  Every column this file DOES assert over -- 0-36 and 98-99 on every
-  content row, 0-99 on both border rows -- is unconditionally deck's own,
-  in every layout, with or without a pane attached, and every one of them
-  is composed through panel.go's canvasBackground helper.
+  area, and this file DOES assert a background over them too, deck's own
+  placeholder copy included -- panel.go's previewBodyLines (task 002/B1)
+  marks that placeholder (the no-session sentence, its wrapped text, and
+  the blank fitLines pad around it) deck-owned, and previewContentLine
+  composes a deck-owned row as one canvasBackground span, border to
+  border, columns 37-97 included. The one true exception is SPEC §11.3's
+  own -- "captured pane output is never repainted" (task 006): once a
+  session is selected and its pane actually has a live tmux capture on
+  file, previewBodyLines hands that capture's own foreign bytes to
+  cropPreviewBottomLeft instead, and THOSE columns 37-97 are left exactly
+  as the pane left them, unpainted by deck. Each scenario below therefore
+  asserts columns 37-97 right after its client starts and before either
+  session exists -- previewBodyLines' empty-session branch, always
+  deck-owned, per task 002/B1's own internal/tui proof
+  (TestNoLiveCapturePreviewInteriorCarriesDeckBackground*) -- then, once
+  "aaa" and "zzz-session" exist and the auto-selected "zzz-session" has a
+  real live capture sitting in that same span, goes back to asserting only
+  0-36 and 98-99, the columns that stay deck-owned regardless of which
+  branch previewBodyLines took. Every column this file asserts over on a
+  content row -- 0-36 and 98-99 unconditionally, 37-97 while no live
+  capture is present -- and 0-99 on both border rows, is composed through
+  panel.go's canvasBackground helper.
 
   GOTCHA (discovered writing this file, out of scope here): panel_
   background_rectangle.feature's two "cell ... has no background set"
@@ -73,6 +84,7 @@ Feature: every built-in theme paints its own `background` token across the whole
       group_by_workspace = false
       """
     And deck client "bgempire" is started with colour enabled
+    And deck client "bgempire" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgempire" creates shell session "aaa"
     And deck client "bgempire" creates shell session "zzz-session"
     Then within one configured reconcile interval deck client "bgempire" screen contains "running"
@@ -95,6 +107,7 @@ Feature: every built-in theme paints its own `background` token across the whole
       group_by_workspace = false
       """
     And deck client "bgdaylight" is started with colour enabled
+    And deck client "bgdaylight" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgdaylight" creates shell session "aaa"
     And deck client "bgdaylight" creates shell session "zzz-session"
     Then within one configured reconcile interval deck client "bgdaylight" screen contains "running"
@@ -117,6 +130,7 @@ Feature: every built-in theme paints its own `background` token across the whole
       group_by_workspace = false
       """
     And deck client "bgmatrix" is started with colour enabled
+    And deck client "bgmatrix" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgmatrix" creates shell session "aaa"
     And deck client "bgmatrix" creates shell session "zzz-session"
     Then within one configured reconcile interval deck client "bgmatrix" screen contains "running"
@@ -139,6 +153,7 @@ Feature: every built-in theme paints its own `background` token across the whole
       group_by_workspace = false
       """
     And deck client "bgcobalt" is started with colour enabled
+    And deck client "bgcobalt" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgcobalt" creates shell session "aaa"
     And deck client "bgcobalt" creates shell session "zzz-session"
     Then within one configured reconcile interval deck client "bgcobalt" screen contains "running"
@@ -161,6 +176,7 @@ Feature: every built-in theme paints its own `background` token across the whole
       group_by_workspace = false
       """
     And deck client "bgparchment" is started with colour enabled
+    And deck client "bgparchment" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgparchment" creates shell session "aaa"
     And deck client "bgparchment" creates shell session "zzz-session"
     Then within one configured reconcile interval deck client "bgparchment" screen contains "running"
