@@ -311,6 +311,17 @@ func fireHook(stdout, stderr io.Writer, hooks map[string]string, trusted bool, e
 // input) simply hangs here -- cmd/fake-claude's own "long-running" mode,
 // reused unchanged rather than reinvented.
 func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]string, trusted bool, resumeID, codexHome string) error {
+	// Real codex-cli renders its composer prompt ("Ask Codex to do
+	// anything", testdata/probes/codex/starting.txt) the instant its TUI
+	// comes up, before any prompt is ever submitted -- this is what a
+	// pane probe classifies as "starting" (internal/agent/probe.go's own
+	// codex rule, task 019). Printing nothing here (as before this fix)
+	// left a freshly launched long-running fixture with no probe-visible
+	// text at all until its first prompt, which a scenario cannot
+	// distinguish from a hung pane. codexPaneStates["starting"] is the
+	// same literal the "state" pane command renders, so this is one
+	// template, not a duplicated rule.
+	fmt.Fprint(stdout, codexPaneStates["starting"])
 	var session *codexSession
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
