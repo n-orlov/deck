@@ -21,6 +21,7 @@ func registerCellAttributeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has foreground "(#[0-9a-fA-F]{6})"$`, cellHasForeground)
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) does not have foreground "(#[0-9a-fA-F]{6})"$`, cellDoesNotHaveForeground)
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has background "(#[0-9a-fA-F]{6})"$`, cellHasBackground)
+	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) has content "([^"]*)"$`, cellHasContent)
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) is (bold|dim|reverse)$`, cellHasAttribute)
 	sc.Step(`^deck client "([^"]+)" cell at row (\d+) column (\d+) is not (bold|dim|reverse)$`, cellDoesNotHaveAttribute)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" has foreground "(#[0-9a-fA-F]{6})"$`, textHasForeground)
@@ -170,6 +171,28 @@ func cellHasBackground(ctx context.Context, name string, row, col int, want stri
 	}
 	if got != want {
 		return fmt.Errorf("client %q cell at row %d column %d has background %s, want %s", name, row, col, got, want)
+	}
+	return nil
+}
+
+// cellHasContent (task 010/R119) reads a cell's own Content directly --
+// never Frame's trimmed string or a raw escape-byte grep -- so a scenario
+// can pin a glyph (`>`, the mark cue) to a FIXED column and prove it is
+// still there once colour is gone (NO_COLOR): the gutter's own glyphs are
+// composed as plain text regardless of whether canvasBackground/colorToken
+// emit any SGR around them, so this assertion holds under NO_COLOR exactly
+// the way the background-token assertions above hold under colour.
+func cellHasContent(ctx context.Context, name string, row, col int, want string) error {
+	client, err := assertionClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	cell := client.CellAt(col, row)
+	if cell == nil {
+		return fmt.Errorf("client %q cell at row %d column %d could not be read from the grid", name, row, col)
+	}
+	if cell.Content != want {
+		return fmt.Errorf("client %q cell at row %d column %d has content %q, want %q", name, row, col, cell.Content, want)
 	}
 	return nil
 }
