@@ -317,12 +317,15 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    Then deck client "A" screen contains "bk-one running [marked]"
+    Then deck client "A" screen contains "bk-one running"
+    And deck client "A" row "bk-one" is marked
     When deck client "A" sends "j"
     Then deck client "A" screen contains "> bk-two running"
     When deck client "A" sends "m"
-    Then deck client "A" screen contains "bk-one running [marked]"
-    And deck client "A" screen contains "bk-two running [marked]"
+    Then deck client "A" screen contains "bk-one running"
+    And deck client "A" row "bk-one" is marked
+    And deck client "A" screen contains "bk-two running"
+    And deck client "A" row "bk-two" is marked
     When deck client "A" sends "x"
     Then the state database contains session "bk-one" with status "stopped"
     And the state database contains session "bk-two" with status "stopped"
@@ -353,12 +356,15 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    Then deck client "A" screen contains "bd-one running [marked]"
+    Then deck client "A" screen contains "bd-one running"
+    And deck client "A" row "bd-one" is marked
     When deck client "A" sends "j"
     Then deck client "A" screen contains "> bd-two running"
     When deck client "A" sends "m"
-    Then deck client "A" screen contains "bd-one running [marked]"
-    And deck client "A" screen contains "bd-two running [marked]"
+    Then deck client "A" screen contains "bd-one running"
+    And deck client "A" row "bd-one" is marked
+    And deck client "A" screen contains "bd-two running"
+    And deck client "A" row "bd-two" is marked
     When deck client "A" presses dd
     Then deck client "A" screen contains "Delete 2 marked sessions"
     When deck client "A" submits the open dialog
@@ -390,12 +396,15 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    Then deck client "A" screen contains "bu-one running [marked]"
+    Then deck client "A" screen contains "bu-one running"
+    And deck client "A" row "bu-one" is marked
     When deck client "A" sends "j"
     Then deck client "A" screen contains "> bu-two running"
     When deck client "A" sends "m"
-    Then deck client "A" screen contains "bu-one running [marked]"
-    And deck client "A" screen contains "bu-two running [marked]"
+    Then deck client "A" screen contains "bu-one running"
+    And deck client "A" row "bu-one" is marked
+    And deck client "A" screen contains "bu-two running"
+    And deck client "A" row "bu-two" is marked
     When deck client "A" sends "x"
     Then the state database contains session "bu-one" with status "stopped"
     And the state database contains session "bu-two" with status "stopped"
@@ -451,6 +460,50 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" submits the open dialog
     Then the state database session "purge-remove" is tombstoned
     And the transcript captured as "purge-before" no longer exists
+    When deck client "A" exits cleanly
+
+  @requirement-25-delete-without-purge
+  Scenario: dd without purge leaves the codex agent's transcript intact through delete and reap
+    # R127: mirrors the claude scenario above for codex, whose transcript
+    # convention (cmd/fake-codex's own rollout file, task 021) and
+    # conversation id (minted only on first prompt, never at launch) both
+    # differ from claude's -- proving dd's own kill/tombstone/reap path
+    # never touches it either way is not implied by the claude coverage.
+    Given a long-running fake "codex" binary is on PATH for future deck clients
+    And deck client "A" is started with a short delete grace window
+    When deck client "A" creates codex session "codex-purge-keep" with permission profile "safe"
+    Then deck client "A" screen contains "codex-purge-keep"
+    When fake Codex session "codex-purge-keep" is prompted with "hello from codex-purge-keep"
+    Then within 3 seconds deck client "A" row "codex-purge-keep" contains "live"
+    And the fake codex transcript for session "codex-purge-keep" is captured as "codex-keep-before"
+    When deck client "A" presses dd
+    Then deck client "A" screen contains "Purge:"
+    And deck client "A" screen contains "keep"
+    When deck client "A" submits the open dialog
+    And 400 milliseconds pass
+    Then the state database session "codex-purge-keep" is reaped
+    And the transcript captured as "codex-keep-before" still exists byte-identical
+    When deck client "A" exits cleanly
+
+  @requirement-26-purge-conversation
+  Scenario: choosing purge in the delete confirm removes only the codex agent's declared transcript file
+    # R127: mirrors the claude scenario above for codex -- purge deletes
+    # exactly codex's own declared TranscriptPaths file (task 015), never
+    # anything keyed by claude's convention or a codex-specific one built
+    # just for this dialog.
+    Given a long-running fake "codex" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates codex session "codex-purge-remove" with permission profile "safe"
+    Then deck client "A" screen contains "codex-purge-remove"
+    When fake Codex session "codex-purge-remove" is prompted with "hello from codex-purge-remove"
+    Then within 3 seconds deck client "A" row "codex-purge-remove" contains "live"
+    And the fake codex transcript for session "codex-purge-remove" is captured as "codex-purge-before"
+    When deck client "A" presses dd
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Will delete:"
+    When deck client "A" submits the open dialog
+    Then the state database session "codex-purge-remove" is tombstoned
+    And the transcript captured as "codex-purge-before" no longer exists
     When deck client "A" exits cleanly
 
   @requirement-27-archive-stopped
@@ -558,8 +611,10 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And deck client "A" sends "j"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    Then deck client "A" screen contains "batch-beta running [marked]"
-    And deck client "A" screen contains "batch-gamma running [marked]"
+    Then deck client "A" screen contains "batch-beta running"
+    And deck client "A" row "batch-beta" is marked
+    And deck client "A" screen contains "batch-gamma running"
+    And deck client "A" row "batch-gamma" is marked
     When deck client "A" sends "x"
     Then the private tmux session "deck_batch-beta" does not exist
     And the private tmux session "deck_batch-gamma" does not exist
@@ -590,8 +645,10 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And deck client "A" sends "j"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    Then deck client "A" screen contains "batch-dd-one running [marked]"
-    And deck client "A" screen contains "batch-dd-two running [marked]"
+    Then deck client "A" screen contains "batch-dd-one running"
+    And deck client "A" row "batch-dd-one" is marked
+    And deck client "A" screen contains "batch-dd-two running"
+    And deck client "A" row "batch-dd-two" is marked
     When deck client "A" presses dd
     Then deck client "A" screen contains "Delete 2 marked sessions"
     And deck client "A" screen contains "batch-dd-one"

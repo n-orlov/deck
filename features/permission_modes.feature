@@ -63,6 +63,24 @@ Feature: Permission profile mapping, degradation and the yolo gate
     And deck client "A" screen matches the pattern "falling back to\s*\|[^\n]*\n\|\s*safe\b"
     When deck client "A" exits cleanly
 
+  Scenario: codex degrades an unsupported plan profile to safe, visibly, through the same ResolveProfile path
+    # R127: codex has no "plan" profile (codexProfiles is exactly
+    # safe/edits/yolo) -- SPEC §5's per-adapter degradation is agent.Caps.
+    # ResolveProfile, the SAME generic path pi's own degradation scenario
+    # above exercises, never a codex-specific branch (the PRD's own
+    # prohibition: no codex-specific permission-degrade path and no
+    # aliasing plan to safe inside the adapter). This mirrors that
+    # scenario's own wrap-point rationale verbatim, substituting codex/pi.
+    Given a fake "codex" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates codex session "codex-drift" with permission profile "safe"
+    And the state database session "codex-drift" is marked degraded from requesting permission profile "plan" on agent "codex"
+    And deck client "A" opens detail for session "codex-drift"
+    Then deck client "A" screen contains "degraded: codex does not support permission profile"
+    And deck client "A" screen contains "falling back to"
+    And deck client "A" screen matches the pattern "falling back to\s*\|[^\n]*\n\|\s*safe\b"
+    When deck client "A" exits cleanly
+
   Scenario: yolo is unavailable without allow_yolo enabled
     Given a fake "claude" binary is on PATH for future deck clients
     # Task 030: framedDialog's box is now a fixed 80% of the viewport

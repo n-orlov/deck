@@ -38,6 +38,7 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the captures directory and history file for reaped session "([^"]+)" are gone$`, capturesDirAndHistoryFileForReapedSessionAreGone)
 	sc.Step(`^the audit log still contains an earlier event for reaped session "([^"]+)"$`, auditLogStillContainsEarlierEventForReapedSession)
 	sc.Step(`^the fake claude transcript for session "([^"]+)" is captured as "([^"]+)"$`, fakeClaudeTranscriptForSessionIsCapturedAs)
+	sc.Step(`^the fake codex transcript for session "([^"]+)" is captured as "([^"]+)"$`, fakeCodexTranscriptForSessionIsCapturedAs)
 	sc.Step(`^the transcript captured as "([^"]+)" still exists byte-identical$`, transcriptCapturedStillExistsByteIdentical)
 	sc.Step(`^the transcript captured as "([^"]+)" no longer exists$`, transcriptCapturedNoLongerExists)
 	sc.Step(`^deck client "([^"]+)" archives its selected session "([^"]+)"$`, clientArchivesSelectedSession)
@@ -46,6 +47,41 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" undoes the archive with u for "([^"]+)"$`, clientUndoesArchiveWithU)
 	sc.Step(`^the state database session "([^"]+)" is archived$`, stateDatabaseSessionIsArchived)
 	sc.Step(`^the state database session "([^"]+)" is not archived$`, stateDatabaseSessionIsNotArchived)
+	sc.Step(`^deck client "([^"]+)" row "([^"]+)" is marked$`, clientRowIsMarked)
+}
+
+// clientRowIsMarked is this file's own remediation for the FINDING task 008
+// left behind (recorded in docs/reports/phase4-scenario-logs/kill-delete-undo.log's
+// commit): its "✓ marked"/"[marked]" text-badge removal (moved to the R119
+// gutter's own line 2 glyph, internal/tui/tui.go's sidebarGutterBar) left every
+// `screen contains "<name> running [marked]"` assertion in this feature file
+// permanently false, never a flake. This task's success criteria requires
+// this whole file green, so it claims that fix here rather than leaving it
+// for task 027/039's FULL SUITE pass, per the notes' "if unclaimed earlier"
+// gotcha. It reuses features/i1_repro_test.go's sidebarRowMarked exactly --
+// name's own line is found first (its prefix is `> ` when selected, `  `
+// otherwise), and the line right after it (line 2) carries the mark glyph
+// in its own gutter column (DECK_ASCII=1 always renders `*` in this harness).
+func clientRowIsMarked(ctx context.Context, clientName, rowName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		frame := client.Frame(false)
+		if sidebarRowMarked(frame, rowName) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("client %q row %q is not marked:\n%s", clientName, rowName, frame)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // transcriptSnapshot is task 110's own fixture record, keyed by an
@@ -94,6 +130,39 @@ func fakeClaudeTranscriptForSessionIsCapturedAs(ctx context.Context, name, label
 		return err
 	}
 	path, err := claudeTranscriptPathForSession(h, name)
+	if err != nil {
+		return err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read transcript %q for session %q: %w", path, name, err)
+	}
+	if h.transcriptSnapshots == nil {
+		h.transcriptSnapshots = make(map[string]transcriptSnapshot)
+	}
+	h.transcriptSnapshots[label] = transcriptSnapshot{path: path, content: content}
+	return nil
+}
+
+// fakeCodexTranscriptForSessionIsCapturedAs is fakeClaudeTranscriptForSessionIsCapturedAs's
+// codex counterpart (R127): codexTranscriptPathForConversationID (task
+// 024's own codex_hooks_test.go helper, same package) mirrors cmd/fake-codex's
+// rollout-file convention black-box, keyed by name's conversation id --
+// which, unlike claude, only exists once the session has been prompted at
+// least once (task 021).
+func fakeCodexTranscriptForSessionIsCapturedAs(ctx context.Context, name, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	conversationID, err := sessionConversationID(h, name)
+	if err != nil {
+		return err
+	}
+	if conversationID == "" {
+		return fmt.Errorf("session %q has no conversation id", name)
+	}
+	path, err := codexTranscriptPathForConversationID(h, conversationID)
 	if err != nil {
 		return err
 	}
