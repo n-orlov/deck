@@ -32,6 +32,35 @@ import (
 // hog processes this test spawns and kills itself (never by pattern),
 // recording /proc/loadavg and nproc for every logged attempt. See
 // docs/reports/phase3d-i1-repro.log for a committed run of this test.
+// sidebarRowMarked reports whether name's own two-line row is currently
+// marked, by checking the SECOND of its two physical lines for R119's
+// gutter mark glyph in its own leftmost column rather than the pre-R119
+// `[marked]` text badge this test used to grep for on the first line
+// (task 012/R120: that badge moved into the gutter -- see
+// internal/tui/tui.go's sidebarGutterBar -- and line 2 itself dropped its
+// `created ` label, so neither the old substring nor the old line ever
+// carries what this test needs any more). name's own line is found first
+// (its prefix is `> ` when selected, `  ` otherwise, so matching on the
+// bare name is what stays true either way); the line right after it is
+// line 2, whose own gutter column (index 2, one past the border and its
+// single pad column) is `*` when marked (DECK_ASCII=1 always renders the
+// ascii glyph in this harness, per ScenarioHarness.Environment) and a
+// blank space otherwise.
+func sidebarRowMarked(frame, name string) bool {
+	lines := strings.Split(frame, "\n")
+	for i, line := range lines {
+		if !strings.Contains(line, name) {
+			continue
+		}
+		if i+1 >= len(lines) {
+			return false
+		}
+		next := lines[i+1]
+		return len(next) > 2 && next[2] == '*'
+	}
+	return false
+}
+
 func TestI1KeystrokeDropReproduction(t *testing.T) {
 	if os.Getenv("DECK_I1_REPRO") != "1" {
 		t.Skip("opt-in reproduction driver for I-1 (task 004); set DECK_I1_REPRO=1 to run. See docs/reports/phase3d-i1-repro.log for a committed run.")
@@ -111,7 +140,7 @@ func TestI1KeystrokeDropReproduction(t *testing.T) {
 			return err
 		}
 		settle()
-		if strings.Contains(client.Frame(false), "bk-one running [marked]") {
+		if sidebarRowMarked(client.Frame(false), "bk-one") {
 			if err := sendCounted("m"); err != nil {
 				return err
 			}
@@ -121,7 +150,7 @@ func TestI1KeystrokeDropReproduction(t *testing.T) {
 			return err
 		}
 		settle()
-		if strings.Contains(client.Frame(false), "bk-two running [marked]") {
+		if sidebarRowMarked(client.Frame(false), "bk-two") {
 			if err := sendCounted("m"); err != nil {
 				return err
 			}
@@ -168,7 +197,7 @@ func TestI1KeystrokeDropReproduction(t *testing.T) {
 		}
 		settle()
 		frame := client.Frame(false)
-		if !strings.Contains(frame, "bk-one running [marked]") {
+		if !sidebarRowMarked(frame, "bk-one") {
 			return checkFailure(frame)
 		}
 
@@ -186,7 +215,7 @@ func TestI1KeystrokeDropReproduction(t *testing.T) {
 		}
 		settle()
 		frame = client.Frame(false)
-		if !strings.Contains(frame, "bk-one running [marked]") || !strings.Contains(frame, "bk-two running [marked]") {
+		if !sidebarRowMarked(frame, "bk-one") || !sidebarRowMarked(frame, "bk-two") {
 			return checkFailure(frame)
 		}
 		return nil, nil

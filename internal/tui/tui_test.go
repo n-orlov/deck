@@ -164,7 +164,7 @@ func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 	model := New(nil, config.Settings{ASCII: true, Clock: clock}, "")
 	model.sessions = []store.Session{{Name: "shell", Agent: "shell", Status: "running", CreatedAt: clock.Now().UnixMilli()}}
 	view := model.View()
-	for _, want := range []string{"deck - sessions", "created just now", "up/down", "Enter interactive"} {
+	for _, want := range []string{"deck - sessions", "just now", "up/down", "Enter interactive"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("ASCII/frozen view missing %q:\n%s", want, view)
 		}
@@ -193,7 +193,7 @@ func TestASCIIColorAndFrozenRelativeTimeRendering(t *testing.T) {
 	}
 	// A real delay must not make the frozen relative value advance.
 	time.Sleep(10 * time.Millisecond)
-	if !strings.Contains(model.View(), "created just now") {
+	if !strings.Contains(model.View(), "just now") {
 		t.Error("frozen clock did not stabilize rendered relative time")
 	}
 }

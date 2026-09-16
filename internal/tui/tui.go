@@ -4829,8 +4829,11 @@ func (m Model) sidebarGutterBar(selected, marked bool) (string, string) {
 
 // sidebarRowLines is one session's two-line row: glyph/marker, name, its
 // unseen glyph and status/quality badges on the first line (SPEC §11.3,
-// task 012 — no reason text), and its permission-profile badge plus
-// creation time on the second. It intentionally omits the row's cwd and
+// task 012 — no reason text), and its bare creation age plus its
+// permission-profile badge, in that order, on the second (R120: the age
+// carries no `created ` label and the profile badge trails it as the
+// line's last segment, with env↻/launch↻ still ahead of the age). It
+// intentionally omits the row's cwd and
 // agent kind that the pre-chrome list used to print: at the sidebar's
 // default 35-column width (33 content columns) there is no room for both a
 // name and a full path on one line, and a wrapped second cwd line would
@@ -4947,15 +4950,13 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// nameTok above, where Title vs. Dimmed still differ.
 	line2Tok := theme.Dimmed
 	var line2Segs []settingsRowSegment
-	if text, tok, ok := m.profileBadgeSegment(session); ok {
-		line2Segs = append(line2Segs, settingsRowSegment{Text: text, Tok: tok}, settingsRowSegment{Text: " ", Tok: theme.Text})
-	}
 	// SPEC §6.1/§6.3, task 021: env_dirty means a session-env edit has been
 	// persisted and mirrored into tmux's own environment table for future
 	// panes, but has NOT yet reached the pane's already-running process --
 	// only an explicit restart (task 022's `R`) applies it and clears the
-	// badge. Shown next to the profile badge (no room on line1, same
-	// reasoning sidebarRowLines' own doc already states for that badge).
+	// badge. Kept ahead of the age (R120: the age itself is now bare, no
+	// `created ` label, and the permission badge moves past it to the
+	// line's very end instead).
 	if session.EnvDirty {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("env\u21bb", "env*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
@@ -4967,7 +4968,13 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	if session.LaunchDirty {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: m.glyph("launch\u21bb", "launch*"), Tok: theme.BadgeWarn}, settingsRowSegment{Text: " ", Tok: theme.Text})
 	}
-	line2Segs = append(line2Segs, settingsRowSegment{Text: "created " + m.relativeTime(session.CreatedAt), Tok: line2Tok})
+	// R120 (PRD GH #26): the age renders bare -- no `created ` label -- and
+	// the permission-profile badge moves here, to the line's LAST segment,
+	// after the age, instead of leading the line the way it used to.
+	line2Segs = append(line2Segs, settingsRowSegment{Text: m.relativeTime(session.CreatedAt), Tok: line2Tok})
+	if text, tok, ok := m.profileBadgeSegment(session); ok {
+		line2Segs = append(line2Segs, settingsRowSegment{Text: " ", Tok: theme.Text}, settingsRowSegment{Text: text, Tok: tok})
+	}
 	line2 := m.settingsRenderRowOpen(line2Segs)
 	return []string{line1, line2}, []string{gutter1, gutter2}, bg
 }
