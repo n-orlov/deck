@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -179,5 +180,59 @@ func TestSessionsBulkResumedLeavesTheLatchWhenItNamesNoneOfIts(t *testing.T) {
 	m = updated.(Model)
 	if got := previewTickCmds(t, cmd); len(got) != 1 {
 		t.Fatalf("previewTick after a batch resume that never named s1 returned %d commands, want 1 (the reschedule alone, no fit)", len(got))
+	}
+}
+
+// TestSessionsBulkResumedClearsTheLatchDespiteAnotherEntrysError is the
+// mixed batch: `u` restored s1 (a pane was created) and failed on s2. The
+// failure is reported, but it must not cost s1 its latch clear -- s1's pane
+// is new either way, so the next preview tick still owes it a fit.
+func TestSessionsBulkResumedClearsTheLatchDespiteAnotherEntrysError(t *testing.T) {
+	m := resumeLatchModel(t)
+
+	updated, _ := m.Update(sessionsBulkResumed{
+		sessionIDs: []string{"s1", "s2"},
+		outcomes:   []service.ResumeOutcome{service.ResumeStarted, service.ResumeStartingElsewhere},
+		errs:       []error{nil, errors.New("boom")},
+	})
+	m = updated.(Model)
+	if m.previewFitSessionID != "" {
+		t.Fatalf("previewFitSessionID = %q after a batch resume that restored s1 and failed on s2, want cleared", m.previewFitSessionID)
+	}
+	if m.previewFitInFlight != "" {
+		t.Fatalf("previewFitInFlight = %q after a mixed batch resume, want untouched (empty)", m.previewFitInFlight)
+	}
+	if m.attachError == "" {
+		t.Fatal("attachError is empty after a batch resume with a failing entry, want the failure reported")
+	}
+
+	updated, cmd := m.Update(previewTick(time.Now()))
+	m = updated.(Model)
+	if got := previewTickCmds(t, cmd); len(got) != 2 {
+		t.Fatalf("previewTick after the mixed batch resume returned %d commands, want 2 (the reschedule plus a fit) with no selection change", len(got))
+	}
+}
+
+// TestSessionsBulkResumedLeavesTheLatchWhenTheLatchedEntryFailed is the
+// converse: the batch's entry FOR the latched session errored, so no pane
+// was created for it and the latch must survive even though a sibling
+// entry started fine.
+func TestSessionsBulkResumedLeavesTheLatchWhenTheLatchedEntryFailed(t *testing.T) {
+	m := resumeLatchModel(t)
+
+	updated, _ := m.Update(sessionsBulkResumed{
+		sessionIDs: []string{"s2", "s1"},
+		outcomes:   []service.ResumeOutcome{service.ResumeStarted, service.ResumeStarted},
+		errs:       []error{nil, errors.New("boom")},
+	})
+	m = updated.(Model)
+	if m.previewFitSessionID != "s1" {
+		t.Fatalf("previewFitSessionID = %q after a batch resume whose s1 entry failed, want left set at %q", m.previewFitSessionID, "s1")
+	}
+
+	updated, cmd := m.Update(previewTick(time.Now()))
+	m = updated.(Model)
+	if got := previewTickCmds(t, cmd); len(got) != 1 {
+		t.Fatalf("previewTick after a batch resume whose s1 entry failed returned %d commands, want 1 (the reschedule alone, no fit)", len(got))
 	}
 }

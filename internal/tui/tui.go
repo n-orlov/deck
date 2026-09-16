@@ -2342,20 +2342,26 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case sessionsBulkResumed:
-		for _, err := range msg.errs {
-			if err != nil {
-				m.attachError = "Cannot resume: " + err.Error()
-				return m, m.loadSessions
+		// R117: mirrors the single-session sessionResumed clear -- only the
+		// sessions this batch actually launched a pane for (ResumeStarted,
+		// no error) are eligible to invalidate the latch, and only when the
+		// latch currently names one of them. This runs BEFORE the error
+		// report and independently of it: a batch `u` can restore some
+		// sessions and fail on others, and the restored ones still created
+		// panes whose geometry the latch would otherwise keep stale.
+		for i, id := range msg.sessionIDs {
+			if i < len(msg.errs) && msg.errs[i] != nil {
+				continue
+			}
+			if i < len(msg.outcomes) && msg.outcomes[i] == service.ResumeStarted && id == m.previewFitSessionID {
+				m.previewFitSessionID = ""
+				break
 			}
 		}
 		m.attachError = ""
-		// R117: mirrors the single-session sessionResumed clear -- only the
-		// sessions this batch actually launched a pane for (ResumeStarted)
-		// are eligible to invalidate the latch, and only when the latch
-		// currently names one of them.
-		for i, id := range msg.sessionIDs {
-			if i < len(msg.outcomes) && msg.outcomes[i] == service.ResumeStarted && id == m.previewFitSessionID {
-				m.previewFitSessionID = ""
+		for _, err := range msg.errs {
+			if err != nil {
+				m.attachError = "Cannot resume: " + err.Error()
 				break
 			}
 		}
