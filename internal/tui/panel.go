@@ -453,7 +453,8 @@ func (m Model) sidebarTopLine(width int, title string) string {
 	inner := width - 1
 	label, remain := m.borderLabel(title, inner)
 	tok := m.sidebarBorderToken()
-	return m.borderColor(tok, bc.topLeft) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain))
+	return m.canvasBackground(theme.Background,
+		m.borderColor(tok, bc.topLeft), label, m.borderColor(tok, strings.Repeat(bc.horizontal, remain)))
 }
 
 // sidebarBottomLine draws the sidebar's bottom border (left corner + bottom
@@ -461,7 +462,111 @@ func (m Model) sidebarTopLine(width int, title string) string {
 func (m Model) sidebarBottomLine(width int) string {
 	bc := m.box()
 	tok := m.sidebarBorderToken()
-	return m.borderColor(tok, bc.bottomLeft) + m.borderColor(tok, strings.Repeat(bc.horizontal, width-1))
+	return m.canvasBackground(theme.Background,
+		m.borderColor(tok, bc.bottomLeft), m.borderColor(tok, strings.Repeat(bc.horizontal, width-1)))
+}
+
+// canvasBackground composes zero or more chrome fragments onto ONE
+// continuous background span, painted in tok's colour (SPEC requirement
+// R118: "deck paints its own canvas, not the terminal's") -- the single
+// place every chrome builder in this file (and the row/group-header/
+// banner/footer builders in tui.go and group.go that call it) opens a
+// background, instead of each hand-rolling its own
+// "seq + text + \x1b[0m" the way sidebarContentLine/fullBoxContentLine
+// used to before this task.
+//
+// THE RESET-CLEARS-BACKGROUND TRAP this closes (internal/theme's
+// foregroundSGR/backgroundSGR doc comments, theme_color.go, already name
+// it): an SGR "\x1b[0m" reset clears EVERY attribute the terminal is
+// holding -- background included, not just the one attribute whatever
+// emitted it opened. Every self-resetting span this package already has
+// (colorToken, bgColorToken, borderColor, settingsRenderRowOpen's own
+// foreground segments do NOT self-reset, but colorToken-based labels like
+// borderLabel do) ends in exactly that reset -- so a naive "open tok's
+// background, embed a coloured border glyph or label, close with one
+// final reset" composition has its OWN background cancelled the instant
+// that embedded glyph's own trailing reset fires, long before the rest of
+// the line is emitted: a single background prefix per line stops working
+// at the first coloured glyph. canvasBackground instead re-opens tok's
+// background sequence immediately after EVERY "\x1b[0m" it finds anywhere
+// in parts, so the span survives being interrupted by any number of
+// embedded self-resetting runs, and closes the whole thing with exactly
+// one trailing reset of its own.
+//
+// tok == "" (or a colour-disabled/lookup-failed backgroundSGR, e.g.
+// NO_COLOR) leaves parts untouched and appends no reset at all -- the
+// "paint nothing" case every call site already relied on before this
+// helper existed.
+//
+// Callers that embed FOREIGN content that must never be repainted (a
+// captured tmux pane's own SGR bytes -- previewContentLine's captured
+// text, task 006/R118) must NEVER pass that text through this function:
+// composing it here would re-open deck's own background the instant the
+// pane's own content happened to reset, repainting the pane's colours
+// with deck's. Those callers instead wrap only the frame/padding pieces
+// that surround the foreign text in separate canvasBackground calls, and
+// insert a fresh, explicit "\x1b[0m" of their own right after the foreign
+// text -- never inside a canvasBackground call (see previewContentLine
+// and fullBoxPreviewContentLine below).
+func (m Model) canvasBackground(tok theme.Token, parts ...string) string {
+	joined := strings.Join(parts, "")
+	seq, ok := m.backgroundSGR(tok)
+	if !ok {
+		return joined
+	}
+	reopened := strings.ReplaceAll(joined, "\x1b[0m", "\x1b[0m"+seq)
+	return seq + reopened + "\x1b[0m"
+}
+
+// canvasWrapText mirrors wrapText's own word-wrapping, additionally
+// composing each returned line through canvasBackground above (task 004,
+// R118) so a banner/note/toast line -- mainView's startupBanner,
+// themeBanner, sortOrderBanner, themePickerLines, attachErrorLines,
+// resumeNoteLines, selectionCopyNoteLines, undoNoteLines,
+// deleteUndoNoteLines, archiveUndoNoteLines, archiveUndoneRebuildNoteLines,
+// teardownHookNoteLines, pendingDeleteLines and filterStatusLine, all
+// rendered OUTSIDE the bordered sidebar/preview panels -- carries deck's
+// own `background` token too, rather than being left entirely to the
+// terminal's own background the way it was before this task (SPEC.md:1576:
+// "deck paints its own canvas... across every cell deck draws").
+//
+// Unlike sidebarContentLine/fullBoxContentLine, this does NOT pad lines
+// out to width: a banner line has no fixed-width frame column budget to
+// fill the way a bordered panel's row does (mainView treats it as
+// free-form wrapped prose, and several existing tests assert its content
+// byte-for-byte against the plain, unpadded join -- padding it would cost
+// real coverage for no SPEC-mandated gain, since nothing borders it for a
+// short line to look ragged against). So this only ever paints the cells
+// the line's own text actually occupies, same as wrapText's caller got
+// before, plus the background span.
+func (m Model) canvasWrapText(s string, width int) []string {
+	lines := wrapText(s, width)
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = m.canvasBackground(theme.Background, line)
+	}
+	return out
+}
+
+// canvasResetIfPainting returns "\x1b[0m" when canvasBackground(tok, ...)
+// would actually open a background (i.e. colour is enabled and tok
+// resolves), or "" otherwise. previewContentLine and
+// fullBoxPreviewContentLine (below) need exactly this conditional reset:
+// unlike every OTHER call site in this file, they cannot route captured
+// pane content through canvasBackground itself (task 006/R118 -- that
+// would scan the pane's own bytes for "\x1b[0m" and repaint the pane with
+// deck's colour), so they emit their own explicit reset right after the
+// pane text by hand. Emitting it UNCONDITIONALLY -- the way an earlier
+// version of this task's own work did -- injects a bare "\x1b[0m" even
+// with colour disabled (NO_COLOR, or a colorless Settings{} test build),
+// where nothing was ever opened to close: a stray reset byte with no
+// matching open, breaking every plain-text assertion that (rightly)
+// expects a colour-disabled render to carry no escape bytes at all.
+func (m Model) canvasResetIfPainting(tok theme.Token) string {
+	if _, ok := m.backgroundSGR(tok); ok {
+		return "\x1b[0m"
+	}
+	return ""
 }
 
 // sidebarContentLine draws one content row inside the sidebar: left border,
@@ -475,25 +580,28 @@ func (m Model) sidebarBottomLine(width int) string {
 //
 // bg (task 321, R58b) is the row's selection/selection_idle/surface-stripe
 // background token, or "" for lines that carry none (headers, the empty-
-// state message, the socket line). When non-empty it is opened ONCE right
-// after the border and closed ONCE at the very end, so it spans every
-// column from the first after the left border to the last before the seam
+// state message, the socket line) -- "" resolves to theme.Background
+// (task 004, R118: "deck paints its own canvas") rather than to no
+// background at all, so a header/empty-state/socket line, and every
+// short row's pad-fill past its own text, still carries the theme's own
+// background instead of falling through to the terminal's. Whichever
+// token applies is opened ONCE right after the border and closed ONCE at
+// the very end (via canvasBackground, which also re-opens it after any
+// inner reset a coloured segment of text embeds -- the reset-clears-
+// background trap canvasBackground's own doc comment names), so it spans
+// every column from the border to the trailing pad column before the seam
 // — the leading pad column, the text itself (or its pad-fill when the name
 // is short), AND the trailing pad column — rather than stopping the moment
-// sidebarRowLines' own text ends the way a per-segment reset used to. text
-// itself must therefore carry no background of its own and must not close
-// with a reset before this function's own closing one (sidebarRowLines
-// composes it via settingsRenderRowOpen for exactly this reason).
+// sidebarRowLines' own text ends the way a per-segment reset used to.
 func (m Model) sidebarContentLine(width int, text string, bg theme.Token) string {
 	bc := m.box()
 	border := m.borderColor(m.sidebarBorderToken(), bc.vertical)
 	padded := m.padTrunc(text, width-3)
-	if bg != "" {
-		if seq, ok := m.backgroundSGR(bg); ok {
-			return border + seq + " " + padded + " " + "\x1b[0m"
-		}
+	base := bg
+	if base == "" {
+		base = theme.Background
 	}
-	return border + " " + padded + " "
+	return m.canvasBackground(base, border, " ", padded, " ")
 }
 
 // collapsedStripContentLine draws one content row of the 3-column
@@ -502,9 +610,14 @@ func (m Model) sidebarContentLine(width int, text string, bg theme.Token) string
 // requirement-17 trailing pad in sidebarContentLine does not apply here
 // because the strip's whole width is already spent on the marker; giving
 // up a column would leave no room for the » glyph or the attention digits.
+// Carries theme.Background across border+pad+content like every other
+// line in this file (task 004, R118) -- the strip has no per-row override
+// token (it never renders a session row), so it always paints the plain
+// canvas.
 func (m Model) collapsedStripContentLine(width int, text string) string {
 	bc := m.box()
-	return m.borderColor(m.sidebarBorderToken(), bc.vertical) + " " + m.padTrunc(text, width-2)
+	border := m.borderColor(m.sidebarBorderToken(), bc.vertical)
+	return m.canvasBackground(theme.Background, border, " ", m.padTrunc(text, width-2))
 }
 
 // previewTopLine draws the preview's top border on all sides. When seam is
@@ -522,7 +635,8 @@ func (m Model) previewTopLine(width int, title string, seam bool) string {
 	inner := width - 2
 	label, remain := m.borderLabel(title, inner)
 	tok := m.previewBorderToken()
-	return m.borderColor(leftTok, left) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain)) + m.borderColor(tok, bc.topRight)
+	return m.canvasBackground(theme.Background,
+		m.borderColor(leftTok, left), label, m.borderColor(tok, strings.Repeat(bc.horizontal, remain)), m.borderColor(tok, bc.topRight))
 }
 
 // previewBottomLine mirrors previewTopLine for the bottom edge.
@@ -536,7 +650,8 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 	}
 	inner := width - 2
 	tok := m.previewBorderToken()
-	return m.borderColor(leftTok, left) + m.borderColor(tok, strings.Repeat(bc.horizontal, inner)) + m.borderColor(tok, bc.bottomRight)
+	return m.canvasBackground(theme.Background,
+		m.borderColor(leftTok, left), m.borderColor(tok, strings.Repeat(bc.horizontal, inner)), m.borderColor(tok, bc.bottomRight))
 }
 
 // previewContentLine draws one content row inside the preview: left border
@@ -544,10 +659,27 @@ func (m Model) previewBottomLine(width int, seam bool) string {
 // shared either-panel-focused rule, not previewBorderToken), one column of
 // padding, text, one column of padding, right border coloured by
 // previewBorderToken as always (SPEC requirement 17).
+//
+// text is a captured tmux pane's own screen content (cropPreviewBottomLeft)
+// carrying the PANE's own SGR bytes, not deck's -- task 006/R118's "captured
+// pane content is never repainted" means this is deliberately NOT one
+// canvasBackground call spanning border+pad+text the way every other
+// content-line builder in this file now is: doing that would scan text
+// itself for "\x1b[0m" and re-open deck's background right after any reset
+// the PANE emitted, repainting the pane's own colours with deck's. Instead
+// the left border+pad and right pad+border are each their own, separate
+// canvasBackground span (so they still carry theme.Background, and still
+// survive borderColor's own embedded reset correctly), and an explicit
+// "\x1b[0m" is emitted right after text -- before the right span's own
+// background-open -- so nothing text leaves attribute-wise (bold,
+// underline, a foreground it never reset) can bleed into deck's own
+// padding/border past it either.
 func (m Model) previewContentLine(width int, text string) string {
 	bc := m.box()
 	inner := width - 4
-	return m.borderColor(m.seamBorderToken(), bc.vertical) + " " + m.padTrunc(text, inner) + " " + m.borderColor(m.previewBorderToken(), bc.vertical)
+	left := m.canvasBackground(theme.Background, m.borderColor(m.seamBorderToken(), bc.vertical), " ")
+	right := m.canvasBackground(theme.Background, " ", m.borderColor(m.previewBorderToken(), bc.vertical))
+	return left + m.padTrunc(text, inner) + m.canvasResetIfPainting(theme.Background) + right
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
@@ -696,7 +828,8 @@ func (m Model) fullBoxTop(width int, title string, focused bool) string {
 	if focused {
 		tok = theme.BorderFocus
 	}
-	return m.borderColor(tok, bc.topLeft) + label + m.borderColor(tok, strings.Repeat(bc.horizontal, remain)) + m.borderColor(tok, bc.topRight)
+	return m.canvasBackground(theme.Background,
+		m.borderColor(tok, bc.topLeft), label, m.borderColor(tok, strings.Repeat(bc.horizontal, remain)), m.borderColor(tok, bc.topRight))
 }
 
 func (m Model) fullBoxBottom(width int, focused bool) string {
@@ -705,23 +838,35 @@ func (m Model) fullBoxBottom(width int, focused bool) string {
 	if focused {
 		tok = theme.BorderFocus
 	}
-	return m.borderColor(tok, bc.bottomLeft) + m.borderColor(tok, strings.Repeat(bc.horizontal, width-2)) + m.borderColor(tok, bc.bottomRight)
+	return m.canvasBackground(theme.Background,
+		m.borderColor(tok, bc.bottomLeft), m.borderColor(tok, strings.Repeat(bc.horizontal, width-2)), m.borderColor(tok, bc.bottomRight))
 }
 
 // bg (task 322/R58c) is the row's selection/selection_idle/surface-stripe
-// background token, or "" for a line that carries none -- every framedDialog/
-// framedDialogScrollable call passes "" (a dialog box has no per-row
-// highlight); renderStackedFrame's sidebar loop is the one caller that
-// passes a real token, threading through the SAME sidebarEntry.bg task 321
+// background token, or "" for a line that carries none -- "" resolves to
+// theme.Background (task 004, R118), same fallback as sidebarContentLine,
+// so a dialog row (every framedDialog/framedDialogScrollable call passes
+// "") and a plain stacked-sidebar row both still paint the canvas rather
+// than falling through to the terminal's own background.
+// renderStackedFrame's sidebar loop is the one caller that ever passes a
+// REAL override token, threading through the SAME sidebarEntry.bg task 321
 // already computes for the side-by-side layout, so the stacked fallback
 // gets the identical full-width-highlight treatment rather than the
 // text-only span task 321 originally left it with. Geometry/opening
 // discipline mirrors sidebarContentLine exactly: open once right after the
 // left border, span the padding-fill and both flanking padding columns,
-// close once at the very end -- text itself must therefore carry no
-// background of its own (fullBoxContentLine's own two sidebar-loop caller
-// composes it via settingsRenderRowOpen for exactly this reason, same as
-// sidebarRowLines).
+// close once at the very end (via canvasBackground, which re-opens the
+// span after any inner reset a coloured text segment embeds) -- text
+// itself must therefore carry no background of its own (fullBoxContentLine's
+// own sidebar-loop caller composes it via settingsRenderRowOpen for exactly
+// this reason, same as sidebarRowLines).
+//
+// text here is ALWAYS deck's own composed line (a dialog's own wrapped
+// body text, or sidebarRowLines' row text) -- never a captured tmux pane's
+// screen content. The stacked layout's PREVIEW panel, which does render
+// captured pane content, uses fullBoxPreviewContentLine below instead,
+// precisely because this function's scan-and-reopen composition must never
+// run over foreign SGR bytes (task 006/R118).
 func (m Model) fullBoxContentLine(width int, text string, focused bool, bg theme.Token) string {
 	bc := m.box()
 	inner := width - 4
@@ -731,12 +876,36 @@ func (m Model) fullBoxContentLine(width int, text string, focused bool, bg theme
 	}
 	border := m.borderColor(tok, bc.vertical)
 	padded := m.padTrunc(text, inner)
-	if bg != "" {
-		if seq, ok := m.backgroundSGR(bg); ok {
-			return border + seq + " " + padded + " " + "\x1b[0m" + border
-		}
+	base := bg
+	if base == "" {
+		base = theme.Background
 	}
-	return border + " " + padded + " " + border
+	return m.canvasBackground(base, border, " ", padded, " ", border)
+}
+
+// fullBoxPreviewContentLine mirrors fullBoxContentLine's geometry exactly
+// (both borders, one flanking pad column each) for the ONE caller that
+// feeds it a captured tmux pane's own screen content (renderStackedFrame's
+// preview loop) rather than deck's own composed text -- so, like
+// previewContentLine's own doc comment explains, the border+pad pieces on
+// each side are their own separate canvasBackground spans (still painting
+// theme.Background, still surviving borderColor's embedded reset), and an
+// explicit "\x1b[0m" is emitted right after text, before the right span's
+// own background-open, so the pane's own content is never scanned for
+// "\x1b[0m" and never repainted, and nothing it leaves open (colour, bold,
+// underline) bleeds into deck's own trailing padding/border (task 006,
+// R118: "captured pane content is never repainted").
+func (m Model) fullBoxPreviewContentLine(width int, text string, focused bool) string {
+	bc := m.box()
+	inner := width - 4
+	tok := theme.Border
+	if focused {
+		tok = theme.BorderFocus
+	}
+	border := m.borderColor(tok, bc.vertical)
+	left := m.canvasBackground(theme.Background, border, " ")
+	right := m.canvasBackground(theme.Background, " ", border)
+	return left + m.padTrunc(text, inner) + m.canvasResetIfPainting(theme.Background) + right
 }
 
 // dialogWidth is every §11.4 dialog/overlay's box width (SPEC.md:1070,

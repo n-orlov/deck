@@ -164,6 +164,7 @@ func TestProfileSwitchTokensMatchSpec(t *testing.T) {
 	keyHex := tokenHex(t, m, theme.Key)
 	hintHex := tokenHex(t, m, theme.Hint)
 	selectionHex := tokenHex(t, m, theme.Selection)
+	backgroundHex := tokenHex(t, m, theme.Background)
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
@@ -194,8 +195,14 @@ func TestProfileSwitchTokensMatchSpec(t *testing.T) {
 
 	curRow := findRowContaining(t, term, "Current:")
 	curCol := findCol(t, term, curRow, "Current:")
-	if _, ok := cellBgHex(t, term, curCol, curRow); ok {
-		t.Fatal("unfocused Current row carries a background, expected none")
+	// Task 004/R118: an unfocused dialog row carries no per-row token, but
+	// every dialog row still composes through fullBoxContentLine's own
+	// "" -> theme.Background fallback (canvasBackground), so it is never
+	// left to the terminal's own background the way it was before this
+	// task -- it now carries the theme's plain canvas colour instead of
+	// none at all.
+	if bg, ok := cellBgHex(t, term, curCol, curRow); !ok || bg != backgroundHex {
+		t.Fatalf("unfocused Current row background = %q ok=%v, want theme.Background %s", bg, ok, backgroundHex)
 	}
 
 	if keyHex == hintHex {
@@ -232,6 +239,7 @@ func TestPinTokensMatchSpec(t *testing.T) {
 	dimmedHex := tokenHex(t, m, theme.Dimmed)
 	keyHex := tokenHex(t, m, theme.Key)
 	selectionHex := tokenHex(t, m, theme.Selection)
+	backgroundHex := tokenHex(t, m, theme.Background)
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
@@ -262,8 +270,11 @@ func TestPinTokensMatchSpec(t *testing.T) {
 
 	curRow := findRowContaining(t, term, "Current:")
 	curCol := findCol(t, term, curRow, "Current:")
-	if _, ok := cellBgHex(t, term, curCol, curRow); ok {
-		t.Fatal("unfocused Current row carries a background, expected none")
+	// Task 004/R118: see TestProfileSwitchTokensMatchSpec's own comment --
+	// an unfocused dialog row now carries theme.Background rather than no
+	// background at all.
+	if bg, ok := cellBgHex(t, term, curCol, curRow); !ok || bg != backgroundHex {
+		t.Fatalf("unfocused Current row background = %q ok=%v, want theme.Background %s", bg, ok, backgroundHex)
 	}
 }
 

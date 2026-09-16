@@ -3763,8 +3763,8 @@ func (m Model) startupBanner(width int) []string {
 		return nil
 	}
 	var lines []string
-	lines = append(lines, wrapText("tmux unavailable: "+m.startupNote, width)...)
-	lines = append(lines, wrapText("Install tmux 3.2 or newer, then restart deck.", width)...)
+	lines = append(lines, m.canvasWrapText("tmux unavailable: "+m.startupNote, width)...)
+	lines = append(lines, m.canvasWrapText("Install tmux 3.2 or newer, then restart deck.", width)...)
 	lines = append(lines, "")
 	return lines
 }
@@ -3788,7 +3788,7 @@ func (m Model) themeBanner(width int) []string {
 		return nil
 	}
 	var lines []string
-	lines = append(lines, wrapText(m.settings.ThemeReason, width)...)
+	lines = append(lines, m.canvasWrapText(m.settings.ThemeReason, width)...)
 	lines = append(lines, "")
 	return lines
 }
@@ -3832,7 +3832,7 @@ func (m Model) sortOrderBanner(width int) []string {
 		return nil
 	}
 	var lines []string
-	lines = append(lines, wrapText(reason, width)...)
+	lines = append(lines, m.canvasWrapText(reason, width)...)
 	lines = append(lines, "")
 	return lines
 }
@@ -3847,7 +3847,7 @@ func (m Model) attachErrorLines(width int) []string {
 	if m.attachError == "" {
 		return nil
 	}
-	return wrapText(m.attachError, width)
+	return m.canvasWrapText(m.attachError, width)
 }
 
 // resumeNoteLines is requirement 37's wrapped resumeNote line set, the
@@ -3856,7 +3856,7 @@ func (m Model) resumeNoteLines(width int) []string {
 	if m.resumeNote == "" {
 		return nil
 	}
-	return wrapText(m.resumeNote, width)
+	return m.canvasWrapText(m.resumeNote, width)
 }
 
 // selectionCopyNoteLines is task 207's wrapped selectionCopyNote line set,
@@ -3868,7 +3868,7 @@ func (m Model) selectionCopyNoteLines(width int) []string {
 	if m.selectionCopyNote == "" {
 		return nil
 	}
-	return wrapText(m.selectionCopyNote, width)
+	return m.canvasWrapText(m.selectionCopyNote, width)
 }
 
 // undoNoteLines is requirement 22's transient toast: visible for exactly
@@ -3883,12 +3883,12 @@ func (m Model) selectionCopyNoteLines(width int) []string {
 // `u` key itself uses.
 func (m Model) undoNoteLines(width int) []string {
 	if len(m.batchUndoSessionIDs) > 0 {
-		return wrapText(fmt.Sprintf("Killed %d sessions \u2014 press u to undo", len(m.batchUndoSessionIDs)), width)
+		return m.canvasWrapText(fmt.Sprintf("Killed %d sessions \u2014 press u to undo", len(m.batchUndoSessionIDs)), width)
 	}
 	if m.undoSessionID == "" {
 		return nil
 	}
-	return wrapText(fmt.Sprintf("Killed %q \u2014 press u to undo", m.undoSessionName), width)
+	return m.canvasWrapText(fmt.Sprintf("Killed %q \u2014 press u to undo", m.undoSessionName), width)
 }
 
 // deleteUndoNoteLines mirrors undoNoteLines's SHAPE (task 106, requirement
@@ -3905,12 +3905,12 @@ func (m Model) undoNoteLines(width int) []string {
 // either, for the same reason plus its own: it would have to name N.
 func (m Model) deleteUndoNoteLines(width int) []string {
 	if len(m.batchDeleteUndoSessionIDs) > 0 {
-		return wrapText(fmt.Sprintf("Deleted %d sessions \u2014 press u to undo", len(m.batchDeleteUndoSessionIDs)), width)
+		return m.canvasWrapText(fmt.Sprintf("Deleted %d sessions \u2014 press u to undo", len(m.batchDeleteUndoSessionIDs)), width)
 	}
 	if m.deleteUndoSessionID == "" {
 		return nil
 	}
-	return wrapText("Deleted \u2014 press u to undo", width)
+	return m.canvasWrapText("Deleted \u2014 press u to undo", width)
 }
 
 // archiveUndoNoteLines is R72's success toast (issue #10, SPEC.md:752 "On
@@ -3936,9 +3936,9 @@ func (m Model) archiveUndoNoteLines(width int) []string {
 		return nil
 	}
 	if m.archiveUndoKilled {
-		return wrapText("Killed and archived \u2014 press u to unarchive (agent stays stopped)", width)
+		return m.canvasWrapText("Killed and archived \u2014 press u to unarchive (agent stays stopped)", width)
 	}
-	return wrapText("Archived \u2014 press u to unarchive", width)
+	return m.canvasWrapText("Archived \u2014 press u to unarchive", width)
 }
 
 // archiveUndoneRebuildNoteLines is the teardown half of that undo (SPEC
@@ -3953,7 +3953,7 @@ func (m Model) archiveUndoneRebuildNoteLines(width int) []string {
 	if !m.archiveUndoneRebuildNote {
 		return nil
 	}
-	return wrapText("Back stopped \u2014 post_destroy already ran; the next r rebuilds what it released", width)
+	return m.canvasWrapText("Back stopped \u2014 post_destroy already ran; the next r rebuilds what it released", width)
 }
 
 // teardownHookNoteLines is task 042's visible half of a teardown hook
@@ -3968,7 +3968,7 @@ func (m Model) teardownHookNoteLines(width int) []string {
 	if m.teardownHookNote == "" {
 		return nil
 	}
-	return wrapText(m.teardownHookNote, width)
+	return m.canvasWrapText(m.teardownHookNote, width)
 }
 
 // pendingDeleteLines is task 105's first-`d` visible indicator: gone the
@@ -3985,9 +3985,9 @@ func (m Model) pendingDeleteLines(width int) []string {
 		return nil
 	}
 	if len(m.marked) > 0 {
-		return wrapText(fmt.Sprintf("Delete %d marked sessions? press d again to confirm, any other key cancels", len(m.marked)), width)
+		return m.canvasWrapText(fmt.Sprintf("Delete %d marked sessions? press d again to confirm, any other key cancels", len(m.marked)), width)
 	}
-	return wrapText(fmt.Sprintf("Delete %q? press d again to confirm, any other key cancels", m.sessions[m.selected].Name), width)
+	return m.canvasWrapText(fmt.Sprintf("Delete %q? press d again to confirm, any other key cancels", m.sessions[m.selected].Name), width)
 }
 
 // computeLayout is the one place mainView and the page-size math below call
@@ -4105,7 +4105,25 @@ func (m Model) mainView() string {
 // whole trailing entries. Neither half can squeeze the other out
 // entirely, which is what "shares the line" has to mean to be worth
 // anything.
+//
+// The whole composed line is painted through canvasBackground (task 004,
+// R118) so the footer -- SPEC.md:1576's own named example of a line
+// "deck paints its own canvas" must cover -- carries the theme's
+// `background` token across whatever text it holds, the same as every
+// bordered panel line already does, rather than being left to the
+// terminal's own background the way it was before this task. Like
+// canvasWrapText, this does not pad the line out to the terminal's full
+// width first: footerLegendWithin/elideToWidth already size the content
+// to fit the budget without ever padding it, and several existing tests
+// (footer_legend_test.go) assert this line's content byte-for-byte, so
+// this only ever paints the cells the line's own text occupies.
 func (m Model) footerLine() string {
+	return m.canvasBackground(theme.Background, m.footerLineContent())
+}
+
+// footerLineContent is footerLine's own composition, before the canvas
+// paint wrapping above.
+func (m Model) footerLineContent() string {
 	if m.computeLayout().BelowMinimum {
 		width, _ := m.frameSize()
 		return truncateToWidth(belowMinimumNotice, width)
@@ -4499,7 +4517,10 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		previewFocused := m.previewFocused()
 		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), previewFocused))
 		for i := 0; i < previewRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(pw, body[i], previewFocused, ""))
+			// fullBoxPreviewContentLine, not fullBoxContentLine: body[i] is a
+			// captured tmux pane's own screen content, which must never be
+			// repainted (task 006/R118) -- see that function's own doc comment.
+			lines = append(lines, m.fullBoxPreviewContentLine(pw, body[i], previewFocused))
 		}
 		lines = append(lines, m.fullBoxBottom(pw, previewFocused))
 	}

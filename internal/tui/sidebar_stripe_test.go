@@ -35,6 +35,7 @@ func sidebarStripeTestModel(t *testing.T) Model {
 func TestSidebarStripeAlternatesPerSessionBlockNotPerLine(t *testing.T) {
 	m := sidebarStripeTestModel(t)
 	surfaceHex := tokenHex(t, m, theme.Surface)
+	backgroundHex := tokenHex(t, m, theme.Background)
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
@@ -47,27 +48,33 @@ func TestSidebarStripeAlternatesPerSessionBlockNotPerLine(t *testing.T) {
 	bg2, ok2 := cellBgHex(t, term, findCol(t, term, rowTwo, "two"), rowTwo)
 	bg3, ok3 := cellBgHex(t, term, findCol(t, term, rowThree, "three"), rowThree)
 
+	// Task 004/R118: every row now carries SOME background (its stripe
+	// phase, theme.Surface, when the row's bg override is empty resolves
+	// through theme.Background instead of falling through to the
+	// terminal's own) -- ok is expected true unconditionally now, unlike
+	// before this task.
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("every sidebar row must carry a background now that deck paints its own canvas (task 004/R118): ok1=%v ok2=%v ok3=%v", ok1, ok2, ok3)
+	}
+
 	// Sessions 1 and 3 must agree with each other and disagree with
 	// session 2 -- exactly the pattern a period-2 alternation produces
 	// and an off-by-one (e.g. every row alternating instead of every
 	// session block) would not.
-	if ok1 != ok3 || bg1 != bg3 {
-		t.Fatalf("sessions 1 and 3 should share a stripe phase: session1 bg=(%q,%v) session3 bg=(%q,%v)", bg1, ok1, bg3, ok3)
+	if bg1 != bg3 {
+		t.Fatalf("sessions 1 and 3 should share a stripe phase: session1 bg=%q session3 bg=%q", bg1, bg3)
 	}
-	if ok1 == ok2 && bg1 == bg2 {
-		t.Fatalf("session 2 should be on the OPPOSITE stripe phase from sessions 1/3, but all three matched: bg=(%q,%v)", bg1, ok1)
+	if bg1 == bg2 {
+		t.Fatalf("session 2 should be on the OPPOSITE stripe phase from sessions 1/3, but all three matched: bg=%q", bg1)
 	}
-	// Exactly one of the two phases actually paints theme.Surface; the
-	// other paints nothing (falls through to the panel's own background).
-	surfacePhaseOK := ok1 || ok2
-	if !surfacePhaseOK {
-		t.Fatalf("neither phase opened any background at all -- the stripe never rendered")
-	}
-	if ok1 && bg1 != surfaceHex {
-		t.Fatalf("session 1's background = %s, want theme.Surface %s", bg1, surfaceHex)
-	}
-	if ok2 && bg2 != surfaceHex {
-		t.Fatalf("session 2's background = %s, want theme.Surface %s", bg2, surfaceHex)
+	// Exactly one phase paints theme.Surface; the other paints the plain
+	// theme.Background (task 004/R118 -- previously "nothing", falling
+	// through to the panel's own background).
+	switch {
+	case bg1 == surfaceHex && bg2 == backgroundHex:
+	case bg1 == backgroundHex && bg2 == surfaceHex:
+	default:
+		t.Fatalf("stripe phases must be exactly {theme.Surface, theme.Background}, got session1=%q session2=%q (surface=%s background=%s)", bg1, bg2, surfaceHex, backgroundHex)
 	}
 
 	// Line 2 ("created ...") of the SAME session must match line 1's own
@@ -77,10 +84,10 @@ func TestSidebarStripeAlternatesPerSessionBlockNotPerLine(t *testing.T) {
 	rowTwoLine2 := rowTwo + 1
 	bg1line2, ok1line2 := cellBgHex(t, term, findCol(t, term, rowOneLine2, "created"), rowOneLine2)
 	bg2line2, ok2line2 := cellBgHex(t, term, findCol(t, term, rowTwoLine2, "created"), rowTwoLine2)
-	if ok1line2 != ok1 || bg1line2 != bg1 {
+	if !ok1line2 || bg1line2 != bg1 {
 		t.Fatalf("session 1's line 2 background = (%q,%v), want it to match line 1's (%q,%v)", bg1line2, ok1line2, bg1, ok1)
 	}
-	if ok2line2 != ok2 || bg2line2 != bg2 {
+	if !ok2line2 || bg2line2 != bg2 {
 		t.Fatalf("session 2's line 2 background = (%q,%v), want it to match line 1's (%q,%v)", bg2line2, ok2line2, bg2, ok2)
 	}
 }
@@ -152,13 +159,18 @@ func TestSidebarStripeHeaderNeverParticipates(t *testing.T) {
 	}
 	m.selected = -1
 	surfaceHex := tokenHex(t, m, theme.Surface)
+	backgroundHex := tokenHex(t, m, theme.Background)
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 
 	headerRow := findRowContaining(t, term, "wsA")
-	if _, ok := cellBgHex(t, term, findCol(t, term, headerRow, "wsA"), headerRow); ok {
-		t.Fatalf("workspace header row has a background, want none (headers never take the stripe)")
+	// Task 004/R118: a header row never takes the stripe's theme.Surface,
+	// but it is no longer left with no background at all either -- it
+	// resolves through the same "" -> theme.Background fallback every
+	// other non-row sidebar line now does (sidebarContentLine).
+	if bg, ok := cellBgHex(t, term, findCol(t, term, headerRow, "wsA"), headerRow); !ok || bg != backgroundHex {
+		t.Fatalf("workspace header row background = (%q,%v), want theme.Background %s (headers never take the stripe, but still paint the canvas)", bg, ok, backgroundHex)
 	}
 
 	rowOne := findRowContaining(t, term, "one")
@@ -167,19 +179,27 @@ func TestSidebarStripeHeaderNeverParticipates(t *testing.T) {
 	bg1, ok1 := cellBgHex(t, term, findCol(t, term, rowOne, "one"), rowOne)
 	bg2, ok2 := cellBgHex(t, term, findCol(t, term, rowTwo, "two"), rowTwo)
 	bg3, ok3 := cellBgHex(t, term, findCol(t, term, rowThree, "three"), rowThree)
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("every session row must carry a background now that deck paints its own canvas (task 004/R118): ok1=%v ok2=%v ok3=%v", ok1, ok2, ok3)
+	}
 
-	if ok1 == ok2 && bg1 == bg2 {
-		t.Fatalf("session 1 and session 2 (same group, consecutive positions) should be on opposite phases, both got (%q,%v)", bg1, ok1)
+	if bg1 == bg2 {
+		t.Fatalf("session 1 and session 2 (same group, consecutive positions) should be on opposite phases, both got %q", bg1)
 	}
 	// Session 3 is the first session of the SECOND group, in the third
 	// counted session position overall (0-indexed position 2, an odd
 	// index) -- it must match session 1's phase (also an even/odd
 	// counterpart two apart), proving the header between them did not
 	// reset or advance the counter.
-	if ok1 != ok3 || bg1 != bg3 {
-		t.Fatalf("session 3 (first of the second group) should share session 1's phase (counter continues across the header), got session1=(%q,%v) session3=(%q,%v)", bg1, ok1, bg3, ok3)
+	if bg1 != bg3 {
+		t.Fatalf("session 3 (first of the second group) should share session 1's phase (counter continues across the header), got session1=%q session3=%q", bg1, bg3)
 	}
-	if ok2 && bg2 != surfaceHex {
-		t.Fatalf("session 2's background = %s, want theme.Surface %s", bg2, surfaceHex)
+	// Exactly one of session 1/2's phases paints theme.Surface; the other
+	// paints the plain theme.Background (task 004/R118).
+	switch {
+	case bg1 == surfaceHex && bg2 == backgroundHex:
+	case bg1 == backgroundHex && bg2 == surfaceHex:
+	default:
+		t.Fatalf("stripe phases must be exactly {theme.Surface, theme.Background}, got session1=%q session2=%q (surface=%s background=%s)", bg1, bg2, surfaceHex, backgroundHex)
 	}
 }
