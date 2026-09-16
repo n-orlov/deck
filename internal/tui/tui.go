@@ -5013,7 +5013,13 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// the permission-profile badge moves here, to the line's LAST segment,
 	// after the age, instead of leading the line the way it used to.
 	line2Segs = append(line2Segs, settingsRowSegment{Text: m.relativeTime(session.CreatedAt), Tok: line2Tok})
-	if text, tok, ok := m.profileBadgeSegment(session); ok {
+	// SPEC.md:1339: line 2 carries "the permission badge for non-`safe`
+	// last" -- a `safe` profile renders no badge here at all. This is the
+	// sidebar row only; profileBadgeSegment/profileBadge's other callers
+	// (the `i` detail dialog and its kin) keep rendering `safe` as they
+	// always have, so the skip lives here rather than inside
+	// profileBadgeSegment itself.
+	if text, tok, ok := m.profileBadgeSegment(session); ok && session.PermissionProfile != "safe" {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: " ", Tok: theme.Text}, settingsRowSegment{Text: text, Tok: tok})
 	}
 	line2 := m.settingsRenderRowOpen(line2Segs)
@@ -5212,6 +5218,11 @@ func (m Model) selectedRowReason() string {
 // permission profile at all (SPEC §5/§8): agentCapabilities reports
 // them as not applicable, so they render no badge rather than a meaningless
 // cosmetic "safe".
+//
+// This function itself always returns a `safe` segment when applicable --
+// SPEC.md:1339 only withholds the *sidebar row's* badge for `safe`, and
+// that skip lives in the row's own caller (sidebarRowLines) so every other
+// caller (the `i` detail dialog and its kin) is unaffected.
 func (m Model) profileBadgeSegment(session store.Session) (text string, tok theme.Token, ok bool) {
 	if _, applicable := m.agentCapabilities(session.Agent); !applicable {
 		return "", "", false
