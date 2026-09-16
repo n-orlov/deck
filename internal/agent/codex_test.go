@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -149,7 +152,7 @@ func TestCodex_InstrumentEncodesInlineHooksNoIO(t *testing.T) {
 		value := argv[i+1]
 		event := strings.TrimPrefix(strings.SplitN(value, "=", 2)[0], "hooks.")
 		gotEvents = append(gotEvents, event)
-		want := `hooks.` + event + `=[{hooks=[{type="command",command="/opt/deck/bin/deck _hook"}]}]`
+		want := `hooks.` + event + `=[{hooks=[{type="command",command="'/opt/deck/bin/deck' _hook"}]}]`
 		if value != want {
 			t.Fatalf("Instrument -c value for %s = %q, want %q", event, value, want)
 		}
@@ -186,14 +189,29 @@ func TestCodex_InstrumentEmitsGenerationEnvOnlyWhenLeaseHeld(t *testing.T) {
 // -c encoder against exactly the three bytes a real executable path can
 // carry that TOML's basic string syntax treats specially or that a naive
 // encoder might mishandle: a double quote, a backslash and a plain space.
+//
+// Comparing escaped text alone would be a fake green (it can only prove the
+// encoder agrees with itself), so the value is also DECODED back out of the
+// TOML basic string and compared with the shell command line codex is meant
+// to end up running -- the executable single-quoted, then a single ` _hook`
+// argument. TestCodex_InstrumentCommandExecutesFromAHostileExecutablePath
+// then proves that decoded string actually runs.
 func TestCodex_InstrumentEncoderHandlesQuoteBackslashSpace(t *testing.T) {
 	deckExecutable := `/opt/deck's "builds"\deck bin`
 	command := codexHookCommand(deckExecutable)
 	value := codexHookOverride("SessionStart", command)
 
-	want := `hooks.SessionStart=[{hooks=[{type="command",command="/opt/deck's \"builds\"\\deck bin _hook"}]}]`
+	want := `hooks.SessionStart=[{hooks=[{type="command",command="'/opt/deck'\"'\"'s \"builds\"\\deck bin' _hook"}]}]`
 	if value != want {
 		t.Fatalf("codexHookOverride with quote/backslash/space executable = %q, want %q", value, want)
+	}
+
+	decoded, err := decodeCodexHookCommand(value, "SessionStart")
+	if err != nil {
+		t.Fatalf("decode %q: %v", value, err)
+	}
+	if wantCommand := `'/opt/deck'"'"'s "builds"\deck bin' _hook`; decoded != wantCommand {
+		t.Fatalf("TOML-decoded command = %q, want %q", decoded, wantCommand)
 	}
 
 	// Also exercised end to end through Instrument, so a future refactor
@@ -211,6 +229,102 @@ func TestCodex_InstrumentEncoderHandlesQuoteBackslashSpace(t *testing.T) {
 	if !found {
 		t.Fatalf("Instrument argv %v carries no hooks.SessionStart entry", argv)
 	}
+}
+
+// TestCodex_InstrumentCommandExecutesFromAHostileExecutablePath is the
+// adversarial half of the encoder test: it installs a real executable at a
+// path carrying a single quote, a double quote, a backslash and a space,
+// runs Instrument, decodes the `-c` value the way codex's own TOML parser
+// would, and hands the resulting command line to a shell. The stub prints
+// its own $0 and $1, so a green run proves the shell resolved exactly that
+// executable and passed it exactly one argument, `_hook` -- not that two
+// strings match.
+func TestCodex_InstrumentCommandExecutesFromAHostileExecutablePath(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("no sh on PATH: %v", err)
+	}
+
+	dir := filepath.Join(t.TempDir(), `deck's "builds"\bin dir`)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %q: %v", dir, err)
+	}
+	executable := filepath.Join(dir, "deck")
+	stub := "#!/bin/sh\nprintf '%s\\n%s\\n' \"$0\" \"$1\"\n"
+	if err := os.WriteFile(executable, []byte(stub), 0o755); err != nil {
+		t.Fatalf("write stub %q: %v", executable, err)
+	}
+	for _, b := range []string{"'", `"`, `\`, " "} {
+		if !strings.Contains(executable, b) {
+			t.Fatalf("test executable path %q does not contain %q", executable, b)
+		}
+	}
+
+	argv, _ := (Codex{}).Instrument(LaunchInput{Profile: "safe", DeckExecutable: executable})
+	value := ""
+	for _, a := range argv {
+		if strings.HasPrefix(a, "hooks.SessionStart=") {
+			value = a
+		}
+	}
+	if value == "" {
+		t.Fatalf("Instrument argv %v carries no hooks.SessionStart entry", argv)
+	}
+	command, err := decodeCodexHookCommand(value, "SessionStart")
+	if err != nil {
+		t.Fatalf("decode %q: %v", value, err)
+	}
+
+	out, err := exec.Command(sh, "-c", command).CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh -c %q failed: %v (output %q)", command, err, out)
+	}
+	gotLines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	wantLines := []string{executable, "_hook"}
+	if !equalArgv(gotLines, wantLines) {
+		t.Fatalf("sh -c %q printed %q, want %q (argv[0] must be the executable itself and argv[1] exactly _hook)", command, gotLines, wantLines)
+	}
+}
+
+// decodeCodexHookCommand extracts the hook command out of one `-c` override
+// value the way codex's own TOML parser sees it: it peels the fixed
+// `hooks.<Event>=[{hooks=[{type="command",command="..."}]}]` shape and then
+// decodes the basic string inside, honouring only the two escapes deck's
+// encoder is allowed to emit. Any other escape sequence is an error rather
+// than a silent pass-through, so an encoder that started emitting something
+// broader would fail here instead of round-tripping by accident.
+func decodeCodexHookCommand(value, event string) (string, error) {
+	prefix := `hooks.` + event + `=[{hooks=[{type="command",command="`
+	const suffix = `"}]}]`
+	if !strings.HasPrefix(value, prefix) || !strings.HasSuffix(value, suffix) {
+		return "", fmt.Errorf("value %q is not the expected hooks.%s override shape", value, event)
+	}
+	escaped := value[len(prefix) : len(value)-len(suffix)]
+
+	var b strings.Builder
+	for i := 0; i < len(escaped); i++ {
+		c := escaped[i]
+		if c != '\\' {
+			if c == '"' {
+				return "", fmt.Errorf("unescaped double quote at offset %d of %q", i, escaped)
+			}
+			b.WriteByte(c)
+			continue
+		}
+		i++
+		if i >= len(escaped) {
+			return "", fmt.Errorf("trailing backslash in %q", escaped)
+		}
+		switch escaped[i] {
+		case '\\':
+			b.WriteByte('\\')
+		case '"':
+			b.WriteByte('"')
+		default:
+			return "", fmt.Errorf("unsupported escape %q at offset %d of %q", `\`+string(escaped[i]), i-1, escaped)
+		}
+	}
+	return b.String(), nil
 }
 
 // TestCodex_InstrumentWritesNoFilesAnywhereUnderCodexHome guards SPEC

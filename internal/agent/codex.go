@@ -112,8 +112,17 @@ var codexHookEvents = []string{
 // command every launch. Per-session facts arrive at the hook process via
 // its payload and inherited environment instead (deck's own env, verified
 // to reach the hook unchanged).
+//
+// A `type="command"` hook value is a shell COMMAND LINE, not an argv pair
+// (the spike drove one carrying a trailing argument,
+// docs/reports/codex-cli-0.154.0-spike.md Q1), so the executable is
+// shell-quoted exactly the way Claude's own command hook quotes it
+// (shellQuote, claude.go): an install path carrying a space, a single quote
+// or a backslash still executes, and a path beginning with '-' cannot turn
+// into an option. Quoting is a function of the path alone, so the command
+// string stays constant per install — all codex's trust hash needs.
 func codexHookCommand(deckExecutable string) string {
-	return deckExecutable + " _hook"
+	return shellQuote(deckExecutable) + " _hook"
 }
 
 // codexHookOverride encodes the -c override VALUE (never the "-c" flag
