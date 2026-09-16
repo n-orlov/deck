@@ -54,15 +54,23 @@ type Mapping struct {
 	MessageField string
 }
 
-// Mappings is the single hook mapping table. Its keys are Claude's upstream
-// event names, not names invented by deck.
+// Mappings is the single hook mapping table. Its keys are the upstream hook
+// event names deck receives -- most are Claude's, and codex reuses the same
+// names for the four events its own hook table shares with Claude
+// (SessionStart, UserPromptSubmit, Stop, SessionEnd; see internal/agent's
+// codexHookEvents). PermissionRequest is codex's own fifth event -- SPEC
+// §8.2's "deck must branch on tool_name" instruction lives here as this one
+// mapping's ReasonField, not as a second receiver, a per-agent table or a
+// codex-only payload struct: the receiver has no notion of which agent kind
+// sent a hook, only of which event name arrived.
 var Mappings = map[string]Mapping{
-	"SessionStart":     {Status: "running", Kind: "session_start", ReasonField: "source"},
-	"UserPromptSubmit": {Status: "running", Kind: "user_prompt_submitted"},
-	"Notification":     {Status: "waiting", Kind: "notification", ReasonField: "notification_type"},
-	"Stop":             {Status: "idle", Kind: "stop", MessageField: "last_assistant_message"},
-	"StopFailure":      {Status: "error", Kind: "stop_failure", ReasonField: "error_type"},
-	"SessionEnd":       {Status: "stopped", Kind: "session_end", ReasonField: "reason"},
+	"SessionStart":      {Status: "running", Kind: "session_start", ReasonField: "source"},
+	"UserPromptSubmit":  {Status: "running", Kind: "user_prompt_submitted"},
+	"Notification":      {Status: "waiting", Kind: "notification", ReasonField: "notification_type"},
+	"PermissionRequest": {Status: "waiting", Kind: "permission_request", ReasonField: "tool_name"},
+	"Stop":              {Status: "idle", Kind: "stop", MessageField: "last_assistant_message"},
+	"StopFailure":       {Status: "error", Kind: "stop_failure", ReasonField: "error_type"},
+	"SessionEnd":        {Status: "stopped", Kind: "session_end", ReasonField: "reason"},
 }
 
 // sessionEndInSessionReasons are the SessionEnd `reason` values that are
@@ -113,6 +121,10 @@ type payload struct {
 	ErrorType      string `json:"error_type"`
 	EndReason      string `json:"reason"`
 	LastMessage    string `json:"last_assistant_message"`
+	// ToolName is PermissionRequest's own reason field (codex's own event;
+	// see Mappings). Not a codex-only payload struct: this is the same
+	// generic payload every hook decodes into, one more field on it.
+	ToolName string `json:"tool_name"`
 }
 
 // supersededLaunch decides, for the whole hook class at once, whether a hook
@@ -277,6 +289,8 @@ func payloadField(p payload, name string) string {
 		return p.EndReason
 	case "last_assistant_message":
 		return p.LastMessage
+	case "tool_name":
+		return p.ToolName
 	default:
 		return ""
 	}
