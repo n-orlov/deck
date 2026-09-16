@@ -3,5 +3,8 @@ bin/
 .idea/
 .spike-preview/
 
+# disposable clone made by ci/review.sh (task 001, B0 measurement protocol)
+/.review-clone/
+
 # ralphd run-engine scratch (not project content)
 artifacts/
