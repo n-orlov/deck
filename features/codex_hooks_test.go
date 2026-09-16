@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/agent"
 )
 
 // registerCodexHooksSteps backs SPEC §13.4's @codex scenario (R127, task
@@ -19,16 +20,22 @@ import (
 // PermissionRequest's tool-named "waiting". It drives the fake-codex
 // fixture's own pane-command surface (cmd/fake-codex's "prompt"/
 // "permission" commands, task 021) exactly the way registerClaudeHookStatusSteps
-// drives fake-claude's "hook" command, and it never imports internal/agent:
-// codexTranscriptPathForConversationID below duplicates cmd/fake-codex's own
-// rollout-file convention, not internal/agent/codex.go's TranscriptPaths,
-// keeping this file black-box like every other file in this package.
+// drives fake-claude's "hook" command. codexTranscriptPathForConversationID
+// below duplicates cmd/fake-codex's own rollout-file convention (never
+// internal/agent/codex.go's TranscriptPaths) purely as a helper for the
+// existing cross-transcript-mention check; sessionCodexPersistedIdentityMatchesPaneAnnouncement
+// (task 008, B3) is the one place this file DOES import internal/agent --
+// deliberately, to compare the STORED row and PRODUCTION's own
+// Codex.TranscriptPaths seam against each pane's independently-captured
+// SessionStart announcement, never against the store's or the glob's own
+// idea of where the transcript lives.
 func registerCodexHooksSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the deck config probes agent panes quickly$`, deckConfigProbesQuickly)
 	sc.Step(`^the state database session "([^"]+)" has no conversation id$`, sessionHasNoConversationID)
 	sc.Step(`^fake Codex session "([^"]+)" is prompted with "([^"]*)"$`, fakeCodexIsPromptedWith)
 	sc.Step(`^fake Codex session "([^"]+)" requests approval to run tool "([^"]+)"$`, fakeCodexRequestsApprovalForTool)
 	sc.Step(`^session "([^"]+)"'s codex transcript does not mention session "([^"]+)"'s conversation id$`, sessionCodexTranscriptDoesNotMentionOthersConversationID)
+	sc.Step(`^session "([^"]+)"'s persisted conversation id and transcript path match its own pane-announced SessionStart identity$`, sessionCodexPersistedIdentityMatchesPaneAnnouncement)
 	sc.Step(`^within 3 seconds deck client "([^"]+)" row "([^"]+)" contains "([^"]+)"$`, clientRowContainsWithinThreeSeconds)
 }
 
@@ -100,6 +107,36 @@ func sessionHasNoConversationID(ctx context.Context, name string) error {
 	return nil
 }
 
+// codexPaneAnnouncement is one Codex pane's own authoritative SessionStart
+// identity (task 008, B3): its own session_id and its own transcript_path,
+// both taken directly off cmd/fake-codex's banner lines -- never off the
+// state database, never off a glob keyed on a stored id.
+type codexPaneAnnouncement struct {
+	SessionID      string
+	TranscriptPath string
+}
+
+// codexPaneAnnouncementFromCapture scans a tmux pane capture for
+// cmd/fake-codex's two SessionStart-adjacent banner lines
+// ("fake-codex session-id: <uuid>" and "fake-codex transcript-path:
+// <path>", both emitted once, together, the moment submitPrompt mints or
+// resumes a conversation) and returns whatever it found. ok is true only
+// once the session-id line itself has appeared -- the transcript-path line
+// is optional (cmd/fake-codex omits it when its own CODEX_HOME/HOME
+// resolution degrades to "nowhere writable"), so TranscriptPath may be ""
+// even when ok is true.
+func codexPaneAnnouncementFromCapture(capture string) (announcement codexPaneAnnouncement, ok bool) {
+	for _, line := range strings.Split(capture, "\n") {
+		if id, found := strings.CutPrefix(line, "fake-codex session-id: "); found {
+			announcement.SessionID = id
+		}
+		if path, found := strings.CutPrefix(line, "fake-codex transcript-path: "); found {
+			announcement.TranscriptPath = path
+		}
+	}
+	return announcement, announcement.SessionID != ""
+}
+
 // fakeCodexIsPromptedWith sends cmd/fake-codex's "prompt" pane command
 // (task 021) into the named session's private tmux pane, which mints (or
 // reuses, on a `resume <id>` invocation) that invocation's one conversation
@@ -109,7 +146,12 @@ func sessionHasNoConversationID(ctx context.Context, name string) error {
 // (cmd/fake-codex's submitPrompt) rather than returning as soon as
 // send-keys completes, so a caller relying on the id having been minted
 // (e.g. a later transcript-path lookup) never races the fixture's own
-// asynchronous pane output.
+// asynchronous pane output. It also captures BOTH that line and the
+// adjacent "fake-codex transcript-path: <path>" banner into
+// h.codexPaneAnnouncements[name] (task 008) -- this pane's own
+// authoritative SessionStart identity, held independently of anything the
+// store ever learns, for a later step to compare the store's and
+// production's own ideas of that identity against.
 func fakeCodexIsPromptedWith(ctx context.Context, name, text string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -132,9 +174,20 @@ func fakeCodexIsPromptedWith(ctx context.Context, name, text string) error {
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		output, err := tmuxOutput(ctx, h, "capture-pane", "-p", "-S", "-", "-t", target)
-		if err == nil && strings.Contains(string(output), "fake-codex session-id:") {
-			return nil
+		// -J joins tmux's own soft-wrapped physical rows back into one
+		// logical line (status_probe_test.go's own convention) -- without
+		// it, a transcript path longer than the pane's own width would be
+		// split mid-path across two capture-pane lines, and neither half
+		// would carry the "fake-codex transcript-path: " prefix intact.
+		output, err := tmuxOutput(ctx, h, "capture-pane", "-p", "-J", "-S", "-", "-t", target)
+		if err == nil {
+			if announcement, ok := codexPaneAnnouncementFromCapture(string(output)); ok {
+				if h.codexPaneAnnouncements == nil {
+					h.codexPaneAnnouncements = make(map[string]codexPaneAnnouncement)
+				}
+				h.codexPaneAnnouncements[name] = announcement
+				return nil
+			}
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("fake Codex pane %q never announced a minted session id; last capture (err=%v):\n%s", target, err, string(output))
@@ -263,4 +316,116 @@ func sessionCodexTranscriptDoesNotMentionOthersConversationID(ctx context.Contex
 		return fmt.Errorf("session %q's codex transcript %q unexpectedly mentions session %q's conversation id %q", name, path, other, otherID)
 	}
 	return nil
+}
+
+// sessionCWD reads a session's own persisted cwd straight from the
+// sessions table, exactly like sessionConversationID/sessionIDByName above
+// -- production's own idea of where that session runs, never the pane's.
+func sessionCWD(h *ScenarioHarness, name string) (string, error) {
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	var cwd string
+	if err := db.QueryRow(`SELECT cwd FROM sessions WHERE name = ?`, name).Scan(&cwd); err != nil {
+		return "", fmt.Errorf("observe session %q cwd: %w", name, err)
+	}
+	return cwd, nil
+}
+
+// codexIdentityMismatch is B3's two-sided oracle itself (task 008): it
+// compares a row's own STORED conversation id, and the path PRODUCTION's
+// own shipped internal/agent Codex.TranscriptPaths seam resolves for that
+// id, against a pane's own independently-captured SessionStart
+// announcement -- entirely independently of each other, so a caller wrong
+// on one side is never masked by the other side happening to be right.
+// resolvedPath is returned whenever TranscriptPaths itself resolved
+// something (even alongside a non-nil pathErr, when what it resolved
+// merely doesn't match the announcement), so a caller wanting the
+// strongest check -- reading the file production actually named and
+// inspecting its own session_meta line -- still has a path to open.
+func codexIdentityMismatch(home, storedConversationID string, announcement codexPaneAnnouncement) (resolvedPath string, idErr, pathErr error) {
+	if storedConversationID != announcement.SessionID {
+		idErr = fmt.Errorf("stored conversation id %q does not match the pane's own announced session_id %q", storedConversationID, announcement.SessionID)
+	}
+	path, ok := agent.NewCodex().TranscriptPaths(agent.TranscriptInput{
+		Home:           home,
+		ConversationID: storedConversationID,
+	})
+	if !ok {
+		pathErr = fmt.Errorf("production TranscriptPaths declined to resolve a path for stored conversation id %q", storedConversationID)
+		return "", idErr, pathErr
+	}
+	if path != announcement.TranscriptPath {
+		pathErr = fmt.Errorf("production-resolved transcript path %q does not match the pane's own announced transcript_path %q", path, announcement.TranscriptPath)
+	}
+	return path, idErr, pathErr
+}
+
+// codexTranscriptSessionMetaMatches reads path's own first line -- the
+// session_meta line cmd/fake-codex's writeRolloutSessionMeta writes,
+// exactly the file PRODUCTION resolution named -- and asserts it carries
+// wantSessionID and wantCWD, proving the resolved file is not merely a
+// byte-identical path string but is itself the transcript that session
+// actually started (SPEC §8.2's own session_meta convention).
+func codexTranscriptSessionMetaMatches(path, wantSessionID, wantCWD string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read codex transcript %q: %w", path, err)
+	}
+	firstLine, _, _ := strings.Cut(string(content), "\n")
+	var meta struct {
+		SessionID string `json:"session_id"`
+		CWD       string `json:"cwd"`
+	}
+	if err := json.Unmarshal([]byte(firstLine), &meta); err != nil {
+		return fmt.Errorf("decode codex transcript %q session_meta line %q: %w", path, firstLine, err)
+	}
+	if meta.SessionID != wantSessionID {
+		return fmt.Errorf("codex transcript %q session_meta session_id = %q, want %q", path, meta.SessionID, wantSessionID)
+	}
+	if meta.CWD != wantCWD {
+		return fmt.Errorf("codex transcript %q session_meta cwd = %q, want %q", path, meta.CWD, wantCWD)
+	}
+	return nil
+}
+
+// sessionCodexPersistedIdentityMatchesPaneAnnouncement is B3's own feature
+// step (task 008): it ties name's row to its own pane, both ways --
+// asserting the STORED conversation id equals that pane's own announced
+// session_id, and that PRODUCTION's own TranscriptPaths resolution for the
+// stored id is exactly that pane's own announced transcript_path, whose
+// first-line session_meta itself carries the same session_id and the
+// session's own stored cwd. codex_hooks_swap_test.go's
+// TestCodexIdentityMismatchCatchesSwappedStoredIDs feeds codexIdentityMismatch
+// (the comparison this step calls) the two scenario rows' stored ids
+// swapped and proves it fails on both halves -- the negative control this
+// step's own oracle needs to be attribution-sensitive rather than merely
+// distinctness-sensitive.
+func sessionCodexPersistedIdentityMatchesPaneAnnouncement(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	announcement, ok := h.codexPaneAnnouncements[name]
+	if !ok {
+		return fmt.Errorf("session %q has no captured pane SessionStart announcement (call the prompt step first)", name)
+	}
+	storedID, err := sessionConversationID(h, name)
+	if err != nil {
+		return err
+	}
+	storedCWD, err := sessionCWD(h, name)
+	if err != nil {
+		return err
+	}
+	resolvedPath, idErr, pathErr := codexIdentityMismatch(h.agentHOMEDir, storedID, announcement)
+	if idErr != nil {
+		return idErr
+	}
+	if pathErr != nil {
+		return pathErr
+	}
+	return codexTranscriptSessionMetaMatches(resolvedPath, announcement.SessionID, storedCWD)
 }

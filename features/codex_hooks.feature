@@ -34,6 +34,8 @@ Feature: Codex hook-driven identity and status
     And the state database sessions "one" and "two" have different conversation ids
     And session "one"'s codex transcript does not mention session "two"'s conversation id
     And session "two"'s codex transcript does not mention session "one"'s conversation id
+    And session "one"'s persisted conversation id and transcript path match its own pane-announced SessionStart identity
+    And session "two"'s persisted conversation id and transcript path match its own pane-announced SessionStart identity
 
     When fake Codex session "one" requests approval to run tool "apply_patch"
     Then within 3 seconds deck client "A" row "one" contains "waiting"
