@@ -4,13 +4,28 @@
 
 **Tier 2 (R128–R131, tasks 029–038) is NOT being started this run.** Every
 task from 029 through 038 lands no code; each reads this record and is
-satisfied by it alone, per the plan's `tier2_conditionality` clause. The
-last code-touching task for this run is **026** (`codex covered in the
-ordinary feature places`), not 038. The freeze line begins the moment task
-026's own commit landed — every commit from task 027 onward (the Tier 1 gate
-sweep and this record included) is record-only, checked with `git show
---stat`, exactly as the standing rules require for the "Tier 2 not started"
-branch.
+satisfied by it alone, per the plan's `tier2_conditionality` clause.
+
+This is therefore the plan's "Tier 2 not started" branch, whose
+last code-touching task the plan named as **026** (`codex covered in the
+ordinary feature places`) rather than 038. That baseline was superseded
+after the plan was written: the Tier 1 gate sweep (task 027) uncovered three
+pre-existing red lanes, and each fix was carved into its own task — **045**
+(`teardown_hooks.feature` text-badge assertion), **046**
+(`internal/tui/tui.go`'s `renderStackedFrame` gutter drop) and **047**
+(`interactive_focus.feature`'s stale `selection_idle` assertion) — whose
+own tracked criteria each state, in the freeze-line rule's own terms, that
+the task becomes the run's new last code-touching task, superseding 026,
+then 045, then 046 in turn.
+
+**So under the decision taken here, this run's last code-touching task is
+047**, the last link of that chain (026 → 045 → 046 → 047); it is 047, not
+026 and not 038. Its commit `db66965` (`features: fix stale
+interactive_focus selection_idle text match (task 047)`) is the tail code
+sha cited below. The freeze line began the moment task 047 completed — every
+commit from `90388e3` (the Tier 1 gate sweep record) onward, this record
+included, is record-only, checked with `git show --stat`, exactly as the
+standing rules require for the "Tier 2 not started" branch.
 
 ## Tier 1 evidence
 
