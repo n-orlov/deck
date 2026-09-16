@@ -159,7 +159,7 @@ func (m Model) themePickerLines(width int) []string {
 	}
 	names := m.themePickerNames()
 	if len(names) == 0 {
-		lines := wrapText("Theme picker: no themes available (no built-ins embedded and no user themes discovered) -- Esc closes.", width)
+		lines := m.canvasWrapText("Theme picker: no themes available (no built-ins embedded and no user themes discovered) -- Esc closes.", width)
 		return append(lines, "")
 	}
 	position := 0
@@ -172,9 +172,9 @@ func (m Model) themePickerLines(width int) []string {
 	sep := m.glyph(" · ", " - ")
 	header := fmt.Sprintf("Theme picker: %s (%d of %d)%sLeft/Right or Up/Down changes%sEnter selects%sEsc reverts",
 		m.themePickerValue, position, len(names), sep, sep, sep)
-	lines := wrapText(header, width)
+	lines := m.canvasWrapText(header, width)
 	if m.themePickerNote != "" {
-		lines = append(lines, wrapText(m.themePickerNote, width)...)
+		lines = append(lines, m.canvasWrapText(m.themePickerNote, width)...)
 	}
 	return append(lines, "")
 }

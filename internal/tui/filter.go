@@ -153,7 +153,7 @@ func (m Model) filterStatusLine(width int) []string {
 		return nil
 	}
 	if m.filtering {
-		return wrapText("Filter: "+m.filterQuery+"_", width)
+		return m.canvasWrapText("Filter: "+m.filterQuery+"_", width)
 	}
-	return wrapText(fmt.Sprintf("Filter %q in force (%d matching) \u2014 / to change, Esc to clear", m.filterQuery, len(m.sessions)), width)
+	return m.canvasWrapText(fmt.Sprintf("Filter %q in force (%d matching) \u2014 / to change, Esc to clear", m.filterQuery, len(m.sessions)), width)
 }
