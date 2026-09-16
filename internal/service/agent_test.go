@@ -43,6 +43,7 @@ func newAgentTestService(t *testing.T, configEnv map[string]string, idSeed strin
 	registry.Register(agent.NewClaude())
 	registry.Register(agent.NewPi())
 	registry.Register(agent.NewShell())
+	registry.Register(agent.NewCodex())
 	service := Service{
 		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
 		IDs: config.NewIDGenerator(idSeed), Agents: registry, ConfigEnv: configEnv,
@@ -119,6 +120,69 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 	}
 	if strings.Contains(contents, "not-in-audit") {
 		t.Fatalf("audit leaked environment value: %s", contents)
+	}
+}
+
+// TestCreateAgentConsultsAssignsConversationIDPerAdapter covers R121: the
+// create path mints, passes and stores a conversation id only for an
+// adapter that declares Caps.AssignsConversationID. Codex declares false
+// (it mints its own id later, from its first hook -- task 014/017), so a
+// created codex row's stored conversation id must be empty; claude
+// declares true, so its row's must not be. Asserting both halves in one
+// test is deliberate: deleting the codex branch in CreateAgent (falling
+// back to unconditionally minting an id for every adapter) would still
+// leave the claude half green, so only the codex assertion alone would
+// catch that regression -- and deleting the whole `if caps.
+// AssignsConversationID` guard (unconditionally minting for everyone)
+// makes the codex assertion fail while the claude one keeps passing. Both
+// assertions together are what actually pins the adapter-conditional
+// branch itself, not just one adapter's outcome.
+func TestCreateAgentConsultsAssignsConversationIDPerAdapter(t *testing.T) {
+	stubExecutableOnPath(t, "claude")
+	stubExecutableOnPath(t, "codex")
+	service, db, _, _ := newAgentTestService(t, nil, "conversation-id-per-adapter-test")
+
+	codexSession, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Codex: session", CWD: t.TempDir(), Agent: "codex", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create codex agent: %v", err)
+	}
+	if codexSession.ConversationID != "" {
+		t.Fatalf("codex session conversation id = %q, want empty (codex mints its own)", codexSession.ConversationID)
+	}
+
+	claudeSession, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Claude: session", CWD: t.TempDir(), Agent: "claude", PermissionProfile: "safe",
+	})
+	if err != nil {
+		t.Fatalf("create claude agent: %v", err)
+	}
+	if claudeSession.ConversationID == "" {
+		t.Fatalf("claude session conversation id is empty, want deck to have minted one")
+	}
+
+	rows, err := db.ListSessions(context.Background())
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	var gotCodexRow, gotClaudeRow bool
+	for _, row := range rows {
+		switch row.ID {
+		case codexSession.ID:
+			gotCodexRow = true
+			if row.ConversationID != "" {
+				t.Fatalf("persisted codex conversation id = %q, want empty", row.ConversationID)
+			}
+		case claudeSession.ID:
+			gotClaudeRow = true
+			if row.ConversationID == "" {
+				t.Fatalf("persisted claude conversation id is empty, want non-empty")
+			}
+		}
+	}
+	if !gotCodexRow || !gotClaudeRow {
+		t.Fatalf("durable rows = %#v, want both a codex row and a claude row", rows)
 	}
 }
 
