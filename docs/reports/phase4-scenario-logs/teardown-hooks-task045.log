@@ -1,0 +1,111 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m post_destroy teardown hooks fire on A/dd, never on x, exactly once
+  post_destroy (SPEC §9.2) is a session's own teardown hook, set here
+  through the launch-inputs editor's Post-destroy command field (task 023),
+  ahead of task 026's create-modal field. It runs once a session's pane is
+  gone, after A (archive) or dd (delete) -- and never after x, which leaves
+  the row stopped and resumable with its external resources expected to
+  still be there. This file proves both halves against a real file the
+  hook's own subprocess writes under DECK_HOME, never a mock: x leaves it
+  absent, dd writes it exactly once, and A followed by its own undo (u)
+  brings the row back stopped -- durably, in sessions.status -- without a
+  second hook run, and says so: the undo's own toast states that the hook
+  already ran and the next r rebuilds what it released (SPEC.md:508).
+=== RUN   TestFeatures/x_never_runs_the_teardown_hook,_but_dd_runs_it_exactly_once
+
+  [1;37mScenario:[0m x never runs the teardown hook, but dd runs it exactly once                                        [1;30m# teardown_hooks.feature:15[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "teardown-kill-then-delete"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" opens the launch inputs editor for session "teardown-kill-then-delete"[0m                [1;30m# launch_inputs_editor_test.go:20 -> github.com/n-orlov/deck/features.clientOpensLaunchInputsEditorForSession[0m
+    [32mAnd[0m [32mdeck client "A" types "echo $DECK_SESSION_NAME >> $DECK_HOME/pd.txt" into the post-destroy field[0m       [1;30m# teardown_hooks_test.go:22 -> github.com/n-orlov/deck/features.clientTypesIntoLaunchInputsPostDestroyField[0m
+    [32mAnd[0m [32mdeck client "A" submits the launch inputs editor[0m                                                       [1;30m# launch_inputs_editor_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsLaunchInputsEditor[0m
+    [32mAnd[0m [32mdeck client "A" closes detail[0m                                                                          [1;30m# launch_inputs_editor_test.go:23 -> github.com/n-orlov/deck/features.clientClosesDetail[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                            [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database session "teardown-kill-then-delete" is "stopped" from "user" with killed_by_user=1[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mAnd[0m [32mthe teardown hook artefact file is absent[0m                                                              [1;30m# teardown_hooks_test.go:23 -> github.com/n-orlov/deck/features.teardownHookArtefactFileIsAbsent[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                            [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "teardown-kill-then-delete" is tombstoned[0m                                  [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe teardown hook artefact file contains exactly one line "teardown-kill-then-delete"[0m                  [1;30m# teardown_hooks_test.go:24 -> github.com/n-orlov/deck/features.teardownHookArtefactFileContainsExactlyOneLine[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/A_runs_the_teardown_hook_once,_and_its_own_undo_leaves_the_row_stopped_with_no_second_run
+
+  [1;37mScenario:[0m A runs the teardown hook once, and its own undo leaves the row stopped with no second run     [1;30m# teardown_hooks.feature:31[0m
+    [32mGiven[0m [32mdeck client "A" is started with terminal size 100x40[0m                                            [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "teardown-archive-undo"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" opens the launch inputs editor for session "teardown-archive-undo"[0m               [1;30m# launch_inputs_editor_test.go:20 -> github.com/n-orlov/deck/features.clientOpensLaunchInputsEditorForSession[0m
+    [32mAnd[0m [32mdeck client "A" types "echo $DECK_SESSION_NAME >> $DECK_HOME/pd.txt" into the post-destroy field[0m  [1;30m# teardown_hooks_test.go:22 -> github.com/n-orlov/deck/features.clientTypesIntoLaunchInputsPostDestroyField[0m
+    [32mAnd[0m [32mdeck client "A" submits the launch inputs editor[0m                                                  [1;30m# launch_inputs_editor_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsLaunchInputsEditor[0m
+    [32mAnd[0m [32mdeck client "A" closes detail[0m                                                                     [1;30m# launch_inputs_editor_test.go:23 -> github.com/n-orlov/deck/features.clientClosesDetail[0m
+    [32mWhen[0m [32mdeck client "A" presses A on its selected session "teardown-archive-undo"[0m                        [1;30m# kill_delete_undo_test.go:45 -> github.com/n-orlov/deck/features.clientPressesArchiveOnSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                           [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "teardown-archive-undo" is archived[0m                                   [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Killed and archived"[0m                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe teardown hook artefact file contains exactly one line "teardown-archive-undo"[0m                 [1;30m# teardown_hooks_test.go:24 -> github.com/n-orlov/deck/features.teardownHookArtefactFileContainsExactlyOneLine[0m
+    [32mWhen[0m [32mdeck client "A" undoes the archive with u for "teardown-archive-undo"[0m                            [1;30m# kill_delete_undo_test.go:47 -> github.com/n-orlov/deck/features.clientUndoesArchiveWithU[0m
+    [32mThen[0m [32mdeck client "A" screen contains "the next r rebuilds"[0m                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "teardown-archive-undo stopped"[0m                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "teardown-archive-undo" is not archived[0m                                [1;30m# kill_delete_undo_test.go:49 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived[0m
+    [32mAnd[0m [32mthe state database session "teardown-archive-undo" is "stopped" from "user" with killed_by_user=1[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mAnd[0m [32mthe teardown hook artefact file contains exactly one line "teardown-archive-undo"[0m                 [1;30m# teardown_hooks_test.go:24 -> github.com/n-orlov/deck/features.teardownHookArtefactFileContainsExactlyOneLine[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_failing_teardown_hook_never_blocks_dd,_and_its_failure_lands_durably_in_the_event_log
+
+  [1;37mScenario:[0m a failing teardown hook never blocks dd, and its failure lands durably in the event log                                         [1;30m# teardown_hooks.feature:54[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "teardown-failing-hook"[0m                                                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" opens the launch inputs editor for session "teardown-failing-hook"[0m                                                 [1;30m# launch_inputs_editor_test.go:20 -> github.com/n-orlov/deck/features.clientOpensLaunchInputsEditorForSession[0m
+    [32mAnd[0m [32mdeck client "A" types "echo teardown-hook-failure-marker >&2; exit 7" into the post-destroy field[0m                                   [1;30m# teardown_hooks_test.go:22 -> github.com/n-orlov/deck/features.clientTypesIntoLaunchInputsPostDestroyField[0m
+    [32mAnd[0m [32mdeck client "A" submits the launch inputs editor[0m                                                                                    [1;30m# launch_inputs_editor_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsLaunchInputsEditor[0m
+    [32mAnd[0m [32mdeck client "A" closes detail[0m                                                                                                       [1;30m# launch_inputs_editor_test.go:23 -> github.com/n-orlov/deck/features.clientClosesDetail[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                                         [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                                             [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "teardown-failing-hook" is tombstoned[0m                                                                   [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "session post_destroy failed"[0m                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "teardown-failing-hook" has an event of kind "note" with reason containing "session post_destroy failed"[0m [1;30m# agent_steps_test.go:82 -> github.com/n-orlov/deck/features.sessionHasEventOfKindWithReasonContaining[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_bulk_dd_over_two_marked_rows_runs_each_row's_own_teardown_hook_exactly_once,_under_its_own_DECK_SESSION_ID
+
+  [1;37mScenario:[0m a bulk dd over two marked rows runs each row's own teardown hook exactly once, under its own DECK_SESSION_ID   [1;30m# teardown_hooks.feature:68[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                                              [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "td-bulk-one"[0m                                                                [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "td-bulk-two"[0m                                                                [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" opens the launch inputs editor for session "td-bulk-one"[0m                                          [1;30m# launch_inputs_editor_test.go:20 -> github.com/n-orlov/deck/features.clientOpensLaunchInputsEditorForSession[0m
+    [32mAnd[0m [32mdeck client "A" types "echo $DECK_SESSION_ID >> $DECK_HOME/pd_ids.txt" into the post-destroy field[0m                 [1;30m# teardown_hooks_test.go:22 -> github.com/n-orlov/deck/features.clientTypesIntoLaunchInputsPostDestroyField[0m
+    [32mAnd[0m [32mdeck client "A" submits the launch inputs editor[0m                                                                   [1;30m# launch_inputs_editor_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsLaunchInputsEditor[0m
+    [32mAnd[0m [32mdeck client "A" closes detail[0m                                                                                      [1;30m# launch_inputs_editor_test.go:23 -> github.com/n-orlov/deck/features.clientClosesDetail[0m
+    [32mWhen[0m [32mdeck client "A" opens the launch inputs editor for session "td-bulk-two"[0m                                          [1;30m# launch_inputs_editor_test.go:20 -> github.com/n-orlov/deck/features.clientOpensLaunchInputsEditorForSession[0m
+    [32mAnd[0m [32mdeck client "A" types "echo $DECK_SESSION_ID >> $DECK_HOME/pd_ids.txt" into the post-destroy field[0m                 [1;30m# teardown_hooks_test.go:22 -> github.com/n-orlov/deck/features.clientTypesIntoLaunchInputsPostDestroyField[0m
+    [32mAnd[0m [32mdeck client "A" submits the launch inputs editor[0m                                                                   [1;30m# launch_inputs_editor_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsLaunchInputsEditor[0m
+    [32mAnd[0m [32mdeck client "A" closes detail[0m                                                                                      [1;30m# launch_inputs_editor_test.go:23 -> github.com/n-orlov/deck/features.clientClosesDetail[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                              [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "td-bulk-one running"[0m                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "td-bulk-one" is marked[0m                                                                        [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "> td-bulk-two running"[0m                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "td-bulk-one running"[0m                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "td-bulk-one" is marked[0m                                                                        [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "td-bulk-two running"[0m                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "td-bulk-two" is marked[0m                                                                        [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                        [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Delete 2 marked sessions"[0m                                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                                           [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "td-bulk-one" is tombstoned[0m                                                            [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe state database session "td-bulk-two" is tombstoned[0m                                                             [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe teardown hook artefact file records each of "td-bulk-one" and "td-bulk-two"'s own DECK_SESSION_ID exactly once[0m [1;30m# teardown_hooks_test.go:25 -> github.com/n-orlov/deck/features.teardownHookIDArtefactFileRecordsEachSessionsOwnIDExactlyOnce[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+4 scenarios ([32m4 passed[0m)
+75 steps ([32m75 passed[0m)
+4.256468539s
+--- PASS: TestFeatures (4.26s)
+    --- PASS: TestFeatures/x_never_runs_the_teardown_hook,_but_dd_runs_it_exactly_once (0.83s)
+    --- PASS: TestFeatures/A_runs_the_teardown_hook_once,_and_its_own_undo_leaves_the_row_stopped_with_no_second_run (0.76s)
+    --- PASS: TestFeatures/a_failing_teardown_hook_never_blocks_dd,_and_its_failure_lands_durably_in_the_event_log (0.76s)
+    --- PASS: TestFeatures/a_bulk_dd_over_two_marked_rows_runs_each_row's_own_teardown_hook_exactly_once,_under_its_own_DECK_SESSION_ID (1.88s)
+PASS
+ok  	github.com/n-orlov/deck/features	4.269s

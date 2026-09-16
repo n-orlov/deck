@@ -81,12 +81,15 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     When deck client "A" sends "k"
     And 100 milliseconds pass
     And deck client "A" sends "m"
-    Then deck client "A" screen contains "td-bulk-one running [marked]"
+    Then deck client "A" screen contains "td-bulk-one running"
+    And deck client "A" row "td-bulk-one" is marked
     When deck client "A" sends "j"
     Then deck client "A" screen contains "> td-bulk-two running"
     When deck client "A" sends "m"
-    Then deck client "A" screen contains "td-bulk-one running [marked]"
-    And deck client "A" screen contains "td-bulk-two running [marked]"
+    Then deck client "A" screen contains "td-bulk-one running"
+    And deck client "A" row "td-bulk-one" is marked
+    And deck client "A" screen contains "td-bulk-two running"
+    And deck client "A" row "td-bulk-two" is marked
     When deck client "A" presses dd
     Then deck client "A" screen contains "Delete 2 marked sessions"
     When deck client "A" submits the open dialog
