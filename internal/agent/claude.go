@@ -11,10 +11,12 @@ import (
 // claudeProfileFlags maps SPEC §5 permission profile names to the exact
 // `--permission-mode` value Claude Code accepts. Only structured mode flags
 // are ever used — never a `--dangerously-*` flag (SPEC §8 table, ~line 262).
-// "safe" carries no entry here (R116): Claude Code's own unflagged default
-// already behaves as deck's "safe" profile, and "manual" is not a mode
-// value the real CLI accepts, so composing `--permission-mode manual` was
-// always a lie about what Claude was asked for. claudePermissionArgs below
+// "safe" carries no entry here (R116): Claude Code renamed this mode's own
+// value from "default" to "manual" somewhere between 2.1.71 and 2.1.259, so
+// naming either spelling in argv is only ever correct against one side of
+// that version line. Omitting the flag entirely is the version-independent
+// fix: Claude Code's own unflagged default already behaves as deck's
+// "safe" profile, on either side of the rename. claudePermissionArgs below
 // treats "safe" as a valid profile that simply contributes no flag.
 var claudeProfileFlags = map[string]string{
 	"plan":  "plan",
@@ -165,7 +167,9 @@ func shellQuote(value string) string {
 // claudePermissionArgs returns the `--permission-mode` argument pair to
 // append for profile, or nil for "safe" (R116): "safe" is a supported
 // profile (see claudeProfiles) that simply composes no --permission-mode
-// flag at all, rather than a `manual` value the real CLI does not accept.
+// flag at all, rather than naming a mode value whose own spelling Claude
+// Code renamed from "default" to "manual" between 2.1.71 and 2.1.259 --
+// omitting the flag is the fix that holds on either side of that rename.
 func claudePermissionArgs(profile string) ([]string, error) {
 	if profile == "safe" {
 		return nil, nil
