@@ -19,9 +19,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -122,7 +126,7 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 	hooks := hookCommandsFromOverrides(parsed.configOverrides)
 
 	if getenv(commandsEnvironment) == "1" {
-		if err := runCommands(stdin, stdout, stderr, hooks, parsed.trustHooks); err != nil {
+		if err := runCommands(stdin, stdout, stderr, hooks, parsed.trustHooks, parsed.resume, resolveCodexHome(getenv)); err != nil {
 			return 0, err
 		}
 	}
@@ -298,18 +302,26 @@ func fireHook(stdout, stderr io.Writer, hooks map[string]string, trusted bool, e
 }
 
 // runCommands is the pane-side control surface used by black-box scenarios,
-// in fake-claude's own idiom: each input line asks this fixture to fire an
-// injected hook. Unlike fake-claude, there is no "fixture"/"resume" pane
-// command here yet -- session lifecycle (minting an id, firing on first
-// prompt, the rollout transcript) is a later task's own deliverable; this
-// fixture's job is exactly the argv contract and the trust gate.
-func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]string, trusted bool) error {
+// in fake-claude's own idiom: each input line asks this fixture to do one
+// thing. "hook" and "exit" are the argv-contract commands task 020 already
+// shipped; "prompt", "permission", "stop" and "state" are this task's own
+// session-lifecycle additions (see submitPrompt/requestPermission/stopTurn/
+// renderPaneState below). Because scanner.Scan blocks on the next input
+// line, an invocation that is never sent a command (and never closes its
+// input) simply hangs here -- cmd/fake-claude's own "long-running" mode,
+// reused unchanged rather than reinvented.
+func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]string, trusted bool, resumeID, codexHome string) error {
+	var session *codexSession
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		var request struct {
-			Command string         `json:"command"`
-			Event   string         `json:"event"`
-			Payload map[string]any `json:"payload"`
+			Command  string         `json:"command"`
+			Event    string         `json:"event"`
+			Payload  map[string]any `json:"payload"`
+			Text     string         `json:"text"`
+			ToolName string         `json:"tool_name"`
+			Message  string         `json:"message"`
+			Name     string         `json:"name"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
@@ -319,7 +331,38 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]str
 			if err := fireHook(stdout, stderr, hooks, trusted, request.Event, request.Payload); err != nil {
 				return err
 			}
+		case "prompt":
+			var err error
+			session, err = submitPrompt(stdout, stderr, hooks, trusted, session, resumeID, codexHome, request.Text)
+			if err != nil {
+				return err
+			}
+		case "permission":
+			if err := requestPermission(stdout, stderr, hooks, trusted, session, request.ToolName); err != nil {
+				return err
+			}
+		case "stop":
+			if err := stopTurn(stdout, stderr, hooks, trusted, session, request.Message); err != nil {
+				return err
+			}
+		case "state":
+			if err := renderPaneState(stdout, request.Name); err != nil {
+				return err
+			}
 		case "exit":
+			// A clean exit fires SessionEnd first, exactly like a real
+			// `/quit` -- but only when a session actually started (task
+			// 020's own "hook"-only tests never call "prompt", so session
+			// is nil there and this is skipped, preserving their behaviour
+			// unchanged) and only when SessionEnd was actually injected via
+			// -c, exactly like every other event fired here.
+			if session != nil {
+				if _, injected := hooks["SessionEnd"]; injected {
+					if err := fireHook(stdout, stderr, hooks, trusted, "SessionEnd", session.payload(map[string]any{"reason": "other"})); err != nil {
+						return err
+					}
+				}
+			}
 			return nil
 		default:
 			return fmt.Errorf("unknown command %q", request.Command)
@@ -328,6 +371,204 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]str
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read command: %w", err)
 	}
+	return nil
+}
+
+// codexSession is the one CLI-minted (or, on `resume <id>`, reused)
+// conversation this invocation's pane commands are scoped to. It is nil
+// until the first "prompt" command -- codex-cli 0.154.0's own SessionStart
+// hook does not fire at launch, only on first prompt submission (Q3d,
+// docs/reports/codex-cli-0.154.0-spike.md), and this fixture's whole point
+// is to reproduce that timing rather than assume the more convenient
+// mint-at-launch shape.
+type codexSession struct {
+	id          string
+	cwd         string
+	rolloutPath string // "" when codexHome could not be resolved -- degrades, never crashes.
+}
+
+// payload builds one hook's payload with the real field names codex-cli
+// 0.154.0 actually sends (docs/reports/codex-cli-0.154.0-spike.md Q3c):
+// session_id, cwd and, when a rollout file exists, transcript_path, merged
+// with the event-specific fields the caller supplies.
+func (s *codexSession) payload(extra map[string]any) map[string]any {
+	payload := map[string]any{
+		"session_id": s.id,
+		"cwd":        s.cwd,
+	}
+	if s.rolloutPath != "" {
+		payload["transcript_path"] = s.rolloutPath
+	}
+	for key, value := range extra {
+		payload[key] = value
+	}
+	return payload
+}
+
+// resolveCodexHome mirrors internal/agent/codex.go's own TranscriptPaths
+// default: $CODEX_HOME when set, else $HOME/.codex. Unlike that adapter,
+// this fixture DOES read its own ambient environment for this -- it is the
+// process actually writing the rollout file, not a caller resolving a
+// session's layered env on someone else's behalf. "" (both unset) means
+// "nowhere writable", handled as a degrade, not a crash, by
+// writeRolloutSessionMeta below.
+func resolveCodexHome(getenv func(string) string) string {
+	if home := getenv("CODEX_HOME"); home != "" {
+		return home
+	}
+	if home := getenv("HOME"); home != "" {
+		return filepath.Join(home, ".codex")
+	}
+	return ""
+}
+
+// rolloutTimestampLayout matches the ISO-shaped, filesystem-safe timestamp
+// codex-cli 0.154.0's own rollout filenames carry -- colons cannot appear
+// in a filename on every OS codex supports, so they are replaced with "-",
+// exactly as the real capture in docs/reports/codex-cli-0.154.0-spike.md
+// shows: rollout-2026-09-12T15-47-04-<uuid>.jsonl.
+const rolloutTimestampLayout = "2006-01-02T15-04-05"
+
+// writeRolloutSessionMeta creates internal/agent/codex.go's own
+// TranscriptPaths convention -- <codex home>/sessions/<yyyy>/<mm>/<dd>/
+// rollout-<ISO>-<id>.jsonl -- with a first line carrying the conversation's
+// session_id and cwd, exactly the two fields task 021 requires a caller be
+// able to read back before any turn has produced real transcript content.
+// codexHome == "" (no CODEX_HOME, no HOME) degrades to "no transcript",
+// the same best-effort convention cmd/fake-claude's own replayAndRecord
+// uses for an unwritable HOME -- never a fixture crash.
+func writeRolloutSessionMeta(codexHome, id, cwd string) (string, error) {
+	if codexHome == "" {
+		return "", nil
+	}
+	now := time.Now().UTC()
+	dir := filepath.Join(codexHome, "sessions", now.Format("2006"), now.Format("01"), now.Format("02"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create rollout directory: %w", err)
+	}
+	path := filepath.Join(dir, fmt.Sprintf("rollout-%s-%s.jsonl", now.Format(rolloutTimestampLayout), id))
+	meta := map[string]any{
+		"type":       "session_meta",
+		"session_id": id,
+		"cwd":        cwd,
+	}
+	encoded, err := json.Marshal(meta)
+	if err != nil {
+		return "", fmt.Errorf("encode session_meta: %w", err)
+	}
+	if err := os.WriteFile(path, append(encoded, '\n'), 0o644); err != nil {
+		return "", fmt.Errorf("write rollout transcript: %w", err)
+	}
+	return path, nil
+}
+
+// submitPrompt is this fixture's one entry point for "the user submitted a
+// prompt", the sole trigger for both SessionStart (only ever on the FIRST
+// prompt this invocation submits -- Q3d) and every subsequent
+// UserPromptSubmit. On the first call it also mints (or, for a `resume
+// <id>` invocation, reuses) the one conversation id this process is scoped
+// to and creates the rollout transcript. session is nil on the very first
+// call and is returned (possibly newly allocated) so the caller can thread
+// it through the rest of the pane-command loop.
+func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted bool, session *codexSession, resumeID, codexHome, text string) (*codexSession, error) {
+	if session == nil {
+		id := resumeID
+		source := "startup"
+		if id != "" {
+			source = "resume"
+		} else {
+			id = uuid.NewString()
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("resolve cwd: %w", err)
+		}
+		rolloutPath, err := writeRolloutSessionMeta(codexHome, id, cwd)
+		if err != nil {
+			return nil, err
+		}
+		session = &codexSession{id: id, cwd: cwd, rolloutPath: rolloutPath}
+		// Announced so a black-box scenario (or this package's own tests)
+		// that only invoked the pane, never argv, can still learn the id
+		// this fixture minted -- exactly the id a real deck would adopt off
+		// the SessionStart hook it fires next (SPEC §8.2, task 018).
+		fmt.Fprintf(stdout, "fake-codex session-id: %s\n", id)
+		if err := fireHook(stdout, stderr, hooks, trusted, "SessionStart", session.payload(map[string]any{"source": source})); err != nil {
+			return session, err
+		}
+	}
+	if err := fireHook(stdout, stderr, hooks, trusted, "UserPromptSubmit", session.payload(map[string]any{"prompt": text})); err != nil {
+		return session, err
+	}
+	fmt.Fprintln(stdout, "• Working (5s • esc to interrupt)")
+	fmt.Fprintln(stdout, "› Ask Codex to do anything")
+	return session, nil
+}
+
+// requestPermission fires PermissionRequest with tool_name as its reason
+// field (SPEC §8.2/§8.1, task 018) and prints the approval-prompt text
+// every codex approval shape shares (testdata/probes/codex/waiting.txt and
+// waiting-patch.txt), which internal/agent/probe.go's codex "waiting" rule
+// keys on.
+func requestPermission(stdout, stderr io.Writer, hooks map[string]string, trusted bool, session *codexSession, toolName string) error {
+	if session == nil {
+		return errors.New(`"permission" command requires a "prompt" command first`)
+	}
+	if toolName == "" {
+		toolName = "Bash"
+	}
+	if err := fireHook(stdout, stderr, hooks, trusted, "PermissionRequest", session.payload(map[string]any{"tool_name": toolName})); err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "  Press enter to confirm or esc to cancel")
+	return nil
+}
+
+// stopTurn fires Stop with last_assistant_message as its own real field
+// name (Q3c) and prints the agent-cell + composer text the codex "idle"
+// probe rule requires ("Ask Codex to do anything" together with a "•"
+// transcript marker -- testdata/probes/codex/idle.txt).
+func stopTurn(stdout, stderr io.Writer, hooks map[string]string, trusted bool, session *codexSession, message string) error {
+	if session == nil {
+		return errors.New(`"stop" command requires a "prompt" command first`)
+	}
+	if err := fireHook(stdout, stderr, hooks, trusted, "Stop", session.payload(map[string]any{"last_assistant_message": message})); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "• %s\n", message)
+	fmt.Fprintln(stdout, "› Ask Codex to do anything")
+	return nil
+}
+
+// codexPaneStates are self-contained pane snapshots -- each is everything a
+// single tmux capture-pane call would see at that one moment, never
+// cumulative with any other state or with this fixture's own banner --
+// fitted to exactly the markers internal/agent/probe.go's codex probeRules
+// key on (verified against the real corpus, testdata/probes/codex/), so
+// handing one straight to agent.NewCodex().Probe returns the matching
+// name back. This is a deliberately independent rendering path from
+// submitPrompt/requestPermission/stopTurn above: those exist to drive real
+// hook firing and the rollout transcript, not to hold a pane frozen at one
+// exact classification -- resolving that role split via a corpus fixture
+// file (as cmd/fake-claude's own "fixture" command does) would mean
+// shipping a second copy of testdata/probes/codex's fixtures under this
+// package, which is exactly the "fixture edited/duplicated to fit a rule"
+// shape the run's own prohibitions rule out; a literal string const has no
+// such risk.
+var codexPaneStates = map[string]string{
+	"starting": "› Ask Codex to do anything\n",
+	"running":  "• Working (5s • esc to interrupt)\n\n› Ask Codex to do anything\n",
+	"waiting":  "  Press enter to confirm or esc to cancel\n\n› Ask Codex to do anything\n",
+	"idle":     "• I listed the directory: hello.txt is the only file.\n\n› Ask Codex to do anything\n",
+	"error":    "■ unexpected status 401 Unauthorized: connection refused\n\n› Ask Codex to do anything\n",
+}
+
+func renderPaneState(stdout io.Writer, name string) error {
+	block, ok := codexPaneStates[name]
+	if !ok {
+		return fmt.Errorf("unknown pane state %q", name)
+	}
+	fmt.Fprint(stdout, block)
 	return nil
 }
 
