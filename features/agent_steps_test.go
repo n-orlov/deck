@@ -28,8 +28,11 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "claude" binary is on PATH for future deck clients$`, fakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "claude" binary is on PATH for future deck clients$`, longRunningFakeClaudeOnPATHForFutureClients)
 	sc.Step(`^a fake "pi" binary is on PATH for future deck clients$`, fakePiOnPATHForFutureClients)
+	sc.Step(`^a fake "codex" binary is on PATH for future deck clients$`, fakeCodexOnPATHForFutureClients)
+	sc.Step(`^a long-running fake "codex" binary is on PATH for future deck clients$`, longRunningFakeCodexOnPATHForFutureClients)
 	sc.Step(`^the fake "claude" binary is removed from PATH$`, fakeClaudeRemovedFromPATH)
 	sc.Step(`^the fake "pi" binary is removed from PATH$`, fakePiRemovedFromPATH)
+	sc.Step(`^the fake "codex" binary is removed from PATH$`, fakeCodexRemovedFromPATH)
 	sc.Step(`^the deck config allows yolo$`, deckConfigAllowsYolo)
 	sc.Step(`^the deck config allows yolo and defaults new sessions to it$`, deckConfigAllowsYoloWithDefault)
 	sc.Step(`^the deck config defaults new sessions to yolo without allowing it$`, deckConfigDefaultsYoloWithoutAllowing)
@@ -149,6 +152,62 @@ func installFakePiOnPATH(ctx context.Context, longRunning bool) error {
 	return nil
 }
 
+// fakeCodexOnPATHForFutureClients builds the repository's fake-codex fixture
+// into its own directory named exactly "codex" and records that directory on
+// the harness so every subsequently started named client gets it prepended
+// to a real PATH, mirroring fakeClaudeOnPATHForFutureClients/
+// installFakeClaudeOnPATH and fakePiOnPATHForFutureClients/
+// installFakePiOnPATH for the codex adapter (task 022; R126 is the fake
+// itself).
+func fakeCodexOnPATHForFutureClients(ctx context.Context) error {
+	return installFakeCodexOnPATH(ctx, false)
+}
+
+func longRunningFakeCodexOnPATHForFutureClients(ctx context.Context) error {
+	return installFakeCodexOnPATH(ctx, true)
+}
+
+// installFakeCodexOnPATH is installFakeClaudeOnPATH's codex counterpart:
+// same directory, same set-environment race (see installFakeClaudeOnPATH's
+// doc comment for the full explanation of why the wrapper lingers 0.5s after
+// the fixture's own observable work), and the same lingering wrapper, built
+// from ./cmd/fake-codex instead of ./cmd/fake-claude.
+func installFakeCodexOnPATH(ctx context.Context, longRunning bool) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(h.Home, "fake-agent-path")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create fake agent PATH directory: %w", err)
+	}
+	realBinary := filepath.Join(dir, "fake-codex-real")
+	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-codex")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("build fake codex fixture: %w\n%s", err, output)
+	}
+	codexWrapper := filepath.Join(dir, "codex")
+	script := "#!/bin/sh\n\"" + realBinary + "\" \"$@\"\ncode=$?\nsleep 0.5\nexit \"$code\"\n"
+	if longRunning {
+		script = "#!/bin/sh\nFAKE_CODEX_COMMANDS=1 exec \"" + realBinary + "\" \"$@\"\n"
+	}
+	if err := os.WriteFile(codexWrapper, []byte(script), 0o700); err != nil {
+		return fmt.Errorf("write codex fixture wrapper: %w", err)
+	}
+	h.agentPATHDir = dir
+	homeDir := filepath.Join(h.Home, "agent-fixture-home")
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
+		return fmt.Errorf("create fixture HOME directory: %w", err)
+	}
+	h.agentHOMEDir = homeDir
+	return nil
+}
+
 // fakeClaudeRemovedFromPATH deletes the "claude" wrapper
 // fakeClaudeOnPATHForFutureClients wrote into the scenario's shared fake
 // agent PATH directory (h.agentPATHDir), without touching any
@@ -193,6 +252,25 @@ func fakePiRemovedFromPATH(ctx context.Context) error {
 	piWrapper := filepath.Join(h.agentPATHDir, "pi")
 	if err := os.Remove(piWrapper); err != nil {
 		return fmt.Errorf("remove fake pi binary from PATH: %w", err)
+	}
+	return nil
+}
+
+// fakeCodexRemovedFromPATH is fakePiRemovedFromPATH's codex counterpart
+// (task 022): deletes only the "codex" wrapper from the scenario's shared
+// fake agent PATH directory, leaving any other already-installed fixture
+// (e.g. claude, pi) untouched.
+func fakeCodexRemovedFromPATH(ctx context.Context) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if h.agentPATHDir == "" {
+		return errors.New("no fake agent PATH directory has been installed for this scenario")
+	}
+	codexWrapper := filepath.Join(h.agentPATHDir, "codex")
+	if err := os.Remove(codexWrapper); err != nil {
+		return fmt.Errorf("remove fake codex binary from PATH: %w", err)
 	}
 	return nil
 }
