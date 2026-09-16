@@ -113,6 +113,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerAgentSessionSteps(sc)
 	registerHookContractSteps(sc)
 	registerClaudeHookStatusSteps(sc)
+	registerCodexHooksSteps(sc)
 	registerProbeStatusSteps(sc)
 	registerCrashStatusSteps(sc)
 	registerAttentionSortSteps(sc)
