@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
@@ -11,15 +12,19 @@ import (
 // sidebarHierarchyTestModel mirrors mainViewColorTestModel (main_view_
 // theme_test.go) but gives its sessions the fields steer 006's three token
 // swaps actually read: a hook-sourced (quality "live") status so the
-// quality badge renders at all, and a real CreatedAt so "created ..." has
-// something to colour on line 2.
+// quality badge renders at all, and a real, current CreatedAt (task 012/R120:
+// the age is now bare, no "created " label, and its value must fall inside
+// relativeAge's own "just now" bucket so the assertion below has a stable
+// anchor instead of a day count that drifts with wall-clock time) so line 2
+// has something to colour.
 func sidebarHierarchyTestModel(t *testing.T) Model {
 	t.Helper()
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 160, 30
+	now := time.Now().UnixMilli()
 	m.sessions = []store.Session{
-		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", StatusSource: "hook", CWD: "/repo/alpha", CreatedAt: 1000},
-		{ID: "s2", Name: "beta", Agent: "shell", Status: "starting", CWD: "/repo/beta", CreatedAt: 1000},
+		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", StatusSource: "hook", CWD: "/repo/alpha", CreatedAt: now},
+		{ID: "s2", Name: "beta", Agent: "shell", Status: "starting", CWD: "/repo/beta", CreatedAt: now},
 	}
 	m.selected = 0
 	return m
@@ -80,7 +85,8 @@ func TestStartingRowNameStaysDimmedNotTitle(t *testing.T) {
 }
 
 // TestSidebarCreatedLineRendersDimmed proves steer 006 item 2: line 2's
-// "created <relative>" text renders in `dimmed` instead of `text`.
+// bare age text (task 012/R120 dropped its "created " label) renders in
+// `dimmed` instead of `text`.
 func TestSidebarCreatedLineRendersDimmed(t *testing.T) {
 	m := sidebarHierarchyTestModel(t)
 	dimmedHex := tokenHex(t, m, theme.Dimmed)
@@ -91,8 +97,8 @@ func TestSidebarCreatedLineRendersDimmed(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContaining(t, term, "created")
-	col := findCol(t, term, row, "created")
+	row := findRowContaining(t, term, "just now")
+	col := findCol(t, term, row, "just now")
 	fg, ok := cellFgHex(t, term, col, row)
 	if !ok {
 		t.Fatalf("created line has no foreground colour")

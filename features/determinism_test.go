@@ -130,7 +130,7 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := waitForPrivateSession(ctx, "deck_frozen-clock"); err != nil {
 		return err
 	}
-	if err := client.WaitForFrame(ctx, true, "created just now"); err != nil {
+	if err := client.WaitForFrame(ctx, true, "just now"); err != nil {
 		return fmt.Errorf("creation unexpectedly stepped frozen time: %w", err)
 	}
 	// Exercise the production trigger while both released clients are already
@@ -139,10 +139,10 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	if err := client.cmd.Process.Signal(syscall.SIGUSR1); err != nil {
 		return fmt.Errorf("signal shared frozen-clock step: %w", err)
 	}
-	if err := client.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
+	if err := client.WaitForFrame(ctx, true, "2m ago"); err != nil {
 		return fmt.Errorf("running client did not read shared frozen now: %w", err)
 	}
-	if err := observer.WaitForFrame(ctx, true, "created 2m ago"); err != nil {
+	if err := observer.WaitForFrame(ctx, true, "2m ago"); err != nil {
 		return fmt.Errorf("already-running observer did not read shared frozen now: %w", err)
 	}
 	// Start a later released deck _hook subprocess only after both clients have

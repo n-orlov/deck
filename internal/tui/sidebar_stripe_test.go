@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
@@ -17,10 +18,15 @@ func sidebarStripeTestModel(t *testing.T) Model {
 	t.Helper()
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 100, 30
+	// A real, current CreatedAt (task 012/R120: line 2's age is now bare, no
+	// "created " label) rather than a fixed epoch: the assertion below needs
+	// "just now" as a stable anchor, not a day count that drifts with
+	// wall-clock time.
+	now := time.Now().UnixMilli()
 	m.sessions = []store.Session{
-		{ID: "s1", Name: "one", Agent: "shell", Status: "running", CreatedAt: 1000},
-		{ID: "s2", Name: "two", Agent: "shell", Status: "running", CreatedAt: 1000},
-		{ID: "s3", Name: "three", Agent: "shell", Status: "running", CreatedAt: 1000},
+		{ID: "s1", Name: "one", Agent: "shell", Status: "running", CreatedAt: now},
+		{ID: "s2", Name: "two", Agent: "shell", Status: "running", CreatedAt: now},
+		{ID: "s3", Name: "three", Agent: "shell", Status: "running", CreatedAt: now},
 	}
 	m.selected = -1
 	return m
@@ -77,13 +83,13 @@ func TestSidebarStripeAlternatesPerSessionBlockNotPerLine(t *testing.T) {
 		t.Fatalf("stripe phases must be exactly {theme.Surface, theme.Background}, got session1=%q session2=%q (surface=%s background=%s)", bg1, bg2, surfaceHex, backgroundHex)
 	}
 
-	// Line 2 ("created ...") of the SAME session must match line 1's own
-	// phase -- both lines of one session block share one phase, never
-	// each choosing its own.
+	// Line 2 (task 012/R120: a bare age, no "created " label) of the SAME
+	// session must match line 1's own phase -- both lines of one session
+	// block share one phase, never each choosing its own.
 	rowOneLine2 := rowOne + 1
 	rowTwoLine2 := rowTwo + 1
-	bg1line2, ok1line2 := cellBgHex(t, term, findCol(t, term, rowOneLine2, "created"), rowOneLine2)
-	bg2line2, ok2line2 := cellBgHex(t, term, findCol(t, term, rowTwoLine2, "created"), rowTwoLine2)
+	bg1line2, ok1line2 := cellBgHex(t, term, findCol(t, term, rowOneLine2, "just now"), rowOneLine2)
+	bg2line2, ok2line2 := cellBgHex(t, term, findCol(t, term, rowTwoLine2, "just now"), rowTwoLine2)
 	if !ok1line2 || bg1line2 != bg1 {
 		t.Fatalf("session 1's line 2 background = (%q,%v), want it to match line 1's (%q,%v)", bg1line2, ok1line2, bg1, ok1)
 	}

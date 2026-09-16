@@ -79,11 +79,18 @@ func clientWidensSidebarUntilVisible(ctx context.Context, clientName, want strin
 // enough to be visibly cropped at the default width). It cannot reuse
 // clientCreatesShellSession's own wait for "starting" on the row, since that
 // word is exactly what a long name crops off screen; the row's second line
-// ("created ...") never competes with the name for the same truncation
-// budget, so it waits for that instead. It uses "/tmp" as the working
-// directory rather than creating a scenario-scoped one, since this step
-// only cares about the rendered row's shape, not the session's filesystem
-// behaviour.
+// (task 012/R120: a bare age, no "created " label, and shell sessions carry
+// no permission-profile badge to render alongside it) never competes with
+// the name for the same truncation budget, so it waits for that line
+// instead -- but this WaitForFrame passes clockFrozen=false against a real
+// (unfrozen) wall clock, so NormalizeFrame's own relativeTime regex has
+// already scrubbed the age itself to the literal placeholder
+// "<relative-time>" by the time this sees it (the same placeholder
+// features/pty_driver_test.go's scrubber test names), never the literal
+// "just now"/"Xm ago" text a frozen-clock scenario would still show. It
+// uses "/tmp" as the working directory rather than creating a
+// scenario-scoped one, since this step only cares about the rendered row's
+// shape, not the session's filesystem behaviour.
 func clientCreatesLongNamedShellSession(ctx context.Context, clientName, name string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -109,7 +116,7 @@ func clientCreatesLongNamedShellSession(ctx context.Context, clientName, name st
 	if err := client.Send("\x1b[B/tmp\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "created ")
+	return client.WaitForFrame(ctx, false, "<relative-time>")
 }
 
 // ensureUIStateTable opens the scenario's state.db and makes sure ui_state

@@ -22,7 +22,8 @@ func TestListShowsEnvDirtyBadgeOnlyWhenSet(t *testing.T) {
 	view := model.View()
 	lines := strings.Split(view, "\n")
 	// Each session is a two-line row (name/status on the first, the
-	// profile/env badges and "created ..." on the second) -- the badge
+	// profile/env badges and the bare age on the second, task 012/R120) --
+	// the badge
 	// belongs to the row's SECOND line, never the one carrying the name.
 	foundDirtyRow, foundCleanRow := false, false
 	for i, line := range lines {
