@@ -970,6 +970,50 @@ its own dated supersession note pointing at the record above. [`docs/reports/pha
 and [`docs/reports/phase3k-findings.md`](reports/phase3k-findings.md) are re-closed at the new sha
 (task cure-02-02); the R111/R113 rows there additionally name the two cure commits.
 
+**Phase 4** — `prds/phase4-codex-and-chrome.md`, run `deck-phase4`, 2026-09-16. Sixteen
+requirements, **R116–R131** (Tier 1 R116–R127 plus Tier 2 R128–R131), closing the run's own
+plan-gate objection: Tier 1 covers the codex adapter (argv, hook trust, permission-mode mapping,
+resume/create parity) and chrome legibility (per-kind icon glyphs, gutter/status contrast,
+grouping-agnostic row layout), each requirement's own commit(s) and test(s) cited in
+[`docs/reports/phase4-report.md`](reports/phase4-report.md) (task 042); Tier 2 (session
+grouping, settings CRUD, `DECK_SESSION_GROUP`) was decided NOT started —
+[`docs/reports/phase4-tier2-decision.md`](reports/phase4-tier2-decision.md) (task 028) records
+the budget at decision time (iteration 105: 699/800 iterations remaining, ~15h15m to deadline)
+against Tier 2's own materially larger estimate (8–12h for schema migration + sidebar rewrite +
+settings CRUD), too tight against the mandatory tail (039–044, including a 75-minute stability
+sweep); every task from 029 through 038 reads that decision and is satisfied by its own
+first-clause escape rather than landing Tier 2 code, and the resulting SPEC-versus-code grouping
+gap is disclosed as an accepted non-finding rather than a defect. **Tail code sha
+`db669658ce20de10ef6aaad311c94f6830538436` (`db66965`)** — task 047's commit (`features: fix
+stale interactive_focus selection_idle text match (task 047)`), the last commit in the run to
+touch a `*.go` or `*.feature` file; the plan's own baseline for the "Tier 2 not started" branch
+named task 026, but three pre-existing red lanes the Tier 1 gate sweep (task 027) uncovered were
+each carved into their own fixing task (045, 046, 047), and 047's own criterion supersedes 026 as
+the run's last code-touching task, per task 028's decision record. Both gates were green or
+advisory-only at that sha: the mandated, unnarrowed whole-suite sweep
+(`ci/run.sh sh -c 'go test -p=1 -count=1 -timeout=40m ./...'`) exits **0**, all 18 packages listed
+by `go list ./...` report `ok` or `[no test files]`, no `FAIL` line, 7m01s wall-clock, default
+godog tag filter (`~@real-agents && ~@nightly`)
+([`docs/reports/phase4-final-suite/README.md`](reports/phase4-final-suite/README.md), task 039);
+the ten-run stability sweep (`ci/stability.sh 10`) measures **7/10 passed**, with all three
+failures (runs 4, 8, 9) the same known-open, advisory "transient-`starting`" quiescence-race flake
+in `TestGoldenMinimumFrame` (`features/golden_frame_test.go:74`, the golden frame settling with
+row status `starting` by design, per that test's own doc comments and task 210's prior
+disposition) — no occurrence of the other named flake class (the SIGWINCH exact-count assertion)
+and no other package or scenario failing in any of the ten runs
+([`docs/reports/phase4-stability10/README.md`](reports/phase4-stability10/README.md), task 041),
+advisory per that task's own criteria wording and not a blocker to either gate or to this record.
+`go build ./...`, `go vet ./...` and `gofmt -l .` are clean at the same sha but for the four
+pre-existing drift files named pre-existing in the plan's own standing rules
+([`docs/reports/phase4-guards/README.md`](reports/phase4-guards/README.md), task 040). Evidence:
+[`docs/reports/phase4-report.md`](reports/phase4-report.md) (the per-requirement verdict table,
+both gates and the guards, all cited at `db66965`) and
+[`docs/reports/phase4-findings.md`](reports/phase4-findings.md) (the PRD's two known-unverified
+codex items — `acceptEdits`/`plan`/`dontAsk` reachability and hook-trust hash version stability,
+both measured only on codex `0.154.0` — plus the run's own findings ledger, one entry per
+commit-message `FINDING:` line in `git log --grep='FINDING:' 08a1ffe3..HEAD`, four commits in
+all, tasks 025/009/008/007).
+
 ## Other milestones
 
 | Date | What |
