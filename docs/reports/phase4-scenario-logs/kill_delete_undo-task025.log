@@ -1,1 +1,709 @@
-ok  	github.com/n-orlov/deck/features	32.412s
+# ci/run.sh sh -c 'DECK_GODOG_PATHS=kill_delete_undo.feature go test -count=1 -v -run TestFeatures ./features/'
+# task 025 (R127), rerun in full after this task's own internal/tui degrade-note change (the
+# earlier one-line logs measured a tree without it); wrapper exit status 0.
+=== RUN   TestFeatures
+[1;37mFeature:[0m Undo toast after x, and the dd delete/tombstone chord
+  x still kills with no confirmation and still refuses an already-stopped
+  row, but a successful kill leaves a toast naming undo, actionable for
+  exactly DECK_UNDO_MS, that u resumes -- once the window is gone (expired,
+  or already spent by an earlier u), u does nothing. Task 106 adds dd's
+  own grace-window/reap scenarios to this same file.
+=== RUN   TestFeatures/x_kills_without_confirmation_and_refuses_to_kill_an_already-stopped_row
+
+  [1;37mScenario:[0m x kills without confirmation and refuses to kill an already-stopped row             [1;30m# kill_delete_undo.feature:9[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "undo-basics"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_undo-basics" exists[0m                                     [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                             [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_undo-basics" does not exist[0m                             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database session "undo-basics" is "stopped" from "user" with killed_by_user=1[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                             [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "already stopped"[0m                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/u_undoes_the_most_recent_kill_inside_its_DECK_UNDO_MS_window
+
+  [1;37mScenario:[0m u undoes the most recent kill inside its DECK_UNDO_MS window         [1;30m# kill_delete_undo.feature:20[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "undo-resumes"[0m                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                              [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "press u to undo"[0m                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                               [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "running"[0m                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux session "deck_undo-resumes" exists[0m                      [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe state database contains session "undo-resumes" with status "running"[0m [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/u_does_nothing_once_the_undo_window_has_expired
+
+  [1;37mScenario:[0m u does nothing once the undo window has expired                                      [1;30m# kill_delete_undo.feature:31[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                    [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "undo-expires"[0m                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                              [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                    [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "press u to undo"[0m                               [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                               [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mthe private tmux session "deck_undo-expires" does not exist[0m                             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database session "undo-expires" is "stopped" from "user" with killed_by_user=1[0m [1;30m# assertions_test.go:43 -> github.com/n-orlov/deck/features.databaseSessionTerminalFields[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_single_d_shows_a_pending-delete_indicator_and_changes_nothing_in_the_store
+
+  [1;37mScenario:[0m a single d shows a pending-delete indicator and changes nothing in the store [1;30m# kill_delete_undo.feature:42[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-pending"[0m                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses d[0m                                                       [1;30m# kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.clientPressesD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "press d again to confirm"[0m                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "dd-pending" is not tombstoned[0m                        [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mAnd[0m [32mthe private tmux session "deck_dd-pending" exists[0m                                [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mWhen[0m [32mdeck client "A" clears the pending delete indicator with escape[0m                 [1;30m# kill_delete_undo_test.go:32 -> github.com/n-orlov/deck/features.clientClearsPendingDeleteWithEscape[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "press d again to confirm"[0m              [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mthe state database session "dd-pending" is not tombstoned[0m                        [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/d_followed_by_any_other_key_performs_no_destructive_action
+
+  [1;37mScenario:[0m d followed by any other key performs no destructive action      [1;30m# kill_delete_undo.feature:54[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-interrupted"[0m              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses d[0m                                          [1;30m# kill_delete_undo_test.go:30 -> github.com/n-orlov/deck/features.clientPressesD[0m
+    [32mAnd[0m [32mdeck client "A" clears the pending delete indicator by pressing "j"[0m [1;30m# kill_delete_undo_test.go:33 -> github.com/n-orlov/deck/features.clientClearsPendingDeleteWithKey[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "press d again to confirm"[0m [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mthe state database session "dd-interrupted" is not tombstoned[0m       [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mAnd[0m [32mthe private tmux session "deck_dd-interrupted" exists[0m               [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_second_d_opens_a_confirm_dialog_naming_what_survives,_esc_cancels_leaving_the_row_untombstoned
+
+  [1;37mScenario:[0m the second d opens a confirm dialog naming what survives, esc cancels leaving the row untombstoned [1;30m# kill_delete_undo.feature:64[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-confirm-cancel"[0m                                              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                            [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Conversation:"[0m                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Working directory:"[0m                                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the dialog with escape[0m                                                         [1;30m# dialogs_test.go:24 -> github.com/n-orlov/deck/features.clientClosesDialogWithEscape[0m
+    [32mThen[0m [32mthe state database session "dd-confirm-cancel" is not tombstoned[0m                                      [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mAnd[0m [32mthe private tmux session "deck_dd-confirm-cancel" exists[0m                                               [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/submitting_the_confirm_dialog_kills_the_live_pane,_tombstones_the_row,_and_it_disappears_from_the_sidebar_immediately
+
+  [1;37mScenario:[0m submitting the confirm dialog kills the live pane, tombstones the row, and it disappears from the sidebar immediately [1;30m# kill_delete_undo.feature:75[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                              [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-submit"[0m                                                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                               [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                                   [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "dd-submit"[0m                                                                      [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mthe private tmux session "deck_dd-submit" does not exist[0m                                                                  [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database session "dd-submit" is tombstoned[0m                                                                      [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_dd_confirm_dialog_obeys_the_§11.4_contract_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it
+
+  [1;37mScenario:[0m the dd confirm dialog obeys the §11.4 contract -- the mouse can neither cancel nor confirm it, at its border, its body or outside it [1;30m# kill_delete_undo.feature:85[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-mouse"[0m                                                                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                                              [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Conversation:"[0m                                                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" captures its frame as "before-dd-mouse"[0m                                                                                 [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" clicks at column 1 row 1[0m                                                                                                 [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mAnd[0m [32mdeck client "A" clicks at column 40 row 5[0m                                                                                                [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mAnd[0m [32mdeck client "A" clicks at column 95 row 25[0m                                                                                               [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "before-dd-mouse" frame[0m                                                                [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mAnd[0m [32mthe state database session "dd-mouse" is not tombstoned[0m                                                                                  [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" closes the dialog with escape[0m                                                                                           [1;30m# dialogs_test.go:24 -> github.com/n-orlov/deck/features.clientClosesDialogWithEscape[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_dd_confirm_dialog_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends
+
+  [1;37mScenario:[0m the dd confirm dialog width is 80% of the viewport clamped to [26,80], at both clamp ends [1;30m# kill_delete_undo.feature:99[0m
+    [32mGiven[0m [32mdeck client "A" is started with terminal size 30x60[0m                                         [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-width-lower"[0m                                        [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                   [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" dialog box width is 26[0m                                                       [1;30m# dialogs_test.go:31 -> github.com/n-orlov/deck/features.clientDialogBoxWidthIs[0m
+    [32mWhen[0m [32mdeck client "A" closes the dialog with escape[0m                                                [1;30m# dialogs_test.go:24 -> github.com/n-orlov/deck/features.clientClosesDialogWithEscape[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_dd_confirm_dialog_width_saturates_at_80_well_past_the_upper_clamp
+
+  [1;37mScenario:[0m the dd confirm dialog width saturates at 80 well past the upper clamp [1;30m# kill_delete_undo.feature:107[0m
+    [32mGiven[0m [32mdeck client "A" is started with terminal size 220x30[0m                    [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-width-upper"[0m                    [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                               [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" dialog box width is 80[0m                                   [1;30m# dialogs_test.go:31 -> github.com/n-orlov/deck/features.clientDialogBoxWidthIs[0m
+    [32mWhen[0m [32mdeck client "A" closes the dialog with escape[0m                            [1;30m# dialogs_test.go:24 -> github.com/n-orlov/deck/features.clientClosesDialogWithEscape[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/u_restores_a_deleted_row_inside_its_DECK_DELETE_GRACE_MS_window
+
+  [1;37mScenario:[0m u restores a deleted row inside its DECK_DELETE_GRACE_MS window [1;30m# kill_delete_undo.feature:116[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m       [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-undo-restores"[0m            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                         [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                             [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mdeck client "A" screen contains "press u to undo"[0m                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "dd-undo-restores" is tombstoned[0m         [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                          [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "dd-undo-restores"[0m                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "dd-undo-restores" is not tombstoned[0m     [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/u_does_nothing_once_the_delete_grace_window_has_expired,_and_the_row_is_reaped
+
+  [1;37mScenario:[0m u does nothing once the delete grace window has expired, and the row is reaped [1;30m# kill_delete_undo.feature:129[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                      [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-reap-expires"[0m                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                        [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                            [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                              [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "press u to undo"[0m                         [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mthe state database session "dd-reap-expires" is reaped[0m                             [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                         [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mthe state database session "dd-reap-expires" is reaped[0m                            [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/reaping_a_deleted_session_removes_its_store_rows_and_deck's_own_per-session_files,_but_never_the_audit_log's_earlier_history
+
+  [1;37mScenario:[0m reaping a deleted session removes its store rows and deck's own per-session files, but never the audit log's earlier history [1;30m# kill_delete_undo.feature:142[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                                                                    [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "dd-reap-no-trace"[0m                                                                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" seeds captures and a history file for session "dd-reap-no-trace"[0m                                                 [1;30m# kill_delete_undo_test.go:37 -> github.com/n-orlov/deck/features.clientSeedsCapturesAndHistoryFileForSession[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                                      [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                                          [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                                                            [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe state database session "dd-reap-no-trace" is reaped[0m                                                                         [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mAnd[0m [32mthe captures directory and history file for reaped session "dd-reap-no-trace" are gone[0m                                           [1;30m# kill_delete_undo_test.go:38 -> github.com/n-orlov/deck/features.capturesDirAndHistoryFileForReapedSessionAreGone[0m
+    [32mAnd[0m [32mthe audit log still contains an earlier event for reaped session "dd-reap-no-trace"[0m                                              [1;30m# kill_delete_undo_test.go:39 -> github.com/n-orlov/deck/features.auditLogStillContainsEarlierEventForReapedSession[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/killing_a_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m killing a session leaves its adversarially-seeded cwd fingerprint unchanged                           [1;30m# kill_delete_undo.feature:155[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                              [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-kill" is seeded with:[0m                                                             [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-kill-session" with cwd the scratch directory labelled "fp-kill"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-kill" is fingerprinted as "before-kill"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                               [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe directory "fp-kill" still matches fingerprint "before-kill"[0m                                          [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/undoing_a_kill_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m undoing a kill leaves its adversarially-seeded cwd fingerprint unchanged                                        [1;30m# kill_delete_undo.feature:170[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                        [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-kill-undo" is seeded with:[0m                                                                  [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-kill-undo-session" with cwd the scratch directory labelled "fp-kill-undo"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-kill-undo" is fingerprinted as "before-kill-undo"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                         [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" presses u[0m                                                                                           [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "running"[0m                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe directory "fp-kill-undo" still matches fingerprint "before-kill-undo"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dd_(delete)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m dd (delete) leaves its adversarially-seeded cwd fingerprint unchanged                                     [1;30m# kill_delete_undo.feature:187[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-delete" is seeded with:[0m                                                               [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-delete-session" with cwd the scratch directory labelled "fp-delete"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-delete" is fingerprinted as "before-delete"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                   [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                       [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "fp-delete-session" is tombstoned[0m                                                 [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe directory "fp-delete" still matches fingerprint "before-delete"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/undoing_a_delete_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m undoing a delete leaves its adversarially-seeded cwd fingerprint unchanged                                          [1;30m# kill_delete_undo.feature:204[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                                                           [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-delete-undo" is seeded with:[0m                                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-delete-undo-session" with cwd the scratch directory labelled "fp-delete-undo"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-delete-undo" is fingerprinted as "before-delete-undo"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                             [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                                 [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mdeck client "A" screen contains "press u to undo"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                                                              [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "fp-delete-undo-session"[0m                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "fp-delete-undo-session" is not tombstoned[0m                                                   [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mAnd[0m [32mthe directory "fp-delete-undo" still matches fingerprint "before-delete-undo"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/reaping_a_deleted_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m reaping a deleted session leaves its adversarially-seeded cwd fingerprint unchanged                   [1;30m# kill_delete_undo.feature:224[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short delete grace window[0m                                             [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-reap" is seeded with:[0m                                                             [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-reap-session" with cwd the scratch directory labelled "fp-reap"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-reap" is fingerprinted as "before-reap"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                               [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                   [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                                     [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe state database session "fp-reap-session" is reaped[0m                                                   [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mAnd[0m [32mthe directory "fp-reap" still matches fingerprint "before-reap"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/choosing_purge_in_the_delete_confirm_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m choosing purge in the delete confirm leaves its adversarially-seeded cwd fingerprint unchanged                                                                            [1;30m# kill_delete_undo.feature:242[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                                                                                   [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-purge" is seeded with:[0m                                                                                                                                [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates claude session "fp-purge-session" with permission profile "safe" and message "hello from fp-purge" with cwd the scratch directory labelled "fp-purge"[0m [1;30m# kill_delete_undo_fingerprint_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesClaudeSessionWithScratchCWDLabelled[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                                                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe directory "fp-purge" is fingerprinted as "before-purge"[0m                                                                                                                   [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                                                                                   [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                                                                                                          [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Will delete:"[0m                                                                                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                                                                                                      [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "fp-purge-session" is tombstoned[0m                                                                                                                  [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe directory "fp-purge" still matches fingerprint "before-purge"[0m                                                                                                             [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/archiving_an_already-stopped_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m archiving an already-stopped session leaves its adversarially-seeded cwd fingerprint unchanged              [1;30m# kill_delete_undo.feature:263[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                           [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-archive" is seeded with:[0m                                                                [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-archive-session" with cwd the scratch directory labelled "fp-archive"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-archive" is fingerprinted as "before-archive"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                     [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "fp-archive-session" with status "stopped"[0m                                 [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32m300 milliseconds pass[0m                                                                                          [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" archives its selected session "fp-archive-session"[0m                                              [1;30m# kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.clientArchivesSelectedSession[0m
+    [32mThen[0m [32mthe state database session "fp-archive-session" is archived[0m                                                    [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mthe directory "fp-archive" still matches fingerprint "before-archive"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/A_on_a_non-stopped_session_(kill-and-archive_as_one_action)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged
+
+  [1;37mScenario:[0m A on a non-stopped session (kill-and-archive as one action) leaves its adversarially-seeded cwd fingerprint unchanged         [1;30m# kill_delete_undo.feature:282[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                      [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32ma scratch directory "fp-kill-and-archive" is seeded with:[0m                                                                         [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "fp-kill-and-archive-session" with cwd the scratch directory labelled "fp-kill-and-archive"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-kill-and-archive" is fingerprinted as "before-kill-and-archive"[0m                                                 [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" archives its selected session "fp-kill-and-archive-session"[0m                                                      [1;30m# kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.clientArchivesSelectedSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_fp-kill-and-archive-session" does not exist[0m                                                       [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database session "fp-kill-and-archive-session" is archived[0m                                                              [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mthe directory "fp-kill-and-archive" still matches fingerprint "before-kill-and-archive"[0m                                           [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  [1;37mScenario:[0m bulk x on a marked set leaves both adversarially-seeded cwd fingerprints unchanged               [1;30m# kill_delete_undo.feature:299[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-bk-1/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32ma scratch directory "fp-bk-2/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "bk-one" with cwd the scratch directory labelled "fp-bk-1/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "bk-two" with cwd the scratch directory labelled "fp-bk-2/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-bk-1/cwd" is fingerprinted as "before-bk-one"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mAnd[0m [32mthe directory "fp-bk-2/cwd" is fingerprinted as "before-bk-two"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bk-one running"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bk-one" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "> bk-two running"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bk-one running"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bk-one" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "bk-two running"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bk-two" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "x"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mthe state database contains session "bk-one" with status "stopped"[0m                                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "bk-two" with status "stopped"[0m                                   [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe directory "fp-bk-1/cwd" still matches fingerprint "before-bk-one"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mAnd[0m [32mthe directory "fp-bk-2/cwd" still matches fingerprint "before-bk-two"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  [1;37mScenario:[0m dd on a marked set leaves both adversarially-seeded cwd fingerprints unchanged                   [1;30m# kill_delete_undo.feature:337[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                                [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32ma scratch directory "fp-bd-1/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32ma scratch directory "fp-bd-2/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "bd-one" with cwd the scratch directory labelled "fp-bd-1/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "bd-two" with cwd the scratch directory labelled "fp-bd-2/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-bd-1/cwd" is fingerprinted as "before-bd-one"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mAnd[0m [32mthe directory "fp-bd-2/cwd" is fingerprinted as "before-bd-two"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bd-one running"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bd-one" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "> bd-two running"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bd-one running"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bd-one" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "bd-two running"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bd-two" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                          [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Delete 2 marked sessions"[0m                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                             [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "bd-one" is tombstoned[0m                                                   [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe state database session "bd-two" is tombstoned[0m                                                    [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe directory "fp-bd-1/cwd" still matches fingerprint "before-bd-one"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mAnd[0m [32mthe directory "fp-bd-2/cwd" still matches fingerprint "before-bd-two"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged
+
+  [1;37mScenario:[0m undoing a bulk kill leaves both adversarially-seeded cwd fingerprints unchanged                  [1;30m# kill_delete_undo.feature:378[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32ma scratch directory "fp-bu-1/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32ma scratch directory "fp-bu-2/cwd" is seeded with:[0m                                                    [1;30m# fingerprint_test.go:171 -> github.com/n-orlov/deck/features.seedScratchDirectory[0m
+      | [36mpath[0m         | [36mkind[0m | [36mcontent[0m             | [36mmode[0m |
+      | [36mstate.db[0m     | [36mfile[0m | [36mfake-database-bytes[0m | [36m[0m     |
+      | [36m.hidden[0m      | [36mfile[0m | [36mdotfile-content[0m     | [36m[0m     |
+      | [36msubdir[0m       | [36mdir[0m  | [36m[0m                    | [36m[0m     |
+      | [36mreadonly.txt[0m | [36mfile[0m | [36mcannot-write-me[0m     | [36m0444[0m |
+    [32mAnd[0m [32mdeck client "A" creates shell session "bu-one" with cwd the scratch directory labelled "fp-bu-1/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "bu-two" with cwd the scratch directory labelled "fp-bu-2/cwd"[0m [1;30m# kill_delete_undo_fingerprint_test.go:24 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithScratchCWDLabelled[0m
+    [32mAnd[0m [32mthe directory "fp-bu-1/cwd" is fingerprinted as "before-bu-one"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mAnd[0m [32mthe directory "fp-bu-2/cwd" is fingerprinted as "before-bu-two"[0m                                      [1;30m# fingerprint_test.go:172 -> github.com/n-orlov/deck/features.fingerprintNamedDirectory[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bu-one running"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bu-one" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "> bu-two running"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "bu-one running"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bu-one" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "bu-two running"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "bu-two" is marked[0m                                                               [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "x"[0m                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mthe state database contains session "bu-one" with status "stopped"[0m                                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "bu-two" with status "stopped"[0m                                   [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                                           [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mthe state database contains session "bu-one" with status "running"[0m                                  [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "bu-two" with status "running"[0m                                   [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe directory "fp-bu-1/cwd" still matches fingerprint "before-bu-one"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mAnd[0m [32mthe directory "fp-bu-2/cwd" still matches fingerprint "before-bu-two"[0m                                [1;30m# fingerprint_test.go:173 -> github.com/n-orlov/deck/features.assertNamedDirectoryMatchesFingerprint[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                       [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/both_the_undo_window_and_the_delete_grace_window_keep_advancing_while_DECK_CLOCK_is_frozen
+
+  [1;37mScenario:[0m both the undo window and the delete grace window keep advancing while DECK_CLOCK is frozen                 [1;30m# kill_delete_undo.feature:419[0m
+    [32mGiven[0m [32mdeck client "A" is started with the clock frozen at "2025-01-02T03:04:05Z" and short undo and delete windows[0m [1;30m# kill_delete_undo_test.go:27 -> github.com/n-orlov/deck/features.clientStartedWithFrozenClockAndShortUndoAndDeleteWindows[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "frozen-monotonic"[0m                                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                    [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "press u to undo"[0m                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                    [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                                        [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "frozen-monotonic" is tombstoned[0m                                                   [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mWhen[0m [32m400 milliseconds pass[0m                                                                                         [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "press u to undo"[0m                                                     [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mthe state database session "frozen-monotonic" is reaped[0m                                                        [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                                                     [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mthe state database session "frozen-monotonic" is reaped[0m                                                       [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dd_without_purge_leaves_the_agent's_transcript_intact_through_delete_and_reap
+
+  [1;37mScenario:[0m dd without purge leaves the agent's transcript intact through delete and reap                                       [1;30m# kill_delete_undo.feature:435[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                             [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started with a short delete grace window[0m                                                             [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "purge-keep" with permission profile "safe" and message "hello from purge-keep"[0m [1;30m# agent_steps_test.go:48 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe fake claude transcript for session "purge-keep" is captured as "keep-before"[0m                                        [1;30m# kill_delete_undo_test.go:40 -> github.com/n-orlov/deck/features.fakeClaudeTranscriptForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                             [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Purge:"[0m                                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "keep"[0m                                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                                                [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                                                   [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe state database session "purge-keep" is reaped[0m                                                                      [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mAnd[0m [32mthe transcript captured as "keep-before" still exists byte-identical[0m                                                    [1;30m# kill_delete_undo_test.go:42 -> github.com/n-orlov/deck/features.transcriptCapturedStillExistsByteIdentical[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/choosing_purge_in_the_delete_confirm_removes_only_the_agent's_declared_transcript_file
+
+  [1;37mScenario:[0m choosing purge in the delete confirm removes only the agent's declared transcript file                                  [1;30m# kill_delete_undo.feature:451[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                                 [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "purge-remove" with permission profile "safe" and message "hello from purge-remove"[0m [1;30m# agent_steps_test.go:48 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfileAndMessage[0m
+    [32mThen[0m [32mdeck client "A" screen contains "resumable"[0m                                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe fake claude transcript for session "purge-remove" is captured as "purge-before"[0m                                         [1;30m# kill_delete_undo_test.go:40 -> github.com/n-orlov/deck/features.fakeClaudeTranscriptForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                                                 [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                                                        [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Will delete:"[0m                                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                                                    [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "purge-remove" is tombstoned[0m                                                                    [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe transcript captured as "purge-before" no longer exists[0m                                                                  [1;30m# kill_delete_undo_test.go:43 -> github.com/n-orlov/deck/features.transcriptCapturedNoLongerExists[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dd_without_purge_leaves_the_codex_agent's_transcript_intact_through_delete_and_reap
+
+  [1;37mScenario:[0m dd without purge leaves the codex agent's transcript intact through delete and reap     [1;30m# kill_delete_undo.feature:466[0m
+    [32mGiven[0m [32ma long-running fake "codex" binary is on PATH for future deck clients[0m                     [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.longRunningFakeCodexOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started with a short delete grace window[0m                                 [1;30m# kill_delete_undo_test.go:26 -> github.com/n-orlov/deck/features.clientStartedWithShortDeleteGraceWindow[0m
+    [32mWhen[0m [32mdeck client "A" creates codex session "codex-purge-keep" with permission profile "safe"[0m    [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "codex-purge-keep"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mfake Codex session "codex-purge-keep" is prompted with "hello from codex-purge-keep"[0m       [1;30m# codex_hooks_test.go:29 -> github.com/n-orlov/deck/features.fakeCodexIsPromptedWith[0m
+    [32mThen[0m [32mwithin 3 seconds deck client "A" row "codex-purge-keep" contains "live"[0m                    [1;30m# codex_hooks_test.go:32 -> github.com/n-orlov/deck/features.clientRowContainsWithinThreeSeconds[0m
+    [32mAnd[0m [32mthe fake codex transcript for session "codex-purge-keep" is captured as "codex-keep-before"[0m [1;30m# kill_delete_undo_test.go:41 -> github.com/n-orlov/deck/features.fakeCodexTranscriptForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                 [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Purge:"[0m                                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "keep"[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                    [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mAnd[0m [32m400 milliseconds pass[0m                                                                       [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mThen[0m [32mthe state database session "codex-purge-keep" is reaped[0m                                    [1;30m# kill_delete_undo_test.go:36 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsReaped[0m
+    [32mAnd[0m [32mthe transcript captured as "codex-keep-before" still exists byte-identical[0m                  [1;30m# kill_delete_undo_test.go:42 -> github.com/n-orlov/deck/features.transcriptCapturedStillExistsByteIdentical[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/choosing_purge_in_the_delete_confirm_removes_only_the_codex_agent's_declared_transcript_file
+
+  [1;37mScenario:[0m choosing purge in the delete confirm removes only the codex agent's declared transcript file [1;30m# kill_delete_undo.feature:489[0m
+    [32mGiven[0m [32ma long-running fake "codex" binary is on PATH for future deck clients[0m                          [1;30m# agent_steps_test.go:32 -> github.com/n-orlov/deck/features.longRunningFakeCodexOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates codex session "codex-purge-remove" with permission profile "safe"[0m       [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mThen[0m [32mdeck client "A" screen contains "codex-purge-remove"[0m                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mfake Codex session "codex-purge-remove" is prompted with "hello from codex-purge-remove"[0m        [1;30m# codex_hooks_test.go:29 -> github.com/n-orlov/deck/features.fakeCodexIsPromptedWith[0m
+    [32mThen[0m [32mwithin 3 seconds deck client "A" row "codex-purge-remove" contains "live"[0m                       [1;30m# codex_hooks_test.go:32 -> github.com/n-orlov/deck/features.clientRowContainsWithinThreeSeconds[0m
+    [32mAnd[0m [32mthe fake codex transcript for session "codex-purge-remove" is captured as "codex-purge-before"[0m   [1;30m# kill_delete_undo_test.go:41 -> github.com/n-orlov/deck/features.fakeCodexTranscriptForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                                      [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mAnd[0m [32mdeck client "A" cycles the open dialog's field right[0m                                             [1;30m# dialogs_test.go:25 -> github.com/n-orlov/deck/features.clientCyclesOpenDialogFieldRight[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Will delete:"[0m                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                                         [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "codex-purge-remove" is tombstoned[0m                                   [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe transcript captured as "codex-purge-before" no longer exists[0m                                 [1;30m# kill_delete_undo_test.go:43 -> github.com/n-orlov/deck/features.transcriptCapturedNoLongerExists[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/A_archives_an_already-stopped_session,_hidden_from_the_default_list_with_its_status_unchanged
+
+  [1;37mScenario:[0m A archives an already-stopped session, hidden from the default list with its status unchanged [1;30m# kill_delete_undo.feature:510[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                             [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "archive-stopped"[0m                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                       [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe state database contains session "archive-stopped" with status "stopped"[0m                      [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32m300 milliseconds pass[0m                                                                            [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" archives its selected session "archive-stopped"[0m                                   [1;30m# kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.clientArchivesSelectedSession[0m
+    [32mThen[0m [32mthe state database session "archive-stopped" is archived[0m                                         [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mthe state database contains session "archive-stopped" with status "stopped"[0m                       [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/A_on_a_non-stopped_session_offers_kill_and_archive_as_one_action_instead_of_refusing
+
+  [1;37mScenario:[0m A on a non-stopped session offers kill and archive as one action instead of refusing [1;30m# kill_delete_undo.feature:522[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "archive-running"[0m                                  [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" archives its selected session "archive-running"[0m                         [1;30m# kill_delete_undo_test.go:44 -> github.com/n-orlov/deck/features.clientArchivesSelectedSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_archive-running" does not exist[0m                          [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database session "archive-running" is archived[0m                                 [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mthe state database contains session "archive-running" with status "stopped"[0m              [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/A_on_a_running_session_opens_a_confirm_that_names_the_kill_and_writes_nothing_until_it_is_confirmed
+
+  [1;37mScenario:[0m A on a running session opens a confirm that names the kill and writes nothing until it is confirmed [1;30m# kill_delete_undo.feature:532[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "archive-confirm-live"[0m                                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses A on its selected session "archive-confirm-live"[0m                               [1;30m# kill_delete_undo_test.go:45 -> github.com/n-orlov/deck/features.clientPressesArchiveOnSelectedSession[0m
+    [32mThen[0m [32mdeck client "A" screen contains "kills the live agent"[0m                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux session "deck_archive-confirm-live" exists[0m                                             [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe state database session "archive-confirm-live" is not archived[0m                                       [1;30m# kill_delete_undo_test.go:49 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived[0m
+    [32mWhen[0m [32mdeck client "A" presses "A" again inside the archive confirm for "archive-confirm-live"[0m                [1;30m# kill_delete_undo_test.go:46 -> github.com/n-orlov/deck/features.clientPressesKeyAgainInsideArchiveConfirm[0m
+    [32mThen[0m [32mthe private tmux session "deck_archive-confirm-live" exists[0m                                            [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe state database session "archive-confirm-live" is not archived[0m                                       [1;30m# kill_delete_undo_test.go:49 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived[0m
+    [32mWhen[0m [32mdeck client "A" closes the dialog with escape[0m                                                          [1;30m# dialogs_test.go:24 -> github.com/n-orlov/deck/features.clientClosesDialogWithEscape[0m
+    [32mThen[0m [32mdeck client "A" screen contains "archive-confirm-live"[0m                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux session "deck_archive-confirm-live" exists[0m                                             [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe state database session "archive-confirm-live" is not archived[0m                                       [1;30m# kill_delete_undo_test.go:49 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/confirming_the_archive_dialog_lands_both_the_kill_and_the_archived_flag
+
+  [1;37mScenario:[0m confirming the archive dialog lands both the kill and the archived flag [1;30m# kill_delete_undo.feature:555[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "archive-confirm-submit"[0m              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses A on its selected session "archive-confirm-submit"[0m [1;30m# kill_delete_undo_test.go:45 -> github.com/n-orlov/deck/features.clientPressesArchiveOnSelectedSession[0m
+    [32mThen[0m [32mthe state database session "archive-confirm-submit" is not archived[0m        [1;30m# kill_delete_undo_test.go:49 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                    [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe private tmux session "deck_archive-confirm-submit" does not exist[0m      [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database session "archive-confirm-submit" is archived[0m             [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "archive-confirm-submit"[0m            [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_confirmed_archive_says_what_happened_and_u_puts_the_row_back_in_the_default_list
+
+  [1;37mScenario:[0m a confirmed archive says what happened and u puts the row back in the default list [1;30m# kill_delete_undo.feature:570[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "archive-undo"[0m                                   [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" presses A on its selected session "archive-undo"[0m                      [1;30m# kill_delete_undo_test.go:45 -> github.com/n-orlov/deck/features.clientPressesArchiveOnSelectedSession[0m
+    [32mAnd[0m [32mdeck client "A" submits the open dialog[0m                                                [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "archive-undo" is archived[0m                                 [1;30m# kill_delete_undo_test.go:48 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsArchived[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Killed and archived"[0m                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "press u to unarchive"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" undoes the archive with u for "archive-undo"[0m                          [1;30m# kill_delete_undo_test.go:47 -> github.com/n-orlov/deck/features.clientUndoesArchiveWithU[0m
+    [32mThen[0m [32mthe state database session "archive-undo" is not archived[0m                             [1;30m# kill_delete_undo_test.go:49 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotArchived[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "archive-undo stopped"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "press u to unarchive"[0m                         [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "Filter:"[0m                                      [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/m_marks_a_batch_by_session_id,_x_kills_every_marked_non-stopped_session,_and_one_u_undoes_the_whole_batch
+
+  [1;37mScenario:[0m m marks a batch by session id, x kills every marked non-stopped session, and one u undoes the whole batch [1;30m# kill_delete_undo.feature:596[0m
+    [32mGiven[0m [32mdeck client "A" is started with a short undo window[0m                                                         [1;30m# kill_delete_undo_test.go:25 -> github.com/n-orlov/deck/features.clientStartedWithShortUndoWindow[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-alpha"[0m                                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" kills its selected session[0m                                                                   [1;30m# assertions_test.go:61 -> github.com/n-orlov/deck/features.clientKillsSelectedSession[0m
+    [32mThen[0m [32mthe private tmux session "deck_batch-alpha" does not exist[0m                                                   [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32m300 milliseconds pass[0m                                                                                         [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "press u to undo"[0m                                                     [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-beta"[0m                                                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-gamma"[0m                                                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" sends "k"[0m                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                         [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "k"[0m                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                         [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                         [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                                         [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "batch-beta running"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "batch-beta" is marked[0m                                                                    [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "batch-gamma running"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "batch-gamma" is marked[0m                                                                   [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" sends "x"[0m                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mthe private tmux session "deck_batch-beta" does not exist[0m                                                    [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe private tmux session "deck_batch-gamma" does not exist[0m                                                    [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe state database contains session "batch-alpha" with status "stopped"[0m                                       [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "batch-beta" with status "stopped"[0m                                        [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "batch-gamma" with status "stopped"[0m                                       [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Killed 2 sessions"[0m                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                                                    [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "batch-beta running"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "batch-gamma running"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux session "deck_batch-beta" exists[0m                                                             [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe private tmux session "deck_batch-gamma" exists[0m                                                            [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe state database contains session "batch-beta" with status "running"[0m                                        [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "batch-gamma" with status "running"[0m                                       [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mAnd[0m [32mthe state database contains session "batch-alpha" with status "stopped"[0m                                       [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dd_on_a_marked_set_deletes_every_marked_session_and_one_u_restores_the_whole_batch
+
+  [1;37mScenario:[0m dd on a marked set deletes every marked session and one u restores the whole batch [1;30m# kill_delete_undo.feature:636[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                                  [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-dd-one"[0m                                   [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-dd-two"[0m                                   [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" sends "k"[0m                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                  [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                  [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                                  [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "m"[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "batch-dd-one running"[0m                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "batch-dd-one" is marked[0m                                           [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "batch-dd-two running"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" row "batch-dd-two" is marked[0m                                           [1;30m# kill_delete_undo_test.go:50 -> github.com/n-orlov/deck/features.clientRowIsMarked[0m
+    [32mWhen[0m [32mdeck client "A" presses dd[0m                                                            [1;30m# kill_delete_undo_test.go:31 -> github.com/n-orlov/deck/features.clientPressesDD[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Delete 2 marked sessions"[0m                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "batch-dd-one"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "batch-dd-two"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" submits the open dialog[0m                                               [1;30m# dialogs_test.go:26 -> github.com/n-orlov/deck/features.clientSubmitsOpenDialog[0m
+    [32mThen[0m [32mthe state database session "batch-dd-one" is tombstoned[0m                               [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mthe state database session "batch-dd-two" is tombstoned[0m                                [1;30m# kill_delete_undo_test.go:34 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsTombstoned[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Deleted 2 sessions"[0m                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses u[0m                                                             [1;30m# kill_delete_undo_test.go:28 -> github.com/n-orlov/deck/features.clientPressesUndo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "batch-dd-two"[0m                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "batch-dd-one" is not tombstoned[0m                            [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mAnd[0m [32mthe state database session "batch-dd-two" is not tombstoned[0m                            [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/esc_clears_the_mark_set_without_acting_on_it
+
+  [1;37mScenario:[0m esc clears the mark set without acting on it                          [1;30m# kill_delete_undo.feature:667[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                              [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32m200 milliseconds pass[0m                                                     [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-esc-one"[0m                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "batch-esc-two"[0m                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                     [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" closes the dialog with escape[0m                             [1;30m# dialogs_test.go:24 -> github.com/n-orlov/deck/features.clientClosesDialogWithEscape[0m
+    [32mAnd[0m [32m100 milliseconds pass[0m                                                     [1;30m# kill_delete_undo_test.go:29 -> github.com/n-orlov/deck/features.millisecondsPass[0m
+    [32mAnd[0m [32mdeck client "A" sends "x"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mthe private tmux session "deck_batch-esc-two" does not exist[0m             [1;30m# assertions_test.go:53 -> github.com/n-orlov/deck/features.privateSessionDoesNotExist[0m
+    [32mAnd[0m [32mthe private tmux session "deck_batch-esc-one" exists[0m                      [1;30m# assertions_test.go:33 -> github.com/n-orlov/deck/features.privateSessionExists[0m
+    [32mAnd[0m [32mthe state database contains session "batch-esc-one" with status "running"[0m [1;30m# assertions_test.go:41 -> github.com/n-orlov/deck/features.databaseSessionStatus[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+37 scenarios ([32m37 passed[0m)
+474 steps ([32m474 passed[0m)
+32.360309621s
+--- PASS: TestFeatures (32.36s)
+    --- PASS: TestFeatures/x_kills_without_confirmation_and_refuses_to_kill_an_already-stopped_row (0.52s)
+    --- PASS: TestFeatures/u_undoes_the_most_recent_kill_inside_its_DECK_UNDO_MS_window (0.63s)
+    --- PASS: TestFeatures/u_does_nothing_once_the_undo_window_has_expired (0.91s)
+    --- PASS: TestFeatures/a_single_d_shows_a_pending-delete_indicator_and_changes_nothing_in_the_store (0.51s)
+    --- PASS: TestFeatures/d_followed_by_any_other_key_performs_no_destructive_action (0.51s)
+    --- PASS: TestFeatures/the_second_d_opens_a_confirm_dialog_naming_what_survives,_esc_cancels_leaving_the_row_untombstoned (0.52s)
+    --- PASS: TestFeatures/submitting_the_confirm_dialog_kills_the_live_pane,_tombstones_the_row,_and_it_disappears_from_the_sidebar_immediately (0.52s)
+    --- PASS: TestFeatures/the_dd_confirm_dialog_obeys_the_§11.4_contract_--_the_mouse_can_neither_cancel_nor_confirm_it,_at_its_border,_its_body_or_outside_it (0.67s)
+    --- PASS: TestFeatures/the_dd_confirm_dialog_width_is_80%_of_the_viewport_clamped_to_[26,80],_at_both_clamp_ends (0.53s)
+    --- PASS: TestFeatures/the_dd_confirm_dialog_width_saturates_at_80_well_past_the_upper_clamp (0.52s)
+    --- PASS: TestFeatures/u_restores_a_deleted_row_inside_its_DECK_DELETE_GRACE_MS_window (0.54s)
+    --- PASS: TestFeatures/u_does_nothing_once_the_delete_grace_window_has_expired,_and_the_row_is_reaped (0.93s)
+    --- PASS: TestFeatures/reaping_a_deleted_session_removes_its_store_rows_and_deck's_own_per-session_files,_but_never_the_audit_log's_earlier_history (0.93s)
+    --- PASS: TestFeatures/killing_a_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.50s)
+    --- PASS: TestFeatures/undoing_a_kill_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.60s)
+    --- PASS: TestFeatures/dd_(delete)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.53s)
+    --- PASS: TestFeatures/undoing_a_delete_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.57s)
+    --- PASS: TestFeatures/reaping_a_deleted_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.93s)
+    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (1.60s)
+    --- PASS: TestFeatures/archiving_an_already-stopped_session_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.83s)
+    --- PASS: TestFeatures/A_on_a_non-stopped_session_(kill-and-archive_as_one_action)_leaves_its_adversarially-seeded_cwd_fingerprint_unchanged (0.55s)
+    --- PASS: TestFeatures/bulk_x_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (0.84s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.05s)
+    --- PASS: TestFeatures/undoing_a_bulk_kill_leaves_both_adversarially-seeded_cwd_fingerprints_unchanged (1.09s)
+    --- PASS: TestFeatures/both_the_undo_window_and_the_delete_grace_window_keep_advancing_while_DECK_CLOCK_is_frozen (0.96s)
+    --- PASS: TestFeatures/dd_without_purge_leaves_the_agent's_transcript_intact_through_delete_and_reap (1.97s)
+    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_removes_only_the_agent's_declared_transcript_file (1.57s)
+    --- PASS: TestFeatures/dd_without_purge_leaves_the_codex_agent's_transcript_intact_through_delete_and_reap (1.45s)
+    --- PASS: TestFeatures/choosing_purge_in_the_delete_confirm_removes_only_the_codex_agent's_declared_transcript_file (1.10s)
+    --- PASS: TestFeatures/A_archives_an_already-stopped_session,_hidden_from_the_default_list_with_its_status_unchanged (0.85s)
+    --- PASS: TestFeatures/A_on_a_non-stopped_session_offers_kill_and_archive_as_one_action_instead_of_refusing (0.51s)
+    --- PASS: TestFeatures/A_on_a_running_session_opens_a_confirm_that_names_the_kill_and_writes_nothing_until_it_is_confirmed (1.03s)
+    --- PASS: TestFeatures/confirming_the_archive_dialog_lands_both_the_kill_and_the_archived_flag (0.53s)
+    --- PASS: TestFeatures/a_confirmed_archive_says_what_happened_and_u_puts_the_row_back_in_the_default_list (0.54s)
+    --- PASS: TestFeatures/m_marks_a_batch_by_session_id,_x_kills_every_marked_non-stopped_session,_and_one_u_undoes_the_whole_batch (1.89s)
+    --- PASS: TestFeatures/dd_on_a_marked_set_deletes_every_marked_session_and_one_u_restores_the_whole_batch (1.27s)
+    --- PASS: TestFeatures/esc_clears_the_mark_set_without_acting_on_it (1.07s)
+PASS
+ok  	github.com/n-orlov/deck/features	32.410s

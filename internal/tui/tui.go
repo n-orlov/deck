@@ -71,6 +71,17 @@ type Model struct {
 	// (falling back to options[0] only if it becomes unavailable). Reset to
 	// false every time the modal opens fresh, alongside createProfile.
 	createProfileTouched bool
+	// createProfileRequested is the profile the user last cycled the
+	// Permission profile field to explicitly (cycleCreateField's field 3),
+	// remembered even after a later Agent change degrades it away, so the
+	// modal can keep saying WHY the field no longer reads what was asked
+	// for (SPEC §5: "Unsupported profiles degrade to the nearest safe one
+	// and say so in the row detail rather than silently lying" -- the
+	// create modal is where that request is made, so it is where the
+	// sentence has to appear). Empty whenever the value showing is a
+	// default rather than a request, and reset every time the modal opens
+	// fresh alongside createProfileTouched.
+	createProfileRequested string
 	// createYoloConfirmed once tracked the explicit "y" confirm the yolo
 	// double-gate required before create could submit with profile=="yolo"
 	// (SPEC §5 pre-steer-017). Steer 017 item 2 removed that confirm --
@@ -2968,7 +2979,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 				m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
 				m.createProfile = m.defaultCreateProfile(m.createAgent)
-				m.createProfileTouched = false
+				m.createProfileTouched, m.createProfileRequested = false, ""
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createPostDestroy, m.createLoginShell = "", "", "", "", false
 			}
 		case "up", "k":
@@ -6521,6 +6532,56 @@ func (m Model) defaultCreateProfile(kind string) string {
 	return options[0]
 }
 
+// degradedCreateProfile picks the value the Permission profile field falls
+// back to when a profile the user explicitly cycled to is not available for
+// the newly selected Agent (cycleCreateField's field 2). Whenever the
+// adapter itself is the reason -- it does not declare that profile at all --
+// the target is Caps.ResolveProfile's own resolved value: the same generic
+// internal/agent call service.CreateAgent makes on every create, so this
+// package never keeps a per-kind fallback table and an adapter that changes
+// what it declares changes this in one place (SPEC §5's degrade-to-safe).
+// options[0] covers the other case -- a profile the adapter DOES declare
+// but config withholds (yolo without allow_yolo), where ResolveProfile has
+// nothing to say because the capability is present and the gate is a
+// deployment decision.
+func (m Model) degradedCreateProfile(options []string) string {
+	if caps, applicable := m.agentCapabilities(m.createAgent); applicable && !caps.SupportsProfile(m.createProfile) {
+		if resolved, degraded, _ := caps.ResolveProfile(m.createAgent, m.createProfile); degraded && contains(options, resolved) {
+			return resolved
+		}
+	}
+	return options[0]
+}
+
+// createProfileDegradeNote is the sentence the create modal prints under the
+// Permission profile row once an explicitly requested profile has been
+// degraded because the selected agent does not support it (SPEC §5: codex
+// and pi have no `plan`, and the UI must say so instead of silently
+// showing a different profile than the one asked for). The wording is
+// Caps.ResolveProfile's own reason string, re-derived from the adapter's
+// declared capabilities on every render rather than copied into this
+// package, so it cannot drift from what CreateAgent would have stored had
+// the request reached it.
+//
+// Empty when nothing was explicitly requested, when the request is still
+// the value showing, when the selected agent supports it, and for an agent
+// with no notion of profiles at all (shell).
+func (m Model) createProfileDegradeNote() string {
+	requested := m.createProfileRequested
+	if requested == "" || requested == m.createProfile {
+		return ""
+	}
+	caps, applicable := m.agentCapabilities(m.createAgent)
+	if !applicable || caps.SupportsProfile(requested) {
+		return ""
+	}
+	_, degraded, reason := caps.ResolveProfile(m.createAgent, requested)
+	if !degraded {
+		return ""
+	}
+	return reason
+}
+
 // createProfileOptionsFor returns exactly the permission profiles the
 // selected adapter declares (SPEC §5), narrowed further to exclude "yolo"
 // when allowYolo is false so the config gate is honoured before yolo is
@@ -7123,13 +7184,20 @@ func (m *Model) cycleCreateField(delta int) {
 		// value becomes unavailable for the new agent, exactly as before.
 		if !m.createProfileTouched {
 			m.createProfile = m.defaultCreateProfile(m.createAgent)
+			// Nothing was requested, so a later degrade note would have
+			// nothing honest to report: this value is a default.
+			m.createProfileRequested = ""
 		} else if options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo); !contains(options, m.createProfile) {
-			m.createProfile = options[0]
+			m.createProfile = m.degradedCreateProfile(options)
 		}
 	case 3:
 		options := m.createProfileOptionsFor(m.createAgent, m.settings.AllowYolo)
 		m.createProfile = cycleOption(options, m.createProfile, delta)
 		m.createProfileTouched = true
+		// This value is now an explicit request, which is what makes a
+		// later degrade (an Agent change onto an adapter that does not
+		// declare it) worth explaining rather than silently snapping.
+		m.createProfileRequested = m.createProfile
 	case 1:
 		// Right (never left/space -- see updateCreate's SpaceTypesText gate
 		// and cycleCreateField's own delta<=0 no-op) accepts the ghost
@@ -7411,6 +7479,16 @@ func (m Model) createBody() string {
 				fmt.Fprintf(&b, "    %s\n", warning)
 			}
 		}
+		if field == 3 {
+			// The degrade sentence gets its own dedicated line for exactly
+			// the reason the name-reuse warning above does: folding it into
+			// the Permission profile row's already long one-line help would
+			// leave framedDialog's word-wrap splitting it at a point that
+			// varies with dialogWidth.
+			if note := m.createProfileDegradeNote(); note != "" {
+				fmt.Fprintf(&b, "    %s\n", note)
+			}
+		}
 	}
 	if len(m.createCWDCandidates) > 0 {
 		// task 012's tab-completion listing branch: rendered directly under
@@ -7606,6 +7684,15 @@ func (m Model) styledCreateBody() string {
 		if field == 0 {
 			if warning := m.createNameReuseWarning(); warning != "" {
 				colorWhole(theme.Dimmed, "    "+warning)
+			}
+		}
+		if field == 3 {
+			// createBody's own dedicated degrade line, coloured like the
+			// name-reuse warning it mirrors (both are explanatory prose
+			// about a field's value, not an error that blocked a submit --
+			// createError below is what carries those).
+			if note := m.createProfileDegradeNote(); note != "" {
+				colorWhole(theme.Dimmed, "    "+note)
 			}
 		}
 	}

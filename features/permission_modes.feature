@@ -63,22 +63,48 @@ Feature: Permission profile mapping, degradation and the yolo gate
     And deck client "A" screen matches the pattern "falling back to\s*\|[^\n]*\n\|\s*safe\b"
     When deck client "A" exits cleanly
 
-  Scenario: codex degrades an unsupported plan profile to safe, visibly, through the same ResolveProfile path
-    # R127: codex has no "plan" profile (codexProfiles is exactly
-    # safe/edits/yolo) -- SPEC §5's per-adapter degradation is agent.Caps.
-    # ResolveProfile, the SAME generic path pi's own degradation scenario
-    # above exercises, never a codex-specific branch (the PRD's own
-    # prohibition: no codex-specific permission-degrade path and no
-    # aliasing plan to safe inside the adapter). This mirrors that
-    # scenario's own wrap-point rationale verbatim, substituting codex/pi.
-    Given a fake "codex" binary is on PATH for future deck clients
-    And deck client "A" is started
-    When deck client "A" creates codex session "codex-drift" with permission profile "safe"
-    And the state database session "codex-drift" is marked degraded from requesting permission profile "plan" on agent "codex"
-    And deck client "A" opens detail for session "codex-drift"
-    Then deck client "A" screen contains "degraded: codex does not support permission profile"
-    And deck client "A" screen contains "falling back to"
-    And deck client "A" screen matches the pattern "falling back to\s*\|[^\n]*\n\|\s*safe\b"
+  Scenario: codex degrades an unsupported plan profile to safe, visibly, through ResolveProfile
+    # R127 / SPEC §5's own table: codex has no `plan` (codexProfiles is
+    # exactly safe/edits/yolo), and an unsupported profile must "degrade to
+    # the nearest safe one and say so ... rather than silently lying". The
+    # degrade target and the sentence below both come from the generic
+    # agent.Caps.ResolveProfile -- the same call service.CreateAgent makes --
+    # never a codex-specific branch and never an alias of plan onto safe
+    # inside the adapter (the PRD's own two prohibitions).
+    #
+    # The create modal is the only surface that can hold an unsupported
+    # request at all: it is where a profile is REQUESTED, and every other
+    # surface (the `P` switch, the modal's own cycle list) narrows the offer
+    # to what the selected adapter declares before the user can ask. So the
+    # request is made against claude (which does declare plan) and the Agent
+    # field is then cycled onto codex, which is exactly how a real user
+    # reaches it: pick the mode, then pick the agent.
+    Given a fake "claude" binary is on PATH for future deck clients
+    And a fake "codex" binary is on PATH for future deck clients
+    # 220x30 for the same reason the allow_yolo scenario below gives: any
+    # viewport of 100+ columns hits framedDialog's 80-column ceiling (inner
+    # 76), which is the widest this dialog ever gets and therefore the least
+    # wrapped. The degrade sentence still gets its own dedicated line
+    # (internal/tui.createBody, mirroring the name-reuse warning) rather
+    # than being folded into the Permission profile row's help text, so a
+    # wrap can only ever fall inside the sentence, never carry the row's
+    # unrelated help words into the middle of it -- and the pattern below
+    # tolerates that one wrap.
+    And deck client "A" is started with terminal size 220x30
+    When deck client "A" opens the create modal on agent "claude" for session "codex-plan" with permission profile "plan"
+    And deck client "A" cycles the create modal's Agent field to "codex"
+    Then deck client "A" screen contains "codex does not support permission profile"
+    And deck client "A" screen matches the pattern "falling back to(\s*\|[^\n]*\n\|)?\s*safe\b"
+    # The fallback is not merely announced: submitting now creates a codex
+    # session that IS safe, with codex's own safe flag pair in its launch
+    # argv and no trace of the profile that was asked for.
+    When deck client "A" submits the create modal
+    Then deck client "A" screen contains "starting"
+    And the state database session "codex-plan" has permission profile "safe"
+    And the audit log's most recent launch argv for session "codex-plan" contains "on-request"
+    And the audit log's most recent launch argv for session "codex-plan" contains "workspace-write"
+    And the audit log's most recent launch argv for session "codex-plan" does not contain "plan"
+    And the audit log's most recent launch argv for session "codex-plan" does not contain "--last"
     When deck client "A" exits cleanly
 
   Scenario: yolo is unavailable without allow_yolo enabled
