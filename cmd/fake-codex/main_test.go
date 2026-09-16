@@ -550,7 +550,7 @@ func TestRolloutTranscriptIsWrittenAndLocatedByTranscriptPaths(t *testing.T) {
 		t.Fatalf("os.Getwd: %v", err)
 	}
 
-	path, ok := agent.NewCodex().TranscriptPaths(agent.TranscriptInput{CodexHome: codexHome, ConversationID: id})
+	path, ok := agent.NewCodex().TranscriptPaths(agent.TranscriptInput{Env: map[string]string{"CODEX_HOME": codexHome}, ConversationID: id})
 	if !ok {
 		t.Fatalf("TranscriptPaths did not locate the rollout file for id %q under %q", id, codexHome)
 	}
