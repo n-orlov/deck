@@ -173,9 +173,13 @@ func (Codex) Instrument(in LaunchInput) ([]string, map[string]string) {
 }
 
 // Probe is codex's sampled status source for the pre-hook window (SPEC
-// §8.2) and as the fallback once hooks exist. No "codex" rules exist in
-// probeRules yet — that corpus is task 019's own deliverable (R124) — so
-// this always declines (empty status) until then.
+// §8.2) and as the fallback once hooks exist. Its rules live with every
+// other kind's in probeRules (probe.go), fitted to the real codex-cli
+// 0.154.0 pane corpus in testdata/probes/codex/ and pinned by
+// probeGoldens; they cover waiting (approval prompt), error (exhausted
+// retries), running (working indicator, which a mid-retry pane shares by
+// design), idle and starting. Pane text matching no codex rule declines
+// with an empty status, as it does for every other kind.
 func (Codex) Probe(pane string) (string, string) { return probe("codex", pane) }
 
 // TranscriptPaths locates codex's on-disk transcript for a conversation,
