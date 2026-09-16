@@ -163,7 +163,7 @@ func TestPiTranscriptPathNoMatchingFileDegrades(t *testing.T) {
 // TestCodexTranscriptPathFindsRealFileUnderDefaultHome proves Codex's
 // TranscriptPaths resolves the SPEC §8.2 / codex-cli 0.154.0 spike
 // convention (docs/reports/codex-cli-0.154.0-spike.md) when the caller
-// supplies no session-level CodexHome override: <home>/.codex/sessions/
+// supplies no session-level CODEX_HOME override: <home>/.codex/sessions/
 // <yyyy>/<mm>/<dd>/rollout-<ISO>-<conversation id>.jsonl, located by
 // globbing the date directories and the timestamp-bearing filename.
 func TestCodexTranscriptPathFindsRealFileUnderDefaultHome(t *testing.T) {
@@ -197,7 +197,8 @@ func TestCodexTranscriptPathFindsRealFileUnderDefaultHome(t *testing.T) {
 
 // TestCodexTranscriptPathHonoursSessionCodexHomeOverride proves that when
 // the caller resolved a session-level CODEX_HOME override (SPEC §6.1's env
-// layering) and filled TranscriptInput.CodexHome with it, Codex searches
+// layering) and filled TranscriptInput.Env["CODEX_HOME"] with it, Codex
+// searches
 // that tree instead of <home>/.codex -- and never consults its own
 // process's ambient $CODEX_HOME to do so (the adapter takes no such
 // reading at all; only the caller-supplied field is consulted).
@@ -214,7 +215,7 @@ func TestCodexTranscriptPathHonoursSessionCodexHomeOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: id, CodexHome: codexHome})
+	got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: id, Env: map[string]string{"CODEX_HOME": codexHome}})
 	if !ok {
 		t.Fatalf("Codex.TranscriptPaths ok = false, want true")
 	}
@@ -231,11 +232,11 @@ func TestCodexTranscriptPathHonoursSessionCodexHomeOverride(t *testing.T) {
 }
 
 // TestCodexTranscriptPathMissDegrades proves a miss -- no Home and no
-// CodexHome, a well-formed tree with nothing matching the id, and an empty
+// CODEX_HOME, a well-formed tree with nothing matching the id, and an empty
 // ConversationID -- always degrades to "cannot locate", never an error.
 func TestCodexTranscriptPathMissDegrades(t *testing.T) {
 	if got, ok := NewCodex().TranscriptPaths(TranscriptInput{ConversationID: "some-id"}); ok || got != "" {
-		t.Fatalf("Codex.TranscriptPaths with no Home and no CodexHome = (%q, %v), want (\"\", false)", got, ok)
+		t.Fatalf("Codex.TranscriptPaths with no Home and no CODEX_HOME = (%q, %v), want (\"\", false)", got, ok)
 	}
 
 	home := t.TempDir()

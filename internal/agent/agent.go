@@ -45,6 +45,19 @@ type Caps struct {
 	// empty string, which callers must treat as "always available": there
 	// is nothing to look up on PATH.
 	Executable string
+	// TranscriptEnvKeys names the session environment keys (SPEC §6.1's
+	// layering: server env -> config [env] -> session env, exactly what
+	// the `e` env editor shows) this adapter's own TranscriptPaths
+	// convention needs resolved on its behalf. The caller (internal/tui)
+	// never knows what these keys mean or why an adapter wants them --
+	// it resolves each one through the session's own layering and hands
+	// the results in via TranscriptInput.Env, keyed by the same name. An
+	// adapter with no such need (claude, pi, shell) declares nil/empty:
+	// TranscriptInput.Env is never populated for it and it never consults
+	// the field. This is what lets internal/tui stay agent-neutral --
+	// adding a new adapter with its own transcript-location env need
+	// never requires a change under internal/tui.
+	TranscriptEnvKeys []string
 }
 
 // SupportsProfile reports whether p is one of the profiles Caps declares.
@@ -130,18 +143,18 @@ type TranscriptInput struct {
 	CWD string
 	// ConversationID is the conversation id to locate.
 	ConversationID string
-	// CodexHome is the codex home directory resolved by the caller from
-	// the session's own §6.1 env layering (server env -> config [env] ->
-	// session env), i.e. the effective $CODEX_HOME for this session, or
-	// empty when none of those layers set it. Only the Codex adapter
-	// consults this field; every other adapter ignores it. The adapter
-	// itself never reads the ambient environment to fill this in -- a
-	// session that overrides CODEX_HOME is exactly the case that would
-	// make guessing from this process's own environment wrong, so the
-	// caller resolves it once, per-session, and hands it in here. Empty
-	// means "no override at any layer", in which case Codex defaults to
-	// Home + "/.codex".
-	CodexHome string
+	// Env carries the resolved values of exactly the session environment
+	// keys this adapter's own Capabilities().TranscriptEnvKeys named,
+	// keyed by the same key name, resolved by the caller from the
+	// session's own §6.1 env layering (server env -> config [env] ->
+	// session env) -- never from this process's own ambient environment,
+	// which could belong to a different session's override entirely. An
+	// adapter that declares no TranscriptEnvKeys (claude, pi, shell) never
+	// consults this field and the caller never populates it for that
+	// adapter. A key with no override at any layer is simply absent (or
+	// maps to the empty string); each adapter's own TranscriptPaths
+	// documents what it does in that case.
+	Env map[string]string
 }
 
 // Adapter is implemented by each supported agent kind. It declares its

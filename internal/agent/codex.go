@@ -50,6 +50,12 @@ func (Codex) Capabilities() Caps {
 		Resumable:             true,
 		HasTranscript:         true,
 		Executable:            "codex",
+		// Codex's own transcript convention keys its search root on a
+		// session-level CODEX_HOME override (SPEC §6.1) -- see
+		// TranscriptPaths below. Naming it here, rather than tui.go
+		// literally resolving "CODEX_HOME" itself, is what keeps the
+		// caller agent-neutral.
+		TranscriptEnvKeys: []string{"CODEX_HOME"},
 	}
 }
 
@@ -192,20 +198,22 @@ func (Codex) Probe(pane string) (string, string) { return probe("codex", pane) }
 // (mirroring how Pi's own TranscriptPaths globs its timestamped
 // filenames).
 //
-// The codex home is in.CodexHome when the caller resolved one from the
-// session's own §6.1 env layering (a session-level CODEX_HOME override),
-// and in.Home + "/.codex" otherwise -- this adapter never reads the
-// ambient environment itself; in.Home alone (no CodexHome) is exactly the
-// case that must resolve to the default, not to this process's own
-// $CODEX_HOME, which could belong to a different session entirely. It
-// returns ok=false -- never an error -- when ConversationID is empty, both
-// Home and CodexHome are empty, or nothing on disk matches: a miss is
-// always "cannot locate", never a guess.
+// The codex home is in.Env["CODEX_HOME"] when the caller resolved a value
+// for that key from the session's own §6.1 env layering (Capabilities()
+// declares "CODEX_HOME" as a TranscriptEnvKeys entry precisely so the
+// caller resolves and hands it in), and in.Home + "/.codex" otherwise --
+// this adapter never reads the ambient environment itself; in.Home alone
+// (no CODEX_HOME entry in in.Env) is exactly the case that must resolve to
+// the default, not to this process's own $CODEX_HOME, which could belong
+// to a different session entirely. It returns ok=false -- never an error
+// -- when ConversationID is empty, both Home and the resolved codex home
+// are empty, or nothing on disk matches: a miss is always "cannot
+// locate", never a guess.
 func (Codex) TranscriptPaths(in TranscriptInput) (string, bool) {
 	if in.ConversationID == "" {
 		return "", false
 	}
-	codexHome := in.CodexHome
+	codexHome := in.Env["CODEX_HOME"]
 	if codexHome == "" {
 		if in.Home == "" {
 			return "", false
