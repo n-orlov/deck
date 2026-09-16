@@ -6567,6 +6567,13 @@ func (m Model) agentCapabilities(kind string) (agent.Caps, bool) {
 // HOME, missing project directory, no matching file) -- task 110's
 // purge choice declines in every one of those cases rather than deleting
 // anything.
+//
+// CodexHome is filled in from the session's own §6.1 env layering via
+// resolveEnvKey (task 015, R121) -- the same server env -> config [env] ->
+// session env precedence the `e` env editor shows for CODEX_HOME -- rather
+// than read from this process's own ambient environment, which could
+// belong to a different session's override entirely. Every other adapter
+// ignores the field.
 func (m Model) transcriptPathFor(session store.Session) (string, bool) {
 	adapter, ok := m.registry().Lookup(session.Agent)
 	if !ok {
@@ -6576,10 +6583,12 @@ func (m Model) transcriptPathFor(session store.Session) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	codexHome, _ := m.resolveEnvKey("CODEX_HOME", session)
 	return adapter.TranscriptPaths(agent.TranscriptInput{
 		Home:           home,
 		CWD:            session.CWD,
 		ConversationID: session.ConversationID,
+		CodexHome:      codexHome,
 	})
 }
 

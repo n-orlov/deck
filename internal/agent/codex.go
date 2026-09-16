@@ -1,6 +1,9 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // codexProfileFlags maps SPEC §5 permission profile names to the exact
 // `-a/--ask-for-approval` and `-s/--sandbox` flag pair codex-cli 0.154.0
@@ -89,7 +92,40 @@ func (Codex) Instrument(LaunchInput) ([]string, map[string]string) { return nil,
 // this always declines (empty status) until then.
 func (Codex) Probe(pane string) (string, string) { return probe("codex", pane) }
 
-// TranscriptPaths is left declining unconditionally by this task: codex's
-// own $CODEX_HOME rollout-file convention (SPEC §8.2) is task 015's own
-// deliverable (R121 transcript sub-task).
-func (Codex) TranscriptPaths(TranscriptInput) (string, bool) { return "", false }
+// TranscriptPaths locates codex's on-disk transcript for a conversation,
+// following exactly the convention SPEC §8.2 and the codex-cli 0.154.0
+// spike recorded (docs/reports/codex-cli-0.154.0-spike.md):
+// <codex home>/sessions/<yyyy>/<mm>/<dd>/rollout-<ISO>-<conversation
+// id>.jsonl. Because the filename carries a creation timestamp a caller
+// who only knows the id cannot predict, and the date directories are not
+// derivable from the id either, locating it means globbing across both
+// (mirroring how Pi's own TranscriptPaths globs its timestamped
+// filenames).
+//
+// The codex home is in.CodexHome when the caller resolved one from the
+// session's own §6.1 env layering (a session-level CODEX_HOME override),
+// and in.Home + "/.codex" otherwise -- this adapter never reads the
+// ambient environment itself; in.Home alone (no CodexHome) is exactly the
+// case that must resolve to the default, not to this process's own
+// $CODEX_HOME, which could belong to a different session entirely. It
+// returns ok=false -- never an error -- when ConversationID is empty, both
+// Home and CodexHome are empty, or nothing on disk matches: a miss is
+// always "cannot locate", never a guess.
+func (Codex) TranscriptPaths(in TranscriptInput) (string, bool) {
+	if in.ConversationID == "" {
+		return "", false
+	}
+	codexHome := in.CodexHome
+	if codexHome == "" {
+		if in.Home == "" {
+			return "", false
+		}
+		codexHome = filepath.Join(in.Home, ".codex")
+	}
+	pattern := filepath.Join(codexHome, "sessions", "*", "*", "*", "rollout-*-"+in.ConversationID+".jsonl")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return "", false
+	}
+	return matches[0], true
+}

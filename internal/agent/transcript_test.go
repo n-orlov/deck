@@ -159,3 +159,98 @@ func TestPiTranscriptPathNoMatchingFileDegrades(t *testing.T) {
 		t.Fatalf("Pi.TranscriptPaths with no matching file = (%q, %v), want (\"\", false)", got, ok)
 	}
 }
+
+// TestCodexTranscriptPathFindsRealFileUnderDefaultHome proves Codex's
+// TranscriptPaths resolves the SPEC §8.2 / codex-cli 0.154.0 spike
+// convention (docs/reports/codex-cli-0.154.0-spike.md) when the caller
+// supplies no session-level CodexHome override: <home>/.codex/sessions/
+// <yyyy>/<mm>/<dd>/rollout-<ISO>-<conversation id>.jsonl, located by
+// globbing the date directories and the timestamp-bearing filename.
+func TestCodexTranscriptPathFindsRealFileUnderDefaultHome(t *testing.T) {
+	if !NewCodex().Capabilities().HasTranscript {
+		t.Fatalf("Codex.Capabilities().HasTranscript = false, want true")
+	}
+	home := t.TempDir()
+	id := "01a09616-150d-7252-959c-d72a289dae41"
+	dir := filepath.Join(home, ".codex", "sessions", "2026", "09", "12")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filename := "rollout-2026-09-12T15-47-04-" + id + ".jsonl"
+	want := filepath.Join(dir, filename)
+	if err := os.WriteFile(want, []byte(`{"session_id":"`+id+`"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A decoy file for a different conversation id must not be matched.
+	if err := os.WriteFile(filepath.Join(dir, "rollout-2026-09-12T15-40-00-other-id.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: id})
+	if !ok {
+		t.Fatalf("Codex.TranscriptPaths ok = false, want true")
+	}
+	if got != want {
+		t.Fatalf("Codex.TranscriptPaths = %q, want %q", got, want)
+	}
+}
+
+// TestCodexTranscriptPathHonoursSessionCodexHomeOverride proves that when
+// the caller resolved a session-level CODEX_HOME override (SPEC §6.1's env
+// layering) and filled TranscriptInput.CodexHome with it, Codex searches
+// that tree instead of <home>/.codex -- and never consults its own
+// process's ambient $CODEX_HOME to do so (the adapter takes no such
+// reading at all; only the caller-supplied field is consulted).
+func TestCodexTranscriptPathHonoursSessionCodexHomeOverride(t *testing.T) {
+	home := t.TempDir()      // <home>/.codex deliberately left empty/absent
+	codexHome := t.TempDir() // the session's own CODEX_HOME override
+	id := "43ac9425-9b54-4c5d-8063-ac52768d0cdb"
+	dir := filepath.Join(codexHome, "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "rollout-2026-01-05T09-00-00-"+id+".jsonl")
+	if err := os.WriteFile(want, []byte(`{}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: id, CodexHome: codexHome})
+	if !ok {
+		t.Fatalf("Codex.TranscriptPaths ok = false, want true")
+	}
+	if got != want {
+		t.Fatalf("Codex.TranscriptPaths = %q, want %q", got, want)
+	}
+
+	// The same id under the default <home>/.codex tree (which has nothing
+	// in it) must not be found -- proving the override actually redirected
+	// the search rather than merely widening it.
+	if _, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: id}); ok {
+		t.Fatalf("Codex.TranscriptPaths without the override unexpectedly found a file under <home>/.codex")
+	}
+}
+
+// TestCodexTranscriptPathMissDegrades proves a miss -- no Home and no
+// CodexHome, a well-formed tree with nothing matching the id, and an empty
+// ConversationID -- always degrades to "cannot locate", never an error.
+func TestCodexTranscriptPathMissDegrades(t *testing.T) {
+	if got, ok := NewCodex().TranscriptPaths(TranscriptInput{ConversationID: "some-id"}); ok || got != "" {
+		t.Fatalf("Codex.TranscriptPaths with no Home and no CodexHome = (%q, %v), want (\"\", false)", got, ok)
+	}
+
+	home := t.TempDir()
+	dir := filepath.Join(home, ".codex", "sessions", "2026", "09", "12")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "rollout-2026-09-12T15-47-04-other-id.jsonl"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: "missing-id"}); ok || got != "" {
+		t.Fatalf("Codex.TranscriptPaths with no matching file = (%q, %v), want (\"\", false)", got, ok)
+	}
+
+	if got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: ""}); ok || got != "" {
+		t.Fatalf("Codex.TranscriptPaths with empty ConversationID = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
