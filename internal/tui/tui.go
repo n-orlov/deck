@@ -4790,6 +4790,21 @@ func (m Model) sidebarVisibleEntries(contentWidth, contentHeight int) []sidebarE
 // re-opens the bar's own background after colorToken's inner reset, so the
 // trailing space in each 2-column glyph run keeps the bar's colour rather
 // than falling back to whatever this call's caller has open.
+//
+// background/accent and background/badge are the only pairs anywhere in
+// this file that put `background` itself on the FOREGROUND side rather
+// than the background side; internal/theme's TestGutterBarContrastFloor
+// (task 011) holds both to the same 3:1 floor as every other chrome pair,
+// over both a theme's authored hex and its 16-colour quantisation, for
+// every built-in registry.go embeds -- no allowlist, no theme recoloured
+// to clear it. One built-in is honestly thin there: parchment's authored
+// `accent` and `badge` colours quantise to the very same §11.6 reference
+// palette entry (nearest-by-Euclidean-distance puts both closest to the
+// same grey slot), so under depth-16 rendering parchment's gutter bar
+// paints an identical background whether the row is selected or only
+// marked -- a real loss of the two states' colour distinction at that
+// depth, recorded as a finding rather than fixed by recolouring the
+// theme.
 func (m Model) sidebarGutterBar(selected, marked bool) (string, string) {
 	glyph1 := "  "
 	if selected {

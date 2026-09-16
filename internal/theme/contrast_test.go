@@ -365,6 +365,91 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 	}
 }
 
+// gutterBarChecks lists the two pairs sidebarGutterBar (tui.go) actually
+// paints: the gutter glyph is drawn with `background` as its own
+// FOREGROUND on top of `accent` (row selected) or `badge` (row marked but
+// not selected) as the bar's background -- the one place in the whole
+// chrome where `background` is a foreground rather than the thing
+// everything else sits on, so neither TestBuiltinContrastFloor's own
+// contrastChecks (which only ever puts background/selection/surface on
+// the BACKGROUND side) nor either of the other two tables above cover it.
+func gutterBarChecks() []struct {
+	label string
+	fg    Token
+	bg    Token
+} {
+	return []struct {
+		label string
+		fg    Token
+		bg    Token
+	}{
+		{"background/accent", Background, Accent},
+		{"background/badge", Background, Badge},
+	}
+}
+
+// TestGutterBarContrastFloor is task 011's own contrast obligation: the
+// sidebar gutter bar's background-on-accent (selected) and
+// background-on-badge (marked) pairs must clear minContrastRatio too,
+// over both a theme's authored hex palette and its 16-colour
+// quantisation, for every built-in theme registry.go's builtinFiles list
+// embeds -- no allowlist, no theme recoloured to make a pair clear the
+// floor. A failing pair is a finding to report, never a licence to
+// recolour a built-in theme file; see sidebarGutterBar's own doc comment
+// in internal/tui/tui.go for the one case this floor already knows is
+// thin -- parchment quantises accent and badge to the very same #7f7f7f
+// reference colour, so both of parchment's quantised pairs here land on
+// an identical ratio.
+func TestGutterBarContrastFloor(t *testing.T) {
+	if len(Builtins()) != len(builtinFiles) {
+		t.Fatalf("Builtins() returned %d themes, want exactly len(builtinFiles) = %d -- every registry.go entry must be checked, no allowlist", len(Builtins()), len(builtinFiles))
+	}
+	for _, th := range Builtins() {
+		th := th
+		t.Run(th.Name, func(t *testing.T) {
+			for _, chk := range gutterBarChecks() {
+				fgHex, err := th.Color(chk.fg)
+				if err != nil {
+					t.Fatalf("Color(%q): %v", chk.fg, err)
+				}
+				bgHex, err := th.Color(chk.bg)
+				if err != nil {
+					t.Fatalf("Color(%q): %v", chk.bg, err)
+				}
+				ratioHex, err := contrastRatio(fgHex, bgHex)
+				if err != nil {
+					t.Fatalf("contrastRatio(%q, %q): %v", fgHex, bgHex, err)
+				}
+
+				fgQ, err := th.QuantizedColor(chk.fg)
+				if err != nil {
+					t.Fatalf("QuantizedColor(%q): %v", chk.fg, err)
+				}
+				bgQ, err := th.QuantizedColor(chk.bg)
+				if err != nil {
+					t.Fatalf("QuantizedColor(%q): %v", chk.bg, err)
+				}
+				ratioQuant, err := contrastRatio(fgQ, bgQ)
+				if err != nil {
+					t.Fatalf("contrastRatio(%q, %q): %v", fgQ, bgQ, err)
+				}
+
+				t.Logf("%-8s %-20s hex %s/%s = %.2f:1   quant %s/%s = %.2f:1",
+					th.Name, chk.label, fgHex, bgHex, ratioHex, fgQ, bgQ, ratioQuant)
+
+				if ratioHex < minContrastRatio {
+					t.Errorf("theme %q %s: hex contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+						th.Name, chk.label, ratioHex, minContrastRatio, fgHex, bgHex)
+				}
+				if ratioQuant < minContrastRatio {
+					t.Errorf("theme %q %s: quantised contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+						th.Name, chk.label, ratioQuant, minContrastRatio, fgQ, bgQ)
+				}
+			}
+		})
+	}
+}
+
 // TestContrastRatioKnownValues pins contrastRatio/relativeLuminance
 // against a handful of independently-computable values so the golden
 // test above is not the only thing exercising the maths.
