@@ -1,0 +1,197 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirements 33-37, 41)
+  Every gesture below duplicates an existing key -- none is the only way to
+  perform its action -- and hit-testing resolves each click through the
+  same layout the renderer itself drew from (task 028). With mouse
+  reporting off, every one of these gestures is a no-op and only the
+  shortcut is lost; the keyboard path underneath keeps working.
+=== RUN   TestFeatures/a_single_click_on_a_sidebar_row_selects_it_and_enters_interactive_mode_on_the_same_press,_and_Ctrl+Q_returns_to_the_list
+
+  [1;37mScenario:[0m a single click on a sidebar row selects it and enters interactive mode on the same press, and Ctrl+Q returns to the list [1;30m# mouse.feature:10[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "click-enter-alpha"[0m                                                                   [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "click-enter-bravo"[0m                                                                    [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m                                           [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" clicks on the row containing "click-enter-bravo"[0m                                                             [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" has session "click-enter-bravo" selected[0m                                                                    [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "click-enter-bravo"[0m                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "interactive"[0m                                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Ctrl+Q"[0m                                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "click-entered-bravo"[0m                                                                  [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                                     [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" has session "click-enter-bravo" selected[0m                                                                     [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" enters interactive mode[0m                                                                                     [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "click-entered-bravo" frame[0m                                                [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                                     [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_double_click_on_a_sidebar_row_also_enters_interactive_mode,_and_its_second_press_lands_harmlessly_on_the_now-interactive_preview
+
+  [1;37mScenario:[0m a double click on a sidebar row also enters interactive mode, and its second press lands harmlessly on the now-interactive preview [1;30m# mouse.feature:36[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "dbl-click-enter"[0m                                                                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m                                                     [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" double-clicks on the row containing "dbl-click-enter"[0m                                                                  [1;30m# mouse_bindings_test.go:21 -> github.com/n-orlov/deck/features.clientDoubleClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" screen contains "dbl-click-enter"[0m                                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "interactive"[0m                                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Ctrl+Q"[0m                                                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "Cannot enter interactive mode"[0m                                                                [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                                               [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_click_on_the_sidebar's_empty_padding_below_the_last_row_selects_nothing_and_enters_nothing
+
+  [1;37mScenario:[0m a click on the sidebar's empty padding below the last row selects nothing and enters nothing [1;30m# mouse.feature:63[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "padding-noop-alpha"[0m                                      [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "padding-noop-bravo"[0m                                       [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m               [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" selects session "padding-noop-alpha"[0m                                             [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mdeck client "A" has session "padding-noop-alpha" selected[0m                                       [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "before-padding-click"[0m                                     [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mWhen[0m [32mdeck client "A" clicks at column 10 row 15[0m                                                      [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "before-padding-click" frame[0m                   [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mAnd[0m [32mdeck client "A" has session "padding-noop-alpha" selected[0m                                        [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_sidebar_click_on_a_different_row_while_interactive_re-targets_it,_restoring_the_old_session's_window
+
+  [1;37mScenario:[0m a sidebar click on a different row while interactive re-targets it, restoring the old session's window [1;30m# mouse.feature:91[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "retarget-first"[0m                                                    [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "retarget-second"[0m                                                    [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m                         [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mthe private tmux window for session "retarget-first" is captured as "retarget-first-baseline"[0m              [1;30m# preview_test.go:34 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionIsCapturedAs[0m
+    [32mAnd[0m [32mdeck client "A" selects session "retarget-first"[0m                                                           [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" enters interactive mode[0m                                                                    [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" preview top border contains "retarget-first"[0m                                              [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "retarget-second"[0m                                            [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" has session "retarget-second" selected[0m                                                    [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" preview top border contains "retarget-second"[0m                                              [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mAnd[0m [32mthe private tmux window for session "retarget-first" still matches "retarget-first-baseline"[0m               [1;30m# preview_test.go:35 -> github.com/n-orlov/deck/features.privateTMuxWindowForSessionStillMatches[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                   [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_sidebar_click_on_the_already-interactive_row_triggers_no_resize
+
+  [1;37mScenario:[0m a sidebar click on the already-interactive row triggers no resize                                                 [1;30m# mouse.feature:121[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "retarget-noop-a"[0m                                                              [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "retarget-noop-b"[0m                                                               [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m                                    [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" selects session "retarget-noop-a"[0m                                                                     [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" enters interactive mode[0m                                                                               [1;30m# interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" preview top border contains "retarget-noop-a"[0m                                                        [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "retarget-noop-b"[0m                                                       [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" has session "retarget-noop-b" selected[0m                                                               [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" preview top border contains "retarget-noop-b"[0m                                                         [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mAnd[0m [32mthe private tmux window ownership claim for session "retarget-noop-b" is captured as "retarget-noop-b-after-retarget"[0m [1;30m# interactive_retarget_test.go:27 -> github.com/n-orlov/deck/features.privateTMuxWindowOwnershipClaimForSessionIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "retarget-noop-b"[0m                                                       [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" has session "retarget-noop-b" selected[0m                                                               [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mAnd[0m [32mdeck client "A" preview top border contains "retarget-noop-b"[0m                                                         [1;30m# interactive_retarget_test.go:26 -> github.com/n-orlov/deck/features.clientPreviewTopBorderContains[0m
+    [32mAnd[0m [32mthe private tmux window ownership claim for session "retarget-noop-b" still matches "retarget-noop-b-after-retarget"[0m  [1;30m# interactive_retarget_test.go:28 -> github.com/n-orlov/deck/features.privateTMuxWindowOwnershipClaimForSessionStillMatches[0m
+    [32mWhen[0m [32mdeck client "A" leaves interactive mode[0m                                                                              [1;30m# interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/clicking_a_workspace_group's_header_collapses_only_that_group
+
+  [1;37mScenario:[0m clicking a workspace group's header collapses only that group                      [1;30m# mouse.feature:167[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "header-click-default"[0m                          [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "header-click-other"[0m                             [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "header-click-other" has workspace "header-click-workspace"[0m [1;30m# attention_sort_test.go:23 -> github.com/n-orlov/deck/features.setSessionWorkspace[0m
+    [32mThen[0m [32mdeck client "A" screen contains "header-click-workspace"[0m                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "header-click-default"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "header-click-other"[0m                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "header-click-workspace"[0m                 [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" screen stops containing "header-click-other"[0m                          [1;30m# preview_test.go:39 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "header-click-default"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "header-click-workspace"[0m                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" clicks on the row containing "header-click-workspace"[0m                 [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" screen contains "header-click-other"[0m                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_wheel_scrolls_the_sidebar's_view_without_changing_selection
+
+  [1;37mScenario:[0m the wheel scrolls the sidebar's view without changing selection              [1;30m# mouse.feature:184[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "wheel-scroll-1"[0m                          [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "wheel-scroll-2"[0m                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "wheel-scroll-3"[0m                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "wheel-scroll-4"[0m                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "wheel-scroll-5"[0m                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "wheel-scroll-1" has status "idle" 50 seconds ago[0m     [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "wheel-scroll-2" has status "idle" 40 seconds ago[0m     [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "wheel-scroll-3" has status "idle" 30 seconds ago[0m     [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "wheel-scroll-4" has status "idle" 20 seconds ago[0m     [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "wheel-scroll-5" has status "idle" 10 seconds ago[0m     [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "idle"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" sends "|"[0m                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "|"[0m                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen stops containing "wheel-scroll-5"[0m                        [1;30m# preview_test.go:39 -> github.com/n-orlov/deck/features.clientScreenStopsContaining[0m
+    [32mWhen[0m [32mdeck client "A" selects session "wheel-scroll-1"[0m                                [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel down at column 5 row 5[0m                         [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel down at column 5 row 5[0m                         [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel down at column 5 row 5[0m                         [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel down at column 5 row 5[0m                         [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mThen[0m [32mdeck client "A" screen contains "wheel-scroll-5"[0m                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" scrolls the wheel up at column 5 row 5[0m                          [1;30m# mouse_synthesis_test.go:117 -> github.com/n-orlov/deck/features.clientScrollsWheelUpAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up at column 5 row 5[0m                           [1;30m# mouse_synthesis_test.go:117 -> github.com/n-orlov/deck/features.clientScrollsWheelUpAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up at column 5 row 5[0m                           [1;30m# mouse_synthesis_test.go:117 -> github.com/n-orlov/deck/features.clientScrollsWheelUpAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up at column 5 row 5[0m                           [1;30m# mouse_synthesis_test.go:117 -> github.com/n-orlov/deck/features.clientScrollsWheelUpAt[0m
+    [32mThen[0m [32mdeck client "A" screen contains "wheel-scroll-1"[0m                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" has session "wheel-scroll-1" selected[0m                            [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/dragging_the_seam_adjusts_sidebar_width_live
+
+  [1;37mScenario:[0m dragging the seam adjusts sidebar_width live                                                                [1;30m# mouse.feature:215[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates a long-named shell session "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxWIDENOWyyyyyyyyyy"[0m [1;30m# sidebar_width_test.go:35 -> github.com/n-orlov/deck/features.clientCreatesLongNamedShellSession[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "WIDENOW"[0m                                                              [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" drags from column 36 row 6 to column 61 row 6[0m                                                  [1;30m# mouse_synthesis_test.go:119 -> github.com/n-orlov/deck/features.clientDragsFromTo[0m
+    [32mThen[0m [32mdeck client "A" screen contains "WIDENOW"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/clicking,_double-clicking_or_scrolling_over_the_PASSIVE_preview_panel_does_nothing
+
+  [1;37mScenario:[0m clicking, double-clicking or scrolling over the PASSIVE preview panel does nothing  [1;30m# mouse.feature:224[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "preview-gesture-noop"[0m                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mwithin one configured reconcile interval deck client "A" screen contains "running"[0m      [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" captures its frame as "before-preview-mouse-bindings"[0m                   [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" clicks at column 70 row 15[0m                                              [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mAnd[0m [32mdeck client "A" double-clicks at column 70 row 15[0m                                       [1;30m# mouse_synthesis_test.go:116 -> github.com/n-orlov/deck/features.clientDoubleClicksAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel up at column 70 row 15[0m                                [1;30m# mouse_synthesis_test.go:117 -> github.com/n-orlov/deck/features.clientScrollsWheelUpAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel down at column 70 row 15[0m                              [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "before-preview-mouse-bindings" frame[0m [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/DECK_MOUSE=0_disables_every_mouse_gesture,_and_only_the_shortcut_is_lost
+
+  [1;37mScenario:[0m DECK_MOUSE=0 disables every mouse gesture, and only the shortcut is lost     [1;30m# mouse.feature:243[0m
+    [32mGiven[0m [32mthe deck config disables mouse reporting[0m                                       [1;30m# mouse_control_test.go:20 -> github.com/n-orlov/deck/features.deckConfigDisablesMouse[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "mouse-off-alpha"[0m                         [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "mouse-off-bravo"[0m                          [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mthe state database session "mouse-off-alpha" has status "idle" 20 seconds ago[0m    [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mAnd[0m [32mthe state database session "mouse-off-bravo" has status "idle" 10 seconds ago[0m    [1;30m# attention_sort_test.go:22 -> github.com/n-orlov/deck/features.setSessionStatusSecondsAgo[0m
+    [32mThen[0m [32mwithin one configured reconcile interval deck client "A" screen contains "idle"[0m [1;30m# assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval[0m
+    [32mAnd[0m [32mdeck client "A" captures its settled frame as "before-mouse-off-click"[0m           [1;30m# mouse_synthesis_test.go:121 -> github.com/n-orlov/deck/features.clientCapturesSettledFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" clicks on the row containing "mouse-off-bravo"[0m                   [1;30m# mouse_bindings_test.go:20 -> github.com/n-orlov/deck/features.clientClicksOnRowContaining[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "before-mouse-off-click" frame[0m [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" selects session "mouse-off-bravo"[0m                               [1;30m# attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName[0m
+    [32mThen[0m [32mdeck client "A" has session "mouse-off-bravo" selected[0m                          [1;30m# attention_sort_test.go:25 -> github.com/n-orlov/deck/features.clientHasSessionSelected[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+10 scenarios ([32m10 passed[0m)
+143 steps ([32m143 passed[0m)
+9.654856876s
+--- PASS: TestFeatures (9.66s)
+    --- PASS: TestFeatures/a_single_click_on_a_sidebar_row_selects_it_and_enters_interactive_mode_on_the_same_press,_and_Ctrl+Q_returns_to_the_list (1.32s)
+    --- PASS: TestFeatures/a_double_click_on_a_sidebar_row_also_enters_interactive_mode,_and_its_second_press_lands_harmlessly_on_the_now-interactive_preview (0.83s)
+    --- PASS: TestFeatures/a_click_on_the_sidebar's_empty_padding_below_the_last_row_selects_nothing_and_enters_nothing (0.80s)
+    --- PASS: TestFeatures/a_sidebar_click_on_a_different_row_while_interactive_re-targets_it,_restoring_the_old_session's_window (1.02s)
+    --- PASS: TestFeatures/a_sidebar_click_on_the_already-interactive_row_triggers_no_resize (1.21s)
+    --- PASS: TestFeatures/clicking_a_workspace_group's_header_collapses_only_that_group (0.65s)
+    --- PASS: TestFeatures/the_wheel_scrolls_the_sidebar's_view_without_changing_selection (1.24s)
+    --- PASS: TestFeatures/dragging_the_seam_adjusts_sidebar_width_live (0.51s)
+    --- PASS: TestFeatures/clicking,_double-clicking_or_scrolling_over_the_PASSIVE_preview_panel_does_nothing (0.77s)
+    --- PASS: TestFeatures/DECK_MOUSE=0_disables_every_mouse_gesture,_and_only_the_shortcut_is_lost (1.24s)
+PASS
+ok  	github.com/n-orlov/deck/features	9.675s

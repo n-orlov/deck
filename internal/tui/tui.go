@@ -4538,15 +4538,17 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		listRows := lh - 2
 		visible := m.sidebarVisibleEntries(max(lw-4, 0), listRows)
 		body := make([]string, len(visible))
+		gutters := make([]string, len(visible))
 		bgs := make([]theme.Token, len(visible))
 		for i, e := range visible {
 			body[i] = e.text
+			gutters[i] = e.gutter
 			bgs[i] = e.bg
 		}
 		sidebarFocused := !m.previewFocused()
 		lines = append(lines, m.fullBoxTop(lw, m.sidebarTitleText(), sidebarFocused))
 		for i := 0; i < listRows; i++ {
-			lines = append(lines, m.fullBoxContentLine(lw, body[i], sidebarFocused, bgs[i]))
+			lines = append(lines, m.fullBoxContentLine(lw, gutters[i], body[i], sidebarFocused, bgs[i]))
 		}
 		lines = append(lines, m.fullBoxBottom(lw, sidebarFocused))
 	}

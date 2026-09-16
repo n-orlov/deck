@@ -51,6 +51,16 @@ func TestStackedSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 	}
 	m.selected = 0
 	selectionHex := tokenHex(t, m, theme.Selection)
+	// accentHex (task 046): once renderStackedFrame retains and paints the
+	// row's own gutter (R119, mirroring the side-by-side sidebar's
+	// sidebarContentLine, sidebar_row_fill_test.go's own precedent), a
+	// selected row's gutter columns (2-3, right after border+pad) carry
+	// `accent` -- deliberately a DIFFERENT colour from `selection`, per
+	// SPEC §11.3 -- not the row's own selection background. Before this
+	// task, fullBoxContentLine dropped the gutter entirely, so every
+	// column including 2-3 read as plain `selection`; that was the bug
+	// this task fixes, not a property to keep asserting.
+	accentHex := tokenHex(t, m, theme.Accent)
 
 	layout := m.computeLayout()
 	if layout.Effective != LayoutStacked {
@@ -65,15 +75,20 @@ func TestStackedSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 	// fullBoxContentLine draws its own left AND right border (unlike the
 	// side-by-side sidebar, whose right edge is the seam the preview
 	// draws): the background-bearing span is columns [1, lw-2], strictly
-	// inside both borders.
+	// inside both borders, except columns 2-3 (the gutter) which carry
+	// accentHex on a selected row.
 	for _, r := range []int{row, row + 1} {
 		for col := 1; col <= lw-2; col++ {
+			want := selectionHex
+			if col == 2 || col == 3 {
+				want = accentHex
+			}
 			hex, ok := cellBgHex(t, term, col, r)
 			if !ok {
-				t.Fatalf("stacked selected row: row %d col %d has no background at all, want %s", r, col, selectionHex)
+				t.Fatalf("stacked selected row: row %d col %d has no background at all, want %s", r, col, want)
 			}
-			if hex != selectionHex {
-				t.Fatalf("stacked selected row: row %d col %d background = %s, want %s", r, col, hex, selectionHex)
+			if hex != want {
+				t.Fatalf("stacked selected row: row %d col %d background = %s, want %s", r, col, hex, want)
 			}
 		}
 	}

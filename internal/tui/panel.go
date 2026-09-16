@@ -884,20 +884,33 @@ func (m Model) fullBoxBottom(width int, focused bool) string {
 // captured pane content, uses fullBoxPreviewContentLine below instead,
 // precisely because this function's scan-and-reopen composition must never
 // run over foreign SGR bytes (task 006/R118).
-func (m Model) fullBoxContentLine(width int, text string, focused bool, bg theme.Token) string {
+//
+// gutter (task 046, mirroring sidebarContentLine's own task-008 parameter)
+// is a sidebar row's own reserved selection/mark-cue columns, composed
+// OUTSIDE text's own padTrunc budget exactly like sidebarContentLine: the
+// content width shrinks by the gutter's own display width before padTrunc
+// ever sees it, so a long name's truncation can never eat into the
+// gutter's own span. Every non-sidebar caller (both framedDialog variants)
+// passes "" here, which costs them nothing -- stringWidth("") is 0, so
+// inner is exactly what it always was for them.
+func (m Model) fullBoxContentLine(width int, gutter, text string, focused bool, bg theme.Token) string {
 	bc := m.box()
-	inner := width - 4
 	tok := theme.Border
 	if focused {
 		tok = theme.BorderFocus
 	}
 	border := m.borderColor(tok, bc.vertical)
+	gutterWidth := stringWidth(gutter)
+	inner := width - 4 - gutterWidth
+	if inner < 0 {
+		inner = 0
+	}
 	padded := m.padTrunc(text, inner)
 	base := bg
 	if base == "" {
 		base = theme.Background
 	}
-	return m.canvasBackground(base, border, " ", padded, " ", border)
+	return m.canvasBackground(base, border, " ", gutter, padded, " ", border)
 }
 
 // fullBoxPreviewContentLine mirrors fullBoxContentLine's geometry exactly
@@ -965,7 +978,7 @@ func (m Model) framedDialog(body string) string {
 	out := make([]string, 0, len(lines)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range lines {
-		out = append(out, m.fullBoxContentLine(boxWidth, line, true, ""))
+		out = append(out, m.fullBoxContentLine(boxWidth, "", line, true, ""))
 	}
 	out = append(out, m.fullBoxBottom(boxWidth, true))
 	return strings.Join(out, "\n")
@@ -1185,7 +1198,7 @@ func (m Model) framedDialogScrollable(body string, scroll int) string {
 	out := make([]string, 0, len(visible)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range visible {
-		out = append(out, m.fullBoxContentLine(boxWidth, line, true, ""))
+		out = append(out, m.fullBoxContentLine(boxWidth, "", line, true, ""))
 	}
 	out = append(out, m.fullBoxBottom(boxWidth, true))
 	return strings.Join(out, "\n")
