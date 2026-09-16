@@ -37,6 +37,8 @@ func registerCodexHooksSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^session "([^"]+)"'s codex transcript does not mention session "([^"]+)"'s conversation id$`, sessionCodexTranscriptDoesNotMentionOthersConversationID)
 	sc.Step(`^session "([^"]+)"'s persisted conversation id and transcript path match its own pane-announced SessionStart identity$`, sessionCodexPersistedIdentityMatchesPaneAnnouncement)
 	sc.Step(`^within 3 seconds deck client "([^"]+)" row "([^"]+)" contains "([^"]+)"$`, clientRowContainsWithinThreeSeconds)
+	sc.Step(`^the state database sessions "([^"]+)" and "([^"]+)" persisted the same working directory$`, sessionsPersistedSameWorkingDirectory)
+	sc.Step(`^the state database sessions "([^"]+)" and "([^"]+)" were created within 2 seconds of each other$`, sessionsCreatedWithinTwoSeconds)
 }
 
 // deckConfigProbesQuickly writes stale_after = 1 (the schema's own declared
@@ -332,6 +334,80 @@ func sessionCWD(h *ScenarioHarness, name string) (string, error) {
 		return "", fmt.Errorf("observe session %q cwd: %w", name, err)
 	}
 	return cwd, nil
+}
+
+// sessionCreatedAt reads a session's own persisted created_at millisecond
+// timestamp straight off the sessions table -- production's own clock read
+// at store.CreateSession time (internal/service/agent.go's `s.Clock.Now().
+// UnixMilli()`), never scenario wall-clock prose.
+func sessionCreatedAt(h *ScenarioHarness, name string) (int64, error) {
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	var createdAt int64
+	if err := db.QueryRow(`SELECT created_at FROM sessions WHERE name = ?`, name).Scan(&createdAt); err != nil {
+		return 0, fmt.Errorf("observe session %q created_at: %w", name, err)
+	}
+	return createdAt, nil
+}
+
+// sessionsPersistedSameWorkingDirectory asserts both named sessions' own
+// persisted cwd column (sessionCWD, never scenario prose) name the same
+// directory -- this scenario's own two codex rows are created back-to-back
+// through one deck client without the working-directory field ever being
+// changed (positionCreateModalOnProfileField's own h.workingDir reuse), so
+// production's persisted idea of each row's cwd should agree.
+func sessionsPersistedSameWorkingDirectory(ctx context.Context, first, second string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	firstCWD, err := sessionCWD(h, first)
+	if err != nil {
+		return err
+	}
+	secondCWD, err := sessionCWD(h, second)
+	if err != nil {
+		return err
+	}
+	if firstCWD == "" || secondCWD == "" {
+		return fmt.Errorf("session %q or %q has an empty persisted cwd (%q, %q)", first, second, firstCWD, secondCWD)
+	}
+	if firstCWD != secondCWD {
+		return fmt.Errorf("sessions %q and %q persisted different working directories: %q vs %q", first, second, firstCWD, secondCWD)
+	}
+	return nil
+}
+
+// sessionsCreatedWithinTwoSeconds asserts both named sessions' own persisted
+// created_at millisecond timestamps (sessionCreatedAt, store.CreateSession's
+// own clock read) land within 2 seconds of each other -- measured from the
+// store's own recorded creation timestamps, never from how long the
+// scenario's own steps took to run.
+func sessionsCreatedWithinTwoSeconds(ctx context.Context, first, second string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	firstCreatedAt, err := sessionCreatedAt(h, first)
+	if err != nil {
+		return err
+	}
+	secondCreatedAt, err := sessionCreatedAt(h, second)
+	if err != nil {
+		return err
+	}
+	delta := firstCreatedAt - secondCreatedAt
+	if delta < 0 {
+		delta = -delta
+	}
+	const twoSecondsMillis = 2000
+	if delta > twoSecondsMillis {
+		return fmt.Errorf("sessions %q and %q were created %dms apart (created_at %d, %d), want within %dms", first, second, delta, firstCreatedAt, secondCreatedAt, twoSecondsMillis)
+	}
+	return nil
 }
 
 // codexIdentityMismatch is B3's two-sided oracle itself (task 008): it

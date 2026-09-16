@@ -17,7 +17,9 @@
     [32mAnd[0m [32mdeck client "A" is started[0m                                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
     [32mWhen[0m [32mdeck client "A" creates codex session "one" with permission profile "safe"[0m                                      [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
     [32mAnd[0m [32mdeck client "A" creates codex session "two" with permission profile "safe"[0m                                       [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
-    [32mThen[0m [32mthe state database session "one" has no conversation id[0m                                                         [1;30m# codex_hooks_test.go:34 -> github.com/n-orlov/deck/features.sessionHasNoConversationID[0m
+    [32mThen[0m [32mthe state database sessions "one" and "two" persisted the same working directory[0m                                [1;30m# codex_hooks_test.go:40 -> github.com/n-orlov/deck/features.sessionsPersistedSameWorkingDirectory[0m
+    [32mAnd[0m [32mthe state database sessions "one" and "two" were created within 2 seconds of each other[0m                          [1;30m# codex_hooks_test.go:41 -> github.com/n-orlov/deck/features.sessionsCreatedWithinTwoSeconds[0m
+    [32mAnd[0m [32mthe state database session "one" has no conversation id[0m                                                          [1;30m# codex_hooks_test.go:34 -> github.com/n-orlov/deck/features.sessionHasNoConversationID[0m
     [32mAnd[0m [32mthe state database session "two" has no conversation id[0m                                                          [1;30m# codex_hooks_test.go:34 -> github.com/n-orlov/deck/features.sessionHasNoConversationID[0m
     [32mAnd[0m [32mwithin 3 seconds deck client "A" row "one" contains "sampled"[0m                                                    [1;30m# codex_hooks_test.go:39 -> github.com/n-orlov/deck/features.clientRowContainsWithinThreeSeconds[0m
     [32mAnd[0m [32mwithin 3 seconds deck client "A" row "two" contains "sampled"[0m                                                    [1;30m# codex_hooks_test.go:39 -> github.com/n-orlov/deck/features.clientRowContainsWithinThreeSeconds[0m
@@ -43,9 +45,9 @@
     [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
 
 1 scenarios ([32m1 passed[0m)
-29 steps ([32m29 passed[0m)
-2.826719738s
---- PASS: TestFeatures (2.83s)
-    --- PASS: TestFeatures/two_Codex_rows_in_one_directory_adopt_their_own_ids_and_report_a_real_approval (2.82s)
+31 steps ([32m31 passed[0m)
+2.819215727s
+--- PASS: TestFeatures (2.82s)
+    --- PASS: TestFeatures/two_Codex_rows_in_one_directory_adopt_their_own_ids_and_report_a_real_approval (2.81s)
 PASS
-ok  	github.com/n-orlov/deck/features	2.838s
+ok  	github.com/n-orlov/deck/features	2.830s

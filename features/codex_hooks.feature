@@ -16,7 +16,9 @@ Feature: Codex hook-driven identity and status
     And deck client "A" is started
     When deck client "A" creates codex session "one" with permission profile "safe"
     And deck client "A" creates codex session "two" with permission profile "safe"
-    Then the state database session "one" has no conversation id
+    Then the state database sessions "one" and "two" persisted the same working directory
+    And the state database sessions "one" and "two" were created within 2 seconds of each other
+    And the state database session "one" has no conversation id
     And the state database session "two" has no conversation id
     And within 3 seconds deck client "A" row "one" contains "sampled"
     And within 3 seconds deck client "A" row "two" contains "sampled"
