@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -103,6 +104,92 @@ func (aardvarkAdapter) Instrument(agent.LaunchInput) ([]string, map[string]strin
 }
 func (aardvarkAdapter) Probe(string) (string, string)                        { return "", "" }
 func (aardvarkAdapter) TranscriptPaths(agent.TranscriptInput) (string, bool) { return "", false }
+
+// transcriptGuardEnvKey is an invented env key name, chosen to look
+// nothing like any adapter this repo ships ("CODEX_HOME") -- the whole
+// point of transcriptGuardAdapter is to prove internal/tui resolves
+// whatever key a *newly registered* adapter names, not one it happens to
+// already recognise.
+const transcriptGuardEnvKey = "ZZZ_GUARD_TRANSCRIPT_ROOT"
+
+// transcriptGuardAdapter is a throwaway adapter, distinct from every
+// shipped adapter, whose transcript convention is keyed on
+// transcriptGuardEnvKey: TranscriptPaths joins that resolved env value with
+// the conversation id and declines outright when the caller never resolved
+// the key at all (nil Env, as every shipped adapter with no
+// TranscriptEnvKeys need gets) or resolved it to the empty string.
+type transcriptGuardAdapter struct{}
+
+func (transcriptGuardAdapter) Kind() string { return "zzz-transcript-guard-adapter" }
+func (transcriptGuardAdapter) Capabilities() agent.Caps {
+	return agent.Caps{HasTranscript: true, TranscriptEnvKeys: []string{transcriptGuardEnvKey}}
+}
+func (transcriptGuardAdapter) Launch(agent.LaunchInput) ([]string, error) { return nil, nil }
+func (transcriptGuardAdapter) Resume(agent.ResumeInput) ([]string, error) { return nil, nil }
+func (transcriptGuardAdapter) Instrument(agent.LaunchInput) ([]string, map[string]string) {
+	return nil, nil
+}
+func (transcriptGuardAdapter) Probe(string) (string, string) { return "", "" }
+func (transcriptGuardAdapter) TranscriptPaths(in agent.TranscriptInput) (string, bool) {
+	root, ok := in.Env[transcriptGuardEnvKey]
+	if !ok || root == "" {
+		return "", false
+	}
+	return filepath.Join(root, in.ConversationID+".transcript"), true
+}
+
+// TestBlackBoxRegistrySwapTranscriptEnvKeyNeedsNoTUIEdit extends the
+// registry-swap guard above to the transcript capability (task 006, cure
+// for B2/005): a registry whose only transcript-having adapter is
+// transcriptGuardAdapter -- an invented Kind() and an invented
+// TranscriptEnvKeys name the shipped adapters (shell/claude/pi/codex) never
+// use -- must still have its declared env key resolved from the session's
+// own §6.1 env layering (config [env] loses to session env) and handed to
+// TranscriptPaths, producing the adapter's own joined path, with zero edit
+// under internal/tui. A caller that special-cased a known key name (the
+// pre-task-005 literal-CODEX_HOME shape) would resolve nothing for this
+// key and TranscriptPaths would decline; this guard fails against that
+// shape and passes against the shipped resolveEnvKey-driven
+// transcriptPathFor.
+func TestBlackBoxRegistrySwapTranscriptEnvKeyNeedsNoTUIEdit(t *testing.T) {
+	registry := agent.NewRegistry()
+	registry.Register(agent.NewShell())
+	registry.Register(agent.NewClaude())
+	registry.Register(transcriptGuardAdapter{})
+
+	settings := config.Settings{Env: map[string]string{transcriptGuardEnvKey: "/config-layer/should-lose"}}
+	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
+		nil, settings, "", nil, nil, nil, nil, nil, nil, nil, nil, registry,
+	)
+
+	wantRoot := "/session-layer/wins"
+	session := store.Session{
+		Name:           "transcript-guard-session",
+		Agent:          "zzz-transcript-guard-adapter",
+		ConversationID: "convo-123",
+		Env:            map[string]string{transcriptGuardEnvKey: wantRoot},
+	}
+
+	gotPath, ok := m.transcriptPathFor(session)
+	if !ok {
+		t.Fatalf("transcriptPathFor(%+v) declined; want it to resolve %q from the session env layer", session, transcriptGuardEnvKey)
+	}
+	want := filepath.Join(wantRoot, session.ConversationID+".transcript")
+	if gotPath != want {
+		t.Fatalf("transcriptPathFor(%+v) = %q, want %q (session env layer for %q, not the config layer)", session, gotPath, want, transcriptGuardEnvKey)
+	}
+
+	// Absent from every layer: TranscriptPaths must decline, never guess.
+	noEnvSession := session
+	noEnvSession.Env = nil
+	noEnvSettings := config.Settings{}
+	mNoConfig := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
+		nil, noEnvSettings, "", nil, nil, nil, nil, nil, nil, nil, nil, registry,
+	)
+	if path, ok := mNoConfig.transcriptPathFor(noEnvSession); ok || path != "" {
+		t.Fatalf("transcriptPathFor with %q resolved nowhere = (%q, %v), want (\"\", false)", transcriptGuardEnvKey, path, ok)
+	}
+}
 
 func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	registry := agent.NewRegistry()
