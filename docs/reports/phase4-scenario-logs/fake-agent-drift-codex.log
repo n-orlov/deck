@@ -1,0 +1,9 @@
+=== RUN   TestFeatures
+
+No scenarios
+No steps
+5.705µs
+--- PASS: TestFeatures (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/features	0.007s
+exit=0
