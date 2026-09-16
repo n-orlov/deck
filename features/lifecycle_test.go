@@ -110,6 +110,16 @@ type ScenarioHarness struct {
 	// re-reading whatever value happens to be there now.
 	preResumeConversationIDs map[string]string
 
+	// codexPaneAnnouncements backs features/codex_hooks.feature's B3
+	// attribution check (task 008): a step captures a Codex pane's own
+	// authoritative SessionStart identity -- its session_id AND its
+	// transcript_path -- straight off cmd/fake-codex's own banner lines
+	// (never off the state database), keyed by the scenario's session
+	// name, so a later step can compare the STORED row and the PRODUCTION
+	// transcript-path resolution against this independently-captured pair
+	// rather than against each other.
+	codexPaneAnnouncements map[string]codexPaneAnnouncement
+
 	// Test seams exercise teardown's leak reporting without weakening the
 	// default black-box lifecycle used by feature scenarios.
 	tmuxProbe  func() bool

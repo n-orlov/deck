@@ -504,6 +504,17 @@ func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted boo
 		// this fixture minted -- exactly the id a real deck would adopt off
 		// the SessionStart hook it fires next (SPEC §8.2, task 018).
 		fmt.Fprintf(stdout, "fake-codex session-id: %s\n", id)
+		// Announced alongside the id so a black-box scenario can also learn
+		// this invocation's own rollout transcript path independently of
+		// anything a caller's store might later persist -- the SAME path
+		// SessionStart's own payload carries (session.payload above), never
+		// a second, differently-derived value. Omitted (not printed) when
+		// writeRolloutSessionMeta degraded to "" (no CODEX_HOME, no HOME):
+		// there is nothing to announce, matching SessionStart's own payload
+		// which likewise omits transcript_path in that case.
+		if rolloutPath != "" {
+			fmt.Fprintf(stdout, "fake-codex transcript-path: %s\n", rolloutPath)
+		}
 		if err := fireHook(stdout, stderr, hooks, trusted, "SessionStart", session.payload(map[string]any{"source": source})); err != nil {
 			return session, err
 		}
