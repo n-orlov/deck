@@ -1182,9 +1182,16 @@ type sessionsBulkKilled struct {
 type batchUndoExpired int
 
 // sessionsBulkResumed carries a batch `u` undo's resume outcome back for
-// every session batchUndoSessionIDs named.
+// every session batchUndoSessionIDs named. sessionIDs and outcomes are
+// index-aligned with errs (R117): the passive-fit latch clear on the single-
+// session sessionResumed path only fires for the ResumeStarted outcome (a
+// pane actually created), never for a no-op resume, and a batch `u` needs
+// the same per-session distinction to decide which of its N sessions, if
+// any, is the one the latch currently names.
 type sessionsBulkResumed struct {
-	errs []error
+	sessionIDs []string
+	outcomes   []service.ResumeOutcome
+	errs       []error
 }
 
 // sessionsBulkDeleted mirrors sessionsBulkKilled exactly, for a marked-set
@@ -2342,6 +2349,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.attachError = ""
+		// R117: mirrors the single-session sessionResumed clear -- only the
+		// sessions this batch actually launched a pane for (ResumeStarted)
+		// are eligible to invalidate the latch, and only when the latch
+		// currently names one of them.
+		for i, id := range msg.sessionIDs {
+			if i < len(msg.outcomes) && msg.outcomes[i] == service.ResumeStarted && id == m.previewFitSessionID {
+				m.previewFitSessionID = ""
+				break
+			}
+		}
 		return m, m.loadSessions
 	case sessionsBulkDeleted:
 		var succeeded []string
@@ -2474,6 +2491,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		// R117: every outcome above (ResumeStartingElsewhere,
+		// ResumeAlreadyRunning, ResumeNotLeasable) is a no-op that created
+		// no pane, so previewFitSessionID is deliberately left untouched for
+		// each of them -- falling through to here means the outcome is
+		// service.ResumeStarted (the only remaining value), i.e. a pane was
+		// actually (re)created. If that is the session the passive-fit
+		// latch currently names as already settled, the latch is now stale
+		// (the pane it fit, if any, is gone; the new one has never been
+		// measured) and must be cleared so the very next preview tick -- with
+		// no selection change required -- issues a fresh fit for it.
+		// previewFitInFlight is untouched: a relaunch never races an
+		// in-flight passive fit for a DIFFERENT still-latched session, and
+		// if one happened to be in flight for this very session its own
+		// previewFitDone still owns clearing that marker.
+		if msg.session.ID == m.previewFitSessionID {
+			m.previewFitSessionID = ""
+		}
 		return m, m.loadSessions
 	case sessionRestarted:
 		if msg.err != nil {
@@ -2512,6 +2546,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// opened).
 		m.restartChoosing = false
 		m.restartChoiceNote = ""
+		// R117: mirrors sessionResumed's own clear immediately above -- a
+		// restart that reaches here (every no-pane outcome above already
+		// returned) killed the old pane and created a new one, so the same
+		// staleness applies and the latch is cleared under the same
+		// condition, leaving previewFitInFlight untouched for the same
+		// reason.
+		if msg.session.ID == m.previewFitSessionID {
+			m.previewFitSessionID = ""
+		}
 		return m, m.loadSessions
 	case envInjected:
 		// Task 023's inject-instead: unlike Restart, nothing was killed or
@@ -3120,7 +3163,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					result := sessionsBulkResumed{}
 					for _, id := range ids {
-						_, _, err := resume(context.Background(), id)
+						resumed, outcome, err := resume(context.Background(), id)
+						result.sessionIDs = append(result.sessionIDs, resumed.ID)
+						result.outcomes = append(result.outcomes, outcome)
 						result.errs = append(result.errs, err)
 					}
 					return result
