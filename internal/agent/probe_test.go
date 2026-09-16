@@ -29,10 +29,21 @@ var probeGoldens = []struct {
 	// "Working..." is still on screen throughout a long tool call, so this
 	// still resolves to running, not idle.
 	{"pi", "sleep-midrun.txt", "running", "working indicator"},
+	// codex — real codex-cli 0.154.0 captures, see
+	// testdata/probes/codex-PROVENANCE.md. retrying.txt deliberately
+	// classifies as running, not error or a distinct verdict: see the
+	// "esc to interrupt" rule's own comment in probe.go for why.
+	{"codex", "starting.txt", "starting", "startup"},
+	{"codex", "running.txt", "running", "working indicator"},
+	{"codex", "waiting.txt", "waiting", "approval prompt"},
+	{"codex", "waiting-patch.txt", "waiting", "approval prompt"},
+	{"codex", "idle.txt", "idle", "turn complete"},
+	{"codex", "error.txt", "error", "terminal error"},
+	{"codex", "retrying.txt", "running", "working indicator"},
 }
 
 func TestProbeGoldenPaneCorpus(t *testing.T) {
-	adapters := map[string]Adapter{"claude": NewClaude(), "pi": NewPi()}
+	adapters := map[string]Adapter{"claude": NewClaude(), "pi": NewPi(), "codex": NewCodex()}
 	var tested []string
 	for _, golden := range probeGoldens {
 		golden := golden
@@ -72,7 +83,7 @@ func TestProbeGoldenPaneCorpus(t *testing.T) {
 }
 
 func TestProbeDeclinesUnknownTextAndShellIsIneligible(t *testing.T) {
-	for _, adapter := range []Adapter{NewClaude(), NewPi(), NewShell()} {
+	for _, adapter := range []Adapter{NewClaude(), NewPi(), NewCodex(), NewShell()} {
 		status, reason := adapter.Probe("ordinary pane output with no agent verdict")
 		if status != "" || reason != "" {
 			t.Errorf("%s unknown pane verdict = (%q, %q), want no verdict", adapter.Kind(), status, reason)

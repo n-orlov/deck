@@ -71,6 +71,48 @@ var probeRules = []probeRule{
 	// see TestPiIdleRuleStaysLastAmongPiRules, which fails if this rule is
 	// ever moved above them.
 	{kind: "pi", contains: []string{"(auto)", "•"}, status: "idle", reason: "status footer, no working/error indicator"},
+
+	// Codex is hook-instrumented (SPEC §8.1), so these rules are only the
+	// fallback for the pre-first-prompt window before SessionStart fires
+	// (codex's SessionStart hook does not fire at launch, only on first
+	// prompt submission) plus a stale-hook fallback elsewhere. Fitted to a
+	// real codex-cli 0.154.0 capture, not invented — see
+	// testdata/probes/codex-PROVENANCE.md for the capture method. No rule
+	// here keys on the fixtures' leading "WARNING: proceeding, ..." line
+	// (a capture artefact deck's own sessions will not print) or on the
+	// banner box (the banner scrolls away on a long session and is shared
+	// by both starting and idle, see below).
+	//
+	// "Press enter to confirm or esc to cancel" is common to both approval
+	// shapes captured (a shell-command prompt in waiting.txt, a file-edit
+	// prompt via apply_patch in waiting-patch.txt) and appears nowhere
+	// else in the corpus, so one rule covers both without a second
+	// "waiting" entry.
+	{kind: "codex", contains: []string{"Press enter to confirm or esc to cancel"}, status: "waiting", reason: "approval prompt"},
+	// A leading "■" marks codex's terminal, retries-exhausted error line
+	// (error.txt) and appears nowhere else in the corpus.
+	{kind: "codex", contains: []string{"■"}, status: "error", reason: "terminal error"},
+	// TRAP (see codex-PROVENANCE.md "Two traps"): "esc to interrupt" also
+	// appears on a mid-retry network-error cell (retrying.txt:
+	// "Reconnecting... 4/5 (2s • esc to interrupt)"), which is textually
+	// indistinguishable from an ordinary running turn. That collision is
+	// deliberate and asserted, not a bug: retrying.txt classifies as
+	// running here, because only the exhausted state (a leading "■", with
+	// "esc to interrupt" gone — handled by the error rule above, which
+	// runs first) is safely classifiable as an error from the pane alone.
+	{kind: "codex", contains: []string{"esc to interrupt"}, status: "running", reason: "working indicator"},
+	// TRAP (see codex-PROVENANCE.md "Two traps"): starting and idle both
+	// still show the banner box, the rotating "Tip:" line and the
+	// "› Ask Codex to do anything" composer placeholder — the banner never
+	// distinguishes them, and it can scroll away entirely on a long
+	// session. The discriminator is transcript presence, not the banner:
+	// idle has run at least one turn and therefore has an agent cell
+	// ("•"); starting has launched but never prompted and has none. This
+	// rule must stay ordered ahead of the starting rule below, since every
+	// codex fixture with a transcript also still shows the composer
+	// placeholder.
+	{kind: "codex", contains: []string{"Ask Codex to do anything", "•"}, status: "idle", reason: "turn complete"},
+	{kind: "codex", contains: []string{"Ask Codex to do anything"}, status: "starting", reason: "startup"},
 }
 
 func probe(kind, pane string) (status, reason string) {
