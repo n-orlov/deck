@@ -117,6 +117,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	registry.Register(agent.NewShell())
 	registry.Register(agent.NewClaude())
 	registry.Register(agent.NewPi())
+	registry.Register(agent.NewCodex())
 	sessions := service.Service{
 		Store: db, TMux: client, Audit: logger,
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
