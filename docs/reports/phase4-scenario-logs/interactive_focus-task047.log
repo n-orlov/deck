@@ -1,0 +1,56 @@
+=== RUN   TestFeatures
+Feature: Interactive mode's focus indicator is unmistakable, including under NO_COLOR (Part II, requirement 44)
+  Entering interactive mode (task 061) moves the main view's one unit of
+  keyboard focus off the sidebar and onto the preview panel for the first
+  time -- every keystroke forwards to the live pane instead of driving list
+  navigation. That move must be unmistakable through colour (the focused
+  surface's border in border_focus, the unfocused one in plain border, the
+  sidebar's still-selected row in the existing selection_idle token) AND
+  through plain text once colour is unavailable, since NO_COLOR drops deck
+  to monochrome and a colour-only cue would pass a golden-frame diff
+  whether or not focus actually moved.
+=== RUN   TestFeatures/entering_interactive_mode_swaps_the_two_panels'_border_tokens_and_the_sidebar's_selected_row_to_selection_idle
+
+  Scenario: entering interactive mode swaps the two panels' border tokens and the sidebar's selected row to selection_idle # interactive_focus.feature:14
+    Given the scenario's config.toml selects theme "empire"                                                                # theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme
+    And deck client "focus" is started with colour enabled                                                                 # cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour
+    And deck client "focus" creates shell session "focus-target"                                                           # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    Then within one configured reconcile interval deck client "focus" screen contains "running"                            # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    And deck client "focus" selects session "focus-target"                                                                 # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    And deck client "focus" cell at row 0 column 0 has foreground token "border_focus"                                     # cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken
+    And deck client "focus" cell at row 0 column 99 has foreground token "border"                                          # cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken
+    And deck client "focus" text "focus-target" has background token "selection"                                           # cell_attributes_test.go:53 -> github.com/n-orlov/deck/features.textHasBackgroundToken
+    When deck client "focus" enters interactive mode                                                                       # interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode
+    Then deck client "focus" screen contains "Ctrl+Q"                                                                      # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "focus" cell at row 0 column 0 has foreground token "border"                                           # cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken
+    And deck client "focus" cell at row 0 column 99 has foreground token "border_focus"                                    # cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken
+    And deck client "focus" text "focus-target running" has background token "selection_idle"                              # cell_attributes_test.go:53 -> github.com/n-orlov/deck/features.textHasBackgroundToken
+    When deck client "focus" leaves interactive mode                                                                       # interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode
+    Then deck client "focus" screen contains "deck - sessions"                                                             # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "focus" cell at row 0 column 0 has foreground token "border_focus"                                     # cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken
+    And deck client "focus" cell at row 0 column 99 has foreground token "border"                                          # cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken
+    And deck client "focus" text "focus-target" has background token "selection"                                           # cell_attributes_test.go:53 -> github.com/n-orlov/deck/features.textHasBackgroundToken
+    And deck client "focus" exits cleanly                                                                                  # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+=== RUN   TestFeatures/the_preview's_top_border_names_the_target_session_as_plain_screen_text,_legible_even_under_NO_COLOR
+
+  Scenario: the preview's top border names the target session as plain screen text, legible even under NO_COLOR # interactive_focus.feature:36
+    Given deck client "plain" is started                                                                        # assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient
+    And deck client "plain" creates shell session "plain-target"                                                # assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession
+    Then within one configured reconcile interval deck client "plain" screen contains "running"                 # assertions_test.go:30 -> github.com/n-orlov/deck/features.clientScreenContainsWithinReconcileInterval
+    And deck client "plain" selects session "plain-target"                                                      # attention_sort_test.go:24 -> github.com/n-orlov/deck/features.clientSelectsSessionByName
+    When deck client "plain" enters interactive mode                                                            # interactive_focus_test.go:18 -> github.com/n-orlov/deck/features.clientEntersInteractiveMode
+    Then deck client "plain" screen contains "plain-target"                                                     # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "plain" screen contains "interactive"                                                       # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "plain" screen contains "Ctrl+Q"                                                            # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    When deck client "plain" leaves interactive mode                                                            # interactive_focus_test.go:19 -> github.com/n-orlov/deck/features.clientLeavesInteractiveMode
+    Then deck client "plain" screen contains "deck - sessions"                                                  # assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains
+    And deck client "plain" exits cleanly                                                                       # assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly
+
+2 scenarios (2 passed)
+30 steps (30 passed)
+2.461258838s
+--- PASS: TestFeatures (2.46s)
+    --- PASS: TestFeatures/entering_interactive_mode_swaps_the_two_panels'_border_tokens_and_the_sidebar's_selected_row_to_selection_idle (1.22s)
+    --- PASS: TestFeatures/the_preview's_top_border_names_the_target_session_as_plain_screen_text,_legible_even_under_NO_COLOR (1.22s)
+PASS
+ok  	github.com/n-orlov/deck/features	2.472s

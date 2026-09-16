@@ -24,7 +24,7 @@ Feature: Interactive mode's focus indicator is unmistakable, including under NO_
     Then deck client "focus" screen contains "Ctrl+Q"
     And deck client "focus" cell at row 0 column 0 has foreground token "border"
     And deck client "focus" cell at row 0 column 99 has foreground token "border_focus"
-    And deck client "focus" text "> focus-target" has background token "selection_idle"
+    And deck client "focus" text "focus-target running" has background token "selection_idle"
     When deck client "focus" leaves interactive mode
     Then deck client "focus" screen contains "deck - sessions"
     And deck client "focus" cell at row 0 column 0 has foreground token "border_focus"
