@@ -820,6 +820,20 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 	return lines
 }
 
+// paintForeignFill closes whatever SGR state a foreign captured row's own
+// bytes may have left open -- an unclosed foreground/background/bold, the
+// "attribute left open" case task 003/B1 exists for -- with an explicit
+// reset (canvasResetIfPainting, so a colour-disabled build still emits no
+// escape bytes at all), then paints s with deck's own theme.Background.
+// cropRow below is the only caller: s is always deck-drawn padding/crop-
+// marker glyph, never a byte of the pane's own capture, so composing it
+// through canvasBackground here is safe in exactly the way the doc
+// comments on canvasBackground/previewContentLine say a captured pane's
+// OWN bytes never are.
+func (m Model) paintForeignFill(s string) string {
+	return m.canvasResetIfPainting(theme.Background) + m.canvasBackground(theme.Background, s)
+}
+
 // cropRow crops a single captured screen row to exactly contentWidth
 // display columns, left-anchored (column one), never splitting a
 // double-width glyph at either the truncation point or the marker column
@@ -828,21 +842,36 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 // contentWidth-1 columns (never mid-glyph, via truncateToWidth) and its
 // final column set to cropMarker() -- always a fresh, whole column, never
 // a substitution into a rune that might be the left half of a wide glyph.
+//
+// The pad-fill columns past the pane's own bytes, and the crop marker
+// itself, are deck-drawn chrome exactly like the border/pad columns
+// flanking the whole row (task 003/B1 part 2/3, SPEC.md:1576) -- never the
+// pane's own content -- so both are routed through paintForeignFill,
+// which resets before painting them with theme.Background: the pane's own
+// bytes are handed back untouched (return row directly / content is only
+// ever truncated, never re-composed), and nothing they leave open bleeds
+// into deck's own columns past them.
 func (m Model) cropRow(row string, contentWidth int) string {
 	if contentWidth <= 0 {
 		return ""
 	}
 	if stringWidth(row) <= contentWidth {
-		return padToWidth(row, contentWidth)
+		fillWidth := contentWidth - stringWidth(row)
+		if fillWidth <= 0 {
+			return row
+		}
+		return row + m.paintForeignFill(strings.Repeat(" ", fillWidth))
 	}
 	marker := m.cropMarker()
 	markerW := stringWidth(marker)
 	budget := contentWidth - markerW
 	if budget <= 0 {
-		return padToWidth(truncateToWidth(marker, contentWidth), contentWidth)
+		return m.paintForeignFill(padToWidth(truncateToWidth(marker, contentWidth), contentWidth))
 	}
-	content := padToWidth(truncateToWidth(row, budget), budget)
-	return content + marker
+	content := truncateToWidth(row, budget)
+	fillWidth := budget - stringWidth(content)
+	tail := strings.Repeat(" ", max(fillWidth, 0)) + marker
+	return content + m.paintForeignFill(tail)
 }
 
 // borderLabel renders a border title (" title ", clamped to inner columns)
