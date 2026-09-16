@@ -3,19 +3,39 @@ package tui
 import (
 	"testing"
 
+	"github.com/charmbracelet/x/vt"
+
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 )
 
+// gutterGlyphModes is the two rendering modes the mark glyph is specified
+// in: SPEC §11.3's `✓` normally, and the documented `*` fallback under
+// DECK_ASCII (config.Settings.ASCII, what m.glyph switches on). Each mode
+// names the glyph that MUST appear and the one that must NOT: asserting
+// both directions is what makes these tests fail for an implementation
+// that hard-codes either glyph unconditionally instead of routing through
+// m.glyph.
+var gutterGlyphModes = []struct {
+	name    string
+	ascii   bool
+	want    string
+	notWant string
+}{
+	{name: "unicode", ascii: false, want: "\u2713", notWant: "*"},
+	{name: "ascii", ascii: true, want: "*", notWant: "\u2713"},
+}
+
 // sidebarGutterTestModel builds a colour-enabled, side-by-side model with
 // one session, at the sidebar's own minimum width (SidebarWidthFloor, task
 // 008's own floor scenario) -- the tightest gutter/truncation budget the
 // row can ever render at, so a colour rule that only happens to hold at a
-// wider width is not what these tests prove.
-func sidebarGutterTestModel(t *testing.T) Model {
+// wider width is not what these tests prove. `ascii` sets
+// config.Settings.ASCII, i.e. DECK_ASCII's own effect on m.glyph.
+func sidebarGutterTestModel(t *testing.T, ascii bool) Model {
 	t.Helper()
-	m := New(nil, config.Settings{Color: true}, "")
+	m := New(nil, config.Settings{Color: true, ASCII: ascii}, "")
 	m.width, m.height = 100, 30
 	m.sidebarWidth = SidebarWidthFloor
 	m.sessions = []store.Session{
@@ -39,6 +59,32 @@ func gutterRow(t *testing.T, m Model) int {
 	return findRowContainingInSidebar(t, term, sw, "gutx")
 }
 
+// markGlyphCol returns the column of `want` within the gutter's own
+// leftmost columns of line 2, and fails if `want` is absent OR if
+// `notWant` (the other mode's glyph) appears there instead -- so a
+// gutter that emits one glyph regardless of config.Settings.ASCII fails
+// in exactly one of the two modes rather than passing both.
+func markGlyphCol(t *testing.T, term *vt.Emulator, line int, want, notWant string) int {
+	t.Helper()
+	col := -1
+	for c := 0; c < 3; c++ {
+		cell := term.CellAt(c, line)
+		if cell == nil {
+			continue
+		}
+		if cell.Content == notWant {
+			t.Fatalf("row %d col %d carries the wrong-mode mark glyph %q, want %q", line, c, notWant, want)
+		}
+		if cell.Content == want {
+			col = c
+		}
+	}
+	if col < 0 {
+		t.Fatalf("no mark glyph %q found on row %d's own leftmost gutter columns", want, line)
+	}
+	return col
+}
+
 // TestSidebarGutterPlainRowPaintsNoBar proves the fourth (baseline) gutter
 // state: a row that is neither selected nor marked carries no `>` or `\u2713`/
 // `*` glyph in its own leftmost two columns on either line, and those
@@ -46,7 +92,7 @@ func gutterRow(t *testing.T, m Model) int {
 // background -- i.e. column 1 (the gutter's first column, just past the
 // border+pad column 0) never resolves to `accent` or `badge`.
 func TestSidebarGutterPlainRowPaintsNoBar(t *testing.T) {
-	m := sidebarGutterTestModel(t)
+	m := sidebarGutterTestModel(t, false)
 	accentHex := tokenHex(t, m, theme.Accent)
 	badgeHex := tokenHex(t, m, theme.Badge)
 
@@ -78,7 +124,7 @@ func TestSidebarGutterPlainRowPaintsNoBar(t *testing.T) {
 // per-cell off a real vt.Emulator grid, never grepped from raw escape
 // bytes.
 func TestSidebarGutterSelectedRowIsAccentWithBackgroundArrow(t *testing.T) {
-	m := sidebarGutterTestModel(t)
+	m := sidebarGutterTestModel(t, false)
 	m.selected = 0
 	accentHex := tokenHex(t, m, theme.Accent)
 	backgroundHex := tokenHex(t, m, theme.Background)
@@ -109,85 +155,71 @@ func TestSidebarGutterSelectedRowIsAccentWithBackgroundArrow(t *testing.T) {
 
 // TestSidebarGutterMarkedUnselectedRowIsBadgeWithCheck proves the marked,
 // unselected state: the bar is `badge`, and it carries the mark glyph on
-// line 2 (`\u2713`, or `*` under DECK_ASCII -- both checked here, since
-// m.glyph itself decides which at render time and this test does not
-// force DECK_ASCII).
+// line 2 -- `\u2713` normally and `*` under DECK_ASCII, each mode asserted
+// on its OWN model (config.Settings.ASCII set explicitly) and each also
+// asserting the other mode's glyph is absent, so a gutter that emits one
+// glyph unconditionally fails here instead of passing either way.
 func TestSidebarGutterMarkedUnselectedRowIsBadgeWithCheck(t *testing.T) {
-	m := sidebarGutterTestModel(t)
-	m.marked = map[string]bool{"s1": true}
-	badgeHex := tokenHex(t, m, theme.Badge)
-	backgroundHex := tokenHex(t, m, theme.Background)
+	for _, mode := range gutterGlyphModes {
+		t.Run(mode.name, func(t *testing.T) {
+			m := sidebarGutterTestModel(t, mode.ascii)
+			m.marked = map[string]bool{"s1": true}
+			badgeHex := tokenHex(t, m, theme.Badge)
+			backgroundHex := tokenHex(t, m, theme.Background)
 
-	row := gutterRow(t, m)
-	view := m.View()
-	term := renderSettingsToEmulator(t, view, m.width, m.height)
+			row := gutterRow(t, m)
+			view := m.View()
+			term := renderSettingsToEmulator(t, view, m.width, m.height)
 
-	var col int
-	found := false
-	for _, want := range []string{"\u2713", "*"} {
-		for c := 0; c < 3; c++ {
-			cell := term.CellAt(c, row+1)
-			if cell != nil && cell.Content == want {
-				col, found = c, true
+			col := markGlyphCol(t, term, row+1, mode.want, mode.notWant)
+			if hex, ok := cellBgHex(t, term, col, row+1); !ok || hex != badgeHex {
+				t.Fatalf("marked row: mark glyph background = %v, %v, want badge (%s)", hex, ok, badgeHex)
 			}
-		}
-	}
-	if !found {
-		t.Fatalf("marked row: no mark glyph found on line 2's own leftmost columns")
-	}
-	if hex, ok := cellBgHex(t, term, col, row+1); !ok || hex != badgeHex {
-		t.Fatalf("marked row: mark glyph background = %v, %v, want badge (%s)", hex, ok, badgeHex)
-	}
-	if hex, ok := cellFgHex(t, term, col, row+1); !ok || hex != backgroundHex {
-		t.Fatalf("marked row: mark glyph foreground = %v, %v, want background (%s)", hex, ok, backgroundHex)
-	}
-	// Selection is absent, so line 1's own gutter columns share the SAME
-	// badge bar too (SPEC: the marker text lives in its own columns of
-	// "the same bar" -- one two-line bar, one colour, not badge on line 2
-	// only).
-	if hex, ok := cellBgHex(t, term, col, row); !ok || hex != badgeHex {
-		t.Fatalf("marked row: line1 bar background = %v, %v, want badge (%s) -- selection absent, badge covers the whole bar", hex, ok, badgeHex)
+			if hex, ok := cellFgHex(t, term, col, row+1); !ok || hex != backgroundHex {
+				t.Fatalf("marked row: mark glyph foreground = %v, %v, want background (%s)", hex, ok, backgroundHex)
+			}
+			// Selection is absent, so line 1's own gutter columns share
+			// the SAME badge bar too (SPEC: the marker text lives in its
+			// own columns of "the same bar" -- one two-line bar, one
+			// colour, not badge on line 2 only).
+			if hex, ok := cellBgHex(t, term, col, row); !ok || hex != badgeHex {
+				t.Fatalf("marked row: line1 bar background = %v, %v, want badge (%s) -- selection absent, badge covers the whole bar", hex, ok, badgeHex)
+			}
+		})
 	}
 }
 
 // TestSidebarGutterMarkedAndSelectedRowStaysAccent proves selection wins
 // the bar's own colour when a row is both selected and marked (SPEC:
 // both cues coexist, but the bar itself stays one colour) -- the bar is
-// `accent`, never `badge`, while the mark glyph still shows on line 2.
+// `accent`, never `badge`, while the mark glyph still shows on line 2 in
+// whichever form the mode requires (`\u2713`, `*` under DECK_ASCII).
 func TestSidebarGutterMarkedAndSelectedRowStaysAccent(t *testing.T) {
-	m := sidebarGutterTestModel(t)
-	m.selected = 0
-	m.marked = map[string]bool{"s1": true}
-	accentHex := tokenHex(t, m, theme.Accent)
-	badgeHex := tokenHex(t, m, theme.Badge)
-	backgroundHex := tokenHex(t, m, theme.Background)
+	for _, mode := range gutterGlyphModes {
+		t.Run(mode.name, func(t *testing.T) {
+			m := sidebarGutterTestModel(t, mode.ascii)
+			m.selected = 0
+			m.marked = map[string]bool{"s1": true}
+			accentHex := tokenHex(t, m, theme.Accent)
+			badgeHex := tokenHex(t, m, theme.Badge)
+			backgroundHex := tokenHex(t, m, theme.Background)
 
-	row := gutterRow(t, m)
-	view := m.View()
-	term := renderSettingsToEmulator(t, view, m.width, m.height)
+			row := gutterRow(t, m)
+			view := m.View()
+			term := renderSettingsToEmulator(t, view, m.width, m.height)
 
-	arrowCol := findCol(t, term, row, ">")
-	if hex, ok := cellBgHex(t, term, arrowCol, row); !ok || hex != accentHex {
-		t.Fatalf("marked+selected row: `>` background = %v, %v, want accent (%s)", hex, ok, accentHex)
-	}
-
-	var markCol int
-	found := false
-	for _, want := range []string{"\u2713", "*"} {
-		for c := 0; c < 3; c++ {
-			cell := term.CellAt(c, row+1)
-			if cell != nil && cell.Content == want {
-				markCol, found = c, true
+			arrowCol := findCol(t, term, row, ">")
+			if hex, ok := cellBgHex(t, term, arrowCol, row); !ok || hex != accentHex {
+				t.Fatalf("marked+selected row: `>` background = %v, %v, want accent (%s)", hex, ok, accentHex)
 			}
-		}
-	}
-	if !found {
-		t.Fatalf("marked+selected row: no mark glyph found on line 2")
-	}
-	if hex, ok := cellBgHex(t, term, markCol, row+1); !ok || hex != accentHex {
-		t.Fatalf("marked+selected row: mark glyph background = %v, %v, want accent (%s), selection wins over badge (%s)", hex, ok, accentHex, badgeHex)
-	}
-	if hex, ok := cellFgHex(t, term, markCol, row+1); !ok || hex != backgroundHex {
-		t.Fatalf("marked+selected row: mark glyph foreground = %v, %v, want background (%s)", hex, ok, backgroundHex)
+
+			markCol := markGlyphCol(t, term, row+1, mode.want, mode.notWant)
+			if hex, ok := cellBgHex(t, term, markCol, row+1); !ok || hex != accentHex {
+				t.Fatalf("marked+selected row: mark glyph background = %v, %v, want accent (%s), selection wins over badge (%s)", hex, ok, accentHex, badgeHex)
+			}
+			if hex, ok := cellFgHex(t, term, markCol, row+1); !ok || hex != backgroundHex {
+				t.Fatalf("marked+selected row: mark glyph foreground = %v, %v, want background (%s)", hex, ok, backgroundHex)
+			}
+		})
 	}
 }
