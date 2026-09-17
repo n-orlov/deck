@@ -8,18 +8,19 @@ This report is record-only. Approach 1's own record (`docs/reports/phase4-final-
 and the two prior versions of this file superseded by this rewrite, at `db66965` and
 `0ba550a` respectively) stay as history and are not edited.
 
-- **Tail code sha**: `bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7` (`bfdb69e`, `tui: point R121's
-  override controls at their own distinct roots (task cure-03-02-2)`), named in
-  `docs/reports/phase4-a3-final-suite/README.md` and
+- **Tail code sha**: `a260abfaa36fe96068fb19f4735d66b3b040459b` (`a260abf`, `tui: close the
+  foreign-content-to-deck boundary reset independently of deck's own colour (task
+  cure-03-01-2)`), named in `docs/reports/phase4-a3-final-suite/README.md` and
   `docs/reports/phase4-a3-stability10/README.md` (both re-recorded at this sha) — the most
-  recent commit in this run's history touching a `*.go` or `*.feature` file. It supersedes two
-  earlier recordings, each of which measured a tree this run then changed: `3568bd7` (task
-  002's own tail) and `7bb1f8a` (the tail after review pass 234's first two cures). This
-  approach's own code-touching commits, per the freeze line, are `2a04e5a` (cure-03-01,
-  settings-footer paint), `7bb1f8a` (cure-03-02, real-Codex first-hook wait), `594b0b4`
-  (cure-03-02-2, R121's server-env transcript layer) and `bfdb69e` (cure-03-02-2's own
-  override-control strengthening). Confirmed unchanged at report-writing time:
-  `git diff --stat bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7 HEAD -- '*.go' '*.feature'` prints
+  recent commit in this run's history touching a `*.go` or `*.feature` file. It supersedes
+  three earlier recordings, each of which measured a tree this run then changed: `3568bd7`
+  (task 002's own tail), `7bb1f8a` (the tail after review pass 234's first two cures) and
+  `bfdb69e` (the tail after R121's cure). This approach's own code-touching commits, per the
+  freeze line, are `2a04e5a` (cure-03-01, settings-footer paint), `7bb1f8a` (cure-03-02,
+  real-Codex first-hook wait), `594b0b4` (cure-03-02-2, R121's server-env transcript layer),
+  `bfdb69e` (cure-03-02-2's own override-control strengthening) and `a260abf` (cure-03-01-2,
+  R118's foreign-content-to-deck boundary reset). Confirmed unchanged at report-writing time:
+  `git diff --stat a260abfaa36fe96068fb19f4735d66b3b040459b HEAD -- '*.go' '*.feature'` prints
   nothing.
 - **Protected-path audit** (the PRD's own command, run against the base commit that added
   `prds/phase4-codex-and-chrome.md`, `08a1ffe3eb229f8ebe5ba9791fbb3e3cec6e0c06`, computed
@@ -126,6 +127,30 @@ own list:
   "the settings takeover's search footer paints deck background across its whole row" -- each
   closing the takeover with esc before exiting (`q` is not bound while `m.settingsOpen`).
 
+- **The foreign-content-to-deck boundary reset, gated on deck's own colour only (task
+  cure-03-01-2)**: `canvasResetIfPainting` (`internal/tui/panel.go`) -- the explicit
+  `"\x1b[0m"` `previewContentLine`/`fullBoxPreviewContentLine`/`paintForeignFill` emit right
+  after a captured pane's own SGR bytes so the pane's colour cannot bleed into deck's own
+  border/pad/crop-marker/chrome past it -- fired only when DECK's own colour painting was
+  enabled. Under `NO_COLOR` it never fired at all, so a captured row that itself left SGR open
+  (a real full-width coloured row with no closing reset of its own) leaked its own
+  foreground/background straight into deck's chrome past the boundary. Fixed by commit
+  `a260abf` ("tui: close the foreign-content-to-deck boundary reset independently of deck's
+  own colour (task cure-03-01-2)"): the reset now fires when EITHER deck's own colour is
+  enabled OR the foreign text itself carries any escape byte -- a plain, escape-free foreign
+  row under a colour-disabled build still gets no reset (nothing was ever opened, preserving
+  every existing plain-NO_COLOR-text/geometry assertion), while a row carrying an escape byte
+  gets the defensive close regardless of deck's own colour setting. The captured bytes
+  themselves are never scanned, repainted or stripped.
+  Tests: `TestForeignBoundaryResetClosesCapturedSGRUnderNoColor`
+  (`internal/tui/preview_foreign_boundary_reset_test.go`, both production preview
+  content-line builders directly, side-by-side and stacked) and
+  `TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor`
+  (`internal/tui/preview_foreign_boundary_reset_live_test.go`, a REAL tmux `CapturePreview`
+  through `Model.View()`, both layouts, with a colour-enabled control proving the same
+  scenario already worked pre-fix). Both go red on the pre-fix tree and green after; full
+  detail, including the red/green logs, in `docs/reports/phase4-r118-foreign-reset/README.md`.
+
 - Tests carried over unchanged from approach 2:
   `TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundSideBySide`,
   `TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundStacked`
@@ -145,7 +170,7 @@ own list:
   approach 2 task 004's own earlier targeted run of `features/panel_background_themes.feature`
   alone (7 scenarios, 7 passed; 82 steps, 82 passed) — a point-in-time record from approach 2,
   not a measurement at any tail sha of this run. This approach's own confirmation that the same
-  feature file still passes at this approach's own tail sha `bfdb69e` is the full-suite gate
+  feature file still passes at this approach's own tail sha `a260abf` is the full-suite gate
   cited separately above and under "Both sweeps" below (task 003), never this log.
 
 ### R119 — the selection/mark gutter occupies its own columns; four colour states; feature scenario; contrast floor
@@ -418,17 +443,19 @@ never "cured" by editing SPEC — SPEC.md is a protected path in this run and st
 
 ## R132 — the record matches the tree (T1)
 
-**Shipped for this approach's own record, at the tail code sha `bfdb69e`.** R132 is the only
+**Shipped for this approach's own record, at the tail code sha `a260abf`.** R132 is the only
 requirement whose deliverable is this record itself, so its verdict is stated against its own
 four bullets:
 
 - **`docs/reports/phase4-report.md` states, per requirement, what shipped, the commits and the
-  tests that prove it, and for anything that did not ship what is missing and why.** Green —
-  this file, rewritten under task 005 at `7bb1f8a` and re-cited at the new tail `bfdb69e` under
-  the cure pass's task cure-03-02-2 (it previously stood at this approach's own
-  earlier `3568bd7` recording, itself following approach 2's `0ba550a`). Every requirement
+  tests that prove it, and for anything that did not ship what is missing and why.** Green --
+  this file, rewritten under task 005 at `7bb1f8a`, re-cited at `bfdb69e` under the cure pass's
+  task cure-03-02-2, and re-cited again at the new tail `a260abf` under this cure pass's task
+  cure-03-01-2 (it previously stood at this approach's own earlier `3568bd7` recording, itself
+  following approach 2's `0ba550a`). Every requirement
   number R116–R132 carries its own verdict above: R116–R127 individually (R118, R121 and R127
-  each carrying this approach's own further cures, cure-03-01, cure-03-02 and cure-03-02-2), R128–R131 now each
+  each carrying this approach's own further cures, cure-03-01, cure-03-02, cure-03-02-2 and --
+  R118 again -- cure-03-01-2), R128–R131 now each
   individually labelled **NOT STARTED** in their own subsections (review pass 234's residual
   R3), with the wall-clock budget behind them and the SPEC-versus-code grouping gap in the one
   disclosed paragraph that section requires, and R132 here. Every commit sha and every
@@ -449,12 +476,14 @@ four bullets:
   final code sha per Materiality's termination rule.** Green — see "Both sweeps" immediately
   below: the full-suite gate plus build/vet/gofmt guards and the ten-run stability
   sweep, each with its command as run, its duration, the shared tail code sha
-  `bfdb69e`, and its own committed directory under `docs/reports/`.
+  `a260abf`, and its own committed directory under `docs/reports/`.
 
 Tasks 006–010's own bullets landed as docs-only commits on top of the earlier tail `7bb1f8a`;
-the cure pass then landed R121's fix (`594b0b4`, `bfdb69e`), which moved the tail and therefore
-forced both sweeps to be re-run from scratch at `bfdb69e` — the measurements reported below, and
-the sha every section above now cites. Per the PRD's own
+the cure pass then landed R121's fix (`594b0b4`, `bfdb69e`), which moved the tail and forced
+both sweeps to be re-run from scratch at `bfdb69e`; this cure pass then landed R118's
+foreign-content-to-deck boundary reset fix (`a260abf`, task cure-03-01-2), which moved the
+tail again and forced both sweeps to be re-run from scratch a second time, at `a260abf` --
+the measurements reported below, and the sha every section above now cites. Per the PRD's own
 Materiality termination rule (and the standing rules that restate it) a docs-only tail commit
 invalidates neither sweep and is itself exempt from re-verification, so the record tail's own
 docs-only commits do not reopen the sweeps reported below.
@@ -562,13 +591,13 @@ want of B0.
 - **Command**: `ci/run.sh go test -p=1 -count=1 -timeout=40m ./...` — every package, no
   `-run` filter, no package list. Build/vet/gofmt guards: `ci/run.sh sh -c 'go build ./...'`,
   `ci/run.sh go vet ./...`, `ci/run.sh gofmt -l .`.
-- **Tail code sha**: `bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7` (`bfdb69e`), confirmed by
+- **Tail code sha**: `a260abfaa36fe96068fb19f4735d66b3b040459b` (`a260abf`), confirmed by
   `git log --format=%H -1 -- '*.go' '*.feature'` == `git rev-parse HEAD` at launch.
-- **Duration**: 7m4s (424s), `2026-09-17T14:30:41Z` → `2026-09-17T14:37:45Z`, matching the
-  sum of `go test`'s own per-package timings (419.7s) plus sibling-container startup/teardown
-  overhead; consistent with the ~441s/7m21s plan-time measurement, the ≈7m6s measured at the
-  superseded tail `7bb1f8a` and the ~412s at `3568bd7` — ordinary variance, not a different
-  command or a narrowed sweep.
+- **Duration**: 9m35s (575s), `2026-09-17T16:08:19Z` → `2026-09-17T16:17:54Z`, matching the
+  sum of `go test`'s own per-package timings (566.6s) plus sibling-container startup/teardown
+  overhead; longer than the ~7m4s-7m21s measured at the earlier tails (the `features` package
+  alone ran 501.5s here vs. 362-419s before) — ordinary host-scheduler/sibling-container
+  variance, not a different command or a narrowed sweep.
 - **Result**: PASS (`go test` exit 0). All 15 packages with tests report `ok` (`cmd/deck`,
   `cmd/fake-claude`,
   `cmd/fake-codex`, `cmd/fake-pi`, `features`, `internal/agent`, `internal/audit`,
@@ -585,9 +614,8 @@ want of B0.
   - `.spike-preview/conformance/conformance_test.go`
 
   None of these paths were touched by this approach's own commits (tasks 001, 002, cure-03-01,
-  cure-03-02 and cure-03-02-2 touched only `internal/tui/*.go`, `internal/tmux/geometry.go` and
-  `features/*.go`/`*.feature`, none of
-  these four).
+  cure-03-02, cure-03-02-2 and cure-03-01-2 touched only `internal/tui/*.go`,
+  `internal/tmux/geometry.go` and `features/*.go`/`*.feature`, none of these four).
 - **Skips in force**: godog's default `~@real-agents && ~@nightly` tag filter, and the
   real-binary skips that leave the `cmd/fake-claude`/`cmd/fake-codex`/`cmd/fake-pi` stubs as
   the tested surface for agent adapters (no real Claude/Codex/pi CLI reachable from this
@@ -600,52 +628,51 @@ want of B0.
 
 - **Command**: `ci/stability.sh 10` (ten independent repetitions of `ci/run.sh go test -p=1
   -count=1 ./...`, `-count=1` disables the test cache, each run its own `--rm` sibling).
-- **Tail code sha**: `bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7` (`bfdb69e`, unchanged from the
-  gate above — same sha, same tree; `HEAD` at launch was `bfdb69e` itself).
-- **Duration**: **1h12m49s** end to end (script launched `2026-09-17T14:37:45Z`; `run-1.log`
-  completed `2026-09-17T14:44:47Z`; `run-10.log`/summary completed `2026-09-17T15:50:34Z`) —
+- **Tail code sha**: `a260abfaa36fe96068fb19f4735d66b3b040459b` (`a260abf`, unchanged from the
+  gate above — same sha, same tree; `HEAD` at launch was `a260abf` itself).
+- **Duration**: **1h10m14s** end to end (script launched `2026-09-17T16:17:54Z`; `run-1.log`
+  completed `2026-09-17T16:24:54Z`; `run-10.log`/summary completed `2026-09-17T17:28:08Z`) —
   matching the ~1h12m plan-time estimate; **no features-only fallback was needed or taken**. This
   supersedes the ten-run records previously written at the prior tails `3568bd7` (commits
-  `5f1fb5c`/`deca67c`) and `7bb1f8a` (commit `c069c34`): the cure pass landed `*.go` changes
-  (`594b0b4`, `bfdb69e`) on top of `7bb1f8a`, so those earlier records measure superseded trees.
-- **Result**: **9/10 PASS — not clean.** Runs 1–4 and 6–10 passed with `go test` exit 0; **run 5
-  FAILED** (`ci/stability.sh` exit 1, `stability-summary.log`: `9/10 passed`, `=== RUN 5: FAIL
-  (exit 1) ===`). The single failing scenario is named in full in
-  `docs/reports/phase4-a3-stability10/README.md`: `TestFeatures` → *a single click on a sidebar
-  row selects it and enters interactive mode on the same press, and Ctrl+Q returns to the list*
-  (`features/mouse.feature:10`), failing its after-scenario frame-unchanged hook
-  (`features/mouse_synthesis_test.go:254`) with a one-word diff — the sidebar's own status word
-  for the second session read `starting` in the captured frame and `running` in the re-check,
-  i.e. deck's ordinary reconcile transition landing between the two, not a paint, layout,
-  colour, gutter, crop or interactive difference. The scenario's own wait step
-  (`features/mouse.feature:20`) is satisfied by the FIRST session's status word, so the race is
-  in the fixture's wait, in test code, and is independent of this approach's cures. It is filed
-  as a FINDING rather than fixed (this approach's scope is review pass 234's two reds plus the
-  R121 cure) — see `docs/reports/phase4-findings.md`. Every one of the ten per-run logs lists
-  all 18 packages `go list ./...` returns for this module, so no repetition was narrowed, and no
-  run was re-run, discarded or replaced. Both known-open advisory flakes named in the standing
-  rules
+  `5f1fb5c`/`deca67c`), `7bb1f8a` (commit `c069c34`) and `bfdb69e` (9/10, run 5's
+  mouse-gesture fixture race): the cure pass then landed `a260abf` (R118's foreign-content-
+  to-deck boundary reset fix) on top of `bfdb69e`, so that record measures a superseded tree.
+- **Result**: **10/10 PASS — clean.** All ten runs passed with `go test` exit 0
+  (`ci/stability.sh` exit 0, `stability-summary.log`: `10/10 passed`). Every one of the ten
+  per-run logs lists all 18 packages `go list ./...` returns for this module, so no repetition
+  was narrowed, and no run was re-run, discarded or replaced. The prior recording's one
+  failing scenario (`TestFeatures` → *a single click on a sidebar row selects it and enters
+  interactive mode on the same press, and Ctrl+Q returns to the list*,
+  `features/mouse.feature:10`, its after-scenario frame-unchanged hook at
+  `features/mouse_synthesis_test.go:254` racing the sidebar's own `starting`→`running`
+  reconcile transition) did **not** reproduce in any of these ten runs; it is a probabilistic
+  fixture-timing race, independent of this approach's cures (its territory is
+  `features/mouse.feature` and `features/mouse_synthesis_test.go`, never touched by any commit
+  in this approach), and it remains an OPEN, disclosed finding in
+  `docs/reports/phase4-findings.md` — this clean 10/10 does not retract that finding, it only
+  reports that this sweep did not observe it. Both known-open advisory flakes named in the
+  standing rules
   (`TestSigwinchCountDistinguishesTwoFromThree`, `features/sigwinch_count_test.go:24`;
   `TestSendKeysInvalidHexByteIsSilentlyDiscarded`'s empty-capture case,
   `internal/tmux/literal_send_test.go:123`) were searched for by name across all ten logs and
-  appeared in none of them, so neither explains run 5; a manifested advisory flake would read
-  **FAIL** with that test named and the advisory label applied, never a bare PASS, since both
-  cases report through `t.Fatalf` and `ci/stability.sh` labels a
-  repetition from `go test`'s own exit status, captured immediately after the un-piped command,
-  never from log text.
+  appeared in none of them; a manifested advisory flake would read **FAIL** with that test
+  named and the advisory label applied, never a bare PASS, since both cases report through
+  `t.Fatalf` and `ci/stability.sh` labels a repetition from `go test`'s own exit status,
+  captured immediately after the un-piped command, never from log text.
 - **Evidence**: `docs/reports/phase4-a3-stability10/{README.md,run-1.log..run-10.log,
   stability-summary.log}` — the source this section's own numbers are taken from, per this
   task's own criteria.
 
 ## Summary
 
-Every Tier 1 requirement (R116–R127) is green at this approach's tail code sha `bfdb69e`,
-cited above against its own commit(s) and test(s); R118 now carries three same-class B1 cures
+Every Tier 1 requirement (R116–R127) is green at this approach's tail code sha `a260abf`,
+cited above against its own commit(s) and test(s); R118 now carries FOUR same-class B1 cures
 across this run (`92619cf`/`48bce3d` for the crop-decoration geometry line and blank-fill rows,
-`3568bd7` for the interactive-preview branch's notice and pad rows, and this approach's own
-`2a04e5a` for the settings takeover's footer row), R127 carries this approach's own
+`3568bd7` for the interactive-preview branch's notice and pad rows, `2a04e5a` for the settings
+takeover's footer row, and this cure pass's own `a260abf` for the foreign-content-to-deck
+boundary reset that was gated on deck's own colour only), R127 carries this approach's own
 `7bb1f8a` cure of the premature real-Codex first-hook rejection — both review pass 234's two
-new reds, both cured this approach — and R121/R127 additionally carry the cure pass's own
+new reds, both cured this approach — and R121 additionally carries the cure pass's own
 `594b0b4`/`bfdb69e` fix, which resolves each session's transcript environment from that
 session's own tmux server instead of the observing TUI's ambient environment. Every other Tier 1
 requirement keeps its unchanged prior
@@ -655,12 +682,13 @@ individually labelled verdicts (review pass 234's residual R3) rather than one g
 disposition, each re-affirming approaches 1 and 2's own budget decision against this
 approach's own extended deadline (`2026-09-17T18:01:18Z`) and not narrowing the disclosed,
 not-scored SPEC-versus-code grouping gap. Both mandatory sweeps for this approach (the
-full-suite gate with the build/vet/gofmt guards, green; and the ten-run stability sweep, **9/10
-with run 5's mouse-gesture fixture race named in full and filed as a FINDING**) are reported
-above with their commands, durations and the shared tail code sha `bfdb69e`, taken from
+full-suite gate with the build/vet/gofmt guards, green; and the ten-run stability sweep,
+**10/10 clean**, with the earlier recording's mouse-gesture fixture race remaining an OPEN,
+disclosed finding that did not reproduce this run) are reported
+above with their commands, durations and the shared tail code sha `a260abf`, taken from
 `docs/reports/phase4-a3-final-suite/README.md` and `docs/reports/phase4-a3-stability10/
 README.md`, which is also R132's fourth bullet; R132's own verdict is stated in its own
-section above (this report green at `bfdb69e`; the review-findings section, `phase4-
+section above (this report green at `a260abf`; the review-findings section, `phase4-
 findings.md` and `docs/DELIVERY-LOG.md`'s correction are the three immediately following
 docs-only record tasks, 006–008 and 010). Each sweep points at its own committed directory
 under `docs/reports/` (`phase4-a3-final-suite/`, `phase4-a3-stability10/`).

@@ -1,0 +1,19 @@
+=== RUN   TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor
+    preview_foreign_boundary_reset_live_test.go:49: real capture prefix: "\x1b[38;2;17;34;51m\x1b[48;2;68;85;102mXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+=== RUN   TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/side-by-side/NO_COLOR
+=== RUN   TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/side-by-side/color-control
+=== RUN   TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/stacked/NO_COLOR
+=== RUN   TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/stacked/color-control
+--- PASS: TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor (0.03s)
+    --- PASS: TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/side-by-side/NO_COLOR (0.00s)
+    --- PASS: TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/side-by-side/color-control (0.00s)
+    --- PASS: TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/stacked/NO_COLOR (0.00s)
+    --- PASS: TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor/stacked/color-control (0.00s)
+=== RUN   TestForeignBoundaryResetClosesCapturedSGRUnderNoColor
+=== RUN   TestForeignBoundaryResetClosesCapturedSGRUnderNoColor/side-by-side
+=== RUN   TestForeignBoundaryResetClosesCapturedSGRUnderNoColor/stacked
+--- PASS: TestForeignBoundaryResetClosesCapturedSGRUnderNoColor (0.00s)
+    --- PASS: TestForeignBoundaryResetClosesCapturedSGRUnderNoColor/side-by-side (0.00s)
+    --- PASS: TestForeignBoundaryResetClosesCapturedSGRUnderNoColor/stacked (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.037s

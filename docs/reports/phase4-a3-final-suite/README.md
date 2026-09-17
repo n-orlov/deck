@@ -2,28 +2,27 @@
 
 ## Sha
 
-Tail code sha: **`bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7`**
-("tui: point R121's override controls at their own distinct roots (task
-cure-03-02-2)") — the last commit touching a `*.go` or `*.feature` file as of
-this recording. Confirmed by:
+Tail code sha: **`a260abfaa36fe96068fb19f4735d66b3b040459b`**
+("tui: close the foreign-content-to-deck boundary reset independently of
+deck's own colour (task cure-03-01-2)") — the last commit touching a `*.go`
+or `*.feature` file as of this recording. Confirmed by:
 
 ```
 $ git log --format=%H -1 -- '*.go' '*.feature'
-bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7
+a260abfaa36fe96068fb19f4735d66b3b040459b
 $ git rev-parse HEAD          # at the moment the sweep was launched
-bfdb69ecd6a00f4dc79475c0fb721453b0bd17b7
+a260abfaa36fe96068fb19f4735d66b3b040459b
 ```
 
-This recording **supersedes** the two earlier ones written here, at sha
-`3568bd7` (task 002's own tail) and at sha `7bb1f8a` (the tail after review
-pass 234's first two cures, cure-03-01 `2a04e5a` and cure-03-02 `7bb1f8a`).
-The cure pass then landed R121's environment-layering fix — `594b0b4`
-("resolve transcript server env from the actual tmux server, not the
-observer's ambient env") and `bfdb69e` (its override controls pointed at their
-own distinct roots), both `*.go` — on top of `7bb1f8a`, so a sweep of that
-tree is a measurement of a superseded tree. Every number below is a fresh
-measurement of the post-cure tree, not an amendment of the old one, per the
-standing rule that a sweep is true of one tree only.
+This recording **supersedes** the three earlier ones written here, at sha
+`3568bd7` (task 002's own tail), at sha `7bb1f8a` (the tail after review pass
+234's first two cures) and at sha `bfdb69e` (the R121 cure recording). The
+cure pass then landed R118's foreign-content-to-deck boundary reset fix —
+`a260abf` ("close the foreign-content-to-deck boundary reset independently
+of deck's own colour") — on top of `bfdb69e`, so a sweep of that tree is a
+measurement of a superseded tree. Every number below is a fresh measurement
+of the post-cure tree, not an amendment of the old one, per the standing rule
+that a sweep is true of one tree only.
 
 Tree was clean (`git status --porcelain` empty) at launch; no gitignored
 `.review-clone/` worktree was present (`ls .review-clone` → "No such file or
@@ -39,10 +38,10 @@ ci/run.sh go test -p=1 -count=1 -timeout=40m ./...
 
 Run as a throwaway sibling container (`ci/run.sh`, image `deck-ci:local`,
 cache volume `deck-go-cache`), no `-run` filter, no package list — every
-package in the module. Backgrounded with `nohup timeout 7200 <driver> &` and
+package in the module. Backgrounded with `nohup /tmp/r118/sweep.sh &` and
 polled per the standing rules (never blocked on inline); the driver script
-captured each command's own exit status immediately, into its own status file,
-never from log text.
+captured each command's own exit status immediately, into its own status
+file, never from log text.
 
 Build guard — `build.log`:
 
@@ -67,9 +66,9 @@ ci/run.sh gofmt -l .
 ```
 
 exit 0, output is exactly the four pre-existing drift paths, **labelled here
-as pre-existing** (not introduced by this approach's code — tasks 001, 002,
-cure-03-01, cure-03-02 and cure-03-02-2 touched only `internal/tui/*.go`,
-`internal/tmux/*.go` and `features/*.go`/`*.feature`, none of these four):
+as pre-existing** (not introduced by this approach's code — this task's own
+commit, `a260abf`, touched only `internal/tui/panel.go` and two new
+`internal/tui/*_test.go` files, none of these four):
 
 - `internal/theme/quantize_test.go`
 - `.spike-preview/cmd/conformance/main.go`
@@ -95,35 +94,36 @@ Per-package timings from the log itself:
 
 | package | result | time |
 |---|---|---|
-| cmd/deck | ok | 7.500s |
-| cmd/fake-claude | ok | 0.795s |
-| cmd/fake-codex | ok | 0.119s |
-| cmd/fake-pi | ok | 0.770s |
-| features | ok | 362.427s |
+| cmd/deck | ok | 15.199s |
+| cmd/fake-claude | ok | 0.873s |
+| cmd/fake-codex | ok | 0.193s |
+| cmd/fake-pi | ok | 0.782s |
+| features | ok | 501.502s |
 | internal/agent | ok | 0.008s |
 | internal/audit | ok | 0.018s |
-| internal/config | ok | 0.028s |
-| internal/hookrecv | ok | 4.348s |
-| internal/interactive | ok | 10.987s |
+| internal/config | ok | 0.023s |
+| internal/hookrecv | ok | 4.292s |
+| internal/interactive | ok | 10.962s |
 | internal/notify | (no test files) | — |
 | internal/search | (no test files) | — |
-| internal/service | ok | 6.704s |
-| internal/store | ok | 2.571s |
-| internal/theme | ok | 0.004s |
-| internal/tmux | ok | 19.461s |
-| internal/tui | ok | 4.446s |
+| internal/service | ok | 6.701s |
+| internal/store | ok | 2.510s |
+| internal/theme | ok | 0.006s |
+| internal/tmux | ok | 19.550s |
+| internal/tui | ok | 4.427s |
 | internal/unit | (no test files) | — |
 
 ## Wall-clock duration
 
-The suite command was launched at 2026-09-17T14:30:41Z and returned at
-2026-09-17T14:37:45Z (timestamps taken by the driver script immediately before
-and after the command itself) — **wall-clock duration = 7m4s (424s)**,
-consistent with the sum of the per-package durations `go test` itself reports
-(419.7s) plus sibling-container startup/teardown overhead. This matches the
-~441s/7m21s measured at plan time, the ≈7m6s measured at the superseded
-`7bb1f8a` recording and the ~412s measured at `3568bd7`; the difference is
-ordinary variance, not a different command or a narrowed sweep.
+The suite command was launched at 2026-09-17T16:08:19Z and returned at
+2026-09-17T16:17:54Z (timestamps taken by the driver script immediately
+before and after the command itself) — **wall-clock duration = 9m35s
+(575s)**, consistent with the sum of the per-package durations `go test`
+itself reports (566.6s) plus sibling-container startup/teardown overhead.
+This is longer than the ~7m4s-7m21s measured at the earlier recordings; the
+difference is ordinary host-scheduler/sibling-container variance (the
+`features` package alone accounts for 501.5s of it here vs. 362-419s
+before) — the command, flags and package set are unchanged and unnarrowed.
 
 ## Skips in force at this sha
 
@@ -142,4 +142,4 @@ ordinary variance, not a different command or a narrowed sweep.
 **Green.** No `FAIL` line anywhere in the suite and `go test`'s own exit
 status was 0; build and vet guards are clean (empty output, exit 0); gofmt
 shows exactly the pre-existing drift, labelled as such. This is the
-full-suite gate for this approach at its final tail code sha `bfdb69e`.
+full-suite gate for this approach at its final tail code sha `a260abf`.
