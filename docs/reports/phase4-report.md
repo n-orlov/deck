@@ -142,9 +142,9 @@ own list:
 - **Log relabel (task 007)**: `docs/reports/phase4-cure-logs/panel_background_themes.log` is
   approach 2 task 004's own earlier targeted run of `features/panel_background_themes.feature`
   alone (7 scenarios, 7 passed; 82 steps, 82 passed) — a point-in-time record from approach 2,
-  not a measurement at this approach's own tail sha `3568bd7`. This approach's own confirmation
-  that the same feature file still passes at `3568bd7` is the full-suite gate cited separately
-  above and under "Both sweeps" below (task 003), never this log.
+  not a measurement at any tail sha of this run. This approach's own confirmation that the same
+  feature file still passes at this approach's own tail sha `7bb1f8a` is the full-suite gate
+  cited separately above and under "Both sweeps" below (task 003), never this log.
 
 ### R119 — the selection/mark gutter occupies its own columns; four colour states; feature scenario; contrast floor
 
