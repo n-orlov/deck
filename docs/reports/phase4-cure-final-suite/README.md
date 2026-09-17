@@ -1,4 +1,14 @@
-# Full-suite gate sweep — approach 2, re-run at the corrected tail sha (task 011b)
+# Full-suite gate sweep — approach 2, at tail code sha `0ba550a`
+
+This file is **task 013's gate of record**. Exactly ONE unnarrowed whole-tree
+run exists at the tail code sha named below, and it is the run this file
+reports (measured and committed by task 011b's re-sweep, `0ca8667`, per the
+standing rules' "013/014/015 are re-run from scratch afterwards, never re-run
+under the task that found the red lane" — task 013 is the task that found the
+red lane). The earlier runs described under "Why this sha" below were sweeps of
+**different, superseded trees** (`e93a790`, and the `1f38195` tree), not repeats
+of this one; they stay in git history as the record of how the red lane was
+found and fixed.
 
 - **Tail code sha**: `0ba550a5e50bdfc84586d5328a0690af9c9888c4` (`0ba550a`,
   `features: settle the golden frame on a quiet PTY, not a torn read (task
@@ -101,6 +111,20 @@ regenerated golden fixture, with the quiescence-based baseline of
 fixture's expected bytes and that one test's settle gate moved). The
 package result is `ok` with no visible subtest failure, which for a
 non-verbose run is the authoritative pass signal `go test` provides.
+
+## Task 013 disposition
+
+- The gate at the tail code sha is a single unnarrowed run: `go test -p=1
+  -count=1 -timeout=40m ./...`, exit `0`, 18/18 packages accounted for
+  (`ci/run.sh go list ./...` = 18 packages at this sha), 7m21s.
+- The tested tree is still the tail code tree: `git diff --stat 0ba550a HEAD
+  -- '*.go' '*.feature'` prints nothing, so every commit on top of `0ba550a`
+  is record-only and the gate stays valid at it.
+- Supporting spot-check taken while closing task 013, deliberately NOT part of
+  the gate (it is narrowed, so it can never be one): `ci/run.sh sh -c 'go test
+  -count=2 -run "^TestGoldenMinimumFrame$" ./features/'` → `ok ... 5.275s`,
+  i.e. the lane that was red at `e93a790` is still green at the tail sha. The
+  gate above remains the only unnarrowed measurement.
 
 ## Disposition
 
