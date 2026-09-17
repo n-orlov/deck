@@ -1,10 +1,32 @@
 # Phase 4 findings (R132)
 
+> **Run status: NO ACCEPTED VERDICT.** The ralphd run `deck-phase4` was
+> **aborted by the operator** (`ralphctl stop --force`) at
+> `2026-09-17T18:04:10Z`; its record ends `state: aborted`,
+> `verdict: **unverified**`. Review never accepted any approach of this run,
+> and R132 — the requirement this ledger is part of — was **not completed**:
+> task 008, whose job was to refresh this file at the final tail code sha
+> `a260abf`, was reset to `pending` when the cure pass moved the tail and
+> never re-ran. This file therefore stood at the superseded tail `7bb1f8a`
+> when the run ended; the stale citations that left behind were corrected by
+> a post-run audit, and the entries added by that audit say so. Nothing here
+> is a sign-off; every entry is a disclosed observation with the evidence
+> that backs it.
+>
+> **Tail code sha: `a260abf`** ("tui: close the foreign-content-to-deck
+> boundary reset independently of deck's own colour", task cure-03-01-2) —
+> the last commit touching a `*.go` or `*.feature` file
+> (`git log --format=%H -1 -- '*.go' '*.feature'`). Every file:line in this
+> ledger that describes the *current* tree is stated against that sha; every
+> file:line quoted from a historical `FINDING:` line is stated against the
+> sha that quoted it, and says which.
+
 This is the run's findings ledger: everything found during phase 4 (codex
 adapter, chrome legibility, hook receiver, gutter) and deliberately not
 fixed, plus the two items the PRD names by name as known-unverified, plus
 the one place this approach found the PRD and SPEC disagreeing with each
-other. Nothing else is claimed exhaustive.
+other, plus the review residual and the operator-reported product defect
+recorded after the run ended. Nothing else is claimed exhaustive.
 
 ## The two known-unverified codex items (PRD R132 / non-goals)
 
@@ -68,9 +90,26 @@ discovery and fix commits).
 
 ## New in the cure pass: the mouse-gesture frame-capture race
 
-The ten-run stability sweep re-taken at this approach's final tail code sha
-`bfdb69e` (`docs/reports/phase4-a3-stability10/README.md`, 9/10 passed) has one
-red repetition, run 5, and it is a finding this run makes and does **not** fix:
+**OPEN.** Observed once, in the ten-run stability sweep taken at the tail code
+sha `bfdb69e` (9/10 passed) — run 5 was the one red repetition, and it is a
+finding this run makes and does **not** fix. Two supersessions to keep straight:
+
+- **`bfdb69e` is not the final tail.** The cure pass then landed `a260abf`
+  (R118's foreign-content-to-deck boundary reset), so the 9/10 record measured
+  a tree this run went on to change.
+- **The sweep record that now sits at `docs/reports/phase4-a3-stability10/`
+  is the `a260abf` one, and it is 10/10 clean** (`stability-summary.log`:
+  `10/10 passed`, zero `FAIL` lines in all ten logs, all 18 packages per run).
+  The race did **not** reproduce in any of those ten runs. Per this run's own
+  later-green-never-erases rule that does not retract the finding: it is a
+  probabilistic fixture-timing race, and a clean sweep only means this sweep
+  did not observe it.
+
+The verbatim `want`/`got` frames from the observation live in the superseded
+`bfdb69e` recording of `run-5.log`, which was overwritten when the sweep was
+re-taken at `a260abf`; read them out of commit `7fe0b26`
+(`git show 7fe0b26:docs/reports/phase4-a3-stability10/run-5.log`), whose own
+commit message also carries this finding's formatted ledger line. The mechanism:
 
 - **`features/mouse.feature:20`** waits for the string `running` on *any*
   sidebar row, so the frame captured at **`features/mouse.feature:26`** can be
@@ -82,14 +121,18 @@ red repetition, run 5, and it is a finding this run makes and does **not** fix:
   outside this approach's scope (review pass 234's two reds plus the R121
   environment-layering cure); the diff is a single status word, never a paint,
   layout, colour, gutter, crop or interactive-mode difference, so no product
-  assertion is weakened by leaving it. The verbatim `want`/`got` frames are in
-  `docs/reports/phase4-a3-stability10/run-5.log` (from line 6350).
+  assertion is weakened by leaving it. The verbatim `want`/`got` frames are at
+  `7fe0b26:docs/reports/phase4-a3-stability10/run-5.log`, from line ~6350 (the
+  observation was `355 scenarios, 354 passed, 1 failed`; the failing subtest is
+  `TestFeatures/a_single_click_on_a_sidebar_row_selects_it_and_enters_interactive_mode_on_the_same_press,_and_Ctrl+Q_returns_to_the_list`,
+  and the frame diff is the one word `starting` → `running` on the
+  `click-enter-bravo` row).
 
-This entry is quoted as a formatted `FINDING:` line in the cure pass's own
-record commit (the commit that adds `docs/reports/phase4-r121-server-env/`), so
-re-running the Inventory command below at a later HEAD picks it up there; the
-verbatim paste in the Inventory section itself is the one taken at that
-section's own shipped HEAD, per this run's write-once rule for the record.
+This entry is quoted as a formatted `FINDING:` line in commit `7fe0b26` (the
+cure pass's own record commit, the one that adds
+`docs/reports/phase4-r121-server-env/`), so it **does** now enter the Inventory
+command's range at HEAD — see the Inventory section's own note about that, and
+**entry 9** below, which is this finding's numbered ledger entry.
 
 ## Inventory
 
@@ -97,19 +140,43 @@ The command that defines this run's findings set is
 `git log --grep='FINDING:' "$BASE..HEAD"`, with
 `BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase4-codex-and-chrome.md)`
 = `08a1ffe3eb229f8ebe5ba9791fbb3e3cec6e0c06` (the standing rules' own audit
-command). Pasted verbatim and unedited at this file's own shipped HEAD,
-re-taken for this approach's post-cure tail code sha `7bb1f8a` ("features:
-wait for codex's asynchronous first-hook identity adoption before checking",
-task cure-03-02). The newest record the range matches is still `9d1e654`
-(this file's previous refresh, task 008's first commit), whose body quotes
-the ledger token in prose: nothing that landed after it enters the range —
-the two cure commits (`2a04e5a` settings-footer paint, `7bb1f8a` real-Codex
-first-hook wait) and the record commits on top of them (`abd963f`,
-`c069c34`, `daea2fd`, `4542e96`, `8ae503c`) carry no formatted ledger line
-and do not quote the token at all, so the findings set is unchanged by the
-cure even though the tail code sha moved. The commit that ships this block
-is deliberately written without that literal token anywhere in its message,
-so re-running the command above at HEAD reproduces this block byte for byte:
+command).
+
+**The paste below is a historical snapshot, not the command's output at the
+current HEAD.** It was taken verbatim and unedited at HEAD `1326945`, and
+re-published unchanged by task 008 for the then-current tail code sha
+`7bb1f8a`; task 008 never re-ran after the cure pass moved the tail, so it was
+never re-taken at the final tail `a260abf`. It is kept verbatim rather than
+re-pasted, because it *is* the record of what the run itself saw — but a reader
+must apply exactly one delta to bring it to HEAD:
+
+- **One new record now matches the range: `7fe0b26`** ("docs: re-record both
+  sweeps and the phase record at the post-R121 tail sha bfdb69e", task
+  cure-03-02-2). It carries **one new formatted ledger line** — the
+  mouse-gesture frame-capture race, written up in its own section above and
+  filed as **entry 9** below — and, being the most recent matching commit, it
+  sorts *above* `9d1e654` in the command's output. The claim this section used
+  to make, that "the newest record the range matches is still `9d1e654`" and
+  that "the findings set is unchanged by the cure", stopped being true the
+  moment `7fe0b26` landed.
+- Nothing else that landed after `9d1e654` enters the range. The cure commits
+  (`2a04e5a`, `7bb1f8a`, `594b0b4`, `bfdb69e`, `a260abf`) and the remaining
+  record commits (`abd963f`, `c069c34`, `daea2fd`, `4542e96`, `8ae503c`,
+  `8d2f8f7`, `f0ac40b`, `32b3639`) carry no formatted ledger line and do not
+  quote the token at all. Verified by re-running the command at HEAD
+  `32b3639`: it returns thirteen records — the twelve in the paste below plus
+  `7fe0b26`.
+
+Two further findings in this ledger have no `FINDING:` line anywhere in git
+history at all, because they were recorded after the run was aborted and no
+commit of this run could carry them: **entry 10** (review pass 256's
+`R-METADATA` residual, which lives in the run's own `review-findings.json`, not
+in a commit message) and **entry 11** (the operator-reported interactive-preview
+Alt-key defect, filed as GitHub issue `n-orlov/deck#28`). The Inventory command
+is therefore no longer a complete definition of this run's findings set on its
+own; the numbered Entries section below is.
+
+The historical paste follows:
 
 ```
 commit 9d1e654abad4ad922fa7d356e2efa0f790e4492e
@@ -802,14 +869,16 @@ Date:   Wed Sep 16 09:02:25 2026 +0000
 
 ## Entries
 
-One entry per distinct quoted `FINDING:` line above, each with a file:line
-and the reason it was left unfixed. The paste carries twelve formatted
-ledger lines, eight of them distinct, so there are eight numbered entries
-below. The mapping from the paste to these entries is complete in both
-directions, keyed by the commit whose body quotes each line (stable across
-re-pastes, unlike a line number in this file):
+One entry per distinct finding, each with a file:line and the reason it was
+left unfixed. Entries 1-8 map one-to-one onto the distinct formatted `FINDING:`
+lines in the historical paste above (twelve lines, eight of them distinct).
+Entry 9's line is in the range at HEAD but not in that paste (`7fe0b26`, see the
+Inventory note). Entries 10 and 11 have no `FINDING:` line anywhere in git
+history and are labelled as such. The mapping is complete in both directions,
+keyed by where each finding was recorded (stable across re-pastes, unlike a line
+number in this file):
 
-| quoting commit | what its ledger line names | entry |
+| recorded in | what it names | entry |
 | --- | --- | --- |
 | `b98ce9c` | `internal/tmux/literal_send_test.go:123` — one empty `capture-pane` in run 10 of 10 | 1 |
 | `059704a` | `features/golden_frame_test.go:91` — `TestGoldenMinimumFrame` red against the stale golden | 2 |
@@ -819,6 +888,9 @@ re-pastes, unlike a line number in this file):
 | `06b4521` (also quoted inside `fac1db0`) | `features/panel_background_rectangle.feature`'s two `@requirement-58` selection-span scenarios | 6 |
 | `903418a` (also quoted inside `fac1db0`) | the width-24 `socket: <name>` header wrap shifting every row down one line | 7 |
 | `cd6d566` (also quoted inside `fac1db0`) | `features/panel_background_rectangle.feature:1`'s two column-35 seam assertions | 8 |
+| `7fe0b26` — **not in the paste above** | `features/mouse.feature:20`'s `running`-on-any-row wait racing the frame capture | 9 |
+| the run's own `review-findings.json` — **no commit carries it** | review pass 256's `R-METADATA` residual: a wrong derived package-duration sum, and the stability README's incomplete skips claim | 10 |
+| GitHub issue `n-orlov/deck#28` — **no commit carries it** | `internal/tui/interactive.go` silently drops every Alt-modified SPECIAL key in the interactive preview, contra SPEC §11.9 | 11 |
 
 The two crop-preview lines are separate findings with different scopes and
 get entries 3 and 4 of their own, never one shared entry: `96b0ba9`'s line
@@ -852,7 +924,10 @@ from the verbatim paste to these entries complete in both directions.
    `0ba550a`) did not see it recur, but per this run's own rule a later green
    does not erase an earlier red — it stays in the known-open flake list
    (`notes.md`'s gotchas).
-2. **`features/golden_frame_test.go:91`** (commit `059704a`, task 013) —
+2. **`features/golden_frame_test.go:91`** (commit `059704a`, task 013 — at the
+   current tail code sha `a260abf` `func TestGoldenMinimumFrame` is at
+   `features/golden_frame_test.go:85`; the `:91` in the ledger line is the
+   number as quoted at `059704a`) —
    `TestGoldenMinimumFrame` failed deterministically (3/3 attempts, 6/6
    subtests) against `features/testdata/golden/side_by_side_80x24.golden`,
    which still expected the pre-task-011 `[safe]` badge that task 011
@@ -865,14 +940,19 @@ from the verbatim paste to these entries complete in both directions.
    rule — rather than folded into the badge-disagreement narrative above.
 3. **`internal/tui/panel.go:809-810,816-818`** (`cropPreviewBottomLeft`'s
    `"WxH of realWxrealH"` geometry line and its `blank := strings.Repeat`
-   fill loop, at the line numbers `0e72ec1` quoted; the same code sits at
-   `internal/tui/panel.go:823-825,832-835` in the tree at this approach's
-   post-cure tail code sha `7bb1f8a` — `internal/tui/panel.go` is
-   byte-identical between `3568bd7` and `7bb1f8a`, neither cure commit
-   touched it. The quoted ledger line for this entry is `0e72ec1`'s, task
-   003 of the prior approach — `96b0ba9`'s own line named a different scope
-   and has its own entry 4 below) — **fixed, not left open, in
-   this approach.** Approach 3 task 001 (`92619cf`, "tui: paint the crop
+   fill loop, at the line numbers `0e72ec1` quoted. **At the current tail code
+   sha `a260abf` the same code sits at `internal/tui/panel.go:844-846` (the
+   geometry line, `geom := fmt.Sprintf("%dx%d of %dx%d", ...)` and its
+   `previewLineDeckOwned` append) and `:852-856` (the `blank :=
+   strings.Repeat` loop and its appends)** — re-derived at HEAD, not carried
+   over. `internal/tui/panel.go` *was* byte-identical from `3568bd7` through
+   `bfdb69e` (where these sat at `:824` and `:832`, the numbers task 008
+   recorded), but `a260abf` rewrote `canvasResetIfPainting`/`paintForeignFill`
+   in the same file (+58/-29) and shifted everything below them; any citation
+   of the `:82x`/`:83x` numbers as current is stale. The quoted ledger line for
+   this entry is `0e72ec1`'s, task 003 of the prior approach — `96b0ba9`'s own
+   line named a different scope and has its own entry 4 below. **Fixed, not
+   left open, in this approach.** Approach 3 task 001 (`92619cf`, "tui: paint the crop
    geometry line and blank fill", plus its fixture correction `48bce3d`)
    gave `cropPreviewBottomLeft` its own per-row provenance
    (`[]previewLineOwner`, `internal/tui/panel.go`): the geometry line and
@@ -894,10 +974,13 @@ from the verbatim paste to these entries complete in both directions.
    Kept in the ledger as a historical entry per this run's own
    later-green-never-erases rule — the gap was real when found, and the two
    commits above are the fix, not a re-deferral.
-4. **`internal/tui/panel.go:880-891`** (`cropRow`'s `padTrunc`-equivalent
+4. **`internal/tui/panel.go`'s `cropRow`, at `:897-921` in the tree at the
+   current tail code sha `a260abf`** (`:880-891` in the earlier, pre-`a260abf`
+   recording of this entry — `cropRow`'s `padTrunc`-equivalent
    fill columns past a captured row's own visible bytes and its
    `cropMarker()` substitution for a row that overflows; commit `96b0ba9`,
-   task 002 of the prior approach) — a distinct finding from entry 3,
+   task 002 of the prior approach, whose own ledger line names the code by
+   function rather than by line) — a distinct finding from entry 3,
    quoted by a different commit with a different scope: `96b0ba9` recorded
    that after it gave `previewBodyLines` its per-row provenance, three
    things were still marked `previewLineForeign` — the fill columns and
@@ -909,9 +992,16 @@ from the verbatim paste to these entries complete in both directions.
    within-row split beside a real capture's bytes was the next task's
    declared deliverable, not a regression. **Fixed, in the prior approach,
    for the part this entry names:** `0e72ec1` (task 003) added
-   `paintForeignFill` (`internal/tui/panel.go:850-852`) and routed
-   `cropRow`'s fill, its crop marker and the degenerate all-marker row
-   through it, pinned by `internal/tui/preview_pane_fill_marker_test.go`'s
+   `paintForeignFill` and routed `cropRow`'s fill, its crop marker and the
+   degenerate all-marker row through it. **At the current tail code sha
+   `a260abf`, `paintForeignFill` is at `internal/tui/panel.go:876-878` (it now
+   takes a `foreign` argument as well, added by `a260abf`) and `cropRow` is at
+   `:897-921`, with its three `paintForeignFill` call sites at `:906` (the fill
+   past a short row), `:915` (the degenerate all-marker row) and `:920` (the
+   truncated row's fill-plus-marker tail).** The `:850-852`/`:880-891` numbers
+   this entry used to give were correct through `bfdb69e` and are stale at
+   `a260abf`, which shifted everything below `canvasResetIfPainting` in this
+   file. Pinned by `internal/tui/preview_pane_fill_marker_test.go`'s
    `TestCapturedPaneFillPastCaptureCarriesDeckBackground` and
    `TestCapturedPaneCropMarkerCarriesDeckBackground`; the capture's own
    bytes are still only truncated, never re-composed. The two items this
@@ -941,11 +1031,18 @@ from the verbatim paste to these entries complete in both directions.
    also flip this file's now-wrong selection-column span, rather than
    fixed inside a task scoped to `internal/tui` unit tests only. (Task 010
    did subsequently narrow the columns-2-to-3 exception into this same
-   scenario — see the file's current lines 96-99 — but the finding stands
+   scenario — at the current tail code sha `a260abf` the assertions sit at
+   `features/panel_background_rectangle.feature:95-100`, with the
+   columns-2-to-3 `accent` exception at `:97-98` and the `selection` claim
+   split around it at `:95-96` and `:99-100` — but the finding stands
    as a historical entry in the ledger per the run's own rule that a later
    green does not erase an earlier red from the record.)
 7. **`features/panel_background_rectangle.feature:125-160`** (commit
-   `903418a`, task 008) — at `SidebarWidthFloor` (24 columns,
+   `903418a`, task 008; at the current tail code sha `a260abf` the scenario
+   this names runs `:124-210` — tag
+   `@requirement-119-gutter-outside-text-run` at `:124`, title at `:125` — and
+   the row-5/6 assertions the wrap forces are at `:166-173`) — at
+   `SidebarWidthFloor` (24 columns,
    `internal/tui/layout.go:25`) the sidebar's own "socket: `<name>`" header
    line no longer fits `contentWidth` (22) and wraps to two physical rows
    (an existing `wrapText` interaction), shifting every session row down by
@@ -963,3 +1060,105 @@ from the verbatim paste to these entries complete in both directions.
    selection/stripe rectangle this file protects; task 008 (commit
    `903418a`, same day) is the one that actually flips this file's seam
    assertion from "no background set" to "background".
+9. **`features/mouse.feature:20`** (commit `7fe0b26`, task cure-03-02-2) —
+   **OPEN.** The step at `:20` waits for the string `running` on *any* sidebar
+   row, so the frame captured at `:26` can be taken while the second session's
+   own row still reads `starting`; deck's ordinary reconcile transition then
+   flips that one word before the frame-unchanged re-check at `:31`, whose hook
+   is `features/mouse_synthesis_test.go:254`. All four line numbers verified at
+   the current tail code sha `a260abf`; the affected scenario is
+   `features/mouse.feature:10`, *"a single click on a sidebar row selects it
+   and enters interactive mode on the same press, and Ctrl+Q returns to the
+   list"*. Observed once, in run 5 of the ten-run stability sweep taken at
+   `bfdb69e` (9/10). Left unfixed: it is a fixture-side wait, in test code
+   only, outside this approach's cure scope, and the frame diff is a single
+   status word — never a paint, layout, colour, gutter, crop or
+   interactive-mode difference — so no product assertion is weakened by
+   leaving it. **The ten-run sweep re-taken at `a260abf` is 10/10 clean and did
+   not reproduce it**; per this run's later-green-never-erases rule the finding
+   stays open, since a probabilistic race that a sweep does not observe is not
+   a race that is gone. Full write-up, including where to read the verbatim
+   `want`/`got` frames now that `run-5.log` has been overwritten, in "New in
+   the cure pass: the mouse-gesture frame-capture race" above.
+10. **`R-METADATA` — inaccurate derived metadata in the gate records**
+    (review pass 256, `2026-09-17T12:16:15Z` → `13:33:49Z`; recorded in the
+    run's own `review-findings.json`, **not in any commit message**, so
+    `git log --grep` cannot find it) — **residual, curable, partially closed
+    after the run; no review pass ever confirmed it closed.** Pass 256's clause
+    was *"R132: the record matches the tree; accurate gate metadata."* Two
+    items, both in supporting metadata rather than in any suite result, and
+    explicitly classed as neither an invented green run nor evidence that a
+    required suite was narrowed:
+    - **A derived package-duration sum that did not match the log it claimed to
+      summarise.** Every recording in this run's lineage quoted one, and every
+      one was wrong. The figures, each measured against its *own* log so nobody
+      copies the wrong one forward: `ed5751f` (tail `3568bd7`) stated a sum for
+      a log whose `ok` durations total **408.816s**; `abd963f` (tail `7bb1f8a`)
+      said `419.7s` where the log totals **422.637s** — that pair is the one
+      pass 256 actually measured and quoted; `7fe0b26` (tail `bfdb69e`) was
+      against a log totalling **420.186s**; and the **current** log,
+      `docs/reports/phase4-a3-final-suite/full-suite.log` at tail `a260abf`
+      (committed by `32b3639`), totals **567.046s** against a stated `566.6s`.
+      Anyone closing this finding by copying `422.637` forward would be quoting
+      a superseded log. **Remedy applied after the run:** the derived sum was
+      *removed* from `docs/reports/phase4-a3-final-suite/README.md` and from
+      `docs/reports/phase4-report.md`'s gate section rather than replaced with
+      yet another number — the per-package table in that README and
+      `full-suite.log` itself are the primary record, both re-derivable, and the
+      wall-clock figure (575s at `a260abf`) is kept and explicitly labelled as
+      wall clock. The `567.046s` figure above was derived twice, independently,
+      from the log at HEAD, and is quoted here only to identify the defect, not
+      as a replacement metric.
+    - **`docs/reports/phase4-a3-stability10/README.md`'s skips claim** said the
+      only skips were the three no-test packages, although
+      `features/godog_test.go` excludes `@real-agents` and `@nightly` by
+      default and `features/i1_repro_test.go` is opt-in. Both files exist at
+      `a260abf`. `docs/reports/phase4-report.md` and
+      `docs/reports/phase4-a3-final-suite/README.md` already disclosed the tag
+      filter correctly; only the stability README was wrong.
+11. **`internal/tui/interactive.go:626` and `:733`** — **OPEN, KNOWN GAP for a
+    future phase; not fixed here and no `.go` file touched.** Reported by the
+    operator from live use during this run and filed as GitHub issue
+    [`n-orlov/deck#28`](https://github.com/n-orlov/deck/issues/28). In the
+    interactive preview (SPEC §11.9), **`Alt`+`↑` — and every other
+    Alt-modified *special* key — is silently dropped and never forwarded to the
+    pane.** It does nothing and reports nothing. Root cause, read out of the two
+    functions at the current tail code sha `a260abf`:
+    - `interactiveNamedKey` (`internal/tui/interactive.go:626`) opens with
+      `if msg.Alt { return "", false }`, so no Alt-modified key ever reaches the
+      arrow / `Home` / `End` / page / function-key name table below it.
+    - `interactiveLiteralPayload` (`:733`) accepts only `KeyRunes`/`KeySpace`,
+      `msg.Type` in `0..31`, and `127`. **Every special key's `tea.KeyType` is
+      NEGATIVE** in `charmbracelet/bubbletea v1.3.10` (`key.go:205`:
+      `KeyRunes KeyType = -(iota + 1)`, so `KeyUp` is `-2`, `KeyDown` `-3`, and
+      so on), so `Alt+Up` fails the `msg.Type >= 0 && msg.Type <= 31` guard and
+      falls to `default: return "", false`.
+    `updateInteractive` (`:440`) therefore returns having written no bytes and
+    recorded nothing. **Dropped:** `Alt` with the arrows, `Home`, `End`, the page
+    keys, `Delete`, `Insert`, `F1`-`F12`, and every `Ctrl`/`Shift`/`Ctrl+Shift`
+    combination of those with `Alt` added. **Unaffected:** `Alt`+letter,
+    `Alt+Enter` and `Alt+Backspace` — anything whose base key is a rune
+    (`KeyRunes`, with `msg.Runes` set) or a C0 control byte (`KeyEnter` = `13`,
+    `KeyBackspace` = `127`), all of which take the literal ESC-prefix path and
+    work today. **This contradicts SPEC.md:2117-2118**, which names `Alt`
+    explicitly — *"`Ctrl`, `Shift` and `Alt` combinations with the arrows,
+    `Home`, `End` and the page keys ... Modified navigation keys forward, like
+    the unmodified ones, by tmux key name"* — and states the invariant this
+    breaks: *"The forwardable set is enumerated and tested key by key, never
+    left to a default branch: a key deck cannot encode must be a known, listed
+    gap, because the failure it otherwise produces is a keystroke that does
+    nothing and reports nothing."* `internal/tmux/key.go`'s `namedKeyAllowlist`
+    (`:71`) carries no `M-` name at all, and its own comment justifies the
+    absence with "no caller can reach that name yet". Reason not fixed here:
+    this is a product behaviour change in `internal/tui` and `internal/tmux`
+    outside every requirement in this phase's PRD (R116-R132), it was reported
+    after this approach's freeze line, and the run was aborted before any task
+    could own it. Issue #28 carries the surveyed fix shape (tmux `M-`/`C-M-`/
+    `S-M-`/`C-M-S-` names, verified byte-for-byte against real tmux 3.6b and
+    bubbletea v1.3.10's own decoder table) and two caveats a future phase must
+    carry: the survey was on tmux **3.6b** while `ci/Dockerfile` pins a
+    3.5a-era image (and `ci/Dockerfile` is a protected path), and `Alt+Insert`
+    must stay a *listed* gap because bubbletea v1.3.10 cannot decode the bytes
+    tmux emits for `M-Insert`. Amending SPEC §11.9's enumerated gap list is an
+    operator-authored change; SPEC.md is a protected path in this run and stays
+    untouched.

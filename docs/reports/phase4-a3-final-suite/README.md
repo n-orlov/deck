@@ -118,8 +118,10 @@ Per-package timings from the log itself:
 The suite command was launched at 2026-09-17T16:08:19Z and returned at
 2026-09-17T16:17:54Z (timestamps taken by the driver script immediately
 before and after the command itself) — **wall-clock duration = 9m35s
-(575s)**, consistent with the sum of the per-package durations `go test`
-itself reports (566.6s) plus sibling-container startup/teardown overhead.
+(575s)**. That figure is wall clock, not a test-time total: it covers the
+per-package durations `go test` itself reports — tabulated above, and
+re-derivable from `full-suite.log` itself — plus sibling-container
+startup/teardown overhead.
 This is longer than the ~7m4s-7m21s measured at the earlier recordings; the
 difference is ordinary host-scheduler/sibling-container variance (the
 `features` package alone accounts for 501.5s of it here vs. 362-419s

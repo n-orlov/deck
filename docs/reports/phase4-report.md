@@ -1,12 +1,39 @@
 # Phase 4 report — codex adapter, chrome legibility, field backlog
 
-**Approach 3 (narrow cure of approach 2's rejection).** Written once, at this approach's final
-tail code sha (per the standing rules, this record is not re-audited by any later task).
+> **Run status: NO ACCEPTED VERDICT — read this before relying on anything below.**
+> The ralphd run `deck-phase4` was **aborted by the operator** (`ralphctl stop --force`) at
+> `2026-09-17T18:04:10Z`; its own record ends `state: aborted`, `reason: "aborted by operator"`,
+> `verdict: **unverified**`. **Review never accepted any approach of this run.** Approaches 1
+> and 2 were rejected; approach 3's last review pass (pass 256, `2026-09-17T12:16:15Z` →
+> `13:33:49Z`) raised two blocking findings — `B1-NC` against R118 and `B2-ENV` against R121 —
+> which were cured afterwards (`594b0b4`/`bfdb69e` and `a260abf`) but **never re-reviewed**,
+> because the run was aborted before another review pass ran. Nothing in this report is a
+> sign-off.
+>
+> What this report *is*: measurement. Every per-requirement verdict, both mandatory sweeps and
+> the whole cure history below are accurate at the tail code sha they cite, and a future phase's
+> planning or review hat can rely on them **as evidence, not as an accepted verdict**.
+>
+> **R132 was not completed.** The documentation tasks whose entire job was to re-cite this
+> record at the final tail code sha `a260abf` (tasks 003-008) were reset to `pending` when the
+> cure pass moved the tail, and never re-ran before the abort. Some of their work was picked up
+> by cure-03-01-2's own docs commit `32b3639` (both sweeps, and this report's sha citations);
+> the citations that were still stale after that — and the framing that read as though the work
+> had been signed off — were corrected by an out-of-band audit after the run ended. Bullets
+> below that say "not re-recorded by the run" mean exactly that.
+
+**Approach 3 (narrow cure of approach 2's rejection).** Written at this approach's final tail
+code sha, then audited and corrected out-of-band after the run ended (see the run-status block
+above; the standing rules' "written once, never re-audited by a later task" convention governed
+the run, and stopped governing when the run did).
 This report is record-only. Approach 1's own record (`docs/reports/phase4-final-suite/`,
 `phase4-guards/`, `phase4-stability10/`) and approach 2's own record
-(`docs/reports/phase4-cure-final-suite/`, `phase4-cure-guards/`, `phase4-cure-stability10/`,
-and the two prior versions of this file superseded by this rewrite, at `db66965` and
-`0ba550a` respectively) stay as history and are not edited.
+(`docs/reports/phase4-cure-final-suite/`, `phase4-cure-guards/`, `phase4-cure-stability10/`)
+stay as history and are not edited. So do the two prior versions of this file superseded by this
+rewrite: approach 1's, written against tail sha `db66965` and committed as `55376d2`, and
+approach 2's, written against tail sha `0ba550a` and committed as `bb42aea`/`1ee3cbd`. (Read them
+through the *commits* — `git show 55376d2:docs/reports/phase4-report.md` — not through the tail
+shas they cite; this file did not yet exist at `db66965`.)
 
 - **Tail code sha**: `a260abfaa36fe96068fb19f4735d66b3b040459b` (`a260abf`, `tui: close the
   foreign-content-to-deck boundary reset independently of deck's own colour (task
@@ -15,11 +42,15 @@ and the two prior versions of this file superseded by this rewrite, at `db66965`
   recent commit in this run's history touching a `*.go` or `*.feature` file. It supersedes
   three earlier recordings, each of which measured a tree this run then changed: `3568bd7`
   (task 002's own tail), `7bb1f8a` (the tail after review pass 234's first two cures) and
-  `bfdb69e` (the tail after R121's cure). This approach's own code-touching commits, per the
-  freeze line, are `2a04e5a` (cure-03-01, settings-footer paint), `7bb1f8a` (cure-03-02,
-  real-Codex first-hook wait), `594b0b4` (cure-03-02-2, R121's server-env transcript layer),
-  `bfdb69e` (cure-03-02-2's own override-control strengthening) and `a260abf` (cure-03-01-2,
-  R118's foreign-content-to-deck boundary reset). Confirmed unchanged at report-writing time:
+  `bfdb69e` (the tail after R121's cure). **This approach's own code-touching commits** are
+  exactly the eight that `git log 990acc1..HEAD -- '*.go' '*.feature'` returns (`990acc1` is this
+  approach's start head): `92619cf` and `48bce3d` (task 001, crop geometry line and blank fill,
+  plus its fixture correction), `3568bd7` (task 002, interactive-preview notice and pad rows),
+  `2a04e5a` (cure-03-01, settings-footer paint), `7bb1f8a` (cure-03-02, real-Codex first-hook
+  wait), `594b0b4` (cure-03-02-2, R121's server-env transcript layer), `bfdb69e` (cure-03-02-2's
+  own override-control strengthening) and `a260abf` (cure-03-01-2, R118's foreign-content-to-deck
+  boundary reset). Between them they touch only `internal/tui/*.go`, `internal/tmux/geometry.go`
+  and `features/*.go`/`*.feature`. Confirmed unchanged at HEAD:
   `git diff --stat a260abfaa36fe96068fb19f4735d66b3b040459b HEAD -- '*.go' '*.feature'` prints
   nothing.
 - **Protected-path audit** (the PRD's own command, run against the base commit that added
@@ -65,8 +96,10 @@ renamed the mode's own spelling from `default` to `manual` somewhere between CLI
   `TestSessionsBulkResumedClearsTheLatchDespiteAnotherEntrysError`,
   `TestSessionsBulkResumedLeavesTheLatchWhenTheLatchedEntryFailed`
   (`internal/tui/preview_fit_resume_latch_test.go`).
-- Feature scenario: the "r resume re-fits away from tmux's 80x24 default" scenario in
-  `features/preview.feature`.
+- Feature scenario: `features/preview.feature:208`, *"r resumes the selected stopped row and
+  passive preview re-fits away from tmux's unfit 80x24 default"* (exact title verified at HEAD;
+  earlier recordings of this report paraphrased it as "r resume re-fits away from tmux's 80x24
+  default", which is not a scenario name in the tree).
 
 ### R118 — one canvas composition helper, applied across panel.go's chrome builders, now covering every deck-owned preview cell
 
@@ -183,8 +216,9 @@ own list:
   (`internal/tui/sidebar_gutter_color_test.go`); `TestStackedSidebarGutterSelectedRowIsAccentWithBackgroundArrow`,
   `TestStackedSidebarGutterMarkedUnselectedRowIsBadgeWithCheck`, `TestStackedSidebarGutterGlyphsSurviveNoColor`
   (`internal/tui/stacked_gutter_test.go`); `TestGutterBarContrastFloor` (`internal/theme/contrast_test.go`).
-- Feature: `features/panel_background_rectangle.feature`'s gutter-cells scenarios (commit
-  `651ecd1f`).
+- Feature: `features/panel_background_rectangle.feature`'s two gutter-cells scenarios (commit
+  `651ecd1f`), tagged `@requirement-119-gutter-background-tokens` (line 212) and
+  `@requirement-119-gutter-text-survives-no-color` (line 255).
 
 ### R120 — line 2 renders a bare age with the permission badge last, badge shown only for a non-`safe` profile
 
@@ -255,13 +289,17 @@ task cure-03-02-2).
   longer holds once approach 2's own follow-on tasks 006 and 007 landed
   `internal/tui/registry_guard_test.go` and `internal/tui/transcript_env_layers_test.go`, each
   of which names `CODEX_HOME` by string in comments and fixture values to prove the seam is
-  agent-neutral. Re-run at this approach's tail sha, that same grep command reports 14 matches,
-  every one in those same two test files (`grep -rln 'CODEX_HOME' internal/tui` confirms the
-  file set), none in a non-test file and none in `panel.go`, `tui.go`, `interactive.go` or any
-  other production caller. The property that actually matters — and the one R2 names — still
+  agent-neutral. Task 007 recorded 14 matches across those two files, measured at the then-current
+  tail `3568bd7`/`7bb1f8a`. **Re-measured at the current tail `a260abf`, the count is 26 matches
+  across THREE test files** — `internal/tui/registry_guard_test.go`,
+  `internal/tui/transcript_env_layers_test.go` and `internal/tui/transcript_server_env_test.go`,
+  the third added by the R121 cure (`594b0b4`, extended by `bfdb69e`); `grep -rln 'CODEX_HOME'
+  internal/tui` confirms exactly that file set. None is in a non-test file and none is in
+  `panel.go`, `tui.go`, `interactive.go` or any other production caller. The property that
+  actually matters — and the one R2 names — still
   holds: the production transcript-resolution caller resolves only the keys an adapter declares
   via `Caps.TranscriptEnvKeys` and carries no `CODEX_HOME`-shaped field or branch of its own;
-  the fourteen remaining matches are intentional test comments and fixture values proving that
+  all 26 remaining matches are intentional test comments and fixture values proving that
   seam, not a codex-specific production path. The product-level seam approach 2 task 005
   delivered is unaffected by this citation correction — only the all-files empty-result
   phrasing of the evidence was ever wrong.
@@ -374,20 +412,31 @@ ownership half of the cure pass).
 
 Review pass 234's residual R3 asked for R128–R131 as four individually labelled verdicts
 rather than one grouped Tier 2 disposition. Each is stated on its own below; all four share the
-same wall-clock rationale, given once here rather than four times: this approach's deadline is
-`2026-09-17T18:01:18Z` (operator-extended from the original `2026-09-17T11:00:06Z`; max
-approaches raised to 4 in the same extension). At this report's own writing time
-(`2026-09-17T11:51:32Z`) roughly 6h10m of wall clock remain against that deadline, and this
-approach's two mandatory sweeps alone already consumed close to 1h20m of the approach's total
-budget (task 003's full-suite gate, ≈7m6s; task 004's ten-run stability sweep, ≈1h11m41s — both
-cited in full under "Both sweeps" below). That remaining wall clock was spent curing review
-pass 234's two new blocking reds (B1's settings-footer residual, task cure-03-01; the premature
-real-Codex first-hook rejection, task cure-03-02) plus the cure pass's R121 environment-layering
-red (task cure-03-02-2), re-running both mandatory sweeps from scratch at the resulting new tail
-sha, and writing this record tail (tasks 005–010) — a bounded cure of
-an already-rejected approach, not a reopening of Tier 2. No Tier 2 code landed in this approach;
-this re-affirms, and does not narrow, the not-started status approaches 1 and 2 already
-recorded under their own comparable deadlines.
+same wall-clock rationale, given once here rather than four times.
+
+The budget numbers in this rationale were written at `2026-09-17T11:51:32Z`, against the
+deadline then in force (`2026-09-17T18:01:18Z`, operator-extended from `2026-09-17T11:00:06Z`,
+with max approaches temporarily raised to 4). **Both moved afterwards and are recorded here as
+history, not as current facts**: the operator set the deadline to `2026-09-17T20:00:00Z` at
+`2026-09-17T14:16:46Z`, and max approaches went back to 3 at `2026-09-17T12:06:08Z` (the run
+therefore ended on approach 3 of 3). The run was aborted at `2026-09-17T18:04:10Z`, before
+either the extended deadline or any Tier 2 work. The sweep durations this rationale cited
+(≈7m6s for the gate, ≈1h11m41s for the stability sweep) were the recordings at the then-current
+tail; **both sweeps were re-run twice more after that** and the current numbers under "Both
+sweeps" below are 9m35s and 1h10m14s at `a260abf`. The conclusion the rationale reached is
+unaffected — the remaining wall clock went entirely to the cures and the record, and no Tier 2
+code landed in any approach of this run — but do not quote the figures in this paragraph as
+current.
+
+Where the remaining wall clock actually went: curing review pass 234's two new blocking reds
+(B1's settings-footer residual, task cure-03-01; the premature real-Codex first-hook rejection,
+task cure-03-02), writing the record tail (tasks 003-010), then curing review pass 256's two
+new blocking reds (`B2-ENV`, R121's environment layering, task cure-03-02-2; `B1-NC`, R118's
+foreign-content-to-deck boundary reset, task cure-03-01-2) and re-running both mandatory sweeps
+from scratch at each resulting new tail sha — a bounded cure of an already-rejected approach,
+not a reopening of Tier 2. No Tier 2 code landed in this approach; this re-affirms, and does not
+narrow, the not-started status approaches 1 and 2 already recorded under their own comparable
+deadlines.
 
 ### R128 — the group model replaces the workspace label (T2)
 
@@ -443,42 +492,66 @@ never "cured" by editing SPEC — SPEC.md is a protected path in this run and st
 
 ## R132 — the record matches the tree (T1)
 
-**Shipped for this approach's own record, at the tail code sha `a260abf`.** R132 is the only
-requirement whose deliverable is this record itself, so its verdict is stated against its own
-four bullets:
+**NOT COMPLETED by this run.** R132 is the only requirement whose deliverable is this record
+itself, and it is the one Tier 1 requirement this approach did **not** finish: the record tasks
+whose job was to re-cite every document at the final tail code sha `a260abf` (tasks 003-008) were
+reset to `pending` when the cure pass moved the tail, and the run was aborted before they re-ran.
+Its verdict is stated bullet by bullet below, each saying what actually stands at `a260abf` and
+what does not:
 
 - **`docs/reports/phase4-report.md` states, per requirement, what shipped, the commits and the
-  tests that prove it, and for anything that did not ship what is missing and why.** Green --
-  this file, rewritten under task 005 at `7bb1f8a`, re-cited at `bfdb69e` under the cure pass's
-  task cure-03-02-2, and re-cited again at the new tail `a260abf` under this cure pass's task
-  cure-03-01-2 (it previously stood at this approach's own earlier `3568bd7` recording, itself
-  following approach 2's `0ba550a`). Every requirement
-  number R116–R132 carries its own verdict above: R116–R127 individually (R118, R121 and R127
-  each carrying this approach's own further cures, cure-03-01, cure-03-02, cure-03-02-2 and --
-  R118 again -- cure-03-01-2), R128–R131 now each
-  individually labelled **NOT STARTED** in their own subsections (review pass 234's residual
-  R3), with the wall-clock budget behind them and the SPEC-versus-code grouping gap in the one
-  disclosed paragraph that section requires, and R132 here. Every commit sha and every
-  `Test*`/scenario name this file cites was checked to resolve in the tree at report-writing
-  time (`git cat-file -e <sha>^{commit}` per sha, `grep` per name).
-- **`docs/reports/phase4-report.md`'s review-findings section records B1's and B0's
-  dispositions.** See "Review findings from this approach's plan gate (task 006)" below — that
-  section's own rewrite, recording B1 cured by tasks 001/002/cure-03-01 and B0 adjudicated and
-  withdrawn by operator ruling, is task 006's own record task, next in this record tail.
+  tests that prove it, and for anything that did not ship what is missing and why.** Substance
+  green; provenance mixed. This file was rewritten under task 005 at `7bb1f8a` (`daea2fd`),
+  re-cited at `bfdb69e` under task cure-03-02-2 (`7fe0b26`), and re-cited again at the tail
+  `a260abf` under task cure-03-01-2 (`32b3639`) — it previously stood at this approach's own
+  earlier `3568bd7` recording (`e5058e5`), itself following approach 2's `0ba550a`. Task 005 was
+  **never re-run at `a260abf`**; `32b3639` re-cited the sha-bearing sections but left the Tier 2
+  budget paragraph and this section's own bullets standing at their pre-cure wording, and a
+  post-run audit corrected those (see the run-status block at the top). Every requirement number
+  R116–R132 does carry its own verdict above: R116–R127 individually (R118, R121 and R127 each
+  carrying this approach's own further cures, cure-03-01, cure-03-02, cure-03-02-2 and — R118
+  again — cure-03-01-2), R128–R131 each individually labelled **NOT STARTED** in their own
+  subsections (review pass 234's residual R3), with the wall-clock budget behind them and the
+  SPEC-versus-code grouping gap in the one disclosed paragraph that section requires, and R132
+  here. Every commit sha, `Test*` name, scenario name and file path this file cites was
+  re-checked against the tree at HEAD during the post-run audit (`git cat-file -e <sha>^{commit}`
+  per sha, `git grep 'func <Test>('` per test name, `git cat-file -e HEAD:<path>` per path); all
+  resolve.
+- **`docs/reports/phase4-report.md`'s review-findings section records the review dispositions.**
+  Partial. "Review findings from this approach's plan gate — review pass 234 (task 006)" below
+  records review pass 234's B1 (cured by tasks 001/002/cure-03-01) and B0 (adjudicated and
+  withdrawn by operator ruling) — that section landed as `4542e96`. Review pass **256**'s three
+  findings were raised *after* that section was written and task 006 never re-ran, so the post-run
+  audit added "Review findings from review pass 256 — the last review of this run" below rather
+  than leave them unrecorded.
 - **`docs/reports/phase4-findings.md` carries every finding this run made and chose not to
   fix, each with a file:line and a reason, including the two known-unverified codex items by
-  name.** Not yet at this approach's tail — that is task 008's own record task, following
-  task 007's R2 citation correction.
-- **`docs/DELIVERY-LOG.md` gains this approach's entry in the existing shape.** Not yet at
-  this approach's tail either; it is corrected in place by the last record task (010), on top
-  of approach 3's own already-validated entry (task 009).
+  name.** **Not re-recorded at the tail by the run.** Task 008's last commit (`8d2f8f7`) put that
+  file at the then-current tail `7bb1f8a`; task 008 was reset to `pending` by the cure pass and
+  never re-ran, so the ledger's Inventory, its crop-preview `panel.go` line numbers and its
+  mouse-race section all measured a superseded tree. Corrected out-of-band by the post-run audit,
+  which also added the ledger's ninth entry (the mouse-gesture race quoted by `7fe0b26`), a tenth
+  (review pass 256's `R-METADATA` residual) and an eleventh (GitHub issue
+  [n-orlov/deck#28](https://github.com/n-orlov/deck/issues/28), the interactive preview dropping
+  every Alt-modified special key).
+- **`docs/DELIVERY-LOG.md` gains this approach's entry in the existing shape.** Added by task 009
+  (`6c397ab`) and corrected by task 010 (`f0ac40b`) at the then-current tail `7bb1f8a`; **not
+  re-recorded at `a260abf` by the run**. Its current state is outside this report's own audit
+  scope — read that file itself, not this bullet, for what it now says.
 - **Both gates are reported with their commands, their durations and the sha they ran at — the
   final code sha per Materiality's termination rule.** Green — see "Both sweeps" immediately
   below: the full-suite gate plus build/vet/gofmt guards and the ten-run stability
   sweep, each with its command as run, its duration, the shared tail code sha
-  `a260abf`, and its own committed directory under `docs/reports/`.
+  `a260abf`, and its own committed directory under `docs/reports/`. These two *were* re-recorded
+  at `a260abf`, by `32b3639`, which is why they are the most trustworthy numbers in this record.
+  One caveat, disclosed as review pass 256's `R-METADATA` residual: the *derived* package-duration
+  sum that used to be quoted alongside the gate's wall clock was wrong in every recording, and has
+  been removed from both this report and `docs/reports/phase4-a3-final-suite/README.md` rather
+  than replaced with a third number — the per-package table in that README and `full-suite.log`
+  itself are the primary record.
 
-Tasks 006–010's own bullets landed as docs-only commits on top of the earlier tail `7bb1f8a`;
+Tasks 003–010's own bullets landed as docs-only commits on top of the earlier tail `7bb1f8a`
+(`abd963f`, `c069c34`, `daea2fd`, `4542e96`, `8ae503c`, `8d2f8f7`, `6c397ab`, `f0ac40b`);
 the cure pass then landed R121's fix (`594b0b4`, `bfdb69e`), which moved the tail and forced
 both sweeps to be re-run from scratch at `bfdb69e`; this cure pass then landed R118's
 foreign-content-to-deck boundary reset fix (`a260abf`, task cure-03-01-2), which moved the
@@ -488,12 +561,16 @@ Materiality termination rule (and the standing rules that restate it) a docs-onl
 invalidates neither sweep and is itself exempt from re-verification, so the record tail's own
 docs-only commits do not reopen the sweeps reported below.
 
-## Review findings from this approach's plan gate (task 006)
+## Review findings from this approach's plan gate — review pass 234 (task 006)
 
 This section states, for each of the plan gate's two blocking findings, what this approach did
 about it and why. Neither disposition below is written ahead of the paint or evidence it
 describes -- B1's cure commits already carry the fix and its test; B0's disposition is read from
 a named, dated snapshot of this run's own record, not asserted from memory.
+
+These are review pass **234**'s findings (`2026-09-17T07:59:39Z` → `09:22:48Z`), the pass that
+opened this approach's cure work. A **later** review pass, 256, ran after the record tail below
+and raised three more findings; those are recorded in their own section further down, not here.
 
 ### B1 -- R118 omitted deck-generated live-capture geometry/vertical-fill and the interactive branch's own notice/pad rows -- **cured this approach**
 
@@ -501,10 +578,11 @@ At this approach's plan gate, B1 was blocking: `cropPreviewBottomLeft`'s own geo
 synthesized vertical blank-fill rows (`internal/tui/panel.go`) were deck-generated but
 `previewBodyLines`'s live-capture branch marked the *whole* crop slice foreign, so those cells
 leaked the terminal's own background instead of `theme.Background`. This section does not record
-that gap as an accepted, disclosed residual (it was never optional Tier-2 scope, and
-`docs/reports/phase4-findings.md`'s prior entry calling it one is task 008's own item to remove,
-not this section's business) -- B1 was blocking review, and a blocking finding is cured, not
-accepted.
+that gap as an accepted, disclosed residual (it was never optional Tier-2 scope) -- B1 was
+blocking review, and a blocking finding is cured, not accepted.
+`docs/reports/phase4-findings.md`'s earlier entry that *did* call it an accepted residual was
+superseded by task 008 (`9d1e654`, refreshed again at `8d2f8f7`); that ledger's entry 3 now
+states the fix and cites both cure commits, kept as a historical entry rather than deleted.
 
 - **Task 001** (commits `92619cf` -- "tui: paint the crop geometry line and blank fill (task
   001)" -- and `48bce3d`, a fixture correction making the crop-decoration test pane genuinely
@@ -584,6 +662,76 @@ per-requirement verdicts above (this report's earlier sections) are the real mea
 under the authorized protocol that this ruling unblocked; none of them reads "NOT VERIFIED" for
 want of B0.
 
+## Review findings from review pass 256 — the last review of this run (post-run audit)
+
+This section was **not** written by the run. Review pass 256 (`2026-09-17T12:16:15Z` →
+`13:33:49Z`) ran after the record tail above had already landed, so the record task that would
+have recorded its dispositions (task 006) had already completed and was never re-run. It is
+added here by a post-run audit so a future phase does not have to reconstruct the last review's
+findings from the ralphd run record. All three are quoted from that record
+(`review-findings.json` for run `deck-phase4`); pass 256 reviewed final code sha `7bb1f8a` via
+its documentation descendant `f0ac40b`.
+
+**Pass 256 never re-reviewed the cures below.** It raised the two blocking findings, the worker
+cured both, and the operator aborted the run before another review pass could judge the result.
+So: cured and self-verified, **not accepted**.
+
+### B1-NC (blocking, curable) — R118: the foreign-content boundary reset was gated on deck's own colour — **cured by `a260abf`, not re-reviewed**
+
+Pass 256's clause: *"R118: captured pane content is never repainted, and deck emits a reset after
+it so the pane's colours cannot leak into deck's frame; SPEC section 11.3; requirement-sensitive
+tests."* Its evidence, taken in the operator-authorized disposable clone, was that
+`canvasResetIfPainting` returned an empty string whenever `Color` was false, so under `NO_COLOR`
+a real 80-column tmux row printed with foreground `#112233`/background `#445566` and no closing
+reset leaked `#445566` into deck's own right border — at `(119,1)` side-by-side and `(119,13)`
+stacked — while both colour-enabled controls passed.
+
+Cured by task cure-03-01-2, commit `a260abf`. The full disposition, the fix's own reasoning and
+its two regression tests are in R118's own section above (the "foreign-content-to-deck boundary
+reset" bullet); the red/green logs are in `docs/reports/phase4-r118-foreign-reset/README.md`.
+
+### B2-ENV (blocking, curable) — R121: `TranscriptPaths` read the observer's ambient environment, not the session's own server environment — **cured by `594b0b4`/`bfdb69e`, not re-reviewed**
+
+Pass 256's clause: *"R121: TranscriptPaths uses the session's own environment layering (SPEC
+section 6.1), with caller-supplied Codex home; R127 transcript ownership."* Its evidence: at
+`7bb1f8a`, `internal/tui/env_editor.go` returned `os.LookupEnv(key)` from the *observing* TUI and
+labelled it the server layer, so a private real tmux server started under `CODEX_HOME`=root-A —
+with both `show-environment -g` and the live pane's `/proc/<pid>/environ` verified to carry
+root-A — still resolved root-B's same-id transcript file once only the observing process's
+ambient value had moved.
+
+Cured by task cure-03-02-2, commits `594b0b4` (the `tmux.Client.ServerEnvironment` layer) and
+`bfdb69e` (distinct roots per override layer). Full disposition in R121's own section above; the
+two verbatim reds and the green are in `docs/reports/phase4-r121-server-env/`.
+
+### R-METADATA (residual, curable) — R132: inaccurate derived metadata in the gate records — **partially closed after the run; scope narrowed, not invented**
+
+Pass 256's clause: *"R132: the record matches the tree; accurate gate metadata."* It found two
+things, both in *supporting* metadata rather than in any suite result, and classed them residual
+under the PRD's explicit curable-in-place class — explicitly **not** an invented green run and
+**not** evidence that a required suite was narrowed:
+
+1. A **derived package-duration sum** that did not match the log it claimed to summarise. Pass
+   256 measured this against the recording then in place (the `abd963f`/`7bb1f8a` log: audit
+   derived `422.637s`, the record said `419.7s`). The same class of error was present in every
+   recording of this run's lineage, including the current one at `a260abf`, where the fifteen `ok`
+   package durations in `docs/reports/phase4-a3-final-suite/full-suite.log` sum to **`567.046s`**
+   and the record said `566.6s`. **Remedy applied after the run:** the derived sum was *removed*
+   from both `docs/reports/phase4-a3-final-suite/README.md` and this report's gate section rather
+   than replaced with a third number — the per-package table and `full-suite.log` are the primary
+   record, and the wall-clock figure (575s) is kept and explicitly labelled as wall clock. The
+   stated wall-clock envelope and the green package results were never contradicted by the
+   finding.
+2. **`docs/reports/phase4-a3-stability10/README.md`'s skips claim** said the only skips were the
+   three no-test packages, although `features/godog_test.go` excludes `@real-agents` and
+   `@nightly` by default and `features/i1_repro_test.go` is opt-in. This report and the
+   full-suite README already disclosed the tag filter correctly. That half of the finding is
+   against the stability README, which is outside this report's own edit scope — read that file
+   for its current wording.
+
+R-METADATA is recorded in `docs/reports/phase4-findings.md` as an open ledger entry, since no
+review pass ever confirmed either half closed.
+
 ## Both sweeps
 
 ### Full-suite gate sweep + build/vet/gofmt guards (task 003)
@@ -593,11 +741,16 @@ want of B0.
   `ci/run.sh go vet ./...`, `ci/run.sh gofmt -l .`.
 - **Tail code sha**: `a260abfaa36fe96068fb19f4735d66b3b040459b` (`a260abf`), confirmed by
   `git log --format=%H -1 -- '*.go' '*.feature'` == `git rev-parse HEAD` at launch.
-- **Duration**: 9m35s (575s), `2026-09-17T16:08:19Z` → `2026-09-17T16:17:54Z`, matching the
-  sum of `go test`'s own per-package timings (566.6s) plus sibling-container startup/teardown
-  overhead; longer than the ~7m4s-7m21s measured at the earlier tails (the `features` package
-  alone ran 501.5s here vs. 362-419s before) — ordinary host-scheduler/sibling-container
-  variance, not a different command or a narrowed sweep.
+- **Duration**: **9m35s (575s) wall clock**, `2026-09-17T16:08:19Z` → `2026-09-17T16:17:54Z`
+  (timestamps taken by the driver script immediately before and after the command). That is wall
+  clock, not a test-time total: it covers the per-package durations `go test` itself reports plus
+  sibling-container startup/teardown overhead. **No derived sum of those per-package durations is
+  quoted here** — every recording in this run's lineage quoted one and every one of them was
+  wrong (review pass 256's `R-METADATA` residual), so the primary record is the per-package table
+  in `docs/reports/phase4-a3-final-suite/README.md` and `full-suite.log` itself, both of which a
+  reader can re-derive from directly. Longer than the ~7m4s-7m21s measured at the earlier tails
+  (the `features` package alone ran 501.5s here vs. 362-419s before) — ordinary
+  host-scheduler/sibling-container variance, not a different command or a narrowed sweep.
 - **Result**: PASS (`go test` exit 0). All 15 packages with tests report `ok` (`cmd/deck`,
   `cmd/fake-claude`,
   `cmd/fake-codex`, `cmd/fake-pi`, `features`, `internal/agent`, `internal/audit`,
@@ -665,30 +818,44 @@ want of B0.
 
 ## Summary
 
-Every Tier 1 requirement (R116–R127) is green at this approach's tail code sha `a260abf`,
+**Read the run-status block at the top of this file first.** This run has **no accepted
+verdict**: it was aborted by the operator, its record ends `verdict: unverified`, and review
+never accepted any approach. Everything below is what was measured, not what was signed off.
+
+Every Tier 1 requirement (R116–R127) is green **as measured by this approach's own tests and
+sweeps** at its tail code sha `a260abf` — green in the sense that the requirement-sensitive tests
+and the unnarrowed full suite pass, not in the sense that a review pass accepted it,
 cited above against its own commit(s) and test(s); R118 now carries FOUR same-class B1 cures
 across this run (`92619cf`/`48bce3d` for the crop-decoration geometry line and blank-fill rows,
 `3568bd7` for the interactive-preview branch's notice and pad rows, `2a04e5a` for the settings
 takeover's footer row, and this cure pass's own `a260abf` for the foreign-content-to-deck
-boundary reset that was gated on deck's own colour only), R127 carries this approach's own
-`7bb1f8a` cure of the premature real-Codex first-hook rejection — both review pass 234's two
-new reds, both cured this approach — and R121 additionally carries the cure pass's own
-`594b0b4`/`bfdb69e` fix, which resolves each session's transcript environment from that
-session's own tmux server instead of the observing TUI's ambient environment. Every other Tier 1
+boundary reset that was gated on deck's own colour only — review pass 256's `B1-NC`), R127
+carries this approach's own `7bb1f8a` cure of the premature real-Codex first-hook rejection —
+review pass 234's second new red — and R121 additionally carries the cure pass's own
+`594b0b4`/`bfdb69e` fix (review pass 256's `B2-ENV`), which resolves each session's transcript
+environment from that session's own tmux server instead of the observing TUI's ambient
+environment. Every other Tier 1
 requirement keeps its unchanged prior
 citation from approaches 1/2 (R116, R119, R120, R122–R126 unchanged from approach 1 or 2 as
-noted per-section above). Tier 2 (R128–R131) remains not started, now stated as four
+noted per-section above). **Review pass 256's two blocking findings were cured but never
+re-reviewed**, and its `R-METADATA` residual stays open — see "Review findings from review pass
+256" above. Tier 2 (R128–R131) remains not started, now stated as four
 individually labelled verdicts (review pass 234's residual R3) rather than one grouped
-disposition, each re-affirming approaches 1 and 2's own budget decision against this
-approach's own extended deadline (`2026-09-17T18:01:18Z`) and not narrowing the disclosed,
-not-scored SPEC-versus-code grouping gap. Both mandatory sweeps for this approach (the
+disposition, each re-affirming approaches 1 and 2's own budget decision and not narrowing the
+disclosed, not-scored SPEC-versus-code grouping gap. (The deadline those verdicts cite,
+`2026-09-17T18:01:18Z`, was superseded by the operator's `2026-09-17T20:00:00Z` extension before
+the run was aborted at `2026-09-17T18:04:10Z`; see the Tier 2 section for the full timeline.)
+Both mandatory sweeps for this approach (the
 full-suite gate with the build/vet/gofmt guards, green; and the ten-run stability sweep,
 **10/10 clean**, with the earlier recording's mouse-gesture fixture race remaining an OPEN,
 disclosed finding that did not reproduce this run) are reported
 above with their commands, durations and the shared tail code sha `a260abf`, taken from
 `docs/reports/phase4-a3-final-suite/README.md` and `docs/reports/phase4-a3-stability10/
-README.md`, which is also R132's fourth bullet; R132's own verdict is stated in its own
-section above (this report green at `a260abf`; the review-findings section, `phase4-
-findings.md` and `docs/DELIVERY-LOG.md`'s correction are the three immediately following
-docs-only record tasks, 006–008 and 010). Each sweep points at its own committed directory
+README.md`, which is also R132's fifth bullet; these two are the parts of the record that the run
+*did* re-record at the final tail sha (`32b3639`), and are correspondingly the most trustworthy
+numbers here. **R132 itself is NOT COMPLETED** — its own section above says why, bullet by
+bullet: tasks 003-008 were reset to `pending` when the cure pass moved the tail and never re-ran,
+so `docs/reports/phase4-findings.md` and `docs/DELIVERY-LOG.md` were never re-recorded at
+`a260abf` by the run, and the stale citations that left behind were corrected by a post-run
+audit instead. Each sweep points at its own committed directory
 under `docs/reports/` (`phase4-a3-final-suite/`, `phase4-a3-stability10/`).
