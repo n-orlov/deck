@@ -197,33 +197,192 @@ func TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation(t *test
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			socket := namedKeySocket("modnav-" + tc.name)
-			cleanup := newBareCatSession(t, socket, "s0")
-			defer cleanup()
-			client := Client{Socket: socket, Timeout: 5 * time.Second}
-			ctx := context.Background()
-
-			dispatcher, err := NewDispatcher(ctx, client, "%0")
-			if err != nil {
-				t.Fatalf("NewDispatcher: %v", err)
-			}
-			if err := dispatcher.SendNamedKey(ctx, tc.name); err != nil {
-				t.Fatalf("SendNamedKey(%s): %v", tc.name, err)
-			}
-
-			deadline := time.Now().Add(2 * time.Second)
-			var capture string
-			for time.Now().Before(deadline) {
-				capture = runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
-				if strings.Contains(capture, tc.want) {
-					break
-				}
-				time.Sleep(20 * time.Millisecond)
-			}
-			if !strings.Contains(capture, tc.want) {
-				t.Fatalf("SendNamedKey(%s): pane capture = %q, want it to contain %q", tc.name, capture, tc.want)
-			}
+			assertNamedKeyDelivers(t, "modnav-"+tc.name, tc.name, tc.want)
 		})
+	}
+}
+
+// assertNamedKeyDelivers is the survey step the two tests around it share:
+// a FRESH tmux server on its own private socket (so no two names can ever
+// see each other's bytes, and nothing on the machine outside this socket is
+// touched), one window running `cat`, SendNamedKey(name), then poll
+// capture-pane until the pane shows want -- spelled in capture-pane's own
+// caret notation, per the comment on
+// TestSendNamedKeyDeliversHomeAndEndByTmuxsOwnTranslationNotHandEncoded
+// above, so the assertion compares what capture-pane actually returns
+// rather than what we assume it should. Polling rather than sleeping once
+// is deliberate: send-keys returns as soon as tmux has queued the bytes,
+// and `cat` echoing them back is asynchronous to that.
+func assertNamedKeyDelivers(t *testing.T, socketSuffix, name, want string) {
+	t.Helper()
+	socket := namedKeySocket(socketSuffix)
+	cleanup := newBareCatSession(t, socket, "s0")
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 5 * time.Second}
+	ctx := context.Background()
+
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+	if err := dispatcher.SendNamedKey(ctx, name); err != nil {
+		t.Fatalf("SendNamedKey(%s): %v", name, err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var capture string
+	for time.Now().Before(deadline) {
+		capture = runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
+		if strings.Contains(capture, want) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(capture, want) {
+		t.Fatalf("SendNamedKey(%s): pane capture = %q, want it to contain %q", name, capture, want)
+	}
+}
+
+// TestSendNamedKeyDeliversAltModifiedNavigationKeysByTmuxsOwnTranslation is
+// issue #28's real-tmux half, and the same survey
+// TestSendNamedKeyDeliversModifiedNavigationKeysByTmuxsOwnTranslation above
+// runs for the Ctrl/Shift/Ctrl+Shift names, extended over the Alt ones the
+// fix added to namedKeyAllowlist. Before issue #28 no caller could produce
+// any of these names, which is what the allowlist comment used to give as
+// the reason they were absent; internal/tui's interactiveAltNamedKeys is
+// that caller now, so the names have to be proved rather than asserted to
+// be unreachable.
+//
+// Each want below is what a real tmux 3.6b server delivered into a pane
+// running `cat` when handed the name on the left, read back out of
+// capture-pane's own caret notation -- and each is byte for byte a sequence
+// charmbracelet/bubbletea@v1.3.10/key.go's own `sequences` table decodes
+// straight back into the {KeyType, Alt: true} internal/tui maps the name
+// FROM (e.g. "C-M-Left" delivers the bytes bubbletea decodes as
+// {KeyCtrlLeft, Alt: true}, key.go:397). That round trip is the whole
+// argument that deck's Alt forwarding is faithful: tmux's translation and
+// bubbletea's decoding agree, so what the user pressed is what the agent
+// receives.
+//
+// The xterm modifier parameter carries the whole pattern: 3 = Alt,
+// 4 = Shift+Alt, 7 = Ctrl+Alt, 8 = Ctrl+Shift+Alt (against 2/5/6 for the
+// Alt-less names in the test above).
+func TestSendNamedKeyDeliversAltModifiedNavigationKeysByTmuxsOwnTranslation(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"M-Up", "^[[1;3A"},
+		{"M-Down", "^[[1;3B"},
+		{"M-Right", "^[[1;3C"},
+		{"M-Left", "^[[1;3D"},
+		{"M-Home", "^[[1;3H"},
+		{"M-End", "^[[1;3F"},
+		{"M-PageUp", "^[[5;3~"},
+		{"M-PageDown", "^[[6;3~"},
+		{"M-Delete", "^[[3;3~"},
+		{"C-M-Up", "^[[1;7A"},
+		{"C-M-Down", "^[[1;7B"},
+		{"C-M-Right", "^[[1;7C"},
+		{"C-M-Left", "^[[1;7D"},
+		{"C-M-Home", "^[[1;7H"},
+		{"C-M-End", "^[[1;7F"},
+		{"C-M-PgUp", "^[[5;7~"},
+		{"C-M-PgDn", "^[[6;7~"},
+		{"S-M-Up", "^[[1;4A"},
+		{"S-M-Down", "^[[1;4B"},
+		{"S-M-Right", "^[[1;4C"},
+		{"S-M-Left", "^[[1;4D"},
+		{"S-M-Home", "^[[1;4H"},
+		{"S-M-End", "^[[1;4F"},
+		{"C-M-S-Up", "^[[1;8A"},
+		{"C-M-S-Down", "^[[1;8B"},
+		{"C-M-S-Right", "^[[1;8C"},
+		{"C-M-S-Left", "^[[1;8D"},
+		{"C-M-S-Home", "^[[1;8H"},
+		{"C-M-S-End", "^[[1;8F"},
+		{"M-F1", "^[[1;3P"},
+		{"M-F2", "^[[1;3Q"},
+		{"M-F3", "^[[1;3R"},
+		{"M-F4", "^[[1;3S"},
+		{"M-F5", "^[[15;3~"},
+		{"M-F6", "^[[17;3~"},
+		{"M-F7", "^[[18;3~"},
+		{"M-F8", "^[[19;3~"},
+		{"M-F9", "^[[20;3~"},
+		{"M-F10", "^[[21;3~"},
+		{"M-F11", "^[[23;3~"},
+		{"M-F12", "^[[24;3~"},
+	}
+	for _, tc := range cases {
+		if !IsNamedKeyAllowed(tc.name) {
+			t.Errorf("IsNamedKeyAllowed(%q) = false -- every name this survey covers must be on namedKeyAllowlist, or SendNamedKey refuses it and the survey below is vacuous", tc.name)
+		}
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertNamedKeyDelivers(t, "modalt-"+tc.name, tc.name, tc.want)
+		})
+	}
+}
+
+// TestTmuxDropsTheAltOnMBTabWhichIsWhyItIsAListedGap is the empirical
+// evidence behind one of the two Alt gaps SPEC.md §11.9 requires to be
+// "known, listed" rather than silently omitted, and it runs with NO deck
+// code at all in the path -- raw `send-keys`, exactly like
+// literal_send_test.go's own raw-hazard tests -- because the claim is
+// about tmux's behaviour, not deck's.
+//
+// tmux accepts the name `M-BTab` (exit 0, not typed back character by
+// character the way an unrecognized name like Frobnicate is), but it
+// delivers bytes IDENTICAL to plain `BTab`: the Alt is discarded by tmux
+// itself. So allowlisting `M-BTab` would forward a plain Shift+Tab for a
+// physical Alt+Shift+Tab -- a modified key with its modifier dropped,
+// which §11.9 forbids just as firmly as dropping the keystroke. That is
+// why internal/tui's interactiveAltNamedKeys maps "BTab" to "" and why
+// "M-BTab" is off namedKeyAllowlist; if a future tmux starts emitting a
+// distinct sequence, this test fails and both places can be revisited.
+func TestTmuxDropsTheAltOnMBTabWhichIsWhyItIsAListedGap(t *testing.T) {
+	if IsNamedKeyAllowed("M-BTab") {
+		t.Fatalf("IsNamedKeyAllowed(\"M-BTab\") = true -- it is a listed gap, not a forwardable name")
+	}
+	// Alt+Insert is the second gap. It is off the allowlist for the
+	// opposite reason (tmux translates it correctly; bubbletea v1.3.10
+	// cannot decode the result -- see interactiveAltNamedKeys' comment for
+	// the upstream parameter transposition), so there is nothing about
+	// tmux to demonstrate here beyond the allowlist's own refusal.
+	for _, name := range []string{"M-Insert", "M-IC"} {
+		if IsNamedKeyAllowed(name) {
+			t.Fatalf("IsNamedKeyAllowed(%q) = true -- it is a listed gap, not a forwardable name", name)
+		}
+	}
+
+	captured := map[string]string{}
+	for _, name := range []string{"BTab", "M-BTab"} {
+		socket := namedKeySocket("gap-" + name)
+		cleanup := newBareCatSession(t, socket, "s0")
+		defer cleanup()
+		deadline := time.Now().Add(2 * time.Second)
+		runTmux(t, socket, "send-keys", "-t", "s0", name)
+		var capture string
+		for time.Now().Before(deadline) {
+			capture = strings.TrimRight(runTmux(t, socket, "capture-pane", "-p", "-t", "s0"), "\n")
+			if capture != "" {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		captured[name] = capture
+	}
+	// "^[[Z" is capture-pane's caret notation for ESC [ Z, the plain
+	// backtab sequence -- confirmed by od -c of both captures while
+	// filing this gap (`^ [ [ Z` for each, four characters, no second
+	// ESC anywhere).
+	if captured["BTab"] != "^[[Z" {
+		t.Fatalf("send-keys BTab delivered %q, want %q -- the baseline this gap is measured against moved", captured["BTab"], "^[[Z")
+	}
+	if captured["M-BTab"] != captured["BTab"] {
+		t.Fatalf("send-keys M-BTab delivered %q and BTab delivered %q -- they now DIFFER, so tmux no longer discards the Alt and Alt+Shift+Tab may be forwardable after all: revisit interactiveAltNamedKeys[\"BTab\"], namedKeyAllowlist and SPEC.md §11.9's gap list", captured["M-BTab"], captured["BTab"])
 	}
 }
 

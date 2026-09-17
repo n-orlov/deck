@@ -62,12 +62,41 @@ import (
 // not independently re-verified from this repo). The ci/Dockerfile-pins-
 // 3.5a-only caveat above still stands for what THIS suite can exercise;
 // 3.6b coverage exists only as that steer's own report.
-// Alt-modified variants of these (e.g. Ctrl+Alt+Left) are NOT included:
-// interactiveNamedKey refuses any msg.Alt key outright before it would
-// ever ask for one of these names, so no caller can reach them yet --
-// adding the name here without a caller that can produce it would be
-// untested dead weight in an allowlist that exists specifically so
-// nothing untested is ever passed to tmux.
+//
+// Alt-modified variants of these (M-Left, C-M-Left, S-M-Home,
+// C-M-S-End, ...) ARE included below as of issue #28, and this paragraph
+// used to say the opposite: it justified their absence with
+// "interactiveNamedKey refuses any msg.Alt key outright before it would
+// ever ask for one of these names, so no caller can reach them yet".
+// That refusal WAS the bug -- SPEC.md §11.9 names `Alt` alongside `Ctrl`
+// and `Shift` in the very sentence this allowlist's modified-navigation
+// entries come from, and the blanket refusal made every Alt-modified
+// special key "a keystroke that does nothing and reports nothing", the
+// failure §11.9's enumerate-key-by-key rule exists to prevent (see
+// internal/tui/interactive.go's interactiveNamedKey and
+// interactiveAltNamedKeys, which is now that caller). The names are
+// therefore no longer untested dead weight: each one was surveyed the
+// same way as every other entry here (one fresh tmux server per key on a
+// private socket, sent raw with no deck code to a pane running `cat`,
+// capture-pane bytes inspected) against a real tmux 3.6b, and
+// key_test.go's
+// TestSendNamedKeyDeliversAltModifiedNavigationKeysByTmuxsOwnTranslation
+// re-runs that survey in the suite and holds the exact bytes. The 3.5a
+// caveat above applies to the Alt names identically: the in-suite survey
+// exercises whatever tmux the host provides, and ci/Dockerfile's pinned
+// 3.5a is what CI itself verifies.
+//
+// Two Alt names are deliberately still absent, and this is where the
+// "known, listed gap" §11.9 requires is recorded on the tmux side:
+// "M-Insert"/"M-IC" (tmux translates it correctly, to the same bytes
+// xterm sends, but bubbletea v1.3.10 cannot DECODE those bytes, so deck
+// can never receive the keystroke to forward -- interactiveAltNamedKeys'
+// own comment has the upstream transposition in full) and "M-BTab" (tmux
+// itself discards the Alt: `send-keys M-BTab` was surveyed on 3.6b and
+// delivers bytes identical to plain `BTab`, so naming it would forward
+// Shift+Tab for a physical Alt+Shift+Tab). Both stay off this list
+// because SendNamedKey's whole point is that a name reaching tmux has
+// been confirmed to mean what the caller thinks it means.
 var namedKeyAllowlist = map[string]bool{
 	"Up":    true,
 	"Down":  true,
@@ -117,6 +146,29 @@ var namedKeyAllowlist = map[string]bool{
 	"S-Home": true, "S-End": true,
 	"C-S-Up": true, "C-S-Down": true, "C-S-Left": true, "C-S-Right": true,
 	"C-S-Home": true, "C-S-End": true,
+
+	// Alt-modified navigation, page keys, Delete and the function keys
+	// (issue #28) -- see the paragraph about them in the comment above
+	// this map for why they are here now and were not before, and
+	// internal/tui/interactive.go's interactiveAltNamedKeys for the
+	// caret-notation byte table this set was surveyed against. tmux
+	// spells Alt "M-" and accepts the modifier prefixes in any order;
+	// these are written in the order the survey used. "M-Insert"/"M-IC"
+	// and "M-BTab" are the two deliberate omissions the comment above
+	// names.
+	"M-Up": true, "M-Down": true, "M-Left": true, "M-Right": true,
+	"M-Home": true, "M-End": true,
+	"M-PageUp": true, "M-PageDown": true,
+	"M-Delete": true,
+	"C-M-Up":   true, "C-M-Down": true, "C-M-Left": true, "C-M-Right": true,
+	"C-M-Home": true, "C-M-End": true, "C-M-PgUp": true, "C-M-PgDn": true,
+	"S-M-Up": true, "S-M-Down": true, "S-M-Left": true, "S-M-Right": true,
+	"S-M-Home": true, "S-M-End": true,
+	"C-M-S-Up": true, "C-M-S-Down": true, "C-M-S-Left": true, "C-M-S-Right": true,
+	"C-M-S-Home": true, "C-M-S-End": true,
+	"M-F1": true, "M-F2": true, "M-F3": true, "M-F4": true,
+	"M-F5": true, "M-F6": true, "M-F7": true, "M-F8": true,
+	"M-F9": true, "M-F10": true, "M-F11": true, "M-F12": true,
 }
 
 // IsNamedKeyAllowed reports whether name is on namedKeyAllowlist, so a
