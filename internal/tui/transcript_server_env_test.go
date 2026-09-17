@@ -51,9 +51,18 @@ func TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient(t *testi
 		return path
 	}
 
+	// Four DISTINCT roots, each holding its own copy of the same
+	// conversation id's transcript file, so every layer's verdict is
+	// distinguishable from every other layer's: a control that pointed an
+	// override at serverHome would pass identically whether the override
+	// won or the server-env fallback did, and so could not detect a
+	// precedence regression at all.
 	serverHome, observerHome := t.TempDir(), t.TempDir()
+	sessionHome, configHome := t.TempDir(), t.TempDir()
 	want := makeTranscript(serverHome, "actual-session")
 	wrong := makeTranscript(observerHome, "unrelated-observer")
+	wantSessionOverride := makeTranscript(sessionHome, "session-override")
+	wantConfigOverride := makeTranscript(configHome, "config-override")
 
 	// The server is started while our OWN process env still says
 	// serverHome -- this is what it inherits, permanently.
@@ -97,20 +106,37 @@ func TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient(t *testi
 	m.tmuxClient = tmux.Client{Socket: socket}
 	session := store.Session{ID: "s", Slug: slug, Name: "codex", Agent: "codex", ConversationID: id}
 
+	// Positive control: a session override names sessionHome, a root that
+	// is neither the server's nor the config's nor the observer's, so this
+	// sub-test fails if session-over-server precedence stops holding.
 	t.Run("session-override-wins-over-actual-server", func(t *testing.T) {
 		over := session
-		over.Env = map[string]string{"CODEX_HOME": serverHome}
+		over.Env = map[string]string{"CODEX_HOME": sessionHome}
 		got, ok := m.transcriptPathFor(over)
-		if !ok || got != want {
-			t.Fatalf("session override = (%q, %v), want (%q, true)", got, ok, want)
+		if !ok || got != wantSessionOverride {
+			t.Fatalf("session override = (%q, %v), want the session's own root %q (not the server's %q or the observer's %q)", got, ok, wantSessionOverride, want, wrong)
 		}
 	})
+	// Positive control: config over server, again pointed at its own
+	// distinct root rather than at the server's.
 	t.Run("config-override-wins-over-actual-server", func(t *testing.T) {
 		configured := m
-		configured.settings.Env = map[string]string{"CODEX_HOME": serverHome}
+		configured.settings.Env = map[string]string{"CODEX_HOME": configHome}
 		got, ok := configured.transcriptPathFor(session)
-		if !ok || got != want {
-			t.Fatalf("config override = (%q, %v), want (%q, true)", got, ok, want)
+		if !ok || got != wantConfigOverride {
+			t.Fatalf("config override = (%q, %v), want the config's own root %q (not the server's %q or the observer's %q)", got, ok, wantConfigOverride, want, wrong)
+		}
+	})
+	// Precedence between the two override layers themselves: session wins
+	// over config, and both are distinct from the server's root.
+	t.Run("session-override-wins-over-config-override", func(t *testing.T) {
+		configured := m
+		configured.settings.Env = map[string]string{"CODEX_HOME": configHome}
+		over := session
+		over.Env = map[string]string{"CODEX_HOME": sessionHome}
+		got, ok := configured.transcriptPathFor(over)
+		if !ok || got != wantSessionOverride {
+			t.Fatalf("session over config = (%q, %v), want the session's own root %q (not the config's %q)", got, ok, wantSessionOverride, wantConfigOverride)
 		}
 	})
 	t.Run("no-override-falls-through-to-the-actual-server-not-the-observer", func(t *testing.T) {
