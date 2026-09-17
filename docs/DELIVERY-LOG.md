@@ -1014,6 +1014,112 @@ both measured only on codex `0.154.0` — plus the run's own findings ledger, on
 commit-message `FINDING:` line in `git log --grep='FINDING:' 08a1ffe3..HEAD`, four commits in
 all, tasks 025/009/008/007).
 
+**This citation of `db66965` as Phase 4's final code sha is superseded — Phase 4's true final
+code sha is `0ba550a5e50bdfc84586d5328a0690af9c9888c4` (`0ba550a`).** Review rejected the
+approach that landed at `db66965` on five findings (`review-findings.json`) — B0 (the
+reviewer's Python disposable-clone protocol cannot apply to this Go module), B1 (R118's canvas
+oracle exempted deck's own preview placeholder/fill/crop-marker cells from the
+every-deck-owned-cell claim), B2 (`TranscriptInput.CodexHome` put codex-specific knowledge
+inside `internal/tui`, violating the PRD's no-edit-to-add-a-kind constraint), B3 (R127's
+`@codex` scenario asserted distinctness, not attribution, and had no two-second timing bound)
+and R1 (a wrong `claude.go` rationale plus an undisclosed PRD-vs-SPEC permission-badge
+disagreement) — and a second, cure-and-reverify approach (run `deck-phase4`, same PRD,
+approach 2) answered exactly those five and no more, per its own standing rule ("a cure, not a
+rebuild"): approach 1's Tier 1 work stays as committed and re-verified, not re-implemented.
+- **B0** — not curable in code: task 001 supplied `ci/review.sh`, a Go-compatible analogue of
+  the reviewer's own protocol (disposably clones the repo, asserts the module-path/`go list`
+  identity property, then runs a caller-supplied `go test` target inside the clone) — no Python
+  packaging was added to the Go product, and the operator was notified of the protocol and the
+  decision it needs (`2786d3c`, task 001). This is also **B0's measurement protocol**, recorded
+  in `docs/reports/phase4-review-protocol.md` alongside the identity assertion and a narrow
+  smoke run over `./internal/agent/`, not a whole-suite run.
+- **B1** — cured: task 002 (`96b0ba9`) gave every preview body line an explicit provenance
+  (`previewLineOwner`, deck-owned vs. foreign) and routed only deck-owned lines through
+  `canvasBackground`; task 003 (`0e72ec1`) painted the fill columns past a capture and its crop
+  marker the same way while leaving the capture's own cells untouched; task 004 (`4614bff`)
+  replaced the feature file's blanket exemption with the one true SPEC §11.3 exception (an
+  actual pane capture) and asserted the background token over the preview interior for all five
+  built-ins plus `NO_COLOR`/`DECK_COLOR_DEPTH=16`.
+- **B2** — cured: task 005 (`e69c3d8`) replaced `CodexHome` with a generic
+  `Caps.TranscriptEnvKeys []string` an adapter declares and a generic `Env map[string]string`
+  the TUI populates from that list (`grep -rn 'CODEX_HOME' internal/tui` now prints nothing);
+  task 006 (`ef9571d`) extended the black-box registry-swap guard to a replacement adapter's own
+  invented transcript env key; task 007 (`1e97059`) regression-tested the production lookup
+  caller with three competing `CODEX_HOME` layers live at once.
+- **B3** — cured: task 008 (`2ff6024`) captured each pane's own authoritative
+  `session_id`/`transcript_path` independently of the store and added
+  `TestCodexIdentityMismatchCatchesSwappedStoredIDs` (`features/codex_hooks_swap_test.go`),
+  which feeds the comparison two rows' stored ids swapped and asserts it fails on *both* halves
+  (id and transcript path), proving the oracle is attribution-sensitive rather than merely
+  distinctness-sensitive; task 009 (`98ac4e7`) added the two-second creation-bound and same-cwd
+  assertions measured from the store's own columns.
+- **R1** — cured: task 010 (`cf2d53b`) corrected `claude.go`'s comments to the true
+  `default`→`manual` version-rename rationale (no argv change); task 011 (`e93a790`) went past
+  the documentation-only ask and fixed the underlying SPEC-vs-code gap in code — the sidebar row
+  now renders no permission badge at all for `safe`, per SPEC.md:1339 — closing the disagreement
+  `docs/reports/phase4-findings.md` records under the R120-vs-SPEC-§11 heading.
+
+**Tier 2's fate is unchanged: still NOT STARTED.** Task 012 (`425c9dc`) re-affirmed approach 1's
+own decision without narrowing the gap — approach 2's scope was bounded to ten small,
+single-purpose cure/regression tasks over already-shipped Tier 1 code, and Tier 2's four
+requirements (an all-or-nothing store-schema migration, a sidebar grouping-model replacement, a
+create-modal field, a settings CRUD surface) remain the same materially larger body of work
+approach 1 already declined under a comparable deadline (633 iterations / ~11h36m remaining at
+decision time). The resulting SPEC-versus-code grouping gap (code still groups by workspace, not
+by a `groups` table) stays an explicitly disclosed, not-scored non-finding, unchanged from
+approach 1 — never "cured" by editing SPEC.
+
+A golden-fixture regression surfaced mid-approach, off review's own five findings, and is cured
+in the same record: task 013's first gate sweep at `e93a790` (task 011's tail sha at the time)
+found `TestGoldenMinimumFrame` red — task 011 hid the `[safe]` badge correctly but never
+regenerated the golden fixture it changed. Task 011b regenerated it (`1f38195`) and re-swept, but
+hit a second, independent flake in the same test: the "settled" baseline was taken with a bare
+`client.Frame(true)` immediately after the content gate, which can be satisfied mid-repaint,
+producing a genuinely torn frame (reproduced directly at 3 of 12 sub-runs). Commit `0ba550a`
+took the baseline from `ScreenDriver.WaitForQuiescence` (300ms quiet window > deck's 250ms
+`previewTick`) with a bounded retry — 16 of 16 sub-runs green over `-count=8` after the fix —
+and became this approach's true, final last-code-touching commit, superseding task 011 and
+task 012's own "task 011 is last" note.
+
+**All three sweeps, re-measured from scratch at `0ba550a` (never re-run under the task that
+found the red lane, per the standing rules):**
+- **Full-suite gate** (task 013, closed by `646c523`): `ci/run.sh sh -c 'go test -p=1 -count=1
+  -timeout=40m ./...'` — every package, no `-run` filter, no package list — exits **0**, all 18
+  packages (`go list ./...`) report `ok` or `[no test files]`, no `FAIL` line, **7m21s**
+  (`docs/reports/phase4-cure-final-suite/README.md`).
+- **Build/vet/gofmt guards** (task 014, no commit of its own needed — recorded by task 011b's
+  `0ca8667`): `go build ./...` and `go vet ./...` both exit 0 with empty output; `gofmt -l .`
+  lists exactly the same four **pre-existing** drift files measured at plan time
+  (`internal/theme/quantize_test.go`,
+  `.spike-preview/{cmd/conformance/main.go,conformance/conformance.go,conformance/conformance_test.go}`)
+  and nothing this approach wrote — **1.3s** wall clock, re-measured on the identical tree
+  (`docs/reports/phase4-cure-guards/README.md`).
+- **Ten-run stability sweep** (task 015, no commit of its own needed — recorded by the same
+  `0ca8667`): `ci/stability.sh 10` — **10/10 PASS, every failure named: none.** `grep -h 'FAIL'
+  run-*.log` over all ten committed logs returns nothing; **1h12m24s** total, each run ~6-7
+  minutes (`docs/reports/phase4-cure-stability10/README.md`). Neither known-open flake class
+  recurred: the golden-frame settle race (fixed at the root above) and
+  `TestSigwinchCountDistinguishesTwoFromThree` both occurred zero times in these ten runs. An
+  earlier, superseded sweep of the same directory at `e93a790` (011b's first attempt) had
+  recorded 7/10 — two runs red on the golden-frame race this approach's own `0ba550a` fix
+  resolved, and one run red on a single, non-reproduced
+  `TestSendKeysInvalidHexByteIsSilentlyDiscarded` `capture-pane` miss
+  (`internal/tmux/literal_send_test.go:123`), disclosed via the `FINDING:` line in commit
+  `b98ce9c`'s body and absent from all ten clean runs.
+
+The record itself was rewritten at `0ba550a` rather than left at `db66965`:
+[`docs/reports/phase4-report.md`](reports/phase4-report.md) (`bb42aea` + `1ee3cbd`, task 016) —
+the per-requirement verdict table naming this approach's cures and commits, R132's own verdict
+against its four bullets, and both gates with command/duration/sha —
+[`docs/reports/phase4-findings.md`](reports/phase4-findings.md) (`0e514ee`, task 017) — the same
+two known-unverified codex items by name, this approach's own `FINDING:` inventory (verbatim
+`git log --grep='FINDING:' 08a1ffe3..HEAD`), and the new R120-vs-SPEC-§11 permission-badge
+disagreement section (SPEC authoritative, task 011's `e93a790` named as the code fix) — and this
+paragraph (task 018). The protected-path audit (`git log --oneline 08a1ffe3..HEAD -- SPEC.md
+prds/ ci/Dockerfile ci/SPIKE.md`) prints nothing across both approaches. Approach 1's own record
+at `db66965` (`docs/reports/phase4-{final-suite,guards,stability10}/`, and the superseded
+version of `phase4-report.md`) stays as history and is not edited.
+
 ## Other milestones
 
 | Date | What |
