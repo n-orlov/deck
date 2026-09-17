@@ -114,6 +114,12 @@ own list:
   `features/panel_background_rectangle.feature` all pass at this approach's tail sha
   (part of the full-suite gate below; task 002's own commit message additionally quotes each
   feature file passing individually).
+- **Log relabel (task 007)**: `docs/reports/phase4-cure-logs/panel_background_themes.log` is
+  approach 2 task 004's own earlier targeted run of `features/panel_background_themes.feature`
+  alone (7 scenarios, 7 passed; 82 steps, 82 passed) — a point-in-time record from approach 2,
+  not a measurement at this approach's own tail sha `3568bd7`. This approach's own confirmation
+  that the same feature file still passes at `3568bd7` is the full-suite gate cited separately
+  above and under "Both sweeps" below (task 003), never this log.
 
 ### R119 — the selection/mark gutter occupies its own columns; four colour states; feature scenario; contrast floor
 
@@ -166,6 +172,21 @@ label (approach 1, commit `4c80e5cb`); the badge's `safe`-suppression rule
   (`internal/tui/registry_guard_test.go`, approach 2);
   `TestTranscriptPathForCodexPrefersSessionEnvOverConfigAndAmbient`
   (`internal/tui/transcript_env_layers_test.go`, approach 2).
+- **R2 citation correction (task 007)**: approach 2 task 005's own commit message asserted
+  that `grep -rn 'CODEX_HOME' internal/tui` had an empty result. That literal all-files claim no
+  longer holds once approach 2's own follow-on tasks 006 and 007 landed
+  `internal/tui/registry_guard_test.go` and `internal/tui/transcript_env_layers_test.go`, each
+  of which names `CODEX_HOME` by string in comments and fixture values to prove the seam is
+  agent-neutral. Re-run at this approach's tail sha, that same grep command reports 14 matches,
+  every one in those same two test files (`grep -rln 'CODEX_HOME' internal/tui` confirms the
+  file set), none in a non-test file and none in `panel.go`, `tui.go`, `interactive.go` or any
+  other production caller. The property that actually matters — and the one R2 names — still
+  holds: the production transcript-resolution caller resolves only the keys an adapter declares
+  via `Caps.TranscriptEnvKeys` and carries no `CODEX_HOME`-shaped field or branch of its own;
+  the fourteen remaining matches are intentional test comments and fixture values proving that
+  seam, not a codex-specific production path. The product-level seam approach 2 task 005
+  delivered is unaffected by this citation correction — only the all-files empty-result
+  phrasing of the evidence was ever wrong.
 
 ### R122 — codex Instrument injects five inline hooks and writes nothing
 
