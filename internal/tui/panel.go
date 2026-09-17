@@ -508,11 +508,65 @@ func (m Model) sidebarBottomLine(width int) string {
 // insert a fresh, explicit "\x1b[0m" of their own right after the foreign
 // text -- never inside a canvasBackground call (see previewContentLine
 // and fullBoxPreviewContentLine below).
+//
+// THE FOREGROUND HALF (GH #24's second report, R118's own success
+// criteria only ever named the background): painting a background without
+// also naming a foreground moves the readability problem rather than
+// fixing it. R118 made deck open `background` under every cell it draws;
+// any run of text inside that span which never opened a foreground of its
+// own still renders in the TERMINAL's default foreground -- and on a
+// terminal whose default foreground is white/light, a light theme's own
+// light canvas underneath it is the "white session text on light
+// background, almost unreadable" the operator reported on parchment after
+// R118 shipped. Measured on a real parchment frame (a pty capture walked
+// with an SGR state machine): 30 deck-owned runs carried NO explicit
+// foreground at all -- the sidebar's `socket: deck` line, the preview
+// placeholder's cwd line and its "No live preview captured for this row
+// yet." sentence, the crop geometry line ("77x40 of 116x44"), all 16 crop
+// markers (`»`), the footer's status-reason line and its seven ` · `
+// legend separators. Every one of them is deck's own copy, composed as
+// plain text by a builder that (correctly) leaves colour to whoever paints
+// the line.
+//
+// So the canvas is a foreground AND a background: this opens
+// theme.Text -- §11.6's body-text token, the semantically right default
+// for deck's own prose -- alongside tok's background, and re-opens BOTH
+// after every inner reset for exactly the reset-clears-every-attribute
+// reason above. A run that wants a different colour still wins for its own
+// cells: colorToken/borderColor emit their own 38;2 foreground after this
+// one, and the next reset falls back to the canvas pair rather than to the
+// terminal's default. Nothing about the background half changes, so
+// R118's own per-cell background assertions are untouched.
+//
+// text-on-tok is held to internal/theme's contrast floor for every
+// background token this function is actually called with that can carry a
+// deck-drawn GLYPH (Background, Surface, Selection, SelectionIdle) by
+// TestCanvasDefaultForegroundClearsFloor there. The two remaining tokens
+// callers pass -- Accent and Badge, sidebarGutterBar's two bar colours --
+// are deliberately NOT in that table and must never be: `text` is
+// unreadable on both in every built-in (parchment 2.67:1, matrix 1.00:1),
+// which is fine only because every glyph the gutter bar draws carries an
+// explicit `background` foreground of its own (see sidebarGutterBar in
+// tui.go, and TestGutterBarContrastFloor in internal/theme for that pair's
+// own floor). The bar's own cells therefore never fall back to this
+// default; TestSidebarGutterCellsNeverFallBackToCanvasForeground pins that.
+//
+// NO_COLOR/DECK_COLOR=0 is unchanged: backgroundSGR already returns ok
+// false there, so parts come back byte-for-byte, with no foreground added
+// either.
 func (m Model) canvasBackground(tok theme.Token, parts ...string) string {
 	joined := strings.Join(parts, "")
 	seq, ok := m.backgroundSGR(tok)
 	if !ok {
 		return joined
+	}
+	// foregroundSGR is gated on the same m.settings.Color as backgroundSGR,
+	// so reaching here with ok already true means the only way this second
+	// lookup fails is a theme missing the Text token entirely -- a Theme
+	// built by hand outside theme.Parse. Paint the background alone in that
+	// case rather than dropping the canvas altogether.
+	if fg, fgOK := m.foregroundSGR(theme.Text); fgOK {
+		seq += fg
 	}
 	reopened := strings.ReplaceAll(joined, "\x1b[0m", "\x1b[0m"+seq)
 	return seq + reopened + "\x1b[0m"

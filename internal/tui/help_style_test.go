@@ -168,18 +168,40 @@ func TestHelpKeysEntryContinuationRendersInDimmedToken(t *testing.T) {
 // TestHelpNonKeysSectionBodyStaysUnstyled confirms the deliberate scope
 // choice recorded in help_style.go's doc comment: outside the "Keys"
 // section, only the header line is coloured -- the body text (e.g.
-// "Settings takeover"'s own key list) has no foreground colour of its
-// own, i.e. it renders exactly as an uncoloured cell (no theme.Key/Text/
-// Dimmed applied) even though it visually resembles a keycap+prose entry.
+// "Settings takeover"'s own key list) gets no per-entry styling of its
+// own, so its leading token is NOT rendered as a keycap even though it
+// visually resembles a keycap+prose entry.
+//
+// "No styling" used to be checkable as "the cell has no foreground at
+// all", because the dialog's canvas opened only a background. GH #24's
+// second report changed that: canvasBackground now opens theme.Text as the
+// canvas foreground too, since a glyph with no foreground renders in the
+// TERMINAL's default one -- white on a light theme's own light canvas. So
+// an unstyled body line is now exactly "the canvas default, theme.Text",
+// and the property this test defends becomes the sharper claim that it is
+// NOT theme.Key (nor theme.Dimmed, the other two styles help_style.go can
+// apply): the three are asserted distinct first, so this can never pass by
+// a theme collapsing them onto one colour.
 func TestHelpNonKeysSectionBodyStaysUnstyled(t *testing.T) {
 	m := helpStyleTestModel(t)
+	textHex := tokenHex(t, m, theme.Text)
+	keyHex := tokenHex(t, m, theme.Key)
+	dimmedHex := tokenHex(t, m, theme.Dimmed)
+	if textHex == keyHex || textHex == dimmedHex {
+		t.Skip("this theme's text token collides with key or dimmed; the assertion below would be vacuous")
+	}
+
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 
 	row := findRowContaining(t, term, "switch focus between the category list")
 	col := findCol(t, term, row, "Tab")
-	if _, ok := cellFgHex(t, term, col, row); ok {
-		t.Fatalf("Settings takeover entry's leading token has a foreground colour; body styling outside \"Keys\" should not be applied")
+	fg, ok := cellFgHex(t, term, col, row)
+	if !ok {
+		t.Fatalf("Settings takeover entry's leading token has no foreground at all; every glyph deck draws on its own canvas must carry one (GH #24)")
+	}
+	if fg != textHex {
+		t.Fatalf("Settings takeover entry's leading token foreground = %s, want the canvas default text token %s (body styling outside \"Keys\" must not be applied)", fg, textHex)
 	}
 }
 

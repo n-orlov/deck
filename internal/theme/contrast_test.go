@@ -450,6 +450,180 @@ func TestGutterBarContrastFloor(t *testing.T) {
 	}
 }
 
+// canvasForegroundBackgrounds is every background token internal/tui's
+// canvasBackground (panel.go) is actually called with AND that can carry a
+// deck-drawn GLYPH whose own run never opened a foreground of its own.
+//
+// GH #24's second report is what makes this table necessary. R118 made
+// canvasBackground open the `background` token under every cell deck draws,
+// but naming only a background moves the readability problem instead of
+// fixing it: a run of deck's own copy that never opened a foreground still
+// renders in the TERMINAL's default one, and on a terminal whose default
+// foreground is white/light that is white-on-cream under a LIGHT theme --
+// measured on a real parchment frame as 30 unforegrounded deck-owned runs
+// (the sidebar's `socket:` line, the preview placeholder's cwd + "No live
+// preview captured..." copy, the crop geometry line, 16 crop markers, the
+// footer's reason line and its " · " legend separators). canvasBackground
+// therefore opens `text` -- §11.6's body-text token -- as the canvas
+// FOREGROUND alongside whichever background token it is given, and this is
+// the table that holds that new pair to the §11.6 floor for every built-in.
+//
+// The four entries are exactly canvasBackground's glyph-bearing call sites'
+// tokens: Background (every chrome line -- borders, padding, headers, the
+// socket line, banners, notes, both footers, the preview placeholder, the
+// crop geometry line and crop marker, every dialog frame), Surface (the
+// alternating session-row stripe, and a dialog body), Selection and
+// SelectionIdle (the selected row in a focused/unfocused list).
+//
+// DELIBERATELY ABSENT, and they must stay absent: Accent and Badge,
+// sidebarGutterBar's two bar colours. `text` is unreadable on both in every
+// built-in (parchment 2.67:1, empire 2.15:1, cobalt 2.02:1, daylight
+// 2.06:1, matrix 1.00:1), and that is not a defect, because every glyph the
+// gutter bar draws carries an explicit `background` foreground of its own
+// (TestGutterBarContrastFloor above is that pair's floor) so no bar cell
+// ever falls back to the canvas default. internal/tui's
+// TestSidebarGutterCellsNeverFallBackToCanvasForeground is the render-level
+// proof that they do not. Adding Accent/Badge here would not describe
+// anything on screen; it would only force a recolour of every built-in's
+// gutter, which §11.6's own rule in this file forbids ("a failing pair is a
+// finding to report, never a licence to recolour a built-in theme file").
+var canvasForegroundBackgrounds = []Token{Background, Surface, Selection, SelectionIdle}
+
+// canvasForegroundChecks pairs Text against every canvasForegroundBackgrounds
+// entry -- the "an uncoloured deck glyph is readable wherever deck paints"
+// table.
+func canvasForegroundChecks() []struct {
+	label string
+	fg    Token
+	bg    Token
+} {
+	checks := make([]struct {
+		label string
+		fg    Token
+		bg    Token
+	}, 0, len(canvasForegroundBackgrounds))
+	for _, bg := range canvasForegroundBackgrounds {
+		checks = append(checks, struct {
+			label string
+			fg    Token
+			bg    Token
+		}{"text/" + string(bg), Text, bg})
+	}
+	return checks
+}
+
+// TestCanvasDefaultForegroundClearsFloor is GH #24's foreground half held
+// to §11.6's floor: internal/tui's canvasBackground opens `text` as the
+// canvas foreground alongside every background token it paints, so `text`
+// must clear minContrastRatio against each of them -- over BOTH the
+// theme's authored hex palette and its 16-colour quantisation, for every
+// built-in registry.go embeds, with no allowlist and no theme recoloured
+// to make a pair clear it.
+//
+// Both LIGHT built-ins are the reason this exists (`parchment` is the theme
+// the operator filed against), so the two are asserted by name as well as
+// by iteration: a future edit that drops one from builtinFiles must not
+// silently take its coverage with it.
+func TestCanvasDefaultForegroundClearsFloor(t *testing.T) {
+	if len(Builtins()) != len(builtinFiles) {
+		t.Fatalf("Builtins() returned %d themes, want exactly len(builtinFiles) = %d -- every registry.go entry must be checked, no allowlist", len(Builtins()), len(builtinFiles))
+	}
+	seenLight := map[string]bool{}
+	for _, th := range Builtins() {
+		th := th
+		if th.Appearance == "light" {
+			seenLight[th.Name] = true
+		}
+		t.Run(th.Name, func(t *testing.T) {
+			for _, chk := range canvasForegroundChecks() {
+				fgHex, err := th.Color(chk.fg)
+				if err != nil {
+					t.Fatalf("Color(%q): %v", chk.fg, err)
+				}
+				bgHex, err := th.Color(chk.bg)
+				if err != nil {
+					t.Fatalf("Color(%q): %v", chk.bg, err)
+				}
+				ratioHex, err := contrastRatio(fgHex, bgHex)
+				if err != nil {
+					t.Fatalf("contrastRatio(%q, %q): %v", fgHex, bgHex, err)
+				}
+
+				fgQ, err := th.QuantizedColor(chk.fg)
+				if err != nil {
+					t.Fatalf("QuantizedColor(%q): %v", chk.fg, err)
+				}
+				bgQ, err := th.QuantizedColor(chk.bg)
+				if err != nil {
+					t.Fatalf("QuantizedColor(%q): %v", chk.bg, err)
+				}
+				ratioQuant, err := contrastRatio(fgQ, bgQ)
+				if err != nil {
+					t.Fatalf("contrastRatio(%q, %q): %v", fgQ, bgQ, err)
+				}
+
+				t.Logf("%-10s %-8s %-22s hex %s/%s = %.2f:1   quant %s/%s = %.2f:1",
+					th.Name, th.Appearance, chk.label, fgHex, bgHex, ratioHex, fgQ, bgQ, ratioQuant)
+
+				if ratioHex < minContrastRatio {
+					t.Errorf("theme %q %s: hex contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+						th.Name, chk.label, ratioHex, minContrastRatio, fgHex, bgHex)
+				}
+				if ratioQuant < minContrastRatio {
+					t.Errorf("theme %q %s: quantised contrast %.2f:1 < %.1f:1 (fg=%s bg=%s)",
+						th.Name, chk.label, ratioQuant, minContrastRatio, fgQ, bgQ)
+				}
+			}
+		})
+	}
+	for _, want := range []string{"parchment", "daylight"} {
+		if !seenLight[want] {
+			t.Errorf("built-in %q was not covered as a light theme -- GH #24 is about the light built-ins, so losing either one silently loses this test's whole point", want)
+		}
+	}
+}
+
+// TestCanvasForegroundTableExcludesTheGutterBarTokens is
+// canvasForegroundBackgrounds' own non-vacuousness guard, in the direction
+// that actually matters: it proves Accent and Badge are absent from that
+// table for a REASON (text is genuinely unreadable on both in at least one
+// built-in) rather than by oversight, so a future edit that adds them --
+// and thereby forces a recolour of every built-in's gutter bar to satisfy
+// a pair no cell on screen ever shows -- fails here with the numbers in
+// front of it.
+func TestCanvasForegroundTableExcludesTheGutterBarTokens(t *testing.T) {
+	for _, tok := range canvasForegroundBackgrounds {
+		if tok == Accent || tok == Badge {
+			t.Fatalf("canvasForegroundBackgrounds must not list %q: see its own doc comment -- the gutter bar's glyphs carry an explicit `background` foreground, they never fall back to the canvas `text` default", tok)
+		}
+	}
+	worst := 21.0
+	worstTheme := ""
+	for _, th := range Builtins() {
+		for _, tok := range []Token{Accent, Badge} {
+			fg, err := th.Color(Text)
+			if err != nil {
+				t.Fatalf("theme %q: Color(text): %v", th.Name, err)
+			}
+			bg, err := th.Color(tok)
+			if err != nil {
+				t.Fatalf("theme %q: Color(%q): %v", th.Name, tok, err)
+			}
+			ratio, err := contrastRatio(fg, bg)
+			if err != nil {
+				t.Fatalf("theme %q: contrastRatio(%q, %q): %v", th.Name, fg, bg, err)
+			}
+			t.Logf("%-10s text/%-6s hex %s/%s = %.2f:1 (excluded from the canvas-foreground floor by design)", th.Name, tok, fg, bg, ratio)
+			if ratio < worst {
+				worst, worstTheme = ratio, th.Name+" text/"+string(tok)
+			}
+		}
+	}
+	if worst >= minContrastRatio {
+		t.Errorf("text now clears %.1f:1 on accent AND badge in every built-in (thinnest %s at %.2f:1) -- the exclusion in canvasForegroundBackgrounds' doc comment is no longer justified by the numbers and should be revisited", minContrastRatio, worstTheme, worst)
+	}
+}
+
 // TestContrastRatioKnownValues pins contrastRatio/relativeLuminance
 // against a handful of independently-computable values so the golden
 // test above is not the only thing exercising the maths.

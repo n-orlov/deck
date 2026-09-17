@@ -87,6 +87,14 @@ func newCapturedPaneModel(t *testing.T, stacked bool, firstRow string) (Model, *
 	if backgroundHex == paneFgHex || backgroundHex == paneBgHex || backgroundHex == paneTailFgHex {
 		t.Fatalf("test setup: active theme's background %s collides with a pane fixture colour", backgroundHex)
 	}
+	// assertDeckPaintedCell now compares a deck-painted cell's FOREGROUND
+	// against theme.Text (canvasBackground's own canvas foreground, GH #24),
+	// so that token must also be distinct from every pane fixture colour --
+	// otherwise "the pane's open attribute did not survive" could pass by
+	// coincidence rather than by the reset actually running.
+	if textHex := tokenHex(t, m, theme.Text); textHex == paneFgHex || textHex == paneBgHex || textHex == paneTailFgHex {
+		t.Fatalf("test setup: active theme's text %s collides with a pane fixture colour", textHex)
+	}
 
 	layout := m.computeLayout()
 	if stacked && layout.Effective != LayoutStacked {
@@ -148,12 +156,28 @@ func assertPaneCellUntouched(t *testing.T, term *vt.Emulator, col, row int, want
 }
 
 // assertDeckPaintedCell checks (col,row) carries deck's OWN
-// theme.Background and NOTHING left over from the pane (no foreground at
-// all -- canvasBackground only ever opens a background span).
-func assertDeckPaintedCell(t *testing.T, term *vt.Emulator, col, row int, backgroundHex string) {
+// theme.Background and NOTHING left over from the pane.
+//
+// The foreground half of that claim moved from "no foreground at all" to
+// "deck's OWN canvas foreground" with GH #24's second report: canvasBackground
+// used to open only a background span, so a deck-painted cell showed the
+// terminal's default foreground and cellFgHex reported none. It now opens
+// theme.Text alongside the background (see canvasBackground's own doc
+// comment -- an unforegrounded glyph on a LIGHT theme's canvas is the
+// white-on-cream the operator reported). What this assertion is actually
+// about is unchanged and is still enforced exactly as strictly: the pane's
+// own never-reset attribute (paneTailFgHex) must not survive into deck's
+// own columns. Asserting the cell equals deck's `text` token, rather than
+// merely "is not the pane's colour", is the stronger of the two available
+// statements, so nothing is lost by the move.
+func assertDeckPaintedCell(t *testing.T, term *vt.Emulator, col, row int, backgroundHex, textHex string) {
 	t.Helper()
-	if fg, ok := cellFgHex(t, term, col, row); ok {
-		t.Fatalf("deck-painted cell (%d,%d) foreground = %s, want none (pane's own open attribute must not survive deck's explicit reset)", col, row, fg)
+	fg, ok := cellFgHex(t, term, col, row)
+	if !ok {
+		t.Fatalf("deck-painted cell (%d,%d) has no foreground at all, want deck's own canvas foreground %s", col, row, textHex)
+	}
+	if fg != textHex {
+		t.Fatalf("deck-painted cell (%d,%d) foreground = %s, want deck's own canvas foreground %s (the pane's own open attribute must not survive deck's explicit reset)", col, row, fg, textHex)
 	}
 	bg, ok := cellBgHex(t, term, col, row)
 	if !ok || bg != backgroundHex {
@@ -176,7 +200,7 @@ func TestCapturedPaneFillPastCaptureCarriesDeckBackground(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			m, term, geo, backgroundHex := newCapturedPaneModel(t, stacked, paneRowOpenTail)
-			_ = m
+			textHex := tokenHex(t, m, theme.Text)
 
 			// X: the pane's own coloured cell, untouched.
 			assertPaneCellUntouched(t, term, geo.firstContentCol, geo.contentRow, paneFgHex, paneBgHex, true)
@@ -190,12 +214,12 @@ func TestCapturedPaneFillPastCaptureCarriesDeckBackground(t *testing.T) {
 			// The very first fill column past the capture's own 3 visible
 			// columns: deck's own drawn padding, must carry deck's
 			// background and nothing of the pane's own open foreground.
-			assertDeckPaintedCell(t, term, geo.firstContentCol+3, geo.contentRow, backgroundHex)
+			assertDeckPaintedCell(t, term, geo.firstContentCol+3, geo.contentRow, backgroundHex, textHex)
 			// The LAST fill column, right before the right pad/border:
 			// same, proving the whole fill span is deck-painted, not just
 			// its first cell.
 			lastFillCol := geo.firstContentCol + geo.contentWidth - 1
-			assertDeckPaintedCell(t, term, lastFillCol, geo.contentRow, backgroundHex)
+			assertDeckPaintedCell(t, term, lastFillCol, geo.contentRow, backgroundHex, textHex)
 		})
 	}
 }
@@ -215,7 +239,7 @@ func TestCapturedPaneCropMarkerCarriesDeckBackground(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			m, term, geo, backgroundHex := newCapturedPaneModel(t, stacked, paneRowOpenTailWide)
-			_ = m
+			textHex := tokenHex(t, m, theme.Text)
 
 			// X: the pane's own coloured cell, untouched.
 			assertPaneCellUntouched(t, term, geo.firstContentCol, geo.contentRow, paneFgHex, paneBgHex, true)
@@ -230,7 +254,7 @@ func TestCapturedPaneCropMarkerCarriesDeckBackground(t *testing.T) {
 			// must carry deck's background and none of the pane's own
 			// open foreground that was still live one column to its left.
 			markerCol := geo.firstContentCol + geo.contentWidth - 1
-			assertDeckPaintedCell(t, term, markerCol, geo.contentRow, backgroundHex)
+			assertDeckPaintedCell(t, term, markerCol, geo.contentRow, backgroundHex, textHex)
 		})
 	}
 }
