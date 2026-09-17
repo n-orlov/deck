@@ -8,12 +8,16 @@ This report is record-only. Approach 1's own record (`docs/reports/phase4-final-
 and the two prior versions of this file superseded by this rewrite, at `db66965` and
 `0ba550a` respectively) stay as history and are not edited.
 
-- **Tail code sha**: `3568bd7971a782fadbf589d79ce5777c0f1b5315` (`3568bd7`, `tui: paint the
-  interactive preview branch's own notice and pad rows (task 002)`), named in
-  `docs/reports/phase4-a3-final-suite/README.md` (task 003) — the most recent commit in this
-  run's history touching a `*.go` or `*.feature` file, and this approach's own last
-  code-touching task. Confirmed unchanged at report-writing time:
-  `git diff --stat 3568bd7971a782fadbf589d79ce5777c0f1b5315 HEAD -- '*.go' '*.feature'` prints
+- **Tail code sha**: `7bb1f8add502412618ebf4f195b18ffd5536b64a` (`7bb1f8a`, `features: wait
+  for codex's asynchronous first-hook identity adoption before checking (task cure-03-02)`),
+  named in `docs/reports/phase4-a3-final-suite/README.md` and
+  `docs/reports/phase4-a3-stability10/README.md` (tasks 003/004) — the most recent commit in
+  this run's history touching a `*.go` or `*.feature` file, superseding the previously-recorded
+  tail `3568bd7` (task 002's own tail) once review pass 234's two new reds were cured on top of
+  it: `2a04e5a` (cure-03-01, settings-footer paint) and `7bb1f8a` (cure-03-02, real-Codex
+  first-hook wait) are this approach's own last code-touching commits, per the freeze line.
+  Confirmed unchanged at report-writing time:
+  `git diff --stat 7bb1f8add502412618ebf4f195b18ffd5536b64a HEAD -- '*.go' '*.feature'` prints
   nothing.
 - **Protected-path audit** (the PRD's own command, run against the base commit that added
   `prds/phase4-codex-and-chrome.md`, `08a1ffe3eb229f8ebe5ba9791fbb3e3cec6e0c06`, computed
@@ -98,6 +102,27 @@ own list:
   `TestInteractiveNotRepaintedNoticeCarriesDeckBackground`
   (`internal/tui/interactive_notice_background_test.go`, full `View()` over `theme.Builtins()`
   in both frames via a real quiet tmux pane).
+- **The settings takeover's own footer row, in every settings mode** (`internal/tui/
+  settings.go`), review pass 234's own B1 finding: `settingsFooterLine` returned its composed
+  text directly, never routed through `canvasBackground` the way `mainView`'s own `footerLine`
+  (task 004/R118, approach 2) already was, so the settings takeover's footer row leaked the
+  terminal's own background in every mode -- normal, discard-confirm, search, `[env]` list,
+  `[env]` edit and the free-text string editor -- instead of carrying deck's own background
+  token. Task cure-03-01 (commit `2a04e5a` -- "tui: paint the settings takeover footer through
+  the shared canvas helper (task cure-03-01)") split `settingsFooterLine` into
+  `settingsFooterLineContent` (the existing text composition, unchanged) and a thin wrapper
+  painting it through `canvasBackground(theme.Background, ...)`, mirroring `footerLine`/
+  `footerLineContent`'s own split, fixed once in the one function every settings view already
+  calls through.
+  Tests: `TestSettingsFooterCarriesDeckBackground` (six modes across all five built-in themes,
+  real cells off `Model.View()` via a `vt.Emulator`) and
+  `TestSettingsFooterUnderNoColorCarriesNoEscapes` (`internal/tui/
+  settings_footer_background_test.go`).
+  Feature: `features/settings_footer_background.feature`'s three real-binary scenarios --
+  "the settings takeover's plain footer paints deck background across its whole row", "the
+  settings takeover's discard-confirm footer paints deck background across its whole row" and
+  "the settings takeover's search footer paints deck background across its whole row" -- each
+  closing the takeover with esc before exiting (`q` is not bound while `m.settingsOpen`).
 
 - Tests carried over unchanged from approach 2:
   `TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundSideBySide`,
@@ -252,8 +277,23 @@ label (approach 1, commit `4c80e5cb`); the badge's `safe`-suppression rule
 
 ### R127 — features/codex_hooks.feature with SPEC §13.4's @codex scenario; codex covered in the ordinary feature places; one @real-agents codex conformance scenario
 
-**Shipped**, unchanged from approach 2 — not in this approach's scope.
+**Shipped**, cured further this approach (review pass 234's second new red).
 
+- **The real-Codex first-hook wait, `waitForRealCodexHook`** (`features/real_agent_hooks_test.go`):
+  review pass 234's finding — the helper rejected an initially empty conversation id the
+  instant it was called, before its own bounded 20s polling loop ever ran, rejecting the
+  documented, normal asynchronous interval between codex's first prompt (SPEC §8.2 / R125)
+  and its first SessionStart hook. Task cure-03-02 (commit `7bb1f8a` — "features: wait for
+  codex's asynchronous first-hook identity adoption before checking (task cure-03-02)") makes
+  the helper wait for authoritative adoption within that same 20s deadline instead, deriving
+  the expected `session_id` only once adoption has actually happened; payload/cwd checks and
+  the diagnostic timeout are unchanged.
+  Test: `TestWaitForRealCodexHookAllowsDelayedFirstHookAdoption`
+  (`features/real_agent_hooks_test.go`) — a deterministic regression against the real wait
+  helper: an initially empty row, adoption and its SessionStart hook delivered together after
+  a 200ms delay, a successful result within the deadline, plus an already-adopted control. The
+  Codex-less `real_agent_smoke.feature` scenario still skips cleanly (no real `codex` CLI in
+  this sandbox).
 - `features/codex_hooks.feature`'s one `@codex`-tagged scenario carries the attribution and
   timing oracles approach 2 added: each pane's own authoritative SessionStart identity
   (`session_id`/`transcript_path`), a negative-control Go test
@@ -268,70 +308,113 @@ label (approach 1, commit `4c80e5cb`); the badge's `safe`-suppression rule
   `features/real_agent_smoke.feature`'s `@codex-real-agent-conformance` scenario — unchanged,
   not in this approach's scope.
 
-## Tier 2 — status stated plainly: NOT STARTED
+## Tier 2 — R128 through R131, each stated individually: NOT STARTED
 
-**Tier 2 (R128–R131) was not started in this approach.** At plan time (`2026-09-17T04:58Z`)
-approximately 6 hours of wall clock remained against the deadline
-`2026-09-17T11:00:06Z`, while the two mandatory sweeps this approach's own tasks 003 and 004
-require — the full-suite gate (measured at ~7m21s/441s) and the ten-run stability sweep
-(measured at ~1h12m) — alone consume roughly 1h20m of that budget. Against that remaining
-wall clock, this approach's scope was bounded to review's one remaining blocking finding (B1's
-same-class residual, tasks 001–002) plus residual R2's citations and the record (tasks 005–009):
-a materially smaller, lower-risk body of work than Tier 2's four requirements, which remain an
-all-or-nothing store-schema migration, a four-call-site sidebar grouping-model replacement with
-flat-mode removal, a create-modal field, an `i`-dialog move path, and a full settings groups
-CRUD surface — the same larger surface approaches 1 and 2 already declined to start under
-comparable deadlines. No Tier 2 code landed in this approach; this decision only re-affirms,
-and does not narrow, the not-started status approaches 1 and 2 already recorded.
+Review pass 234's residual R3 asked for R128–R131 as four individually labelled verdicts
+rather than one grouped Tier 2 disposition. Each is stated on its own below; all four share the
+same wall-clock rationale, given once here rather than four times: this approach's deadline is
+`2026-09-17T18:01:18Z` (operator-extended from the original `2026-09-17T11:00:06Z`; max
+approaches raised to 4 in the same extension). At this report's own writing time
+(`2026-09-17T11:51:32Z`) roughly 6h10m of wall clock remain against that deadline, and this
+approach's two mandatory sweeps alone already consumed close to 1h20m of the approach's total
+budget (task 003's full-suite gate, ≈7m6s; task 004's ten-run stability sweep, ≈1h11m41s — both
+cited in full under "Both sweeps" below). That remaining wall clock was spent curing review
+pass 234's two new blocking reds (B1's settings-footer residual, task cure-03-01; the premature
+real-Codex first-hook rejection, task cure-03-02), re-running both mandatory sweeps from scratch
+at the resulting new tail sha, and writing this record tail (tasks 005–010) — a bounded cure of
+an already-rejected approach, not a reopening of Tier 2. No Tier 2 code landed in this approach;
+this re-affirms, and does not narrow, the not-started status approaches 1 and 2 already
+recorded under their own comparable deadlines.
+
+### R128 — the group model replaces the workspace label (T2)
+
+**NOT STARTED.** Against the wall-clock budget above, `state.db` still carries `sessions.
+workspace` and `store.DefaultWorkspace`; no `groups` table, `sessions.group_id`, migration, or
+name-uniqueness/reserved-name enforcement was added, and `DECK_SESSION_WORKSPACE`/the
+notification payload's `workspace` field were not renamed. This requirement's own migration is
+explicitly all-or-nothing with R129–R131 (Tier 2's own PRD text), and is itself a full schema
+migration with a fixture-DB test matrix — a materially larger, higher-risk unit of work than
+this approach's own bounded scope (review's two new reds plus the record tail) affords inside
+the remaining budget.
+
+### R129 — the sidebar renders manual groups (T2)
+
+**NOT STARTED**, and could not start independently of R128 (Tier 2 is all-or-nothing): the
+sidebar still groups by workspace via `internal/tui`'s `ui.group_by_workspace`-gated logic;
+`reorderPreservingGrouping`, the flat no-header mode and the `group_by_workspace` config
+key/env override/schema row/settings row are all still present, none removed. This
+requirement's own scope — group-id-keyed navigation across `internal/tui/group.go`, header
+member counts including empty groups, collapse persistence in `ui_state`, and rewriting the
+flat/grouped navigation-parity tests to prove grouped behaviour alone — is a four-call-site
+replacement of already-working code, not an addition, and was not attempted against the same
+remaining budget.
+
+### R130 — membership is set where the session is (T2)
+
+**NOT STARTED.** The create modal has no `Group` field (it still has no group concept to
+cycle), no last-group-created-into `ui_state` key was added, and the `i` detail dialog has no
+move-to-group picker. This requirement depends on R128's schema and R129's group model existing
+first; against the wall-clock budget above, with R128/R129 not started, R130 could not start
+either.
+
+### R131 — the group list is edited in settings (T2)
+
+**NOT STARTED.** Settings has no groups section — no `n`/`r`/`d` create/rename/delete, no
+move-members-to-`default`-or-delete-them branch on a non-empty group's deletion, and no seam
+added to the existing `dd` batch-delete path for a settings-originated call. Like R130, this
+requirement is unreachable without R128's schema, and represents the largest single remaining
+unit of Tier 2's UI surface (a full CRUD section reusing SPEC §11.5's delete lifecycle); it was
+not attempted against the same remaining wall-clock budget the three verdicts above cite.
 
 **(One paragraph, as this report's own criterion requires): the SPEC-versus-code grouping gap,
 unchanged from approaches 1 and 2.** SPEC's group-based session organization (a `groups` table,
 `sessions.group_id`, sidebar grouping by group id, a create-modal Group field, and a settings
-groups CRUD section) remains unimplemented. The code continues to group sessions by workspace
-instead, via `store.go`'s `DefaultWorkspace` field and `internal/tui`'s workspace-based
-grouping gated by the `ui.group_by_workspace` config key — the exact mechanism R129 would have
-required removing (flat mode, `group_by_workspace`, `reorderPreservingGrouping`). This is the
-plan's explicitly disclosed, accepted, **not-a-finding** consequence of the Tier-1/Tier-2
-budget decision, re-affirmed rather than narrowed by this approach: it is not scored in
-`docs/reports/phase4-findings.md`, and it is never "cured" by editing SPEC — SPEC.md is a
-protected path in this run and stays untouched.
+groups CRUD section — R128–R131 above) remains unimplemented. The code continues to group
+sessions by workspace instead, via `store.go`'s `DefaultWorkspace` field and `internal/tui`'s
+workspace-based grouping gated by the `ui.group_by_workspace` config key — the exact mechanism
+R129 would have required removing (flat mode, `group_by_workspace`,
+`reorderPreservingGrouping`). This is the plan's explicitly disclosed, accepted,
+**not-a-finding** consequence of the Tier-1/Tier-2 budget decision, re-affirmed rather than
+narrowed by this approach: it is not scored in `docs/reports/phase4-findings.md`, and it is
+never "cured" by editing SPEC — SPEC.md is a protected path in this run and stays untouched.
 
 ## R132 — the record matches the tree (T1)
 
-**Shipped for this approach's own record, at the tail code sha `3568bd7`.** R132 is the only
+**Shipped for this approach's own record, at the tail code sha `7bb1f8a`.** R132 is the only
 requirement whose deliverable is this record itself, so its verdict is stated against its own
 four bullets:
 
 - **`docs/reports/phase4-report.md` states, per requirement, what shipped, the commits and the
   tests that prove it, and for anything that did not ship what is missing and why.** Green —
-  this file, rewritten from scratch under task 005 at `3568bd7` (it previously stood at
-  approach 2's `0ba550a`). Every requirement number R116–R132 carries a verdict above:
-  R116–R127 individually, R128–R131 as the explicitly grouped **NOT STARTED** verdict in the
-  Tier 2 section (with the wall-clock budget behind it and the SPEC-versus-code grouping gap
-  in the one disclosed paragraph that section requires), and R132 here. Every commit sha and
-  every `Test*`/scenario name this file cites was checked to resolve in the tree at report-
-  writing time (`git cat-file -e <sha>^{commit}` per sha, `grep` per name).
+  this file, rewritten under task 005 at `7bb1f8a` (it previously stood at this approach's own
+  earlier `3568bd7` recording, itself following approach 2's `0ba550a`). Every requirement
+  number R116–R132 carries its own verdict above: R116–R127 individually (R118 and R127 each
+  carrying this approach's own further cures, cure-03-01 and cure-03-02), R128–R131 now each
+  individually labelled **NOT STARTED** in their own subsections (review pass 234's residual
+  R3), with the wall-clock budget behind them and the SPEC-versus-code grouping gap in the one
+  disclosed paragraph that section requires, and R132 here. Every commit sha and every
+  `Test*`/scenario name this file cites was checked to resolve in the tree at report-writing
+  time (`git cat-file -e <sha>^{commit}` per sha, `grep` per name).
 - **`docs/reports/phase4-report.md`'s review-findings section records B1's and B0's
-  dispositions.** Green — see "Review findings from this approach's plan gate (task 006)"
-  below: B1 cured by tasks 001/002 with their commits and tests; B0's disposition read from
-  the identified reporting snapshot (tail code sha, `/run/ralphd/steering`, this run's notify
-  record), citing `ci/review.sh` and `docs/reports/phase4-review-protocol.md`, with no operator
-  authorization found and exactly what is needed named.
+  dispositions.** See "Review findings from this approach's plan gate (task 006)" below — that
+  section's own rewrite, recording B1 cured by tasks 001/002/cure-03-01 and B0 adjudicated and
+  withdrawn by operator ruling, is task 006's own record task, next in this record tail.
 - **`docs/reports/phase4-findings.md` carries every finding this run made and chose not to
   fix, each with a file:line and a reason, including the two known-unverified codex items by
   name.** Not yet at this approach's tail — that is task 008's own record task, following
   task 007's R2 citation correction.
 - **`docs/DELIVERY-LOG.md` gains this approach's entry in the existing shape.** Not yet at
-  this approach's tail either; it is the last record task (009).
+  this approach's tail either; it is corrected in place by the last record task (010), on top
+  of approach 3's own already-validated entry (task 009).
 - **Both gates are reported with their commands, their durations and the sha they ran at — the
   final code sha per Materiality's termination rule.** Green — see "Both sweeps" immediately
   below: the full-suite gate plus build/vet/gofmt guards (task 003) and the ten-run stability
   sweep (task 004), each with its command as run, its duration, the shared tail code sha
-  `3568bd7`, and its own committed directory under `docs/reports/`.
+  `7bb1f8a`, and its own committed directory under `docs/reports/`.
 
-This report's own remaining bullets are docs-only work on top of `3568bd7`. Per the PRD's own
+This report's own remaining bullets are docs-only work on top of `7bb1f8a`. Per the PRD's own
 Materiality termination rule (and the standing rules that restate it) a docs-only tail commit
-invalidates neither sweep and is itself exempt from re-verification, so tasks 006–009 land
+invalidates neither sweep and is itself exempt from re-verification, so tasks 006–010 land
 against this same tail code sha and do not reopen the sweeps reported below. This report is
 written once, at that sha, and is not re-audited by any later task.
 
@@ -428,66 +511,90 @@ packaging is ever added to satisfy it).
 - **Command**: `ci/run.sh go test -p=1 -count=1 -timeout=40m ./...` — every package, no
   `-run` filter, no package list. Build/vet/gofmt guards: `ci/run.sh sh -c 'go build ./...'`,
   `ci/run.sh go vet ./...`, `ci/run.sh gofmt -l .`.
-- **Tail code sha**: `3568bd7971a782fadbf589d79ce5777c0f1b5315`.
-- **Duration**: ≈6m52s (~412s), `2026-09-17T05:31:29Z` → `2026-09-17T05:38:21Z` (consistent
-  with the ~441s/7m21s measured for the same command earlier in this approach, warm cache;
-  ordinary variance, not a different command or a narrowed sweep).
-- **Result**: PASS. All packages with tests report `ok` (`cmd/deck`, `cmd/fake-claude`,
+- **Tail code sha**: `7bb1f8add502412618ebf4f195b18ffd5536b64a` (`7bb1f8a`), confirmed by
+  `git log --format=%H -1 -- '*.go' '*.feature'` == `git rev-parse HEAD` at recording time
+  (task 003's own `abd963f` docs-only commit landed after this sha with no further `*.go`/
+  `*.feature` change).
+- **Duration**: ≈7m6s (~426s), `2026-09-17T10:07:38Z` → `2026-09-17T10:14:44Z`, matching the
+  sum of `go test`'s own per-package timings (419.7s) plus sibling-container startup/teardown
+  overhead; consistent with the ~441s/7m21s plan-time measurement and the ~412s measured at
+  the prior (now-superseded) tail sha `3568bd7` — ordinary variance, not a different command
+  or a narrowed sweep.
+- **Result**: PASS. All 15 packages with tests report `ok` (`cmd/deck`, `cmd/fake-claude`,
   `cmd/fake-codex`, `cmd/fake-pi`, `features`, `internal/agent`, `internal/audit`,
   `internal/config`, `internal/hookrecv`, `internal/interactive`, `internal/service`,
   `internal/store`, `internal/theme`, `internal/tmux`, `internal/tui`); `internal/notify`,
-  `internal/search` and `internal/unit` report `[no test files]`; no `FAIL` line anywhere.
-  Build and vet guards both exit 0 with empty output. `gofmt -l .` exits 0 and lists exactly
-  the four **pre-existing** drift paths (no `.review-clone/` present at recording time, so
+  `internal/search` and `internal/unit` report `[no test files]`; no `FAIL` line anywhere
+  (`grep -c '^FAIL' full-suite.log` == 0). Build and vet guards both exit 0 with empty output.
+  `gofmt -l .` exits 0 and lists exactly the four **pre-existing** drift paths (no
+  `.review-clone/` present at recording time — confirmed by `ls .review-clone` failing — so
   the fifth pre-existing path does not appear):
   - `internal/theme/quantize_test.go`
   - `.spike-preview/cmd/conformance/main.go`
   - `.spike-preview/conformance/conformance.go`
   - `.spike-preview/conformance/conformance_test.go`
 
-  None of these paths were touched by this approach's own commits (tasks 001/002 touched only
-  `internal/tui/*.go`).
+  None of these paths were touched by this approach's own commits (tasks 001, 002, cure-03-01
+  and cure-03-02 touched only `internal/tui/*.go` and `features/*.go`/`*.feature`, none of
+  these four).
 - **Skips in force**: godog's default `~@real-agents && ~@nightly` tag filter, and the
   real-binary skips that leave the `cmd/fake-claude`/`cmd/fake-codex`/`cmd/fake-pi` stubs as
   the tested surface for agent adapters (no real Claude/Codex/pi CLI reachable from this
   sandbox).
 - **Evidence**: `docs/reports/phase4-a3-final-suite/{README.md,full-suite.log,build.log,
-  vet.log,gofmt.log}`.
+  vet.log,gofmt.log}` — the source this section's own numbers are taken from, per this task's
+  own criteria.
 
 ### Ten-run stability sweep (task 004)
 
 - **Command**: `ci/stability.sh 10` (ten independent repetitions of `ci/run.sh go test -p=1
   -count=1 ./...`, `-count=1` disables the test cache, each run its own `--rm` sibling).
-- **Tail code sha**: `3568bd7971a782fadbf589d79ce5777c0f1b5315` (unchanged from the gate above
-  — `git diff --stat 3568bd7 HEAD -- '*.go' '*.feature'` empty at recording time).
-- **Duration**: ≈1h09m end to end (script launched ~05:48:16Z; `run-1.log` created
-  `2026-09-17T05:55:31Z`; `run-10.log`/summary completed `2026-09-17T06:57:29Z`) — under the
-  ~1h12m plan-time estimate; **no features-only fallback was needed or taken**.
-- **Result**: **10/10 PASS.** No run's `go test` exit status was non-zero and no `FAIL` line
-  appears in any of the ten per-run logs. Both known-open advisory flakes named in the standing
-  rules (`TestSigwinchCountDistinguishesTwoFromThree`; `internal/tmux`'s
-  `TestSendKeysInvalidHexByteIsSilentlyDiscarded` empty-capture case) were checked for by name
-  across all ten logs and appeared in none of them, so no row in the summary table carries the
-  advisory label this sweep (the criterion only requires labelling rows where a flake actually
-  appears; a manifested flake would read **FAIL** with that test named and the advisory label
-  applied, never a bare PASS, since both cases report through `t.Fatalf` and
-  `ci/stability.sh` labels a repetition from `go test`'s own exit status).
+- **Tail code sha**: `7bb1f8add502412618ebf4f195b18ffd5536b64a` (`7bb1f8a`, unchanged from the
+  gate above — `git diff --stat 7bb1f8a HEAD -- '*.go' '*.feature'` empty at recording time;
+  `HEAD` at launch was task 003's own `abd963f`, docs-only).
+- **Duration**: **1h11m41s** end to end (script launched `2026-09-17T10:26:28Z`; `run-1.log`
+  completed `2026-09-17T10:33:40Z`; `run-10.log`/summary completed `2026-09-17T11:38:09Z`) —
+  under the ~1h12m plan-time estimate; **no features-only fallback was needed or taken**. This
+  supersedes the ten-run record previously written at the prior tail sha `3568bd7` (commits
+  `5f1fb5c`/`deca67c`): the two cure tasks landed `*.go`/`*.feature` changes on top of that sha,
+  so that earlier record was a measurement of a superseded tree.
+- **Result**: **10/10 PASS.** Every one of the ten per-run logs lists all 18 packages `go list
+  ./...` returns for this module. No run's `go test` exit status was non-zero and no `FAIL`
+  line appears in any of the ten per-run logs (`grep -rn FAIL run-*.log` empty), agreeing with
+  `ci/stability.sh`'s own tally in `stability-summary.log` (`10/10 passed`) and its own `exit
+  0`. Both known-open advisory flakes named in the standing rules
+  (`TestSigwinchCountDistinguishesTwoFromThree`, `features/sigwinch_count_test.go:24`;
+  `TestSendKeysInvalidHexByteIsSilentlyDiscarded`'s empty-capture case,
+  `internal/tmux/literal_send_test.go:123`) were searched for by name across all ten logs and
+  appeared in none of them, so no row in the summary table carries the advisory label (a
+  manifested flake would read **FAIL** with that test named and the advisory label applied,
+  never a bare PASS, since both cases report through `t.Fatalf` and `ci/stability.sh` labels a
+  repetition from `go test`'s own exit status, captured immediately after the un-piped command,
+  never from log text).
 - **Evidence**: `docs/reports/phase4-a3-stability10/{README.md,run-1.log..run-10.log,
-  stability-summary.log}`.
+  stability-summary.log}` — the source this section's own numbers are taken from, per this
+  task's own criteria.
 
 ## Summary
 
-Every Tier 1 requirement (R116–R127) is green at this approach's tail code sha `3568bd7`,
-cited above against its own commit(s) and test(s); R118 carries two further, same-class B1
-cures this approach delivered (`92619cf`/`48bce3d` for the crop-decoration geometry line and
-blank-fill rows, `3568bd7` for the interactive-preview branch's notice and pad rows), on top of
-approach 2's own already-shipped B1/B2/B3/R1 cures which this report continues to cite
-unchanged for R116, R120, R121 and R127. Tier 2 (R128–R131) remains not started, re-affirming
-approaches 1 and 2's own budget decision and not narrowing the disclosed, not-scored
-SPEC-versus-code grouping gap. Both mandatory sweeps for this approach (the full-suite gate
-with the build/vet/gofmt guards, and the ten-run stability sweep) are reported above with
-their commands, durations and the shared tail code sha, which is also R132's fourth bullet;
-R132's own verdict is stated in its own section above (this report green at `3568bd7`; the
-review-findings section, `phase4-findings.md` and `docs/DELIVERY-LOG.md` are the three
-immediately following docs-only record tasks, 006–009). Each sweep points at its own committed
-directory under `docs/reports/` (`phase4-a3-final-suite/`, `phase4-a3-stability10/`).
+Every Tier 1 requirement (R116–R127) is green at this approach's tail code sha `7bb1f8a`,
+cited above against its own commit(s) and test(s); R118 now carries three same-class B1 cures
+across this run (`92619cf`/`48bce3d` for the crop-decoration geometry line and blank-fill rows,
+`3568bd7` for the interactive-preview branch's notice and pad rows, and this approach's own
+`2a04e5a` for the settings takeover's footer row), and R127 carries this approach's own
+`7bb1f8a` cure of the premature real-Codex first-hook rejection — both review pass 234's two
+new reds, both cured this approach. Every other Tier 1 requirement keeps its unchanged prior
+citation from approaches 1/2 (R116, R119, R120, R122–R126 unchanged from approach 1 or 2 as
+noted per-section above). Tier 2 (R128–R131) remains not started, now stated as four
+individually labelled verdicts (review pass 234's residual R3) rather than one grouped
+disposition, each re-affirming approaches 1 and 2's own budget decision against this
+approach's own extended deadline (`2026-09-17T18:01:18Z`) and not narrowing the disclosed,
+not-scored SPEC-versus-code grouping gap. Both mandatory sweeps for this approach (the
+full-suite gate with the build/vet/gofmt guards, and the ten-run stability sweep) are reported
+above with their commands, durations and the shared tail code sha `7bb1f8a`, taken from
+`docs/reports/phase4-a3-final-suite/README.md` and `docs/reports/phase4-a3-stability10/
+README.md`, which is also R132's fourth bullet; R132's own verdict is stated in its own
+section above (this report green at `7bb1f8a`; the review-findings section, `phase4-
+findings.md` and `docs/DELIVERY-LOG.md`'s correction are the three immediately following
+docs-only record tasks, 006–008 and 010). Each sweep points at its own committed directory
+under `docs/reports/` (`phase4-a3-final-suite/`, `phase4-a3-stability10/`).
