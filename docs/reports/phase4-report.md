@@ -454,55 +454,65 @@ accepted.
   `TestInteractiveNotRepaintedNoticeCarriesDeckBackground`
   (`internal/tui/interactive_notice_background_test.go`).
 
-Both commits, and both sets of new tests, are unchanged citations of R118's own section above --
-this section adds no new evidence, it states B1's disposition against evidence already cited. B1
-is **cured**, not an accepted residual and not a cure claimed before its own commits landed (both
-commits predate this report; `git cat-file -e 92619cf^{commit}`, `git cat-file -e 48bce3d^{commit}`
-and `git cat-file -e 3568bd7^{commit}` all resolve).
+- **Task cure-03-01** (commit `2a04e5a` -- "tui: paint the settings takeover footer through the
+  shared canvas helper (task cure-03-01)") cured review pass 234's own new B1 finding, raised
+  against this same approach's plan gate: `settingsFooterLine` (`internal/tui/settings.go`)
+  returned its composed footer text as a bare string with no `theme.Background` token, so the
+  settings takeover's own footer row leaked the terminal's background in every settings mode.
+  Task cure-03-01 split `settingsFooterLine` into `settingsFooterLineContent` (the existing text
+  composition, unchanged) and a thin `canvasBackground`-wrapping caller, painting the footer the
+  same way the crop and interactive branches above were already painted. New tests:
+  `TestSettingsFooterCarriesDeckBackground` (six modes across all five built-in themes) and
+  `TestSettingsFooterUnderNoColorCarriesNoEscapes`
+  (`internal/tui/settings_footer_background_test.go`), plus
+  `features/settings_footer_background.feature`'s three real-binary scenarios.
 
-### B0 -- the reviewer's Python-package disposable-clone measurement protocol does not apply to this Go repository -- **disposition read from a named snapshot; authorization still missing**
+All three commits, and all their new tests, are unchanged citations of R118's own section above
+-- this section adds no new evidence, it states B1's disposition against evidence already cited.
+B1 is **cured**, not an accepted residual and not a cure claimed before its own commits landed
+(all three commits predate this report; `git cat-file -e 92619cf^{commit}`,
+`git cat-file -e 48bce3d^{commit}`, `git cat-file -e 3568bd7^{commit}` and
+`git cat-file -e 2a04e5a^{commit}` all resolve).
+
+### B0 -- the reviewer's Python-package disposable-clone measurement protocol does not apply to this Go repository -- **ADJUDICATED AND WITHDRAWN by operator ruling**
 
 B0's own clause (review's finding text) is: an operator-authorized Go-compatible disposable-
 clone/import-identity protocol is needed before independent behavioural verification of
 R116-R127 can run; a worker-authored script or task plan is not, by itself, an operator amendment
 of the reviewer contract.
 
-**Reporting snapshot** this disposition is read from:
+A prior snapshot of this section, taken at `2026-09-17T07:17:13Z` and recorded against commit
+`b9ffef3`, read the run's own record (an empty `/run/ralphd/steering` and the one-way `notify`
+send log) and concluded the authorization was still missing. That snapshot has since been
+superseded: the operator recorded a wave-scoped ruling into `/run/ralphd/steering` at
+`2026-09-17T07:59:01Z` (delivered as `001-b0-authorized-use-ci-review-sh.md`), which the
+steering hat applied at `2026-09-17T09:28:47Z`, and the ruling itself is filed at
+`/config/amendments/001-WAVE.md`, timestamped `2026-09-17T07:57:41Z`. That amendment is the
+disposition now on record, replacing the `b9ffef3` snapshot's "still missing" reading rather
+than standing alongside it.
 
-- **Tail code sha**: `3568bd7971a782fadbf589d79ce5777c0f1b5315` (unchanged since task 002; see
-  this report's own header).
-- **`/run/ralphd/steering` read at `2026-09-17T07:17:13Z`**: the directory exists and is empty
-  (`find /run/ralphd/steering -mindepth 1` returns nothing) -- no operator instruction of any kind
-  has been delivered to this run through that channel, let alone a B0 authorization.
-- **This run's own notify record** (`/run/ralphd/events.jsonl`'s `notification.sent` events): 53
-  sends recorded end to end (`2026-09-16T07:34:27Z` through `2026-09-17T07:14:53Z`), every one
-  `httpStatus: 200`, each carrying only a `textSha256` of its own outbound text -- the channel is
-  a Telegram push notification, one-way engine-to-operator with **no reply channel** (the
-  `telegram-notify` skill's own file: "It is send-only -- there is no reply channel, so never wait
-  for an answer"). B0's own authorization was named to the operator over exactly this channel in
-  an early iteration of this approach (per the standing rules' notify list: "B0 and the exact
-  authorization it needs"), but the channel structurally cannot carry a reply back into this run
-  -- an authorization, if the operator granted one out of band, would have to arrive via
-  `/run/ralphd/steering`, which the same snapshot above shows empty.
-- **The Go analogue offered in place of the reviewer's own protocol**: `ci/review.sh` (commit
-  `2786d3c`, approach 2) and `docs/reports/phase4-review-protocol.md`, which documents that
-  script's disposable git-ignored clone plus its own identity assertion (`go list -m` resolves to
-  `github.com/n-orlov/deck`; `go list -f '{{.Dir}}' ./internal/agent` resolves under the clone,
-  not the original checkout) as the direct Go equivalent of the reviewer's Python
-  `pip install -e .` / `ralphd.__file__`-under-clone check.
+**Disposition: ADJUDICATED AND WITHDRAWN.** `/config/amendments/001-WAVE.md` states, verbatim:
 
-**Disposition at this snapshot: the authorization is still missing.** Neither
-`/run/ralphd/steering` nor any record this run can read carries an operator statement accepting
-`ci/review.sh`'s identity assertion as satisfying B0's clause in place of the Python-package
-protocol -- review's own finding is explicit that a worker-authored script or an approved task
-plan does not itself constitute that amendment, and nothing at this snapshot changes that.
-**Exactly what is needed**: an explicit operator authorization, delivered through a channel this
-run can read back (i.e. `/run/ralphd/steering`, not a one-way notify send), stating that
-`ci/review.sh`'s disposable-clone module-identity check (`docs/reports/phase4-review-protocol.md`)
-is accepted as the Go-compatible substitute for the reviewer's own Python disposable-clone/
-import-identity protocol for this repository. Until that arrives, B0 remains blocking and is not
-curable by any task in this Go repository's own code or tests, per the standing rules (no Python
-packaging is ever added to satisfy it).
+> I am the operator. I authorize the substitution the reviewer asked for in B0's own remedy ("an
+> operator-authorized Go-compatible disposable-clone protocol is needed").
+
+and names the concrete replacement:
+
+> Use `ci/review.sh`, committed at 2786d3c by approach 2's task 001, and documented at
+> docs/reports/phase4-review-protocol.md. It is the Go analogue of the prompt's check and
+> preserves the property the prompt exists to guarantee
+
+B0 is therefore **withdrawn as a blocking finding by operator decision**, and `ci/review.sh`
+(commit `2786d3c`) plus `docs/reports/phase4-review-protocol.md` is the authorized,
+Go-compatible replacement for the review prompt's Python disposable-clone bootstrap, for the
+rest of this run. This disposition is not curable-in-code and needed none: the gap was never a
+product defect, only a missing operator authorization, and that authorization has now been
+granted and is on record. No Python packaging, `pyproject.toml`, `setup.py` or `ralphd` module
+has been or will be added to this Go repository to manufacture identity evidence -- the ruling
+forbids it and so does the standing-rules block governing this run. R116-R127's own
+per-requirement verdicts above (this report's earlier sections) are the real measurements taken
+under the authorized protocol that this ruling unblocked; none of them reads "NOT VERIFIED" for
+want of B0.
 
 ## Both sweeps
 
