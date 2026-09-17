@@ -29,6 +29,20 @@ const (
 	goldenFrameColorDepth = "truecolor"
 )
 
+// goldenFrameQuietFor is how long the client's PTY must stay silent before
+// renderGoldenMinimumFrame treats the grid as a whole frame rather than a
+// half-written one, and goldenFrameSettleAttempts is how many times it will
+// re-quiesce and re-compare before declaring the frame unsettleable. The
+// quiet window is deliberately longer than deck's own previewTick (250ms,
+// internal/tui/tui.go) so a tick-driven repaint that is already in flight
+// lands inside the window instead of after the baseline capture; the
+// attempts exist so a late, legitimate repaint costs a retry rather than a
+// failed run.
+const (
+	goldenFrameQuietFor       = 300 * time.Millisecond
+	goldenFrameSettleAttempts = 5
+)
+
 // TestGoldenMinimumFrame asserts the released binary's own rendered frame,
 // byte-for-byte, at the exact size and mode SPEC §11.2 names as the golden
 // minimum frame: 80×24, auto layout choosing side-by-side (sidebar 35 total
@@ -226,14 +240,47 @@ func renderGoldenMinimumFrame(t *testing.T) string {
 		t.Fatalf("preview never showed the fixture's own last line: %v", err)
 	}
 
-	// Give one more preview/reconcile tick's worth of headroom, then confirm
-	// the frame is still identical -- a torn or still-settling frame must
-	// never be mistaken for the golden frame (features/layout_modes.feature's
-	// gotcha #3 applies here too).
-	settled := client.Frame(true)
-	time.Sleep(150 * time.Millisecond)
-	if got := client.Frame(true); got != settled {
-		t.Fatalf("frame kept changing after the fixture rendered; not settled\nbefore:\n%s\nafter:\n%s", settled, got)
+	// Take the baseline only once the PTY has actually gone quiet, then give
+	// one more preview/reconcile tick's worth of headroom and confirm the
+	// frame is still identical -- a torn or still-settling frame must never be
+	// mistaken for the golden frame (features/layout_modes.feature's gotcha #3
+	// applies here too).
+	//
+	// Reading the baseline with a bare client.Frame(true), as this did before
+	// task 011b, is unsound even after every content gate above has passed:
+	// the waits above are satisfied by a substring landing in the grid, which
+	// happens as soon as the row that carries it is written, while the
+	// renderer is still emitting the REST of that same repaint. A baseline
+	// captured in that window is a genuinely torn frame -- reproduced
+	// directly at 3/12 sub-runs before this change, always the same shape:
+	// "before" missing the bottom border and the footer line that "after"
+	// then has. Waiting for a quiet PTY window first (ScreenDriver.
+	// WaitForQuiescence, task 406, the same fix clientCapturesFrameAs already
+	// uses for the same reason) makes the baseline whole; the compare that
+	// follows keeps its full discriminating power, and the byte-exact
+	// comparison against the checked-in golden is untouched.
+	//
+	// The compare is retried rather than fatal on its first mismatch, up to
+	// goldenFrameSettleAttempts, because a repaint CAN still legitimately land
+	// after a quiet window (a preview capture whose content changed, an
+	// external resize-window convergence step): the right response is to
+	// re-quiesce and look again, not to call the frame unsettleable. A frame
+	// that truly never stops moving still fails, with the last pair shown.
+	var settled string
+	for attempt := 1; ; attempt++ {
+		quiet, err := client.WaitForQuiescence(ctx, true, goldenFrameQuietFor)
+		if err != nil {
+			t.Fatalf("frame never went quiet after the fixture rendered (attempt %d): %v", attempt, err)
+		}
+		time.Sleep(150 * time.Millisecond)
+		got := client.Frame(true)
+		if got == quiet {
+			settled = quiet
+			break
+		}
+		if attempt >= goldenFrameSettleAttempts {
+			t.Fatalf("frame kept changing after the fixture rendered; not settled after %d attempts\nbefore:\n%s\nafter:\n%s", attempt, quiet, got)
+		}
 	}
 
 	assertGoldenFrameIsThemed(t, ctx, client)
