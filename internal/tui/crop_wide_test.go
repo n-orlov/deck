@@ -76,7 +76,7 @@ func TestCropPreviewBottomLeftWideFixtureKeepsBorderColumn(t *testing.T) {
 	raw := previewFixture(t, "wide.txt")
 	const realWidth, realHeight = 20, 4
 	for _, contentWidth := range []int{5, 9, 10, 11, 15, 19, 20} {
-		lines := m.cropPreviewBottomLeft(raw, contentWidth, realHeight, realWidth, realHeight)
+		lines, _ := m.cropPreviewBottomLeft(raw, contentWidth, realHeight, realWidth, realHeight)
 		for i, line := range lines {
 			if got := stringWidth(line); got != contentWidth {
 				t.Fatalf("contentWidth=%d lines[%d] = %q, display width %d, want %d", contentWidth, i, line, got, contentWidth)

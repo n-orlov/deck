@@ -5099,15 +5099,19 @@ func (m Model) previewTitle() string {
 // exactly contentWidth runes, so callers no longer need their own fitLines
 // pass for the preview panel.
 //
-// The second return is that same slice's own per-row provenance (task
-// 002/B1): every branch here is entirely one owner or the other, never a
-// per-branch mix -- the no-session sentence and previewPlaceholderLines'
-// copy (blank fitLines pad included) are deck's own composed text, while a
-// live capture (cropPreviewBottomLeft) and the live interactive grid
-// (interactiveBodyLines) are foreign screen content this function never
-// wrote a byte of. previewContentLine/fullBoxPreviewContentLine are the
-// only callers that act on it, and only to decide how to paint, never to
-// alter what these lines actually say.
+// The second return is that same slice's own per-row provenance. The
+// no-session sentence and previewPlaceholderLines' copy (blank fitLines pad
+// included) are entirely deck's own composed text (deckOwnedPreviewLines);
+// the live interactive grid (interactiveBodyLines, task 002/B1) is entirely
+// foreign screen content this function never wrote a byte of. The live
+// capture branch (cropPreviewBottomLeft, task 001/B1) is the one branch
+// that is NOT entirely one owner: cropPreviewBottomLeft itself returns a
+// per-row mix -- its own geometry line and vertical blank-fill rows are
+// deck-owned, every row built from the pane's own captured bytes stays
+// foreign -- and this function passes that mix through unchanged.
+// previewContentLine/fullBoxPreviewContentLine are the only callers that
+// act on the provenance, and only to decide how to paint, never to alter
+// what these lines actually say.
 func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
 	if m.interactive && m.interactiveGrid != nil {
 		lines := m.interactiveBodyLines(contentWidth, contentHeight)
@@ -5119,8 +5123,8 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []pr
 	}
 	session := m.sessions[m.selected]
 	if m.previewLive && m.previewSessionID == session.ID {
-		lines := m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
-		return lines, foreignPreviewLines(len(lines))
+		lines, owners := m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
+		return lines, owners
 	}
 	lines := fitLines(m.previewPlaceholderLines(session, contentWidth, contentHeight), contentHeight)
 	return lines, deckOwnedPreviewLines(len(lines))

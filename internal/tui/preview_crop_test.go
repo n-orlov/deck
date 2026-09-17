@@ -30,7 +30,7 @@ func previewFixture(t *testing.T, name string) []byte {
 func TestCropPreviewBottomLeftFitsWithoutGeometryLine(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	raw := previewFixture(t, "fitting.txt")
-	lines := m.cropPreviewBottomLeft(raw, 40, 12, 40, 12)
+	lines, _ := m.cropPreviewBottomLeft(raw, 40, 12, 40, 12)
 	if len(lines) != 12 {
 		t.Fatalf("len(lines) = %d, want 12", len(lines))
 	}
@@ -63,9 +63,20 @@ func TestCropPreviewBottomLeftCropsOversizedPane(t *testing.T) {
 	raw := previewFixture(t, "oversized.txt")
 	const contentWidth, contentHeight = 45, 22
 	const realWidth, realHeight = 120, 40
-	lines := m.cropPreviewBottomLeft(raw, contentWidth, contentHeight, realWidth, realHeight)
+	lines, owners := m.cropPreviewBottomLeft(raw, contentWidth, contentHeight, realWidth, realHeight)
 	if len(lines) != contentHeight {
 		t.Fatalf("len(lines) = %d, want %d", len(lines), contentHeight)
+	}
+	if len(owners) != contentHeight {
+		t.Fatalf("len(owners) = %d, want %d", len(owners), contentHeight)
+	}
+	if owners[0] != previewLineDeckOwned {
+		t.Fatalf("owners[0] (geometry line) = %v, want previewLineDeckOwned", owners[0])
+	}
+	for i := 1; i < contentHeight; i++ {
+		if owners[i] != previewLineForeign {
+			t.Fatalf("owners[%d] (captured row) = %v, want previewLineForeign", i, owners[i])
+		}
 	}
 	wantGeometry := "45x22 of 120x40"
 	if got := strings.TrimRight(lines[0], " "); got != wantGeometry {
@@ -122,16 +133,22 @@ func TestCropPreviewBottomLeftCropsOversizedPane(t *testing.T) {
 // still pads rather than stretching.
 func TestCropPreviewBottomLeftClampsToShortHistory(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
-	lines := m.cropPreviewBottomLeft([]byte("only one line"), 20, 5, 20, 5)
+	lines, owners := m.cropPreviewBottomLeft([]byte("only one line"), 20, 5, 20, 5)
 	if len(lines) != 5 {
 		t.Fatalf("len(lines) = %d, want 5", len(lines))
 	}
 	if got := strings.TrimRight(lines[0], " "); got != "only one line" {
 		t.Fatalf("lines[0] = %q, want %q", got, "only one line")
 	}
+	if owners[0] != previewLineForeign {
+		t.Fatalf("owners[0] (real captured row) = %v, want previewLineForeign", owners[0])
+	}
 	for i := 1; i < 5; i++ {
 		if strings.TrimSpace(lines[i]) != "" {
 			t.Fatalf("lines[%d] = %q, want blank", i, lines[i])
+		}
+		if owners[i] != previewLineDeckOwned {
+			t.Fatalf("owners[%d] (synthesized blank-fill row) = %v, want previewLineDeckOwned", i, owners[i])
 		}
 	}
 }
@@ -153,7 +170,7 @@ func TestCropPreviewBottomLeftPreservesColourEscapes(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	raw := []byte("\x1b[31mRED\x1b[0m ROW")
 	const contentWidth, contentHeight = 20, 1
-	lines := m.cropPreviewBottomLeft(raw, contentWidth, contentHeight, contentWidth, contentHeight)
+	lines, _ := m.cropPreviewBottomLeft(raw, contentWidth, contentHeight, contentWidth, contentHeight)
 	if len(lines) != 1 {
 		t.Fatalf("len(lines) = %d, want 1", len(lines))
 	}
@@ -177,10 +194,10 @@ func TestCropPreviewBottomLeftPreservesColourEscapes(t *testing.T) {
 // which this function must still handle without panicking.
 func TestCropPreviewBottomLeftZeroSize(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
-	if got := m.cropPreviewBottomLeft([]byte("x"), 0, 5, 10, 10); got != nil {
-		t.Fatalf("cropPreviewBottomLeft with contentWidth=0 = %#v, want nil", got)
+	if got, gotOwners := m.cropPreviewBottomLeft([]byte("x"), 0, 5, 10, 10); got != nil || gotOwners != nil {
+		t.Fatalf("cropPreviewBottomLeft with contentWidth=0 = %#v/%#v, want nil/nil", got, gotOwners)
 	}
-	if got := m.cropPreviewBottomLeft([]byte("x"), 5, 0, 10, 10); got != nil {
-		t.Fatalf("cropPreviewBottomLeft with contentHeight=0 = %#v, want nil", got)
+	if got, gotOwners := m.cropPreviewBottomLeft([]byte("x"), 5, 0, 10, 10); got != nil || gotOwners != nil {
+		t.Fatalf("cropPreviewBottomLeft with contentHeight=0 = %#v/%#v, want nil/nil", got, gotOwners)
 	}
 }

@@ -787,9 +787,22 @@ func splitPreviewLines(raw []byte) []string {
 // appended past contentWidth, so the panel's right border always lands in
 // the same column regardless of crop offset (task 019 makes this
 // substitution cell-aware so it can never land inside a wide glyph).
-func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, realWidth, realHeight int) []string {
+//
+// The second return is this slice's own per-row provenance (task 001/B1):
+// the geometry line above and the vertical blank-fill rows appended below
+// (a pane shorter than contentHeight, top-anchored) are deck's OWN
+// composed copy, never a byte of the pane's capture, so both are marked
+// previewLineDeckOwned; every row built from an actual captured row via
+// cropRow stays previewLineForeign, since that IS the pane's own screen
+// content (padded/marked by cropRow, which already routes its own added
+// chrome through paintForeignFill). previewContentLine/
+// fullBoxPreviewContentLine use this to decide whether the WHOLE row --
+// text included -- gets one canvasBackground span (owned) or only the
+// flanking border/pad columns (foreign, text left exactly as the pane
+// left it).
+func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, realWidth, realHeight int) ([]string, []previewLineOwner) {
 	if contentWidth <= 0 || contentHeight <= 0 {
-		return nil
+		return nil, nil
 	}
 	rows := splitPreviewLines(raw)
 	cropped := realWidth > contentWidth || realHeight > contentHeight
@@ -806,18 +819,22 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 	}
 	visible := rows[start:]
 	lines := make([]string, 0, contentHeight)
+	owners := make([]previewLineOwner, 0, contentHeight)
 	if cropped {
 		geom := fmt.Sprintf("%dx%d of %dx%d", contentWidth, contentHeight, realWidth, realHeight)
 		lines = append(lines, m.padTrunc(geom, contentWidth))
+		owners = append(owners, previewLineDeckOwned)
 	}
 	for _, row := range visible {
 		lines = append(lines, m.cropRow(row, contentWidth))
+		owners = append(owners, previewLineForeign)
 	}
 	blank := strings.Repeat(" ", contentWidth)
 	for len(lines) < contentHeight {
 		lines = append(lines, blank)
+		owners = append(owners, previewLineDeckOwned)
 	}
-	return lines
+	return lines, owners
 }
 
 // paintForeignFill closes whatever SGR state a foreign captured row's own
