@@ -57,6 +57,38 @@ func (c Client) readBuiltinWindowOption(ctx context.Context, target, name string
 	return trimmed, true, nil
 }
 
+// ServerEnvironment reads one variable from the tmux SERVER's own global
+// environment table via `show-environment -g` -- the environment the
+// server process itself inherited when it started (and any later
+// `set-environment -g`), never this calling process's own ambient
+// environment. That distinction is exactly R121's fix: a later TUI
+// observing an already-running server can have a different ambient value
+// for the same key than the server does, and only this query answers
+// what the server (and therefore any pane it hosts) actually has. ok is
+// false whenever the key is not present in the server's global table
+// (tmux exits non-zero with "unknown variable: KEY", the same error for
+// a key that was never set and one explicitly cleared with `-u`) or the
+// query itself cannot be run at all (no server on this socket, tmux
+// missing) -- callers that only care whether a value exists treat both
+// identically, the same way this package's other option reads decline
+// rather than error on "not set".
+func (c Client) ServerEnvironment(ctx context.Context, key string) (value string, ok bool, err error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, runErr := c.command(commandCtx, "show-environment", "-g", key).CombinedOutput()
+	if runErr != nil {
+		return "", false, nil
+	}
+	trimmed := strings.TrimRight(string(output), "\n")
+	name, value, found := strings.Cut(trimmed, "=")
+	if !found || name != key {
+		// Either the marked-unset "-KEY" shape or something unrecognized;
+		// either way there is no value to report.
+		return "", false, nil
+	}
+	return value, true, nil
+}
+
 // windowAndPaneSize reads #{window_width}, #{window_height},
 // #{pane_width} and #{pane_height} for paneTarget in a single
 // display-message invocation. window_width/height are window-scoped

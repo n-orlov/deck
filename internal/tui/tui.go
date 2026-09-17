@@ -6697,13 +6697,17 @@ func (m Model) agentCapabilities(kind string) (agent.Caps, bool) {
 // TranscriptInput.Env is filled in for exactly the keys the looked-up
 // adapter's own Capabilities().TranscriptEnvKeys names, each resolved
 // through resolveEnvKey (task 015, R121) -- the same server env ->
-// config [env] -> session env precedence the `e` env editor shows --
-// rather than read from this process's own ambient environment, which
-// could belong to a different session's override entirely. This
-// function names no key of its own and branches on no adapter kind: an
-// adapter that declares no TranscriptEnvKeys (claude, pi, shell) simply
-// gets a nil/empty Env, and a future adapter with its own env-keyed
-// convention needs no change here at all.
+// config [env] -> session env precedence the `e` env editor shows,
+// where the server-env layer is the SESSION'S OWN tmux server's actual
+// global environment (tmux.Client.ServerEnvironment, `show-environment
+// -g`) -- rather than read from this observing TUI process's own ambient
+// environment, which can belong to a different session's override
+// entirely, or simply differ from what the already-running server
+// itself inherited when it started. This function names no key of its
+// own and branches on no adapter kind: an adapter that declares no
+// TranscriptEnvKeys (claude, pi, shell) simply gets a nil/empty Env, and
+// a future adapter with its own env-keyed convention needs no change
+// here at all.
 func (m Model) transcriptPathFor(session store.Session) (string, bool) {
 	adapter, ok := m.registry().Lookup(session.Agent)
 	if !ok {
@@ -6715,9 +6719,10 @@ func (m Model) transcriptPathFor(session store.Session) (string, bool) {
 	}
 	var env map[string]string
 	if keys := adapter.Capabilities().TranscriptEnvKeys; len(keys) > 0 {
+		ctx := context.Background()
 		env = make(map[string]string, len(keys))
 		for _, key := range keys {
-			value, _ := m.resolveEnvKey(key, session)
+			value, _ := m.resolveEnvKey(ctx, key, session)
 			env[key] = value
 		}
 	}

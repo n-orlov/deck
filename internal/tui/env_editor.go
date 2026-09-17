@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -56,9 +55,10 @@ func (m Model) sessionEnvRows(session store.Session) []envRow {
 		sorted = append(sorted, key)
 	}
 	sort.Strings(sorted)
+	ctx := context.Background()
 	rows := make([]envRow, 0, len(sorted))
 	for _, key := range sorted {
-		value, layer := m.resolveEnvKey(key, session)
+		value, layer := m.resolveEnvKey(ctx, key, session)
 		rows = append(rows, envRow{Key: key, Value: value, Layer: layer})
 	}
 	return rows
@@ -72,7 +72,17 @@ func (m Model) sessionEnvRows(session store.Session) []envRow {
 // editor must never disagree with what a launch actually does), generalised
 // from that function's PATH/config/session merge to name the winning layer
 // rather than only compute the merged map.
-func (m Model) resolveEnvKey(key string, session store.Session) (value, layer string) {
+//
+// The server-env layer (R121) is read from the SESSION'S OWN tmux server
+// (m.tmuxClient.ServerEnvironment, `show-environment -g`), never from this
+// process's own ambient os.Environ: the observing TUI can be a later
+// process than the one that started the already-running server, with a
+// different ambient value for the same key, and only the server's own
+// table answers what a pane it hosts actually inherited. When there is no
+// tmux client to ask (m.tmuxClient.Socket == "", e.g. a session-only unit
+// test with no real server), the layer is simply absent rather than
+// falling back to this process's own environment.
+func (m Model) resolveEnvKey(ctx context.Context, key string, session store.Session) (value, layer string) {
 	if v, ok := session.Env[key]; ok {
 		return v, envLayerSession
 	}
@@ -82,8 +92,10 @@ func (m Model) resolveEnvKey(key string, session store.Session) (value, layer st
 	if key == "PATH" && session.CapturedPath != "" {
 		return session.CapturedPath, envLayerCapturedPath
 	}
-	if v, ok := os.LookupEnv(key); ok {
-		return v, envLayerServer
+	if m.tmuxClient.Socket != "" {
+		if v, ok, err := m.tmuxClient.ServerEnvironment(ctx, key); err == nil && ok {
+			return v, envLayerServer
+		}
 	}
 	return "", envLayerServer
 }
