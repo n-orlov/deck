@@ -105,10 +105,13 @@ actual capture. This approach closed that gap:
 
 - Tests: `TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundSideBySide`,
   `TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundStacked` (task 002,
-  `internal/tui/preview_pane_repaint_test.go`); `TestCapturedPaneFillPastCaptureCarriesDeckBackground`,
-  `TestCapturedPaneCropMarkerCarriesDeckBackground` (task 003, same file); the pre-existing
-  `TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground` and stacked counterpart
-  (approach 1) remain green and continue to prove a capture's own cells are never repainted;
+  `internal/tui/preview_no_capture_background_test.go`);
+  `TestCapturedPaneFillPastCaptureCarriesDeckBackground`,
+  `TestCapturedPaneCropMarkerCarriesDeckBackground` (task 003,
+  `internal/tui/preview_pane_fill_marker_test.go`); the pre-existing
+  `TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground` and its stacked
+  counterpart `TestCapturedPaneStackedKeepsOwnColourFrameCarriesDeckBackground`
+  (`internal/tui/preview_pane_repaint_test.go`, approach 1) remain green and continue to prove a capture's own cells are never repainted;
   `TestProfileSwitchTokensMatchSpec`, `TestPinTokensMatchSpec`, `TestRestartChoiceTokensMatchSpec`
   (`internal/tui/profile_pin_restart_theme_test.go`, approach 1, unchanged) prove the dialog
   frame builders.
@@ -176,7 +179,7 @@ transcript sub-part's *mechanism* replaced this approach (answers B2).
   (`internal/agent/transcript_test.go`, approach 1, unaffected by the seam change);
   `TestBlackBoxRegistrySwapTranscriptEnvKeyNeedsNoTUIEdit`
   (`internal/tui/registry_guard_test.go`, task 006); `TestTranscriptPathForCodexPrefersSessionEnvOverConfigAndAmbient`
-  (`internal/tui`, task 007).
+  (`internal/tui/transcript_env_layers_test.go`, task 007).
 
 ### R122 — codex Instrument injects five inline hooks and writes nothing
 
@@ -303,6 +306,55 @@ R129 would have required removing (flat mode, `group_by_workspace`,
 narrowed by this approach — it is not scored in `docs/reports/phase4-findings.md`, per task
 012's decision record and the standing rules' own statement of that same rule.
 
+## R132 — the record matches the tree (T1)
+
+**Shipped for this approach's own record, at the tail code sha `0ba550a`.** R132 is the only
+requirement whose deliverable is this record itself, so its verdict is stated against its own
+four bullets:
+
+- **`docs/reports/phase4-report.md` states, per requirement, what shipped, the commits and the
+  tests that prove it, and for anything that did not ship what is missing and why.** Green —
+  this file, rewritten from scratch under task 016 at `0ba550a` (it previously stood at
+  approach 1's `db66965`). Every requirement number R116–R132 carries a verdict above:
+  R116–R127 individually, R128–R131 as the explicitly grouped **NOT STARTED** verdict in the
+  Tier 2 section (with task 012's decision record, the budget behind it, and the
+  SPEC-versus-code grouping gap in the one disclosed paragraph that section requires), and
+  R132 here. No requirement is reported green whose named test does not exist in the tree:
+  before this file was committed, every `Test*` function name and every file path it cites was
+  checked to exist at `0ba550a` (`grep -rn 'func <name>('` per name, `test -e` per path), and
+  the two R118 citations this attempt corrected
+  (`TestCapturedPaneFillPastCaptureCarriesDeckBackground` and
+  `TestCapturedPaneCropMarkerCarriesDeckBackground` live in
+  `internal/tui/preview_pane_fill_marker_test.go`, not in
+  `internal/tui/preview_pane_repaint_test.go`; task 002's two live in
+  `internal/tui/preview_no_capture_background_test.go`) are the fix for the only citation
+  drift that check found.
+- **`docs/reports/phase4-findings.md` carries every finding this run made and chose not to
+  fix, each with a file:line and a reason, including the two known-unverified codex items by
+  name.** Not yet at this approach's tail — that file still stands at approach 1's `db66965`
+  content, and updating it is the immediately following record task (017), whose own criteria
+  require the run's findings set to be quoted verbatim from
+  `git log --grep='FINDING:' 08a1ffe3..HEAD` and given one entry per line with a file:line and
+  a reason. The two known-unverified codex items R132 names by name — whether
+  `acceptEdits`/`plan`/`dontAsk` are reachable on codex at all, and whether the codex trust
+  hash is stable across codex versions (every measurement in this run was taken against codex
+  `0.154.0`) — belong to that file, not to this one, and are recorded here only as the pointer
+  R132's own bullet asks for. The `[safe]`-badge SPEC disagreement R1 raised is also 017's to
+  record, and task 011 (`e93a790`) already fixed the underlying behaviour in code.
+- **`docs/DELIVERY-LOG.md` gains this phase's entry in the existing shape.** Not yet at this
+  approach's tail either; it is the last record task (018).
+- **Both gates are reported with their commands, their durations and the sha they ran at — the
+  final code sha per Materiality's termination rule.** Green — see "Both gates" immediately
+  below: the full-suite gate (task 013), the build/vet/gofmt guards (task 014) and the ten-run
+  stability sweep (task 015), each with its command as run, its duration, the shared tail code
+  sha `0ba550a`, and its own committed directory under `docs/reports/`.
+
+R132's remaining two bullets are docs-only work on top of `0ba550a`. Per the PRD's own
+Materiality termination rule (and the standing rules that restate it) a docs-only tail commit
+invalidates neither gate and is itself exempt from re-verification, so tasks 017 and 018 land
+against this same tail code sha and do not reopen the sweeps reported below. This report is
+written once, at that sha, and is not re-audited by any later task.
+
 ## Both gates
 
 ### Full-suite gate sweep (task 013)
@@ -337,6 +389,14 @@ narrowed by this approach — it is not scored in `docs/reports/phase4-findings.
 - **Commands** (each via `ci/run.sh`, full scope, no filter): `go build ./...`, `go vet ./...`,
   `gofmt -l .`.
 - **Tail code sha**: `0ba550a`.
+- **Duration**: 1.3s wall clock for the three guards together, re-measured at
+  `2026-09-17T03:55:35Z` on the identical code tree while this report was being written
+  (`git diff --stat 0ba550a HEAD -- '*.go' '*.feature'` empty, so the tree the guards ran
+  against and the tree measured here are the same commit's `*.go`/`*.feature` content, and
+  the re-measurement reproduced the same three results verbatim). Task 011b's own run of
+  these guards recorded its start time (`2026-09-17T02:10Z`, between the full-suite gate and
+  the stability sweep) but no duration, which is why the number above is a re-measurement
+  rather than a quotation.
 - **Result**: `go build ./...` and `go vet ./...` both exit `0` with empty output. `gofmt -l .`
   exits `0` and lists exactly the four **pre-existing** drift files (measured at `08a1ffe`, per
   the standing rules — none of this approach's own `.go` files are in this list):
@@ -379,6 +439,9 @@ answered with a Go-compatible measurement protocol (task 001), not a Python pack
 workaround. Tier 2 (R128–R131) was not started, re-affirming approach 1's own budget decision
 and not narrowing the disclosed, not-scored SPEC-versus-code grouping gap. All three mandatory
 sweeps (the full-suite gate, the build/vet/gofmt guards, and the ten-run stability sweep) are
-reported above with their commands, durations and the shared tail code sha `0ba550a`, each
-pointing at its own committed directory under `docs/reports/` (`phase4-cure-final-suite/`,
-`phase4-cure-guards/`, `phase4-cure-stability10/`).
+reported above with their commands, durations and the shared tail code sha, which is also
+R132's fourth bullet; R132's own verdict is stated in its own section above (this report
+green at `0ba550a`; `phase4-findings.md` and `docs/DELIVERY-LOG.md` are the two immediately
+following docs-only record tasks, 017 and 018). Each sweep points at its own committed
+directory under `docs/reports/` (`phase4-cure-final-suite/`, `phase4-cure-guards/`,
+`phase4-cure-stability10/`).
