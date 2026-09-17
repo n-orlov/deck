@@ -138,11 +138,11 @@ func TestBuiltinQuantizationPinned(t *testing.T) {
 			// §7 statuses occupy seven distinct reference slots. archived's
 			// authored hex changed too (#66aa77 -> #778877) but keeps ANSI
 			// 8, which is now unshared among the statuses.
-			Idle:          "#00cd00",
-			Starting:      "#00cdcd",
-			Stopped:       "#e5e5e5",
-			Error:         "#ff0000",
-			Archived:      "#7f7f7f",
+			Idle:     "#00cd00",
+			Starting: "#00cdcd",
+			Stopped:  "#e5e5e5",
+			Error:    "#ff0000",
+			Archived: "#7f7f7f",
 		},
 		"cobalt": {
 			Background:    "#000000",
