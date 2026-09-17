@@ -1,12 +1,14 @@
 # Build/vet/gofmt guards — approach 2, re-run at the corrected tail sha (task 011b)
 
-- **Tail code sha**: `e93a7902582672d799dadfa8bbaa4f1f25eb28dd` (`e93a790`,
-  task 011) — the same tail code sha named in
-  `docs/reports/phase4-cure-final-suite/README.md`. The tree these guards
-  ran against is `HEAD` (`1f38195`, task 011b's golden-fixture
-  regeneration) at commit time, which differs from `e93a790` in no
-  `*.go`/`*.feature` file: `git diff --stat e93a790 HEAD -- '*.go'
-  '*.feature'` prints nothing.
+- **Tail code sha**: `0ba550a5e50bdfc84586d5328a0690af9c9888c4` (`0ba550a`,
+  `features: settle the golden frame on a quiet PTY, not a torn read (task
+  011b)`) — the same tail code sha named in
+  `docs/reports/phase4-cure-final-suite/README.md`. These guards ran
+  against exactly that commit's tree: `git diff --stat 0ba550a HEAD --
+  '*.go' '*.feature'` printed nothing at the time they ran, and every
+  commit written afterwards in this task is docs-only.
+- **When**: `2026-09-17T02:10Z`, immediately after the full-suite gate
+  above returned exit `0` and before the ten-run stability sweep started.
 
 - **Commands as run** (each via `ci/run.sh`, the sibling-container wrapper
   named in the standing rules; none narrowed — full `./...` / `.` scope,
@@ -42,9 +44,11 @@
 - **Result**: `go build ./...` and `go vet ./...` both report no problems
   (empty output, exit `0`). `gofmt -l .` lists exactly the same four
   pre-existing files measured at plan time (`08a1ffe`, per the standing
-  rules) and this run's own commit (the golden-fixture regeneration,
-  `features/testdata/golden/side_by_side_80x24.golden`, not a `.go` file)
-  did not add to that list:
+  rules), and neither of task 011b's two code commits added to that list —
+  `1f38195` touched only the golden testdata fixture
+  (`features/testdata/golden/side_by_side_80x24.golden`, not a `.go`
+  file), and `0ba550a`'s `features/golden_frame_test.go` was gofmt-formatted
+  before it was committed:
   - `internal/theme/quantize_test.go`
   - `.spike-preview/cmd/conformance/main.go`
   - `.spike-preview/conformance/conformance.go`
@@ -55,12 +59,12 @@
 
 ## Disposition
 
-This overwrites task 014's own report directory per the standing rules
-("013/014/015 are re-run from scratch afterwards, never re-run under the
-task that found the red lane" — task 013's original sweep, whose
-red-lane finding this task's own fix answers, is what forces this
-re-run). Task 014 had not yet produced its own first-attempt report when
-this task ran (it was still `pending`, blocked behind 013's deferral), so
-there is no prior content here to preserve as history — this is simply
-014's clean, from-scratch result at the corrected tail sha, run under
+This overwrites the earlier content of this directory per the standing
+rules ("013/014/015 are re-run from scratch afterwards, never re-run under
+the task that found the red lane"): task 013's red sweep at `e93a790`, and
+then task 011b's own second code commit `0ba550a`, each forced a fresh run.
+Task 014 has produced no report of its own (it was still pending, blocked
+behind 013's deferral, when this ran), so there is no first-attempt content
+here to preserve as history beyond this file's own git history — this is
+014's clean, from-scratch guard result at the corrected tail sha, run under
 task 011b per that task's own criteria.

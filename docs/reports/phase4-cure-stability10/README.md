@@ -1,13 +1,13 @@
 # Stability sweep: ten runs at the corrected tail code sha (task 011b)
 
-- **Tail code sha**: `e93a7902582672d799dadfa8bbaa4f1f25eb28dd` (`e93a790`,
-  task 011) — the same tail code sha named in
+- **Tail code sha**: `0ba550a5e50bdfc84586d5328a0690af9c9888c4` (`0ba550a`,
+  `features: settle the golden frame on a quiet PTY, not a torn read (task
+  011b)`) — the same tail code sha named in
   `docs/reports/phase4-cure-final-suite/README.md` and
-  `docs/reports/phase4-cure-guards/README.md`. Unchanged at commit time:
-  `git diff --stat e93a790 HEAD -- '*.go' '*.feature'` prints nothing.
-  `HEAD` at commit time is `1f38195` (task 011b's golden-fixture
-  regeneration) plus this report commit — neither touches a `*.go`/
-  `*.feature` file.
+  `docs/reports/phase4-cure-guards/README.md`. The sweep ran against
+  exactly that commit's tree: `git diff --stat 0ba550a HEAD -- '*.go'
+  '*.feature'` printed nothing while it ran, and the only commit written
+  afterwards in this task is this docs-only record.
 - **Command**: `ci/stability.sh 10`, which runs `ci/run.sh go test -p=1
   -count=1 ./...` (every package, no `-run` filter, no package list,
   default godog tag filter `~@real-agents && ~@nightly`) ten times from a
@@ -15,112 +15,84 @@
   `--rm` sibling container), reading each run's real `go test` exit status
   (not a piped `tee` status — see the script's own header comment on the
   mislabelled-PASS defect it exists to avoid).
-- **Wall-clock**: 1h19m53s total (`2026-09-17T00:27:12Z` to
-  `2026-09-17T01:47:05Z`), each run ~6m10s–6m30s — consistent with the
-  standing rules' ~75 min estimate and approach 1's `phase4-stability10`
+- **Wall-clock**: 1h12m24s total (`2026-09-17T02:11:37Z` to
+  `2026-09-17T03:24:01Z`), each run ~6m–7m — consistent with the standing
+  rules' ~75 min estimate and approach 1's `phase4-stability10`
   measurement at `db66965`.
+- **Script exit status**: `0` (it exits non-zero if any single run failed).
 
-## Result: 7/10 passed
+## Result: 10/10 passed
 
-| Run | Result | Log |
-| --- | --- | --- |
-| 1 | PASS | `run-1.log` |
-| 2 | **FAIL** | `run-2.log` |
-| 3 | **FAIL** | `run-3.log` |
-| 4 | PASS | `run-4.log` |
-| 5 | PASS | `run-5.log` |
-| 6 | PASS | `run-6.log` |
-| 7 | PASS | `run-7.log` |
-| 8 | PASS | `run-8.log` |
-| 9 | PASS | `run-9.log` |
-| 10 | **FAIL** | `run-10.log` |
+| Run | Result | Log | `features` package |
+| --- | --- | --- | --- |
+| 1 | PASS | `run-1.log` | ok (376.464s) |
+| 2 | PASS | `run-2.log` | ok (379.114s) |
+| 3 | PASS | `run-3.log` | ok (375.776s) |
+| 4 | PASS | `run-4.log` | ok (375.368s) |
+| 5 | PASS | `run-5.log` | ok (373.184s) |
+| 6 | PASS | `run-6.log` | ok (378.546s) |
+| 7 | PASS | `run-7.log` | ok (378.844s) |
+| 8 | PASS | `run-8.log` | ok (376.042s) |
+| 9 | PASS | `run-9.log` | ok (366.762s) |
+| 10 | PASS | `run-10.log` | ok (352.266s) |
 
 `summary.log` is the combined log the script itself accumulates (all ten
 runs' output plus its own `=== RUN N ===` / `=== RUN N: PASS|FAIL (exit
-S)===` markers and the final `7/10 passed` line), kept alongside the
+S) ===` markers and the final `10/10 passed` line), kept alongside the
 per-run logs for cross-reference.
 
-## Every failure named
+## Every failure named: none
 
-**Runs 2 and 3 are the known-open transient-`starting`-assertion flake
-class**, unchanged from every prior sweep in this repository's history
-(`docs/reports/phase4-stability10/README.md` and earlier phases) — advisory,
-not a new finding:
+`grep -h 'FAIL' run-*.log` over the committed logs returns nothing, and
+each of the ten logs contains the same 15 `ok` package lines plus the three
+`[no test files]` packages (`internal/notify`, `internal/search`,
+`internal/unit`) — 18 packages per run, no `FAIL`, no `SKIP` line emitted
+by `go test` itself in any run.
 
-- **Run 2** (`run-2.log`): `--- FAIL: TestGoldenMinimumFrame` /
-  `TestGoldenMinimumFrame/run-2`, `golden_frame_test.go:74`, `"frame kept
-  changing after the fixture rendered; not settled"`. `FAIL
-  github.com/n-orlov/deck/features 378.262s`.
-- **Run 3** (`run-3.log`): the same failure, `TestGoldenMinimumFrame/run-1`
-  this time. `FAIL github.com/n-orlov/deck/features 372.793s`.
+Skips in force are the sweep's standing ones, unchanged from the gate
+report: godog's default tag filter `~@real-agents && ~@nightly` (no
+`DECK_GODOG_TAGS` opt-in), and the real-binary paths served by the
+`cmd/fake-codex`/`cmd/fake-claude`/`cmd/fake-pi` fixtures because no real
+agent binary exists in this container.
 
-Both are the documented settle-race between the client's resize reflow and
-the preview/reconcile ticks (250ms/500ms) — a pre-existing, load-sensitive
-quiescence race in the test's own settle-check, not a product regression,
-and not touched by task 011b's golden-fixture regeneration. In both cases
-the failure is the *settle-check* itself, never a byte mismatch against the
-regenerated golden — the fixture fix holds under this flake class exactly
-as it held in every clean run.
+## What changed against the previous ten-run sweeps
 
-**Run 10 is a new, previously undisclosed flake, not the golden-frame
-class**:
+This directory's superseded content (task 011b's first attempt, still in
+this file's git history) recorded **7/10** at the earlier tail sha
+`e93a790`: runs 2 and 3 red on `TestGoldenMinimumFrame`'s settle check
+(`golden_frame_test.go:74`, `"frame kept changing after the fixture
+rendered; not settled"`), and run 10 red on
+`TestSendKeysInvalidHexByteIsSilentlyDiscarded`
+(`internal/tmux/literal_send_test.go:123`) reading an empty `capture-pane`.
 
-- **Run 10** (`run-10.log`): `features` package is fully green
-  (`ok github.com/n-orlov/deck/features 379.245s`, including
-  `TestGoldenMinimumFrame` — the fixture fix holds). The one failure is in
-  a different package:
+- The two golden-frame failures are **fixed at the root, not waited out**.
+  Commit `0ba550a` replaced that test's bare-`Frame()` baseline with
+  `ScreenDriver.WaitForQuiescence` (300ms quiet window > deck's 250ms
+  `previewTick`) plus a bounded re-quiesce-and-compare retry, after the
+  torn-baseline cause was reproduced directly at 3 of 12 sub-runs and
+  shown to be a half-written frame (missing bottom border and footer),
+  never a byte mismatch against the golden fixture. That flake class does
+  not appear in any of these ten runs.
+- The `internal/tmux` `capture-pane` flake did not recur in these ten runs
+  either. It remains disclosed as a real, load-sensitive real-tmux timing
+  observation from the earlier sweep — one occurrence, never reproduced in
+  three immediate isolated re-runs — carried in the run's findings ledger
+  via the `FINDING:` line in commit `b98ce9c`'s body (`git log
+  --grep='FINDING:'` picks it up for task 017). Ten clean runs here neither
+  erase that observation nor make it a blocker; the earlier red sweep
+  stands as history in this file's git history and in that commit.
+- The other previously named known-open flake class
+  (`features/sigwinch_count_test.go`'s
+  `TestSigwinchCountDistinguishesTwoFromThree`) did not occur in this
+  sweep either.
 
-  ```
-  --- FAIL: TestSendKeysInvalidHexByteIsSilentlyDiscarded (0.02s)
-      literal_send_test.go:134: pane capture = "", want only the bare
-      prompt (nothing delivered) -- PRD II-38
-  FAIL
-  FAIL	github.com/n-orlov/deck/internal/tmux	19.804s
-  ```
+## Disposition
 
-  `TestSendKeysInvalidHexByteIsSilentlyDiscarded`
-  (`internal/tmux/literal_send_test.go:123`) sends `send-keys -H zz` to a
-  real tmux pane and asserts the capture is still the bare `$` prompt
-  (nothing delivered). In this one run, `capture-pane` returned an empty
-  string instead — a real-tmux timing read, not a byte-comparison against
-  any fixture task 011b touched. Re-run in isolation three times
-  immediately after discovery (`ci/run.sh go test -count=1 -run
-  '^TestSendKeysInvalidHexByteIsSilentlyDiscarded$' -v ./internal/tmux/`),
-  it passed all three times — not reproducible on demand, consistent with
-  a load-sensitive real-tmux capture race surfacing once across 10×18
-  package runs (this sweep's own ~70 minutes of prior sequential sibling
-  containers on the same host by the time run 10 started).
-
-  FINDING: internal/tmux/literal_send_test.go:123
-  TestSendKeysInvalidHexByteIsSilentlyDiscarded read an empty
-  `capture-pane` once in run 10/10 of this stability sweep (not
-  reproduced in three immediate isolated re-runs) — a new, previously
-  undisclosed real-tmux timing flake, load-sensitive, disclosed here as
-  advisory per this task's own criteria; not a product regression and
-  not caused by task 011b's golden-fixture change (unrelated package, no
-  test in this file reads the golden fixture).
-
-No other test, scenario or package failed in any of the ten runs. In
-particular: no occurrence of the other previously named known-open flake
-class (`features/sigwinch_count_test.go`'s
-`TestSigwinchCountDistinguishesTwoFromThree`) in this sweep, and the
-golden-fixture fix (task 011b) held in every run that reached
-`TestGoldenMinimumFrame`'s byte comparison (all ten — the two golden
-failures above are both the settle-check, never the byte compare).
-
-Every other package (`cmd/deck`, `cmd/fake-claude`, `cmd/fake-codex`,
-`cmd/fake-pi`, `internal/agent`, `internal/audit`, `internal/config`,
-`internal/hookrecv`, `internal/interactive`, `internal/service`,
-`internal/store`, `internal/theme`, `internal/tui`; `internal/notify`/
-`internal/search`/`internal/unit` have no test files) reports `ok` in
-every one of the ten runs, including runs 2, 3 and 10 (`internal/tmux`
-itself is `ok` in the other nine runs).
-
-## Advisory, not a blocker
-
-Per this task's own criteria and the standing rules' precedent for the two
-already-known flake classes, this new one is disclosed here as advisory in
-exactly the same shape: it does not reopen task 011/011b (the golden fix is
-green in every run's byte-compare) and does not block this run's
-completion. This sweep's own headline is 7/10, stated plainly above the
-fold rather than rounded up or buried.
+Ten from-scratch, unnarrowed runs at the new tail code sha, all green,
+script exit `0`. This overwrites the earlier content of this directory per
+the standing rules ("013/014/015 are re-run from scratch afterwards, never
+re-run under the task that found the red lane"); task 015 itself never ran
+a sweep of its own (it was pending behind 013's deferral), so this is its
+clean result, produced under task 011b per that task's own criteria. Tasks
+016-018 read this file, and the sha named at the top of it, as current
+evidence.
