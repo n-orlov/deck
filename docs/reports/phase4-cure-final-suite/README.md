@@ -1,23 +1,37 @@
 # Full-suite gate sweep — approach 2, re-run at the corrected tail sha (task 011b)
 
-- **Tail code sha**: `e93a7902582672d799dadfa8bbaa4f1f25eb28dd` (`e93a790`,
-  `tui: sidebar row's permission badge follows SPEC §11's non-safe rule
-  (task 011)`) — unchanged from the sha task 013 cited. The intervening
-  commits (`425c9dc` Tier 2 record, `059704a` task 013's own red-lane
-  report, `1f38195` this task's golden-fixture regeneration) touch no
-  `*.go`/`*.feature` file: `git diff --stat e93a790 HEAD -- '*.go'
-  '*.feature'` prints nothing at commit time, so the tail code sha stays
-  `e93a790` even though the *tree* now differs from task 013's tree by the
-  one golden-fixture byte fixed below.
-- **What changed since task 013's own sweep**: task 013 (`059704a`) ran
-  this exact command at this exact sha and found `TestGoldenMinimumFrame`
-  red against a stale golden fixture — a real regression left over from
-  task 011, not a flake (see that report, preserved as history in git log
-  at `059704a`). Task 011b regenerated
+- **Tail code sha**: `0ba550a5e50bdfc84586d5328a0690af9c9888c4` (`0ba550a`,
+  `features: settle the golden frame on a quiet PTY, not a torn read (task
+  011b)`). This is the sha tasks 014-018 cite. It supersedes the two
+  earlier candidates this directory named in turn: `e93a790` (task 011,
+  cited by task 013's own red sweep and by 011b's first attempt) and the
+  tree at `1f38195` (011b's golden-fixture regeneration, a `*.feature`
+  testdata file, not a `*.go` file).
+- **Why this sha, and what changed since 011b's first attempt**: task 013
+  (`059704a`) ran this exact command at `e93a790` and found
+  `TestGoldenMinimumFrame` red — a real regression left over from task 011
+  against a stale golden fixture. Task 011b regenerated
   `features/testdata/golden/side_by_side_80x24.golden` via the test's own
-  `UPDATE_GOLDEN=1` path (commit `1f38195`) and this sweep is that fix's
-  own from-scratch, unnarrowed re-verification, run fresh per the standing
-  rules ("never re-run under the task that found the red lane").
+  `UPDATE_GOLDEN=1` path (`1f38195`) and re-swept, but that sweep was
+  still intermittently red on the SAME test for a second, independent
+  reason: `renderGoldenMinimumFrame` took its "settled" baseline with a
+  bare `client.Frame(true)` immediately after its last content gate, and
+  that gate is satisfied the moment the row carrying its substring is
+  written — while the renderer is still emitting the rest of the same
+  repaint. The baseline could therefore be a genuinely torn frame,
+  reproduced directly here at 3 of 12 sub-runs
+  (`ci/run.sh sh -c 'go test -count=6 -run ^TestGoldenMinimumFrame$
+  ./features/ -v'`), every failure the same shape: `before` missing the
+  bottom border and the footer line that `after` then has. Commit
+  `0ba550a` takes the baseline from `ScreenDriver.WaitForQuiescence`
+  (300ms quiet window, longer than deck's 250ms `previewTick`; the same
+  fix `clientCapturesFrameAs` already applies for the same reason) and
+  retries the still-identical compare up to five times. 16 of 16 sub-runs
+  green over `-count=8` after the change. No product code is touched and
+  the byte-exact comparison against the checked-in golden is unchanged.
+  This sweep is that fix's own from-scratch, unnarrowed verification, run
+  fresh per the standing rules ("never re-run under the task that found
+  the red lane").
 - **Command as run** (unnarrowed — every package, no `-run` filter, no
   package list; `-timeout` only bounds the whole invocation, per the
   standing rules' launch guidance):
@@ -26,7 +40,7 @@
   ci/run.sh sh -c 'go test -p=1 -count=1 -timeout=40m ./...'
   ```
 
-- **Skips in force** (same as task 013's sweep, unchanged):
+- **Skips in force** (unchanged from task 013's sweep):
   - godog's default tag filter, `~@real-agents && ~@nightly` (no
     `DECK_GODOG_TAGS` opt-in), excluding `@real-agents`/`@nightly`
     scenarios.
@@ -35,10 +49,11 @@
     `claude` or `pi` executable are satisfied here by the
     `cmd/fake-codex`/`cmd/fake-claude`/`cmd/fake-pi` fixtures — no real
     agent binaries exist in this container.
-- **Wall-clock duration**: 7m32s (452s), from `2026-09-17T00:17:13Z` to
-  `2026-09-17T00:24:45Z` (date markers wrapping the command directly, not
-  polled), close to the ≈7m expected from the standing rules' measurement
-  at `db66965` and task 013's own 7m16s at this same sha.
+- **Wall-clock duration**: 7m21s (441s), from `2026-09-17T02:02:30Z` to
+  `2026-09-17T02:09:51Z` (the finish stamp is the mtime of the file the
+  wrapper wrote with the command's own exit status, immediately after it
+  returned), in line with the ≈7m expected from the standing rules'
+  measurement at `db66965`.
 - **Exit status**: `0` (captured directly from the command's own exit
   code, immediately after it returned — never through a `tee` pipe; see
   `ci/stability.sh`'s header comment on the mislabelled-PASS defect this
@@ -49,52 +64,53 @@
   measured command; godog's own `TestFeatures` writes its per-scenario
   pretty-format log through `TestingT: t` (`features/godog_test.go`),
   which `go test` only surfaces on failure or under `-v` — since nothing
-  failed, `suite.log` shows only the per-package summary line, which is
-  the same information task 013's report table below is built from. (Two
-  earlier from-scratch runs at this sha in this session, also unnarrowed
-  and both clean, are not separately committed — this is the single sweep
-  the criteria call for; its own log is representative, having been
-  reproduced identically before being kept.)
+  failed, `suite.log` shows only the per-package summary lines, which is
+  what the table below is built from.
 
 ## Result: PASS — every package green
 
-Per-package result (`go list ./...` at this sha lists 18 packages):
+Per-package result (`go list ./...` at this sha lists 18 packages; the
+lines below are `suite.log` verbatim):
 
 | Package | Result |
 | --- | --- |
-| `cmd/deck` | ok (8.1s) |
-| `cmd/fake-claude` | ok (0.8s) |
-| `cmd/fake-codex` | ok (0.1s) |
-| `cmd/fake-pi` | ok (0.8s) |
-| `features` | ok (386.6s) |
-| `internal/agent` | ok (0.01s) |
-| `internal/audit` | ok (0.02s) |
-| `internal/config` | ok (0.03s) |
-| `internal/hookrecv` | ok (4.5s) |
-| `internal/interactive` | ok (11.6s) |
+| `cmd/deck` | ok (7.959s) |
+| `cmd/fake-claude` | ok (0.792s) |
+| `cmd/fake-codex` | ok (0.122s) |
+| `cmd/fake-pi` | ok (0.773s) |
+| `features` | ok (378.948s) |
+| `internal/agent` | ok (0.010s) |
+| `internal/audit` | ok (0.018s) |
+| `internal/config` | ok (0.024s) |
+| `internal/hookrecv` | ok (4.362s) |
+| `internal/interactive` | ok (11.159s) |
 | `internal/notify` | `[no test files]` |
 | `internal/search` | `[no test files]` |
-| `internal/service` | ok (7.4s) |
-| `internal/store` | ok (2.8s) |
-| `internal/theme` | ok (0.01s) |
-| `internal/tmux` | ok (20.2s) |
-| `internal/tui` | ok (4.3s) |
+| `internal/service` | ok (6.819s) |
+| `internal/store` | ok (2.627s) |
+| `internal/theme` | ok (0.004s) |
+| `internal/tmux` | ok (19.833s) |
+| `internal/tui` | ok (3.903s) |
 | `internal/unit` | `[no test files]` |
 
-`features` covers both `TestGoldenMinimumFrame` (now comparing against the
-regenerated golden fixture — both `run-1` and `run-2` subtests pass) and
-godog's own `TestFeatures` (352 scenarios / 4168 steps at the last verbose
-count, task 013's report; scenario content is unchanged by this task, only
-the golden fixture's expected bytes moved) — the package result is `ok`
-with no visible subtest failure, which for a non-verbose run is the
-authoritative pass signal `go test` provides.
+`features` covers both `TestGoldenMinimumFrame` (comparing against the
+regenerated golden fixture, with the quiescence-based baseline of
+`0ba550a` — both `run-1` and `run-2` subtests pass) and godog's own
+`TestFeatures` (352 scenarios / 4168 steps at the last verbose count, task
+013's report; scenario content is unchanged by task 011b — only the golden
+fixture's expected bytes and that one test's settle gate moved). The
+package result is `ok` with no visible subtest failure, which for a
+non-verbose run is the authoritative pass signal `go test` provides.
 
 ## Disposition
 
-The golden-fixture regression task 013 found is fixed (task 011b, commit
-`1f38195`) and this from-scratch, unnarrowed sweep at the same tail code
-sha (`e93a790`) is clean. This overwrites task 013's own report directory
-per the standing rules ("013/014/015 are re-run from scratch afterwards,
-never re-run under the task that found the red lane") — task 013's own
-finding stands as history in git log at `059704a`, unedited. Tasks 016-018
-should read this file, not the superseded content, as current evidence.
+Both red lanes are answered: the golden-fixture regression task 013 found
+(fixed in `1f38195`) and the torn-baseline race that kept the same test
+intermittently red afterwards (fixed in `0ba550a`). This from-scratch,
+unnarrowed sweep at the new tail code sha is clean, exit `0`. It
+overwrites the earlier content of this directory per the standing rules
+("013/014/015 are re-run from scratch afterwards, never re-run under the
+task that found the red lane") — task 013's own red-lane finding stands as
+history in git log at `059704a`, unedited, as does 011b's first-attempt
+report in the history of this file. Tasks 016-018 read this file, and the
+sha named at the top of it, as current evidence.

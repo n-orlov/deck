@@ -1,22 +1,18 @@
-ok  	github.com/n-orlov/deck/cmd/deck	7.764s
+ok  	github.com/n-orlov/deck/cmd/deck	7.418s
 ok  	github.com/n-orlov/deck/cmd/fake-claude	0.791s
-ok  	github.com/n-orlov/deck/cmd/fake-codex	0.121s
-ok  	github.com/n-orlov/deck/cmd/fake-pi	0.778s
-ok  	github.com/n-orlov/deck/features	379.245s
+ok  	github.com/n-orlov/deck/cmd/fake-codex	0.119s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.766s
+ok  	github.com/n-orlov/deck/features	352.266s
 ok  	github.com/n-orlov/deck/internal/agent	0.008s
 ok  	github.com/n-orlov/deck/internal/audit	0.018s
-ok  	github.com/n-orlov/deck/internal/config	0.027s
-ok  	github.com/n-orlov/deck/internal/hookrecv	4.404s
-ok  	github.com/n-orlov/deck/internal/interactive	11.126s
+ok  	github.com/n-orlov/deck/internal/config	0.028s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.178s
+ok  	github.com/n-orlov/deck/internal/interactive	10.788s
 ?   	github.com/n-orlov/deck/internal/notify	[no test files]
 ?   	github.com/n-orlov/deck/internal/search	[no test files]
-ok  	github.com/n-orlov/deck/internal/service	6.847s
-ok  	github.com/n-orlov/deck/internal/store	2.622s
-ok  	github.com/n-orlov/deck/internal/theme	0.005s
---- FAIL: TestSendKeysInvalidHexByteIsSilentlyDiscarded (0.02s)
-    literal_send_test.go:134: pane capture = "", want only the bare prompt (nothing delivered) -- PRD II-38
-FAIL
-FAIL	github.com/n-orlov/deck/internal/tmux	19.804s
-ok  	github.com/n-orlov/deck/internal/tui	3.873s
+ok  	github.com/n-orlov/deck/internal/service	6.486s
+ok  	github.com/n-orlov/deck/internal/store	2.509s
+ok  	github.com/n-orlov/deck/internal/theme	0.003s
+ok  	github.com/n-orlov/deck/internal/tmux	19.428s
+ok  	github.com/n-orlov/deck/internal/tui	3.512s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
-FAIL
