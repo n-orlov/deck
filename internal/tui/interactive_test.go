@@ -318,8 +318,13 @@ func TestFitInteractiveBodyLinesOwnership(t *testing.T) {
 // PgUp/PgDown, Insert/Delete, ShiftTab and the function keys go by NAME
 // through tmux's own translation (internal/tmux/key.go's
 // namedKeyAllowlist), because their byte encoding depends on the pane's
-// terminal mode; nothing else does, and an Alt-modified named key is
-// refused outright rather than silently dropping the Alt.
+// terminal mode; nothing else does.
+//
+// The Alt-modified forms of these are TestInteractiveNamedKeyForwardsEveryAltModifiedSpecialKey's
+// subject below (issue #28). This test used to close by asserting the
+// opposite -- that Alt+Up resolved to nothing at all -- which is the
+// assertion that encoded the bug; its replacement at the bottom of this
+// function now pins the fixed behaviour instead.
 func TestInteractiveNamedKeyMapsOnlyModeDependentKeys(t *testing.T) {
 	cases := []struct {
 		msg  tea.KeyMsg
@@ -395,11 +400,249 @@ func TestInteractiveNamedKeyMapsOnlyModeDependentKeys(t *testing.T) {
 			t.Errorf("interactiveNamedKey(%v) claimed a fixed-byte key", msg.Type)
 		}
 	}
-	// Alt-modified named keys are refused outright, never forwarded with
-	// the Alt silently dropped.
+	// Issue #28: an Alt-modified named key resolves to the M--prefixed
+	// tmux name, NEVER to the bare one (which would forward Up for a
+	// physical Alt+Up, dropping the modifier) and never to nothing at all
+	// (which is the silent drop issue #28 reports). This assertion is the
+	// inversion of the one that used to stand here.
 	altUp := tea.KeyMsg(tea.Key{Type: tea.KeyUp, Alt: true})
-	if _, ok := interactiveNamedKey(altUp); ok {
-		t.Errorf("interactiveNamedKey forwarded an alt+up as a bare named key")
+	got, ok := interactiveNamedKey(altUp)
+	if !ok || got != "M-Up" {
+		t.Errorf("interactiveNamedKey(alt+up) = (%q, %v), want (\"M-Up\", true) -- issue #28: the blanket Alt refusal dropped the keystroke with no bytes written and no error", got, ok)
+	}
+}
+
+// TestInteractiveNamedKeyForwardsEveryAltModifiedSpecialKey is issue #28's
+// regression pin: the interactive preview used to drop Alt plus every
+// SPECIAL key (Alt+Up/Down/Left/Right, Alt+Home/End/PgUp/PgDn/Delete,
+// Alt+F1-F12 and every Ctrl/Shift/Ctrl+Shift combination of those with Alt
+// added) silently -- no bytes, no error, no beep -- while Alt+letter kept
+// working, which is why it read as intermittent in live use. SPEC.md §11.9
+// names `Alt` alongside `Ctrl` and `Shift` ("Modified navigation keys
+// forward, like the unmodified ones, by tmux key name") and forbids
+// exactly this failure ("a keystroke that does nothing and reports
+// nothing"), so the drop was a SPEC violation rather than a documented
+// gap.
+//
+// The root cause was that both halves of the forwarding split refused
+// these keys: interactiveNamedKey opened with a blanket
+// `if msg.Alt { return "", false }`, and interactiveLiteralPayload cannot
+// reach them either because every special key's tea.KeyType is NEGATIVE
+// (charmbracelet/bubbletea@v1.3.10/key.go:205,
+// `KeyRunes KeyType = -(iota + 1)`), so tea.KeyUp fails that function's
+// `msg.Type >= 0 && msg.Type <= 31` guard and lands in its default
+// branch. This test therefore asserts BOTH halves for every key: the
+// named half returns the surveyed M- name, and the literal half still
+// declines it (there is no overlap between the two, and a key that both
+// declined is precisely the bug).
+//
+// The want names are the ones internal/tui/interactive.go's
+// interactiveAltNamedKeys comment records the tmux 3.6b survey for;
+// internal/tmux/key_test.go's
+// TestSendNamedKeyDeliversAltModifiedNavigationKeysByTmuxsOwnTranslation
+// is the real-tmux half that proves each of them delivers the CSI
+// sequence bubbletea's own `sequences` table decodes straight back into
+// the {KeyType, Alt: true} listed here.
+func TestInteractiveNamedKeyForwardsEveryAltModifiedSpecialKey(t *testing.T) {
+	cases := []struct {
+		keyType tea.KeyType
+		want    string
+	}{
+		{tea.KeyUp, "M-Up"},
+		{tea.KeyDown, "M-Down"},
+		{tea.KeyLeft, "M-Left"},
+		{tea.KeyRight, "M-Right"},
+		{tea.KeyHome, "M-Home"},
+		{tea.KeyEnd, "M-End"},
+		{tea.KeyPgUp, "M-PageUp"},
+		{tea.KeyPgDown, "M-PageDown"},
+		{tea.KeyDelete, "M-Delete"},
+		{tea.KeyCtrlUp, "C-M-Up"},
+		{tea.KeyCtrlDown, "C-M-Down"},
+		{tea.KeyCtrlLeft, "C-M-Left"},
+		{tea.KeyCtrlRight, "C-M-Right"},
+		{tea.KeyCtrlHome, "C-M-Home"},
+		{tea.KeyCtrlEnd, "C-M-End"},
+		{tea.KeyCtrlPgUp, "C-M-PgUp"},
+		{tea.KeyCtrlPgDown, "C-M-PgDn"},
+		{tea.KeyShiftUp, "S-M-Up"},
+		{tea.KeyShiftDown, "S-M-Down"},
+		{tea.KeyShiftLeft, "S-M-Left"},
+		{tea.KeyShiftRight, "S-M-Right"},
+		{tea.KeyShiftHome, "S-M-Home"},
+		{tea.KeyShiftEnd, "S-M-End"},
+		{tea.KeyCtrlShiftUp, "C-M-S-Up"},
+		{tea.KeyCtrlShiftDown, "C-M-S-Down"},
+		{tea.KeyCtrlShiftLeft, "C-M-S-Left"},
+		{tea.KeyCtrlShiftRight, "C-M-S-Right"},
+		{tea.KeyCtrlShiftHome, "C-M-S-Home"},
+		{tea.KeyCtrlShiftEnd, "C-M-S-End"},
+		{tea.KeyF1, "M-F1"},
+		{tea.KeyF2, "M-F2"},
+		{tea.KeyF3, "M-F3"},
+		{tea.KeyF4, "M-F4"},
+		{tea.KeyF5, "M-F5"},
+		{tea.KeyF6, "M-F6"},
+		{tea.KeyF7, "M-F7"},
+		{tea.KeyF8, "M-F8"},
+		{tea.KeyF9, "M-F9"},
+		{tea.KeyF10, "M-F10"},
+		{tea.KeyF11, "M-F11"},
+		{tea.KeyF12, "M-F12"},
+	}
+	// Counted against the map rather than hard-coded, so a name added to
+	// interactiveAltNamedKeys without a case here fails as an incomplete
+	// table instead of going untested (the gaps, whose value is "", are
+	// excluded -- TestEveryBareNamedKeyHasAnExplicitAltVerdict owns those).
+	forwardable := 0
+	for _, altName := range interactiveAltNamedKeys {
+		if altName != "" {
+			forwardable++
+		}
+	}
+	if len(cases) != forwardable {
+		t.Fatalf("table has %d cases but interactiveAltNamedKeys forwards %d names -- keep the two in step", len(cases), forwardable)
+	}
+	for _, c := range cases {
+		msg := tea.KeyMsg(tea.Key{Type: c.keyType, Alt: true})
+		got, ok := interactiveNamedKey(msg)
+		if !ok || got != c.want {
+			t.Errorf("interactiveNamedKey(alt+%v) = (%q, %v), want (%q, true) -- issue #28's silent drop", c.keyType, got, ok, c.want)
+			continue
+		}
+		// The same hazard the unmodified half already checks for (steer
+		// 017 item 1): a name that is not on internal/tmux's compiled-in
+		// allowlist is typed into the agent as literal text by tmux, exit
+		// 0, no error. Every new M- name has to be on it, checked here
+		// rather than assumed, so adding one to this package and not to
+		// internal/tmux fails a test instead of shipping.
+		if !tmux.IsNamedKeyAllowed(c.want) {
+			t.Errorf("interactiveNamedKey(alt+%v) returned %q, which is NOT on internal/tmux's namedKeyAllowlist -- an unlisted name is typed into the agent as literal text by tmux, not refused", c.keyType, c.want)
+		}
+		// The other half of the split stays closed for these: they are
+		// mode-dependent, so deck must never hand-encode them as literal
+		// bytes. (Before issue #28's fix BOTH halves refused them, which
+		// is what made the drop silent -- this assertion on its own is
+		// therefore not enough, it only holds meaning next to the one
+		// above.)
+		if payload, ok := interactiveLiteralPayload(msg); ok {
+			t.Errorf("interactiveLiteralPayload(alt+%v) = (%q, true), want declined -- an Alt-modified special key goes by tmux name, never as hand-built bytes", c.keyType, payload)
+		}
+	}
+}
+
+// TestInteractiveAltForwardingLeavesTheFixedByteKeysAlone is issue #28's
+// no-collateral-damage guard. The keys below already worked before the fix
+// and take a different path from the M- names above, so the fix must not
+// have moved any of them: Alt+<rune> and the Alt-modified POSITIVE C0/DEL
+// types (Enter=13, Tab=9, Escape=27, Backspace=127) still go out as an ESC
+// prefix plus their own fixed byte through interactiveLiteralPayload, and
+// bare Ctrl+<letter> is untouched by anything Alt-related at all.
+func TestInteractiveAltForwardingLeavesTheFixedByteKeysAlone(t *testing.T) {
+	literal := []struct {
+		name string
+		msg  tea.KeyMsg
+		want string
+	}{
+		// Alt+rune: the case that kept working through issue #28 and is
+		// why the bug read as intermittent rather than as "Alt is dead".
+		{"alt+a", tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune("a"), Alt: true}), "\x1ba"},
+		{"alt+space", tea.KeyMsg(tea.Key{Type: tea.KeySpace, Runes: []rune(" "), Alt: true}), "\x1b "},
+		{"alt+enter", tea.KeyMsg(tea.Key{Type: tea.KeyEnter, Alt: true}), "\x1b\r"},
+		{"alt+tab", tea.KeyMsg(tea.Key{Type: tea.KeyTab, Alt: true}), "\x1b\t"},
+		{"alt+escape", tea.KeyMsg(tea.Key{Type: tea.KeyEscape, Alt: true}), "\x1b\x1b"},
+		{"alt+backspace", tea.KeyMsg(tea.Key{Type: tea.KeyBackspace, Alt: true}), "\x1b\x7f"},
+		{"alt+ctrl+a", tea.KeyMsg(tea.Key{Type: tea.KeyCtrlA, Alt: true}), "\x1b\x01"},
+		// Unmodified, for the plain "nothing else moved" half.
+		{"enter", tea.KeyMsg(tea.Key{Type: tea.KeyEnter}), "\r"},
+		{"backspace", tea.KeyMsg(tea.Key{Type: tea.KeyBackspace}), "\x7f"},
+		{"ctrl+a", tea.KeyMsg(tea.Key{Type: tea.KeyCtrlA}), "\x01"},
+		{"ctrl+c", tea.KeyMsg(tea.Key{Type: tea.KeyCtrlC}), "\x03"},
+		{"rune", tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune("hi")}), "hi"},
+	}
+	for _, c := range literal {
+		got, ok := interactiveLiteralPayload(c.msg)
+		if !ok || got != c.want {
+			t.Errorf("interactiveLiteralPayload(%s) = (%q, %v), want (%q, true)", c.name, got, ok, c.want)
+		}
+		// None of these is a named key: if the fix had reached them, they
+		// would be resolving to a tmux name instead of to their own bytes,
+		// and interactiveNamedKey winning first in updateInteractive means
+		// interactiveLiteralPayload would never even be consulted.
+		if name, ok := interactiveNamedKey(c.msg); ok {
+			t.Errorf("interactiveNamedKey(%s) = (%q, true), want declined -- a fixed-byte key must not have become a named key", c.name, name)
+		}
+	}
+}
+
+// TestEveryBareNamedKeyHasAnExplicitAltVerdict is the structural guard
+// that keeps issue #28 from coming back one key at a time. interactiveNamedKey
+// resolves Alt by looking the bare name up in interactiveAltNamedKeys, so
+// a bare name that is missing from that map reads the zero value and is
+// refused -- indistinguishable, at runtime, from the two deliberate gaps.
+// This test makes the difference a compile-time-ish fact instead: every
+// name interactiveBareNamedKey can return must have an entry, and the only
+// entries allowed to be empty are the two gaps SPEC.md §11.9 requires to
+// be "known, listed" ones. Adding a KeyType to the bare switch without
+// deciding what Alt means for it therefore fails here rather than silently
+// re-creating the original silent drop for that one key.
+//
+// The two gaps and their evidence (both recorded in full in
+// interactiveAltNamedKeys' own comment):
+//
+//   - Insert: tmux translates "M-Insert" correctly, but bubbletea v1.3.10
+//     has no entry for those bytes at all -- it carries the transposed
+//     "\x1b[3;2~" (xterm's Shift+Delete) as {KeyInsert, Alt: true}
+//     instead -- so deck can never receive a genuine Alt+Insert to
+//     forward, and forwarding the one KeyMsg that does arrive would type
+//     Alt+Insert for a physical Shift+Delete.
+//   - BTab: `send-keys M-BTab` on real tmux 3.6b delivers bytes identical
+//     to plain `BTab`; tmux itself discards the Alt, so naming it would
+//     forward Shift+Tab for a physical Alt+Shift+Tab.
+func TestEveryBareNamedKeyHasAnExplicitAltVerdict(t *testing.T) {
+	// bubbletea's special KeyTypes are negative and its C0/DEL types are
+	// 0..127, so this range covers every value interactiveBareNamedKey can
+	// ever be handed.
+	knownGaps := map[string]string{
+		"Insert": "bubbletea v1.3.10 cannot decode tmux's (correct) M-Insert bytes -- upstream parameter transposition at key.go:407",
+		"BTab":   "tmux discards the Alt: send-keys M-BTab delivers the same bytes as BTab",
+	}
+	seen := map[string]bool{}
+	for raw := -256; raw <= 255; raw++ {
+		keyType := tea.KeyType(raw)
+		name, ok := interactiveBareNamedKey(keyType)
+		if !ok {
+			continue
+		}
+		seen[name] = true
+		altName, listed := interactiveAltNamedKeys[name]
+		if !listed {
+			t.Errorf("interactiveBareNamedKey(%d) = %q, which has NO entry in interactiveAltNamedKeys -- decide what Alt+%s forwards as (and allowlist the name in internal/tmux), or record it as a listed gap with an empty value; a missing entry is issue #28's silent drop for that key", raw, name, name)
+			continue
+		}
+		if altName == "" {
+			if _, expected := knownGaps[name]; !expected {
+				t.Errorf("interactiveAltNamedKeys[%q] is empty, but %q is not one of the two gaps SPEC.md §11.9's enumeration records -- a new gap needs its reason written down in both places, not just an empty string", name, name)
+			}
+			continue
+		}
+		if !tmux.IsNamedKeyAllowed(altName) {
+			t.Errorf("interactiveAltNamedKeys[%q] = %q, which is NOT on internal/tmux's namedKeyAllowlist", name, altName)
+		}
+	}
+	// The reverse direction: nothing in interactiveAltNamedKeys may be
+	// keyed by a name interactiveBareNamedKey cannot actually produce,
+	// which would be exactly the "untested dead weight" internal/tmux/key.go's
+	// allowlist comment refuses.
+	for name := range interactiveAltNamedKeys {
+		if !seen[name] {
+			t.Errorf("interactiveAltNamedKeys has an entry for %q, which interactiveBareNamedKey never returns -- an unreachable Alt mapping cannot be tested and must not exist", name)
+		}
+	}
+	for name := range knownGaps {
+		if altName, listed := interactiveAltNamedKeys[name]; !listed || altName != "" {
+			t.Errorf("interactiveAltNamedKeys[%q] = (%q, %v), want a listed gap (\"\", true) -- if this key's Alt form became forwardable, move it out of this test's knownGaps and out of the gap list in SPEC.md §11.9", name, altName, listed)
+		}
 	}
 }
 
@@ -431,10 +674,15 @@ func TestInteractiveLiteralPayloadCoversEveryFixedByteKey(t *testing.T) {
 		}
 	}
 	// A mode-dependent named key is NOT a literal payload --
-	// interactiveNamedKey owns it instead, and an alt-modified one is
-	// refused by both (see TestInteractiveNamedKeyMapsOnlyModeDependentKeys).
+	// interactiveNamedKey owns it instead, with or without Alt (issue #28:
+	// the Alt-modified form used to be refused by BOTH functions, which is
+	// what made the keystroke vanish; see
+	// TestInteractiveNamedKeyForwardsEveryAltModifiedSpecialKey).
 	if _, ok := interactiveLiteralPayload(tea.KeyMsg(tea.Key{Type: tea.KeyUp})); ok {
 		t.Errorf("interactiveLiteralPayload claimed a mode-dependent named key")
+	}
+	if _, ok := interactiveLiteralPayload(tea.KeyMsg(tea.Key{Type: tea.KeyUp, Alt: true})); ok {
+		t.Errorf("interactiveLiteralPayload claimed an alt-modified mode-dependent named key")
 	}
 }
 

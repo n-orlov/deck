@@ -616,18 +616,170 @@ func interactiveGridIsBlank(lines []string) bool {
 // by tmux name here too (steer 017 item 1 / SPEC.md §11.9's "forwardable
 // set is enumerated and tested key by key"): bubbletea decodes each of
 // these to its OWN distinct KeyType (KeyCtrlLeft, KeyShiftHome, ... --
-// never KeyLeft with a modifier flag set), so leaving them out of this
-// switch is not a mistranslation, it is the key vanishing into the
-// default branch below with no bytes written and no record of the drop.
-// Alt-modified keys are refused above before reaching this switch, so an
-// Alt-modified Ctrl/Shift combination (e.g. Ctrl+Alt+Left) is a known,
-// deliberate gap, not silently handled here: internal/tmux/key.go's
-// allowlist comment records why (no caller can reach that name yet).
+// never KeyLeft with a modifier flag set), so leaving them out of
+// interactiveBareNamedKey's switch below is not a mistranslation, it is
+// the key vanishing into that switch's fallthrough with no bytes written
+// and no record of the drop.
+//
+// Alt (issue #28) resolves through interactiveAltNamedKeys below instead
+// of being refused outright, which is what this function did until that
+// issue: SPEC.md §11.9 names `Alt` in the same breath as `Ctrl` and
+// `Shift` ("Modified navigation keys forward, like the unmodified ones,
+// by tmux key name"), so the blanket `if msg.Alt { return "", false }`
+// that used to open this function turned every Alt-modified special key
+// into precisely the failure that paragraph forbids -- "a keystroke that
+// does nothing and reports nothing". The drop was silent because it was
+// double-ended: interactiveLiteralPayload cannot catch an Alt-modified
+// special key either, since EVERY special KeyType is NEGATIVE
+// (charmbracelet/bubbletea@v1.3.10/key.go:205 spells
+// `KeyRunes KeyType = -(iota + 1)`, and KeyUp/KeyDown/... count down from
+// there), so tea.KeyUp fails that function's own `msg.Type >= 0 &&
+// msg.Type <= 31` guard and lands in its default branch too, leaving
+// updateInteractive above to write nothing at all. Alt+<rune>, Alt+Enter,
+// Alt+Tab, Alt+Escape and Alt+Backspace were never affected and are not
+// touched here: KeyRunes carries its bytes in msg.Runes, and
+// Enter/Tab/Escape/Backspace are POSITIVE C0/DEL values (13, 9, 27, 127),
+// so all of them still take interactiveLiteralPayload's own ESC-prefix
+// path exactly as before.
 func interactiveNamedKey(msg tea.KeyMsg) (string, bool) {
-	if msg.Alt {
+	name, ok := interactiveBareNamedKey(msg.Type)
+	if !ok {
 		return "", false
 	}
-	switch msg.Type {
+	if !msg.Alt {
+		return name, true
+	}
+	// A bare name whose Alt-modified form deck cannot forward maps to ""
+	// in interactiveAltNamedKeys (one of the two listed gaps that table's
+	// own comment enumerates), and a bare name absent from that table
+	// altogether reads the same zero value -- so this refusal is the
+	// enumerated gap §11.9 asks for rather than a default branch, and
+	// interactive_test.go's
+	// TestEveryBareNamedKeyHasAnExplicitAltVerdict fails if a name is ever
+	// added to interactiveBareNamedKey without a verdict here, so the gap
+	// cannot grow silently the way the blanket Alt refusal let it.
+	altName := interactiveAltNamedKeys[name]
+	if altName == "" {
+		return "", false
+	}
+	return altName, true
+}
+
+// interactiveAltNamedKeys is the Alt half of SPEC.md §11.9's "enumerated
+// and tested key by key" forwardable set (issue #28), keyed by the BARE
+// name interactiveBareNamedKey below already resolved -- keying off the
+// name rather than re-switching on tea.KeyType is what keeps the two
+// tables from ever disagreeing about which KeyType a name belongs to.
+// The value is the tmux key name carrying that same key WITH Alt, or ""
+// for a listed gap (the two at the bottom of this map).
+//
+// tmux spells Alt `M-`, and its key-string parser accepts the modifier
+// prefixes in any order, but every name below is written in the same
+// C-/M-/S- order the survey used rather than relying on that. The survey
+// is the one internal/tmux/key.go's namedKeyAllowlist comment requires,
+// re-run for these names against a real tmux 3.6b: one fresh server per
+// key on a private socket, `send-keys <name>` into a pane running `cat`
+// (which echoes whatever bytes it receives straight back, unedited), the
+// result read out of `capture-pane -p`'s own caret notation. Each
+// captured sequence was then looked up in
+// charmbracelet/bubbletea@v1.3.10/key.go's own `sequences` table and
+// found to decode back to exactly the {KeyType, Alt: true} this map is
+// keyed from, so tmux's translation and bubbletea's decoding are proven
+// to agree for all forty-one names, not assumed to.
+// internal/tmux/key_test.go's
+// TestSendNamedKeyDeliversAltModifiedNavigationKeysByTmuxsOwnTranslation
+// re-runs that survey from the suite and holds the exact bytes; the
+// caret-notation summary is:
+//
+//	M-Up ^[[1;3A      M-Down ^[[1;3B      M-Left ^[[1;3D      M-Right ^[[1;3C
+//	M-Home ^[[1;3H    M-End ^[[1;3F       M-PageUp ^[[5;3~    M-PageDown ^[[6;3~
+//	M-Delete ^[[3;3~
+//	C-M-Up ^[[1;7A    C-M-Down ^[[1;7B    C-M-Left ^[[1;7D    C-M-Right ^[[1;7C
+//	C-M-Home ^[[1;7H  C-M-End ^[[1;7F     C-M-PgUp ^[[5;7~    C-M-PgDn ^[[6;7~
+//	S-M-Up ^[[1;4A    S-M-Down ^[[1;4B    S-M-Left ^[[1;4D    S-M-Right ^[[1;4C
+//	S-M-Home ^[[1;4H  S-M-End ^[[1;4F
+//	C-M-S-Up ^[[1;8A  C-M-S-Down ^[[1;8B  C-M-S-Left ^[[1;8D  C-M-S-Right ^[[1;8C
+//	C-M-S-Home ^[[1;8H  C-M-S-End ^[[1;8F
+//	M-F1 ^[[1;3P      M-F2 ^[[1;3Q        M-F3 ^[[1;3R        M-F4 ^[[1;3S
+//	M-F5 ^[[15;3~     M-F6 ^[[17;3~       M-F7 ^[[18;3~       M-F8 ^[[19;3~
+//	M-F9 ^[[20;3~     M-F10 ^[[21;3~      M-F11 ^[[23;3~      M-F12 ^[[24;3~
+//
+// The 3.6b-not-3.5a caveat is the mirror image of the one already
+// recorded at internal/tmux/key.go's allowlist comment: ci/Dockerfile
+// pins golang:1.25-trixie, whose apt tmux is 3.5a, and ci/Dockerfile is a
+// protected path this change cannot edit, so the in-suite survey runs
+// against whatever tmux the host provides (3.6b where this table was
+// produced). tmux's `M-` prefix and the xterm modifier parameter 3
+// (Alt), 4 (Shift+Alt), 7 (Ctrl+Alt), 8 (Ctrl+Shift+Alt) it maps onto are
+// the same in both, but only the version CI actually runs is verified by
+// CI itself.
+var interactiveAltNamedKeys = map[string]string{
+	"Up":    "M-Up",
+	"Down":  "M-Down",
+	"Left":  "M-Left",
+	"Right": "M-Right",
+
+	"Home": "M-Home",
+	"End":  "M-End",
+
+	"PageUp":   "M-PageUp",
+	"PageDown": "M-PageDown",
+
+	"Delete": "M-Delete",
+
+	"C-Up": "C-M-Up", "C-Down": "C-M-Down", "C-Left": "C-M-Left", "C-Right": "C-M-Right",
+	"C-Home": "C-M-Home", "C-End": "C-M-End", "C-PgUp": "C-M-PgUp", "C-PgDn": "C-M-PgDn",
+	"S-Up": "S-M-Up", "S-Down": "S-M-Down", "S-Left": "S-M-Left", "S-Right": "S-M-Right",
+	"S-Home": "S-M-Home", "S-End": "S-M-End",
+	"C-S-Up": "C-M-S-Up", "C-S-Down": "C-M-S-Down", "C-S-Left": "C-M-S-Left", "C-S-Right": "C-M-S-Right",
+	"C-S-Home": "C-M-S-Home", "C-S-End": "C-M-S-End",
+
+	"F1": "M-F1", "F2": "M-F2", "F3": "M-F3", "F4": "M-F4",
+	"F5": "M-F5", "F6": "M-F6", "F7": "M-F7", "F8": "M-F8",
+	"F9": "M-F9", "F10": "M-F10", "F11": "M-F11", "F12": "M-F12",
+
+	// The two listed gaps SPEC.md §11.9 asks to be named rather than
+	// silently omitted ("a key deck cannot encode must be a known, listed
+	// gap"). Both are spelled out here with an empty value, not left out
+	// of the map, so the "every bare name has an explicit Alt verdict"
+	// test can tell a deliberate gap from a forgotten entry:
+	//
+	//   - Insert: tmux DOES translate `M-Insert` correctly (surveyed:
+	//     ^[[2;3~, xterm's own Alt+Insert), but deck can never RECEIVE the
+	//     keystroke to forward. bubbletea v1.3.10's `sequences` table has
+	//     no entry for "\x1b[2;3~" at all; it instead carries
+	//     "\x1b[3;2~" -> {KeyInsert, Alt: true} (key.go:407), which is
+	//     xterm's Shift+Delete -- evidently an upstream transposition of
+	//     the two parameters. So a terminal emitting the standard
+	//     Alt+Insert bytes produces an unknown-CSI message that is never a
+	//     tea.KeyMsg and never reaches updateInteractive, and the one
+	//     KeyMsg that DOES arrive as {KeyInsert, Alt: true} was physically
+	//     Shift+Delete. Forwarding "M-Insert" for that would type
+	//     Alt+Insert into the agent for a key the user did not press, so
+	//     this stays a gap until upstream fixes the table; deck is not
+	//     contorted around it.
+	//   - BTab (Shift+Tab): tmux cannot express the Alt-modified form at
+	//     all. `send-keys M-BTab` was surveyed on 3.6b and delivers
+	//     ^[[Z -- byte for byte identical to plain `BTab`, with the Alt
+	//     silently discarded by tmux itself (od -c of both captures:
+	//     `^ [ [ Z`). Naming it would forward Shift+Tab while the user
+	//     pressed Alt+Shift+Tab, which is worse than the listed gap: §11.9
+	//     forbids forwarding a modified key with the modifier dropped just
+	//     as much as it forbids dropping the keystroke.
+	"Insert": "",
+	"BTab":   "",
+}
+
+// interactiveBareNamedKey is interactiveNamedKey's UNMODIFIED-by-Alt half:
+// the tmux key name for a KeyType on its own, including the Ctrl/Shift/
+// Ctrl+Shift-modified navigation KeyTypes bubbletea delivers as their own
+// distinct constants. interactiveNamedKey layers Alt on top of whatever
+// this returns via interactiveAltNamedKeys above -- which is keyed by the
+// names below, so adding a KeyType here without also giving it an Alt
+// verdict there fails a test rather than quietly re-creating issue #28's
+// silent drop for that one key.
+func interactiveBareNamedKey(keyType tea.KeyType) (string, bool) {
+	switch keyType {
 	case tea.KeyUp:
 		return "Up", true
 	case tea.KeyDown:
@@ -728,6 +880,20 @@ func interactiveNamedKey(msg tea.KeyMsg) (string, bool) {
 // needs tmux's own name translation the way arrows/Home/End/function keys
 // do. Alt is a plain ESC prefix, matching a real terminal's own encoding
 // for an Alt-modified key when 8-bit meta is off.
+//
+// The `msg.Type >= 0` half of that range guard is load-bearing and is the
+// reason this function is NOT a fallback for interactiveNamedKey: every
+// special key's KeyType is NEGATIVE (charmbracelet/bubbletea@v1.3.10/
+// key.go:205, `KeyRunes KeyType = -(iota + 1)`), so tea.KeyUp and friends
+// fall to the default branch here by construction rather than by
+// oversight -- an ESC prefix in front of a key whose bytes deck does not
+// know is not an encoding of anything. Issue #28 was exactly what happens
+// when interactiveNamedKey ALSO refuses them: both halves say no and the
+// keystroke disappears. The Alt keys this function does own are the ones
+// whose base byte value is fixed regardless of the pane's terminal mode:
+// runes/Space (KeyRunes carries them in msg.Runes) and the positive
+// C0/DEL types, i.e. Alt+Enter (13), Alt+Tab (9), Alt+Escape (27),
+// Alt+Backspace (127) and Alt+Ctrl+<letter>.
 //
 // Ctrl+Q never reaches here: updateInteractive intercepts it first.
 func interactiveLiteralPayload(msg tea.KeyMsg) (string, bool) {
