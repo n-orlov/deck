@@ -548,22 +548,42 @@ func (m Model) canvasWrapText(s string, width int) []string {
 	return out
 }
 
-// canvasResetIfPainting returns "\x1b[0m" when canvasBackground(tok, ...)
-// would actually open a background (i.e. colour is enabled and tok
-// resolves), or "" otherwise. previewContentLine and
-// fullBoxPreviewContentLine (below) need exactly this conditional reset:
-// unlike every OTHER call site in this file, they cannot route captured
-// pane content through canvasBackground itself (task 006/R118 -- that
-// would scan the pane's own bytes for "\x1b[0m" and repaint the pane with
-// deck's colour), so they emit their own explicit reset right after the
-// pane text by hand. Emitting it UNCONDITIONALLY -- the way an earlier
-// version of this task's own work did -- injects a bare "\x1b[0m" even
-// with colour disabled (NO_COLOR, or a colorless Settings{} test build),
-// where nothing was ever opened to close: a stray reset byte with no
-// matching open, breaking every plain-text assertion that (rightly)
-// expects a colour-disabled render to carry no escape bytes at all.
-func (m Model) canvasResetIfPainting(tok theme.Token) string {
+// canvasResetIfPainting returns "\x1b[0m" when EITHER canvasBackground(tok,
+// ...) would actually open a background (i.e. colour is enabled and tok
+// resolves) OR foreign itself carries any escape byte, and "" only when
+// neither is true. previewContentLine and fullBoxPreviewContentLine
+// (below) need exactly this conditional reset: unlike every OTHER call
+// site in this file, they cannot route captured pane content through
+// canvasBackground itself (task 006/R118 -- that would scan the pane's
+// own bytes for "\x1b[0m" and repaint the pane with deck's colour), so
+// they emit their own explicit reset right after the pane text by hand.
+//
+// The two disjuncts are independent on purpose (task cure-03-01-2/R118):
+// a real capture's own SGR state is the pane's to open and close, never
+// deck's, so it can leave a background/foreground/attribute open at the
+// end of a row regardless of whether DECK's own colour painting is on --
+// the foreign-content-to-deck boundary must close that state on its own
+// terms, not deck's. Checking foreign for any escape byte (0x1b) is a
+// conservative, cheap proxy for "might have left SGR open": a captured
+// row with zero escape bytes never opened anything, so no reset is owed
+// (this is what keeps a genuinely plain captured row -- no colour, no
+// attribute -- carrying no escape bytes at all under NO_COLOR, exactly
+// like a colour-disabled build with nothing to close); a row with ANY
+// escape byte gets the defensive reset even though deck's own painting is
+// off, because an extra, idempotent "\x1b[0m" after content that already
+// closed itself costs nothing visible, while skipping it when content did
+// NOT close itself is exactly the leak this task exists to close.
+// Emitting it unconditionally regardless of foreign, the way an earlier
+// version of this task's own work did, injects a bare "\x1b[0m" even for
+// plain, escape-free foreign text under colour-disabled builds, breaking
+// every plain-text assertion that (rightly) expects a colour-disabled
+// render of plain input to carry no escape bytes at all -- that is why
+// foreign, not just tok's own colour state, gates the second disjunct.
+func (m Model) canvasResetIfPainting(tok theme.Token, foreign string) string {
 	if _, ok := m.backgroundSGR(tok); ok {
+		return "\x1b[0m"
+	}
+	if strings.Contains(foreign, "\x1b") {
 		return "\x1b[0m"
 	}
 	return ""
@@ -739,7 +759,7 @@ func (m Model) previewContentLine(width int, text string, owned bool) string {
 	}
 	left := m.canvasBackground(theme.Background, leftBorder, " ")
 	right := m.canvasBackground(theme.Background, " ", rightBorder)
-	return left + padded + m.canvasResetIfPainting(theme.Background) + right
+	return left + padded + m.canvasResetIfPainting(theme.Background, padded) + right
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
@@ -840,15 +860,21 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 // paintForeignFill closes whatever SGR state a foreign captured row's own
 // bytes may have left open -- an unclosed foreground/background/bold, the
 // "attribute left open" case task 003/B1 exists for -- with an explicit
-// reset (canvasResetIfPainting, so a colour-disabled build still emits no
-// escape bytes at all), then paints s with deck's own theme.Background.
-// cropRow below is the only caller: s is always deck-drawn padding/crop-
-// marker glyph, never a byte of the pane's own capture, so composing it
-// through canvasBackground here is safe in exactly the way the doc
-// comments on canvasBackground/previewContentLine say a captured pane's
-// OWN bytes never are.
-func (m Model) paintForeignFill(s string) string {
-	return m.canvasResetIfPainting(theme.Background) + m.canvasBackground(theme.Background, s)
+// reset (canvasResetIfPainting, gated on foreign so a colour-disabled
+// build with a genuinely plain (escape-free) foreign row still emits no
+// escape bytes at all, task cure-03-01-2/R118), then paints s with deck's
+// own theme.Background. cropRow below is the only caller: s is always
+// deck-drawn padding/crop-marker glyph, never a byte of the pane's own
+// capture, so composing it through canvasBackground here is safe in
+// exactly the way the doc comments on canvasBackground/previewContentLine
+// say a captured pane's OWN bytes never are; foreign is the actual
+// captured bytes that precede s on this row (or "" when cropRow's marker
+// has replaced the row entirely and no foreign byte reaches this line at
+// all), passed through only so canvasResetIfPainting can decide whether
+// THIS row's foreign content might have left SGR open -- it is never
+// itself painted here.
+func (m Model) paintForeignFill(foreign, s string) string {
+	return m.canvasResetIfPainting(theme.Background, foreign) + m.canvasBackground(theme.Background, s)
 }
 
 // cropRow crops a single captured screen row to exactly contentWidth
@@ -877,18 +903,21 @@ func (m Model) cropRow(row string, contentWidth int) string {
 		if fillWidth <= 0 {
 			return row
 		}
-		return row + m.paintForeignFill(strings.Repeat(" ", fillWidth))
+		return row + m.paintForeignFill(row, strings.Repeat(" ", fillWidth))
 	}
 	marker := m.cropMarker()
 	markerW := stringWidth(marker)
 	budget := contentWidth - markerW
 	if budget <= 0 {
-		return m.paintForeignFill(padToWidth(truncateToWidth(marker, contentWidth), contentWidth))
+		// The row's own bytes are entirely replaced by the marker here --
+		// none of row reaches this line's output -- so there is nothing
+		// of the pane's own SGR state in this row to close; foreign is "".
+		return m.paintForeignFill("", padToWidth(truncateToWidth(marker, contentWidth), contentWidth))
 	}
 	content := truncateToWidth(row, budget)
 	fillWidth := budget - stringWidth(content)
 	tail := strings.Repeat(" ", max(fillWidth, 0)) + marker
-	return content + m.paintForeignFill(tail)
+	return content + m.paintForeignFill(content, tail)
 }
 
 // borderLabel renders a border title (" title ", clamped to inner columns)
@@ -1035,7 +1064,7 @@ func (m Model) fullBoxPreviewContentLine(width int, text string, focused bool, o
 	}
 	left := m.canvasBackground(theme.Background, border, " ")
 	right := m.canvasBackground(theme.Background, " ", border)
-	return left + padded + m.canvasResetIfPainting(theme.Background) + right
+	return left + padded + m.canvasResetIfPainting(theme.Background, padded) + right
 }
 
 // dialogWidth is every §11.4 dialog/overlay's box width (SPEC.md:1070,
