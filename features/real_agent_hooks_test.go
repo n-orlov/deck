@@ -197,20 +197,8 @@ func waitForRealCodexHook(ctx context.Context, name, event string) (map[string]a
 	if err != nil {
 		return nil, nil, err
 	}
-	conversationID, err := sessionConversationID(h, name)
-	if err != nil {
-		return nil, nil, err
-	}
-	if conversationID == "" {
-		return nil, nil, fmt.Errorf("real Codex hook contract test observed session %q with no conversation id yet (codex only mints one on first prompt)", name)
-	}
 	if h.workingDir == "" {
 		return nil, nil, fmt.Errorf("real Codex hook contract test has no scenario working directory")
-	}
-	expected := map[string]string{
-		"hook_event_name": event,
-		"session_id":      conversationID,
-		"cwd":             h.workingDir,
 	}
 
 	db, err := openObservedDatabase(h)
@@ -231,6 +219,33 @@ func waitForRealCodexHook(ctx context.Context, name, event string) (map[string]a
 		return nil, nil, fmt.Errorf("real Codex hook contract test has no stored kind for %s", event)
 	}
 	deadline := time.Now().Add(20 * time.Second)
+	// Codex mints its conversation id, and fires SessionStart, only on the
+	// first prompt (SPEC §8.2/R125) -- asynchronously with respect to this
+	// helper's own start, since submitRealCodexPrompt only sends keystrokes
+	// and does not itself wait on adoption. An initially empty id here is
+	// the documented, normal interval before that first hook arrives, not a
+	// contract violation: wait for authoritative adoption within the same
+	// bounded deadline the hook poll below uses, and derive the expected
+	// session_id only once adoption has actually happened.
+	var conversationID string
+	for {
+		conversationID, err = sessionConversationID(h, name)
+		if err != nil {
+			return nil, nil, err
+		}
+		if conversationID != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, nil, fmt.Errorf("real Codex hook contract unsupported: session %q adopted no conversation id within 20s (codex only mints one on first prompt; installed CLI may require authentication, directory trust, or no longer accept injected hooks)", name)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	expected := map[string]string{
+		"hook_event_name": event,
+		"session_id":      conversationID,
+		"cwd":             h.workingDir,
+	}
 	for {
 		var raw string
 		err := db.QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND kind = ? ORDER BY rowid DESC LIMIT 1`, sessionID, kind).Scan(&raw)
@@ -521,4 +536,80 @@ func mapsClone(source map[string]any) map[string]any {
 		clone[key] = value
 	}
 	return clone
+}
+
+// TestWaitForRealCodexHookAllowsDelayedFirstHookAdoption drives the actual
+// waitForRealCodexHook helper (never a fixture stand-in) against a row that
+// starts with no conversation id and only adopts one, alongside its first
+// SessionStart hook, after a short nonzero delay -- the documented, normal
+// asynchronous interval between codex's first prompt and its first hook
+// (SPEC §8.2/R125), not a contract violation. Before this cure the helper
+// rejected the initially empty id immediately, before its own bounded
+// polling loop ever ran; this regression proves it now waits within that
+// same deadline instead, and derives its expected session_id only once
+// adoption has actually happened. The already-adopted control call proves
+// the ordinary (already-adopted-by-the-time-of-observation) path still
+// works unchanged.
+func TestWaitForRealCodexHookAllowsDelayedFirstHookAdoption(t *testing.T) {
+	h := &ScenarioHarness{Home: t.TempDir(), workingDir: "/real-codex-wait-cwd"}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, stmt := range []string{
+		`CREATE TABLE sessions (id TEXT, name TEXT, conversation_id TEXT)`,
+		`CREATE TABLE events (session_id TEXT, kind TEXT, payload TEXT)`,
+		`INSERT INTO sessions VALUES ('deck-row', 'one', '')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.WithValue(context.Background(), scenarioHarnessKey{}, h)
+	rawPayload, err := json.Marshal(map[string]any{
+		"hook_event_name": "SessionStart",
+		"session_id":      "codex-id",
+		"cwd":             h.workingDir,
+		"transcript_path": "/real-codex-wait-cwd/rollout-codex-id.jsonl",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	published := make(chan error, 1)
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		if _, err := db.Exec(`UPDATE sessions SET conversation_id='codex-id' WHERE id='deck-row'`); err != nil {
+			published <- err
+			return
+		}
+		_, err := db.Exec(`INSERT INTO events VALUES ('deck-row','session_start',?)`, string(rawPayload))
+		published <- err
+	}()
+
+	start := time.Now()
+	gotPayload, expected, waitErr := waitForRealCodexHook(ctx, "one", "SessionStart")
+	elapsed := time.Since(start)
+	if err := <-published; err != nil {
+		t.Fatalf("fixture setup: %v", err)
+	}
+	if waitErr != nil {
+		t.Fatalf("wait rejected before an on-time first hook: elapsed=%s error=%v; hook was published after 200ms", elapsed, waitErr)
+	}
+	if elapsed < 150*time.Millisecond {
+		t.Fatalf("wait returned before the delayed hook could plausibly have arrived: elapsed=%s", elapsed)
+	}
+	if want := "codex-id"; expected["session_id"] != want {
+		t.Fatalf("expected session_id = %q, want %q (must be derived after adoption)", expected["session_id"], want)
+	}
+	if got := gotPayload["session_id"]; got != "codex-id" {
+		t.Fatalf("payload session_id = %v, want %q", got, "codex-id")
+	}
+
+	// Already-adopted control: once conversation id and hook are already
+	// durable, the same helper must still return them immediately.
+	if _, _, err := waitForRealCodexHook(ctx, "one", "SessionStart"); err != nil {
+		t.Fatalf("already-adopted control rejected: %v", err)
+	}
 }
