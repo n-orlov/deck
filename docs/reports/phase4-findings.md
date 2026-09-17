@@ -66,6 +66,31 @@ halves (no badge for `safe`, badge kept for the other three) at
 011b (`1f38195` regenerates the golden; see the Inventory below for the
 discovery and fix commits).
 
+## New in the cure pass: the mouse-gesture frame-capture race
+
+The ten-run stability sweep re-taken at this approach's final tail code sha
+`bfdb69e` (`docs/reports/phase4-a3-stability10/README.md`, 9/10 passed) has one
+red repetition, run 5, and it is a finding this run makes and does **not** fix:
+
+- **`features/mouse.feature:20`** waits for the string `running` on *any*
+  sidebar row, so the frame captured at **`features/mouse.feature:26`** can be
+  taken while the second session's own row still reads `starting`. Deck's
+  ordinary reconcile transition then flips that one word before the
+  frame-unchanged re-check at **`features/mouse.feature:31`** (hook at
+  **`features/mouse_synthesis_test.go:254`**), failing the scenario roughly one
+  run in ten. Reason not fixed: it is a fixture-side wait, in test code only,
+  outside this approach's scope (review pass 234's two reds plus the R121
+  environment-layering cure); the diff is a single status word, never a paint,
+  layout, colour, gutter, crop or interactive-mode difference, so no product
+  assertion is weakened by leaving it. The verbatim `want`/`got` frames are in
+  `docs/reports/phase4-a3-stability10/run-5.log` (from line 6350).
+
+This entry is quoted as a formatted `FINDING:` line in the cure pass's own
+record commit (the commit that adds `docs/reports/phase4-r121-server-env/`), so
+re-running the Inventory command below at a later HEAD picks it up there; the
+verbatim paste in the Inventory section itself is the one taken at that
+section's own shipped HEAD, per this run's write-once rule for the record.
+
 ## Inventory
 
 The command that defines this run's findings set is

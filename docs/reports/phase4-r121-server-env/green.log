@@ -1,0 +1,13 @@
+=== RUN   TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient
+=== RUN   TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/session-override-wins-over-actual-server
+=== RUN   TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/config-override-wins-over-actual-server
+=== RUN   TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/session-override-wins-over-config-override
+=== RUN   TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/no-override-falls-through-to-the-actual-server-not-the-observer
+    transcript_server_env_test.go:144: actual server root=/tmp/TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbie3937503494/001 observer ambient root=/tmp/TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbie3937503494/002 got=/tmp/TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbie3937503494/001/sessions/2026/09/12/rollout-2026-09-12T15-47-04-01a09616-150d-7252-959c-d72a289dae41.jsonl
+--- PASS: TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient (0.02s)
+    --- PASS: TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/session-override-wins-over-actual-server (0.00s)
+    --- PASS: TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/config-override-wins-over-actual-server (0.00s)
+    --- PASS: TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/session-override-wins-over-config-override (0.00s)
+    --- PASS: TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient/no-override-falls-through-to-the-actual-server-not-the-observer (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.024s
