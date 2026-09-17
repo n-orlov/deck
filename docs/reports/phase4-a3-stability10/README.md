@@ -68,6 +68,17 @@ The two known-open advisory flakes named in the standing rules —
 checked for in every one of the ten logs (`grep -n` for both test names
 across `run-1.log` … `run-10.log`). **Neither appears in any of the ten
 runs** — they did not manifest this sweep, so no row in the table above
-carries the "advisory" label. Had either fired, its row's verdict would
-still read PASS (both are advisory/non-fatal by design) with the flake
-named and labelled advisory in that row.
+carries the "advisory" label.
+
+"Advisory" here describes how this record classifies the two cases, **not**
+how they behave in the suite. Both are ordinary Go tests that report through
+`t.Fatalf` (`features/sigwinch_count_test.go:78-150`,
+`internal/tmux/literal_send_test.go`'s
+`TestSendKeysInvalidHexByteIsSilentlyDiscarded` empty-capture assertion), so
+either one firing makes `go test` exit non-zero, and `ci/stability.sh` labels
+a repetition from that exact exit status (`status=$?` captured immediately
+after the un-piped `go test`, never from log text). Had either fired, that
+repetition's verdict would therefore read **FAIL**, with the failing test
+named in its row and the row additionally labelled advisory — a FAIL labelled
+advisory, never a PASS. Neither did fire here, so every row is a genuine
+exit-0 PASS.
