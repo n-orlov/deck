@@ -1042,10 +1042,17 @@ rebuild"): approach 1's Tier 1 work stays as committed and re-verified, not re-i
   built-ins plus `NO_COLOR`/`DECK_COLOR_DEPTH=16`.
 - **B2** — cured: task 005 (`e69c3d8`) replaced `CodexHome` with a generic
   `Caps.TranscriptEnvKeys []string` an adapter declares and a generic `Env map[string]string`
-  the TUI populates from that list (`grep -rn 'CODEX_HOME' internal/tui` now prints nothing);
-  task 006 (`ef9571d`) extended the black-box registry-swap guard to a replacement adapter's own
-  invented transcript env key; task 007 (`1e97059`) regression-tested the production lookup
-  caller with three competing `CODEX_HOME` layers live at once.
+  the TUI populates from that list — the production transcript-resolution caller resolves only
+  the keys an adapter declares this way and carries no `CODEX_HOME`-shaped field or branch of
+  its own; task 006 (`ef9571d`) extended the black-box registry-swap guard to a replacement
+  adapter's own invented transcript env key; task 007 (`1e97059`) regression-tested the
+  production lookup caller with three competing `CODEX_HOME` layers live at once. (Approach 3
+  task 007 corrects this entry's own citation: task 006's and task 007's own tests
+  [`internal/tui/registry_guard_test.go`, `internal/tui/transcript_env_layers_test.go`] name
+  `CODEX_HOME` in comments and fixtures to prove the seam, so `grep -rn 'CODEX_HOME'
+  internal/tui` prints 14 intentional test matches rather than nothing — the all-files
+  empty-grep phrasing above was never accurate past those two tasks' own commits, though the
+  product-level seam they describe is unaffected.)
 - **B3** — cured: task 008 (`2ff6024`) captured each pane's own authoritative
   `session_id`/`transcript_path` independently of the store and added
   `TestCodexIdentityMismatchCatchesSwappedStoredIDs` (`features/codex_hooks_swap_test.go`),
