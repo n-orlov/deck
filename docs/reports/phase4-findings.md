@@ -72,9 +72,48 @@ The command that defines this run's findings set is
 `git log --grep='FINDING:' "$BASE..HEAD"`, with
 `BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase4-codex-and-chrome.md)`
 = `08a1ffe3eb229f8ebe5ba9791fbb3e3cec6e0c06` (the standing rules' own audit
-command). Pasted verbatim, unedited, HEAD at `1ee3cbd`:
+command). Pasted verbatim, unedited, HEAD at `1326945` (approach 3's own
+tail, task 007's last record commit before this refresh):
 
 ```
+commit 0e514ee66b7c0f3f615823f81dfcefdf0e3c9ae5
+Author: Nik <nikolaiorl@gmail.com>
+Date:   Thu Sep 17 04:05:31 2026 +0000
+
+    docs: refresh phase4-findings.md with this approach's own FINDING inventory and the R120/SPEC badge disagreement (task 017)
+    
+    Rewrites docs/reports/phase4-findings.md from scratch: keeps the two
+    known-unverified codex items (R132 non-goals) by name, adds a new section
+    recording the PRD-R120-versus-SPEC-§11 permission-badge disagreement
+    (SPEC.md:1339 restricts the line-2 badge to non-safe profiles; the PRD's
+    R120 bullet at prds/phase4-codex-and-chrome.md:284 implies every profile
+    including safe gets one), names SPEC as authoritative per the run's own
+    precedence rule, and points at task 011's e93a790 as the code change that
+    resolved it in code.
+    
+    The Inventory section is the verbatim, byte-identical output of
+    git log --grep='FINDING:' "$BASE..HEAD" (BASE = 08a1ffe3, the standing
+    rules' own audit command), confirmed via a diff against the raw git log
+    output before committing. Below it, one entry per distinct quoted
+    FINDING: line with a file:line and the reason it was left unfixed --
+    noting explicitly that four of the ten matched commits appear twice in
+    the paste (fac1db0's own nested quote of four earlier commits, plus those
+    same four commits matched again in their own right), a byproduct of
+    history rather than something edited out of the verbatim paste.
+    
+    New entries this approach added since the prior (task-043-era) ledger:
+    internal/tmux/literal_send_test.go:123 (b98ce9c, task 011b's stability-run
+    flake); features/golden_frame_test.go:91 (059704a, task 013's discovery
+    of the stale golden fixture, since fixed by 1f38195/0ba550a but kept as
+    its own historical entry per the run's own later-green-never-erases rule);
+    internal/tui/panel.go:809-811,816-819 (96b0ba9/0e72ec1, tasks 002/003,
+    cropPreviewBottomLeft's geometry line and blank-fill rows for an
+    undersized real capture, a genuine disclosed residual with no later task
+    claiming that scope).
+    
+    Record-only, docs/reports/ only; protected-path audit (SPEC.md/prds/
+    ci/Dockerfile/ci/SPIKE.md) prints nothing; no *.go/*.feature file touched.
+
 commit 0ca8667465fe8915169c1cc956c8e75cdf99014b
 Author: Nik <nikolaiorl@gmail.com>
 Date:   Thu Sep 17 03:26:10 2026 +0000
@@ -724,17 +763,30 @@ appears above.
    rule — rather than folded into the badge-disagreement narrative above.
 3. **`internal/tui/panel.go:809-810,816-818`** (`cropPreviewBottomLeft`'s
    `"WxH of realWxrealH"` geometry line and its `blank := strings.Repeat`
-   fill loop; commits `96b0ba9` task 002 and `0e72ec1` task 003) — task 002
-   painted the deck-owned placeholder path (no live capture at all) and
-   flagged this residual forward to task 003; task 003 painted the crop
-   fill/marker beside a REAL capture's own bytes but explicitly left
-   `cropPreviewBottomLeft`'s own geometry line and its blank-fill rows (for a
-   real capture smaller than the panel) still composed as plain,
-   unpainted text at a row still marked `previewLineForeign` — outside both
-   tasks' own stated scope. No later task in this plan claims that scope;
-   left unpainted for this ledger as a genuine, disclosed residual (deck's
-   canvas paint is not total for a live, undersized real capture's own
-   geometry/blank-fill decoration).
+   fill loop; original finding from commits `96b0ba9` task 002 and
+   `0e72ec1` task 003 of the prior approach) — **fixed, not left open, in
+   this approach.** Approach 3 task 001 (`92619cf`, "tui: paint the crop
+   geometry line and blank fill", plus its fixture correction `48bce3d`)
+   gave `cropPreviewBottomLeft` its own per-row provenance
+   (`[]previewLineOwner`, `internal/tui/panel.go`): the geometry line and
+   the trailing blank-fill rows are now `previewLineDeckOwned` and get
+   `previewContentLine`/`fullBoxPreviewContentLine`'s full-row
+   `canvasBackground` treatment, while every row built from the pane's own
+   captured bytes (`cropRow`) stays `previewLineForeign` and untouched.
+   `internal/tui/crop_decoration_background_test.go`'s
+   `TestCropDecorationsCarryDeckBackground` pins this against a live pane
+   shorter than the preview content height (forcing blank-fill rows) and
+   wider than `contentWidth` (forcing the geometry line): red against the
+   pre-task code (deck-painted cells carrying the terminal's own
+   background instead of `theme.Background`), green after. Approach 3 task
+   002 (`3568bd7`, "tui: paint the interactive preview branch's own notice
+   and pad rows") fixed the same class of gap on the sibling
+   `interactiveBodyLines` branch (the `interactiveNotRepaintedNotice` line
+   and any pad row), pinned by
+   `internal/tui/interactive_test.go`'s `TestFitInteractiveBodyLinesOwnership`.
+   Kept in the ledger as a historical entry per this run's own
+   later-green-never-erases rule — the gap was real when found, and the two
+   commits above are the fix, not a re-deferral.
 4. **`internal/service/agent.go:67`** (commit `a11cc86`, task 025) —
    `ResolveProfile`'s degrade-to-safe fallback is unreachable through the
    released TUI for an ordinary create: the create modal
