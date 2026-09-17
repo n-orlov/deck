@@ -223,20 +223,20 @@ func TestInteractiveGridIsBlankStripsANSIAndDetectsVisibleText(t *testing.T) {
 
 // TestInteractiveBodyLinesAnnouncesNotRepaintedWhileGridIsBlank and its
 // sibling below prove interactiveBodyLines' own contract (PRD II-49) at
-// the fitLines boundary, independent of a real interactive.Session (which
-// requires a live tmux pane to construct): given the exact lines a real
-// Grid().Render() would hand back, a wholly blank grid gets the
-// announcement prepended as line 0, and a grid with real content does
-// not.
+// the fitInteractiveBodyLines boundary, independent of a real
+// interactive.Session (which requires a live tmux pane to construct):
+// given the exact lines a real Grid().Render() would hand back, a wholly
+// blank grid gets the announcement prepended as line 0, and a grid with
+// real content does not.
 func TestInteractiveBodyLinesPrependsAnnouncementOnlyWhenGridIsBlank(t *testing.T) {
 	blankRendered := []string{"", "", "", ""}
-	got := fitLinesWithOptionalNotice(blankRendered, 4)
+	got, _ := fitInteractiveBodyLines(blankRendered, 4, interactiveGridIsBlank(blankRendered))
 	if got[0] != interactiveNotRepaintedNotice {
 		t.Fatalf("blank grid: line 0 = %q, want the not-repainted notice %q", got[0], interactiveNotRepaintedNotice)
 	}
 
 	liveRendered := []string{"repaint #1", "", "", ""}
-	got = fitLinesWithOptionalNotice(liveRendered, 4)
+	got, _ = fitInteractiveBodyLines(liveRendered, 4, interactiveGridIsBlank(liveRendered))
 	for _, line := range got {
 		if strings.Contains(line, interactiveNotRepaintedNotice) {
 			t.Fatalf("live grid %v unexpectedly carries the not-repainted notice", got)
@@ -247,17 +247,70 @@ func TestInteractiveBodyLinesPrependsAnnouncementOnlyWhenGridIsBlank(t *testing.
 	}
 }
 
-// fitLinesWithOptionalNotice reproduces interactiveBodyLines' own
-// blank-check-then-prepend-then-fit sequence directly on a caller-supplied
-// rendered-lines slice, so the two tests above can exercise it without
-// needing a real *interactive.Session (interactiveBodyLines itself calls
-// m.interactiveGrid.Grid().Render(), which requires a live tmux pane to
-// construct at all).
-func fitLinesWithOptionalNotice(lines []string, contentHeight int) []string {
-	if interactiveGridIsBlank(lines) {
-		lines = append([]string{interactiveNotRepaintedNotice}, lines...)
-	}
-	return fitLines(lines, contentHeight)
+// TestFitInteractiveBodyLinesOwnership is this task's (002/B1) own
+// red-first proof of fitInteractiveBodyLines' per-row provenance,
+// independent of a real *interactive.Session for the same reason the test
+// above is: interactiveBodyLines itself calls m.interactiveGrid.RenderRows,
+// which requires a live tmux pane to construct at all, but the
+// notice-then-pad/truncate sequence this task moved out to
+// fitInteractiveBodyLines takes plain lines and needs none of that.
+//
+// Two cases, matching the task's own two named scenarios:
+//   - the blank-grid notice case: a wholly blank grid (contentHeight rows,
+//     as RenderRows always returns) gets interactiveNotRepaintedNotice
+//     prepended as a deck-owned line 0, pushing the slice one row over
+//     contentHeight -- fitInteractiveBodyLines' truncation branch then
+//     drops the LAST row, which is one of the grid's own (foreign) blank
+//     rows, never the notice itself.
+//   - the short-grid pad case: a grid slice shorter than contentHeight
+//     (never produced by the real RenderRows today, but the provenance
+//     must still be correct symmetrically with cropPreviewBottomLeft's own
+//     vertical blank-fill) gets deck-owned pad rows appended to reach
+//     contentHeight, while every real grid row already present stays
+//     foreign.
+func TestFitInteractiveBodyLinesOwnership(t *testing.T) {
+	t.Run("blank-grid notice case", func(t *testing.T) {
+		blankRendered := []string{"", "", "", ""}
+		lines, owners := fitInteractiveBodyLines(blankRendered, 4, true)
+		if len(lines) != 4 || len(owners) != 4 {
+			t.Fatalf("len(lines)=%d len(owners)=%d, want 4/4", len(lines), len(owners))
+		}
+		if lines[0] != interactiveNotRepaintedNotice {
+			t.Fatalf("lines[0] = %q, want the not-repainted notice %q", lines[0], interactiveNotRepaintedNotice)
+		}
+		if owners[0] != previewLineDeckOwned {
+			t.Fatalf("owners[0] (notice line) = %v, want previewLineDeckOwned", owners[0])
+		}
+		for i := 1; i < 4; i++ {
+			if owners[i] != previewLineForeign {
+				t.Fatalf("owners[%d] (grid row) = %v, want previewLineForeign", i, owners[i])
+			}
+		}
+	})
+
+	t.Run("short-grid pad case", func(t *testing.T) {
+		shortGrid := []string{"repaint #1", "repaint #2"}
+		lines, owners := fitInteractiveBodyLines(shortGrid, 5, false)
+		if len(lines) != 5 || len(owners) != 5 {
+			t.Fatalf("len(lines)=%d len(owners)=%d, want 5/5", len(lines), len(owners))
+		}
+		for i := 0; i < 2; i++ {
+			if lines[i] != shortGrid[i] {
+				t.Fatalf("lines[%d] = %q, want the grid's own %q unshifted", i, lines[i], shortGrid[i])
+			}
+			if owners[i] != previewLineForeign {
+				t.Fatalf("owners[%d] (real grid row) = %v, want previewLineForeign", i, owners[i])
+			}
+		}
+		for i := 2; i < 5; i++ {
+			if lines[i] != "" {
+				t.Fatalf("lines[%d] = %q, want a blank pad row", i, lines[i])
+			}
+			if owners[i] != previewLineDeckOwned {
+				t.Fatalf("owners[%d] (synthesized pad row) = %v, want previewLineDeckOwned", i, owners[i])
+			}
+		}
+	})
 }
 
 // TestInteractiveNamedKeyMapsOnlyModeDependentKeys proves the named-key/
