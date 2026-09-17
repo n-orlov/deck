@@ -1127,13 +1127,39 @@ prds/ ci/Dockerfile ci/SPIKE.md`) prints nothing across both approaches. Approac
 at `db66965` (`docs/reports/phase4-{final-suite,guards,stability10}/`, and the superseded
 version of `phase4-report.md`) stays as history and is not edited.
 
-**This citation of `0ba550a` as Phase 4's final code sha is superseded — approach 3's true final
-code sha is `7bb1f8add502412618ebf4f195b18ffd5536b64a` (`7bb1f8a`, "features: wait for codex's
-asynchronous first-hook identity adoption before checking (task cure-03-02)"), corrected here
-from this entry's own first draft (`6c397ab`, task 009), which was written and pushed before two
-facts below existed: cure-03-01/cure-03-02 landed after it, and the operator's B0 ruling arrived
-after it. This paragraph replaces that draft in place; it is not a second, competing approach-3
-entry.** Approach 3 (run `deck-phase4`, same PRD) was a narrow cure against its own plan-gate
+**This citation of `0ba550a` as Phase 4's final code sha is superseded — approach 3's final code
+sha is `a260abfaa36fe96068fb19f4735d66b3b040459b` (`a260abf`, "tui: close the
+foreign-content-to-deck boundary reset independently of deck's own colour (task cure-03-01-2)"),
+the last commit in the run to touch a `*.go` or `*.feature` file
+(`git log --format=%H -1 -- '*.go' '*.feature'`); repo HEAD `32b3639` above it is
+documentation-only. Both of this entry's own earlier drafts are superseded and replaced in place
+by this paragraph — `6c397ab` (task 009) named `3568bd7` and `f0ac40b` (task 010) named
+`7bb1f8a`, each pushed while the run was still moving code past it. This is not a second,
+competing approach-3 entry; unlike the two drafts it replaces, it was written by hand after the
+run had ended.**
+
+**The run was stopped by the operator and there is no accepted verdict for Phase 4.** ralphd
+engine 0.21.1, started 2026-09-16 07:35 +0100, `ralphctl stop` at 2026-09-17T18:04:14Z after
+1d 11h (the run's own `status.json`: `endedAt` 18:03:37Z, `reason: aborted by operator`). Final
+state **`aborted`**, verdict **`unverified`**, approach **3 of 3**, **7 of 14 tasks validated**,
+iteration 337 with 329 of 800 iterations used, **~$292.6** derived spend. **Review never accepted
+an approach in this run:** all five `approach.verdict_recorded` events in `events.jsonl` read
+`rejected` — approach 1 once (2026-09-16 21:58:08Z, 4 blocking + 1 residual), approach 2 once
+(2026-09-17 04:22:05Z, 2 + 1) and approach 3 three times (07:58:20Z, 09:22:53Z, 13:34:09Z, 1 + 1
+then 2 + 1 twice), the last two rejections each opening a cure pass — two of a ceiling of three.
+Nothing in this
+entry may be read as a passing review, an accepted approach, or a satisfied PRD. What it records
+is which code shipped, which did not, and the sha at which the tree was measured green.
+
+**What shipped is Tier 1 (R116–R127) and nothing else.** Each of those twelve requirements
+carries its own `Shipped` verdict, commits and tests in
+[`docs/reports/phase4-report.md`](reports/phase4-report.md), and both gates are green at
+`a260abf` (sweeps below). **Tier 2 (R128–R131) was never started**, and **R132 (the record
+matches the tree) was not completed** — the documentation-consistency chain (tasks 005–008) was
+the work in flight when the run was stopped, which is why this correction is being made by hand.
+Both are detailed below.
+
+Approach 3 (run `deck-phase4`, same PRD) was a narrow cure against its own plan-gate
 review, which carried forward one still-blocking finding from approach 2 (B1's own same-class
 residual: the interactive-preview branch) and left B0's authorization status pending; approach
 2's already-cured B2, B3 and R1, and all of Tier 1, were re-verified rather than re-implemented,
@@ -1141,7 +1167,10 @@ per this approach's own standing rule ("a cure, not a rebuild"). Review pass 234
 task 002 landed, found two further reds not itself in scope for tasks 001/002 — the settings
 takeover's own footer left unpainted, and the real-Codex first-hook wait rejecting before the
 asynchronous identity adoption it waits on — cured by tasks cure-03-01 and cure-03-02
-respectively; both are code, and both moved the tail code sha from `3568bd7` to `7bb1f8a`.
+respectively; both are code, and both moved the tail code sha from `3568bd7` to `7bb1f8a`. The
+third and last review pass (13:34:09Z) then rejected the approach again on three findings, two
+blocking and one residual; both blocking ones were cured and validated before the stop, moving
+the tail from `7bb1f8a` to `a260abf`, and the residual was still open when the run ended.
 
 - **B1** — cured: task 001 (`92619cf` + `48bce3d`) gave `cropPreviewBottomLeft`'s own geometry
   line and synthesized blank-fill rows their own per-row provenance
@@ -1160,6 +1189,9 @@ respectively; both are code, and both moved the tail code sha from `3568bd7` to 
   (`2a04e5a`, "paint the settings takeover footer through the shared canvas helper"), which
   routes `settingsFooterLineContent` through the same `canvasBackground` wrapper the other two
   cures use, so every deck-drawn cell in every settings mode's footer paints `theme.Background`.
+  The last review pass found the same requirement broken a fourth time from the other direction
+  (B1-NC below) — the three cures above all concern which *deck-drawn* cells get painted, and
+  B1-NC concerns closing the *captured* pane's own attributes at the boundary.
 - **B0** — **ADJUDICATED AND WITHDRAWN by operator ruling.** This entry's own first draft
   (`6c397ab`, task 009) reproduced task 006's pre-ruling report snapshot, which had read the
   authorization as not yet on record; that pre-ruling reading is corrected in place here, not
@@ -1192,40 +1224,136 @@ respectively; both are code, and both moved the tail code sha from `3568bd7` to 
   (`panel_background_themes.log`, still naming the superseded `3568bd7` after task 005's rewrite
   moved this approach's tail to `7bb1f8a`).
 
-**Tier 2's fate is unchanged: still NOT STARTED.** No task in this approach touched Tier 2 code;
-the SPEC-describes-manual-groups-while-code-groups-by-workspace gap stays the same explicitly
-disclosed, not-scored non-finding approach 1 and approach 2 both left it as, never "cured" by
-editing SPEC.
+**The last review pass's three findings** (the run's own `review-findings.json`, verdict recorded
+2026-09-17T13:34:09Z) — the two blocking ones were both cured in code and validated before the
+stop; the residual was not:
 
-**Both sweeps, re-measured from scratch at `7bb1f8a` (never re-run under the task that found a
-red lane — none was found; this supersedes the `3568bd7` measurements this entry's first draft
-cited, which were themselves measurements of a tree the two footer/first-hook cures then
-changed):**
-- **Full-suite gate** (task 003, `abd963f`): `ci/run.sh go test -p=1 -count=1 -timeout=40m ./...`
-  — every package, no `-run` filter, no package list — exits **0**, all 18 packages (`go list
-  ./...`) report `ok` or `[no test files]`, no `FAIL` line, wall-clock **≈7m6s (~426s)**
-  (`docs/reports/phase4-a3-final-suite/README.md`). Build/vet/gofmt guards recorded in the same
-  commit: `go build ./...` and `go vet ./...` both exit 0 with empty output; `gofmt -l .` lists
-  exactly the same pre-existing drift files measured at plan time and nothing this approach wrote.
-- **Ten-run stability sweep** (task 004, `c069c34`): `ci/stability.sh 10` — **10/10 passed**,
-  every `go test` exit status 0, no `FAIL` line in any of the ten per-run logs, **≈1h11m41s
-  (~1h12m) end to end** (`docs/reports/phase4-a3-stability10/README.md`). Neither known-open
-  advisory flake (`TestSigwinchCountDistinguishesTwoFromThree`; `internal/tmux`'s
-  `TestSendKeysInvalidHexByteIsSilentlyDiscarded` empty-capture case) manifested in any of the
-  ten runs.
+- **B1-NC** (blocking, R118 / SPEC §11.3) — **cured** by `a260abf` (task cure-03-01-2), this
+  approach's final code sha. `canvasResetIfPainting` (`internal/tui/panel.go:582`) returned an
+  empty string whenever deck's *own* colour painting was off, so under `NO_COLOR` the explicit
+  post-foreign-content reset never fired even when the *captured* pane's bytes left SGR open —
+  which is exactly what `tmux capture-pane -e` returns for a still-coloured cell — and the pane's
+  own colours leaked into deck's border, pad, crop marker and following chrome. Review reproduced
+  it against a real 80×24 tmux pane in the authorised disposable clone. Fixed by gating the reset
+  on two independent disjuncts, deck's own colour state **or** the foreign text itself carrying an
+  escape byte. Regressions: `TestForeignBoundaryResetClosesCapturedSGRUnderNoColor`
+  (`internal/tui/preview_foreign_boundary_reset_test.go`) and, against a real capture,
+  `TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor`
+  (`internal/tui/preview_foreign_boundary_reset_live_test.go`), red-before/green-after recorded in
+  [`docs/reports/phase4-r118-foreign-reset/`](reports/phase4-r118-foreign-reset/README.md).
+- **B2-ENV** (blocking, R121 / SPEC §6.1) — **cured** by `594b0b4` and `bfdb69e` (task
+  cure-03-02-2). `resolveEnvKey`'s lowest layer called `os.LookupEnv` and labelled the result the
+  *server* layer, so a TUI observing a session some earlier tmux server had launched resolved
+  transcripts against the observing process's own ambient environment rather than the session's
+  actual launch environment — a later TUI with a different `CODEX_HOME` read the wrong transcript
+  root. `594b0b4` added `tmux.Client.ServerEnvironment` (`show-environment -g`,
+  `internal/tmux/geometry.go:75`) and routed the fallback through it; `bfdb69e` then repaired the
+  test's own positive controls, which had pointed every override layer at the same root the
+  server-env fallback already resolved and so could not detect a precedence regression at all.
+  Regression: `TestTranscriptPathForUsesActualServerEnvironmentNotObserverAmbient`
+  (`internal/tui/transcript_server_env_test.go`), now over four distinct roots, evidence in
+  [`docs/reports/phase4-r121-server-env/`](reports/phase4-r121-server-env/README.md).
+- **R-METADATA** (residual, R132) — **open at the stop; it is the one review finding the run did
+  not close, and it is not a defect in the product or in any gate.** The gate metadata quoted a
+  redundant sum of `full-suite.log`'s own per-package durations alongside the recorded wall clock,
+  and the quoted sum was wrong in every recording of it; the finding asks for the sum to be deleted
+  or stated as derived. At the stop, `docs/reports/phase4-a3-final-suite/README.md` and
+  `phase4-report.md` both said 566.6 s where the committed log's columns sum to **567.046 s**. (The
+  finding's own figure, 422.637 s, was the sum of the `abd963f` recording of that log, which
+  `7fe0b26` and `32b3639` have since twice superseded — the arithmetic error survived the
+  re-recordings, the number did not, so a future reader must recompute rather than reuse either
+  figure.) Its second half was partly discharged inside the run: the inaccurate "the only skips are
+  the three no-test packages" sentence is gone from
+  `docs/reports/phase4-a3-stability10/README.md`, but the affirmative disclosure it asked for —
+  that `features/` runs under godog's default `~@real-agents && ~@nightly` filter
+  (`features/godog_test.go:16`) and that `TestI1KeystrokeDropReproduction` is opt-in behind
+  `DECK_I1_REPRO=1` (`features/i1_repro_test.go`) — appears only in the full-suite README, not the
+  stability one. Docs-only work: no gate and no code change, and closable by hand outside the run.
 
-The record itself was rewritten at `7bb1f8a`:
-[`docs/reports/phase4-report.md`](reports/phase4-report.md) (`daea2fd` task 005 + `4542e96` task
-006 + `8ae503c` task 007) — the per-requirement verdict table and both sweep citations re-taken at
-the new tail sha, the B1/B0 review-findings section above (B1 now including the settings-footer
-cure, B0 now the ruling-based disposition), and the R2 sha-refresh — and
-[`docs/reports/phase4-findings.md`](reports/phase4-findings.md) (`8d2f8f7`, task 008) — the same
-findings inventory refreshed at this tail sha, with the two crop findings (`0e72ec1`'s
-geometry/blank-fill scope and `96b0ba9`'s cropRow fill/marker scope) split into their own entries.
+**Tier 2's fate is unchanged, and is Phase 4's final state: R128–R131 are NOT STARTED.** No task
+in any of the three approaches touched Tier 2 code, and the run ended that way. Concretely, at
+`a260abf`: `state.db` has no `groups` table and `sessions` has no `group_id` column
+(`internal/store/store.go`'s `CREATE TABLE` list), the sidebar renders no group headers, the
+create modal has no `Group` field, and settings has no groups CRUD surface. Grouping is still the
+workspace fallback — `store.DefaultWorkspace` (`internal/store/store.go:587`) under the
+`ui.group_by_workspace` config key. This was a disclosed, accepted budget decision from approach 1
+([`docs/reports/phase4-tier2-decision.md`](reports/phase4-tier2-decision.md)), re-affirmed by
+approaches 2 and 3, and **it is not a finding**. But the decision does not close the gap: **the
+SPEC-versus-code grouping gap REMAINS OPEN** and belongs to whichever future phase picks up manual
+session groups. It is never to be "cured" by editing `SPEC.md`.
+
+**Both sweeps, re-measured from scratch at `a260abf` — the fourth and final recording in these two
+directories.** The `3568bd7`, `7bb1f8a` (`abd963f`/`c069c34`, tasks 003/004) and `bfdb69e`
+(`7fe0b26`) recordings this entry's earlier drafts cited are each superseded, each having measured
+a tree a later cure then changed. The logs committed in both directories are now the `a260abf`
+measurement, re-run and re-committed by `32b3639` under task cure-03-01-2 rather than by tasks
+003/004 themselves:
+- **Full-suite gate**: `ci/run.sh go test -p=1 -count=1 -timeout=40m ./...` — every package, no
+  `-run` filter, no package list — exits **0**; `docs/reports/phase4-a3-final-suite/full-suite.log`
+  carries **zero `FAIL` lines**, all 15 packages with tests report `ok` and the other three
+  `[no test files]`; wall clock **9m35s (575s)**, `2026-09-17T16:08:19Z` → `16:17:54Z`
+  (`docs/reports/phase4-a3-final-suite/README.md`). Longer than the ~7m measured at the earlier
+  tails because the `features` package alone ran 501.5s here against 362–419s before — the command,
+  flags and package set are unchanged and unnarrowed. Guards in the same recording: `go build
+  ./...` and `go vet ./...` both exit 0 with empty output; `gofmt -l .` lists exactly the four
+  pre-existing drift paths measured at plan time and nothing this approach wrote.
+- **Ten-run stability sweep**: `ci/stability.sh 10` — **10/10 PASS**, every repetition's `go test`
+  exit status 0, no `FAIL` line in any of the ten per-run logs, **1h10m14s end to end**
+  (`docs/reports/phase4-a3-stability10/README.md`, `run-1.log`…`run-10.log` and
+  `stability-summary.log`, whose own tally reads `10/10 passed`). Neither known-open advisory flake
+  (`TestSigwinchCountDistinguishesTwoFromThree`, `features/sigwinch_count_test.go:24`;
+  `internal/tmux`'s `TestSendKeysInvalidHexByteIsSilentlyDiscarded` empty-capture case,
+  `internal/tmux/literal_send_test.go:123`) appears by name in any of the ten logs.
+
+"Green at `a260abf`" is what these two sweeps support, and it is all they support: they are
+measurements of one tree, taken inside the run, with no accepted review verdict behind them.
+
+**R132 — the record matches the tree — was NOT completed, and that documentation-consistency work
+is what was in flight when the run was stopped.** The record was rewritten once at `7bb1f8a` by
+tasks 005–008 ([`docs/reports/phase4-report.md`](reports/phase4-report.md): `daea2fd` + `4542e96` +
+`8ae503c`; [`docs/reports/phase4-findings.md`](reports/phase4-findings.md): `8d2f8f7`, which split
+the two crop findings — `0e72ec1`'s geometry/blank-fill scope and `96b0ba9`'s cropRow fill/marker
+scope — into their own entries). The two cure tasks then moved the tail twice more and carried the
+report and both sweep directories forward with them (`7fe0b26` at `bfdb69e`, `32b3639` at
+`a260abf`), so `phase4-report.md` does cite `a260abf`. But tasks 005–008 were re-opened to re-take
+the whole record at the new tail and were still `pending` at the stop, which is why this file's own
+approach-3 entry sat at `7bb1f8a` (`f0ac40b`) while the report beside it said `a260abf`: **the
+record did not match the tree at the moment the run ended.** The paragraphs above are that
+reconciliation, done by hand. `phase4-report.md`'s own R132 section reads `Shipped`, which was true
+of its own four bullets and is not true of R132 as a whole.
+
+The "7 of 14 tasks validated" tally understates delivered evidence by three rows, and the
+difference is mechanical rather than substantive. Tasks 003 and 004 (the two sweep recordings) and
+cure-03-02 had operator status rulings recorded on the run's amendments mount, but ralphd applies
+those once per episode at engine start, so a ruling filed after a container starts never reaches
+`tasks.json` unless a live worker applies it — and the steer that told the worker to do so
+(`003-apply-recorded-status-rulings.md`) was still unconsumed when the run was stopped. Those three
+tasks' artefacts are committed at `a260abf` regardless. Tasks 005–008 are genuinely not done.
+
 The protected-path audit (`git log --oneline 08a1ffe3..HEAD -- SPEC.md prds/ ci/Dockerfile
 ci/SPIKE.md`) prints nothing for this approach. Approach 2's own record at `0ba550a`
 (`docs/reports/phase4-cure-{final-suite,guards,stability10}/`, and the superseded version of
-`phase4-report.md`) stays as history and is not edited.
+`phase4-report.md`) stays as history and is not edited, as do approach 3's own superseded
+recordings inside `docs/reports/phase4-a3-*/`, each of which carries its own supersession note.
+
+**Two operator interventions shaped this approach and are recorded here because both are ralphd
+engine bugs that will recur until they are fixed upstream:**
+- **Review's Python disposable-clone bootstrap against a Go product** (finding B0). The review
+  prompt's protocol builds a disposable clone and imports the product with `pip install -e .`,
+  which cannot succeed against a module that has never contained `setup.py` or `pyproject.toml`;
+  review therefore ran **zero tests** and filed B0 as blocking and **`curable: false`** — against
+  approach 1, approach 2 (both preserved in the run's `approaches/0{1,2}/review-findings.json`) and
+  approach 3. All three rejections carry it. The operator filed a wave-scoped ruling withdrawing B0
+  and authorising `ci/review.sh` (commit `2786d3c`, `docs/reports/phase4-review-protocol.md`) as
+  the Go-compatible substitute; only after that did review start taking real measurements, and
+  B1-NC and B2-ENV above are both findings it could not have produced before. Reported upstream as
+  **n-orlov/ralphd#208**.
+- **Self-referential `dependsOn` on engine-generated cure tasks.** Both cure passes emitted cure
+  tasks listing their own id in `dependsOn`, which no task can ever satisfy; because the rest of
+  the plan transitively depended on them, the entire plan became unschedulable. The worker repaired
+  the first pass itself; the second deadlocked 11 of 14 tasks for about four hours and needed an
+  operator steer (`002-fix-cure2-dependson-deadlock.md`) to repair the graph, a worker having no
+  path to edit `dependsOn` from its own hat. Reported upstream as **n-orlov/ralphd#206**.
 
 ## Other milestones
 
