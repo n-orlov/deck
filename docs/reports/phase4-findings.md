@@ -72,10 +72,50 @@ The command that defines this run's findings set is
 `git log --grep='FINDING:' "$BASE..HEAD"`, with
 `BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase4-codex-and-chrome.md)`
 = `08a1ffe3eb229f8ebe5ba9791fbb3e3cec6e0c06` (the standing rules' own audit
-command). Pasted verbatim, unedited, HEAD at `1326945` (approach 3's own
-tail, task 007's last record commit before this refresh):
+command). Pasted verbatim and unedited at this file's own shipped HEAD; the
+newest record the range matches is `9d1e654` (this file's previous refresh,
+task 008's first commit), whose body quotes the ledger token in prose. The
+commit that ships this block is deliberately written without that literal
+token anywhere in its message, so re-running the command above at HEAD
+reproduces this block byte for byte:
 
 ```
+commit 9d1e654abad4ad922fa7d356e2efa0f790e4492e
+Author: Nik <nikolaiorl@gmail.com>
+Date:   Thu Sep 17 07:31:02 2026 +0000
+
+    docs: refresh phase4-findings.md at the tail code sha, close the crop-decoration residual (task 008)
+    
+    The entry that declared cropPreviewBottomLeft's geometry line and
+    blank-fill rows an accepted, disclosed residual
+    (docs/reports/phase4-findings.md:725-736 as of task 007) is superseded:
+    approach 3 task 001 (92619cf + fixture fix 48bce3d) gave
+    cropPreviewBottomLeft its own per-row provenance so the geometry line and
+    blank-fill rows are previewLineDeckOwned and get full canvasBackground
+    treatment, pinned by internal/tui/crop_decoration_background_test.go's
+    TestCropDecorationsCarryDeckBackground; task 002 (3568bd7) fixed the same
+    class of gap on the sibling interactiveBodyLines branch, pinned by
+    internal/tui/interactive_test.go's TestFitInteractiveBodyLinesOwnership.
+    Entry 3 in the ledger now states the fix and cites both commits and both
+    tests, kept as a historical entry per the run's own later-green-never-
+    erases rule rather than deleted.
+    
+    The Inventory section is refreshed to the byte-identical output of
+    git log --grep='FINDING:' "$BASE..HEAD" at the current HEAD (1326945),
+    BASE = 08a1ffe3 (the standing rules' own audit command) -- the only
+    change versus the prior paste (HEAD 1ee3cbd) is task 017's own commit
+    0e514ee entering the range, which mentions the word FINDING: in prose
+    only and adds no new formatted FINDING: line, so no new ledger entry is
+    needed for it. The two known-unverified codex items (whether
+    acceptEdits/plan/dontAsk are reachable on codex at all; whether the
+    hook-trust hash is stable across codex versions, measured only on
+    0.154.0) and the R120-versus-SPEC-§11 permission-badge disagreement are
+    kept by name, unchanged.
+    
+    Record-only commit: no *.go or *.feature file touched (tail code sha
+    stays 3568bd7); protected-path audit (SPEC.md/prds/ci/Dockerfile/
+    ci/SPIKE.md) prints nothing.
+
 commit 0e514ee66b7c0f3f615823f81dfcefdf0e3c9ae5
 Author: Nik <nikolaiorl@gmail.com>
 Date:   Thu Sep 17 04:05:31 2026 +0000
@@ -739,6 +779,15 @@ matched a second time in their own right. That duplication is a byproduct
 of history, reproduced here exactly because the paste is verbatim; each
 distinct finding gets one entry below regardless of how many times its text
 appears above.
+
+Two records in the paste match the command on prose alone and carry no
+formatted ledger line of their own, so they add no entry here: `0e514ee`
+(the prior approach's task 017, which built this ledger) and `9d1e654`
+(task 008's own first refresh of it). Both merely describe the command
+and quote its token while explaining what they pasted; every file:line
+finding either of them reports is already an entry below, inherited from
+the commit that first quoted it. Naming them explicitly keeps the mapping
+from the verbatim paste to these entries complete in both directions.
 
 1. **`internal/tmux/literal_send_test.go:123`** (commit `b98ce9c`, task
    011b) — `TestSendKeysInvalidHexByteIsSilentlyDiscarded` read an empty
