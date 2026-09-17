@@ -1679,7 +1679,25 @@ func (m Model) settingsView() string {
 // doesn't name" defect the §11.4 dialog contract (task 029) forbids for
 // the five dialogs. While the discard-confirm prompt or `/` search is
 // active, the line instead names only the keys valid in that sub-mode.
+//
+// Like mainView's own footerLine (tui.go, task 004/R118), the composed
+// text is painted through canvasBackground so every cell this line
+// occupies -- normal, discard-confirm, search, [env] list, [env] edit and
+// the free-text string editor alike -- carries theme.Background across
+// the whole settings takeover's own footer row, rather than leaving it to
+// the terminal's own background the way it was left before this cure.
+// settingsFooterLineContent below is the line's own text composition,
+// unchanged byte-for-byte from before this wrapping was added, so every
+// existing assertion against the footer's literal text (search for
+// "ctrl+s save", the discard prompt's own wording, etc.) keeps passing
+// against either function.
 func (m Model) settingsFooterLine() string {
+	return m.canvasBackground(theme.Background, m.settingsFooterLineContent())
+}
+
+// settingsFooterLineContent is settingsFooterLine's own composition,
+// before the canvas paint wrapping above.
+func (m Model) settingsFooterLineContent() string {
 	width, _ := m.frameSize()
 	if m.settingsDiscardConfirm {
 		return truncateToWidth("discard unsaved changes and keep config.toml as last saved? y/enter discards - any other key cancels", width)
