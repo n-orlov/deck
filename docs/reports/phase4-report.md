@@ -291,8 +291,11 @@ four bullets:
   every `Test*`/scenario name this file cites was checked to resolve in the tree at report-
   writing time (`git cat-file -e <sha>^{commit}` per sha, `grep` per name).
 - **`docs/reports/phase4-report.md`'s review-findings section records B1's and B0's
-  dispositions.** Not yet at this approach's tail — task 006, immediately following this one,
-  owns that section.
+  dispositions.** Green — see "Review findings from this approach's plan gate (task 006)"
+  below: B1 cured by tasks 001/002 with their commits and tests; B0's disposition read from
+  the identified reporting snapshot (tail code sha, `/run/ralphd/steering`, this run's notify
+  record), citing `ci/review.sh` and `docs/reports/phase4-review-protocol.md`, with no operator
+  authorization found and exactly what is needed named.
 - **`docs/reports/phase4-findings.md` carries every finding this run made and chose not to
   fix, each with a file:line and a reason, including the two known-unverified codex items by
   name.** Not yet at this approach's tail — that is task 008's own record task, following
@@ -310,6 +313,92 @@ Materiality termination rule (and the standing rules that restate it) a docs-onl
 invalidates neither sweep and is itself exempt from re-verification, so tasks 006–009 land
 against this same tail code sha and do not reopen the sweeps reported below. This report is
 written once, at that sha, and is not re-audited by any later task.
+
+## Review findings from this approach's plan gate (task 006)
+
+This section states, for each of the plan gate's two blocking findings, what this approach did
+about it and why. Neither disposition below is written ahead of the paint or evidence it
+describes -- B1's cure commits already carry the fix and its test; B0's disposition is read from
+a named, dated snapshot of this run's own record, not asserted from memory.
+
+### B1 -- R118 omitted deck-generated live-capture geometry/vertical-fill and the interactive branch's own notice/pad rows -- **cured this approach**
+
+At this approach's plan gate, B1 was blocking: `cropPreviewBottomLeft`'s own geometry line and
+synthesized vertical blank-fill rows (`internal/tui/panel.go`) were deck-generated but
+`previewBodyLines`'s live-capture branch marked the *whole* crop slice foreign, so those cells
+leaked the terminal's own background instead of `theme.Background`. This section does not record
+that gap as an accepted, disclosed residual (it was never optional Tier-2 scope, and
+`docs/reports/phase4-findings.md`'s prior entry calling it one is task 008's own item to remove,
+not this section's business) -- B1 was blocking review, and a blocking finding is cured, not
+accepted.
+
+- **Task 001** (commits `92619cf` -- "tui: paint the crop geometry line and blank fill (task
+  001)" -- and `48bce3d`, a fixture correction making the crop-decoration test pane genuinely
+  short enough to force the blank-fill path) gave `cropPreviewBottomLeft` its own per-row
+  `[]previewLineOwner` (the geometry line and blank-fill rows `previewLineDeckOwned`, every
+  `cropRow`-built row `previewLineForeign`), routed through `previewContentLine` and
+  `fullBoxPreviewContentLine` in both layouts. New test: `TestCropDecorationsCarryDeckBackground`
+  (`internal/tui/crop_decoration_background_test.go`).
+- **Task 002** (commit `3568bd7` -- "tui: paint the interactive preview branch's own notice and
+  pad rows (task 002)") cured the same class of gap in the interactive-preview branch, found at
+  this approach's own plan time and not itself in review's B1 finding text: `interactiveBodyLines`
+  (`internal/tui/interactive.go`) prepended `interactiveNotRepaintedNotice` and padded via
+  `fitLines`, both deck's own composed copy, but the interactive branch of `previewBodyLines` also
+  blanket-marked the whole slice foreign. Task 002 gave `interactiveBodyLines` the same per-row
+  provenance treatment via `fitInteractiveBodyLines(lines, contentHeight, notice)`. New tests:
+  `TestFitInteractiveBodyLinesOwnership` (`internal/tui/interactive_test.go`) and
+  `TestInteractiveNotRepaintedNoticeCarriesDeckBackground`
+  (`internal/tui/interactive_notice_background_test.go`).
+
+Both commits, and both sets of new tests, are unchanged citations of R118's own section above --
+this section adds no new evidence, it states B1's disposition against evidence already cited. B1
+is **cured**, not an accepted residual and not a cure claimed before its own commits landed (both
+commits predate this report; `git cat-file -e 92619cf^{commit}`, `git cat-file -e 48bce3d^{commit}`
+and `git cat-file -e 3568bd7^{commit}` all resolve).
+
+### B0 -- the reviewer's Python-package disposable-clone measurement protocol does not apply to this Go repository -- **disposition read from a named snapshot; authorization still missing**
+
+B0's own clause (review's finding text) is: an operator-authorized Go-compatible disposable-
+clone/import-identity protocol is needed before independent behavioural verification of
+R116-R127 can run; a worker-authored script or task plan is not, by itself, an operator amendment
+of the reviewer contract.
+
+**Reporting snapshot** this disposition is read from:
+
+- **Tail code sha**: `3568bd7971a782fadbf589d79ce5777c0f1b5315` (unchanged since task 002; see
+  this report's own header).
+- **`/run/ralphd/steering` read at `2026-09-17T07:17:13Z`**: the directory exists and is empty
+  (`find /run/ralphd/steering -mindepth 1` returns nothing) -- no operator instruction of any kind
+  has been delivered to this run through that channel, let alone a B0 authorization.
+- **This run's own notify record** (`/run/ralphd/events.jsonl`'s `notification.sent` events): 53
+  sends recorded end to end (`2026-09-16T07:34:27Z` through `2026-09-17T07:14:53Z`), every one
+  `httpStatus: 200`, each carrying only a `textSha256` of its own outbound text -- the channel is
+  a Telegram push notification, one-way engine-to-operator with **no reply channel** (the
+  `telegram-notify` skill's own file: "It is send-only -- there is no reply channel, so never wait
+  for an answer"). B0's own authorization was named to the operator over exactly this channel in
+  an early iteration of this approach (per the standing rules' notify list: "B0 and the exact
+  authorization it needs"), but the channel structurally cannot carry a reply back into this run
+  -- an authorization, if the operator granted one out of band, would have to arrive via
+  `/run/ralphd/steering`, which the same snapshot above shows empty.
+- **The Go analogue offered in place of the reviewer's own protocol**: `ci/review.sh` (commit
+  `2786d3c`, approach 2) and `docs/reports/phase4-review-protocol.md`, which documents that
+  script's disposable git-ignored clone plus its own identity assertion (`go list -m` resolves to
+  `github.com/n-orlov/deck`; `go list -f '{{.Dir}}' ./internal/agent` resolves under the clone,
+  not the original checkout) as the direct Go equivalent of the reviewer's Python
+  `pip install -e .` / `ralphd.__file__`-under-clone check.
+
+**Disposition at this snapshot: the authorization is still missing.** Neither
+`/run/ralphd/steering` nor any record this run can read carries an operator statement accepting
+`ci/review.sh`'s identity assertion as satisfying B0's clause in place of the Python-package
+protocol -- review's own finding is explicit that a worker-authored script or an approved task
+plan does not itself constitute that amendment, and nothing at this snapshot changes that.
+**Exactly what is needed**: an explicit operator authorization, delivered through a channel this
+run can read back (i.e. `/run/ralphd/steering`, not a one-way notify send), stating that
+`ci/review.sh`'s disposable-clone module-identity check (`docs/reports/phase4-review-protocol.md`)
+is accepted as the Go-compatible substitute for the reviewer's own Python disposable-clone/
+import-identity protocol for this repository. Until that arrives, B0 remains blocking and is not
+curable by any task in this Go repository's own code or tests, per the standing rules (no Python
+packaging is ever added to satisfy it).
 
 ## Both sweeps
 
