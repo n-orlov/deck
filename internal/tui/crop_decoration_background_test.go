@@ -43,6 +43,14 @@ func cropDecorationCaptureBytes() []byte {
 	return []byte(paneSGR + "\n" + paneRowOpenTail)
 }
 
+// cropDecorationPaneHeight is the fixture pane's REAL height in rows, and
+// it is also exactly how many rows cropDecorationCaptureBytes carries: the
+// live pane really is 2 rows tall, shorter than the preview content height
+// in every layout this file exercises, so cropPreviewBottomLeft's vertical
+// blank-fill rows are forced by the pane's own declared geometry and not
+// merely by a short capture read.
+const cropDecorationPaneHeight = 2
+
 // cropDecorationGeometry is the handful of coordinates this file's
 // assertions need for either layout, mirroring newCapturedPaneModel's own
 // geometry struct in preview_pane_fill_marker_test.go but adding the row
@@ -58,9 +66,12 @@ type cropDecorationGeometry struct {
 
 // newCropDecorationModel builds a Model+geometry for either layout,
 // populated with a live capture whose real width exceeds contentWidth (so
-// cropPreviewBottomLeft's geometry line fires) and whose captured raw bytes
-// are only 2 rows tall -- far shorter than contentHeight -- so
-// cropPreviewBottomLeft's vertical blank-fill rows fire too.
+// cropPreviewBottomLeft's geometry line fires) and whose real height is
+// cropDecorationPaneHeight -- 2 rows, both in the pane's declared geometry
+// and in its captured bytes, far shorter than contentHeight -- so
+// cropPreviewBottomLeft's vertical blank-fill rows fire too. The layout
+// assertion below fails the test outright if that height is ever not
+// shorter than the content height it is measured against.
 func newCropDecorationModel(t *testing.T, bt *theme.Theme, stacked bool) (Model, string, cropDecorationGeometry) {
 	t.Helper()
 	m := New(nil, config.Settings{Color: true, Theme: bt}, "")
@@ -111,12 +122,17 @@ func newCropDecorationModel(t *testing.T, bt *theme.Theme, stacked bool) (Model,
 		t.Fatalf("theme %q: degenerate layout, contentHeight=%d contentWidth=%d", bt.Name, geo.contentHeight, geo.contentWidth)
 	}
 
-	// realWidth exceeds contentWidth so the geometry line fires; realHeight
-	// is declared the same as contentHeight (only width need exceed for
-	// cropPreviewBottomLeft's cropped flag), but the ACTUAL captured bytes
-	// are only 2 rows, far short of avail, so blank-fill rows fire too.
+	// realWidth exceeds contentWidth so cropPreviewBottomLeft's cropped
+	// flag fires and it composes the geometry line; the pane's real HEIGHT
+	// is 2 -- genuinely shorter than the preview content height, matching
+	// the 2 rows the capture actually carries -- so the pane is short in
+	// its own declared geometry as well as in its bytes, and
+	// cropPreviewBottomLeft must synthesize blank-fill rows below it.
 	m.previewPaneWidth = geo.contentWidth + 10
-	m.previewPaneHeight = geo.contentHeight
+	m.previewPaneHeight = cropDecorationPaneHeight
+	if m.previewPaneHeight >= geo.contentHeight {
+		t.Fatalf("theme %q: fixture pane height %d is not shorter than the preview content height %d", bt.Name, m.previewPaneHeight, geo.contentHeight)
+	}
 	m.previewBytes = cropDecorationCaptureBytes()
 
 	return m, backgroundHex, geo
