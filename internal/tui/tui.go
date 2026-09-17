@@ -5101,21 +5101,21 @@ func (m Model) previewTitle() string {
 //
 // The second return is that same slice's own per-row provenance. The
 // no-session sentence and previewPlaceholderLines' copy (blank fitLines pad
-// included) are entirely deck's own composed text (deckOwnedPreviewLines);
-// the live interactive grid (interactiveBodyLines, task 002/B1) is entirely
-// foreign screen content this function never wrote a byte of. The live
-// capture branch (cropPreviewBottomLeft, task 001/B1) is the one branch
-// that is NOT entirely one owner: cropPreviewBottomLeft itself returns a
-// per-row mix -- its own geometry line and vertical blank-fill rows are
-// deck-owned, every row built from the pane's own captured bytes stays
-// foreign -- and this function passes that mix through unchanged.
+// included) are entirely deck's own composed text (deckOwnedPreviewLines).
+// The live-capture branch (cropPreviewBottomLeft, task 001/B1) and the live
+// interactive grid branch (interactiveBodyLines, task 002/B1) are each the
+// one kind of branch that is NOT entirely one owner: both return their own
+// per-row mix -- cropPreviewBottomLeft's own geometry line and vertical
+// blank-fill rows, or interactiveBodyLines' own not-repainted notice and
+// any pad row it adds, are deck-owned, while every row built from the
+// pane's own captured bytes or the live grid's own rendered content stays
+// foreign -- and this function passes each mix through unchanged.
 // previewContentLine/fullBoxPreviewContentLine are the only callers that
 // act on the provenance, and only to decide how to paint, never to alter
 // what these lines actually say.
 func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
 	if m.interactive && m.interactiveGrid != nil {
-		lines := m.interactiveBodyLines(contentWidth, contentHeight)
-		return lines, foreignPreviewLines(len(lines))
+		return m.interactiveBodyLines(contentWidth, contentHeight)
 	}
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)

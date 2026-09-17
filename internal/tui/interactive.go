@@ -488,7 +488,17 @@ func (m Model) previewContentSize() (width, height int) {
 // per-line renderer) pads/crops each line to the panel's exact content
 // width already, so this only needs to pad/truncate the row COUNT to
 // contentHeight, exactly like every other previewBodyLines branch.
-func (m Model) interactiveBodyLines(contentWidth, contentHeight int) []string {
+//
+// The second return is this slice's own per-row provenance (task 002/B1,
+// the same class review's B1 finding named for cropPreviewBottomLeft):
+// every row RenderRows/highlightInProgressSelection produced is the live
+// grid's own foreign screen content and stays previewLineForeign, while
+// interactiveNotRepaintedNotice (prepended below) and any pad row
+// fitInteractiveBodyLines adds to reach contentHeight are deck's own
+// composed copy and are marked previewLineDeckOwned -- see
+// fitInteractiveBodyLines' own doc for why previewBodyLines used to mark
+// this whole slice foreign instead.
+func (m Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
 	lines, _ := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
 	// R93/task 206: mark an in-progress drag-to-copy selection, if any,
 	// before the not-repainted check below -- highlightInProgressSelection
@@ -504,10 +514,53 @@ func (m Model) interactiveBodyLines(contentWidth, contentHeight int) []string {
 	// blank in the sense this check means, and showing the announcement
 	// over genuine history would misreport "nothing has happened yet" while
 	// looking straight at something that did.
-	if m.interactiveScrollOffset == 0 && interactiveGridIsBlank(lines) {
+	notice := m.interactiveScrollOffset == 0 && interactiveGridIsBlank(lines)
+	return fitInteractiveBodyLines(lines, contentHeight, notice)
+}
+
+// fitInteractiveBodyLines is interactiveBodyLines' own
+// notice-then-pad/truncate sequence, factored out so a test can drive it
+// directly on a caller-supplied lines slice without needing a live
+// *interactive.Session (interactiveBodyLines itself calls
+// m.interactiveGrid.RenderRows, which requires a real tmux pane to
+// construct at all -- exactly the constraint interactive_test.go's older
+// fitLinesWithOptionalNotice test helper already worked around for the
+// notice-only claim; this is that same idea extended to per-row
+// provenance).
+//
+// lines is RenderRows/highlightInProgressSelection's own output -- the
+// live grid's foreign screen content, always previewLineForeign. When
+// notice is true, interactiveNotRepaintedNotice is prepended as line 0,
+// deck's own composed copy (previewLineDeckOwned), exactly like
+// cropPreviewBottomLeft's geometry line. Whatever fitLines' own
+// pad-or-truncate rule then does to reach contentHeight, any row IT adds
+// (lines started shorter than contentHeight, mirroring cropPreviewBottomLeft's
+// vertical blank-fill) is also deck's own synthesized copy, never a byte
+// of the grid's own content, so it is marked previewLineDeckOwned too --
+// never fitLines' own generic zero-value pad, which would default a
+// padded []previewLineOwner entry to previewLineForeign instead.
+// (m.interactiveGrid.RenderRows always returns exactly contentHeight rows
+// today, so in production this pad branch never actually fires -- only
+// notice's own truncation does, dropping RenderRows' own last, blank row
+// when the notice pushes the slice one over contentHeight -- but the
+// provenance is still correct symmetrically, and exercised directly by
+// TestFitInteractiveBodyLinesOwnership below, in case that invariant ever
+// changes.)
+func fitInteractiveBodyLines(lines []string, contentHeight int, notice bool) ([]string, []previewLineOwner) {
+	owners := foreignPreviewLines(len(lines))
+	if notice {
 		lines = append([]string{interactiveNotRepaintedNotice}, lines...)
+		owners = append([]previewLineOwner{previewLineDeckOwned}, owners...)
 	}
-	return fitLines(lines, contentHeight)
+	for len(lines) < contentHeight {
+		lines = append(lines, "")
+		owners = append(owners, previewLineDeckOwned)
+	}
+	if len(lines) > contentHeight {
+		lines = lines[:contentHeight]
+		owners = owners[:contentHeight]
+	}
+	return lines, owners
 }
 
 // interactiveRepaintAnsiEscapeRe strips the CSI (SGR) and OSC (hyperlink)
