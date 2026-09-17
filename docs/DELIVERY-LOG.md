@@ -1127,6 +1127,87 @@ prds/ ci/Dockerfile ci/SPIKE.md`) prints nothing across both approaches. Approac
 at `db66965` (`docs/reports/phase4-{final-suite,guards,stability10}/`, and the superseded
 version of `phase4-report.md`) stays as history and is not edited.
 
+**This citation of `0ba550a` as Phase 4's final code sha is superseded — approach 3's true final
+code sha is `3568bd7971a782fadbf589d79ce5777c0f1b5315` (`3568bd7`, "tui: paint the interactive
+preview branch's own notice and pad rows (task 002)").** Approach 3 (run `deck-phase4`, same
+PRD) was a narrow cure against its own plan-gate review, which carried forward one still-blocking
+finding from approach 2 (B1's own same-class residual: the interactive-preview branch) and left
+B0's authorization status unresolved; approach 2's already-cured B2, B3 and R1, and all of Tier
+1, were re-verified rather than re-implemented, per this approach's own standing rule ("a cure,
+not a rebuild").
+
+- **B1** — cured: task 001 (`92619cf` + `48bce3d`) gave `cropPreviewBottomLeft`'s own geometry
+  line and synthesized blank-fill rows their own per-row provenance
+  (`previewLineDeckOwned`/`previewLineForeign` via `previewContentLine` and
+  `fullBoxPreviewContentLine`), so they paint `theme.Background` instead of leaking the
+  terminal's own background — new test `TestCropDecorationsCarryDeckBackground`
+  (`internal/tui/crop_decoration_background_test.go`). Task 002 (`3568bd7`) cured the same class
+  of gap in the interactive-preview branch, found at this approach's own plan time and not
+  itself in review's B1 finding text: `interactiveBodyLines`'s deck-composed notice/pad rows were
+  blanket-marked foreign alongside the live capture they surround. Gave `interactiveBodyLines`
+  the same per-row provenance via `fitInteractiveBodyLines(lines, contentHeight, notice)` — new
+  tests `TestFitInteractiveBodyLinesOwnership` (`internal/tui/interactive_test.go`) and
+  `TestInteractiveNotRepaintedNoticeCarriesDeckBackground`
+  (`internal/tui/interactive_notice_background_test.go`).
+- **B0** — disposition unchanged from approach 2, reproduced from task 006's own report section
+  (`docs/reports/phase4-report.md`, "Reporting snapshot" at tail sha `3568bd7`, read
+  `2026-09-17T07:17:13Z`): **the authorization is still missing.** `/run/ralphd/steering` exists
+  and is empty; this run's own notify record (`/run/ralphd/events.jsonl`) shows 53
+  `notification.sent` events end to end, every one `httpStatus: 200`, over a channel the
+  `telegram-notify` skill itself documents as send-only with no reply path — B0's authorization
+  was named to the operator over exactly that one-way channel early in this approach, but neither
+  it nor any other record this run can read carries an operator statement accepting
+  `ci/review.sh`'s disposable-clone identity assertion (commit `2786d3c`, approach 2, documented
+  in `docs/reports/phase4-review-protocol.md`) as the Go-compatible substitute for the reviewer's
+  own Python disposable-clone/import-identity protocol. **No status different from approach 2's
+  own citation above**: B0 remains blocking, not curable by any task in this Go repository's own
+  code or tests, and no task in this plan required it resolved.
+- **R2 citation correction** (task 007, `1326945`): approach 2 task 005's own commit message
+  asserted `grep -rn 'CODEX_HOME' internal/tui` printed nothing across the whole tree. That
+  all-files claim stopped holding once approach 2's own tasks 006/007 landed
+  `internal/tui/registry_guard_test.go` and `internal/tui/transcript_env_layers_test.go`, each
+  naming `CODEX_HOME` in comments/fixtures to prove the transcript-env seam is agent-neutral (14
+  matches today, both files test-only, none in a production caller). Corrected both this file's
+  own B2 bullet above and `phase4-report.md`'s R121 section to the accurate property: the
+  production transcript-resolution caller resolves only an adapter's declared
+  `Caps.TranscriptEnvKeys` and carries no `CODEX_HOME`-shaped field or branch of its own — the
+  seam itself is unaffected, only the all-files empty-result phrasing of the evidence was ever
+  wrong.
+
+**Tier 2's fate is unchanged: still NOT STARTED.** No task in this approach touched Tier 2 code;
+the SPEC-describes-manual-groups-while-code-groups-by-workspace gap stays the same explicitly
+disclosed, not-scored non-finding approach 1 and approach 2 both left it as, never "cured" by
+editing SPEC — ~6h of wall clock remained at this approach's own plan time against the sweeps'
+~1h20m alone.
+
+**Both sweeps, re-measured from scratch at `3568bd7` (never re-run under the task that found a
+red lane — none was found):**
+- **Full-suite gate** (task 003, `ed5751f`): `ci/run.sh go test -p=1 -count=1 -timeout=40m ./...`
+  — every package, no `-run` filter, no package list — exits **0**, all 18 packages (`go list
+  ./...`) report `ok` or `[no test files]`, no `FAIL` line, wall-clock **≈6m52s (~412s)**
+  (`docs/reports/phase4-a3-final-suite/README.md`). Build/vet/gofmt guards recorded in the same
+  commit: `go build ./...` and `go vet ./...` both exit 0 with empty output; `gofmt -l .` lists
+  exactly the same pre-existing drift files measured at plan time and nothing this approach wrote.
+- **Ten-run stability sweep** (task 004, `5f1fb5c` + wording cure `deca67c`): `ci/stability.sh
+  10` — **10/10 passed**, every `go test` exit status 0, no `FAIL` line in any of the ten
+  per-run logs, **≈1h09m end to end** (`docs/reports/phase4-a3-stability10/README.md`). Neither
+  known-open advisory flake (`TestSigwinchCountDistinguishesTwoFromThree`; `internal/tmux`'s
+  `TestSendKeysInvalidHexByteIsSilentlyDiscarded` empty-capture case) manifested in any of the
+  ten runs.
+
+The record itself was rewritten at `3568bd7`:
+[`docs/reports/phase4-report.md`](reports/phase4-report.md) (`e5058e5` task 005 + `b9ffef3` task
+006 + `1326945` task 007) — the per-requirement verdict table and both sweep citations, the B1/B0
+review-findings section above, and the R2 citation correction — and
+[`docs/reports/phase4-findings.md`](reports/phase4-findings.md) (`9d1e654` + `94bc479` +
+`e0d5219`, task 008) — the same findings inventory refreshed at this tail sha, with the two crop
+findings (`0e72ec1`'s geometry/blank-fill scope and `96b0ba9`'s cropRow fill/marker scope) split
+into their own entries. The protected-path audit
+(`git log --oneline 08a1ffe3..HEAD -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md`) prints nothing
+for this approach. Approach 2's own record at `0ba550a`
+(`docs/reports/phase4-cure-{final-suite,guards,stability10}/`, and the superseded version of
+`phase4-report.md`) stays as history and is not edited.
+
 ## Other milestones
 
 | Date | What |
