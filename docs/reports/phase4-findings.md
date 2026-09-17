@@ -770,8 +770,13 @@ Date:   Wed Sep 16 09:02:25 2026 +0000
 
 ## Entries
 
-One entry per quoted `FINDING:` line above, each with a file:line and the
-reason it was left unfixed. Some `FINDING:` lines appear twice in the paste
+One entry per distinct quoted `FINDING:` line above, each with a file:line
+and the reason it was left unfixed. The paste carries twelve formatted
+ledger lines, eight of them distinct, so there are eight numbered entries
+below — including two separate crop-preview findings, quoted by two
+different commits with two different scopes, which get entries 3 and 4 of
+their own rather than one shared entry. Some `FINDING:` lines appear twice
+in the paste
 above — once inside `fac1db0`'s own body, which quoted four earlier commits
 in full when it first built this ledger, and once again because those four
 earlier commits are themselves still inside the `$BASE..HEAD` range and so
@@ -812,8 +817,11 @@ from the verbatim paste to these entries complete in both directions.
    rule — rather than folded into the badge-disagreement narrative above.
 3. **`internal/tui/panel.go:809-810,816-818`** (`cropPreviewBottomLeft`'s
    `"WxH of realWxrealH"` geometry line and its `blank := strings.Repeat`
-   fill loop; original finding from commits `96b0ba9` task 002 and
-   `0e72ec1` task 003 of the prior approach) — **fixed, not left open, in
+   fill loop, at the line numbers `0e72ec1` quoted; the same code sits at
+   `internal/tui/panel.go:823-825,832-835` in the tree at tail code sha
+   `3568bd7`. The quoted ledger line for this entry is `0e72ec1`'s, task
+   003 of the prior approach — `96b0ba9`'s own line named a different scope
+   and has its own entry 4 below) — **fixed, not left open, in
    this approach.** Approach 3 task 001 (`92619cf`, "tui: paint the crop
    geometry line and blank fill", plus its fixture correction `48bce3d`)
    gave `cropPreviewBottomLeft` its own per-row provenance
@@ -836,7 +844,32 @@ from the verbatim paste to these entries complete in both directions.
    Kept in the ledger as a historical entry per this run's own
    later-green-never-erases rule — the gap was real when found, and the two
    commits above are the fix, not a re-deferral.
-4. **`internal/service/agent.go:67`** (commit `a11cc86`, task 025) —
+4. **`internal/tui/panel.go:880-891`** (`cropRow`'s `padTrunc`-equivalent
+   fill columns past a captured row's own visible bytes and its
+   `cropMarker()` substitution for a row that overflows; commit `96b0ba9`,
+   task 002 of the prior approach) — a distinct finding from entry 3,
+   quoted by a different commit with a different scope: `96b0ba9` recorded
+   that after it gave `previewBodyLines` its per-row provenance, three
+   things were still marked `previewLineForeign` — the fill columns and
+   crop marker *inside* a real capture's own row (this entry), plus
+   `cropPreviewBottomLeft`'s blank-fill rows and its `"WxH of realWxrealH"`
+   geometry line (entry 3, re-filed as its own line by `0e72ec1`). Left
+   unfixed by `96b0ba9` deliberately: that task owned whole-row ownership
+   for the deck-generated no-capture placeholder path, and the finer
+   within-row split beside a real capture's bytes was the next task's
+   declared deliverable, not a regression. **Fixed, in the prior approach,
+   for the part this entry names:** `0e72ec1` (task 003) added
+   `paintForeignFill` (`internal/tui/panel.go:850-852`) and routed
+   `cropRow`'s fill, its crop marker and the degenerate all-marker row
+   through it, pinned by `internal/tui/preview_pane_fill_marker_test.go`'s
+   `TestCapturedPaneFillPastCaptureCarriesDeckBackground` and
+   `TestCapturedPaneCropMarkerCarriesDeckBackground`; the capture's own
+   bytes are still only truncated, never re-composed. The two items this
+   line named that `0e72ec1` did not paint are exactly entry 3's subject,
+   and were painted in this approach by tasks 001 (`92619cf` + `48bce3d`)
+   and 002 (`3568bd7`). Kept as its own historical entry per this run's
+   later-green-never-erases rule.
+5. **`internal/service/agent.go:67`** (commit `a11cc86`, task 025) —
    `ResolveProfile`'s degrade-to-safe fallback is unreachable through the
    released TUI for an ordinary create: the create modal
    (`internal/tui/tui.go`'s `degradedCreateProfile`) now degrades and
@@ -847,7 +880,7 @@ from the verbatim paste to these entries complete in both directions.
    adapter's own "unsupported permission profile" error instead of SPEC
    §5's degrade-to-safe. Left as is: making resume re-resolve is a
    behaviour change beyond R127's own scope.
-5. **`features/panel_background_rectangle.feature:96-100`** (commit
+6. **`features/panel_background_rectangle.feature:96-100`** (commit
    `06b4521`, task 009) — the file's two `@requirement-58` scenarios
    asserted background token `"selection"` across the full content span
    (columns 1-34 in the 35-column case, 1-23 at `SidebarWidthFloor`) of a
@@ -861,7 +894,7 @@ from the verbatim paste to these entries complete in both directions.
    scenario — see the file's current lines 96-99 — but the finding stands
    as a historical entry in the ledger per the run's own rule that a later
    green does not erase an earlier red from the record.)
-6. **`features/panel_background_rectangle.feature:125-160`** (commit
+7. **`features/panel_background_rectangle.feature:125-160`** (commit
    `903418a`, task 008) — at `SidebarWidthFloor` (24 columns,
    `internal/tui/layout.go:25`) the sidebar's own "socket: `<name>`" header
    line no longer fits `contentWidth` (22) and wraps to two physical rows
@@ -871,7 +904,7 @@ from the verbatim paste to these entries complete in both directions.
    (5-6, not 4-5) were written to account for it, documented in the
    scenario's own prose, rather than changing `wrapText` or the header
    line's own layout.
-7. **`features/panel_background_rectangle.feature:1`** (commit `cd6d566`,
+8. **`features/panel_background_rectangle.feature:1`** (commit `cd6d566`,
    task 007) — the file's two seam "cell ... has no background set"
    assertions at column 35 stopped holding once task 004's global canvas
    paint gave every border cell, seam included, deck's own `background`
