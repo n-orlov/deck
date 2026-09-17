@@ -72,12 +72,19 @@ The command that defines this run's findings set is
 `git log --grep='FINDING:' "$BASE..HEAD"`, with
 `BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase4-codex-and-chrome.md)`
 = `08a1ffe3eb229f8ebe5ba9791fbb3e3cec6e0c06` (the standing rules' own audit
-command). Pasted verbatim and unedited at this file's own shipped HEAD; the
-newest record the range matches is `9d1e654` (this file's previous refresh,
-task 008's first commit), whose body quotes the ledger token in prose. The
-commit that ships this block is deliberately written without that literal
-token anywhere in its message, so re-running the command above at HEAD
-reproduces this block byte for byte:
+command). Pasted verbatim and unedited at this file's own shipped HEAD,
+re-taken for this approach's post-cure tail code sha `7bb1f8a` ("features:
+wait for codex's asynchronous first-hook identity adoption before checking",
+task cure-03-02). The newest record the range matches is still `9d1e654`
+(this file's previous refresh, task 008's first commit), whose body quotes
+the ledger token in prose: nothing that landed after it enters the range —
+the two cure commits (`2a04e5a` settings-footer paint, `7bb1f8a` real-Codex
+first-hook wait) and the record commits on top of them (`abd963f`,
+`c069c34`, `daea2fd`, `4542e96`, `8ae503c`) carry no formatted ledger line
+and do not quote the token at all, so the findings set is unchanged by the
+cure even though the tail code sha moved. The commit that ships this block
+is deliberately written without that literal token anywhere in its message,
+so re-running the command above at HEAD reproduces this block byte for byte:
 
 ```
 commit 9d1e654abad4ad922fa7d356e2efa0f790e4492e
@@ -773,17 +780,33 @@ Date:   Wed Sep 16 09:02:25 2026 +0000
 One entry per distinct quoted `FINDING:` line above, each with a file:line
 and the reason it was left unfixed. The paste carries twelve formatted
 ledger lines, eight of them distinct, so there are eight numbered entries
-below — including two separate crop-preview findings, quoted by two
-different commits with two different scopes, which get entries 3 and 4 of
-their own rather than one shared entry. Some `FINDING:` lines appear twice
-in the paste
-above — once inside `fac1db0`'s own body, which quoted four earlier commits
-in full when it first built this ledger, and once again because those four
-earlier commits are themselves still inside the `$BASE..HEAD` range and so
-matched a second time in their own right. That duplication is a byproduct
-of history, reproduced here exactly because the paste is verbatim; each
-distinct finding gets one entry below regardless of how many times its text
-appears above.
+below. The mapping from the paste to these entries is complete in both
+directions, keyed by the commit whose body quotes each line (stable across
+re-pastes, unlike a line number in this file):
+
+| quoting commit | what its ledger line names | entry |
+| --- | --- | --- |
+| `b98ce9c` | `internal/tmux/literal_send_test.go:123` — one empty `capture-pane` in run 10 of 10 | 1 |
+| `059704a` | `features/golden_frame_test.go:91` — `TestGoldenMinimumFrame` red against the stale golden | 2 |
+| `0e72ec1` | `cropPreviewBottomLeft`'s `"WxH of realWxrealH"` geometry line and its blank-fill rows, and only those | 3 |
+| `96b0ba9` | those same two rows **plus** the `padTrunc` fill columns and `cropMarker()` substitution beside a real capture's own bytes | 4 |
+| `a11cc86` (also quoted inside `fac1db0`) | `internal/service/agent.go:67`'s unreachable degrade-to-safe | 5 |
+| `06b4521` (also quoted inside `fac1db0`) | `features/panel_background_rectangle.feature`'s two `@requirement-58` selection-span scenarios | 6 |
+| `903418a` (also quoted inside `fac1db0`) | the width-24 `socket: <name>` header wrap shifting every row down one line | 7 |
+| `cd6d566` (also quoted inside `fac1db0`) | `features/panel_background_rectangle.feature:1`'s two column-35 seam assertions | 8 |
+
+The two crop-preview lines are separate findings with different scopes and
+get entries 3 and 4 of their own, never one shared entry: `96b0ba9`'s line
+additionally names the `padTrunc` fill columns and the crop marker *inside*
+a real capture's own row, which `0e72ec1`'s line does not name at all, and
+that part carries its own file:line and its own reason in entry 4. Four
+lines appear twice in the paste above — once inside `fac1db0`'s own body,
+which quoted four earlier commits in full when it first built this ledger,
+and once again because those four earlier commits are themselves still
+inside the `$BASE..HEAD` range and so matched a second time in their own
+right. That duplication is a byproduct of history, reproduced here exactly
+because the paste is verbatim; each distinct finding gets one entry below
+regardless of how many times its text appears above.
 
 Two records in the paste match the command on prose alone and carry no
 formatted ledger line of their own, so they add no entry here: `0e514ee`
@@ -818,8 +841,10 @@ from the verbatim paste to these entries complete in both directions.
 3. **`internal/tui/panel.go:809-810,816-818`** (`cropPreviewBottomLeft`'s
    `"WxH of realWxrealH"` geometry line and its `blank := strings.Repeat`
    fill loop, at the line numbers `0e72ec1` quoted; the same code sits at
-   `internal/tui/panel.go:823-825,832-835` in the tree at tail code sha
-   `3568bd7`. The quoted ledger line for this entry is `0e72ec1`'s, task
+   `internal/tui/panel.go:823-825,832-835` in the tree at this approach's
+   post-cure tail code sha `7bb1f8a` — `internal/tui/panel.go` is
+   byte-identical between `3568bd7` and `7bb1f8a`, neither cure commit
+   touched it. The quoted ledger line for this entry is `0e72ec1`'s, task
    003 of the prior approach — `96b0ba9`'s own line named a different scope
    and has its own entry 4 below) — **fixed, not left open, in
    this approach.** Approach 3 task 001 (`92619cf`, "tui: paint the crop
