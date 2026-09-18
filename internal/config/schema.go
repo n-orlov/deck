@@ -441,6 +441,37 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section:    "ui",
+		Key:        "preview_paint",
+		Kind:       KindEnum,
+		Default:    "fit",
+		EnumValues: []string{"fit", "nofit", "bg", "off"},
+		Description: "How much of deck's own canvas shows through a previewed pane's " +
+			"captured output (SPEC §11.3). \"fit\" (default) paints deck's " +
+			"background/text pair into every cell the agent left at the " +
+			"terminal's default colour -- an unnamed foreground has UNDEFINED " +
+			"contrast, so without this the pane region's readability depends on " +
+			"the user's terminal profile, which deck cannot inspect -- keeps an " +
+			"explicitly coloured cell's HUE, and moves only its lightness far " +
+			"enough to clear the 4.5:1 floor against what deck now paints " +
+			"underneath. \"nofit\" paints the same cells but never adjusts an " +
+			"agent's explicit colour, so a colour chosen for a dark terminal " +
+			"stays exactly as chosen (and, on a light theme, possibly " +
+			"illegible). \"bg\" paints the background only and leaves every " +
+			"foreground to the pane. \"off\" repaints nothing: captured output " +
+			"reaches the panel byte for byte, which is the honest choice for a " +
+			"user who would rather see the agent's colours exactly as the agent " +
+			"chose them than have deck's theme reach into them at all. A cell " +
+			"whose foreground AND background the agent both set is untouched in " +
+			"every mode -- the agent owns that pair. DECK_PREVIEW_PAINT " +
+			"overrides the file when set.",
+		// requirement 19: internal/tui's repaintForeignDefaults reads
+		// m.settings.PreviewPaint on every previewed row, so a ctrl+s here is
+		// live on the next preview tick with no restart -- the same live-read
+		// shape ui.preview_fit above has.
+		Scope: ScopeGlobal,
+	},
+	{
 		Section: "ui",
 		Key:     "recent_cwd_limit",
 		Kind:    KindInteger,

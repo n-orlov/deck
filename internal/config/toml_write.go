@@ -246,6 +246,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.FormatBool(cfg.GroupByWorkspace)
 	case "ui.sort_order":
 		return strconv.Quote(cfg.SortOrder)
+	case "ui.preview_paint":
+		return strconv.Quote(cfg.PreviewPaint)
 	case "ui.recent_cwd_limit":
 		return strconv.Itoa(cfg.RecentCwdLimit)
 	case "event_retention_days":
