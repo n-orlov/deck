@@ -1573,22 +1573,33 @@ truncated-but-honest frame beats an unpredictable one.
   inner width: a background left open across the seam paints a column that belongs to another
   panel, so **every truncated coloured run re-emits its own reset** — truncation that drops a
   trailing SGR reset is a defect in the truncation, not a rendering trade-off.
-- **deck paints its own canvas.** The `background` token (§11.6) is painted across every cell
-  deck draws — borders, padding, row bodies, headers, the footer, dialog interiors, the empty
-  state — rather than left to whatever the terminal's own background happens to be. A theme
-  that only ever sets foregrounds is not a theme, it is a suggestion: a `light` palette on a
-  terminal configured dark renders near-black text on near-black, and the only rows that stay
-  legible are the ones the `surface` stripe happens to paint. That failure is not the
-  stripe's fault and is not fixed by softening it — with the stripe removed, *every* row
-  becomes unreadable rather than every second one. It also makes §11.6's contrast floor
-  meaningful: a ratio computed against `background` is a claim about a colour pair no cell
-  displays until deck paints it. Because a reset (`\x1b[0m`) clears the background along with
-  the foreground, painting the canvas means **re-opening it after every inner reset**, not
+- **deck paints its own canvas — both halves of it, never one.** The `background` **and `text`**
+  tokens (§11.6) are painted together across every cell deck draws — borders, padding, row
+  bodies, headers, the footer, dialog interiors, the empty state — rather than either of them
+  left to whatever the terminal's own colours happen to be. A theme that only ever sets
+  foregrounds is not a theme, it is a suggestion: a `light` palette on a terminal configured
+  dark renders near-black text on near-black, and the only rows that stay legible are the ones
+  the `surface` stripe happens to paint. That failure is not the stripe's fault and is not
+  fixed by softening it — with the stripe removed, *every* row becomes unreadable rather than
+  every second one. It also makes §11.6's contrast floor meaningful: a ratio computed against
+  `background` is a claim about a colour pair no cell displays until deck paints it.
+  The same argument runs in the other direction, and that is the easier half to miss: a cell
+  given a background but **no foreground** inherits the *terminal's* default text colour, so
+  its contrast is not merely low, it is **undefined** — the identical build reads clean or
+  unreadable depending on a profile deck cannot inspect, and a light palette under a terminal
+  defaulting to white text paints white on cream. Naming `background` while leaving `text`
+  unnamed is therefore the same class of defect as naming neither, and a floor measured against
+  a foreground no cell actually asserts measures nothing. Because a reset (`\x1b[0m`) clears
+  both at once, painting the canvas means **re-opening the pair after every inner reset**, not
   prefixing one escape per line and hoping.
   **One deliberate exception: captured pane output is never repainted.** An agent's own
   bright-on-dark output composed onto a light canvas is destroyed, not themed, so deck paints
   the frame and the padding columns around a capture and emits a reset after it — the pane's
-  colours must not leak into deck's frame either.
+  colours must not leak into deck's frame either. The accepted consequence is that a pane's own
+  palette can read poorly against a light canvas, or against a light terminal default where the
+  agent set no background of its own. That is the tenant's colours surviving intact, which is the
+  whole point of the exception: it is **not** a canvas defect, and it is not to be cured by
+  extending the paint over captured cells.
 - **The selected row has a gutter, not only a background.** The row's leftmost columns are a
   painted bar in `accent`, carrying `>` on the row's first line with `background` as its
   *foreground*; §11's marked set puts its `✓` on the second line of the same bar, so a row
@@ -2122,6 +2133,16 @@ must be restored afterwards.
   The forwardable set is **enumerated and tested key by key**, never left to a default branch:
   a key deck cannot encode must be a known, listed gap, because the failure it otherwise
   produces is a keystroke that does nothing and reports nothing.
+  **The listed gaps are two, and both are gaps for the same reason** — forwarding them would
+  deliver a *different* key than the one pressed, which is worse than dropping it. `Alt+Insert`:
+  tmux names and translates it correctly, but the decoder deck reads its own input through has no
+  entry for those bytes and carries xterm's `Shift+Delete` sequence under that name instead, so
+  deck cannot reliably tell the two apart on the way in and must not claim the key on the way
+  out. `Alt+Shift+Tab`: tmux itself discards the modifier, emitting bytes identical to a bare
+  `Shift+Tab`, so naming it would forward `Shift+Tab` for a physical `Alt+Shift+Tab` — silently
+  dropping a modifier, which is the failure this bullet exists to forbid, one modifier smaller.
+  A gap is a **stated** gap: it lives in the enumeration with its reason, so that a decoder or
+  tmux release that closes it is a change to make deliberately rather than a discovery.
 - **Honesty about what the user cannot see.** When the target has not repainted since the
   resize, the panel says so; an empty frame otherwise reads as deck being broken rather than
   the agent being wedged. Help states that previewing and entering interactive mode both
