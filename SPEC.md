@@ -220,6 +220,21 @@ preview instead — the cheaper, reversible half of the same intent — and `a` 
 escalation. Both resize the shared window under `window-size latest`; that is not new, and
 §11.9 states the difference in what size each picks.
 
+**`a` releases deck's own pin first.** Every fit deck makes leaves `window-size manual` in the
+window options as a side effect of `resize-window`, and those shadow the global `latest`. A
+client attaching under one is shown the window at deck's chosen size — cropped into a corner
+of its own terminal, and staying there, since nothing re-expresses a size for a window that
+cannot follow a client. Passive fit unsets the option itself, and issues no `resize-window` at
+all while a client is attached (§11) — so no deck's preview, this one or another on the same
+server, re-crops a terminal that is already attached. That leaves `a` the pins
+`a` did not write: one from another deck process on the same server, or from a deck that was
+killed while interactive and not yet reclaimed. `a` unsets the window-local option before it
+hands the terminal over. The one pin it leaves is a **live owner's** (§11.9) — that size is
+held for a grid another process is drawing right now, and releasing it would resize the window
+under that process the moment this client attached. So: **deck's own preview never crops a full
+attach**; another tmux session, deck-mediated or a direct `tmux attach`, still may, exactly as
+the shared-geometry paragraph below describes.
+
 **Geometry, stated honestly:** two clients attached to the same session at different
 terminal sizes *share* one view. Grouped sessions do not fix this — a group shares its
 windows, and deck sessions have exactly one window (§3.2), so every client necessarily
@@ -1380,18 +1395,36 @@ hold them side by side.
   window with a new one at tmux's own default size, and they do it without moving the
   selection, so a fit already satisfied for the selected session must not suppress the fit
   the new pane needs. Otherwise the one row the user is watching is the one row that stays
-  80×24 until they select away and back, which is the opposite of what coalescing is for;
+  80×24 until they select away and back, which is the opposite of what coalescing is for.
+  **Returning from a full attach invalidates it for the same reason**: `a` left the window at
+  the attaching client's own size and detaching does not restore it (§3.3), so the row the
+  user lands back on needs its fit again, without having moved the selection either;
   it is **skipped below §11.9's 7-row inner floor**,
   leaving the pane cropped, because a box that small has no transcript in it worth reflowing
   for; and it is **best-effort, owning and restoring nothing** — a session the user looked at
   is left at the size deck last chose, and any attaching client re-expresses its own size
-  under `window-size latest` and simply wins. Best-effort does not extend to fighting an
+  under `window-size latest` and simply wins. That last property has to be *given back*, not
+  merely left untaken: `resize-window` writes `window-size manual` into the **window** options
+  (§11.9), which shadow the global, so a bare fit would leave the window unable to follow any
+  client at all — the next `a`, or any bare `tmux attach`, cropped into the panel's box for as
+  long as the pin survived. **Passive fit therefore unsets the window-local `window-size` after
+  fitting.** The size survives that (tmux sizes a window from its clients, and a window with
+  none keeps what it was last given); only the hold goes. Best-effort does not extend to fighting an
   **owner**, though: passive fit stands down entirely, issuing no `resize-window` at all,
   while another live process holds §11.9's ownership claim on that window. An owner has
   recorded a size it is going to put back, so a passive fit landing under it is the one case
   where "deck last chose" is a lie — and without this, merely *selecting* a row in a second
   deck would resize a window the first deck is typing into. The capture still renders, at
-  whatever size the owner is holding.
+  whatever size the owner is holding. It stands down for an **attached client** too, for the
+  mirror-image reason: under `window-size latest` that client owns the size, so the only fit
+  that could hold is a pinned one — the crop §3.3 forbids — and an unpinned one merely bounces
+  a terminal somebody is watching through two reflows to land back where it started. So while
+  `#{session_attached}` is non-zero passive fit issues no `resize-window`, and does the one
+  thing that is still worth doing: **it unsets the window-local `window-size`**, releasing a
+  pin an earlier fit (this deck's, or another build's on the same socket) left behind, so an
+  attach that was cropped stops being cropped. Neither stand-down latches: both conditions are
+  transient, and the row regains its fit as soon as the claim is released or the client
+  detaches, without the user selecting away and back.
 - **The cost is stated, not hidden.** A fit sends the agent `SIGWINCH` and reflows its output,
   so §3.2's history arithmetic applies: output produced while narrow consumes scrollback rows
   faster and evicted rows never return. A second client attached at another size sees the crop
@@ -2059,8 +2092,11 @@ must be restored afterwards.
 - **Geometry is owned, claimed and restored.** Entering records the window's dimensions and
   its window-local `window-size` value, claims ownership in a pid-tagged window option, then
   resizes the **window** (never the pane — on a split window chrome is proportional and a
-  pane-targeting loop cannot converge). Exiting resizes back *only when no client is
-  attached*, then unsets the window-local `window-size`. The order is load-bearing and
+  pane-targeting loop cannot converge) and sets `window-size manual` on it explicitly. Setting
+  it is not redundant with the resize: a window a passive fit (§11) already brought to this
+  exact box needs no resize at all, so nothing would write the pin, and interactive mode is the
+  one path that genuinely needs the size *held* — its grid is drawn against it. Exiting resizes
+  back *only when no client is attached*, then unsets the window-local `window-size`. The order is load-bearing and
   `set -g window-size latest` does not substitute for it: `resize-window` writes `manual`
   into the **window** options, which shadow the global. Cost is exactly two `SIGWINCH` per
   cycle.
