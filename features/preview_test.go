@@ -38,6 +38,7 @@ func registerPreviewSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake claude agent's size log still matches "([^"]+)"$`, fakeClaudeAgentSizeLogStillMatches)
 	sc.Step(`^deck client "([^"]+)" screen stops containing "([^"]+)"$`, clientScreenStopsContaining)
 	sc.Step(`^the private tmux window for session "([^"]+)" does not report geometry "([^"]+)"$`, privateTMuxWindowForSessionDoesNotReportGeometry)
+	sc.Step(`^the private tmux window for session "([^"]+)" reports geometry "([^"]+)"$`, privateTMuxWindowForSessionReportsGeometry)
 }
 
 // clientHasNeverBeenTallerThan asserts this client's terminal has never, in
@@ -475,6 +476,27 @@ func privateTMuxWindowForSessionDoesNotReportGeometry(ctx context.Context, name,
 	}
 	if got == unwanted {
 		return fmt.Errorf("private tmux window for session %q reports geometry %q, want anything but %q", name, got, unwanted)
+	}
+	return nil
+}
+
+// privateTMuxWindowForSessionReportsGeometry is the positive twin of the
+// step above: the window's real #{window_width}x#{window_height} is
+// exactly want. It is for the cases where the expected size is a stated
+// number rather than an earlier snapshot -- notably a window whose size a
+// REAL attached client owns (its own terminal, minus tmux's one-row status
+// line), which no capture taken before that client attached can name.
+func privateTMuxWindowForSessionReportsGeometry(ctx context.Context, name, want string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	got, err := privateWindowGeometry(ctx, h, name)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("private tmux window for session %q reports geometry %q, want %q", name, got, want)
 	}
 	return nil
 }
