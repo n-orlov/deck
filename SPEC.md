@@ -573,7 +573,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -1625,14 +1625,35 @@ truncated-but-honest frame beats an unpredictable one.
   a foreground no cell actually asserts measures nothing. Because a reset (`\x1b[0m`) clears
   both at once, painting the canvas means **re-opening the pair after every inner reset**, not
   prefixing one escape per line and hoping.
-  **One deliberate exception: captured pane output is never repainted.** An agent's own
-  bright-on-dark output composed onto a light canvas is destroyed, not themed, so deck paints
-  the frame and the padding columns around a capture and emits a reset after it — the pane's
-  colours must not leak into deck's frame either. The accepted consequence is that a pane's own
-  palette can read poorly against a light canvas, or against a light terminal default where the
-  agent set no background of its own. That is the tenant's colours surviving intact, which is the
-  whole point of the exception: it is **not** a canvas defect, and it is not to be cured by
-  extending the paint over captured cells.
+  **Captured pane output is painted under, not over — `[ui] preview_paint`, default `fit`.**
+  A previewed pane's cells are the tenant's, and the earlier rule here was that deck never
+  touched them at all. That rule was one layer short of the defect it was protecting against:
+  a cell the agent left at the *terminal's default* asserts no colours, so its contrast is
+  undefined exactly as the paragraph above describes, and "the tenant's colours surviving
+  intact" was in those cells the terminal profile's colours, which are not the tenant's either.
+  So deck paints its canvas **under** a capture, and the rule is stated per cell, by what the
+  agent actually expressed:
+  a cell at the terminal's default gets deck's `background`/`text` pair;
+  a cell whose **foreground** the agent chose keeps that colour's **hue**, its lightness moved
+  only as far as §11.6's floor against deck's background requires;
+  a cell whose **background** the agent chose keeps it, with deck's `text` fitted against that
+  background instead — the mirror of the previous case, since deck's foreground is already open
+  on the row and "leave it alone" is not one of the available outcomes;
+  and a cell whose **foreground and background the agent set both** is untouched in every mode,
+  including undoing a fit deck made a moment earlier when the two arrived in separate sequences.
+  Fitting moves lightness only, never hue: an agent's blue stays blue, which is how one agent's
+  output is told from another's at a glance. Deck still paints the frame and the padding columns
+  around a capture and emits a reset after it — the pane's colours must not leak into deck's
+  frame either. `preview_paint = "nofit"` paints without ever adjusting an agent's colour,
+  `"bg"` paints backgrounds only, and `"off"` restores the earlier rule exactly, byte for byte,
+  for a user who would rather read an agent's colours exactly as chosen than have deck's theme
+  reach into them at all.
+  **An attached pane is painted `surface`, not `background`**, so the answer to "are my
+  keystrokes going to this pane?" survives the paint: with both preview modes filled in the
+  same tone that question would be answerable only from the border. `surface` is §11.6's
+  "elevated region" tone, which is what an attached pane is; `selection` would be a larger step
+  and is deliberately not used, because a pane filled with the selected-row colour devalues the
+  cue that colour exists for.
 - **The selected row has a gutter, not only a background.** The row's leftmost columns are a
   painted bar in `accent`, carrying `>` on the row's first line with `background` as its
   *foreground*; §11's marked set puts its `✓` on the second line of the same bar, so a row
