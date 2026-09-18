@@ -394,8 +394,10 @@ Feature: The `,` settings takeover (requirement 48)
     # land on Clear Recent Cwds. Task 303 then inserted ui.sort_order
     # between group_by_workspace and this synthetic Clear Recent Cwds
     # entry (settingsCategories appends it last in the "ui" category), so
-    # a SEVENTH "j" is now needed. Grep this feature file before adding
-    # any future ui.* schema field or settings-only entry.
+    # a SEVENTH "j" was needed. ui.preview_paint (SPEC §11.3) then
+    # landed after preview_fit, making it EIGHT. Grep this feature file
+    # before adding any future ui.* schema field or settings-only entry.
+    And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"

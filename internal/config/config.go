@@ -137,6 +137,17 @@ type Settings struct {
 	// selected session's window to the preview panel as the list selection
 	// settles. DECK_PREVIEW_FIT overrides the file when set.
 	PreviewFit bool
+	// PreviewPaint mirrors config.toml's [ui] preview_paint key (default
+	// "fit", SPEC §11.3): how much of deck's canvas shows through a
+	// previewed pane's captured output -- "fit" paints deck's pair into
+	// every cell the agent left at the terminal's default and moves an
+	// explicit colour's lightness just far enough to stay legible against
+	// it, "nofit" paints without adjusting, "bg" paints backgrounds only,
+	// "off" repaints nothing. The value is validated at parse time (a bad
+	// key in the file is an error, never a silent fallback), so
+	// internal/tui maps it without a fallback path of its own.
+	// DECK_PREVIEW_PAINT overrides the file when set.
+	PreviewPaint string
 	// TmuxMouse mirrors config.toml's top-level tmux_mouse key (default true,
 	// SPEC §6.5/§11.8): whether tmux's own `mouse` server option is turned on
 	// on deck's private socket, independent of Mouse's terminal-side SGR
@@ -265,6 +276,14 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		}
 		envOverrides["ui.preview_fit"] = "DECK_PREVIEW_FIT"
 	}
+	previewPaint := fileCfg.PreviewPaint
+	if raw := getenv("DECK_PREVIEW_PAINT"); raw != "" {
+		previewPaint, err = previewPaintEnv(raw)
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["ui.preview_paint"] = "DECK_PREVIEW_PAINT"
+	}
 	tmuxMouse := fileCfg.TmuxMouse
 	tmuxMouseRaw := getenv("DECK_TMUX_MOUSE")
 	if tmuxMouseRaw != "" {
@@ -303,6 +322,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		GroupByWorkspace:   groupByWorkspace,
 		SortOrder:          fileCfg.SortOrder,
 		PreviewFit:         previewFit,
+		PreviewPaint:       previewPaint,
 		TmuxMouse:          tmuxMouse,
 		RecentCwdLimit:     fileCfg.RecentCwdLimit,
 		EventRetentionDays: fileCfg.EventRetentionDays,
@@ -408,6 +428,22 @@ func interactiveTransportEnv(raw string) (string, error) {
 		return raw, nil
 	default:
 		return "", fmt.Errorf("DECK_INTERACTIVE_TRANSPORT must be pipe or capture, got %q", raw)
+	}
+}
+
+// previewPaintEnv validates DECK_PREVIEW_PAINT the same way
+// interactiveTransportEnv validates its own variable: an unrecognised value
+// is a stated error naming the variable, never a silent fallback to the
+// default. Silently accepting "no" or "true" here would be worse than
+// erroring, because the whole point of the override is to compare modes --
+// a typo that quietly selected the default would look like the mode under
+// test producing the default's output.
+func previewPaintEnv(raw string) (string, error) {
+	switch raw {
+	case "fit", "nofit", "bg", "off":
+		return raw, nil
+	default:
+		return "", fmt.Errorf("DECK_PREVIEW_PAINT must be one of fit, nofit, bg, off, got %q", raw)
 	}
 }
 
