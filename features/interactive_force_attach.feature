@@ -84,18 +84,31 @@ Feature: Forced entry into interactive mode answers a waiting row
   # leaves by the ordinary teardown, the window is restored per the existing
   # attached-client gating (unset window-size, let window-size latest
   # follow), and both isize options are released.
+  #
+  # What the attached-client gating means for the window's SIZE is asserted
+  # as the real client's own 80x24 terminal minus tmux's one-row status
+  # line, NOT as the pre-entry capture: with that client still attached the
+  # unset hands the window straight to it (internal/tmux/restore_test.go's
+  # TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch),
+  # and A's own passive preview fit -- re-licensed the moment A is back in
+  # the list with the row still selected -- stands down for an attached
+  # client instead of pulling the window back into deck's preview box and
+  # cropping a real terminal somebody is looking at (SPEC §3.3, §11). The
+  # window-scope window-size assertion is the other half of that: deck
+  # leaves NOTHING pinned, so the client keeps following its own size.
   Scenario: a real client's full attach displaces the interactive holder and the window is restored
     Given deck client "A" is started
     And deck client "A" creates shell session "grabbed"
     And deck client "A" selects session "grabbed"
-    And the private tmux window for session "grabbed" is captured as "before-real-attach"
+    And the private tmux window for session "grabbed" does not report geometry "80x23"
     When deck client "A" enters interactive mode
     Then deck client "A" screen contains "Ctrl+Q"
     When a real tmux client attaches to deck session "grabbed" at 80x24
     Then deck client "A" screen contains "Lost attach: grabbed"
     When deck client "A" dismisses the lost-attach dialog
     Then deck client "A" screen contains "deck - sessions"
-    And the private tmux window for session "grabbed" still matches "before-real-attach"
+    And the private tmux window for session "grabbed" reports geometry "80x23"
+    And tmux window "deck_grabbed" option "window-size" is unset in the window scope
     And tmux window "deck_grabbed" option "@deck_isize_owner" is unset in the window scope
     And tmux window "deck_grabbed" option "@deck_isize_geometry" is unset in the window scope
     And the real tmux client attached to session "grabbed" detaches
