@@ -5,9 +5,11 @@ Feature: Interactive mode's restore is byte-exact across every tmux option table
   and local session; global and local window; global and local pane --
   must read exactly what it read before entry, with the sole exception of
   the local WINDOW table's own `window-size`, which entering sets to
-  "manual" as a side effect of resize-window (task 034) and exiting
-  unsets again (task 035). Every table is dumped and diffed line by line,
-  not spot-checked by re-reading window-size alone.
+  "manual" -- resize-window writes it as a side effect, and entry states it
+  explicitly too, since a window a passive fit already sized needs no
+  resize (SPEC §11.9) -- and exiting unsets again. Every table is dumped
+  and diffed line by line, not spot-checked by re-reading window-size
+  alone: what is asserted is that NOTHING else moved, in any scope.
 
   Scenario: entering touches only window-size, only in the window scope, and exiting restores every table exactly
     Given tmux session "opttab" is a bootstrapped bare 80x24 window

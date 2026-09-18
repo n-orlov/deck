@@ -206,6 +206,18 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		m.attachError = "Cannot enter interactive mode: " + err.Error()
 		return m, nil
 	}
+	// SPEC §11.9's held size, stated rather than inherited. The fit above
+	// only writes `window-size manual` when it actually issues a
+	// resize-window, so a window a passive fit has already brought to this
+	// exact box converges in zero resizes and leaves nothing pinned -- the
+	// common case, since passive fit unpins after fitting
+	// (previewFit/FitWindowToPaneUnpinned). Best-effort: the pin
+	// only matters if a client attaches mid-session, which is already the
+	// displacement path (checkInteractiveDisplacementBackstop), so failing
+	// to write it is not worth refusing an entry whose window is already
+	// the right size. Exit unsets it either way, so restore stays
+	// byte-exact.
+	_ = client.PinWindowSize(ctx, windowTarget)
 	dispatcher, err := tmux.NewDispatcher(ctx, client, pane.ID)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
