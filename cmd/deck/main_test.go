@@ -515,6 +515,26 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"consumes its own scrollback faster than the same output would at",
 		"full width", "while interactive, a wheel notch or Shift+PgUp/PgDn",
 		"scrolls this bounded, deck-owned scrollback of the fitted view",
+		// Issue #29: the entry seed pulls the pane's own tmux history into
+		// that scrollback, so the help no longer disclaims it as "not the
+		// pane's own tmux scrollback". Pinning the honest clause here is
+		// what stops a later edit from quietly re-promising a deck-only
+		// buffer the product no longer has.
+		//
+		// The HEDGE is pinned with it, and deliberately as one phrase
+		// including "where it has any" rather than the bare promise: the
+		// unhedged sentence is an over-promise, because an alternate-screen
+		// pane (a full-screen editor, pager or agent TUI) gets ZERO history
+		// -- tmux keeps none usable for the alternate screen, and the pane's
+		// #{history_size} freezes while it is up, so not even a full tmux
+		// attach can scroll it. Pinning the promise without the hedge would
+		// let the hedge be deleted and still pass, which is exactly how the
+		// honest disclaimer this text replaced went missing in the first
+		// place. Each pin is one help LINE's worth, since the help text is
+		// hard-wrapped and a substring spanning a wrap never matches.
+		"seeded on entry from the pane's own tmux history where it has any",
+		"a full-screen app (editor, pager, agent TUI) sits on the",
+		"alternate screen, which keeps no history, so its preview starts",
 		"typing snaps the view back to the live bottom",
 	} {
 		if !strings.Contains(help, present) {

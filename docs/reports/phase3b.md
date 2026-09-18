@@ -441,13 +441,21 @@ this exact purpose.
 ### State and body are paired atomically, retried on drift (II-20)
 
 `internal/tmux/paneseed_atomic.go`'s `CapturePaneSeedAtomic` chains
-`display-message` (state + three discriminators), `capture-pane`, and a
-second `display-message` (the same three discriminators again) into ONE
+`display-message` (state + four discriminators), `capture-pane`, and a
+second `display-message` (the same four discriminators again) into ONE
 tmux invocation via tmux's own bare `;` command separator, and retries
 the whole chain (bounded at `maxPaneSeedAtomicAttempts = 20`) whenever the
-before/after `#{history_size}`/`#{pane_width}`/`#{pane_height}` probes
+before/after
+`#{history_size}`/`#{pane_width}`/`#{pane_height}`/`#{alternate_on}` probes
 disagree -- `#{history_size}` catches the pane having produced output
-mid-capture, the other two catch a resize mid-capture. Chaining into one
+mid-capture, `#{pane_width}`/`#{pane_height}` catch a resize mid-capture,
+and `#{alternate_on}` (the fourth, added by issue #29 -- this section
+described only the first three when it was written) catches a full-screen
+app entering or leaving tmux's alternate screen mid-capture, which changes
+what a history-inclusive `-S` range even means.
+`parsePaneSeedDiscriminators` now enforces exactly four fields, so a format
+that drifts back to three is a parse error rather than a silently narrower
+atomicity check. Chaining into one
 invocation narrows the race to the time `capture-pane` itself takes to
 run; it does not close it, which is why the bounded retry -- not the
 chaining alone -- is what actually delivers PRD II-20's atomicity.

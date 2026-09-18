@@ -52,15 +52,26 @@ func TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CapturePane: %v", err)
 	}
-	// CapturePane's raw output keeps its own trailing "\n" after the last
-	// row; the atomic path's body is reconstructed without exactly that
-	// ONE trailing newline, because the chained after-probe line consumes
-	// it as its own separator instead (see capturePaneSeedAtomicOnce's doc
-	// comment). Trim exactly one trailing "\n" here too -- NOT
-	// strings.TrimRight, which would also eat any interior-but-trailing
-	// BLANK ROWS -N preserves as bare empty lines, silently making this
-	// comparison pass even if -N's effect were lost somewhere.
-	wantBody = bytes.TrimSuffix(wantBody, []byte("\n"))
+	// PLAIN byte equality, with nothing trimmed off either side (issue
+	// #29). It used to be a comparison against
+	// bytes.TrimSuffix(wantBody, "\n"), because the atomic path's body was
+	// reconstructed WITHOUT the one trailing newline capture-pane emits
+	// after its last row -- the chained after-probe line consumed it as
+	// its own separator. capturePaneSeedAtomicOnce re-appends it now, so
+	// the two producers are byte-identical and this test is strictly
+	// stronger than it was; that agreement is what lets
+	// internal/interactive.BuildSeed have ONE correct trim rule
+	// (bytes.TrimSuffix of exactly the terminator) instead of a rule that
+	// had to cope with both shapes and therefore ate the body's whole
+	// trailing blank-row run.
+	//
+	// Preserving the insight the old trim's comment carried, because it is
+	// still exactly why BuildSeed must not use bytes.TrimRight and why
+	// TestCapturePaneSeedAtomicPreservesATrailingRunOfBlankRows exists: a
+	// TrimRight-shaped trim eats not just the terminator but every
+	// interior-but-trailing BLANK ROW that -N deliberately preserves as a
+	// bare empty line, and it does so silently -- the result still looks
+	// like a plausible capture, just K rows shorter than the pane is tall.
 
 	gotState, gotBody, err := client.CapturePaneSeedAtomic(ctx, paneID, options)
 	if err != nil {
@@ -162,16 +173,23 @@ func fakeAtomicPaneSeedScript(t *testing.T, disagreeingCalls int) (binary, count
 	// to this test, only that they parse and that before/after either
 	// match or don't per the call count.
 	const stateSixteen = "0|0|0|1|0|0|0|0|0|0|0|0|1|0|0|9"
+	// Four discriminator fields, not three: #{alternate_on} became the
+	// fourth for issue #29 (paneSeedDiscriminatorFormat says why). Its
+	// value is 0 on both probes here so this fixture keeps testing exactly
+	// what it used to -- a #{history_size} disagreement -- and so
+	// CapturePaneSeedAtomic's alt-screen RE-CAPTURE stays out of the
+	// picture (the state line's first field, AlternateOn, is 0 too, so the
+	// invocation counts below are the retry loop's alone).
 	script := `#!/bin/sh
 n=$(cat "` + counterPath + `")
 n=$((n + 1))
 echo "$n" > "` + counterPath + `"
 if [ "$n" -le ` + strconv.Itoa(disagreeingCalls) + ` ]; then
-  before="5|40|10"
-  after="6|40|10"
+  before="5|40|10|0"
+  after="6|40|10|0"
 else
-  before="7|40|10"
-  after="7|40|10"
+  before="7|40|10|0"
+  after="7|40|10|0"
 fi
 printf '%s|%s\n' "` + stateSixteen + `" "$before"
 printf 'fake-body-line-1\nfake-body-line-2\n'
@@ -209,8 +227,12 @@ func TestCapturePaneSeedAtomicRetriesWhileProbesDisagree(t *testing.T) {
 	if state.ScrollRegionLower != 9 {
 		t.Fatalf("state.ScrollRegionLower = %d, want 9 from the fabricated fixture (proves the SECOND, agreeing call's state was kept)", state.ScrollRegionLower)
 	}
-	if string(body) != "fake-body-line-1\nfake-body-line-2" {
-		t.Fatalf("body = %q, want the fabricated fixture's two lines", body)
+	// The trailing "\n" is part of the expectation now (issue #29): the
+	// body a caller gets back is byte-identical to what capture-pane
+	// itself printed, terminator included, which is exactly what the
+	// fixture's own printf emitted.
+	if string(body) != "fake-body-line-1\nfake-body-line-2\n" {
+		t.Fatalf("body = %q, want the fabricated fixture's two lines with capture-pane's own trailing newline", body)
 	}
 }
 
@@ -242,9 +264,185 @@ func TestCapturePaneSeedAtomicGivesUpAfterMaxAttempts(t *testing.T) {
 
 // TestParsePaneSeedDiscriminatorsRejectsWrongFieldCount guards the wire
 // format the same way TestParsePaneSeedStateRejectsWrongFieldCount does
-// for the full state.
+// for the full state. The three-field case is the one that matters since
+// issue #29: three fields is exactly what this format USED to be, so a
+// future edit that drops #{alternate_on} from
+// paneSeedDiscriminatorFormat without dropping it from
+// parsePaneSeedDiscriminators (or vice versa) fails loudly here instead
+// of silently reading a pane's alternate-screen flag out of nothing.
 func TestParsePaneSeedDiscriminatorsRejectsWrongFieldCount(t *testing.T) {
 	if _, err := parsePaneSeedDiscriminators("0|0"); err == nil {
 		t.Fatalf("parsePaneSeedDiscriminators with too few fields: want error, got nil")
+	}
+	if _, err := parsePaneSeedDiscriminators("5|40|10"); err == nil {
+		t.Fatalf("parsePaneSeedDiscriminators with the pre-issue-#29 THREE fields: want error, got nil")
+	}
+	got, err := parsePaneSeedDiscriminators("5|40|10|1")
+	if err != nil {
+		t.Fatalf("parsePaneSeedDiscriminators with four fields: %v", err)
+	}
+	if want := (paneSeedDiscriminators{HistorySize: 5, PaneWidth: 40, PaneHeight: 10, AlternateOn: 1}); got != want {
+		t.Fatalf("parsePaneSeedDiscriminators = %+v, want %+v (field ORDER must match paneSeedDiscriminatorFormat)", got, want)
+	}
+}
+
+// TestCapturePaneSeedAtomicPreservesATrailingRunOfBlankRows is issue #29's
+// producer-agreement test in its sharpest form: a pane whose visible
+// screen ends in a long run of BLANK rows -- the ordinary state of any
+// pane whose program has printed less than a screenful -- must come back
+// from CapturePaneSeedAtomic byte-identically to what Client.CapturePane
+// returns for the same options, trailing newline and every blank row
+// included.
+//
+// It is the trailing blank rows that make this test able to fail. The two
+// producers used to disagree by exactly one newline (the atomic path's
+// reconstruction consumed capture-pane's terminator as the separator
+// before the chained after-probe line), which forced
+// internal/interactive.BuildSeed to trim with bytes.TrimRight to cope
+// with both shapes -- and TrimRight does not stop at the terminator, it
+// eats the entire trailing run of bare empty lines that `-N` exists to
+// preserve. Harmless while the body was the visible screen only; fatal
+// with history prepended, where the body is bottom-anchored and dropping
+// K blank rows shifts the live screen K rows up into scrollback.
+func TestCapturePaneSeedAtomicPreservesATrailingRunOfBlankRows(t *testing.T) {
+	socket := geometrySocket("seed-atomic-blank-tail")
+	const height = 20
+	cleanup := newBareGeometrySession(t, socket, "s0", 40, height)
+	defer cleanup()
+
+	client := Client{Socket: socket, Timeout: 5 * time.Second}
+	ctx := context.Background()
+
+	// Two rows of content at the top of a 20-row pane, then a blocking
+	// `cat` so the pane is quiescent (the two captures below must see the
+	// identical pane) and the shell never redraws a prompt further down.
+	// Row 0 gets the echoed command itself, so the pane ends up with a
+	// dozen-plus genuinely blank rows underneath.
+	runInPaneBlocking(t, socket, "s0", `TOP-ROW-CONTENT\n`)
+	paneID := resolveSolePaneID(t, socket, "s0")
+
+	options := SeedCaptureOptions()
+	want, err := client.CapturePane(ctx, paneID, options)
+	if err != nil {
+		t.Fatalf("CapturePane: %v", err)
+	}
+	// Confirm the premise: the body really does end in a RUN of blank
+	// rows, so a whole-run trim would be observable here.
+	trailingBlanks := 0
+	for _, row := range bytes.Split(bytes.TrimSuffix(want, []byte("\n")), []byte("\n")) {
+		if len(bytes.TrimRight(row, " ")) == 0 {
+			trailingBlanks++
+		} else {
+			trailingBlanks = 0
+		}
+	}
+	if trailingBlanks < 2 {
+		t.Fatalf("fixture pane ends in %d blank row(s), want a RUN of them; this test cannot distinguish trimming one newline from trimming the whole tail:\n%q", trailingBlanks, want)
+	}
+
+	_, got, err := client.CapturePaneSeedAtomic(ctx, paneID, options)
+	if err != nil {
+		t.Fatalf("CapturePaneSeedAtomic: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("CapturePaneSeedAtomic body is not byte-identical to CapturePane's for the same options\n got %d rows, %d bytes: %q\nwant %d rows, %d bytes: %q",
+			bytes.Count(got, []byte("\n")), len(got), got,
+			bytes.Count(want, []byte("\n")), len(want), want)
+	}
+	if rows := bytes.Count(got, []byte("\n")); rows != height {
+		t.Errorf("visible-only body = %d rows, want exactly pane_height (%d): -N must emit the pane's trailing blank rows too", rows, height)
+	}
+}
+
+// fakeAlternateOnFlipScript writes a fake tmux binary that answers every
+// invocation with the chained shape capturePaneSeedAtomicOnce parses, and
+// whose before/after probes differ in NOTHING BUT #{alternate_on} on the
+// first `flippingCalls` calls: the before probe always reports
+// beforeAlternateOn, the after probe reports flippedAlternateOn while
+// calls remain to flip and beforeAlternateOn (i.e. agreement) from then
+// on. It is the alt-screen twin of fakeAtomicPaneSeedScript, which
+// disagrees on #{history_size} instead.
+func fakeAlternateOnFlipScript(t *testing.T, flippingCalls int, beforeAlternateOn, flippedAlternateOn string) (binary, counterPath string) {
+	t.Helper()
+	dir := t.TempDir()
+	counterPath = filepath.Join(dir, "calls")
+	if err := os.WriteFile(counterPath, []byte("0"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binary = filepath.Join(dir, "tmux")
+	// The state line's own #{alternate_on} (its FIRST field) stays 0
+	// throughout: this fixture is about the DISCRIMINATOR, and a state
+	// that also claimed the alternate screen would drag
+	// CapturePaneSeedAtomic's visible-only re-capture into the same test
+	// and add an invocation the counts below would then have to explain.
+	const stateSixteen = "0|0|0|1|0|0|0|0|0|0|0|0|1|0|0|9"
+	script := `#!/bin/sh
+n=$(cat "` + counterPath + `")
+n=$((n + 1))
+echo "$n" > "` + counterPath + `"
+before="7|40|10|` + beforeAlternateOn + `"
+if [ "$n" -le ` + strconv.Itoa(flippingCalls) + ` ]; then
+  after="7|40|10|` + flippedAlternateOn + `"
+else
+  after="7|40|10|` + beforeAlternateOn + `"
+fi
+printf '%s|%s\n' "` + stateSixteen + `" "$before"
+printf 'fake-body-line-1\nfake-body-line-2\n'
+printf '%s\n' "$after"
+`
+	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return binary, counterPath
+}
+
+// TestCapturePaneSeedAtomicRetriesWhenOnlyAlternateOnDisagrees is the
+// deterministic proof that #{alternate_on} really is a discriminator
+// (issue #29), mirroring TestCapturePaneSeedAtomicRetriesWhileProbesDisagree
+// for the field it added. history_size, pane_width and pane_height all
+// AGREE across the fake's probes, so the retry can only be caused by the
+// alternate-screen flag having flipped.
+//
+// The direction that matters is the harmful one: a pane that switches to
+// its alternate screen between the state read and the capture reports
+// AlternateOn=false -- so no visible-only re-capture is triggered -- over
+// a body that IS an alternate screen with the pane's stale primary-screen
+// history above it. Retrying is the only correct answer, since the range
+// itself was already committed to before the invocation ran.
+func TestCapturePaneSeedAtomicRetriesWhenOnlyAlternateOnDisagrees(t *testing.T) {
+	binary, counterPath := fakeAlternateOnFlipScript(t, 1, "0", "1")
+	client := Client{Binary: binary, Socket: "deck-atomic-alt-flip", Timeout: 5 * time.Second}
+
+	if _, _, err := client.CapturePaneSeedAtomic(context.Background(), "%0", SeedCaptureOptionsWithHistory(2000)); err != nil {
+		t.Fatalf("CapturePaneSeedAtomic: %v", err)
+	}
+	calls, readErr := os.ReadFile(counterPath)
+	if readErr != nil {
+		t.Fatalf("read call counter: %v", readErr)
+	}
+	if got := strings.TrimSpace(string(calls)); got != "2" {
+		t.Fatalf("fake tmux invocation count = %s, want exactly 2 (one alternate_on-only disagreement forcing exactly one retry); a count of 1 means #{alternate_on} is not being compared", got)
+	}
+}
+
+// TestCapturePaneSeedAtomicDoesNotRetryWhenAlternateOnAgrees is the other
+// half of the control above: with all four discriminators agreeing on the
+// first call -- alternate_on included, and set to 1 on BOTH probes so the
+// test cannot pass merely because the field is always zero -- there is
+// exactly ONE invocation. Without this, a "discriminator" that always
+// disagreed would look just as green as one that compares correctly.
+func TestCapturePaneSeedAtomicDoesNotRetryWhenAlternateOnAgrees(t *testing.T) {
+	binary, counterPath := fakeAlternateOnFlipScript(t, 0, "1", "0")
+	client := Client{Binary: binary, Socket: "deck-atomic-alt-agree", Timeout: 5 * time.Second}
+
+	if _, _, err := client.CapturePaneSeedAtomic(context.Background(), "%0", SeedCaptureOptionsWithHistory(2000)); err != nil {
+		t.Fatalf("CapturePaneSeedAtomic: %v", err)
+	}
+	calls, readErr := os.ReadFile(counterPath)
+	if readErr != nil {
+		t.Fatalf("read call counter: %v", readErr)
+	}
+	if got := strings.TrimSpace(string(calls)); got != "1" {
+		t.Fatalf("fake tmux invocation count = %s, want exactly 1 (every discriminator agrees on the first call)", got)
 	}
 }

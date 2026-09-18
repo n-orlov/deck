@@ -395,13 +395,60 @@ func (c Client) List(ctx context.Context) ([]Session, error) {
 }
 
 // SeedCaptureOptions is the exact capture-pane options PRD phase3b II-18
-// requires for an interactive-preview seed: the full visible pane
-// (StartLine "0" through EndLine "-"), escape sequences preserved so the
-// body carries its own SGR verbatim, and `-N` so trailing
-// background-styled blank cells survive instead of being trimmed (the
-// second mandatory negative control task 042 demonstrates).
+// requires for an interactive-preview seed: the VISIBLE PANE ONLY
+// (StartLine "0" through EndLine "-", i.e. no scrollback history at all),
+// escape sequences preserved so the body carries its own SGR verbatim,
+// and `-N` so trailing background-styled blank cells survive instead of
+// being trimmed (the second mandatory negative control task 042
+// demonstrates).
+//
+// "Visible only" is now a DELIBERATE, cost-driven choice rather than the
+// only shape that exists (issue #29): this is the range the two periodic
+// reseed loops use -- internal/interactive's captureLoop (TransportCapture)
+// and fallbackLoop (post-pipe-displacement) -- and both of them rebuild
+// the grid WHOLESALE every 200ms. A history-inclusive capture at those
+// loops' cadence was measured at ~37ms and ~21MB of garbage per tick for
+// a 2040-row seed against ~0.7ms for a 40-row one, i.e. roughly a fifth
+// of a core at test geometry and half a core at the operator's real
+// 166x66 panes; the visible-only range keeps them exactly as cheap as
+// they have always been. The ONE-OFF entry seed, which is what issue #29
+// is about, uses the history-inclusive variant instead -- see
+// SeedCaptureOptionsWithHistory.
 func SeedCaptureOptions() CaptureOptions {
 	return CaptureOptions{StartLine: "0", EndLine: "-", IncludeEscapeSequences: true, PreserveTrailingBlankLines: true}
+}
+
+// SeedCaptureOptionsWithHistory is SeedCaptureOptions widened to include
+// up to historyLines rows of the pane's tmux-side scrollback ABOVE the
+// visible screen ("-S -<historyLines>"), which is what issue #29 needs:
+// a pane that has been running for a while before it is ever previewed
+// interactively has all of its earlier output in tmux's own history and
+// none of it in deck's grid, so Shift+PgUp in a freshly entered
+// interactive preview reaches nothing at all. Only the ENTRY seed uses
+// this range (internal/interactive.CaptureSeedWithHistory, called from
+// internal/tui's enterInteractiveBody); the periodic reseed loops
+// deliberately stay on SeedCaptureOptions' visible-only range for the
+// cost reasons documented there.
+//
+// tmux CLAMPS this range gracefully rather than erroring: a pane whose
+// history is shorter than historyLines returns
+// min(history_size, historyLines) + pane_height rows, and a pane with no
+// history at all returns exactly pane_height rows -- pinned against a
+// real tmux by TestSeedCaptureOptionsWithHistoryClampsToAvailableHistory,
+// which is what protects every caller here from having to pre-read
+// #{history_size} and pick a range from it (a read that would race the
+// capture anyway).
+//
+// historyLines <= 0 returns exactly SeedCaptureOptions(), so "no history"
+// is expressible without a caller having to know that "0" is the
+// visible-screen start line.
+func SeedCaptureOptionsWithHistory(historyLines int) CaptureOptions {
+	if historyLines <= 0 {
+		return SeedCaptureOptions()
+	}
+	options := SeedCaptureOptions()
+	options.StartLine = "-" + strconv.Itoa(historyLines)
+	return options
 }
 
 // CapturePane returns exactly the requested range from a pane previously
