@@ -2182,6 +2182,28 @@ must be restored afterwards.
 - **The grid keeps its own bounded scrollback, and the wheel scrolls it.** This is the only
   way to scroll a full-screen agent: the alternate screen has no tmux history, which is why
   tmux's own wheel binding declines to enter copy-mode for it.
+- **The one-off entry seed reaches back into the pane's own tmux scrollback**, so a session
+  that ran for an hour before anyone previewed it can be scrolled back over immediately rather
+  than presenting an empty buffer. The entry capture starts at `-<bound>` rather than `0`,
+  where the bound is what the grid can hold — pulling more would only be discarded on arrival.
+  tmux clamps that start to the history that exists, and reflows history to the pane's width,
+  so the fit deck performs *before* seeding is what makes the captured rows map one-to-one onto
+  grid rows with no rewrapping of deck's own. Three consequences are load-bearing rather than
+  incidental: `-N`'s trailing blank rows are **part of the body**, because with history
+  prepended the rows are bottom-anchored and dropping them would shift the whole picture down
+  and push the live screen into scrollback; an **alternate-screen pane is seeded with no
+  history at all**, since tmux returns stale pre-launch rows above the alternate screen and the
+  pane's history is frozen while it is up, so the suppression is a second *tmux-side* capture
+  and never a slice of the first (`capture-pane -e` inherits SGR across rows, so a slice can
+  strip the pen the surviving top row relied on); and a pane too busy to capture atomically
+  **degrades to a history-less seed rather than refusing entry**.
+- **Only the entry seed reads history; the periodic reseeds do not.** The capture transport's
+  poll loop and the post-displacement fallback both rebuild the grid wholesale several times a
+  second, where a history-inclusive reseed costs roughly half a core at a real pane size, so
+  they stay on the visible-screen range — and the capture transport's entry seed therefore asks
+  for none either, rather than paying for history its own next tick discards. Interactive
+  scrollback beyond the visible screen is a property of the **pipe** transport, and a
+  displacement gives it up along with the pipe.
 - **Modified navigation keys forward, like the unmodified ones, by tmux key name.**
   `Ctrl`, `Shift` and `Alt` combinations with the arrows, `Home`, `End` and the page keys are
   what word-wise movement and selection are built from in every agent's line editor, so a mode
@@ -2283,7 +2305,7 @@ listed here rather than left to a test package:
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 250) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
 | **Interactive render rate** | `DECK_INTERACTIVE_MS` — §11.9's grid render-coalescing interval. A duration, like the two ticks above. | Render frequency, not parsing, dominates the transport's cost, so it is the one axis worth pinning in a scenario. |
-| **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
+| **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. The **scrollback scenarios are the one exception**, and named as such: §11.9 gives interactive scrollback to the pipe transport only, because the capture path's own poll tick rebuilds the grid from the visible screen, so those scenarios are pipe-only by construction rather than by oversight. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, notification attempt with outcome. | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
 
