@@ -75,9 +75,15 @@ func aFakeAgentOccupiesABareTmuxSessionAt(ctx context.Context, kind, session str
 // deckEntersInteractiveModeFittingTo is PRD II-7+II-8's entry sequence,
 // run directly against target's tmux session: capture the window's own
 // geometry BEFORE doing anything else (stashed under session, for the
-// matching exit step), then fit the window -- never the pane -- to
-// width/height. This is the exact CaptureWindowGeometry/FitWindowToPane
-// pair task 034 shipped, not a re-implementation.
+// matching exit step), fit the window -- never the pane -- to
+// width/height, then pin `window-size manual` on it. This is the exact
+// CaptureWindowGeometry/FitWindowToPane/PinWindowSize sequence
+// enterInteractiveBody itself runs, not a re-implementation -- the pin
+// included, so features/interactive_option_tables.feature's "entering
+// touches only window-size, only in the window scope" really does cover
+// every option write the shipped entry path makes. The pin costs no
+// SIGWINCH (it changes no size), so the two-signal budget below is
+// unaffected by it.
 func deckEntersInteractiveModeFittingTo(ctx context.Context, session string, width, height int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -94,6 +100,9 @@ func deckEntersInteractiveModeFittingTo(ctx context.Context, session string, wid
 	h.sigwinchCycleGeometries[session] = geometry
 	if _, err := client.FitWindowToPane(ctx, session, session, width, height); err != nil {
 		return fmt.Errorf("fit window to pane for session %q at %dx%d: %w", session, width, height, err)
+	}
+	if err := client.PinWindowSize(ctx, session); err != nil {
+		return fmt.Errorf("pin window-size for session %q: %w", session, err)
 	}
 	return nil
 }
