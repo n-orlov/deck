@@ -40,6 +40,21 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"resizes the agent's window to fit the preview panel",
 		"consumes its own scrollback faster than the same output would at",
 		"full width",
+		// Issue #29: the ↵ entry says the interactive scrollback is seeded
+		// from the pane's own tmux history. That promise is only true WHERE
+		// THE PANE HAS ANY, so the hedge and the full-screen-app case it
+		// names are pinned together with it -- an alternate-screen pane (a
+		// full-screen editor, pager or agent TUI) is given no history at all,
+		// by design and unavoidably: tmux keeps none usable for the
+		// alternate screen and freezes the pane's #{history_size} while it
+		// is up, so a full tmux attach cannot scroll it either. Pinned here
+		// as well as in cmd/deck/main_test.go's released-binary help sweep
+		// because this is the list that fails FAST when the copy drifts.
+		// One pin per help LINE: helpText is hard-wrapped, so a substring
+		// spanning a wrap can never match.
+		"seeded on entry from the pane's own tmux history where it has any",
+		"a full-screen app (editor, pager, agent TUI) sits on the",
+		"alternate screen, which keeps no history, so its preview starts",
 		"? open/close help", "Esc closes help", "q or Ctrl+C quit",
 		"r resume", "resumed agents", "starting · awaiting", "live shells", "become \"running\"", "starting elsewhere",
 		"P switch the permission profile", "restart to apply", "live pane",

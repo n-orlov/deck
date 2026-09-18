@@ -3,6 +3,7 @@ package interactive
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/n-orlov/deck/internal/tmux"
@@ -84,12 +85,39 @@ func BuildSeed(state tmux.PaneSeedState, body []byte) []byte {
 	// directly: a 4-row pane's capture carries FOUR "\n" characters, one
 	// more than the three separators four rows need). Translated
 	// literally, that trailing newline becomes a real CRLF landing past
-	// the pane's last row, which -- once the pane's own last row is
-	// already occupied -- forces an index-triggered scroll that evicts
-	// row zero. It is trimmed first for the same reason it is not
-	// written at all: it marks the end of the snapshot, not one more row
-	// to advance into.
-	b.Write(bytes.ReplaceAll(bytes.TrimRight(body, "\n"), []byte("\n"), []byte("\r\n")))
+	// the body's last row, which -- once that row is already occupied --
+	// forces an index-triggered scroll that evicts the top row. It is
+	// trimmed for the same reason it is not written at all: it marks the
+	// end of the snapshot, not one more row to advance into.
+	//
+	// EXACTLY ONE trailing newline is trimmed (bytes.TrimSuffix), never
+	// the whole trailing newline RUN (bytes.TrimRight), which is what
+	// this line used to do (issue #29). A capture's trailing BLANK ROWS
+	// are real rows -N deliberately preserves, and each of them is a bare
+	// empty line in the body, so TrimRight deleted all of them along with
+	// the terminator. That was invisible while the body was the visible
+	// screen only -- its content lands on the grid's TOP rows either way
+	// -- and fatal the moment history is prepended (the entry seed's
+	// range, tmux.SeedCaptureOptionsWithHistory): with more body rows
+	// than the grid has, the rows are BOTTOM-anchored, so dropping K
+	// trailing blank rows shifts the entire picture DOWN by K and pushes
+	// the pane's live screen up into the grid's scrollback -- precisely
+	// the "the preview is offset and the bottom is missing" failure the
+	// history pull would otherwise have introduced. (The bug was also
+	// data-dependent, which is why no existing test caught it: with -e, a
+	// blank row carrying a BACKGROUND COLOUR is a non-empty string
+	// TrimRight never touches. Only default-styled blank tails vanished.)
+	//
+	// The invariant this trim now establishes, and which both body
+	// producers are held to (tmux.Client.CapturePane and
+	// tmux.Client.CapturePaneSeedAtomic return byte-identical bodies,
+	// pinned by internal/tmux's
+	// TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads): after
+	// the trim the body is exactly R rows joined by R-1 newlines, so R-1
+	// CRLFs are written, the cursor ends up ON the last body row with no
+	// extra index past it, and every blank row the pane really had is
+	// still there.
+	b.Write(bytes.ReplaceAll(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"), []byte("\r\n")))
 
 	// 4. DECSTBM from the scroll region, after the body. tmux's
 	// scroll_region_upper/lower are 0-based inclusive row indices; DECSTBM
@@ -144,17 +172,160 @@ func writeANSIMode(b *bytes.Buffer, n int, on bool) {
 	}
 }
 
-// CaptureSeed reads target's current mode state and capture body from a
-// real tmux client and assembles them into a seed via BuildSeed. State
-// and body are paired atomically (PRD II-20): CapturePaneSeedAtomic
-// chains both tmux calls into one invocation and retries while its
-// before/after #{history_size}/#{pane_width}/#{pane_height} probes
-// disagree, so the state and the body handed to BuildSeed are never a
-// state read against a body the pane had already moved past.
+// CaptureSeed reads target's current mode state and its VISIBLE SCREEN's
+// capture body from a real tmux client and assembles them into a seed via
+// BuildSeed. State and body are paired atomically (PRD II-20):
+// CapturePaneSeedAtomic chains both tmux calls into one invocation and
+// retries while its before/after #{history_size}/#{pane_width}/
+// #{pane_height}/#{alternate_on} probes disagree, so the state and the
+// body handed to BuildSeed are never a state read against a body the pane
+// had already moved past.
+//
+// Visible-screen-only is what the two PERIODIC reseed loops want
+// (captureLoop under TransportCapture, and fallbackLoop after the pipe is
+// displaced): both of them rebuild the grid wholesale every 200ms, and
+// tmux.SeedCaptureOptions' own doc carries the measured per-tick cost
+// that keeps them on this range. A grid seeded this way therefore has an
+// EMPTY scrollback and always will (a body exactly as tall as the grid
+// never scrolls a row off it) -- pinned, deliberately, by
+// TestVisibleOnlyCaptureSeedLeavesScrollbackEmpty. The ENTRY seed uses
+// CaptureSeedWithHistory instead; that is issue #29's whole fix.
 func CaptureSeed(ctx context.Context, client tmux.Client, target string) ([]byte, error) {
 	state, body, err := client.CapturePaneSeedAtomic(ctx, target, tmux.SeedCaptureOptions())
 	if err != nil {
 		return nil, fmt.Errorf("capture seed for %q: %w", target, err)
 	}
 	return BuildSeed(state, body), nil
+}
+
+// CaptureSeedWithHistory is CaptureSeed over a range that also includes up
+// to historyLines rows of the pane's tmux-side scrollback
+// (tmux.SeedCaptureOptionsWithHistory), which is what issue #29's
+// one-off ENTRY seed needs: everything the pane printed before the
+// preview was ever opened lives in tmux's history and nowhere in deck's
+// grid, so without this the freshly entered interactive preview's own
+// scrollback starts empty and Shift+PgUp/wheel-up reaches nothing at all.
+// The extra rows are bottom-anchored by construction -- the body's last
+// row is still the pane's last row, so the live screen lands exactly
+// where a visible-only seed would have put it and the history goes into
+// the grid's scrollback above it (BuildSeed's step 3 documents the trim
+// rule that makes that true).
+//
+// GRACEFUL DEGRADATION, and the reason this is not just a one-line
+// options swap: a wider capture takes longer, so it widens
+// CapturePaneSeedAtomic's own retry window, and a chatty pane can
+// genuinely exhaust maxPaneSeedAtomicAttempts (#{history_size} is a
+// discriminator, and it does not even move monotonically -- the shell's
+// `clear` emits ESC[3J, which makes tmux ZERO the pane's history). The
+// caller of the entry seed turns any error into a refusal to enter
+// interactive mode at all ("Cannot enter interactive mode: ...", see
+// internal/tui's enterInteractiveBody), and refusing entry to a busy pane
+// would be a far worse regression than entering it without history. So
+// THAT failure -- and only that one -- is retried once at
+// historyLines = 0, the exact range and cost CaptureSeed has always used,
+// and that seed is returned instead.
+//
+// "Only that one" is load-bearing, not tidiness. The degradation used to
+// fire on ANY error, which turned every unrelated failure into two
+// sequential timeouts: measured against a tmux that never answers,
+// CaptureSeed took 5.00s (tmux.Client's own default timeout) while
+// CaptureSeedWithHistory took 10.01s, exactly twice. Production runs with
+// that 5s default and enterInteractiveBody hands the seed closure a
+// deadline-less context.Background(), so pressing Enter at an
+// unresponsive tmux server froze bubbletea's whole blocking Update
+// goroutine for ten seconds before the error message could render. A dead
+// transport, a hung server, an invalid pane id and a cancelled context
+// are all things a second attempt cannot fix, so they are returned
+// immediately; tmux.PaneSeedProbesNeverAgreedError (errors.As, so the
+// classification survives any wrapping tmux adds later) is the one
+// "the pane kept moving underneath us" signal that a NARROWER capture
+// really can fix, because a narrower capture is a shorter race window.
+// That premise is checked rather than assumed: the error carries the
+// range it actually failed on, and a failure that was already at the
+// visible-only range has nothing narrower to degrade to (see the
+// alternate-screen case in the body below).
+//
+// The fallback's OWN failure is never swallowed: if the visible-only
+// retry fails too, the pane is genuinely unreadable (gone, or the socket
+// is broken) and that error is returned, naming both attempts so the
+// history-inclusive failure is not lost from the message.
+func CaptureSeedWithHistory(ctx context.Context, client tmux.Client, target string, historyLines int) ([]byte, error) {
+	state, body, err := client.CapturePaneSeedAtomic(ctx, target, tmux.SeedCaptureOptionsWithHistory(historyLines))
+	if err == nil {
+		return BuildSeed(state, body), nil
+	}
+	if historyLines <= 0 {
+		// Nothing to degrade to: this WAS the visible-only capture (see
+		// SeedCaptureOptionsWithHistory, which returns exactly
+		// SeedCaptureOptions() here), so a second identical attempt would
+		// only double the latency of a failure the caller is about to
+		// report anyway.
+		return nil, fmt.Errorf("capture seed for %q: %w", target, err)
+	}
+	var neverAgreed *tmux.PaneSeedProbesNeverAgreedError
+	if !errors.As(err, &neverAgreed) {
+		// Not a busy pane: a narrower range would fail exactly the same
+		// way and cost the caller a second full timeout to find out.
+		return nil, fmt.Errorf("capture seed for %q: %w", target, err)
+	}
+	if neverAgreed.Options == tmux.SeedCaptureOptions() {
+		// The pairing that ran out of attempts was ALREADY the
+		// visible-only one, so there is nothing narrower left to try. This
+		// happens on an alternate-screen pane: CapturePaneSeedAtomic
+		// answers a history-inclusive request for such a pane by
+		// re-capturing visible-only itself (tmux returns stale
+		// pre-launch history above the alternate screen, and a Go-side
+		// slice of an `-e` capture would break its cross-row SGR
+		// inheritance), and it is that inner capture which can exhaust
+		// maxPaneSeedAtomicAttempts. Re-running it from here would spend
+		// another twenty attempts on a byte-identical request and then
+		// report "history-inclusive capture failed ... and the
+		// visible-only retry failed too", naming two ranges when only one
+		// was ever tried.
+		return nil, fmt.Errorf("capture seed for %q: %w", target, err)
+	}
+	state, body, fallbackErr := client.CapturePaneSeedAtomic(ctx, target, tmux.SeedCaptureOptions())
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("capture seed for %q: history-inclusive capture failed (%v) and the visible-only retry failed too: %w", target, err, fallbackErr)
+	}
+	return BuildSeed(state, body), nil
+}
+
+// EntrySeedHistoryLines is how many rows of tmux-side scrollback the
+// ONE-OFF entry seed should ask CaptureSeedWithHistory for, given the
+// transport the Session about to be started will run under. It exists as
+// a function in this package, rather than as a conditional at
+// internal/tui's single call site, because the number is a cost decision
+// this package owns and measured, and because a decision expressed in
+// another package's closure cannot be pinned by a test that can see
+// captureLoop.
+//
+// TransportPipe gets ScrollbackMaxLines -- exactly what the grid can
+// hold, so nothing is pulled that would be discarded on arrival -- and
+// that is issue #29's whole fix: under the pipe transport the entry seed
+// is the ONLY thing that ever writes the pane's pre-entry output into the
+// grid, since pipe-pane streams only what the pane prints from then on.
+//
+// TransportCapture gets 0, and that is not a partial revert of issue #29
+// but a refusal to pay for something the transport itself throws away.
+// captureLoop replaces the grid WHOLESALE from a visible-only capture on
+// its first 200ms tick, so at the operator's geometry the history the
+// entry seed pulled (measured 15.3ms of capture plus 94.0ms of grid
+// writing, ~18MiB retained, all of it on bubbletea's blocking Update
+// goroutine) survived for one fifth of a second and then went away:
+// ScrollbackLen 463 -> 0. Nothing an operator could ever scroll to. The
+// interactive scrollback is empty under TransportCapture either way --
+// that is the deliberate, cost-driven half of issue #29's design
+// (SeedCaptureOptions' own doc carries the per-tick measurement, and
+// TestVisibleOnlyCaptureSeedLeavesScrollbackEmpty pins it) -- so the only
+// thing the history pull bought here was the hitch on Enter.
+//
+// tmux.SeedCaptureOptionsWithHistory(0) degenerates to exactly
+// SeedCaptureOptions(), so 0 means the identical range, and identical
+// cost, that the pre-issue-#29 entry seed used.
+func EntrySeedHistoryLines(transport Transport) int {
+	if transport == TransportCapture {
+		return 0
+	}
+	return ScrollbackMaxLines
 }

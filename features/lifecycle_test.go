@@ -206,6 +206,21 @@ type ScenarioHarness struct {
 	// without re-reading tmux (a second read could itself observe a
 	// different state than the one the scenario meant to freeze).
 	optionTableDumps map[string]optionTableDump
+
+	// interactiveScrollPagesBack backs features/interactive_scroll.feature's
+	// own Shift+PgUp/PgDn symmetry (issue #29): how many WHOLE pages the
+	// "scrolls back with shift+pgup until the screen contains ..." step
+	// actually had to press for one client, keyed by client name, so the
+	// matching "scrolls forward with shift+pgdown by the same number of
+	// pages" step can return that client's view to the live bottom exactly.
+	// It is a page COUNT rather than a hardcoded number in the Gherkin
+	// because the number of pages between the live bottom and a marker now
+	// depends on how much of the pane's own tmux history the entry seed
+	// pulled into the grid (internal/interactive.CaptureSeedWithHistory),
+	// which is a property of the pane's past, not of the scenario -- a fixed
+	// count would silently stop landing on the live bottom the moment the
+	// harness's own shell banner changed length.
+	interactiveScrollPagesBack map[string]int
 }
 
 var scenarioSequence atomic.Uint64

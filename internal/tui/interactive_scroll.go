@@ -17,12 +17,25 @@ const interactiveWheelStepLines = 3
 // scrollInteractiveByLines adjusts the interactive grid's own scroll
 // offset (PRD II-51) by delta lines: positive moves further back into
 // scrollback, negative moves toward the live bottom. It clamps to
-// [0, interactive.ScrollbackMaxLines] itself, but RenderRows
-// (internal/interactive/grid.go) clamps AGAIN against the grid's actual,
-// currently-shorter scrollback length on every call -- so an offset this
-// clamp lets through before enough history has accumulated is silently
-// satisfied by whatever is actually available rather than showing blank
-// rows above real content.
+// [0, interactive.ScrollbackMaxLines] itself -- the bound the grid can
+// hold at all -- but RenderRows (internal/interactive/grid.go) clamps
+// AGAIN against the grid's ACTUAL scrollback length on every call, so an
+// offset this clamp lets through while the grid holds fewer lines than
+// that bound is silently satisfied by whatever is really available rather
+// than showing blank rows above real content.
+//
+// How full the scrollback is at any moment is not something this side can
+// assume either way (issue #29). The ENTRY seed pulls up to
+// ScrollbackMaxLines of the pane's own tmux history
+// (internal/interactive.CaptureSeedWithHistory, called from
+// enterInteractiveBody), so a pane that had been running for an hour can
+// be scrollable to the bound from the very first keypress; but the same
+// pane freshly started has almost nothing, an alternate-screen pane has
+// nothing at all by design, a capture that could not be taken atomically
+// degrades to no history, and under interactive_transport = capture the
+// first poll tick replaces the grid wholesale from a visible-only
+// re-seed. RenderRows' own clamp is what makes all of those cases behave
+// the same here, which is why nothing in this file inspects the length.
 func (m Model) scrollInteractiveByLines(delta int) (tea.Model, tea.Cmd) {
 	if !m.interactive || m.interactiveGrid == nil {
 		return m, nil

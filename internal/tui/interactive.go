@@ -236,7 +236,25 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		transport = interactive.TransportCapture
 	}
 	grid, err := interactive.StartWithTransport(ctx, client, pane.ID, width, height, func(ctx context.Context) ([]byte, error) {
-		return interactive.CaptureSeed(ctx, client, pane.ID)
+		// Issue #29: the ENTRY seed pulls the pane's tmux-side scrollback
+		// as well as its visible screen, so a session that ran for an
+		// hour before anyone previewed it interactively can be scrolled
+		// back over on entry instead of presenting an empty scrollback.
+		// This makes Enter a one-off ~40-110ms hitch on bubbletea's
+		// Update goroutine, which is the accepted trade
+		// (interactive.CaptureSeedWithHistory documents the cost, and the
+		// degradation path for a pane too chatty to capture atomically).
+		//
+		// How MUCH history is the transport's decision, not this call
+		// site's, which is why it is asked for rather than written out
+		// here: interactive.EntrySeedHistoryLines answers
+		// ScrollbackMaxLines under TransportPipe (exactly what the grid
+		// can hold; pulling more would be discarded on arrival) and 0
+		// under TransportCapture, where captureLoop would replace the
+		// whole grid from a visible-only capture 200ms later and throw
+		// every history row away again. That function carries the
+		// measurements behind both answers.
+		return interactive.CaptureSeedWithHistory(ctx, client, pane.ID, interactive.EntrySeedHistoryLines(transport))
 	}, transport)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)

@@ -8000,9 +8000,12 @@ Keys
     agent produces while that window is narrower than its usual size
     consumes its own scrollback faster than the same output would at
     full width; while interactive, a wheel notch or Shift+PgUp/PgDn
-    scrolls this bounded, deck-owned scrollback of the fitted view (not
-    the pane's own tmux scrollback) rather than forwarding to the pane;
-    typing snaps the view back to the live bottom
+    scrolls this bounded, deck-owned scrollback of the fitted view --
+    seeded on entry from the pane's own tmux history where it has any,
+    then grown from what the pane prints -- rather than forwarding to
+    the pane; a full-screen app (editor, pager, agent TUI) sits on the
+    alternate screen, which keeps no history, so its preview starts
+    with none; typing snaps the view back to the live bottom
   F force-enter interactive mode on the selected session, stealing it from
     any client already attached to it and claiming ownership over a
     live holder of the window's claim instead of standing down for one --

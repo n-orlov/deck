@@ -319,14 +319,42 @@ var Schema = []Field{
 		// forbids -- but §11.9's contract does not extend to scrollback
 		// depth or history accumulation, and the two transports are NOT
 		// equivalent there: TransportCapture's design (capture-pane -p on
-		// each poll tick, never -S, replacing the grid wholesale) has no
-		// meaningful scrollback at all, since anything that scrolls off
-		// between two polls is gone rather than merely delayed. That is
-		// why the four features/interactive_scroll.feature scenarios are
-		// pipe-only (task 089); it is a third exclusion class, distinct
-		// from and not named by requirement II-33 (peeling a trailing `;`
-		// off a send-keys payload, meaningless to a transport that never
-		// runs send-keys) or II-24. "pipe" is the default because it is
+		// each poll tick over the VISIBLE screen only -- "-S 0", never a
+		// negative start line into tmux's history -- replacing the grid
+		// wholesale) has no meaningful scrollback at all, since anything
+		// that scrolls off between two polls is gone rather than merely
+		// delayed. Issue #29 did not change that, deliberately: the
+		// history-inclusive capture it added ("-S -2000",
+		// tmux.SeedCaptureOptionsWithHistory) is used ONLY by the one-off
+		// seed taken when interactive mode is entered, because at this
+		// loop's 200ms cadence it was measured at ~37ms and ~21MB of
+		// garbage per tick against ~0.7ms for the visible-only range. So
+		// under "capture" an entered preview never becomes scrollable
+		// over the pane's tmux history at all -- the same "no meaningful
+		// scrollback" steady state, reached from a different place. That
+		// is why ALL FIVE features/interactive_scroll.feature scenarios
+		// are pipe-only (task 089 excluded the four that existed then;
+		// issue #29 added the fifth, "Shift+PgUp reaches output the pane
+		// printed before deck entered interactive mode", and it belongs
+		// to the same class rather than being a new failure: the entry
+		// seed asks for NO history under this transport at all
+		// (interactive.EntrySeedHistoryLines returns 0 for
+		// TransportCapture), precisely because captureLoop's first 200ms
+		// tick would replace the whole grid from the visible screen and
+		// discard it -- so paying ~100ms on bubbletea's blocking Update
+		// goroutine to pull it would buy nothing but a hitch on Enter. A
+		// manual DECK_INTERACTIVE_TRANSPORT=capture parity sweep should
+		// therefore expect five failures in this file, all of them this
+		// same class, and nothing else new). It is a third exclusion
+		// class, distinct from and not named by requirement II-33
+		// (peeling a trailing `;` off a send-keys payload, meaningless to
+		// a transport that never runs send-keys) or II-24. Note that
+		// docs/reports/phase3b.md's own "all four scenarios" exclusion
+		// list is a record of the sweep task 089 actually RAN, against
+		// the four scenarios that existed at the time, and is left
+		// as-measured rather than back-dated.
+		//
+		// "pipe" is the default because it is
 		// the one measured in the Part II spikes
 		// (docs/spikes/interactive-preview.md); this task only declares
 		// the knob, it does not implement either path -- see
@@ -342,6 +370,12 @@ var Schema = []Field{
 			"instead. Both must satisfy the same scenarios except the " +
 			"pipe-only ones (peeling a trailing semicolon off a literal " +
 			"send-keys payload) that have no meaning under capture. " +
+			"Scrollback differs as well: entering interactive mode seeds " +
+			"the view from the pane's own tmux history where the pane has " +
+			"any -- a full-screen app (editor, pager, agent TUI) is on the " +
+			"alternate screen, which keeps none -- but \"capture\" then " +
+			"rebuilds the view from the pane's visible screen on every " +
+			"poll, so only \"pipe\" keeps that history scrollable. " +
 			"DECK_INTERACTIVE_TRANSPORT overrides the file when set; any " +
 			"value other than pipe or capture is a stated error naming the " +
 			"variable, never a silent fallback.",
