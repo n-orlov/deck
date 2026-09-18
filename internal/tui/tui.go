@@ -4256,13 +4256,21 @@ func (m Model) mainView() string {
 // `background` token across whatever text it holds, the same as every
 // bordered panel line already does, rather than being left to the
 // terminal's own background the way it was before this task. Like
-// canvasWrapText, this does not pad the line out to the terminal's full
-// width first: footerLegendWithin/elideToWidth already size the content
-// to fit the budget without ever padding it, and several existing tests
-// (footer_legend_test.go) assert this line's content byte-for-byte, so
-// this only ever paints the cells the line's own text occupies.
+// canvasWrapText, the content is padded out to the terminal's full width
+// before it is painted (operator request, 2026-09-18):
+// footerLegendWithin/elideToWidth size the content to FIT the budget but
+// never fill it, so a short legend -- or any legend at all, since the
+// legend rarely reaches the last column -- used to leave the tail of the
+// bottom row at the terminal's own background. A half-painted footer is
+// the most visible instance of that, because it is the row directly under
+// deck's own frame, so the seam is a straight edge across the screen.
+//
+// footerLineContent is kept separate and UNPADDED so the tests that
+// assert this line's content byte-for-byte (footer_legend_test.go) keep
+// asserting composition rather than padding.
 func (m Model) footerLine() string {
-	return m.canvasBackground(theme.Background, m.footerLineContent())
+	width, _ := m.frameSize()
+	return m.canvasFillLine(theme.Background, m.footerLineContent(), width)
 }
 
 // footerLineContent is footerLine's own composition, before the canvas

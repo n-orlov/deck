@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
@@ -18,18 +19,18 @@ import (
 const (
 	paneFgHex = "#0a141e"
 	paneBgHex = "#c89664"
-	// paneSGR carries the coloured cell, then resets and emits a SECOND,
-	// plain 'Y' with no colour of its own at all -- the pane's own "back
-	// to default" state after its internal reset. This is exactly what a
-	// naive single canvasBackground span covering border+pad+TEXT+pad+
-	// border would get wrong: its scan-and-reopen treats the pane's own
-	// "\x1b[0m" the same as one of deck's own embedded resets and
-	// reopens deck's background right after it, repainting Y with deck's
-	// background instead of leaving it exactly as the pane left it (no
-	// background at all) -- the "never repainted" half of R118 this task
-	// is named for, distinct from the frame/padding-carries-deck's-
-	// background half TestCaptured*FrameCarriesDeckBackground's other
-	// assertions already cover.
+	// paneSGR carries the coloured cell -- an explicit foreground AND an
+	// explicit background, the one pair SPEC §11.3 says deck never touches
+	// in any mode -- then resets and emits a SECOND, plain 'Y' with no
+	// colour of its own at all. Those two cells are the two halves of
+	// §11.3's rule, and they must come out DIFFERENTLY:
+	//
+	//	X  the agent chose both channels, so it survives byte-exact, even
+	//	   though deck fitted its foreground a moment earlier while the
+	//	   background was still deck's (the two SGRs arrive separately).
+	//	Y  the agent expressed no preference at all, so it carries deck's
+	//	   canvas pair -- an unnamed foreground has undefined contrast, and
+	//	   leaving it to the terminal is what GH #24 was.
 	paneSGR = "\x1b[38;2;10;20;30m\x1b[48;2;200;150;100mX\x1b[0mY"
 )
 
@@ -47,14 +48,14 @@ func capturedPaneRows(contentHeight int) []byte {
 	return []byte(strings.Join(rows, "\n"))
 }
 
-// TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground is
-// task 006's red-first proof for R118's "captured pane content is never
-// repainted" in the default (>=80 column) side-by-side layout: the
-// captured cell itself must render with the PANE's own foreground and
-// background untouched, while the border and padding columns immediately
-// flanking it -- deck's own canvas, not the pane's -- carry deck's
-// `background` token, both on the content row itself and on the panel's
-// top/bottom border rows.
+// TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground proves
+// SPEC §11.3's preview-paint rule in the default (>=80 column) side-by-side
+// layout: a captured cell whose colours the AGENT chose renders with those
+// colours untouched, a cell the agent left at the terminal's default
+// carries deck's canvas pair instead, and the border and padding columns
+// flanking both -- deck's own canvas, never the pane's -- carry deck's
+// `background` token, on the content row and on the panel's top/bottom
+// border rows.
 func TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground(t *testing.T) {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 100, 30
@@ -108,14 +109,12 @@ func TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground(t *testi
 		t.Fatalf("captured pane cell (%d,%d) background = %v/%v, want %s", firstContentCol, contentRow, bg, ok, paneBgHex)
 	}
 	// paneSGR's second char ('Y', one column after the coloured 'X') is the
-	// pane's own plain text AFTER its own internal reset: it must carry NO
-	// background at all, not deck's -- proving the pane's own "back to
-	// default" state survives untouched rather than being repainted with
-	// deck's background the instant deck's own reopen-after-reset scan
-	// (canvasBackground's own trap) runs over the pane's bytes.
-	if hex, ok := cellBgHex(t, term, firstContentCol+1, contentRow); ok {
-		t.Fatalf("captured pane cell (%d,%d) (pane's own post-reset plain text) background = %s, want no background at all (repainted with deck's canvas)", firstContentCol+1, contentRow, hex)
-	}
+	// pane's own plain text AFTER its own internal reset -- a cell the
+	// agent left at the terminal's default. deck's canvas pair must be
+	// showing through it, and the pane's own colours must NOT be: a Y still
+	// carrying paneBgHex would mean deck's reopen ran but the pane's span
+	// was never closed.
+	assertCanvasPairShowsThrough(t, term, m, firstContentCol+1, contentRow, "pane's own post-reset plain text")
 
 	frameCells := map[string][2]int{
 		"left border (content row)":  {leftBorderCol, contentRow},
@@ -140,8 +139,9 @@ func TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground(t *testi
 // the above for the below-80-column stacked fallback, whose preview panel
 // composes through fullBoxPreviewContentLine rather than
 // previewContentLine (renderStackedFrame's own comment names why: a
-// captured pane's own SGR bytes must never be scanned/repainted the way
-// fullBoxContentLine's sidebar loop's deck-composed text is).
+// captured pane's own SGR bytes go through repaintForeignDefaults, never
+// through the scan fullBoxContentLine's sidebar loop applies to
+// deck-composed text).
 func TestCapturedPaneStackedKeepsOwnColourFrameCarriesDeckBackground(t *testing.T) {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 60, 30
@@ -197,9 +197,7 @@ func TestCapturedPaneStackedKeepsOwnColourFrameCarriesDeckBackground(t *testing.
 	if !ok || bg != paneBgHex {
 		t.Fatalf("captured pane cell (%d,%d) background = %v/%v, want %s", firstContentCol, previewContentRow, bg, ok, paneBgHex)
 	}
-	if hex, ok := cellBgHex(t, term, firstContentCol+1, previewContentRow); ok {
-		t.Fatalf("captured pane cell (%d,%d) (pane's own post-reset plain text) background = %s, want no background at all (repainted with deck's canvas)", firstContentCol+1, previewContentRow, hex)
-	}
+	assertCanvasPairShowsThrough(t, term, m, firstContentCol+1, previewContentRow, "pane's own post-reset plain text")
 
 	frameCells := map[string][2]int{
 		"left border (content row)":  {leftBorderCol, previewContentRow},
@@ -217,5 +215,37 @@ func TestCapturedPaneStackedKeepsOwnColourFrameCarriesDeckBackground(t *testing.
 		if hex != backgroundHex {
 			t.Fatalf("%s (%d,%d) background = %s, want deck's background %s", label, pos[0], pos[1], hex, backgroundHex)
 		}
+	}
+}
+
+// assertCanvasPairShowsThrough asserts that one captured cell the agent left
+// at the terminal's default carries deck's canvas pair -- background AND
+// foreground, since a background alone is the half-fix GH #24 was: an
+// unnamed foreground's contrast against deck's background is whatever the
+// user's terminal profile happens to make it.
+//
+// The foreground is compared against theme.Text as the theme resolves it,
+// not against a literal, so a palette edit cannot leave this asserting a
+// colour deck no longer paints. It tolerates the theme's own fitted value
+// the same way the paint path computes it: for a default/default cell the
+// pair is deck's own, so no fitting is involved and the token's colour is
+// exactly what must show.
+func assertCanvasPairShowsThrough(t *testing.T, term *vt.Emulator, m Model, col, row int, what string) {
+	t.Helper()
+	wantBg := tokenHex(t, m, theme.Background)
+	wantFg := tokenHex(t, m, theme.Text)
+	bg, ok := cellBgHex(t, term, col, row)
+	if !ok {
+		t.Fatalf("captured pane cell (%d,%d) (%s) has no background at all, want deck's canvas %s (SPEC §11.3)", col, row, what, wantBg)
+	}
+	if bg != wantBg {
+		t.Fatalf("captured pane cell (%d,%d) (%s) background = %s, want deck's canvas %s (SPEC §11.3)", col, row, what, bg, wantBg)
+	}
+	fg, ok := cellFgHex(t, term, col, row)
+	if !ok {
+		t.Fatalf("captured pane cell (%d,%d) (%s) has no foreground at all, want deck's %s -- an unnamed foreground's contrast is whatever the terminal profile makes it (GH #24)", col, row, what, wantFg)
+	}
+	if fg != wantFg {
+		t.Fatalf("captured pane cell (%d,%d) (%s) foreground = %s, want deck's %s", col, row, what, fg, wantFg)
 	}
 }

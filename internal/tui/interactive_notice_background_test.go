@@ -30,11 +30,13 @@ import (
 // m.interactiveGrid.RenderRows always actually produces via the real
 // grid (see fitInteractiveBodyLines' own doc for why its pad-row branch,
 // unlike this notice branch, is never reached through the real grid).
-// Those blank grid rows are asserted to carry NO background at all (task
-// 006/R118's "live content is never repainted" exception, confirmed here
-// exactly as it already was before this task), while the notice row's
-// own interior columns must carry deck's `background` token across the
-// whole span, border to border.
+// Those blank grid rows are asserted to carry deck's `surface` token --
+// the ATTACHED canvas SPEC §11.3 paints under a live grid, deliberately a
+// different tone from the unattached preview's `background` so "are my
+// keystrokes going to the pane?" stays answerable at a glance -- while the
+// notice row, deck's own composed copy, carries `background` across its
+// whole span, border to border. That the two tones differ is the point,
+// and this file asserts both in one frame.
 
 // interactiveNoticeGeometry mirrors cropDecorationGeometry (crop_
 // decoration_background_test.go) for the columns/rows this file's
@@ -153,20 +155,24 @@ func TestInteractiveNotRepaintedNoticeCarriesDeckBackground(t *testing.T) {
 					// rows (RenderRows always returns exactly
 					// contentHeight rows; the notice pushed the slice one
 					// row over that and fitInteractiveBodyLines' own
-					// truncation dropped the LAST one, never row 0) --
-					// task 006/R118's "live content is never repainted"
-					// means its own TEXT columns (never the pad columns
-					// flanking it, which previewContentLine's own "left"/
-					// "right" canvasBackground spans paint regardless of
-					// ownership, exactly like crop_decoration_background_
-					// test.go's own foreign-row assertions check
-					// firstContentCol rather than leftPadCol) must carry
-					// NO deck background at all, exactly like a captured
-					// pane's own blank fill would.
+					// truncation dropped the LAST one, never row 0). Its
+					// TEXT columns carry the ATTACHED canvas, `surface` --
+					// the grid emits a full reset for every empty cell, so
+					// without deck painting under it this row would show
+					// the user's own terminal background and the pane
+					// region would read as unthemed.
+					surfaceHex := tokenHex(t, m, theme.Surface)
+					if surfaceHex == backgroundHex {
+						t.Fatalf("theme %q: `surface` and `background` are both %s, so this theme cannot distinguish an attached pane at all", bt.Name, surfaceHex)
+					}
 					gridRow := geo.firstContentRow + 1
 					for col := geo.firstContentCol; col < geo.firstContentCol+geo.contentWidth; col++ {
-						if hex, ok := cellBgHex(t, term, col, gridRow); ok {
-							t.Fatalf("theme %q: live-grid cell (%d,%d) background = %s, want no background at all (the grid's own blank row, never deck's)", bt.Name, col, gridRow, hex)
+						hex, ok := cellBgHex(t, term, col, gridRow)
+						if !ok {
+							t.Fatalf("theme %q: live-grid cell (%d,%d) has no background at all, want the attached canvas `surface` %s", bt.Name, col, gridRow, surfaceHex)
+						}
+						if hex != surfaceHex {
+							t.Fatalf("theme %q: live-grid cell (%d,%d) background = %s, want the attached canvas `surface` %s (never `background` %s, which is the UNATTACHED preview's tone)", bt.Name, col, gridRow, hex, surfaceHex, backgroundHex)
 						}
 					}
 				})

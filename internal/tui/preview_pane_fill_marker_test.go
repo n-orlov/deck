@@ -137,7 +137,9 @@ func newCapturedPaneModel(t *testing.T, stacked bool, firstRow string) (Model, *
 }
 
 // assertPaneCellUntouched checks (col,row) still carries the pane's own
-// fg/bg exactly, never deck's background.
+// fg/bg exactly, never deck's. Under SPEC §11.3 this is the EXPLICIT PAIR
+// case: a cell whose foreground and background the agent both chose is the
+// one deck contributes nothing to.
 func assertPaneCellUntouched(t *testing.T, term *vt.Emulator, col, row int, wantFg, wantBg string, wantBgOpen bool) {
 	t.Helper()
 	if wantFg != "" {
@@ -152,6 +154,46 @@ func assertPaneCellUntouched(t *testing.T, term *vt.Emulator, col, row int, want
 		}
 	} else if ok {
 		t.Fatalf("pane cell (%d,%d) background = %s, want no background at all (pane's own, never deck's)", col, row, bg)
+	}
+}
+
+// assertPaneCellFitted checks (col,row) for SPEC §11.3's middle case: the
+// agent chose a FOREGROUND but left the background at the terminal's
+// default, so deck's canvas background is painted under it and the agent's
+// colour is moved -- in lightness only -- just far enough to stay legible
+// on it.
+//
+// It recomputes the expected colour through theme.FitForeground rather than
+// hard-coding one, so the assertion follows the fit's own definition, and
+// re-asserts the property that definition exists for: the result clears the
+// floor against deck's background. That the fit moves lightness ONLY --
+// never hue or saturation -- is theme.FitForeground's own contract and is
+// asserted where it lives, over every built-in and every ANSI slot
+// (internal/theme/fit_test.go); repeating it per cell here would test the
+// same function twice and say nothing extra about the panel.
+func assertPaneCellFitted(t *testing.T, term *vt.Emulator, col, row int, agentHex, backgroundHex string) {
+	t.Helper()
+	want, _, err := theme.FitForeground(agentHex, backgroundHex, theme.AAFloor)
+	if err != nil {
+		t.Fatalf("FitForeground(%s, %s): %v", agentHex, backgroundHex, err)
+	}
+	fg, ok := cellFgHex(t, term, col, row)
+	if !ok {
+		t.Fatalf("pane cell (%d,%d) has no foreground at all, want the agent's %s fitted to %s", col, row, agentHex, want)
+	}
+	if fg != want {
+		t.Fatalf("pane cell (%d,%d) foreground = %s, want the agent's %s fitted against deck's canvas as %s (SPEC §11.3)", col, row, fg, agentHex, want)
+	}
+	bg, ok := cellBgHex(t, term, col, row)
+	if !ok || bg != backgroundHex {
+		t.Fatalf("pane cell (%d,%d) background = %v/%v, want deck's canvas %s under the agent's own foreground", col, row, bg, ok, backgroundHex)
+	}
+	ratio, err := theme.ContrastRatio(fg, backgroundHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ratio < theme.AAFloor-0.01 {
+		t.Fatalf("pane cell (%d,%d): fitted %s on %s is only %.2f:1, below the %.1f:1 floor the fit exists to clear", col, row, fg, backgroundHex, ratio, theme.AAFloor)
 	}
 }
 
@@ -205,11 +247,13 @@ func TestCapturedPaneFillPastCaptureCarriesDeckBackground(t *testing.T) {
 			// X: the pane's own coloured cell, untouched.
 			assertPaneCellUntouched(t, term, geo.firstContentCol, geo.contentRow, paneFgHex, paneBgHex, true)
 			// Y: the pane's own plain cell after its own mid-line reset --
-			// no background at all, still untouched.
-			assertPaneCellUntouched(t, term, geo.firstContentCol+1, geo.contentRow, "", "", false)
-			// Z: the pane's own cell with its OWN attribute left open --
-			// still untouched (foreground survives, no background).
-			assertPaneCellUntouched(t, term, geo.firstContentCol+2, geo.contentRow, paneTailFgHex, "", false)
+			// the agent expressed no preference, so deck's canvas pair
+			// shows through it.
+			assertCanvasPairShowsThrough(t, term, m, geo.firstContentCol+1, geo.contentRow, "pane's own post-reset plain text")
+			// Z: the pane's own cell with its OWN foreground left open and
+			// no background -- deck paints its canvas under it and fits
+			// that foreground against it, hue intact.
+			assertPaneCellFitted(t, term, geo.firstContentCol+2, geo.contentRow, paneTailFgHex, backgroundHex)
 
 			// The very first fill column past the capture's own 3 visible
 			// columns: deck's own drawn padding, must carry deck's
@@ -243,11 +287,12 @@ func TestCapturedPaneCropMarkerCarriesDeckBackground(t *testing.T) {
 
 			// X: the pane's own coloured cell, untouched.
 			assertPaneCellUntouched(t, term, geo.firstContentCol, geo.contentRow, paneFgHex, paneBgHex, true)
-			// Somewhere in the middle of the truncated Z run: still the
-			// pane's own open attribute, never deck's -- cropRow only
-			// ever truncates the capture, it never re-composes it.
+			// Somewhere in the middle of the truncated Z run: the pane's
+			// own open foreground, fitted against deck's canvas rather
+			// than replaced by it -- cropRow still only ever truncates the
+			// capture, it never re-composes what the agent wrote.
 			midZCol := geo.firstContentCol + geo.contentWidth/2
-			assertPaneCellUntouched(t, term, midZCol, geo.contentRow, paneTailFgHex, "", false)
+			assertPaneCellFitted(t, term, midZCol, geo.contentRow, paneTailFgHex, backgroundHex)
 
 			// The marker itself is the row's last column (glyph width 1
 			// with colour enabled/no ASCII setting): deck-drawn chrome,

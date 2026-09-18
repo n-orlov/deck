@@ -46,6 +46,7 @@ type settingsResolvedSnapshot struct {
 	ASCII              bool
 	Mouse              bool
 	PreviewFit         bool
+	PreviewPaint       string
 	RecentCwdLimit     int
 	SortOrder          string
 	Env                map[string]string
@@ -70,6 +71,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		ASCII:              s.ASCII,
 		Mouse:              s.Mouse,
 		PreviewFit:         s.PreviewFit,
+		PreviewPaint:       s.PreviewPaint,
 		RecentCwdLimit:     s.RecentCwdLimit,
 		SortOrder:          s.SortOrder,
 		Env:                env,

@@ -229,7 +229,9 @@ func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 
 	t.Run("ui.recent_cwd_limit", func(t *testing.T) {
 		m, _ := settingsLiveApplyTestModel(t)
-		m = settingsOpenAndSelect(t, m, 1, 4, "Recent Cwd Limit")
+		// Field index 5, not 4: ui.preview_paint sits between preview_fit
+		// and recent_cwd_limit in schema.go's ui section (SPEC §11.3).
+		m = settingsOpenAndSelect(t, m, 1, 5, "Recent Cwd Limit")
 		updated, _ := m.Update(key("+"))
 		m = updated.(Model)
 		updated, _ = m.Update(key("ctrl+s"))
