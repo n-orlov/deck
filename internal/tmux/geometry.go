@@ -237,6 +237,43 @@ func (c Client) unsetWindowSize(ctx context.Context, target string) error {
 	return nil
 }
 
+// UnpinWindowSize is unsetWindowSize for callers outside this package: it
+// removes the window-local `window-size` pin -- whoever wrote it, whether
+// `resize-window`'s own side effect or PinWindowSize below -- so the window
+// falls back to the server-global `latest` (Client.Bootstrap) and the next
+// client to attach expresses its own size instead of being shown the
+// window at whatever size deck last chose.
+//
+// Two callers need exactly this and nothing else: passive preview fit
+// (FitWindowToPaneUnpinned below) and `a`'s full attach, which releases a
+// pin left behind by any earlier fit -- including one written by a
+// different deck process -- immediately before it hands the terminal to a
+// real tmux client. Both are the "deck's own preview must never crop a
+// full attach" half of SPEC §11; interactive mode, which needs the pin
+// held, uses PinWindowSize and RestoreWindowGeometry instead.
+func (c Client) UnpinWindowSize(ctx context.Context, target string) error {
+	return c.unsetWindowSize(ctx, target)
+}
+
+// PinWindowSize writes `window-size manual` into target's WINDOW options,
+// which shadow the global `latest` (SPEC §11.9), so the window holds
+// whatever size it currently has instead of following a client.
+//
+// Interactive mode's entry is the one caller: its grid is drawn against a
+// size it needs held. `resize-window` writes the same pin as a side effect,
+// but ONLY when it actually resizes -- a window that passive fit has
+// already brought to the interactive box's own size converges in zero
+// resizes and writes nothing at all, which is the common case precisely
+// because passive fit unpins after fitting (FitWindowToPaneUnpinned). So
+// entry states the pin rather than inheriting it. With no client attached
+// this changes no size and costs no SIGWINCH; it is a pure option write.
+func (c Client) PinWindowSize(ctx context.Context, target string) error {
+	if _, err := c.run(ctx, "set-option", "-w", "-t", target, "window-size", "manual"); err != nil {
+		return fmt.Errorf("pin window-size manual on %q: %w", target, err)
+	}
+	return nil
+}
+
 // RestoreWindowGeometry implements PRD phase3b II-9's exit recipe, in the
 // order the PRD states is load-bearing:
 //
@@ -348,4 +385,44 @@ func (c Client) FitWindowToPane(ctx context.Context, target, paneTarget string, 
 		resizes++
 	}
 	return resizes, fmt.Errorf("fit window %q to pane %q at %dx%d: did not converge in %d resizes", target, paneTarget, wantWidth, wantHeight, maxFitWindowAttempts)
+}
+
+// FitWindowToPaneUnpinned is FitWindowToPane for a caller that wants the
+// size but not the hold: it fits, then unpins (UnpinWindowSize above). It
+// exists because `resize-window` writes `window-size manual` into the
+// window options, which shadow the global `latest` -- so a plain
+// FitWindowToPane leaves the window unable to follow ANY client that
+// attaches afterwards. That is exactly right for interactive mode, which
+// owns and restores the geometry, and exactly wrong for passive preview
+// fit, whose stated contract (SPEC §11) is that it owns nothing and that
+// "any attaching client re-expresses its own size under `window-size
+// latest` and simply wins". Without the unpin that sentence is false: the
+// pin outlives the preview, and the next `a` -- or any bare
+// `tmux attach` -- is shown the window cropped to the panel deck happened
+// to be drawing it in, indefinitely, until some later interactive mode
+// exit unsets the option as a side effect of its own restore.
+//
+// The order is the same load-bearing order RestoreWindowGeometry documents,
+// for the same reason: unpin-then-fit would leave `manual` back in the
+// window table (resize-window writes it every time) and pin the window all
+// over again.
+//
+// The unpin runs even when the fit itself failed. FitWindowToPane reports
+// its error AFTER however many resize-window calls it already issued, so a
+// failed fit is one of the ways the pin gets written in the first place,
+// and leaving it behind is the very state this function exists to avoid.
+// The fit's error is the one reported; the unpin's is returned only when
+// the fit itself succeeded.
+//
+// With no client attached the unpin changes no size and costs no SIGWINCH,
+// so the fit's cost stays the single SIGWINCH SPEC §11 states: tmux
+// recalculates a window's size from its clients, and a window with no
+// clients keeps the size resize-window just gave it.
+func (c Client) FitWindowToPaneUnpinned(ctx context.Context, target, paneTarget string, wantWidth, wantHeight int) (int, error) {
+	resizes, fitErr := c.FitWindowToPane(ctx, target, paneTarget, wantWidth, wantHeight)
+	unpinErr := c.UnpinWindowSize(ctx, target)
+	if fitErr != nil {
+		return resizes, fitErr
+	}
+	return resizes, unpinErr
 }
