@@ -473,11 +473,13 @@ func wcagLuminance(hex string) (float64, error) {
 // appeared unforegrounded in the parchment measurement -- one per cropped
 // row.
 //
-// The captured rows themselves are foreign bytes and are asserted to stay
-// exactly that: R118's "captured pane content is never repainted" means a
-// capture cell must keep the PANE's own foreground (here an explicit
-// 38;2;10;20;30) and must NOT acquire deck's canvas foreground. So this is
-// simultaneously the fix's proof and its boundary.
+// The captured rows themselves are the boundary: deck's canvas foreground
+// must not simply be stamped over them. Under SPEC §11.3 a capture cell
+// whose foreground the agent chose (here an explicit 38;2;10;20;30) keeps
+// that colour's HUE, moved in lightness only as far as the 4.5:1 floor
+// against deck's canvas requires -- never replaced by `text`, which is what
+// this test's own deck-owned columns must carry. So this is simultaneously
+// the fix's proof and its boundary.
 func TestCropMarkerAndGeometryLineCarryExplicitForeground(t *testing.T) {
 	const paneFg = "#0a141e" // 10;20;30, the pane's own foreground below
 
@@ -562,16 +564,10 @@ func TestCropMarkerAndGeometryLineCarryExplicitForeground(t *testing.T) {
 					t.Fatalf("theme %q: crop marker cell (%d,%d) background = %q/%v, want deck's `background` %s", bt.Name, markerCol, row, bg, ok, backgroundHex)
 				}
 
-				// The pane's own cells keep the pane's own foreground: the
-				// canvas foreground must stop at deck's own columns.
-				paneCol := sw + 2
-				hex, ok = cellFgHex(t, term, paneCol, row)
-				if !ok {
-					t.Fatalf("theme %q: captured cell (%d,%d) lost the pane's own foreground entirely", bt.Name, paneCol, row)
-				}
-				if hex != paneFg {
-					t.Fatalf("theme %q: captured cell (%d,%d) foreground = %s, want the PANE's own %s (R118: captured pane content is never repainted)", bt.Name, paneCol, row, hex, paneFg)
-				}
+				// The pane's own cells keep the pane's own HUE, fitted
+				// against deck's canvas: `text` must stop at deck's own
+				// columns and never be stamped over the agent's choice.
+				assertPaneCellFitted(t, term, sw+2, row, paneFg, backgroundHex)
 			}
 		})
 	}

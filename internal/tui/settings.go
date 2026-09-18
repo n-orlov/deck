@@ -382,6 +382,15 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	if _, overridden := m.settings.EnvOverrides["ui.preview_fit"]; !overridden && m.settingsEdits.PreviewFit != previous.PreviewFit {
 		m.settings.PreviewFit = m.settingsEdits.PreviewFit
 	}
+	// ui.preview_paint: repaintForeignDefaults reads this member on every
+	// previewed row, so the next preview tick after a save already paints
+	// the new way -- the ScopeGlobal claim its schema entry makes. Guarded
+	// by EnvOverrides like every other ScopeGlobal field, and here the
+	// guard is live rather than theoretical: DECK_PREVIEW_PAINT is a real
+	// override path in config.LoadFrom.
+	if _, overridden := m.settings.EnvOverrides["ui.preview_paint"]; !overridden && m.settingsEdits.PreviewPaint != previous.PreviewPaint {
+		m.settings.PreviewPaint = m.settingsEdits.PreviewPaint
+	}
 	var cmd tea.Cmd
 	if _, overridden := m.settings.EnvOverrides["ui.mouse"]; !overridden && m.settingsEdits.Mouse != previous.Mouse {
 		m.settings.Mouse = m.settingsEdits.Mouse
@@ -865,6 +874,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		ASCII:                s.File.ASCII,
 		Mouse:                s.File.Mouse,
 		PreviewFit:           s.File.PreviewFit,
+		PreviewPaint:         s.File.PreviewPaint,
 		GroupByWorkspace:     s.File.GroupByWorkspace,
 		SortOrder:            s.File.SortOrder,
 		RecentCwdLimit:       s.File.RecentCwdLimit,
@@ -986,6 +996,8 @@ func settingsEnumValue(f config.Field, cfg config.FileConfig) string {
 		return cfg.Theme
 	case "ui.sort_order":
 		return cfg.SortOrder
+	case "ui.preview_paint":
+		return cfg.PreviewPaint
 	case "interactive_transport":
 		return cfg.InteractiveTransport
 	default:
@@ -1000,6 +1012,8 @@ func settingsSetEnum(cfg *config.FileConfig, f config.Field, v string) {
 		cfg.Theme = v
 	case "ui.sort_order":
 		cfg.SortOrder = v
+	case "ui.preview_paint":
+		cfg.PreviewPaint = v
 	case "interactive_transport":
 		cfg.InteractiveTransport = v
 	}
@@ -1087,6 +1101,8 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 		return onOff(s.Mouse)
 	case "ui.preview_fit":
 		return onOff(s.PreviewFit)
+	case "ui.preview_paint":
+		return s.PreviewPaint
 	default:
 		return fallback
 	}
@@ -1691,8 +1707,14 @@ func (m Model) settingsView() string {
 // existing assertion against the footer's literal text (search for
 // "ctrl+s save", the discard prompt's own wording, etc.) keeps passing
 // against either function.
+// The content is padded out to the terminal's full width before painting,
+// for the same reason mainView's footerLine is (operator request,
+// 2026-09-18): this is the bottom row directly under the takeover's own
+// frame, so a line painted only under its text leaves a straight
+// half-painted seam across the screen.
 func (m Model) settingsFooterLine() string {
-	return m.canvasBackground(theme.Background, m.settingsFooterLineContent())
+	width, _ := m.frameSize()
+	return m.canvasFillLine(theme.Background, m.settingsFooterLineContent(), width)
 }
 
 // settingsFooterLineContent is settingsFooterLine's own composition,

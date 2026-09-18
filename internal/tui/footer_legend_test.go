@@ -6,6 +6,7 @@ import (
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // TestFooterKeyLegendReflectsEligibility is task 013's own test (PRD R80):
@@ -256,8 +257,20 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 		if !strings.Contains(line, reasonHead) {
 			t.Fatalf("footer dropped the selected row's status reason (wanted %q): %q", reasonHead, line)
 		}
+		// When deck is painting, the footer row is padded out to the
+		// terminal's full width so the theme's background covers it end to
+		// end (canvasFillLine); with colour off there is no background to
+		// cover and the line stays its own plain content. Either way the
+		// padding can land on the last segment, so it is trimmed before
+		// the per-entry comparison below -- no legend entry ends in a
+		// space, so trimming cannot hide a clipped one.
+		if _, painting := m.backgroundSGR(theme.Background); painting {
+			if got := stringWidth(line); got != width {
+				t.Fatalf("footer is %d cells wide at width %d; while painting it must fill the row exactly so the canvas covers it: %q", got, width, line)
+			}
+		}
 		marker := m.glyph("…", "...")
-		legendPart := line[strings.Index(line, "    ")+4:]
+		legendPart := strings.TrimRight(line[strings.Index(line, "    ")+4:], " ")
 		whole := wholeEntries(m)
 		for _, seg := range strings.Split(legendPart, m.glyph(" · ", " - ")) {
 			if seg == marker || seg == "" {
@@ -294,8 +307,13 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 		if strings.Contains(line, "…") {
 			t.Fatalf("at 200 columns nothing may be elided: %q", line)
 		}
-		if want := m.selectedRowReason() + "    " + m.footerKeyLegend(); line != want {
-			t.Fatalf("wide footer is not the plain join:\n got %q\nwant %q", line, want)
+		width, _ := m.frameSize()
+		want := m.selectedRowReason() + "    " + m.footerKeyLegend()
+		if _, painting := m.backgroundSGR(theme.Background); painting {
+			want = padToWidth(want, width)
+		}
+		if line != want {
+			t.Fatalf("wide footer is not the plain join (padded to the row when painting):\n got %q\nwant %q", line, want)
 		}
 		// Wide enough that task 014's curated additions (dd, the eligible
 		// one of A/U, ,) render in full alongside everything else -- logged

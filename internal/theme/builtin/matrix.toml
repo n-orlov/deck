@@ -2,8 +2,8 @@ name = "matrix"
 appearance = "dark"            # "dark" | "light" — drives contrast direction
 
 [colors]
-background        = "#001100"  # panel interiors — dark green phosphor tint, not pure black
-surface           = "#002200"  # elevated rows, footer, dialog interiors
+background        = "#000000"  # panel interiors — pure black; the preview pane reads as unlit screen
+surface           = "#001100"  # elevated rows, footer, dialog interiors, attached preview — faint phosphor tint
 border            = "#145214"
 border_focus      = "#00ff41"  # the focused panel (§11.3) — the canonical "Matrix" green
 selection         = "#004400"  # selected row, focused panel

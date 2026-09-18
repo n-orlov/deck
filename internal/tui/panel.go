@@ -572,6 +572,26 @@ func (m Model) canvasBackground(tok theme.Token, parts ...string) string {
 	return seq + reopened + "\x1b[0m"
 }
 
+// canvasFillLine paints one full-width row that is NOT inside a bordered
+// panel -- a banner, the theme picker, a notification, a footer -- so that
+// the theme's canvas covers the whole terminal row rather than only the
+// cells the text happens to occupy (operator request, 2026-09-18; the
+// half-painted rows above and below deck's frame are the most visible
+// remaining instance of SPEC.md:1576's "every cell deck draws").
+//
+// The padding is applied ONLY when deck is actually painting. Under
+// NO_COLOR/DECK_COLOR=0 there is no background to cover, so padding would
+// add trailing whitespace for nothing -- and this package's NO_COLOR tests
+// rightly assert those lines come back byte-for-byte as their own plain
+// content (see TestSettingsFooterUnderNoColorCarriesNoEscapes). Painting
+// and filling are the same decision, so they are made in one place.
+func (m Model) canvasFillLine(tok theme.Token, s string, width int) string {
+	if _, ok := m.backgroundSGR(tok); ok {
+		s = padToWidth(s, width)
+	}
+	return m.canvasBackground(tok, s)
+}
+
 // canvasWrapText mirrors wrapText's own word-wrapping, additionally
 // composing each returned line through canvasBackground above (task 004,
 // R118) so a banner/note/toast line -- mainView's startupBanner,
@@ -584,20 +604,25 @@ func (m Model) canvasBackground(tok theme.Token, parts ...string) string {
 // terminal's own background the way it was before this task (SPEC.md:1576:
 // "deck paints its own canvas... across every cell deck draws").
 //
-// Unlike sidebarContentLine/fullBoxContentLine, this does NOT pad lines
-// out to width: a banner line has no fixed-width frame column budget to
-// fill the way a bordered panel's row does (mainView treats it as
-// free-form wrapped prose, and several existing tests assert its content
-// byte-for-byte against the plain, unpadded join -- padding it would cost
-// real coverage for no SPEC-mandated gain, since nothing borders it for a
-// short line to look ragged against). So this only ever paints the cells
-// the line's own text actually occupies, same as wrapText's caller got
-// before, plus the background span.
+// Each line IS padded out to width before it is painted (operator request,
+// 2026-09-18). The earlier reasoning here -- that a banner has no frame
+// column budget to fill, so painting only the text cells was enough -- was
+// wrong about what the reader sees: a banner, the theme picker, the footer
+// hint line and the "copied" notification all sit OUTSIDE the bordered
+// panels, spanning the terminal, and painting only their text leaves the
+// rest of the row at the terminal's own background. The result is a
+// ragged half-painted stripe above and below deck's frame, which is
+// exactly the "deck paints its own canvas" failure of SPEC.md:1576 --
+// every cell deck draws, not every cell deck writes a glyph into. A line
+// that occupies a full terminal row draws that whole row.
+//
+// padToWidth is display-width aware (stringWidth skips SGR), so padding
+// composes correctly with a line that already carries colour of its own.
 func (m Model) canvasWrapText(s string, width int) []string {
 	lines := wrapText(s, width)
 	out := make([]string, len(lines))
 	for i, line := range lines {
-		out[i] = m.canvasBackground(theme.Background, line)
+		out[i] = m.canvasFillLine(theme.Background, line, width)
 	}
 	return out
 }
@@ -811,9 +836,16 @@ func (m Model) previewContentLine(width int, text string, owned bool) string {
 	if owned {
 		return m.canvasBackground(theme.Background, leftBorder, " ", padded, " ", rightBorder)
 	}
-	left := m.canvasBackground(theme.Background, leftBorder, " ")
-	right := m.canvasBackground(theme.Background, " ", rightBorder)
-	return left + padded + m.canvasResetIfPainting(theme.Background, padded) + right
+	// The foreign half. tok is theme.Background today and stays so for the
+	// unattached preview; the attached one uses theme.Surface, so the two
+	// modes remain distinguishable at a glance once deck paints under both
+	// (see foreignCanvasToken, and `[ui] preview_paint` for how far the
+	// paint reaches).
+	tok := m.foreignCanvasToken()
+	left := m.canvasBackground(tok, leftBorder, " ")
+	right := m.canvasBackground(tok, " ", rightBorder)
+	painted := m.repaintForeignDefaults(tok, padded)
+	return left + painted + m.canvasResetIfPainting(tok, painted) + right
 }
 
 // cropMarker marks a preview row that was cut at the right edge (SPEC
@@ -1116,9 +1148,11 @@ func (m Model) fullBoxPreviewContentLine(width int, text string, focused bool, o
 	if owned {
 		return m.canvasBackground(theme.Background, border, " ", padded, " ", border)
 	}
-	left := m.canvasBackground(theme.Background, border, " ")
-	right := m.canvasBackground(theme.Background, " ", border)
-	return left + padded + m.canvasResetIfPainting(theme.Background, padded) + right
+	canvas := m.foreignCanvasToken() // see previewContentLine above
+	left := m.canvasBackground(canvas, border, " ")
+	right := m.canvasBackground(canvas, " ", border)
+	painted := m.repaintForeignDefaults(canvas, padded)
+	return left + painted + m.canvasResetIfPainting(canvas, painted) + right
 }
 
 // dialogWidth is every §11.4 dialog/overlay's box width (SPEC.md:1070,

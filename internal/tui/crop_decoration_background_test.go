@@ -192,16 +192,13 @@ func TestCropDecorationsCarryDeckBackground(t *testing.T) {
 
 					// Row offset 2: the pane's own second captured row
 					// (paneRowOpenTail), which leaves a foreground open at
-					// its own last visible column (Z, no trailing reset)
-					// -- that open attribute must survive exactly as the
-					// pane left it, never repainted by deck.
+					// its own last visible column (Z, no trailing reset).
+					// The agent chose that colour and no background, so
+					// deck's canvas goes under it and the colour itself is
+					// fitted against that canvas -- its HUE survives
+					// exactly as the pane left it (SPEC §11.3).
 					captureRow1 := geo.firstContentRow + 2
-					if fg, ok := cellFgHex(t, term, geo.firstContentCol+2, captureRow1); !ok || fg != paneTailFgHex {
-						t.Fatalf("theme %q: captured cell (%d,%d) (pane's own open attribute) foreground = %v/%v, want pane's own %s", bt.Name, geo.firstContentCol+2, captureRow1, fg, ok, paneTailFgHex)
-					}
-					if hex, ok := cellBgHex(t, term, geo.firstContentCol+2, captureRow1); ok {
-						t.Fatalf("theme %q: captured cell (%d,%d) (pane's own open attribute) background = %s, want no background at all (pane's own, never deck's)", bt.Name, geo.firstContentCol+2, captureRow1, hex)
-					}
+					assertPaneCellFitted(t, term, geo.firstContentCol+2, captureRow1, paneTailFgHex, backgroundHex)
 
 					// The deck-drawn fill immediately past the pane's own
 					// bytes on that same captured row (past Z's own open
