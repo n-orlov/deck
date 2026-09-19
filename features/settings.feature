@@ -419,3 +419,23 @@ Feature: The `,` settings takeover (requirement 48)
     And the state database contains session "clear-recent-after"
     And the state database has exactly 2 sessions
     When deck client "A" exits cleanly
+
+  Scenario: creating a group in the settings takeover appears in the sidebar once a session joins it (R131 part 1)
+    Given deck client "A" is started
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Groups"
+    When deck client "A" sends "	"
+    And deck client "A" sends "n"
+    And deck client "A" sends "tooling"
+    And deck client "A" sends ""
+    Then deck client "A" screen contains "created group tooling"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" creates shell session "groups-into-tooling" into group "tooling" with a fresh working directory labelled "groups-into-tooling"
+    Then deck client "A" screen contains "tooling"
+    And deck client "A" screen contains "groups-into-tooling"
+    When deck client "A" exits cleanly
