@@ -7452,9 +7452,10 @@ func (m *Model) submitCreate() tea.Cmd {
 // collision on an explicitly typed name as "already exists", per
 // validateCreateFields' doc comment). Only a blank field synthesises
 // `<workspace>-<MMDD-HHMM>` from m.settings.Clock (so a frozen DECK_CLOCK
-// makes it deterministic, per SPEC.md:176) and DefaultWorkspace's
-// basename-of-cwd rule (store.DefaultWorkspace, matching the sidebar's own
-// grouping key), then appends the smallest free `-2`, `-3`, ... suffix by
+// makes it deterministic, per SPEC.md:176) and defaultGroupKey's (group.go,
+// task 007's group-key seam over store.DefaultWorkspace's basename-of-cwd
+// rule) key, matching the sidebar's own grouping, then appends the
+// smallest free `-2`, `-3`, ... suffix by
 // checking the store's current names -- never failing the create outright
 // on a collision, per SPEC.md:175 ("collisions append a suffix rather than
 // failing the create").
@@ -7466,7 +7467,7 @@ func (m *Model) resolveCreateName(resolvedCWD string) string {
 	if m.settings.Clock != nil {
 		now = m.settings.Clock.Now()
 	}
-	base := store.DefaultWorkspace(resolvedCWD) + "-" + now.Format("0102-1504")
+	base := defaultGroupKey(resolvedCWD) + "-" + now.Format("0102-1504")
 	taken := make(map[string]bool)
 	if m.store != nil {
 		if sessions, err := m.store.ListSessions(context.Background()); err == nil {
