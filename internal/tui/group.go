@@ -82,6 +82,26 @@ func sessionGroupID(session store.Session) int64 {
 	return 0
 }
 
+// sessionGroupLabel is the seam's display LABEL accessor: the group name
+// to print for one session on a surface that has no group list of its own
+// to resolve against -- the `i` detail dialog's "Group:" row and the `g`
+// picker's "Current group:" row (R130 part 2). It is deliberately derived
+// from the session row itself (store.Session.GroupName, the LEFT JOIN's
+// resolved §11 label) rather than from any dialog's own snapshot of the
+// group list: moveGroupOptions/createGroups are populated only while their
+// dialog is open, so resolving through them showed "default" for a
+// correctly-grouped session whenever detail was opened without the picker.
+// The structural default group (sessionGroupID == 0, i.e. no group_id or a
+// group_id that no longer resolves -- SPEC §11's "renders under default
+// rather than vanishing") prints groupHeaderText's same literal label,
+// "default", so the detail row and the sidebar header agree.
+func sessionGroupLabel(session store.Session) string {
+	if name := sessionGroupDisplayName(session); name != "" {
+		return name
+	}
+	return "default"
+}
+
 // indexedSession pairs a session with its index into m.sessions, so a
 // group can be rendered (and, once selected, resolved back to an index)
 // without re-scanning m.sessions to find it.

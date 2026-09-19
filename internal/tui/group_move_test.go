@@ -214,6 +214,79 @@ func TestMoveSessionGroupToDefaultClearsGroupID(t *testing.T) {
 	}
 }
 
+// TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens is R130 part
+// 2's own evidence for the FIRST half of its criterion ("the `i` detail
+// dialog displays the session's group"), independent of the `g` picker:
+// top-level `i` alone, with no group list ever loaded into the model, must
+// still print the session's real group name -- the bug the first attempt
+// shipped, where the row resolved through moveGroupOptions and therefore
+// read "default" until `g` had populated it. Both the named-group and the
+// structural-default case are pinned, and the picker's own "Current
+// group:" row is checked on the same model.
+func TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens(t *testing.T) {
+	groupID := int64(7)
+	for _, tc := range []struct {
+		name    string
+		session store.Session
+		want    string
+	}{
+		{
+			name:    "named group",
+			session: store.Session{ID: "s1", Name: "alpha-one", Agent: "shell", Status: "stopped", Slug: "alpha-one", GroupID: &groupID, GroupName: "alpha"},
+			want:    "alpha",
+		},
+		{
+			name:    "structural default",
+			session: store.Session{ID: "s2", Name: "loose-one", Agent: "shell", Status: "stopped", Slug: "loose-one"},
+			want:    "default",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(nil, config.Settings{}, "")
+			m.width, m.height = 80, 30
+			m.sessions = []store.Session{tc.session}
+			m.selected = 0
+			got, _ := m.Update(key("i"))
+			m = got.(Model)
+			if !m.detail {
+				t.Fatal("\"i\" did not open detail")
+			}
+			if len(m.moveGroupOptions) != 0 {
+				t.Fatalf("opening detail populated moveGroupOptions (%#v); this test must prove the row resolves WITHOUT it", m.moveGroupOptions)
+			}
+			line := detailLineWithPrefix(t, m.detailBody(), "Group:")
+			if !strings.Contains(line, tc.want) {
+				t.Fatalf("detail's group row = %q, want it to name %q", line, tc.want)
+			}
+			// The picker's own "Current group:" row agrees, and still does
+			// so on the very first render after `g`.
+			got, _ = m.Update(key("g"))
+			pm := got.(Model)
+			if !pm.movingGroup {
+				t.Fatal("\"g\" inside detail did not open the group-move picker")
+			}
+			current := detailLineWithPrefix(t, pm.moveGroupBody(), "Current group:")
+			if !strings.Contains(current, tc.want) {
+				t.Fatalf("picker's current-group row = %q, want it to name %q", current, tc.want)
+			}
+		})
+	}
+}
+
+// detailLineWithPrefix returns the first line of body whose trimmed text
+// starts with prefix -- the one field row a test wants to assert on,
+// without hard-coding the dialog's whole layout.
+func detailLineWithPrefix(t *testing.T, body, prefix string) string {
+	t.Helper()
+	for _, l := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), prefix) {
+			return l
+		}
+	}
+	t.Fatalf("no line starting with %q in:\n%s", prefix, body)
+	return ""
+}
+
 // TestGDoesNotDisturbQCtrlCIOrRInsideDetail proves R130 part 2's own
 // collision check (rename.go's case "g" comment): adding "g" to
 // updateDetailView leaves its pre-existing q, ctrl+c, i, r and l handling

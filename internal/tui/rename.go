@@ -393,7 +393,7 @@ func (m Model) moveGroupBody() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Move %s to a different group\n\n", session.Name)
-	fmt.Fprintf(&b, "%s\n", m.detailField("Current group: ", m.moveGroupName(sessionGroupID(session))))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Current group: ", sessionGroupLabel(session)))
 	fmt.Fprintf(&b, "%s\n", m.detailField("New group:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.moveGroupName(m.moveGroupValue), strings.Join(names, ", "))))
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.moveGroupNote != "" {
@@ -462,7 +462,7 @@ func (m Model) styledMoveGroupBody() string {
 
 	colorWhole(theme.Title, fmt.Sprintf("Move %s to a different group", session.Name))
 	out = append(out, "")
-	colorField("Current group: ", m.moveGroupName(sessionGroupID(session)), false)
+	colorField("Current group: ", sessionGroupLabel(session), false)
 	colorField("New group:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.moveGroupName(m.moveGroupValue), strings.Join(names, ", ")), true)
 	out = append(out, "")
 	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
