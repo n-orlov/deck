@@ -76,6 +76,62 @@ func TestWriteConfigFileRoundTripsUnknownKeysAndSections(t *testing.T) {
 	}
 }
 
+// TestStaleGroupByWorkspaceLineIsSkippedAndPreservedByteIdentical proves
+// R129 part 2's removal of `[ui] group_by_workspace` (task 012) left the
+// reader/writer's existing unknown-key contract to carry the stale key
+// rather than needing a dedicated migration: loadConfigFile no longer has
+// a Schema entry for it, so the line is silently skipped exactly like
+// "some_future_ui_key" above, and WriteConfigFile -- which only ever
+// rewrites a line it can attribute to a Schema field -- leaves it in the
+// file byte-for-byte, in its original position, across a write that
+// changes an unrelated field.
+func TestStaleGroupByWorkspaceLineIsSkippedAndPreservedByteIdentical(t *testing.T) {
+	original := "" +
+		"[ui]\n" +
+		"mouse = true\n" +
+		"group_by_workspace = false\n"
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Mouse {
+		t.Fatal("loadConfigFile did not read the known ui.mouse key alongside the stale one")
+	}
+
+	cfg.Mouse = false // the one field this test changes
+	if err := WriteConfigFile(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "group_by_workspace = false") {
+		t.Fatalf("write dropped or altered the stale group_by_workspace line; got:\n%s", written)
+	}
+	if !strings.Contains(string(written), "mouse = false") {
+		t.Fatalf("write did not apply the changed mouse field; got:\n%s", written)
+	}
+
+	// Re-reading must agree: the stale key still yields no field/value of
+	// its own (there is none left to hold one), and the known key round-trips.
+	reread, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reread.Mouse {
+		t.Fatal("re-reading the written file did not observe the changed mouse field")
+	}
+}
+
 // TestWriteConfigFileParsedContentMatchesWrite proves a written file, when
 // read back through this package's own reader, yields exactly what was
 // written -- not just that some bytes landed on disk.

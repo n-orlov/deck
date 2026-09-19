@@ -16,14 +16,18 @@ Feature: every built-in theme paints its own `background` token across the whole
   (resolveScenarioTokenHex) so this keeps passing if a built-in's palette
   is retuned later.
 
-  `[ui] sort_order = "name"` and `group_by_workspace = false` pin a
-  deterministic, ungrouped order (the same pin panel_background_rectangle.
-  feature already uses): session "aaa" sorts first (position 0) and stays
-  UNSELECTED (task 301's newest-session auto-select lands on "zzz-session",
-  created second), and position 0 is never stripe-tinted (task 084's
-  pos%2==1 rule) -- so "aaa"'s own two rendered lines carry nothing but the
-  plain `background` token, with no selection/stripe override to carve an
-  exception out of the "every cell" claim below. "aaa" is short enough
+  `[ui] sort_order = "name"` pins a deterministic order (the same pin
+  panel_background_rectangle.feature already uses): session "aaa" sorts
+  first (position 0) and stays UNSELECTED (task 301's newest-session
+  auto-select lands on "zzz-session", created second), and position 0 is
+  never stripe-tinted (task 084's pos%2==1 rule) -- so "aaa"'s own two
+  rendered lines carry nothing but the plain `background` token, with no
+  selection/stripe override to carve an exception out of the "every cell"
+  claim below. Both sessions land in the implicit default group (grouping
+  is unconditional as of R129 part 2, task 012 -- there is no `[ui]
+  group_by_workspace` switch any more), so one synthetic group header row
+  precedes them; the row math below already bakes that single header line
+  in. "aaa" is short enough
   (3 characters against a 32-column sidebar content width) that most of
   its own row is PAD, not text -- exactly the pad-columns-outside-a-short-
   row's-text case R118's own fix targeted, per canvasBackground's doc
@@ -81,7 +85,6 @@ Feature: every built-in theme paints its own `background` token across the whole
       [ui]
       theme = "empire"
       sort_order = "name"
-      group_by_workspace = false
       """
     And deck client "bgempire" is started with colour enabled
     And deck client "bgempire" cells at row 2 columns 37 to 97 have background token "background"
@@ -90,11 +93,11 @@ Feature: every built-in theme paints its own `background` token across the whole
     Then within one configured reconcile interval deck client "bgempire" screen contains "running"
     And deck client "bgempire" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgempire" cells at row 28 columns 0 to 99 have background token "background"
-    And deck client "bgempire" cells at row 2 columns 0 to 36 have background token "background"
     And deck client "bgempire" cells at row 3 columns 0 to 36 have background token "background"
-    And deck client "bgempire" cells at row 2 columns 98 to 99 have background token "background"
+    And deck client "bgempire" cells at row 4 columns 0 to 36 have background token "background"
     And deck client "bgempire" cells at row 3 columns 98 to 99 have background token "background"
-    And deck client "bgempire" cells at row 6 columns 0 to 36 have background token "background"
+    And deck client "bgempire" cells at row 4 columns 98 to 99 have background token "background"
+    And deck client "bgempire" cells at row 7 columns 0 to 36 have background token "background"
     When deck client "bgempire" exits cleanly
 
   @requirement-118-canvas-background
@@ -104,7 +107,6 @@ Feature: every built-in theme paints its own `background` token across the whole
       [ui]
       theme = "daylight"
       sort_order = "name"
-      group_by_workspace = false
       """
     And deck client "bgdaylight" is started with colour enabled
     And deck client "bgdaylight" cells at row 2 columns 37 to 97 have background token "background"
@@ -113,11 +115,11 @@ Feature: every built-in theme paints its own `background` token across the whole
     Then within one configured reconcile interval deck client "bgdaylight" screen contains "running"
     And deck client "bgdaylight" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgdaylight" cells at row 28 columns 0 to 99 have background token "background"
-    And deck client "bgdaylight" cells at row 2 columns 0 to 36 have background token "background"
     And deck client "bgdaylight" cells at row 3 columns 0 to 36 have background token "background"
-    And deck client "bgdaylight" cells at row 2 columns 98 to 99 have background token "background"
+    And deck client "bgdaylight" cells at row 4 columns 0 to 36 have background token "background"
     And deck client "bgdaylight" cells at row 3 columns 98 to 99 have background token "background"
-    And deck client "bgdaylight" cells at row 6 columns 0 to 36 have background token "background"
+    And deck client "bgdaylight" cells at row 4 columns 98 to 99 have background token "background"
+    And deck client "bgdaylight" cells at row 7 columns 0 to 36 have background token "background"
     When deck client "bgdaylight" exits cleanly
 
   @requirement-118-canvas-background
@@ -127,7 +129,6 @@ Feature: every built-in theme paints its own `background` token across the whole
       [ui]
       theme = "matrix"
       sort_order = "name"
-      group_by_workspace = false
       """
     And deck client "bgmatrix" is started with colour enabled
     And deck client "bgmatrix" cells at row 2 columns 37 to 97 have background token "background"
@@ -136,11 +137,11 @@ Feature: every built-in theme paints its own `background` token across the whole
     Then within one configured reconcile interval deck client "bgmatrix" screen contains "running"
     And deck client "bgmatrix" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgmatrix" cells at row 28 columns 0 to 99 have background token "background"
-    And deck client "bgmatrix" cells at row 2 columns 0 to 36 have background token "background"
     And deck client "bgmatrix" cells at row 3 columns 0 to 36 have background token "background"
-    And deck client "bgmatrix" cells at row 2 columns 98 to 99 have background token "background"
+    And deck client "bgmatrix" cells at row 4 columns 0 to 36 have background token "background"
     And deck client "bgmatrix" cells at row 3 columns 98 to 99 have background token "background"
-    And deck client "bgmatrix" cells at row 6 columns 0 to 36 have background token "background"
+    And deck client "bgmatrix" cells at row 4 columns 98 to 99 have background token "background"
+    And deck client "bgmatrix" cells at row 7 columns 0 to 36 have background token "background"
     When deck client "bgmatrix" exits cleanly
 
   @requirement-118-canvas-background
@@ -150,7 +151,6 @@ Feature: every built-in theme paints its own `background` token across the whole
       [ui]
       theme = "cobalt"
       sort_order = "name"
-      group_by_workspace = false
       """
     And deck client "bgcobalt" is started with colour enabled
     And deck client "bgcobalt" cells at row 2 columns 37 to 97 have background token "background"
@@ -159,11 +159,11 @@ Feature: every built-in theme paints its own `background` token across the whole
     Then within one configured reconcile interval deck client "bgcobalt" screen contains "running"
     And deck client "bgcobalt" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgcobalt" cells at row 28 columns 0 to 99 have background token "background"
-    And deck client "bgcobalt" cells at row 2 columns 0 to 36 have background token "background"
     And deck client "bgcobalt" cells at row 3 columns 0 to 36 have background token "background"
-    And deck client "bgcobalt" cells at row 2 columns 98 to 99 have background token "background"
+    And deck client "bgcobalt" cells at row 4 columns 0 to 36 have background token "background"
     And deck client "bgcobalt" cells at row 3 columns 98 to 99 have background token "background"
-    And deck client "bgcobalt" cells at row 6 columns 0 to 36 have background token "background"
+    And deck client "bgcobalt" cells at row 4 columns 98 to 99 have background token "background"
+    And deck client "bgcobalt" cells at row 7 columns 0 to 36 have background token "background"
     When deck client "bgcobalt" exits cleanly
 
   @requirement-118-canvas-background
@@ -173,7 +173,6 @@ Feature: every built-in theme paints its own `background` token across the whole
       [ui]
       theme = "parchment"
       sort_order = "name"
-      group_by_workspace = false
       """
     And deck client "bgparchment" is started with colour enabled
     And deck client "bgparchment" cells at row 2 columns 37 to 97 have background token "background"
@@ -182,11 +181,11 @@ Feature: every built-in theme paints its own `background` token across the whole
     Then within one configured reconcile interval deck client "bgparchment" screen contains "running"
     And deck client "bgparchment" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgparchment" cells at row 28 columns 0 to 99 have background token "background"
-    And deck client "bgparchment" cells at row 2 columns 0 to 36 have background token "background"
     And deck client "bgparchment" cells at row 3 columns 0 to 36 have background token "background"
-    And deck client "bgparchment" cells at row 2 columns 98 to 99 have background token "background"
+    And deck client "bgparchment" cells at row 4 columns 0 to 36 have background token "background"
     And deck client "bgparchment" cells at row 3 columns 98 to 99 have background token "background"
-    And deck client "bgparchment" cells at row 6 columns 0 to 36 have background token "background"
+    And deck client "bgparchment" cells at row 4 columns 98 to 99 have background token "background"
+    And deck client "bgparchment" cells at row 7 columns 0 to 36 have background token "background"
     When deck client "bgparchment" exits cleanly
 
   # The two scenarios below are this task's other half: rendering the SAME

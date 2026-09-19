@@ -46,7 +46,7 @@ func TestStackedSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 	m.width, m.height = 80, 30
 	m.layoutMode = LayoutStacked
 	m.sessions = []store.Session{
-		{ID: "s1", Name: "a", Agent: "shell", Status: "running", CreatedAt: 1000},
+		{ID: "s1", Name: "z", Agent: "shell", Status: "running", CreatedAt: 1000},
 		{ID: "s2", Name: "bb", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
 	m.selected = 0
@@ -70,7 +70,7 @@ func TestStackedSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContaining(t, term, "a")
+	row := findRowContaining(t, term, "z")
 
 	// fullBoxContentLine draws its own left AND right border (unlike the
 	// side-by-side sidebar, whose right edge is the seam the preview

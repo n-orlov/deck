@@ -30,7 +30,6 @@ type FileConfig struct {
 	Mouse                bool
 	PreviewFit           bool
 	PreviewPaint         string
-	GroupByWorkspace     bool
 	SortOrder            string
 	RecentCwdLimit       int
 	EventRetentionDays   int
@@ -153,8 +152,6 @@ func defaultFileConfig() FileConfig {
 			cfg.PreviewFit, _ = field.Default.(bool)
 		case "ui.preview_paint":
 			cfg.PreviewPaint, _ = field.Default.(string)
-		case "ui.group_by_workspace":
-			cfg.GroupByWorkspace, _ = field.Default.(bool)
 		case "ui.sort_order":
 			cfg.SortOrder, _ = field.Default.(string)
 		case "ui.recent_cwd_limit":
@@ -199,8 +196,6 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.Mouse = value
 		case "ui.preview_fit":
 			cfg.PreviewFit = value
-		case "ui.group_by_workspace":
-			cfg.GroupByWorkspace = value
 		}
 	case KindInteger:
 		value, err := parseIntegerValue(field, raw)

@@ -14,7 +14,7 @@ import (
 // allow_yolo, yolo_default, stale_after, capture_min_interval,
 // interactive_ms, interactive_transport, tmux_mouse, event_retention_days,
 // pre_launch, post_destroy, [ui] theme, [ui] ascii, [ui] mouse, [ui] preview_fit,
-// [ui] group_by_workspace, [ui] sort_order, [ui] recent_cwd_limit, and the
+// [ui] sort_order, [ui] recent_cwd_limit, and the
 // [env] table. Adding, removing or renaming a key must be a deliberate edit
 // to this test alongside the schema, never a silent drift.
 func TestSchemaPinsKeySet(t *testing.T) {
@@ -32,7 +32,6 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.mouse",
 		"ui.preview_fit",
 		"ui.preview_paint",
-		"ui.group_by_workspace",
 		"ui.sort_order",
 		"ui.recent_cwd_limit",
 		"pre_launch",
@@ -133,8 +132,6 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     the same reasoning as stale_after above.
 //   - [env]: unchanged, restart-to-apply per §6.2 (already correct, and
 //     already the subject of its own SPEC citation in schema.go).
-//   - ui.group_by_workspace: restart-to-apply, pending its own live-apply
-//     wiring in settingsApplyLiveFields.
 //   - ui.sort_order: ScopeGlobal as of task 306 -- sessionsLoaded (task
 //     305) already reads it live on every reload, and
 //     settingsApplyLiveFields now copies a changed value into the running
@@ -172,7 +169,6 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.mouse":              ScopeGlobal,
 		"ui.preview_fit":        ScopeGlobal,
 		"ui.preview_paint":      ScopeGlobal,
-		"ui.group_by_workspace": ScopeRestartToApply,
 		"ui.sort_order":         ScopeGlobal,
 		"ui.recent_cwd_limit":   ScopeRestartToApply,
 		"pre_launch":            ScopeRestartToApply,

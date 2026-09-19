@@ -227,9 +227,8 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     # One "j" per ui.* schema field above sort_order in
     # internal/config/schema.go's own order: theme, ascii, mouse,
     # preview_fit, preview_paint (SPEC §11.3, which added the seventh),
-    # recent_cwd_limit, group_by_workspace. Grep this file before adding
+    # recent_cwd_limit. Grep this file before adding
     # another ui.* field.
-    And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"

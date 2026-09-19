@@ -119,11 +119,6 @@ type Settings struct {
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
-	// GroupByWorkspace mirrors config.toml's [ui] group_by_workspace key
-	// (default true, SPEC §11/requirement 30): whether the sidebar groups
-	// sessions by workspace. DECK_GROUP_BY_WORKSPACE overrides the file when
-	// set.
-	GroupByWorkspace bool
 	// SortOrder mirrors config.toml's [ui] sort_order key (default
 	// "attention", SPEC §11, amendment 6584299): which of the four total
 	// orders (attention/created/activity/name) the sidebar renders in.
@@ -258,15 +253,6 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		}
 		envOverrides["ui.mouse"] = "DECK_MOUSE"
 	}
-	groupByWorkspace := fileCfg.GroupByWorkspace
-	groupByWorkspaceRaw := getenv("DECK_GROUP_BY_WORKSPACE")
-	if groupByWorkspaceRaw != "" {
-		groupByWorkspace, err = boolEnv(groupByWorkspaceRaw, groupByWorkspace, "DECK_GROUP_BY_WORKSPACE")
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["ui.group_by_workspace"] = "DECK_GROUP_BY_WORKSPACE"
-	}
 	previewFit := fileCfg.PreviewFit
 	previewFitRaw := getenv("DECK_PREVIEW_FIT")
 	if previewFitRaw != "" {
@@ -319,7 +305,6 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		PreLaunch:          fileCfg.PreLaunch,
 		PostDestroy:        fileCfg.PostDestroy,
-		GroupByWorkspace:   groupByWorkspace,
 		SortOrder:          fileCfg.SortOrder,
 		PreviewFit:         previewFit,
 		PreviewPaint:       previewPaint,

@@ -40,11 +40,6 @@ func TestNeedsAttentionMatchesWaitingAndErrorOnly(t *testing.T) {
 // workspace group even though that session's own status needs attention.
 func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
 	m := Model{
-		// This test is specifically about collapsed-group visibility
-		// (requirement 32 skipping a hidden row), so grouping must be on
-		// explicitly: config.Settings{}'s zero value now means grouping
-		// off (requirement 35), same convention as m.settings.Mouse.
-		settings: config.Settings{GroupByWorkspace: true},
 		sessions: []store.Session{
 			{ID: "a", GroupName: "ws", Status: "running"},
 			{ID: "b", GroupName: "ws", Status: "waiting"},

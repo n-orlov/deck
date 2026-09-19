@@ -3470,7 +3470,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// to collapse -- the binding is a no-op rather than silently
 			// populating m.collapsedGroups bookkeeping nothing will ever
 			// read (collapse state must be absent, not merely inert).
-			if !m.help && !m.detail && m.groupingEnabled() && len(m.sessions) > 0 {
+			if !m.help && !m.detail && len(m.sessions) > 0 {
 				m.toggleGroupCollapse(sessionWorkspace(m.sessions[m.selected]))
 			}
 		case "g":
@@ -3944,7 +3944,7 @@ func (m Model) themeBanner(width int) []string {
 // which config.LoadFrom's own defaultFileConfig already fills in as
 // "attention" for a real load -- this only shows up as "" for a
 // config.Settings{} test builds directly, exactly the same zero-value
-// convention m.settings.Mouse/GroupByWorkspace already rely on), both
+// convention m.settings.Mouse already relies on), both
 // resolve to attention with no reason -- nothing was misconfigured. Any
 // OTHER value -- reachable only when something bypasses config.toml's own
 // parse-time enum rejection (internal/config/toml.go's KindEnum case),
@@ -4958,28 +4958,6 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		}
 		for _, line := range wrapText(msg, contentWidth) {
 			entries = append(entries, sidebarEntry{text: line})
-		}
-		return entries
-	}
-	if !m.groupingEnabled() {
-		// Requirement 35: grouping off renders one flat list, in
-		// visualOrder() (identity order when ungrouped), with ZERO header
-		// rows -- not a header with a blank/omitted label, no header
-		// sidebarEntry at all, so a scan for sidebarLineHeader entries
-		// finds none. Collapse state cannot apply (there is no group to
-		// collapse), so nothing here ever calls
-		// isGroupCollapsed/setGroupCollapsed.
-		//
-		// Task 084's stripe phase is this loop's own position (range's
-		// second value), NOT the session index idx -- the two only diverge
-		// once grouping is on, but keeping the same "running position over
-		// rendered session rows" idea in both branches means a group
-		// toggle never has to reconcile two different phase sources.
-		for pos, idx := range m.visualOrder() {
-			lines, gutter, bg := m.sidebarRowLines(idx, m.sessions[idx], pos%2 == 1)
-			for i, line := range lines {
-				entries = append(entries, sidebarEntry{text: line, gutter: gutter[i], kind: sidebarLineRow, sessionIndex: idx, bg: bg})
-			}
 		}
 		return entries
 	}
