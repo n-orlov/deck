@@ -492,6 +492,18 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		}
 		return Session{}, fmt.Errorf("insert session: %w", err)
 	}
+	// Resolve GroupName inside this same transaction, mirroring
+	// sessionsFromClause's LEFT JOIN semantics (ListSessions/GetSession):
+	// empty for a nil GroupID (the implicit default group) and for a
+	// GroupID that names no live groups row (dangling membership renders
+	// under default rather than vanishing, SPEC §11) -- never a second,
+	// separate read after commit that could race a concurrent rename.
+	var groupName string
+	if input.GroupID != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT name FROM groups WHERE id = ?`, *input.GroupID).Scan(&groupName); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return Session{}, fmt.Errorf("resolve created session's group name: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Session{}, fmt.Errorf("commit create session: %w", err)
 	}
@@ -503,7 +515,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
 		ConversationID: input.ConversationID,
 		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
-		GroupID: input.GroupID,
+		GroupID: input.GroupID, GroupName: groupName,
 	}, nil
 }
 

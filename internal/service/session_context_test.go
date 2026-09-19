@@ -271,6 +271,127 @@ func TestSessionContextEnvExportsGroupNotLegacyField(t *testing.T) {
 	}
 }
 
+// TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch is the R128
+// cure's unit evidence: TestSessionContextEnvExportsGroupNotLegacyField
+// above proves sessionContextEnv reads store.Session.GroupName verbatim,
+// but that is vacuous if a real create path never populates GroupName in
+// the first place (store.CreateSession's own return value used to build
+// the struct field by field rather than resolving it, so a create-path
+// caller always saw it empty regardless of GroupID -- the exact bug
+// review found). This test creates a real store.Group, passes only its
+// GroupID (never a hand-populated GroupName) into CreateShell/CreateAgent
+// for every registered adapter kind, and asserts the deck_<slug> tmux
+// pane's own DECK_SESSION_GROUP is the group's resolved name -- proving
+// the fix all the way through the service and into the real pane
+// environment, not just through sessionContextEnv in isolation.
+func TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch(t *testing.T) {
+	for _, kind := range []string{"shell", "claude", "pi", "codex"} {
+		kind := kind
+		t.Run(kind, func(t *testing.T) {
+			cwd := t.TempDir()
+			if kind != "shell" {
+				stubExecutableOnPath(t, kind)
+			}
+			service, db, _, socket := newAgentTestService(t, nil, "named-group-"+kind)
+
+			group, err := db.CreateGroup(context.Background(), "sprint work")
+			if err != nil {
+				t.Fatalf("create group: %v", err)
+			}
+
+			var created store.Session
+			if kind == "shell" {
+				created, err = service.CreateShell(context.Background(), ShellCreateInput{
+					Name: "Group: " + kind, CWD: cwd, GroupID: &group.ID,
+				})
+			} else {
+				created, err = service.CreateAgent(context.Background(), AgentCreateInput{
+					Name: "Group: " + kind, CWD: cwd, Agent: kind, PermissionProfile: "safe", GroupID: &group.ID,
+				})
+			}
+			if err != nil {
+				t.Fatalf("create %s session with group: %v", kind, err)
+			}
+			if created.GroupName != "sprint work" {
+				t.Fatalf("%s: create-returned session group name = %q, want %q (store.CreateSession must resolve GroupName from GroupID, never leave it hand-populated-only)", kind, created.GroupName, "sprint work")
+			}
+			assertTMuxEnvironment(t, socket, created.Slug, "DECK_SESSION_GROUP", "sprint work")
+			assertTMuxEnvironmentAbsent(t, socket, created.Slug, "DECK_SESSION_WORKSPACE")
+		})
+	}
+}
+
+// TestSessionContextEnvGroupCreateResumeParityAndDanglingMembership is the
+// R128 cure's evidence for the two remaining clauses of that requirement:
+// default/dangling membership export DECK_SESSION_GROUP empty (never
+// absent), and a real create-then-resume round trip through the service
+// (GroupID only, never a hand-populated GroupName) exports the identical
+// value on both launches. It uses claude -- a fixture with a genuinely
+// resumable conversation (Capabilities().AssignsConversationID true, SPEC
+// section 6.1's --resume path) -- rather than shell, so the resume half is
+// not the degenerate "just restart the same shell" case.
+func TestSessionContextEnvGroupCreateResumeParityAndDanglingMembership(t *testing.T) {
+	cwd := t.TempDir()
+	stubExecutableOnPath(t, "claude")
+	service, db, _, socket := newAgentTestService(t, nil, "group-parity")
+
+	group, err := db.CreateGroup(context.Background(), "team-shared")
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	created, err := service.CreateAgent(context.Background(), AgentCreateInput{
+		Name: "Group: parity", CWD: cwd, Agent: "claude", PermissionProfile: "safe", GroupID: &group.ID,
+	})
+	if err != nil {
+		t.Fatalf("create claude session with group: %v", err)
+	}
+	if created.ConversationID == "" {
+		t.Fatal("create-time conversation id unexpectedly empty; this test needs a resumable-conversation fixture")
+	}
+	assertTMuxEnvironment(t, socket, created.Slug, "DECK_SESSION_GROUP", "team-shared")
+
+	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
+		t.Fatalf("kill pane before resume: %v", err)
+	}
+	stopSession(t, db, created.ID)
+	resumed, outcome, err := service.Resume(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if outcome != ResumeStarted {
+		t.Fatalf("resume outcome = %v, want ResumeStarted", outcome)
+	}
+	if resumed.GroupName != "team-shared" {
+		t.Fatalf("resume-returned session group name = %q, want %q", resumed.GroupName, "team-shared")
+	}
+	assertTMuxEnvironment(t, socket, resumed.Slug, "DECK_SESSION_GROUP", "team-shared")
+
+	// Dangling membership: delete the group the row still names, then
+	// resume again. SPEC section 11's "renders under default rather than
+	// vanishing" means GroupID stays a dangling reference (store never
+	// heals or reaps it) while GroupName -- and therefore
+	// DECK_SESSION_GROUP -- reads back empty, same as the true default.
+	if err := db.DeleteGroup(context.Background(), group.ID); err != nil {
+		t.Fatalf("delete group: %v", err)
+	}
+	if err := service.TMux.Kill(context.Background(), resumed.Slug); err != nil {
+		t.Fatalf("kill pane before dangling resume: %v", err)
+	}
+	stopSession(t, db, created.ID)
+	danglingResumed, outcome, err := service.Resume(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("resume after group deletion: %v", err)
+	}
+	if outcome != ResumeStarted {
+		t.Fatalf("dangling resume outcome = %v, want ResumeStarted", outcome)
+	}
+	if danglingResumed.GroupName != "" {
+		t.Fatalf("dangling-membership resume-returned session group name = %q, want empty (deleted group, renders under default)", danglingResumed.GroupName)
+	}
+	assertTMuxEnvironment(t, socket, danglingResumed.Slug, "DECK_SESSION_GROUP", "")
+}
+
 // TestNotificationSessionPayloadCarriesGroupNotLegacyField is task 008's
 // (R128) dedicated unit evidence for the second half of the same rename:
 // SPEC section 10.1's payload field. It asserts the rendered JSON -- the
