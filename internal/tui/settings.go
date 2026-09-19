@@ -2367,8 +2367,9 @@ func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWi
 // selected index and how many EXTRA rows (beyond the plain one-line row
 // every OTHER group in the window costs) the selected group's own block
 // needs this frame (settingsGroupsViewLines' selectedExtra -- 0 while
-// idle, 2 while the create/rename input is open, 3 while the delete
-// confirm is open). It exists because a Groups list longer than the
+// idle, and otherwise the measured row count of the create/rename input,
+// the delete confirm and the inline validation note attached to it,
+// wrapping included). It exists because a Groups list longer than the
 // viewport (cure-01-02-2: 24 persisted groups at 80x24) used to have its
 // selected row, and any create/rename/delete block attached to it,
 // silently cut off by settingsGroupsViewLines' trailing fitLines call --
@@ -2465,27 +2466,93 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 
 	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
 	editing := m.settingsGroupCreating || m.settingsGroupRenaming
-	// selectedExtra is how many EXTRA rows (beyond the group's own one-line
-	// row) the selected group's block costs this frame -- the create/
-	// rename input (blank separator + the typed row) or the delete confirm
-	// (blank separator + the target/count line + the m/d/esc branches
-	// line), whichever sub-mode is currently open. At most one of the two
-	// is ever true (updateSettingsGroupDeleteConfirm's own d/r/n gating),
-	// and settingsGroupsWindow below sizes the visible window so this
-	// block never gets cut by the trailing fitLines truncation, however
-	// far down a >viewport group list the selection sits.
-	selectedExtra := 0
-	switch {
-	case editing:
-		selectedExtra = 2
-	case m.settingsGroupDeleteConfirming:
-		selectedExtra = 3
+	confirming := m.settingsGroupDeleteConfirming
+	// noteLines is m.settingsGroupNote (task 009's validateGroupName
+	// surfacing, and the create/rename/delete outcome messages)
+	// word-wrapped to the panel's own inner width, computed BEFORE the
+	// group window is sized so its real row cost is known. cure-01-02-2's
+	// first attempt was rejected for exactly the opposite order: the note
+	// was appended once the window had already spent the frame's whole row
+	// budget, so the trailing fitLines call truncated away the one row that
+	// says WHY a typed name was refused (`group name "default" is
+	// reserved`) whenever the selected group sat past the viewport.
+	var noteLines []string
+	if m.settingsGroupNote != "" {
+		noteLines = wrapText(m.settingsGroupNote, innerWidth)
 	}
+
+	// selectedBlock is every row the SELECTED group's block costs beyond
+	// its own one-line row: the create/rename input (blank separator plus
+	// the typed row), or task 019/R131 part 2's two-branch delete confirm
+	// (blank separator, the target/count line, the m/d/esc branch line) --
+	// only ever shown for a non-empty group, since settingsStartGroupDelete
+	// drops an empty one immediately with no prompt at all -- plus, while
+	// either sub-mode is open, the inline note itself, kept attached to the
+	// input it judges instead of parked at the bottom of the panel. At most
+	// one sub-mode is ever open (updateSettingsGroupDeleteConfirm's own
+	// d/r/n gating). Building the block up front, wrapping included, is
+	// what lets settingsGroupsWindow size the window against its REAL row
+	// cost so the trailing fitLines call can only ever trim rows outside
+	// it, however far down a >viewport group list the selection sits.
+	var selectedBlock []settingsListLine
+	pushBlock := func(text string, tok, bg theme.Token) {
+		selectedBlock = append(selectedBlock, settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: text, Tok: tok}}), bg: bg})
+	}
+	if editing {
+		pushBlock("", theme.Text, "")
+		label := "New group name:  "
+		if m.settingsGroupRenaming {
+			label = "New name:  "
+		}
+		pushBlock(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
+	}
+	if confirming {
+		pushBlock("", theme.Text, "")
+		count := len(m.settingsGroupDeleteMembers)
+		for _, l := range wrapText(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), innerWidth) {
+			pushBlock(l, theme.Text, "")
+		}
+		for _, l := range wrapText("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", innerWidth) {
+			pushBlock(l, theme.Dimmed, "")
+		}
+	}
+	if editing || confirming {
+		for _, l := range noteLines {
+			pushBlock(l, theme.Error, "")
+		}
+	}
+	selectedExtra := len(selectedBlock)
 
 	if len(m.settingsGroups) == 0 {
 		addLine("(no groups yet -- press n to create one)", theme.Dimmed, "")
+		// With no groups there is no row to attach the block to, so the
+		// create editor ("n" on an empty list is how the first group gets
+		// made) and its inline note follow the empty-list line instead.
+		rightLines = append(rightLines, selectedBlock...)
+		if len(noteLines) > 0 && !editing && !confirming {
+			addLine("", theme.Text, "")
+			for _, l := range noteLines {
+				addLine(l, theme.Error, "")
+			}
+		}
 	} else {
 		capacity := contentRows - headerRows
+		// A note that belongs to no open sub-mode (the "created group X" /
+		// "deleted group Y" outcomes) still renders after the list, so its
+		// rows -- blank separator plus every wrapped row -- come out of the
+		// window's budget rather than being truncated behind it.
+		trailingNote := len(noteLines) > 0 && !editing && !confirming
+		if trailingNote {
+			capacity -= 1 + len(noteLines)
+		}
+		// Same reservation for the scroll-position row below: it is how the
+		// windowing announces itself, so it must not be the row the frame
+		// drops either. Whenever the list cannot be shown whole it is
+		// present, and spending one row on it here cannot make the list fit
+		// whole (capacity only shrinks), so the two agree by construction.
+		if len(m.settingsGroups) > capacity-selectedExtra {
+			capacity--
+		}
 		start, end := settingsGroupsWindow(len(m.settingsGroups), m.settingsGroupIndex, selectedExtra, capacity)
 		for i := start; i < end; i++ {
 			g := m.settingsGroups[i]
@@ -2502,25 +2569,10 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 			if !selected {
 				continue
 			}
-			if editing {
-				addLine("", theme.Text, "")
-				label := "New group name:  "
-				if m.settingsGroupRenaming {
-					label = "New name:  "
-				}
-				addLine(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
-			}
-			// task 019/R131 part 2's two-branch confirm, kept attached to
-			// the group it targets (rather than appended after every
-			// group, cure-01-02-2's own fix) -- only ever shown for a
-			// non-empty group (settingsStartGroupDelete drops an empty
-			// one immediately, no prompt at all).
-			if m.settingsGroupDeleteConfirming {
-				addLine("", theme.Text, "")
-				count := len(m.settingsGroupDeleteMembers)
-				addLine(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), theme.Text, "")
-				addLine("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", theme.Dimmed, "")
-			}
+			// The editor/confirm/inline-note block stays attached to the
+			// group row it belongs to (cure-01-02-2's own fix), and was
+			// already measured into selectedExtra above.
+			rightLines = append(rightLines, selectedBlock...)
 		}
 		// A window narrower than the full list is this section's own
 		// documented-scrolling contract (cure-01-02-2's success criteria):
@@ -2531,11 +2583,12 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 		if start > 0 || end < len(m.settingsGroups) {
 			addLine(fmt.Sprintf("groups %d-%d of %d -- up/down scrolls", start+1, end, len(m.settingsGroups)), theme.Dimmed, "")
 		}
-	}
-
-	if m.settingsGroupNote != "" {
-		addLine("", theme.Text, "")
-		addLine(m.settingsGroupNote, theme.Error, "")
+		if trailingNote {
+			addLine("", theme.Text, "")
+			for _, l := range noteLines {
+				addLine(l, theme.Error, "")
+			}
+		}
 	}
 
 	rightLines = fitLines(rightLines, contentRows)

@@ -1358,6 +1358,90 @@ func TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible(t *t
 				}
 			})
 
+			// cure-01-02-2 attempt 1 was rejected exactly here: the create
+			// editor's own INLINE VALIDATION row (task 009's
+			// validateGroupName surfacing, SPEC §11.4's visible input) was
+			// appended after the group window had already consumed the
+			// frame's whole row budget, so fitLines truncated it away at
+			// 80x24 whenever the selected group sat past the viewport --
+			// the model kept the right note, the frame never showed it.
+			t.Run("create rejected name keeps the validation visible", func(t *testing.T) {
+				m := settingsOpenOnGroupsFields(t, db)
+				m.width, m.height = sz.w, sz.h
+				for i := 0; i < total-1; i++ {
+					updated, _ := m.Update(key("down"))
+					m = updated.(Model)
+				}
+				updated, _ := m.Update(key("n"))
+				m = updated.(Model)
+				m = typeIntoGroupEditor(t, m, "default")
+				updated, _ = m.Update(key("enter"))
+				m = updated.(Model)
+				if !m.settingsGroupCreating {
+					t.Fatal("a rejected create closed the editor; it must stay open so the operator can correct the name")
+				}
+				if !strings.Contains(m.settingsGroupNote, "reserved") {
+					t.Fatalf("settingsGroupNote = %q, want validateGroupName's reserved-name error", m.settingsGroupNote)
+				}
+				view := m.View()
+				if !strings.Contains(view, last.Name) {
+					t.Fatalf("selected group %q invisible at %dx%d while its create editor is rejected:\n%s", last.Name, sz.w, sz.h, view)
+				}
+				if !strings.Contains(view, "New group name:") || !strings.Contains(view, "default") {
+					t.Fatalf("create editor and its typed value invisible at %dx%d:\n%s", sz.w, sz.h, view)
+				}
+				assertNoteWordsVisible(t, view, m.settingsGroupNote, sz.w, sz.h)
+			})
+
+			// The rename branch's inline validation has to survive the same
+			// truncation: r on an off-screen group, committed onto a name
+			// another group already holds.
+			t.Run("rename rejected name keeps the validation visible", func(t *testing.T) {
+				m := settingsOpenOnGroupsFields(t, db)
+				m.width, m.height = sz.w, sz.h
+				for i := 0; i < total-1; i++ {
+					updated, _ := m.Update(key("down"))
+					m = updated.(Model)
+				}
+				updated, _ := m.Update(key("r"))
+				m = updated.(Model)
+				for range last.Name {
+					updated, _ = m.Update(key("backspace"))
+					m = updated.(Model)
+				}
+				m = typeIntoGroupEditor(t, m, groups[0].Name)
+				updated, _ = m.Update(key("enter"))
+				m = updated.(Model)
+				if !m.settingsGroupRenaming {
+					t.Fatal("a rejected rename closed the editor; it must stay open so the operator can correct the name")
+				}
+				if !strings.Contains(m.settingsGroupNote, "already exists") {
+					t.Fatalf("settingsGroupNote = %q, want the duplicate-name error", m.settingsGroupNote)
+				}
+				view := m.View()
+				if !strings.Contains(view, last.Name) {
+					t.Fatalf("selected group %q invisible at %dx%d while its rename editor is rejected:\n%s", last.Name, sz.w, sz.h, view)
+				}
+				if !strings.Contains(view, "New name:") {
+					t.Fatalf("rename editor invisible at %dx%d:\n%s", sz.w, sz.h, view)
+				}
+				assertNoteWordsVisible(t, view, m.settingsGroupNote, sz.w, sz.h)
+				// The rejected rename wrote nothing to the store.
+				remaining, err := db.ListGroups(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, rg := range remaining {
+					if rg.Name == last.Name {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("a rejected rename must leave %q in the store, but ListGroups = %+v", last.Name, remaining)
+				}
+			})
+
 			t.Run("rename", func(t *testing.T) {
 				m := settingsOpenOnGroupsFields(t, db)
 				m.width, m.height = sz.w, sz.h
@@ -1436,6 +1520,21 @@ func TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible(t *t
 	}
 }
 
+// assertNoteWordsVisible asserts every whitespace-separated token of an
+// inline validation note is present in the rendered frame. It checks
+// tokens rather than the whole string because the note is word-wrapped to
+// the panel's inner width, so a narrow frame legitimately splits it
+// across rows -- what must never happen (cure-01-02-2's rejection) is a
+// row of it being dropped by the frame's row-budget truncation.
+func assertNoteWordsVisible(t *testing.T, view, note string, w, h int) {
+	t.Helper()
+	for _, word := range strings.Fields(note) {
+		if !strings.Contains(view, word) {
+			t.Fatalf("inline validation note %q is not fully rendered at %dx%d (missing %q):\n%s", note, w, h, word, view)
+		}
+	}
+}
+
 // TestSettingsGroupsWindowKeepsSelectedBlockWhollyInsideCapacity is
 // settingsGroupsWindow's own unit-level proof, independent of any
 // particular frame size: for every selected index across a 24-group list
@@ -1454,7 +1553,11 @@ func TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible(t *t
 func TestSettingsGroupsWindowKeepsSelectedBlockWhollyInsideCapacity(t *testing.T) {
 	const total = 24
 	for _, capacity := range []int{1, 3, 5, 10, 16, total, total + 5} {
-		for _, extra := range []int{0, 2, 3} {
+		// 0 is idle; the rest span the create/rename input, the delete
+		// confirm, and either of those plus a wrapped inline validation
+		// note attached to it (settingsGroupsViewLines' selectedBlock is
+		// measured, not a constant, so the cost is open-ended).
+		for _, extra := range []int{0, 2, 3, 4, 6, 9} {
 			for selected := 0; selected < total; selected++ {
 				start, end := settingsGroupsWindow(total, selected, extra, capacity)
 				if selected < start || selected >= end {
