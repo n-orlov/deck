@@ -1,0 +1,5 @@
+$ ci/run.sh go test -count=1 ./internal/tmux/ ./internal/interactive/ ./internal/tui/ ./cmd/deck/...
+ok  	github.com/n-orlov/deck/internal/tmux	25.839s
+ok  	github.com/n-orlov/deck/internal/interactive	15.575s
+ok  	github.com/n-orlov/deck/internal/tui	6.664s
+ok  	github.com/n-orlov/deck/cmd/deck	7.723s

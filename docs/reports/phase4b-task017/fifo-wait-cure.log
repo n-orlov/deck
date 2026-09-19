@@ -1,0 +1,11 @@
+$ ci/run.sh go test -count=1 -v -run 'TestWaitForFifoWriter|TestFifoWriterBoundsAreSplit' ./internal/tmux/
+=== RUN   TestWaitForFifoWriterWaitsPastGraceWhileStillArmed
+--- PASS: TestWaitForFifoWriterWaitsPastGraceWhileStillArmed (0.20s)
+=== RUN   TestWaitForFifoWriterFailsAtGraceWhenNoLongerArmed
+--- PASS: TestWaitForFifoWriterFailsAtGraceWhenNoLongerArmed (0.02s)
+=== RUN   TestWaitForFifoWriterHonoursContextCancellation
+--- PASS: TestWaitForFifoWriterHonoursContextCancellation (0.02s)
+=== RUN   TestFifoWriterBoundsAreSplit
+--- PASS: TestFifoWriterBoundsAreSplit (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tmux	0.249s
