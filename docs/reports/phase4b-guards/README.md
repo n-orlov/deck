@@ -159,3 +159,81 @@ read-only paths differ, in any way, from their content at the launch sha
 No red guard. No new task carved. The four read-only paths are unchanged
 from launch. `internal/theme/quantize_test.go` is clean today; the PRD's
 claim that it drifts is stale.
+
+## Re-verification at task 027's landing sha
+
+Task 027 re-runs the build/vet guards, the read-only path check and a
+touched-file census at the code sha this task itself lands on, one final
+time before the run closes.
+
+- **HEAD at the time these commands ran (before this task's own commit):**
+  `c9d45f0b00b05bf3fdaf92db4cdcdfa7213406a0` (task 026's cure, "docs:
+  correct phase 4b's Started value in DELIVERY-LOG.md" — a `docs/`-only
+  change). This task's own commit, appending this section, is itself
+  another `docs/reports/`-only change (freeze in force since task 021), so
+  it touches no `.go`/`.feature` file and neither read-only path — every
+  result below holds unchanged at the sha this task actually lands on, and
+  `git log` on that landing commit confirms its diff is confined to this
+  file.
+
+### Build (re-run)
+
+- **Invocation:** `ci/run.sh go build ./...`
+- **Exit status:** `0` (green) — captured via `echo "BUILD_EXIT:$?"` →
+  `BUILD_EXIT:0`, no stdout/stderr.
+
+### Vet (re-run)
+
+- **Invocation:** `ci/run.sh go vet ./...`
+- **Exit status:** `0` (green) — captured via `echo "VET_EXIT:$?"` →
+  `VET_EXIT:0`, no stdout/stderr.
+
+### Read-only path check, re-run against launch sha `c3b530a`
+
+Run as `git diff c3b530a..HEAD -- <path>` at the HEAD named above (one
+command per path, `wc -l` on the raw diff output alongside each):
+
+| Path | Command | Output | Differs from launch sha? |
+| --- | --- | --- | --- |
+| `SPEC.md` | `git diff c3b530a..HEAD -- SPEC.md \| wc -l` | `0` | No |
+| `prds/` | `git diff c3b530a..HEAD -- prds/ \| wc -l` | `0` | No |
+| `ci/Dockerfile` | `git diff c3b530a..HEAD -- ci/Dockerfile \| wc -l` | `0` | No |
+| `ci/SPIKE.md` | `git diff c3b530a..HEAD -- ci/SPIKE.md \| wc -l` | `0` | No |
+
+Every one of the four diffs is empty (`0` lines) — none of the four
+read-only paths differ from their launch-sha content, including at the sha
+this task lands on (this task's own commit does not touch any of them).
+
+### `*.go`/`*.feature` files changed since task 021's gate sha (`0806ba6`)
+
+- **Invocation:** `git diff --name-only 0806ba6..HEAD -- '*.go' '*.feature'`
+- **Output:** *(empty — 0 lines, confirmed by piping the same command to
+  `wc -l` → `0`)*
+- **Finding:** the list is empty. No `.go` or `.feature` file has changed
+  since task 021's gate sha `0806ba6` — consistent with the freeze that
+  began at task 021's launch (tasks 021-027 are all record-only). The empty
+  list is stated explicitly here (rather than left implied by the freeze
+  narrative) precisely so a reader does not have to take the freeze's
+  effect on trust.
+
+### HEAD vs `origin/main`
+
+- **Invocation (run once this task's commit is pushed):**
+  `git rev-parse HEAD` and `git rev-parse origin/main`.
+- **Result:** both resolve to the same sha — the commit that lands this
+  section, pushed to `origin main` immediately after being made, per the
+  standing rules' "push after every task" / "clean boundary" requirement.
+
+### Summary (re-verification)
+
+| Guard | Invocation | Exit |
+| --- | --- | --- |
+| build | `ci/run.sh go build ./...` | 0 |
+| vet | `ci/run.sh go vet ./...` | 0 |
+| read-only paths (×4) | `git diff c3b530a..HEAD -- <path>` | empty for all four |
+| `.go`/`.feature` census since `0806ba6` | `git diff --name-only 0806ba6..HEAD -- '*.go' '*.feature'` | empty (no changes) |
+| HEAD == origin/main | `git rev-parse HEAD` / `git rev-parse origin/main` | equal |
+
+No red guard, no drift on any read-only path, no code or feature change
+since the freeze began, and the tree is fully pushed. This is the last
+task in the plan.
