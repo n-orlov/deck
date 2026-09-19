@@ -175,3 +175,116 @@ func TestRememberedCreateGroupSurvivesRestart(t *testing.T) {
 		t.Fatalf("Group row help = %q after restart, want it to contain %q", row.help, "(last used)")
 	}
 }
+
+// drainCreateCmd runs a shellCreated handler's returned command (a
+// tea.Batch of loadSessions + the two ui_state persists) through the model,
+// exactly as the running program's own event loop would, so the ui_state
+// writes those commands carry actually reach the store.
+func drainCreateCmd(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("shellCreated success did not return a command")
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, sub := range batch {
+			updated, _ := m.Update(sub())
+			m = updated.(Model)
+		}
+		return m
+	}
+	updated, _ := m.Update(msg)
+	return updated.(Model)
+}
+
+// TestCreateIntoDefaultGroupForgetsTheRememberedNamedGroup is the other
+// half of R130's "defaulting to the last group created into": default is a
+// choice like any other, so a create into default must forget the named
+// group remembered before it -- in memory, in ui_state, and across a
+// restart. Before this test the shellCreated handler only remembered a
+// create whose GroupID was non-nil, so creating into a named group and then
+// into default left the next modal (and the next launch) still opening on
+// the named group the user had moved off.
+func TestCreateIntoDefaultGroupForgetsTheRememberedNamedGroup(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+
+	g, err := db.CreateGroup(ctx, "sprint work")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(db, config.Settings{}, "")
+	updated, _ := m.Update(key("n"))
+	m = updated.(Model)
+
+	// First create: into the named group, which becomes the remembered one.
+	updated, cmd := m.Update(shellCreated{session: store.Session{ID: "sess-1", Agent: "shell", GroupID: &g.ID}})
+	m = drainCreateCmd(t, updated.(Model), cmd)
+	if m.lastCreateGroupID != g.ID {
+		t.Fatalf("lastCreateGroupID = %d after a create into %q, want %d", m.lastCreateGroupID, g.Name, g.ID)
+	}
+
+	// Second create: into the default group (GroupID nil), the group above
+	// still existing -- so nothing here can be confused with the
+	// deleted-group degrade TestCreateGroupDefaultDegradesWhenRememberedGroupDeleted
+	// covers.
+	updated, _ = m.Update(key("n"))
+	m = updated.(Model)
+	updated, cmd = m.Update(shellCreated{session: store.Session{ID: "sess-2", Agent: "shell"}})
+	m = drainCreateCmd(t, updated.(Model), cmd)
+
+	if m.lastCreateGroupID != 0 {
+		t.Fatalf("lastCreateGroupID = %d after a create into default, want 0 (default) -- the named group is stale", m.lastCreateGroupID)
+	}
+	persisted, err := db.GetLastCreateGroup(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted != nil {
+		t.Fatalf("ui_state last_create_group = %v after a create into default, want nil (default)", persisted)
+	}
+
+	// The very next modal in the SAME run opens on default, unlabelled.
+	updated, _ = m.Update(key("n"))
+	m = updated.(Model)
+	if m.createGroupID != 0 {
+		t.Fatalf("create modal opened on Group id %d after a create into default, want 0 (default)", m.createGroupID)
+	}
+	if m.createGroupLastUsed {
+		t.Fatal("create modal labelled default as last used; there is no remembered named group to label")
+	}
+	if got := m.createGroupName(m.createGroupID); got != "default" {
+		t.Fatalf("createGroupName(createGroupID) = %q, want %q -- never blank", got, "default")
+	}
+	row := groupFieldRow(t, m)
+	if !strings.HasPrefix(row.value, "default ") {
+		t.Fatalf("Group row value = %q, want it to open on %q", row.value, "default")
+	}
+
+	// And across a restart: a fresh Model built from the same store.
+	restarted := New(db, config.Settings{}, "")
+	if restarted.lastCreateGroupID != 0 {
+		t.Fatalf("restarted model's lastCreateGroupID = %d, want 0 (default) -- the forget did not survive the restart", restarted.lastCreateGroupID)
+	}
+	updated, _ = restarted.Update(key("n"))
+	restarted = updated.(Model)
+	if restarted.createGroupID != 0 {
+		t.Fatalf("restarted create modal opened on Group id %d, want 0 (default)", restarted.createGroupID)
+	}
+	if !groupCycleContains(restarted.createGroupCycleOptions(), g.ID) {
+		t.Fatalf("restarted create modal lost the named group from its cycle: %+v", restarted.createGroupCycleOptions())
+	}
+}
+
+// groupCycleContains reports whether the Group field's cycle still offers
+// id, so the assertion above distinguishes "forgot the remembered group"
+// from "lost the group entirely".
+func groupCycleContains(options []store.Group, id int64) bool {
+	for _, option := range options {
+		if option.ID == id {
+			return true
+		}
+	}
+	return false
+}

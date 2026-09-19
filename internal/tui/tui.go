@@ -2347,17 +2347,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// run see it without a store round trip in that render path.
 		m.lastCreateAgent = msg.session.Agent
 		cmds := []tea.Cmd{m.loadSessions, m.persistLastCreateAgent(msg.session.Agent)}
-		// R130's counterpart: only a create that actually targeted a real
-		// group is worth remembering (GetLastCreateGroup's own doc comment --
-		// there is no way to persist "explicitly chose default", so a create
-		// into default simply leaves whatever was remembered before
-		// unchanged, exactly like never having set it). msg.session.GroupID,
+		// R130's counterpart: EVERY successful create updates the remembered
+		// group, including one into the structural default group -- "the last
+		// group created into" means the last one, not the last NAMED one, so a
+		// create into default must leave the next modal (and the next launch)
+		// opening on default rather than on a named group the user has since
+		// moved off. msg.session.GroupID == nil IS default, recorded as id 0
+		// (SetLastCreateGroup's own doc comment: 0 clears the ui_state row,
+		// which GetLastCreateGroup reads back as default). msg.session.GroupID,
 		// not m.createGroupID, is what actually got created, for the same
 		// reason msg.session.Agent is used above.
+		createdGroupID := int64(0)
 		if msg.session.GroupID != nil {
-			m.lastCreateGroupID = *msg.session.GroupID
-			cmds = append(cmds, m.persistLastCreateGroup(*msg.session.GroupID))
+			createdGroupID = *msg.session.GroupID
 		}
+		m.lastCreateGroupID = createdGroupID
+		cmds = append(cmds, m.persistLastCreateGroup(createdGroupID))
 		return m, tea.Batch(cmds...)
 	case attachFinished:
 		if msg.err != nil {
@@ -3955,11 +3960,11 @@ func (m Model) persistLastCreateAgent(agentKind string) tea.Cmd {
 // persistLastCreateGroup is persistLastCreateAgent's R130 counterpart: it
 // writes the just-succeeded create's target group id to state.db's
 // ui_state table, never to config.toml, so a later "n" (via
-// pickCreateGroup) opens pre-selecting it. Only ever called with a real
-// group id (the shellCreated handler's own nil check) -- there is no
-// "unset" call, mirroring SetLastCreateGroup's own int64-not-*int64
-// signature. With no store attached (most unit tests) it is a no-op,
-// exactly like persistLastCreateAgent.
+// pickCreateGroup) opens pre-selecting it. Called for every successful
+// create, including one into the structural default group, which is
+// recorded as id 0 (SetLastCreateGroup's own doc comment: 0 means default
+// and clears the remembered row). With no store attached (most unit tests)
+// it is a no-op, exactly like persistLastCreateAgent.
 func (m Model) persistLastCreateGroup(groupID int64) tea.Cmd {
 	if m.store == nil {
 		return nil
