@@ -1,0 +1,16 @@
+=== RUN   TestCreateGroupRejectsReservedDefaultName
+--- PASS: TestCreateGroupRejectsReservedDefaultName (0.02s)
+=== RUN   TestCreateGroupRejectsCaseInsensitiveDuplicate
+--- PASS: TestCreateGroupRejectsCaseInsensitiveDuplicate (0.02s)
+=== RUN   TestCreateGroupRejects33CharacterName
+--- PASS: TestCreateGroupRejects33CharacterName (0.02s)
+=== RUN   TestCreateGroupAccepts32CharacterName
+--- PASS: TestCreateGroupAccepts32CharacterName (0.02s)
+=== RUN   TestRenameGroupUpdatesOneRowAndCarriesItsTwoMembers
+--- PASS: TestRenameGroupUpdatesOneRowAndCarriesItsTwoMembers (0.02s)
+=== RUN   TestGroupNameRejectsControlCharactersAnywhere
+--- PASS: TestGroupNameRejectsControlCharactersAnywhere (0.02s)
+=== RUN   TestDeleteGroupThenCreateNewGroupNeverReusesTheDeletedID
+--- PASS: TestDeleteGroupThenCreateNewGroupNeverReusesTheDeletedID (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.147s
