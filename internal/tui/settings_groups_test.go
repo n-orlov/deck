@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1303,5 +1304,173 @@ func TestSettingsGroupDeleteDBranchUndoDoesNotRebindOntoAGroupCreatedMeanwhile(t
 	}
 	if restored.GroupID == nil || *restored.GroupID != g.ID {
 		t.Fatalf("restored session GroupID = %v, want it to keep pointing at the retired id %d untouched", restored.GroupID, g.ID)
+	}
+}
+
+// TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible
+// is cure-01-02-2's own regression proof: settingsGroupsViewLines used to
+// build the create/rename input and the delete confirm AFTER every group
+// row, then hand the whole slice to fitLines, which just truncates to the
+// frame's row budget -- so at 80x24 with enough persisted groups to
+// overflow that budget, selecting a group near the end of the list (task
+// 118/review2's own reproducer: 24 groups, select group-23) left the
+// selected row, and any editor/confirm attached to it, entirely off
+// screen while the header/copy above still rendered in full. This test
+// drives the real Update/View path (never a bare model-flag assertion)
+// over exactly that shape for all three of n/r/d, at the smallest
+// supported frame (SPEC requirement 14) plus one taller size, so a
+// regression that only shows up at one specific height cannot slip back
+// in unnoticed.
+func TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible(t *testing.T) {
+	for _, sz := range []struct{ w, h int }{{80, 24}, {100, 40}} {
+		t.Run(fmt.Sprintf("%dx%d", sz.w, sz.h), func(t *testing.T) {
+			db := emptyGroupsTestStore(t)
+			const total = 24
+			var groups []store.Group
+			for i := 0; i < total; i++ {
+				g, err := db.CreateGroup(context.Background(), fmt.Sprintf("group-%02d", i))
+				if err != nil {
+					t.Fatal(err)
+				}
+				groups = append(groups, g)
+			}
+			last := groups[total-1]
+
+			t.Run("create", func(t *testing.T) {
+				m := settingsOpenOnGroupsFields(t, db)
+				m.width, m.height = sz.w, sz.h
+				for i := 0; i < total-1; i++ {
+					updated, _ := m.Update(key("down"))
+					m = updated.(Model)
+				}
+				if g, ok := m.settingsSelectedGroup(); !ok || g.Name != last.Name {
+					t.Fatalf("selection after %d downs = %+v (ok=%v), want %q", total-1, g, ok, last.Name)
+				}
+				updated, _ := m.Update(key("n"))
+				m = updated.(Model)
+				m = typeIntoGroupEditor(t, m, "new-name")
+				view := m.View()
+				if !strings.Contains(view, "New group name:") {
+					t.Fatalf("create editor label invisible at %dx%d with %d groups selecting the last one:\n%s", sz.w, sz.h, total, view)
+				}
+				if !strings.Contains(view, "new-name") {
+					t.Fatalf("create editor's typed value invisible at %dx%d:\n%s", sz.w, sz.h, view)
+				}
+			})
+
+			t.Run("rename", func(t *testing.T) {
+				m := settingsOpenOnGroupsFields(t, db)
+				m.width, m.height = sz.w, sz.h
+				for i := 0; i < total-1; i++ {
+					updated, _ := m.Update(key("down"))
+					m = updated.(Model)
+				}
+				if g, ok := m.settingsSelectedGroup(); !ok || g.Name != last.Name {
+					t.Fatalf("selection after %d downs = %+v (ok=%v), want %q", total-1, g, ok, last.Name)
+				}
+				updated, _ := m.Update(key("r"))
+				m = updated.(Model)
+				view := m.View()
+				if !strings.Contains(view, "New name:") {
+					t.Fatalf("rename editor label invisible at %dx%d with %d groups selecting the last one:\n%s", sz.w, sz.h, total, view)
+				}
+				if !strings.Contains(view, last.Name) {
+					t.Fatalf("rename target/prefill %q invisible at %dx%d:\n%s", last.Name, sz.w, sz.h, view)
+				}
+			})
+
+			t.Run("delete", func(t *testing.T) {
+				m := settingsOpenOnGroupsFields(t, db)
+				m.width, m.height = sz.w, sz.h
+				for i := 0; i < total-1; i++ {
+					updated, _ := m.Update(key("down"))
+					m = updated.(Model)
+				}
+				g, ok := m.settingsSelectedGroup()
+				if !ok || g.Name != last.Name {
+					t.Fatalf("selection after %d downs = %+v (ok=%v), want %q", total-1, g, ok, last.Name)
+				}
+				mustCreateSessionInGroup(t, db, "member-of-last", "member-of-last", g.ID, "stopped")
+				m.baseSessions = append(m.baseSessions, store.Session{ID: "member-of-last", Name: "member-of-last", GroupID: &g.ID})
+				m.sessions = m.baseSessions
+
+				updated, _ := m.Update(key("d"))
+				m = updated.(Model)
+				if !m.settingsGroupDeleteConfirming {
+					t.Fatal("d did not open the delete confirm sub-mode")
+				}
+				view := m.View()
+				want := fmt.Sprintf("Delete group %q", last.Name)
+				if !strings.Contains(view, want) {
+					t.Fatalf("delete confirm target invisible at %dx%d with %d groups selecting the last one (want %q):\n%s", sz.w, sz.h, total, want, view)
+				}
+				if !strings.Contains(view, "1 session") {
+					t.Fatalf("delete confirm member count invisible at %dx%d:\n%s", sz.w, sz.h, view)
+				}
+				if !strings.Contains(view, "m moves") || !strings.Contains(view, "d deletes") {
+					t.Fatalf("delete confirm did not expose both m/d branches at %dx%d:\n%s", sz.w, sz.h, view)
+				}
+
+				// Esc still cancels the whole sub-mode without touching the
+				// store (updateSettingsGroupDeleteConfirm's own esc branch).
+				updated, _ = m.Update(key("esc"))
+				m = updated.(Model)
+				if m.settingsGroupDeleteConfirming {
+					t.Fatal("esc did not close the delete confirm sub-mode")
+				}
+				remaining, err := db.ListGroups(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, rg := range remaining {
+					if rg.ID == g.ID {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("esc must not have deleted the group %q (id %d), but it is gone from ListGroups", g.Name, g.ID)
+				}
+			})
+		})
+	}
+}
+
+// TestSettingsGroupsWindowKeepsSelectedBlockWhollyInsideCapacity is
+// settingsGroupsWindow's own unit-level proof, independent of any
+// particular frame size: for every selected index across a 24-group list
+// and every one of the three selectedExtra costs (idle/editing/deleting),
+// the window it returns always contains the selected index, stays inside
+// [0,total) bounds, and -- whenever the capacity is large enough to hold
+// the selected block at all (capacity >= 1+extra; the real Groups panel
+// at every supported size, 80x24 included, always has that much room,
+// since extra tops out at 3) -- never costs more rows than the capacity
+// handed to it. Below that floor there is no window that both includes
+// the selection and stays within budget, so settingsGroupsWindow degrades
+// to showing just the selected block rather than excluding the selection
+// outright; this test does not require the impossible in that region,
+// only that the returned range stays well-formed and still contains
+// selected.
+func TestSettingsGroupsWindowKeepsSelectedBlockWhollyInsideCapacity(t *testing.T) {
+	const total = 24
+	for _, capacity := range []int{1, 3, 5, 10, 16, total, total + 5} {
+		for _, extra := range []int{0, 2, 3} {
+			for selected := 0; selected < total; selected++ {
+				start, end := settingsGroupsWindow(total, selected, extra, capacity)
+				if selected < start || selected >= end {
+					t.Fatalf("capacity=%d extra=%d selected=%d: window [%d,%d) excludes the selection", capacity, extra, selected, start, end)
+				}
+				if start < 0 || end > total || start > end {
+					t.Fatalf("capacity=%d extra=%d selected=%d: window [%d,%d) out of [0,%d) bounds", capacity, extra, selected, start, end, total)
+				}
+				if capacity < 1+extra {
+					continue
+				}
+				cost := (end - start - 1) + (1 + extra)
+				if cost > capacity && end-start < total {
+					t.Fatalf("capacity=%d extra=%d selected=%d: window [%d,%d) costs %d rows, want <= %d", capacity, extra, selected, start, end, cost, capacity)
+				}
+			}
+		}
 	}
 }

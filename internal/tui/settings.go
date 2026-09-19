@@ -2362,6 +2362,57 @@ func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWi
 	return strings.Join(lines, "\n")
 }
 
+// settingsGroupsWindow decides which half-open [start,end) slice of the
+// total group rows the Groups panel renders this frame, given the
+// selected index and how many EXTRA rows (beyond the plain one-line row
+// every OTHER group in the window costs) the selected group's own block
+// needs this frame (settingsGroupsViewLines' selectedExtra -- 0 while
+// idle, 2 while the create/rename input is open, 3 while the delete
+// confirm is open). It exists because a Groups list longer than the
+// viewport (cure-01-02-2: 24 persisted groups at 80x24) used to have its
+// selected row, and any create/rename/delete block attached to it,
+// silently cut off by settingsGroupsViewLines' trailing fitLines call --
+// this sizes and centers the window FIRST so that call only ever trims
+// rows outside it (the scroll-position note, the trailing validation
+// note), never the selected group's own block.
+//
+// The math: a window of size w costs (w-1)*1 + (1+selectedExtra) rows --
+// every row but the selected one's costs 1, the selected one costs
+// 1+selectedExtra -- so the largest window that still fits capacity rows
+// is w = capacity-selectedExtra (clamped to [1,total] so a pathological
+// capacity never yields a non-terminating or inverted range). The window
+// is then centered on selected and clamped to the list's own bounds,
+// which keeps selected inside [start,end) for every index in [0,total)
+// by construction: centering can only push start below 0 (clamped up) or
+// end above total (clamped down via start = total-w), and either clamp
+// leaves selected-start in [0,w).
+func settingsGroupsWindow(total, selected, selectedExtra, capacity int) (start, end int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	if selected < 0 {
+		selected = 0
+	}
+	if selected >= total {
+		selected = total - 1
+	}
+	w := capacity - selectedExtra
+	if w < 1 {
+		w = 1
+	}
+	if w > total {
+		w = total
+	}
+	start = selected - w/2
+	if start < 0 {
+		start = 0
+	}
+	if start+w > total {
+		start = total - w
+	}
+	return start, start + w
+}
+
 // settingsGroupsCopy is the Groups section's own stated difference from
 // every other category (SPEC §11.5: "That difference is stated in the
 // section itself rather than left for the user to discover"): groups
@@ -2410,42 +2461,78 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 		addLine(l, theme.Dimmed, "")
 	}
 	addLine("", theme.Text, "")
+	headerRows := len(rightLines)
 
 	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
-	for i, g := range m.settingsGroups {
-		marker := "  "
-		selected := i == m.settingsGroupIndex
-		if selected {
-			marker = "> "
-		}
-		bg := theme.Token("")
-		if selected {
-			bg = fieldSelTok
-		}
-		addLine(marker+g.Name, theme.Text, bg)
-	}
-	if len(m.settingsGroups) == 0 {
-		addLine("(no groups yet -- press n to create one)", theme.Dimmed, "")
+	editing := m.settingsGroupCreating || m.settingsGroupRenaming
+	// selectedExtra is how many EXTRA rows (beyond the group's own one-line
+	// row) the selected group's block costs this frame -- the create/
+	// rename input (blank separator + the typed row) or the delete confirm
+	// (blank separator + the target/count line + the m/d/esc branches
+	// line), whichever sub-mode is currently open. At most one of the two
+	// is ever true (updateSettingsGroupDeleteConfirm's own d/r/n gating),
+	// and settingsGroupsWindow below sizes the visible window so this
+	// block never gets cut by the trailing fitLines truncation, however
+	// far down a >viewport group list the selection sits.
+	selectedExtra := 0
+	switch {
+	case editing:
+		selectedExtra = 2
+	case m.settingsGroupDeleteConfirming:
+		selectedExtra = 3
 	}
 
-	if m.settingsGroupCreating || m.settingsGroupRenaming {
-		addLine("", theme.Text, "")
-		label := "New group name:  "
-		if m.settingsGroupRenaming {
-			label = "New name:  "
+	if len(m.settingsGroups) == 0 {
+		addLine("(no groups yet -- press n to create one)", theme.Dimmed, "")
+	} else {
+		capacity := contentRows - headerRows
+		start, end := settingsGroupsWindow(len(m.settingsGroups), m.settingsGroupIndex, selectedExtra, capacity)
+		for i := start; i < end; i++ {
+			g := m.settingsGroups[i]
+			marker := "  "
+			selected := i == m.settingsGroupIndex
+			if selected {
+				marker = "> "
+			}
+			bg := theme.Token("")
+			if selected {
+				bg = fieldSelTok
+			}
+			addLine(marker+g.Name, theme.Text, bg)
+			if !selected {
+				continue
+			}
+			if editing {
+				addLine("", theme.Text, "")
+				label := "New group name:  "
+				if m.settingsGroupRenaming {
+					label = "New name:  "
+				}
+				addLine(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
+			}
+			// task 019/R131 part 2's two-branch confirm, kept attached to
+			// the group it targets (rather than appended after every
+			// group, cure-01-02-2's own fix) -- only ever shown for a
+			// non-empty group (settingsStartGroupDelete drops an empty
+			// one immediately, no prompt at all).
+			if m.settingsGroupDeleteConfirming {
+				addLine("", theme.Text, "")
+				count := len(m.settingsGroupDeleteMembers)
+				addLine(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), theme.Text, "")
+				addLine("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", theme.Dimmed, "")
+			}
 		}
-		addLine(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
+		// A window narrower than the full list is this section's own
+		// documented-scrolling contract (cure-01-02-2's success criteria):
+		// up/down (already named in this footer's own "up/down select")
+		// moves the selection, which moves this window, so every group is
+		// reachable this way -- this line just states that a scroll
+		// happened and how far, rather than leaving it undiscoverable.
+		if start > 0 || end < len(m.settingsGroups) {
+			addLine(fmt.Sprintf("groups %d-%d of %d -- up/down scrolls", start+1, end, len(m.settingsGroups)), theme.Dimmed, "")
+		}
 	}
-	// task 019/R131 part 2's two-branch confirm, appended the same way the
-	// create/rename typing row is above -- only ever shown for a non-empty
-	// group (settingsStartGroupDelete drops an empty one immediately, no
-	// prompt at all).
-	if m.settingsGroupDeleteConfirming {
-		addLine("", theme.Text, "")
-		count := len(m.settingsGroupDeleteMembers)
-		addLine(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), theme.Text, "")
-		addLine("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", theme.Dimmed, "")
-	}
+
 	if m.settingsGroupNote != "" {
 		addLine("", theme.Text, "")
 		addLine(m.settingsGroupNote, theme.Error, "")
