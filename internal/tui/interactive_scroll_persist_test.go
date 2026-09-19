@@ -80,10 +80,16 @@ func TestStoredScrollOffsetHealedAcrossViewAndNextScroll(t *testing.T) {
 // TestInteractiveDispatcherNilDoesNotSnapStoredOffset guards against an
 // over-broad heal: updateInteractive's own nil-dispatcher no-op path
 // (interactive_test.go's sibling coverage) must still leave
-// m.interactiveScrollOffset completely untouched -- this fix only heals
-// the offset inside scrollInteractiveByLines/scrollInteractiveByPage
-// themselves, never as some blanket side effect of every interactive
-// Update call.
+// m.interactiveScrollOffset completely untouched even now that
+// cure-01-01-2 (interactive_scroll.go's healInteractiveScrollOffsetFromRender,
+// called from Update's own top in tui.go) broadened the heal to run on
+// EVERY Update call while m.interactive is true, not merely inside
+// scrollInteractiveByLines/scrollInteractiveByPage -- because that heal is
+// itself guarded on a live grid with a real emulator installed, and this
+// model never installs one (m.interactiveGrid stays nil throughout), the
+// guard still holds: nothing here is a blanket zeroing of whatever the
+// field already holds regardless of whether there is anything real to
+// clamp it against.
 func TestInteractiveDispatcherNilDoesNotSnapStoredOffset(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.interactive = true

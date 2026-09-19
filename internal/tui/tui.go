@@ -2358,6 +2358,20 @@ func (m Model) resumableWithNoConversationIDYet(session store.Session) bool {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	i1Trace("enter", message, m.selected)
 	i1TraceSessions(m)
+	// cure-01-01-2 (R133): heal m.interactiveScrollOffset against the
+	// grid's REAL current scrollback length on every message, not only
+	// inside scrollInteractiveByLines/Page (cure-01-01's narrower fix).
+	// Nothing notifies Update when a resize reseeds the grid with a
+	// shorter or empty real history, or when interactive_transport =
+	// capture's poll loop replaces it wholesale with a visible-only
+	// re-seed -- both change what RenderRows would clamp to without
+	// either scroll helper ever running, so the ONLY reliable place left
+	// to catch a stored offset gone stale-high that way is whatever
+	// message happens to arrive next. healInteractiveScrollOffsetFromRender
+	// is itself a no-op whenever m.interactive is false or no live grid
+	// with a real emulator is installed, so this never snaps an offset
+	// that has nothing real to clamp against.
+	m = m.healInteractiveScrollOffsetFromRender()
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
