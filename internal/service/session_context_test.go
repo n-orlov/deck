@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"os/exec"
 	"strings"
 	"testing"
@@ -267,5 +268,71 @@ func TestSessionContextEnvExportsGroupNotWorkspace(t *testing.T) {
 	}
 	if _, present := env["DECK_SESSION_WORKSPACE"]; present {
 		t.Fatalf("DECK_SESSION_WORKSPACE unexpectedly present on a grouped session: %q", env["DECK_SESSION_WORKSPACE"])
+	}
+}
+
+// TestNotificationSessionPayloadCarriesGroupNotWorkspace is task 008's
+// (R128) dedicated unit evidence for the second half of the same rename:
+// SPEC section 10.1's payload field. It asserts the rendered JSON -- the
+// shape a body template actually sees -- carries `group` holding
+// store.Session.GroupName verbatim (empty for a session with no group, the
+// recorded name for one whose group_id resolved), and that no `workspace`
+// key survives anywhere in the payload, neither as the old name nor as an
+// alias beside the new one. The field names are checked through
+// encoding/json rather than the Go field, because the json tags are what
+// section 10.1 documents as the versioned payload.
+func TestNotificationSessionPayloadCarriesGroupNotWorkspace(t *testing.T) {
+	decode := func(t *testing.T, payload NotificationSession) map[string]any {
+		t.Helper()
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("marshal payload: %v", err)
+		}
+		if strings.Contains(string(encoded), "workspace") {
+			t.Fatalf("rendered payload %s still mentions workspace -- the old field name must be gone, not aliased", encoded)
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			t.Fatalf("unmarshal payload %s: %v", encoded, err)
+		}
+		if _, present := fields["workspace"]; present {
+			t.Fatalf("payload field workspace unexpectedly present: %v", fields["workspace"])
+		}
+		return fields
+	}
+
+	defaultSession := store.Session{ID: "s1", Name: "n1", CWD: "/work/a", Agent: "shell", Status: "idle"}
+	fields := decode(t, NotificationSessionPayload(defaultSession, false))
+	group, present := fields["group"]
+	if !present || group != "" {
+		t.Fatalf("payload group for a groupless session = %v (present %v), want present and empty (the implicit default group)", group, present)
+	}
+
+	groupedSession := store.Session{ID: "s2", Name: "n2", CWD: "/work/b", Agent: "claude", Status: "waiting", StatusReason: "prompt", PermissionProfile: "safe", GroupName: "sprint work"}
+	fields = decode(t, NotificationSessionPayload(groupedSession, true))
+	if fields["group"] != "sprint work" {
+		t.Fatalf("payload group for a named group = %v, want %q", fields["group"], "sprint work")
+	}
+
+	// The rest of section 10.1's session fields are asserted here too, so a
+	// future edit cannot satisfy the rename by dropping neighbouring
+	// fields: name, cwd, agent, status, reason, permission_profile, group,
+	// important -- exactly eight, no more.
+	for key, want := range map[string]any{
+		"name":               "n2",
+		"cwd":                "/work/b",
+		"agent":              "claude",
+		"status":             "waiting",
+		"reason":             "prompt",
+		"permission_profile": "safe",
+		"group":              "sprint work",
+		"important":          true,
+	} {
+		if got, present := fields[key]; !present || got != want {
+			t.Fatalf("payload field %s = %v (present %v), want %v", key, got, present, want)
+		}
+	}
+	if len(fields) != 8 {
+		t.Fatalf("payload has %d session fields (%v), want exactly section 10.1's eight", len(fields), fields)
 	}
 }
