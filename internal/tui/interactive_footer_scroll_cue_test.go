@@ -97,7 +97,7 @@ func TestInteractiveFooterCueReportsTheClampedScrolledBackPosition(t *testing.T)
 	// interactive_scroll_heal_test.go's own fixture -- set directly so
 	// this test exercises the heal regardless of scrollInteractiveByLines'
 	// own separate clamp.
-	got.interactiveScrollOffset = interactive.ScrollbackMaxLines
+	got.setInteractiveScrollOffset(interactive.ScrollbackMaxLines)
 
 	footer := footerLineOf(got.View())
 
@@ -156,12 +156,12 @@ func TestInteractiveFooterCueTopOfScrollbackWordingDiffersFromOrdinary(t *testin
 	// Ordinary case: scrolled back, but not all the way -- one line short
 	// of the top.
 	ordinary := got
-	ordinary.interactiveScrollOffset = realScrollbackLen - 1
+	ordinary.setInteractiveScrollOffset(realScrollbackLen - 1)
 	ordinaryFooter := footerLineOf(ordinary.View())
 
 	// Top-of-scrollback case: scrolled back exactly to the real length.
 	atTop := got
-	atTop.interactiveScrollOffset = realScrollbackLen
+	atTop.setInteractiveScrollOffset(realScrollbackLen)
 	topFooter := footerLineOf(atTop.View())
 
 	if ordinaryFooter == topFooter {
@@ -201,8 +201,8 @@ func TestInteractiveFooterAtLiveBottomRendersNoCueAndMatchesPreChangeFooter(t *t
 	}
 	defer got.exitInteractive()
 
-	if got.interactiveScrollOffset != 0 {
-		t.Fatalf("test assumption violated: interactiveScrollOffset = %d at entry, want 0 (the live bottom)", got.interactiveScrollOffset)
+	if got.interactiveScrollOffset() != 0 {
+		t.Fatalf("test assumption violated: interactiveScrollOffset = %d at entry, want 0 (the live bottom)", got.interactiveScrollOffset())
 	}
 
 	footer := footerLineOf(got.View())

@@ -304,7 +304,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	m.interactiveOwnership = ownership
 	m.interactiveGrid = grid
 	m.interactiveDispatcher = dispatcher
-	m.interactiveScrollOffset = 0
+	m.setInteractiveScrollOffset(0)
 	m.attachError = ""
 	return m, nil
 }
@@ -437,7 +437,7 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	m.interactiveOwnership = nil
 	m.interactiveGrid = nil
 	m.interactiveDispatcher = nil
-	m.interactiveScrollOffset = 0
+	m.setInteractiveScrollOffset(0)
 	// steer 018 item 4 / SPEC §11: RestoreWindowGeometry above just put the
 	// window back at its PRE-entry size, which is not generally the preview
 	// panel's own current content size -- previewFit's own coalescing
@@ -490,12 +490,12 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// interactiveAltNamedKeys documents) writes no bytes at all and
 		// must leave a scrolled-back view exactly where it was, not snap
 		// it to the bottom for a keystroke nobody's pane ever saw.
-		m.interactiveScrollOffset = 0
+		m.setInteractiveScrollOffset(0)
 		_ = m.interactiveDispatcher.SendNamedKey(ctx, named)
 		return m, nil
 	}
 	if payload, ok := interactiveLiteralPayload(msg); ok {
-		m.interactiveScrollOffset = 0
+		m.setInteractiveScrollOffset(0)
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
 	}
 	return m, nil
@@ -543,20 +543,24 @@ func (m Model) previewContentSize() (width, height int) {
 // scrollInteractiveByLines/scrollInteractiveByPage cannot see, since they
 // only clamp to [0, interactive.ScrollbackMaxLines] (interactive_scroll.go).
 // This used to be discarded (`lines, _ := ...`), which let
-// m.interactiveScrollOffset sit far past the real length while the view
+// the stored offset sit far past the real length while the view
 // was actually pinned at the top of scrollback. Healing it back onto the
 // model here, right after the call that knows the true bound, fixes that
 // AND the notice check two lines down for free: the II-49 "not
 // repainted" notice is gated on `offset == 0`, so a stale-high stored
 // offset used to suppress it even while looking at a genuinely blank live
-// screen. This heals the receiver's own copy of the field -- a pointer
-// receiver, so a caller holding an addressable Model (a test, or a
-// render-path copy mid-call) observes the healed value for the rest of
-// THIS call; R133 part 2 (the scrolled-back cue itself) and R135 read
-// the same healed field.
+// screen.
+//
+// cure-01-01-2: the heal is stored through setInteractiveScrollOffset,
+// which writes the SHARED cell every copy of this Model points at
+// (interactiveScrollState, interactive_scroll.go), so it is no longer
+// confined to this call at all -- rendering alone now heals the position
+// the next input event starts from, even when no Update runs in between
+// (the resize / visible-only-reseed case). R133 part 2 (the scrolled-back
+// cue itself) and R135 read that same stored position.
 func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
-	lines, usedOffset := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
-	m.interactiveScrollOffset = usedOffset
+	lines, usedOffset := m.interactiveGrid.RenderRows(m.interactiveScrollOffset(), contentHeight)
+	m.setInteractiveScrollOffset(usedOffset)
 	// R93/task 206: mark an in-progress drag-to-copy selection, if any,
 	// before the not-repainted check below -- highlightInProgressSelection
 	// only ever adds self-closing SGR spans around existing content, so
@@ -570,10 +574,10 @@ func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string,
 	// definition real content that once appeared on screen, so it is never
 	// blank in the sense this check means, and showing the announcement
 	// over genuine history would misreport "nothing has happened yet" while
-	// looking straight at something that did. m.interactiveScrollOffset is
-	// the HEALED value from above, so a stale-high stored offset can no
+	// looking straight at something that did. m.interactiveScrollOffset()
+	// is the HEALED value from above, so a stale-high stored offset can no
 	// longer suppress this while the real, clamped position is 0.
-	notice := m.interactiveScrollOffset == 0 && interactiveGridIsBlank(lines)
+	notice := m.interactiveScrollOffset() == 0 && interactiveGridIsBlank(lines)
 	return fitInteractiveBodyLines(lines, contentHeight, notice)
 }
 

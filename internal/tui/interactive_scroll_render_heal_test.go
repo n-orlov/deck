@@ -1,40 +1,29 @@
-// interactive_scroll_render_heal_test.go is cure-01-01-2's own red-first
-// proof (PRD phase4b, GH #30, review finding filed at
+// interactive_scroll_render_heal_test.go is cure-01-01-2's own regression
+// for R133 (PRD phase4b, GH #30), filed against the review finding
 // artifacts/review2/tui-reviewer-prd-test.go's
-// TestReviewerScrollHealAfterVisibleOnlyReseed): cure-01-01
-// (interactive_scroll_persist_test.go) healed the stored offset back
-// onto the model bubbletea keeps between Update calls, but ONLY from
-// inside scrollInteractiveByLines/Page themselves. Anything ELSE that
-// changes the grid's real scrollback length -- a resize that reseeds it
-// with a shorter or empty real history, or (interactive_transport =
-// capture) a background poll that replaces the grid wholesale with a
-// visible-only re-seed -- left the stored offset stale-high until the
-// next scroll command happened to heal it, which could be arbitrarily
-// long after (or never, if the user's next input forwards bytes
-// instead).
+// TestReviewerScrollHealAfterVisibleOnlyReseed and kept in that
+// reproducer's exact shape: a real interactive session, scrolled into
+// history, whose history is then replaced by a visible-only seed, then
+// RENDERED -- with nothing at all in between the render and the check.
 //
-// The review's own reproducer asserted m.interactiveScrollOffset == 0
-// directly after calling m.View() on the very same, already-addressable
-// model -- something no value-receiver method can ever do, in any Go
-// program, since View() (and everything in its call chain: mainView,
-// renderStackedFrame/renderSideBySideFrame, previewBodyLines,
-// interactiveBodyLines's own pointer-receiver heal included) only ever
-// mutates ITS OWN copy of the receiver, discarded the instant the call
-// returns; interactive_footer_scroll_cue_test.go's own doc comment
-// already documents this for the footer text specifically. Proving the
-// FIX (rather than re-demonstrating that same impossibility) means
-// observing the healed value the one way Go actually allows a method to
-// hand state back to its caller: through the MODEL A CALL RETURNS, the
-// same pattern every other test in this package already uses
-// (`next, _ := m.Something(); m = next.(Model)`).
+// cure-01-01 (interactive_scroll_persist_test.go) healed the stored
+// offset only from inside scrollInteractiveByLines/Page, and this file's
+// first attempt healed it only from the top of Update; both left the gap
+// the finding names, because nothing runs either one when a resize
+// reseeds the grid with a shorter or empty real history, or when
+// interactive_transport = capture's poll loop replaces the grid
+// wholesale from a visible-only re-seed. The offset RENDERING actually
+// used (RenderRows' own clamp against the grid's real scrollback length)
+// was written onto whichever value-receiver copy of Model happened to be
+// on the stack -- View's, mainView's, previewBodyLines',
+// interactiveBodyLines' -- and died with it.
 //
-// The fix itself (interactive_scroll.go's
-// healInteractiveScrollOffsetFromRender, called both from
-// scrollInteractiveByLines and from the top of Update in tui.go) runs
-// the heal on EVERY Update call while m.interactive is true, not only
-// inside the two scroll helpers -- which is exactly what this test
-// drives with a deliberately unrelated, unrecognised message type
-// instead of another scroll command.
+// The fix stores that position in ONE cell every copy of Model points at
+// (interactiveScrollState in interactive_scroll.go, reached through
+// m.interactiveScrollOffset()/m.setInteractiveScrollOffset()), so the
+// clamped position a render used IS the stored position afterwards, with
+// no Update needed in between, and scrollInteractiveByLines steps from
+// that healed position rather than from the stale request.
 package tui
 
 import (
@@ -57,7 +46,7 @@ import (
 // unrelated reason.
 type interactiveScrollHealNoOpMsg struct{}
 
-func TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate(t *testing.T) {
+func TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 100, 30
 	socket := selectionTestSocket("scrollheal-reseed")
@@ -82,8 +71,9 @@ func TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate(t *te
 	// reseed below wipes it out from under that position.
 	next, _ = m.scrollInteractiveByLines(interactive.ScrollbackMaxLines)
 	m = next.(Model)
-	if m.interactiveScrollOffset < 2 {
-		t.Fatalf("fixture pane has no real history to scroll into: stored=%d", m.interactiveScrollOffset)
+	scrolled := m.interactiveScrollOffset()
+	if scrolled < 2 {
+		t.Fatalf("fixture pane has no real history to scroll into: stored=%d", scrolled)
 	}
 
 	// A history-changing resize: the same fresh, visible-only grid
@@ -100,22 +90,13 @@ func TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate(t *te
 		t.Fatalf("test assumption violated: resize left %d lines of real scrollback, want 0", real)
 	}
 
-	// Render: interactiveBodyLines' own heal (R133 part 1) makes THIS
-	// call's footer correct already, on its own value-receiver copy,
-	// regardless of what the persisted model still says.
+	// Render, and nothing else: no scroll command, no Update, no second
+	// call of any kind between the render and the two checks below.
 	if footer := footerLineOf(m.View()); strings.Contains(footer, "not live") {
 		t.Fatalf("footer still claims scrolled-back/not-live against a freshly reseeded, empty grid: %q", footer)
 	}
-
-	// The NEXT input event -- deliberately an unrelated, unrecognised
-	// message, never another scroll command -- must start from the
-	// healed position: the model Update hands back for it must already
-	// carry interactiveScrollOffset == 0, the real (empty) scrollback
-	// length RenderRows now clamps to, not the pre-reseed stored value.
-	next, _ = m.Update(interactiveScrollHealNoOpMsg{})
-	m = next.(Model)
-	if m.interactiveScrollOffset != 0 {
-		t.Fatalf("stored offset after the next Update call = %d, want 0 (healed against the reseeded grid's real, empty scrollback) -- the heal must not depend on a scroll command", m.interactiveScrollOffset)
+	if stored := m.interactiveScrollOffset(); stored != 0 {
+		t.Fatalf("stored position after the render = %d (real scrollback is %d, pre-reseed stored was %d), want 0 -- the offset RENDERING used must BE the stored position, with no Update needed to heal it", stored, m.interactiveGrid.Grid().ScrollbackLen(), scrolled)
 	}
 
 	// Subsequent ordinary output creates NEW, short history; one line
@@ -124,33 +105,78 @@ func TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate(t *te
 	if _, err := m.interactiveGrid.Grid().Write([]byte(strings.Repeat("new output after reseed\r\n", h+8))); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	newReal := m.interactiveGrid.Grid().ScrollbackLen()
+	if newReal < 2 {
+		t.Fatalf("test assumption violated: the new output left %d lines of real scrollback, want at least 2 so offset 1 is distinguishable from the new maximum", newReal)
+	}
 	next, _ = m.scrollInteractiveByLines(1)
 	m = next.(Model)
-	if m.interactiveScrollOffset != 1 {
-		t.Fatalf("one line back after the reseed = %d, want 1; footer=%q", m.interactiveScrollOffset, footerLineOf(m.View()))
+	if stored := m.interactiveScrollOffset(); stored != 1 {
+		t.Fatalf("one line back after the reseed = %d, want 1 (never the pre-reseed %d, never the new maximum %d); footer=%q", stored, scrolled, newReal, footerLineOf(m.View()))
+	}
+}
+
+// TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween
+// covers the OTHER order: the grid's real scrollback length changes and
+// the next thing to happen is an ordinary message, with no render at all
+// in between. Update's own top-of-function heal (tui.go) is what catches
+// that one, so the position the message's own handling starts from is
+// already clamped against the reseeded grid.
+func TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	socket := selectionTestSocket("scrollheal-update")
+	newShellPaneWithHistory(t, socket, "deck_scrollheal-update", 80, 10, 100)
+	m.tmuxClient = tmux.Client{Socket: socket}
+	m.sessions = []store.Session{{ID: "reseed-2", Name: "scrollheal-update", Slug: "scrollheal-update", Status: "waiting"}}
+
+	next, _ := m.enterInteractive()
+	m = next.(Model)
+	if !m.interactive || m.interactiveGrid == nil {
+		t.Fatalf("entry refused: %s", m.attachError)
+	}
+	defer m.exitInteractive()
+
+	next, _ = m.scrollInteractiveByLines(interactive.ScrollbackMaxLines)
+	m = next.(Model)
+	if m.interactiveScrollOffset() < 2 {
+		t.Fatalf("fixture pane has no real history to scroll into: stored=%d", m.interactiveScrollOffset())
+	}
+
+	w, h := m.previewContentSize()
+	if err := m.interactiveGrid.Resize(context.Background(), w, h, func(context.Context) ([]byte, error) {
+		return []byte("\x1b[2J\x1b[H"), nil
+	}); err != nil {
+		t.Fatalf("resize: %v", err)
+	}
+
+	next, _ = m.Update(interactiveScrollHealNoOpMsg{})
+	m = next.(Model)
+	if stored := m.interactiveScrollOffset(); stored != 0 {
+		t.Fatalf("stored position after the next Update call = %d, want 0 (healed against the reseeded grid's real, empty scrollback) -- the heal must not depend on a scroll command", stored)
 	}
 }
 
 // TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched
-// guards the new, broadened call site (the top of Update in tui.go)
-// against the exact over-broad heal
+// guards the broadened call sites (the top of Update in tui.go, and the
+// render's own store) against the exact over-broad heal
 // TestInteractiveDispatcherNilDoesNotSnapStoredOffset already guards
 // scrollInteractiveByLines/Page against: healInteractiveScrollOffsetFromRender
 // must stay a no-op whenever m.interactive is false, or m.interactive is
 // true with no live grid installed at all -- never a blanket zeroing of
-// whatever m.interactiveScrollOffset already holds.
+// whatever the stored position already holds.
 func TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
-	m.interactiveScrollOffset = 42
+	m.setInteractiveScrollOffset(42)
 
 	next, _ := m.Update(interactiveScrollHealNoOpMsg{})
-	if got := next.(Model).interactiveScrollOffset; got != 42 {
-		t.Fatalf("non-interactive model: Update healed interactiveScrollOffset to %d, want it untouched at 42", got)
+	if got := next.(Model).interactiveScrollOffset(); got != 42 {
+		t.Fatalf("non-interactive model: Update healed the stored offset to %d, want it untouched at 42", got)
 	}
 
 	m.interactive = true
 	next, _ = m.Update(interactiveScrollHealNoOpMsg{})
-	if got := next.(Model).interactiveScrollOffset; got != 42 {
-		t.Fatalf("interactive model with no live grid: Update healed interactiveScrollOffset to %d, want it untouched at 42", got)
+	if got := next.(Model).interactiveScrollOffset(); got != 42 {
+		t.Fatalf("interactive model with no live grid: Update healed the stored offset to %d, want it untouched at 42", got)
 	}
 }

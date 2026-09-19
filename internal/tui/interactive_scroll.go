@@ -14,6 +14,64 @@ import (
 // per notch" convention for the same reason).
 const interactiveWheelStepLines = 3
 
+// interactiveScrollState is the one place PRD II-51's scrollback position
+// is actually stored, pointed at by Model.interactiveScroll and therefore
+// SHARED by every copy Bubble Tea's value-receiver dance makes of that
+// Model.
+//
+// The sharing is the whole point (R133, cure-01-01-2). The offset a frame
+// actually renders with is not knowable outside the render: RenderRows
+// (internal/interactive/grid.go) clamps the requested offset against the
+// grid's REAL current scrollback length, a bound that changes without
+// anything on this side being told -- a resize reseeds the grid with a
+// shorter or empty history, and under interactive_transport = capture the
+// poll loop replaces it wholesale from a visible-only re-seed. With the
+// offset kept as a plain int FIELD, the clamped value RenderRows returned
+// could only ever be written onto whichever value-receiver copy of Model
+// happened to be on the stack -- View's, mainView's, previewBodyLines',
+// interactiveBodyLines' -- every one of them discarded the moment the
+// render returned, so the position the NEXT input event started from was
+// whatever stale, unclamped number the last Update happened to leave
+// behind. Storing it in a cell every copy points at means the heal
+// survives a render that is not followed by any Update at all: render
+// clamps, the cell holds the clamped value, and the next scroll steps
+// from exactly the position the operator was actually looking at.
+//
+// Read it through Model.interactiveScrollOffset() and write it through
+// Model.setInteractiveScrollOffset(); nothing outside those two touches
+// the field.
+type interactiveScrollState struct {
+	offset int
+}
+
+// interactiveScrollOffset reports the stored scrollback position: 0 is the
+// live bottom, a positive value is that many lines back into the grid's
+// own bounded scrollback. A Model with no cell installed at all (a bare
+// Model{} literal, as some of this package's own minimal test fixtures
+// build) has never scrolled anywhere, so it reads as the live bottom
+// rather than panicking.
+func (m Model) interactiveScrollOffset() int {
+	if m.interactiveScroll == nil {
+		return 0
+	}
+	return m.interactiveScroll.offset
+}
+
+// setInteractiveScrollOffset stores n as the scrollback position. The
+// receiver is a pointer purely so a Model that has no cell yet can be
+// given one (New installs one for every real model; a bare Model{} test
+// fixture has none) -- the STORE itself goes through the shared cell, so
+// it is visible to every other copy of the same model, including the
+// caller of whichever value-receiver method did the write. That is
+// exactly what makes a render's own heal outlive the render
+// (interactiveScrollState's doc above).
+func (m *Model) setInteractiveScrollOffset(n int) {
+	if m.interactiveScroll == nil {
+		m.interactiveScroll = &interactiveScrollState{}
+	}
+	m.interactiveScroll.offset = n
+}
+
 // scrollInteractiveByLines adjusts the interactive grid's own scroll
 // offset (PRD II-51) by delta lines: positive moves further back into
 // scrollback, negative moves toward the live bottom. It clamps to
@@ -40,7 +98,16 @@ func (m Model) scrollInteractiveByLines(delta int) (tea.Model, tea.Cmd) {
 	if !m.interactive || m.interactiveGrid == nil {
 		return m, nil
 	}
-	offset := m.interactiveScrollOffset + delta
+	// Step from the offset rendering actually USED, not from whatever was
+	// requested last: healInteractiveScrollOffsetFromRender re-clamps the
+	// stored position against the grid's real current scrollback length
+	// first, so "one line further back" after a resize or a visible-only
+	// reseed wiped the history out is offset 1 -- one line back from the
+	// live bottom the operator is genuinely looking at -- and never
+	// `stale + 1` collapsing onto whatever new maximum happens to exist by
+	// then (cure-01-01-2's second half).
+	m = m.healInteractiveScrollOffsetFromRender()
+	offset := m.interactiveScrollOffset() + delta
 	if offset < 0 {
 		offset = 0
 	}
@@ -48,31 +115,28 @@ func (m Model) scrollInteractiveByLines(delta int) (tea.Model, tea.Cmd) {
 		offset = interactive.ScrollbackMaxLines
 	}
 	// R133 part 2/cure-01-01-2: interactiveBodyLines (interactive.go, R133
-	// part 1) heals m.interactiveScrollOffset back to the offset RenderRows
+	// part 1) heals the stored offset back to the offset RenderRows
 	// actually used -- clamped against the grid's REAL scrollback length, a
-	// bound this function's own two clamps above cannot see -- but that
-	// heal lands on a value-receiver copy of the model several stack frames
-	// deep inside View(), discarded the instant that render call returns.
-	// Storing the bound-only offset above, then handing it straight to
+	// bound this function's own two clamps above cannot see. Storing the
+	// bound-only offset above, then handing it straight to
 	// healInteractiveScrollOffsetFromRender (below) before returning, runs
-	// that exact same real-length clamp on the model Update hands back --
-	// the one the next input event actually starts from -- so a stored
-	// offset left stale-high past the real scrollback length is caught and
-	// healed on THIS return, not merely re-computed and thrown away on the
-	// next render. The [0, interactive.ScrollbackMaxLines] clamp above is
-	// left exactly as it was; healInteractiveScrollOffsetFromRender only
-	// clamps further, the same way RenderRows itself always has.
-	m.interactiveScrollOffset = offset
+	// that exact same real-length clamp right now rather than waiting for
+	// the next render, so a request past the real length is stored as the
+	// position it will actually be shown at. The
+	// [0, interactive.ScrollbackMaxLines] clamp above is left exactly as it
+	// was; healInteractiveScrollOffsetFromRender only clamps further, the
+	// same way RenderRows itself always has.
+	m.setInteractiveScrollOffset(offset)
 	m = m.healInteractiveScrollOffsetFromRender()
 	return m, nil
 }
 
-// healInteractiveScrollOffsetFromRender re-derives m.interactiveScrollOffset
-// against the grid's REAL current scrollback length -- exactly the clamp
-// RenderRows itself applies (interactiveBodyLines' own comment) -- and
-// returns the healed copy, so a caller that assigns the result back onto
-// the model bubbletea keeps between calls carries the healed value
-// forward, not merely a render-local one.
+// healInteractiveScrollOffsetFromRender re-derives the stored scroll
+// offset against the grid's REAL current scrollback length -- exactly the
+// clamp RenderRows itself applies (interactiveBodyLines' own comment) --
+// and returns the healed model. Because the offset lives in a shared cell
+// (interactiveScrollState above), the healed value is visible to every
+// copy of this Model, not merely to whoever assigns the return value.
 //
 // cure-01-01 (interactive_scroll_persist_test.go) first added this heal,
 // but ONLY inline inside scrollInteractiveByLines above: correct for a
@@ -83,25 +147,21 @@ func (m Model) scrollInteractiveByLines(delta int) (tea.Model, tea.Cmd) {
 // a shorter or empty real history, or (interactive_transport = capture)
 // a background visible-only reseed the poll loop applies wholesale, both
 // change what RenderRows would clamp to without either scroll helper ever
-// running. interactiveBodyLines (interactive.go, called from View) heals
-// its OWN copy of the model the instant a render happens, but View is a
-// value receiver several stack frames up (mainView, renderStackedFrame/
-// renderSideBySideFrame, previewBodyLines are too), so that heal never
-// reaches the model Update hands back either.
+// running.
 //
-// Calling this at the top of Update, for every message while m.interactive
-// is true, closes that gap: whatever changed the grid's real scrollback
-// length since the last time anything looked, the very next Update call --
-// regardless of what triggered it -- re-clamps and stores the result onto
-// the model it returns, so the NEXT input event after that starts from the
-// healed position, not a stale one.
+// Two further call sites close that gap. interactiveBodyLines'/mainView's
+// own store of RenderRows' used offset now lands in the shared cell, so a
+// plain RENDER heals the stored position even when no Update follows it at
+// all; and calling this at the top of Update, for every message while
+// m.interactive is true, catches a length change that nothing has
+// rendered since.
 //
 // Guarded exactly like interactiveBodyLines' own grid nil-check: a model
 // with m.interactive true but no live grid installed (or a grid installed
 // but never given a real emulator -- this package's own minimal test
 // fixtures build bare &interactive.Session{} values for that) has nothing
 // real to clamp against, so this is a no-op for either case, never a
-// blanket zeroing of whatever the field already holds.
+// blanket zeroing of whatever the position already holds.
 func (m Model) healInteractiveScrollOffsetFromRender() Model {
 	if !m.interactive || m.interactiveGrid == nil || m.interactiveGrid.Grid() == nil {
 		return m
@@ -110,8 +170,8 @@ func (m Model) healInteractiveScrollOffsetFromRender() Model {
 	if contentHeight <= 0 {
 		contentHeight = interactiveMinInnerRows
 	}
-	_, usedOffset := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
-	m.interactiveScrollOffset = usedOffset
+	_, usedOffset := m.interactiveGrid.RenderRows(m.interactiveScrollOffset(), contentHeight)
+	m.setInteractiveScrollOffset(usedOffset)
 	return m
 }
 

@@ -29,7 +29,7 @@ func footerAtWidth(width, offset int) string {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = width, 30
 	m.interactive = true
-	m.interactiveScrollOffset = offset
+	m.setInteractiveScrollOffset(offset)
 	return m.interactiveFooterLine()
 }
 

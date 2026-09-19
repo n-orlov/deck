@@ -24,7 +24,7 @@ func TestInteractivePressOnAlreadyTargetRowIsANoOp(t *testing.T) {
 	m.width, m.height = 100, 30
 	m.interactive = true
 	m.selected = 1
-	m.interactiveScrollOffset = 7
+	m.setInteractiveScrollOffset(7)
 	m.previewFitSessionID = "b1"
 	m.attachError = "sentinel"
 
@@ -41,8 +41,8 @@ func TestInteractivePressOnAlreadyTargetRowIsANoOp(t *testing.T) {
 	if !got.interactive || got.selected != 1 {
 		t.Fatalf("press on the already-interactive row changed selection/interactive state: %+v", got)
 	}
-	if got.interactiveScrollOffset != 7 || got.previewFitSessionID != "b1" {
-		t.Fatalf("press on the already-interactive row ran exitInteractive's own clearing (scrollOffset=%d previewFitSessionID=%q), want both untouched -- no leave, no re-enter, no resize", got.interactiveScrollOffset, got.previewFitSessionID)
+	if got.interactiveScrollOffset() != 7 || got.previewFitSessionID != "b1" {
+		t.Fatalf("press on the already-interactive row ran exitInteractive's own clearing (scrollOffset=%d previewFitSessionID=%q), want both untouched -- no leave, no re-enter, no resize", got.interactiveScrollOffset(), got.previewFitSessionID)
 	}
 	if got.attachError != "sentinel" {
 		t.Fatalf("press on the already-interactive row touched attachError: %q", got.attachError)
@@ -71,7 +71,7 @@ func TestInteractivePressOnADifferentSidebarRowRetargets(t *testing.T) {
 	m.width, m.height = 80, 9 // previewContentSize -> 41x6, below interactiveMinInnerRows
 	m.interactive = true
 	m.selected = 0
-	m.interactiveScrollOffset = 7
+	m.setInteractiveScrollOffset(7)
 	m.previewFitSessionID = "a1"
 
 	x, y := findRow(t, m, 1)
@@ -87,8 +87,8 @@ func TestInteractivePressOnADifferentSidebarRowRetargets(t *testing.T) {
 	if got.selected != 1 {
 		t.Fatalf("retargeting press left selected = %d, want 1", got.selected)
 	}
-	if got.interactiveScrollOffset != 0 || got.previewFitSessionID != "" {
-		t.Fatalf("retargeting press did not run exitInteractive's own clearing on the OLD session (scrollOffset=%d previewFitSessionID=%q), want both zeroed", got.interactiveScrollOffset, got.previewFitSessionID)
+	if got.interactiveScrollOffset() != 0 || got.previewFitSessionID != "" {
+		t.Fatalf("retargeting press did not run exitInteractive's own clearing on the OLD session (scrollOffset=%d previewFitSessionID=%q), want both zeroed", got.interactiveScrollOffset(), got.previewFitSessionID)
 	}
 	if got.interactive {
 		t.Fatalf("retargeting press left interactive mode on despite the floor refusal on the NEW session")
