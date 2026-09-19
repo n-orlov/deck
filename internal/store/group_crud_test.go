@@ -149,3 +149,61 @@ func TestRenameGroupUpdatesOneRowAndCarriesItsTwoMembers(t *testing.T) {
 		t.Fatalf("member GroupName after rename = %+v; want both = %q", got, "sprint delivery")
 	}
 }
+
+// TestGroupNameRejectsControlCharactersAnywhere proves the control-character
+// rule is positional-blind: a control character is refused whether it sits
+// inside the name or leads/trails it. Trimming must never quietly repair
+// "\nalpha" into "alpha" -- a group name renders verbatim in the sidebar
+// header and the settings editor, so a name carrying a control character is
+// rejected outright rather than stored as a different name than the operator
+// typed. Both the create and the rename path share validateGroupName, so
+// both are checked here.
+func TestGroupNameRejectsControlCharactersAnywhere(t *testing.T) {
+	home := t.TempDir()
+	s, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	existing, err := s.CreateGroup(ctx, "sprint work")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{
+		"\nalpha",      // leading newline (TrimSpace would have eaten it)
+		"\tbravo\t",    // leading and trailing tab
+		"charlie\n",    // trailing newline
+		"del\x7fta",    // interior DEL
+		"ech\x00o",     // interior NUL
+		" \recho\r\n ", // carriage returns amid real spaces
+		"\u0085next",   // NEL, a non-ASCII control rune
+	} {
+		if _, err := s.CreateGroup(ctx, name); err == nil || !strings.Contains(err.Error(), "control character") {
+			t.Fatalf("CreateGroup(%q) = %v; want a control-character error", name, err)
+		}
+		if err := s.RenameGroup(ctx, existing.ID, name); err == nil || !strings.Contains(err.Error(), "control character") {
+			t.Fatalf("RenameGroup(%q) = %v; want a control-character error", name, err)
+		}
+	}
+
+	// Nothing above was written, and the rename never landed.
+	groups, err := s.ListGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0].Name != "sprint work" {
+		t.Fatalf("ListGroups() = %+v; want the single untouched row %q", groups, "sprint work")
+	}
+
+	// Ordinary surrounding spaces are still trimmed, not rejected.
+	g, err := s.CreateGroup(ctx, "  tooling maintenance  ")
+	if err != nil {
+		t.Fatalf("CreateGroup with surrounding spaces = %v; want success", err)
+	}
+	if g.Name != "tooling maintenance" {
+		t.Fatalf("CreateGroup trimmed name = %q; want %q", g.Name, "tooling maintenance")
+	}
+}

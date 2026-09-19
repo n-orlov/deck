@@ -35,24 +35,28 @@ const GroupNameMaxLength = 32
 // identically to the structural default in every list and picker.
 const defaultGroupName = "default"
 
-// validateGroupName trims name, rejects it when empty or when it carries a
-// control character (a group name renders verbatim in the sidebar header and
-// the settings editor; a control character there could corrupt either
-// frame), rejects "default" in any case (SPEC §11: reserved for the
-// structural group_id IS NULL row), and enforces GroupNameMaxLength. It
-// returns the trimmed name callers should persist. Case-insensitive
-// uniqueness against other real groups is enforced by the groups.name
-// UNIQUE COLLATE NOCASE constraint (schemaV7) and translated into a plain
-// error by the caller, not re-checked here.
+// validateGroupName rejects name when it carries a control character
+// ANYWHERE -- including leading or trailing, which is why the scan runs on
+// the raw input before any trimming: a group name renders verbatim in the
+// sidebar header and the settings editor, and a control character there
+// could corrupt either frame, so a name carrying one is refused outright
+// rather than silently repaired into a different name than the operator
+// typed. It then trims surrounding spaces, rejects the result when empty,
+// rejects "default" in any case (SPEC §11: reserved for the structural
+// group_id IS NULL row), and enforces GroupNameMaxLength. It returns the
+// trimmed name callers should persist. Case-insensitive uniqueness against
+// other real groups is enforced by the groups.name UNIQUE COLLATE NOCASE
+// constraint (schemaV7) and translated into a plain error by the caller,
+// not re-checked here.
 func validateGroupName(name string) (string, error) {
-	trimmed := strings.TrimSpace(name)
-	if trimmed == "" {
-		return "", errors.New("group name is required")
-	}
-	for _, r := range trimmed {
+	for _, r := range name {
 		if unicode.IsControl(r) {
 			return "", fmt.Errorf("group name %q contains a control character", name)
 		}
+	}
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", errors.New("group name is required")
 	}
 	if strings.EqualFold(trimmed, defaultGroupName) {
 		return "", errors.New(`group name "default" is reserved`)
