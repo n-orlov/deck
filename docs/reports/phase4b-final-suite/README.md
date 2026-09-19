@@ -5,8 +5,9 @@ package list, run in the CI container at this task's launch sha.
 
 **Result at the launch sha: RED (exit 1).** One package, `features`, failed
 with two load-sensitive timeouts; every other package is green. The two red
-lanes are carved into new tasks and are deliberately NOT patched under this
-task — see [Red lanes](#red-lanes) below.
+lanes are deliberately NOT patched under this task; each is carved into a
+follow-up task of its own, plus a from-scratch re-sweep — see
+[Red lanes](#red-lanes) below.
 
 ## The gate run of record
 
@@ -113,11 +114,26 @@ stands as the result of record. A lane that is red on the gate IS red.
 Per this run's standing rule — "if a sweep finds a red lane and the fix is
 code, that fix is a NEW task and the sweep is re-run from scratch afterwards
 — never re-run under the task that found the red" — nothing was patched
-under task 021 and the gate was not re-run to chase a green. The cure of the
-two harness waits, and the fresh from-scratch gate at the cured sha, are
-carved into their own follow-up tasks (`021-cure-01`, `021-resweep-01`).
-This file is updated by that re-sweep task with the new sha and its exit
-status; until then the red result above is this phase's gate result.
+under task 021 and the gate was not re-run to chase a green. Three follow-up
+tasks carry the work instead, one per red lane plus the re-sweep:
+
+| task | carries |
+| --- | --- |
+| `021-cure-01` | the `kill_delete_undo.feature` create-step `starting` wait (red lane 1) |
+| `021-cure-02` | the `theme_geometry_test.go` settle comparison (red lane 2) |
+| `021-resweep-01` | the whole-suite gate re-run from scratch at the cured sha; depends on both cures |
+
+Those ids live in the run's own task state, not in this repo — the plan of
+record is the authority for their status, and this file claims nothing about
+whether they have run yet. An earlier revision of this section named two
+follow-ups (`021-cure-01`, `021-resweep-01`) as already carved while the
+harness had in fact refused that batch; the table above is the corrected
+request, with the theme-geometry cure split out so each task carries one
+lane.
+
+This file is updated in place by the re-sweep task with the new sha and its
+exit status; until then the red result above is this phase's gate result, and
+the superseded `baf92ed` log stays in the record as history.
 
 Note for the two sweeps that gate at "the sha task 021 gated"
 (`docs/reports/phase4b-guards`, `docs/reports/phase4b-stability10`): that sha
