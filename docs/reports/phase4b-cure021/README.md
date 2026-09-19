@@ -60,3 +60,59 @@ commit.
 re-run the whole-suite gate — that is 021-resweep-01's job, after this and
 021-cure-02 both land, per the standing rules ("a red lane a sweep finds
 becomes a new task and the gate is re-run from scratch afterwards").
+
+# Cure 021-cure-02 — theme_geometry_test.go's 100ms settle comparison
+
+**What was red**: the same gate log,
+`docs/reports/phase4b-final-suite/fullsuite-baf92ed.log`, also failed at
+`features/theme_geometry_test.go:185` (the `renderThemeFrame` call site;
+`t.Helper()` attributes the fatal there):
+
+```
+theme_geometry_test.go:185: theme "parchment" (ascii=true) frame kept changing after settling
+```
+
+`TestThemeChangesAttributesButNotFrameGeometry` stayed green when run in
+isolation at `baf92ed` — this only reproduced under the gate's own load
+(`go test -p=1 -count=1 ./...`, every package's tests running concurrently).
+
+**Root cause**: `renderThemeFrame`'s settle guard took exactly one 100ms
+sample pair — capture, sleep 100ms, capture again, fail if they differ. That
+is a fixed budget for "is the client still painting its start-up frame",
+and under host load (other packages' tests competing for CPU/scheduler
+time) 100ms is not always long enough for a legitimately-still-settling
+frame to finish painting. The old code could not tell that case apart from
+an actual "frame never stops changing" bug — it had exactly one sample pair
+to decide with.
+
+**Cure** (`features/theme_geometry_test.go` only, no other file touched):
+replaced the single sample-and-compare with a retry loop that keeps
+re-sampling every 100ms, accepting the frame the moment two *consecutive*
+samples agree, and only failing (same message, same meaning: "frame kept
+changing after settling") once `settleTimeout` (5s — far longer than any
+observed real settle time, short enough to still catch a genuinely
+never-stabilising frame) has passed without ever producing an agreeing
+pair. Every existing assertion in the file — the exact-content geometry
+check, the attribute-difference count, the ASCII colour check — is
+unchanged; only the settle guard's sampling budget changed, from one fixed
+sample pair to a bounded retry loop.
+
+**Evidence**: `ci/run.sh go test -count=1 -run
+TestThemeChangesAttributesButNotFrameGeometry ./features/` at the fix
+commit, exit 0:
+
+```
+ok  	github.com/n-orlov/deck/features	1.828s
+```
+(full log: `theme-geometry-run1.log`). Re-run 5 times sequentially, all exit
+0 (1.7-1.9s each, not separately logged beyond the first). Re-run 3 more
+times *concurrently* (three `go test` invocations launched together, to put
+the scheduler contention the gate itself produces back under the test) —
+all exit 0, full log of one of the three: `theme-geometry-load-run1.log`.
+
+`ci/run.sh gofmt -l features/theme_geometry_test.go` and `ci/run.sh go build
+./...` are both clean (no output) at the fix commit.
+
+**Scope**: only `features/theme_geometry_test.go` changed. 021-resweep-01
+(whole-suite gate, from scratch) is still open after this lands, per the
+same standing-rules sentence quoted above.

@@ -147,15 +147,28 @@ func renderThemeFrame(t *testing.T, binary, themeName, socket string, ascii bool
 	if err := driver.WaitForFrame(ctx, false, "No sessions yet"); err != nil {
 		t.Fatalf("theme %q (ascii=%v) never rendered its empty state: %v", themeName, ascii, err)
 	}
-	settled := captureFrameSnapshot(driver)
 	// Guard against a still-settling frame (e.g. a start-up banner that has
 	// not finished painting) being mistaken for the real, final render.
-	time.Sleep(100 * time.Millisecond)
-	after := captureFrameSnapshot(driver)
-	if fmt.Sprint(settled.content) != fmt.Sprint(after.content) {
-		t.Fatalf("theme %q (ascii=%v) frame kept changing after settling", themeName, ascii)
+	// A single 100ms sample-and-compare flakes under host load: the frame
+	// can still be legitimately painting at the 100ms mark, which is not
+	// proof of a bug, only proof that one sample was not enough. So keep
+	// re-sampling every 100ms until two consecutive samples agree, and only
+	// fail once settleTimeout has passed without ever producing an agreeing
+	// pair -- that is the actual "kept changing" bug this guards against.
+	const settleTimeout = 5 * time.Second
+	settled := captureFrameSnapshot(driver)
+	deadline := time.Now().Add(settleTimeout)
+	for {
+		time.Sleep(100 * time.Millisecond)
+		after := captureFrameSnapshot(driver)
+		if fmt.Sprint(settled.content) == fmt.Sprint(after.content) {
+			return after
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("theme %q (ascii=%v) frame kept changing after settling for %s", themeName, ascii, settleTimeout)
+		}
+		settled = after
 	}
-	return after
 }
 
 // TestThemeChangesAttributesButNotFrameGeometry is requirement 32: the same
