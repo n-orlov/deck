@@ -141,49 +141,6 @@ func TestSessionsLoadedPreservesSelectionByIDAcrossSortOrderChange(t *testing.T)
 	}
 }
 
-// TestSessionsLoadedGroupingComposesOrderWithinGroupOnly proves task
-// 305/309's grouping-composition rule: with group_by_workspace on and a
-// non-attention sort_order, the WITHIN-group row order follows the chosen
-// order, but WHICH group renders first still follows attention's own
-// "most urgent member leads" rule, exactly as it does today -- the new
-// sort_order feature never lets a name/created/activity choice reorder
-// the groups themselves.
-func TestSessionsLoadedGroupingComposesOrderWithinGroupOnly(t *testing.T) {
-	// Workspace "z-workspace" has no urgent member (idle); "a-workspace"
-	// has a waiting session, so it must lead despite its name sorting
-	// AFTER "z-workspace" alphabetically -- the fixture that would catch a
-	// group-order regression under sort_order "name".
-	sessions := []store.Session{
-		{ID: "z1", Name: "zulu-one", Agent: "shell", Status: "idle", GroupName: "z-workspace"},
-		{ID: "z2", Name: "zulu-two", Agent: "shell", Status: "idle", GroupName: "z-workspace"},
-		{ID: "a1", Name: "alpha-one", Agent: "shell", Status: "waiting", StatusAt: 500, GroupName: "a-workspace"},
-	}
-	model := New(nil, config.Settings{SortOrder: SortOrderName, GroupByWorkspace: true}, "")
-	updated, _ := model.Update(sessionsLoaded{sessions: sessions})
-	got := updated.(Model)
-
-	groups := got.groupSessions()
-	if len(groups) != 2 {
-		t.Fatalf("groupSessions() = %d groups, want 2 (full: %v)", len(groups), idsOf(got.sessions))
-	}
-	// Group order: a-workspace (has the waiting session) must lead,
-	// despite "a-workspace" < "z-workspace" being the SAME direction name
-	// order would also pick here -- swap the assertion's basis by
-	// asserting on urgency, not alphabetical accident: z-workspace's own
-	// two rows are idle, a-workspace's one row is waiting, and requirement
-	// 28 ranks waiting first, so this is attention's call, not name's.
-	if groups[0].Workspace != "a-workspace" {
-		t.Fatalf("group order = %v, want a-workspace (waiting) leading (today's attention-driven group order must survive a non-attention sort_order)",
-			[]string{groups[0].Workspace, groups[1].Workspace})
-	}
-	// Within z-workspace, rows must be in NAME order (zulu-one < zulu-two
-	// already agrees alphabetically with insertion order here, so also
-	// check the reverse-named case below for a real, non-vacuous proof).
-	if len(groups[1].Sessions) != 2 || groups[1].Sessions[0].Session.ID != "z1" || groups[1].Sessions[1].Session.ID != "z2" {
-		t.Fatalf("z-workspace rows = %v, want [z1 z2] under name order", groups[1].Sessions)
-	}
-}
-
 // TestSessionsLoadedGroupingWithinGroupOrderIsNonVacuous strengthens the
 // test above: the two same-workspace sessions are seeded so their
 // insertion/attention order DISAGREES with name order, proving the

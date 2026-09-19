@@ -1,26 +1,35 @@
 package tui
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 )
 
-// §11/§11.3 workspace grouping (SPEC requirement 30): the sidebar groups
-// rows by sessions.workspace, defaulting to the basename of cwd, and never
-// by any notion of repo. Each group has a collapsible header; collapsing a
-// group hides its member rows but leaves the sidebar otherwise navigable —
-// selection never lands on a hidden row.
+// §11/§11.3 manual groups (SPEC requirement 30, R128/R129): the sidebar
+// groups rows by sessions.group_id (via sessionWorkspace's group-key
+// seam), never by cwd or repo. Each group has a collapsible header;
+// collapsing a group hides its member rows but leaves the sidebar
+// otherwise navigable — selection never lands on a hidden row.
 //
-// This file only groups and tracks collapse state; it deliberately does not
-// re-order m.sessions (that is the attention sort, internal/tui/attention.go,
-// task 023) — grouping here preserves each session's existing relative
-// position, bucketed by workspace in order of each workspace's first
-// appearance. Wiring the attention sort's order into (or across) these
-// groups is left to whichever of tasks 025/026 first needs the sidebar's
-// fully-attention-ordered, grouped render; this task's own success
-// criteria only asks for the grouping and its collapse behaviour.
+// This file only groups and tracks collapse state; it deliberately does
+// not re-order m.sessions itself (that stays whichever of the attention
+// sort or [ui] sort_order is in force, internal/tui/attention.go and
+// sort_order.go) — grouping here preserves each session's existing
+// relative position, bucketed by group in order of each group's first
+// appearance, and rows within a bucket keep that same relative order
+// (SPEC §11: "Rows within a group follow the sort order"). What DOES
+// change here (task 011, R129) is which BUCKET renders first: groups sort
+// alphabetically, case-insensitively, with the implicit default group
+// always last regardless of where its name would otherwise sort —
+// deliberately not attention-ranked (the removed reorderPreservingGrouping
+// used to compose group order with attention; SPEC §11 states this
+// explicitly: "Group order is deliberately not attention-ranked... a list
+// whose headers reshuffle when a session starts waiting is a list you
+// cannot navigate from memory").
 
 // sessionWorkspace is internal/tui's one group-key accessor (task 007,
 // Tier 2 preparation; task 008, R128, rewired it to read the actual group
@@ -66,54 +75,15 @@ type sidebarGroup struct {
 	Sessions  []indexedSession
 }
 
-// reorderPreservingGrouping is task 305/309's (R53) answer to composing a
-// non-attention sort_order with SPEC requirement 30's workspace grouping:
-// which workspace group renders FIRST must keep following groupBasis's own
-// first-appearance order (in practice always the attention-sorted session
-// list -- "the group with the most urgent member leads", tui.go's
-// sessionsLoaded comment) regardless of which order the user picked, while
-// the ROWS within each workspace follow rowBasis (the chosen order) --
-// task 309's success criteria states this explicitly: "group order itself
-// unchanged from today's behavior". Both slices must hold exactly the same
-// set of sessions, only reordered differently; the result feeds
-// m.baseSessions so that groupSessions() itself (whose own
-// first-appearance rule is left untouched, per this file's package doc
-// comment) reproduces exactly this same bucket sequence and per-bucket row
-// order without needing to know anything about sort_order at all -- every
-// workspace's sessions land contiguously in the returned slice, in
-// rowBasis's relative order, and the contiguous blocks themselves are
-// ordered by groupBasis's first-appearance sequence.
-func reorderPreservingGrouping(groupBasis, rowBasis []store.Session) []store.Session {
-	workspacePriority := make(map[string]int)
-	for _, s := range groupBasis {
-		ws := sessionWorkspace(s)
-		if _, ok := workspacePriority[ws]; !ok {
-			workspacePriority[ws] = len(workspacePriority)
-		}
-	}
-	buckets := make(map[string][]store.Session, len(workspacePriority))
-	var order []string
-	seen := make(map[string]bool, len(workspacePriority))
-	for _, s := range rowBasis {
-		ws := sessionWorkspace(s)
-		if !seen[ws] {
-			seen[ws] = true
-			order = append(order, ws)
-		}
-		buckets[ws] = append(buckets[ws], s)
-	}
-	sort.SliceStable(order, func(i, j int) bool {
-		return workspacePriority[order[i]] < workspacePriority[order[j]]
-	})
-	out := make([]store.Session, 0, len(rowBasis))
-	for _, ws := range order {
-		out = append(out, buckets[ws]...)
-	}
-	return out
-}
-
-// groupSessions splits m.sessions into workspace groups (SPEC requirement
-// 30), ordered by each workspace's first appearance in m.sessions.
+// groupSessions splits m.sessions into groups (SPEC requirement 30):
+// sessions bucket by group (in order of each group's first appearance in
+// m.sessions, so a bucket's own row order preserves m.sessions' existing
+// relative order -- see this file's package doc comment), and the
+// resulting buckets are then themselves reordered by groupSortsBefore
+// (R129, task 011): alphabetical, case-insensitive, implicit default
+// always last. Splitting the two steps like this keeps groupSortsBefore
+// entirely ignorant of m.sessions/attention/sort_order -- it only ever
+// compares two group names.
 func (m Model) groupSessions() []sidebarGroup {
 	var groups []sidebarGroup
 	firstSeen := map[string]int{}
@@ -126,7 +96,31 @@ func (m Model) groupSessions() []sidebarGroup {
 		firstSeen[ws] = len(groups)
 		groups = append(groups, sidebarGroup{Workspace: ws, Sessions: []indexedSession{{Index: i, Session: session}}})
 	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		return groupSortsBefore(groups[i].Workspace, groups[j].Workspace)
+	})
 	return groups
+}
+
+// groupSortsBefore is R129's group ORDER rule (task 011): alphabetical,
+// case-insensitive, with the implicit default group (the empty
+// sessionWorkspace key) always sorting last regardless of where its
+// display name ("default") would otherwise land -- SPEC §11: "Order is
+// alphabetical, case-insensitive, with default always last regardless of
+// where its name would sort." This replaces the deleted
+// reorderPreservingGrouping's attention-ranked group order (R53) entirely
+// -- SPEC §11 states group order is "deliberately not attention-ranked":
+// a manual group is a stable place the user learns the position of, and a
+// list whose headers reshuffle when a session starts waiting is a list
+// you cannot navigate from memory.
+func groupSortsBefore(a, b string) bool {
+	if a == "" {
+		return false
+	}
+	if b == "" {
+		return true
+	}
+	return strings.ToLower(a) < strings.ToLower(b)
 }
 
 // groupingEnabled reports SPEC requirement 30/35's `[ui]
@@ -369,27 +363,38 @@ func (m Model) pageSelection(delta int) int {
 	return visible[pos]
 }
 
-// groupHeaderText renders one group's header line (SPEC requirement 30):
-// a collapse-state marker, the workspace name, and its representative cwd
-// (the first member session's, since every session in the default grouping
-// shares it — an explicit sessions.workspace can group different cwds under
-// one label, in which case this simply shows the first one seen). Like
-// sidebarRowLines' rows, this returns raw (untruncated, unpadded) text; the
-// sidebar's own render pipeline (sidebarContentLine's padTrunc) crops it to
-// the panel's actual content width, so there is exactly one place doing
-// that cell-aware cropping (task 019).
-func (m Model) groupHeaderText(group sidebarGroup) string {
+// groupHeaderText renders one group's header line (SPEC requirement 30,
+// rewritten for R129/task 011): a collapse-state marker, the group's name
+// ("default" for the implicit group), and its member count --
+// "<chevron> <name>  (<n>)", with an ASCII fallback for the chevron via
+// m.glyph. R129 drops the old workspace-derived header's representative-
+// cwd suffix entirely: a manual group's members can span any number of
+// directories, so one member's cwd next to the group name is noise, not
+// signal, the way it was when a group WAS a cwd-derived workspace.
+//
+// contentWidth is this header's own text budget -- the same contentWidth
+// every other sidebarEntries line already receives. SPEC §11: "Every
+// header carries its member count, including (0)" and "The name elides;
+// the count and the chevron never do" -- so only the name shrinks (via
+// elideToWidth) under a narrow sidebar; the chevron and "(n)" are budgeted
+// for FIRST and always emitted in full, even at SidebarWidthFloor, even
+// when that leaves no room at all for the name.
+func (m Model) groupHeaderText(group sidebarGroup, contentWidth int) string {
 	marker := m.glyph("\u25be", "v") // expanded
 	if m.isGroupCollapsed(group.Workspace) {
 		marker = m.glyph("\u25b8", ">") // collapsed
 	}
-	cwd := ""
-	if len(group.Sessions) > 0 {
-		cwd = group.Sessions[0].Session.CWD
+	name := group.Workspace
+	if name == "" {
+		name = "default"
 	}
-	text := marker + " " + group.Workspace
-	if cwd != "" {
-		text += "  " + cwd
+	count := fmt.Sprintf("(%d)", len(group.Sessions))
+	prefix := marker + " "
+	suffix := "  " + count
+	nameBudget := contentWidth - stringWidth(prefix) - stringWidth(suffix)
+	if nameBudget < 0 {
+		nameBudget = 0
 	}
-	return m.colorToken(theme.Group, text)
+	name = m.elideToWidth(name, nameBudget)
+	return m.colorToken(theme.Group, prefix+name+suffix)
 }
