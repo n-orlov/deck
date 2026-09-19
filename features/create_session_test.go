@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -26,6 +27,9 @@ func registerCreateSessionCWDPrefillSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has cwd exactly the directory labelled "([^"]+)"$`, sessionHasCWDExactlyLabelled)
 	sc.Step(`^deck client "([^"]+)" presses "(up|down|ctrl\+p|ctrl\+n)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
 	sc.Step(`^deck client "([^"]+)" tabs to the cwd field$`, clientTabsToCWDField)
+	sc.Step(`^the state database has a group named "([^"]+)"$`, ensureGroupNamedExists)
+	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" into group "([^"]+)" with a fresh working directory labelled "([^"]+)"$`, clientCreatesShellSessionIntoGroupWithFreshCWDLabelled)
+	sc.Step(`^the state database session "([^"]+)" was created into group "([^"]+)"$`, sessionWasCreatedIntoGroup)
 }
 
 // namedDirectory returns the real path a prior step registered under
@@ -284,6 +288,176 @@ func sessionHasCWDExactlyLabelled(ctx context.Context, name, label string) error
 	}
 	if got != want {
 		return fmt.Errorf("session %q cwd = %q, want exactly %q", name, got, want)
+	}
+	return nil
+}
+
+// ensureGroupNamedExists backs "the state database has a group named"
+// (R130): creates the groups row directly, mirroring
+// attention_sort_test.go's own setSessionGroup precedent for seeding a
+// group ahead of the create modal's own "n" open, since R131's settings
+// section (which will eventually offer an in-dialog "n" to create one) is
+// a later task. ON CONFLICT DO NOTHING makes a second call for the same
+// name in the same scenario harmless.
+func ensureGroupNamedExists(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `INSERT INTO groups(name) VALUES(?) ON CONFLICT(name) DO NOTHING`, name); err != nil {
+		return fmt.Errorf("create group %q: %w", name, err)
+	}
+	return nil
+}
+
+// createModalCWDToGroupFieldDowns is the number of ↓ presses that move
+// create-modal focus from the cwd field (1) to the Group field task 016
+// appended last (createFieldRows' Agent/Permission profile/Launch args/
+// Env/Pre-launch/Post-destroy/Login shell rows sit in between, in that
+// order) -- mirroring ensureCreateModalAgent's own hardcoded 2-down
+// Name->Agent precedent, since this file is deliberately a black-box
+// observer of the released binary (see registerBlackBoxAssertionSteps)
+// and cannot import internal/tui's own createFieldCount.
+const createModalCWDToGroupFieldDowns = 8
+
+// clientCreatesShellSessionIntoGroupWithFreshCWDLabelled is
+// createShellSessionInLabelledCWD's R130 counterpart: it additionally
+// ensures the target group exists (ensureGroupNamedExists, since R131's
+// in-dialog "n" does not exist yet) and cycles the create modal's Group
+// field to it before submitting, so the persisted group_id can be
+// asserted against a session actually created through the dialog rather
+// than set directly on the row afterwards.
+func clientCreatesShellSessionIntoGroupWithFreshCWDLabelled(ctx context.Context, clientName, sessionName, group, label string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if err := ensureGroupNamedExists(ctx, group); err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(h.Home, "create-session-"+label)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create directory labelled %q: %w", label, err)
+	}
+	registerNamedDirectory(h, label, dir)
+	if err := client.Send("n"); err != nil {
+		return err
+	}
+	// Title-independent (F19), exactly like createShellSessionInLabelledCWD.
+	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
+		return err
+	}
+	if err := client.Send(sessionName); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.Send("\x1b[B" + dir); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := client.Send(strings.Repeat("\x1b[B", createModalCWDToGroupFieldDowns)); err != nil {
+		return err
+	}
+	time.Sleep(75 * time.Millisecond)
+	if err := cycleCreateModalGroupFieldTo(ctx, client, group); err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrame(ctx, false, "starting")
+}
+
+// cycleCreateModalGroupFieldTo assumes focus is already on the create
+// modal's Group field and presses right until its value reads want,
+// mirroring cycleCreateFieldToValue's identical Agent-field precedent
+// (features/agent_steps_test.go) but reading the frame rather than
+// counting presses against a known option order, since the Group cycle
+// order depends on which real groups a scenario created.
+func cycleCreateModalGroupFieldTo(ctx context.Context, client *ScreenDriver, want string) error {
+	marker := "Group: " + want + " (left/right cycles"
+	matchesMarker := func(frame string) bool {
+		return strings.Contains(dewrapCreateModalRowLabelled(frame, "Group: "), marker)
+	}
+	if matchesMarker(client.Frame(false)) {
+		return nil
+	}
+	for attempt := 0; attempt < 8; attempt++ {
+		if err := client.Send("\x1b[C"); err != nil { // right arrow
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+		if matchesMarker(client.Frame(false)) {
+			break
+		}
+	}
+	if _, err := client.WaitForFrameFunc(ctx, false, matchesMarker); err != nil {
+		return fmt.Errorf("cycle the create modal's Group field to %q: %w", want, err)
+	}
+	return nil
+}
+
+// dewrapCreateModalRowLabelled is dewrapCreateModalAgentRow's generic
+// counterpart (features/agent_steps_test.go): the create modal's dialog
+// box word-wraps a field's "value (left/right cycles: ...)" hint onto the
+// dialog's fixed content width, which can split "Group: " and its value
+// across two grid rows exactly like the Agent row -- see that function's
+// own doc comment for why a plain substring match across the joined frame
+// can never match there.
+func dewrapCreateModalRowLabelled(frame, label string) string {
+	lines := strings.Split(frame, "\n")
+	for i, line := range lines {
+		if !strings.Contains(line, label) {
+			continue
+		}
+		joined := stripDialogBoxBorder(line)
+		if i+1 < len(lines) {
+			joined += " " + stripDialogBoxBorder(lines[i+1])
+		}
+		return joined
+	}
+	return frame
+}
+
+// sessionWasCreatedIntoGroup asserts the sessions table's group_id column
+// for name resolves (via the groups table) to exactly the named group --
+// not merely that some group_id is set -- proving the create modal's
+// Group field selection reached the persisted row (R130).
+func sessionWasCreatedIntoGroup(ctx context.Context, name, group string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var got sql.NullInt64
+	if err := db.QueryRowContext(ctx, "SELECT group_id FROM sessions WHERE name = ?", name).Scan(&got); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("no session named %q in the state database", name)
+		}
+		return fmt.Errorf("observe group_id for session %q: %w", name, err)
+	}
+	if !got.Valid {
+		return fmt.Errorf("session %q group_id is NULL, want it to name group %q", name, group)
+	}
+	var wantID int64
+	if err := db.QueryRowContext(ctx, "SELECT id FROM groups WHERE name = ?", group).Scan(&wantID); err != nil {
+		return fmt.Errorf("look up group %q: %w", group, err)
+	}
+	if got.Int64 != wantID {
+		return fmt.Errorf("session %q group_id = %d, want %d (group %q)", name, got.Int64, wantID, group)
 	}
 	return nil
 }

@@ -182,6 +182,14 @@ type CreateSessionInput struct {
 	ResumePin string
 	// ResumeState is one of pinned|auto|fresh-once.
 	ResumeState string
+	// GroupID is SPEC §4/§11's manual group (R130) this session is created
+	// into, verbatim onto the sessions.group_id column -- nil for the
+	// structural default group, exactly as Session.GroupID's own doc
+	// comment describes for every later read. The create modal's Group
+	// field (internal/tui, R130) is the only populated caller today; every
+	// existing caller predating this task leaves it nil, the exact
+	// pre-task behaviour (group_id was always written NULL).
+	GroupID *int64
 }
 
 // Session is the identity information needed by callers immediately after a
@@ -468,12 +476,13 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
-		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
 		launchArgsJSON, envJSON, nullableString(input.PreLaunch), nullableString(input.PostDestroy), input.LoginShell,
-		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState)
+		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState,
+		nullableGroupID(input.GroupID))
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return Session{}, fmt.Errorf("session name %q already exists", input.Name)
@@ -494,6 +503,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
 		ConversationID: input.ConversationID,
 		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
+		GroupID: input.GroupID,
 	}, nil
 }
 
@@ -530,6 +540,17 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+// nullableGroupID turns a nil *int64 into a SQL NULL, mirroring
+// nullableString's identical purpose for CreateSessionInput.GroupID: NULL
+// is the structural default group (SPEC §11), never a sentinel value like
+// 0.
+func nullableGroupID(id *int64) any {
+	if id == nil {
+		return nil
+	}
+	return *id
 }
 
 // scanSession reads the extended Phase 1 create fields shared by ListSessions
