@@ -1754,6 +1754,99 @@ func TestSetLaunchInputsRejectsMissingSessionID(t *testing.T) {
 	}
 }
 
+// TestSetSessionGroupMovesOneRowAndDegradesToDefault is R130 part 2's own
+// store-level proof (SPEC §11): SetSessionGroup writes group_id verbatim
+// for a positive id, writes NULL (never a sentinel) for <= 0, round-trips
+// through GetSession/the groups LEFT JOIN, records a "set_group" event,
+// and touches only the one targeted row.
+func TestSetSessionGroupMovesOneRowAndDegradesToDefault(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	alpha, err := st.CreateGroup(ctx, "alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const idA, idB = "00000000-0000-4000-8000-0000000000a1", "00000000-0000-4000-8000-0000000000a2"
+	for _, id := range []string{idA, idB} {
+		if _, err := st.CreateSession(ctx, CreateSessionInput{
+			ID: id, Name: "group-move-" + id, CWD: "/work/" + id, Agent: "shell", CapturedPath: "/bin",
+			StatusAt: 1, CreatedAt: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := st.SetSessionGroup(ctx, idA, alpha.ID, "user", 10); err != nil {
+		t.Fatal(err)
+	}
+	gotA, err := st.GetSession(ctx, idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotA.GroupID == nil || *gotA.GroupID != alpha.ID {
+		t.Fatalf("session A's GroupID = %v, want %d (alpha)", gotA.GroupID, alpha.ID)
+	}
+	if gotA.GroupName != "alpha" {
+		t.Fatalf("session A's GroupName = %q, want %q", gotA.GroupName, "alpha")
+	}
+	gotB, err := st.GetSession(ctx, idB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotB.GroupID != nil {
+		t.Fatalf("session B's GroupID = %v after a move that never named it, want nil", gotB.GroupID)
+	}
+
+	events, err := st.ListEvents(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range events {
+		if e.SessionID == idA && e.Kind == "set_group" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no set_group event recorded for session A: %#v", events)
+	}
+
+	// Moving back to <= 0 clears group_id to NULL, never a sentinel value.
+	if err := st.SetSessionGroup(ctx, idA, 0, "user", 20); err != nil {
+		t.Fatal(err)
+	}
+	gotA, err = st.GetSession(ctx, idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotA.GroupID != nil {
+		t.Fatalf("session A's GroupID = %v after moving to default, want nil", gotA.GroupID)
+	}
+}
+
+// TestSetSessionGroupRejectsMissingSessionID mirrors every other Set*
+// mutator's input-validation shape.
+func TestSetSessionGroupRejectsMissingSessionID(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.SetSessionGroup(ctx, "", 1, "user", 1); err == nil {
+		t.Fatalf("expected an error for a missing session id")
+	}
+	if err := st.SetSessionGroup(ctx, "does-not-exist", 1, "user", 1); err == nil {
+		t.Fatalf("expected an error for a session that does not exist")
+	}
+}
+
 // TestListEventsOrdersNewestFirstAndCapsAtLimit is task 124's (I-9,
 // requirement 32) own proof for the `E` event log view's store half:
 // three orphan events are recorded with a strictly increasing "at" but in

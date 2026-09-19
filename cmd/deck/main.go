@@ -178,6 +178,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// editable launch inputs and marks the row launch_dirty, which only `R`
 	// clears once a relaunch has actually carried them into a live pane.
 	model = model.WithLaunchInputsSetter(sessions.SetLaunchInputs)
+	// R130 part 2's `i`-dialog-only `g` move-group picker (SPEC §11) is
+	// wired the same way and for the same reason: one narrow dependency,
+	// added without growing the positional chain above any further.
+	// Without this line the picker renders but every submit reports
+	// "moving a session's group is unavailable"; with it, Enter persists
+	// the chosen group_id (or clears it back to the structural default).
+	model = model.WithGroupMover(sessions.SetSessionGroup)
 	// Task 006/PRD R111-R112: wire task 002's shared availability probe
 	// (sessions.AvailableKinds, itself backed by internal/service's
 	// lookPathIn against the launch PATH) into task 005's seam, so the

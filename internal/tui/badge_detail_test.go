@@ -135,6 +135,13 @@ func TestDetailShowsSourceFrozenClockAgeAndStatusArtifacts(t *testing.T) {
 	exitStatus := 137
 	at := clock.Now().UnixMilli()
 	model := New(nil, config.Settings{Clock: clock}, "")
+	// This task's `g` group-move line (R130 part 2) added a new detail
+	// field, which -- like the create modal's own Group field in task 016
+	// -- pushes this fixture's long-crash-tail scenario past the default
+	// 24-row frame's dialogContentBudget. Widen the fixture's own terminal
+	// rather than the shared budget, the same fix task 016's own gotcha
+	// documents for the create modal.
+	model.width, model.height = 80, 30
 	model.sessions = []store.Session{{
 		Name: "diagnostic", Agent: "claude", Status: "error", StatusSource: "hook", StatusAt: at,
 		LastMessage: "the last assistant answer", PaneExitStatus: &exitStatus, CrashTail: "final output\nprocess killed",

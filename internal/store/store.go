@@ -1200,6 +1200,39 @@ func (s *Store) ClearLaunchDirty(ctx context.Context, sessionID string, at int64
 		`UPDATE sessions SET launch_dirty = 0 WHERE id = ?`)
 }
 
+// SetSessionGroup moves a session into a different group (SPEC §11,
+// R130 part 2): the `i` detail dialog's `g` picker calls this exactly the
+// way RenameSession moves a session's display name -- one targeted
+// UPDATE, recorded as an event in the same transaction
+// (mutateSessionWithEvent), never touching any other column.
+//
+// groupID <= 0 moves the session to the structural default group
+// (sessions.group_id = NULL, SPEC §11: "default is not a row"). A
+// positive groupID is written verbatim with no existence check, mirroring
+// CreateSessionInput.GroupID and schemaV7's own deliberate absence of a
+// foreign key (store.go:2330's comment on schemaV7 explains why): a
+// groupID naming a group deleted by another client between the picker's
+// fetch and this call is not this store's problem to catch -- the row
+// simply renders under default on the next load (SPEC §11's own dangling-
+// group_id rule), exactly the same graceful degrade every other group_id
+// write already gets.
+func (s *Store) SetSessionGroup(ctx context.Context, sessionID string, groupID int64, source string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	var groupIDArg any
+	payload := ""
+	if groupID > 0 {
+		groupIDArg = groupID
+		payload = strconv.FormatInt(groupID, 10)
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "group_id", "set_group", source, payload, at,
+		`UPDATE sessions SET group_id = ? WHERE id = ?`, groupIDArg)
+}
+
 // SetResumePin pins a session to resume a specific conversation id going
 // forward (resume_state=pinned), sticky across restarts until changed again.
 func (s *Store) SetResumePin(ctx context.Context, sessionID, conversationID, source string, at int64) error {

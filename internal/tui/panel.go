@@ -1342,6 +1342,11 @@ func (m Model) wheelScrollableOverlay() scrollableOverlayKind {
 		// Rename sits between help and detail in the key dispatch, and
 		// framedDialog gives it no viewport to scroll.
 		return overlayScrollNone
+	case m.movingGroup:
+		// The group-move picker sits between help and detail in the key
+		// dispatch (mirroring m.renaming exactly), and framedDialog gives
+		// it no viewport to scroll either.
+		return overlayScrollNone
 	case m.detail:
 		return overlayScrollDetail
 	case m.eventLogOpen:

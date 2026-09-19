@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 )
 
@@ -78,6 +79,19 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.launchInputsLoginShell = session.LoginShell
 			m.launchInputsNote = ""
 			m.launchInputsScroll = 0
+		}
+	case "g":
+		// R130 part 2 (SPEC §11): the group-move picker, reachable ONLY
+		// from inside `i` detail, exactly like "r"/"l" above. Collision
+		// checked against list-level g/G (top/bottom, tui.go's own
+		// visibleSessionIndices navigation): both are guarded by
+		// !m.detail, so there is no dispatch conflict with this case.
+		if len(m.sessions) > 0 {
+			session := m.sessions[m.selected]
+			m.movingGroup = true
+			m.moveGroupOptions = m.computeAvailableGroups()
+			m.moveGroupValue = sessionGroupID(session)
+			m.moveGroupNote = ""
 		}
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
@@ -272,6 +286,189 @@ func (m Model) styledRenameBody() string {
 	if m.renameNote != "" {
 		out = append(out, "")
 		colorWhole(theme.Error, m.renameNote)
+	}
+	return strings.Join(out, "\n")
+}
+
+// moveGroupCycleOptions returns the `g` move picker's full cycle order
+// (R130 part 2), mirroring createGroupCycleOptions exactly: every group in
+// m.moveGroupOptions (already alphabetical, case-insensitive --
+// store.ListGroups' own order), plus the structural default group
+// appended last, matching R129's sidebar order (default always sorts
+// after every real group, never among them, since it is not a row at all
+// -- store.Group's own doc comment).
+func (m Model) moveGroupCycleOptions() []store.Group {
+	options := make([]store.Group, 0, len(m.moveGroupOptions)+1)
+	options = append(options, m.moveGroupOptions...)
+	options = append(options, store.Group{ID: 0, Name: "default"})
+	return options
+}
+
+// moveGroupName resolves id against moveGroupCycleOptions, falling back to
+// "default" for 0 or for any id no longer present in the current cycle set
+// (e.g. another client deleted the group while this picker was open) --
+// SPEC §11's "a group_id that no longer resolves renders under default
+// rather than vanishing" applies here exactly as it does to a session row
+// (createGroupName's identical precedent).
+func (m Model) moveGroupName(id int64) string {
+	for _, g := range m.moveGroupCycleOptions() {
+		if g.ID == id {
+			return g.Name
+		}
+	}
+	return "default"
+}
+
+// updateMoveGroupDialog handles keys while the `g` group-move picker
+// (R130 part 2, reachable ONLY from inside the `i` detail dialog) is
+// open. It only ever cycles a locally-held candidate group id and, on
+// confirmation, persists it through m.groupMover; it never touches any
+// other column -- mirroring updateProfileSwitch's identical shape.
+func (m Model) updateMoveGroupDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	options := m.moveGroupCycleOptions()
+	cycle := func(delta int) {
+		idx := 0
+		for i, g := range options {
+			if g.ID == m.moveGroupValue {
+				idx = i
+				break
+			}
+		}
+		idx = (idx + delta + len(options)) % len(options)
+		m.moveGroupValue = options[idx].ID
+	}
+	if cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{Cycle: cycle},
+		Cancel: func() {
+			m.movingGroup = false
+			m.moveGroupNote = ""
+		},
+		Submit: m.submitGroupMove,
+	}); handled {
+		return m, cmd
+	}
+	return m, nil
+}
+
+// submitGroupMove dispatches the group-move picker's Enter (SPEC §11.4
+// submit) through m.groupMover (nil when no mover is wired, e.g. an
+// internal/tui-only test model), mutating the caller's local Model in
+// place and returning only the resulting tea.Cmd -- the same shape
+// submitRename/submitProfileSwitch already use.
+func (m *Model) submitGroupMove() tea.Cmd {
+	if m.groupMover == nil {
+		m.moveGroupNote = "moving a session's group is unavailable"
+		return nil
+	}
+	if len(m.sessions) == 0 {
+		return nil
+	}
+	session := m.sessions[m.selected]
+	sessionID, groupID := session.ID, m.moveGroupValue
+	mover := m.groupMover
+	return func() tea.Msg {
+		updated, err := mover(context.Background(), sessionID, groupID)
+		return sessionGroupMoved{session: updated, err: err}
+	}
+}
+
+// moveGroupView renders the `g` group-move picker: a single left/right
+// cycle field, mirroring profileSwitchView's shape exactly (task 020's
+// own precedent for a single-field cycle dialog -- the closest existing
+// analog to a move rather than a free-text edit).
+func (m Model) moveGroupView() string {
+	return m.framedDialog(m.styledMoveGroupBody())
+}
+
+// moveGroupBody builds moveGroupView's text before framedDialog's
+// box-width padTrunc touches it, split out for the same reason
+// profileSwitchBody/renameBody are: a test can assert the exact wording
+// without a terminal-rendering concern in between.
+func (m Model) moveGroupBody() string {
+	session := m.sessions[m.selected]
+	options := m.moveGroupCycleOptions()
+	names := make([]string, 0, len(options))
+	for _, g := range options {
+		names = append(names, g.Name)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Move %s to a different group\n\n", session.Name)
+	fmt.Fprintf(&b, "%s\n", m.detailField("Current group: ", m.moveGroupName(sessionGroupID(session))))
+	fmt.Fprintf(&b, "%s\n", m.detailField("New group:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.moveGroupName(m.moveGroupValue), strings.Join(names, ", "))))
+	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
+	if m.moveGroupNote != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.moveGroupNote)
+	}
+	return b.String()
+}
+
+// styledMoveGroupBody re-derives moveGroupBody's exact structure -- same
+// title/fields/footer/note order -- but colours each finished PHYSICAL
+// line rather than the logical one, exactly like styledProfileSwitchBody:
+// every string is wrapped via m.wrapDialogLines FIRST, so a colour token
+// can never straddle a word-wrap boundary wrapDialogLines has not drawn
+// yet. Token mapping is SPEC.md:1355: the title in `title`, the footer
+// legend's keys in `key` and the rest in `hint`, a failed-submit note in
+// `error`, and the "New group:" row (the only field this dialog ever lets
+// left/right cycle) carrying the same `selection` treatment a selected
+// list row does (renderCreateRowSegments, reused verbatim from
+// styledProfileSwitchBody's identical precedent) -- the "Current group:"
+// row is not a cycle target, so it renders through the ordinary unfocused
+// branch of the same helper.
+func (m Model) styledMoveGroupBody() string {
+	session := m.sessions[m.selected]
+	options := m.moveGroupCycleOptions()
+	names := make([]string, 0, len(options))
+	for _, g := range options {
+		names = append(names, g.Name)
+	}
+	wrap := m.wrapDialogLines
+	var out []string
+	colorWhole := func(tok theme.Token, line string) {
+		for _, l := range wrap(line) {
+			out = append(out, m.colorToken(tok, l))
+		}
+	}
+	colorField := func(label, value string, focused bool) {
+		for _, l := range wrap(label + value) {
+			var segs []settingsRowSegment
+			rest := l
+			if strings.HasPrefix(l, label) {
+				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+				rest = strings.TrimPrefix(l, label)
+			}
+			if rest != "" {
+				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+			}
+			if len(segs) == 0 {
+				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+			}
+			out = append(out, m.renderCreateRowSegments(focused, segs))
+		}
+	}
+	colorFooterLine := func(line string) {
+		for _, l := range wrap(line) {
+			fields := strings.Fields(l)
+			for i, f := range fields {
+				if cycleConfirmFooterKeyTokens[f] {
+					fields[i] = m.colorToken(theme.Key, f)
+				} else {
+					fields[i] = m.colorToken(theme.Hint, f)
+				}
+			}
+			out = append(out, strings.Join(fields, " "))
+		}
+	}
+
+	colorWhole(theme.Title, fmt.Sprintf("Move %s to a different group", session.Name))
+	out = append(out, "")
+	colorField("Current group: ", m.moveGroupName(sessionGroupID(session)), false)
+	colorField("New group:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.moveGroupName(m.moveGroupValue), strings.Join(names, ", ")), true)
+	out = append(out, "")
+	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	if m.moveGroupNote != "" {
+		out = append(out, "")
+		colorWhole(theme.Error, m.moveGroupNote)
 	}
 	return strings.Join(out, "\n")
 }
