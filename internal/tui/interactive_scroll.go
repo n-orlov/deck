@@ -47,6 +47,41 @@ func (m Model) scrollInteractiveByLines(delta int) (tea.Model, tea.Cmd) {
 	if offset > interactive.ScrollbackMaxLines {
 		offset = interactive.ScrollbackMaxLines
 	}
+	// R133 part 2: interactiveBodyLines (interactive.go, R133 part 1) heals
+	// m.interactiveScrollOffset back to the offset RenderRows actually used
+	// -- clamped against the grid's REAL scrollback length, a bound this
+	// function's own two clamps above cannot see -- but that heal lands on
+	// a value-receiver copy of the model several stack frames deep inside
+	// View(), discarded the instant that render call returns. Nothing ever
+	// carries the healed value back onto the model bubbletea keeps between
+	// Update calls, so the NEXT input event still started from the raw,
+	// unhealed arithmetic above.
+	//
+	// Healing right here, before returning, fixes that: this is the model
+	// Update hands back to be the one the next input event starts from, so
+	// running the exact same clamp RenderRows itself applies -- and storing
+	// ITS result, not the bound-only offset above -- means a stored offset
+	// left stale-high past the real scrollback length is caught and healed
+	// on THIS return, not merely re-computed and thrown away on the next
+	// render. The [0, interactive.ScrollbackMaxLines] clamp above is left
+	// exactly as it was; this only clamps further, the same way RenderRows
+	// itself always has.
+	//
+	// Guarded on Grid() != nil rather than called unconditionally: a
+	// session with no emulator installed yet (this package's own minimal
+	// test fixtures build an &interactive.Session{} with nothing else set,
+	// exactly to exercise this dispatch without a real tmux server) has
+	// nothing real to clamp against, so this leaves the bound-only offset
+	// above untouched for that case rather than dereferencing a grid that
+	// was never installed.
+	if m.interactiveGrid.Grid() != nil {
+		_, contentHeight := m.previewContentSize()
+		if contentHeight <= 0 {
+			contentHeight = interactiveMinInnerRows
+		}
+		_, usedOffset := m.interactiveGrid.RenderRows(offset, contentHeight)
+		offset = usedOffset
+	}
 	m.interactiveScrollOffset = offset
 	return m, nil
 }
