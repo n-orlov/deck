@@ -4205,11 +4205,24 @@ func (m Model) mainView() string {
 	lines = append(lines, m.themeBanner(width)...)
 	lines = append(lines, m.sortOrderBanner(width)...)
 	lines = append(lines, m.themePickerLines(width)...)
+	var frame []string
+	var scrollOffset int
 	if layout.Effective == LayoutStacked {
-		lines = append(lines, m.renderStackedFrame(layout)...)
+		frame, scrollOffset = m.renderStackedFrame(layout)
 	} else {
-		lines = append(lines, m.renderSideBySideFrame(layout)...)
+		frame, scrollOffset = m.renderSideBySideFrame(layout)
 	}
+	lines = append(lines, frame...)
+	// The frame render above is the one call in this whole View() chain
+	// that actually invokes interactiveBodyLines (via previewBodyLines),
+	// which HEALS the scroll offset (R133 part 1) against the grid's real,
+	// current scrollback length -- but only on ITS OWN value-receiver copy
+	// of m, several stack frames deep, a copy this function's own m never
+	// sees mutated. Writing the returned, healed value back onto THIS m
+	// (still addressable -- it is mainView's own parameter) before
+	// footerLine runs below is what lets interactiveFooterLine's cue read
+	// the clamped position rather than the stale, unhealed field.
+	m.interactiveScrollOffset = scrollOffset
 	lines = append(lines, m.attachErrorLines(width)...)
 	lines = append(lines, m.resumeNoteLines(width)...)
 	lines = append(lines, m.selectionCopyNoteLines(width)...)
@@ -4311,12 +4324,72 @@ func (m Model) footerLineContent() string {
 // plainly that keystrokes are forwarded rather than interpreted, then
 // names the one bound exit chord, never listing a key (like `a` or `Y`)
 // that interactive mode does not itself bind.
+//
+// R133 part 2 prepends the scrolled-back position cue (interactiveScrollCue)
+// ahead of that unchanged base line, separated by the same `sep` this line
+// already uses between its own two segments, whenever m.interactiveScrollOffset
+// (read here already healed -- see mainView's own doc for why it is safe to
+// read directly at this point) is not the live bottom. At offset 0
+// interactiveScrollCue returns "" and this renders byte-identical to the
+// pre-R133-part-2 line.
 func (m Model) interactiveFooterLine() string {
 	forwardNote := m.colorToken(theme.Hint, "keystrokes forward to the live pane")
 	sep := m.glyph(" · ", " - ")
 	key := m.colorToken(theme.Key, m.glyph("Ctrl+Q", "Ctrl+Q"))
 	hint := m.colorToken(theme.Hint, "leave interactive mode")
-	return forwardNote + sep + key + " " + hint
+	base := forwardNote + sep + key + " " + hint
+	cue := m.interactiveScrollCue()
+	if cue == "" {
+		return base
+	}
+	return m.colorToken(theme.Hint, cue) + sep + base
+}
+
+// interactiveScrollCue is R133 part 2's own claim (PRD phase4b, GH #30):
+// while scrolled back into history, interactive mode's footer states how
+// far back the view is and that it is NOT live, so a scrolled-back pane
+// looking identical to a live one is never mistaken for one. It returns ""
+// at the live bottom (m.interactiveScrollOffset == 0), which is what lets
+// interactiveFooterLine fall back to its pre-existing, unchanged line
+// exactly there.
+//
+// m.interactiveScrollOffset is read directly rather than re-derived: by
+// the time this runs (from interactiveFooterLine, called out of
+// mainView's own footerLine), mainView has already written the healed,
+// clamped offset previewBodyLines' own interactive branch returned back
+// onto this exact m (see mainView's doc) -- reading the field straight
+// used to be exactly the bug this cue must not repeat, back when nothing
+// threaded that healed value anywhere near the footer at all.
+//
+// The top-of-scrollback wording (interactiveAtTopOfScrollback) is
+// deliberately different from the ordinary scrolled-back wording, but
+// still names the same clamped line count: "top of scrollback" tells the
+// operator scrolling further back will do nothing (there IS no more
+// history), which "scrolled back N lines" alone does not.
+func (m Model) interactiveScrollCue() string {
+	if !m.interactive || m.interactiveScrollOffset <= 0 {
+		return ""
+	}
+	dash := m.glyph(" \u2014 ", " - ")
+	if m.interactiveAtTopOfScrollback() {
+		return fmt.Sprintf("Top of scrollback (%d lines back)", m.interactiveScrollOffset) + dash + "not live"
+	}
+	return fmt.Sprintf("Scrolled back %d lines", m.interactiveScrollOffset) + dash + "not live"
+}
+
+// interactiveAtTopOfScrollback reports whether m.interactiveScrollOffset
+// (already healed/clamped by the time this is called -- see
+// interactiveScrollCue's own doc) has reached the grid's REAL current
+// scrollback length, i.e. scrolling further back could not move the view
+// any further no matter how far past it a request asked to go.
+// m.interactiveGrid.Grid().ScrollbackLen() is the same accessor
+// interactive_scroll_heal_test.go already reads directly to get the real
+// bound RenderRows' own clamp targets.
+func (m Model) interactiveAtTopOfScrollback() bool {
+	if m.interactiveGrid == nil {
+		return false
+	}
+	return m.interactiveScrollOffset >= m.interactiveGrid.Grid().ScrollbackLen()
 }
 
 // belowMinimumNotice is SPEC requirement 14's exact below-minimum copy,
@@ -4532,7 +4605,13 @@ func (m Model) elideToWidth(s string, budget int) string {
 // bar between them, never "││". This same shape also draws the collapsed
 // strip (a narrower "sidebar" panel beside a wider preview); task 015 fills
 // in the strip's own content.
-func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
+//
+// The second return is the interactive scroll offset previewBodyLines'
+// own interactive branch healed while rendering the preview body (R133
+// part 1) -- 0 when m.interactive is false, meaningless either way to a
+// caller that is not about to feed it back into the footer's own cue
+// (R133 part 2). mainView is that caller.
+func (m Model) renderSideBySideFrame(layout LayoutResult) ([]string, int) {
 	sw, pw := layout.Sidebar.Width, layout.Preview.Width
 	height := layout.Sidebar.Height
 	contentRows := height - 2
@@ -4563,7 +4642,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 			sidebarBg[i] = e.bg
 		}
 	}
-	preview, previewOwners := m.previewBodyLines(max(pw-4, 0), contentRows)
+	preview, previewOwners, scrollOffset := m.previewBodyLines(max(pw-4, 0), contentRows)
 	lines := make([]string, 0, height)
 	lines = append(lines, sidebarTop+m.previewTopLine(pw, m.previewTitle(), true))
 	for i := 0; i < contentRows; i++ {
@@ -4576,7 +4655,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) []string {
 		lines = append(lines, sidebarLine+m.previewContentLine(pw, preview[i], bool(previewOwners[i])))
 	}
 	lines = append(lines, m.sidebarBottomLine(sw)+m.previewBottomLine(pw, true))
-	return lines
+	return lines, scrollOffset
 }
 
 // collapsedStripLines is the 3-column collapsed strip's own content (SPEC
@@ -4646,10 +4725,15 @@ func (m Model) nextAttentionSelection(from int) (int, bool) {
 // renderStackedFrame draws the below-80-column fallback (SPEC §11.2): the
 // list and the preview stack vertically with no seam between them, so each
 // keeps all four of its own borders.
-func (m Model) renderStackedFrame(layout LayoutResult) []string {
+//
+// The second return mirrors renderSideBySideFrame's own: the interactive
+// scroll offset previewBodyLines healed while rendering the preview body
+// (R133 part 1), 0 when m.interactive is false.
+func (m Model) renderStackedFrame(layout LayoutResult) ([]string, int) {
 	lw, lh := layout.Sidebar.Width, layout.Sidebar.Height
 	pw, ph := layout.Preview.Width, layout.Preview.Height
 	var lines []string
+	scrollOffset := 0
 	if lh >= 2 {
 		listRows := lh - 2
 		visible := m.sidebarVisibleEntries(max(lw-4, 0), listRows)
@@ -4670,7 +4754,8 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 	}
 	if ph >= 2 {
 		previewRows := ph - 2
-		body, bodyOwners := m.previewBodyLines(max(pw-4, 0), previewRows)
+		body, bodyOwners, previewScrollOffset := m.previewBodyLines(max(pw-4, 0), previewRows)
+		scrollOffset = previewScrollOffset
 		previewFocused := m.previewFocused()
 		lines = append(lines, m.fullBoxTop(pw, m.previewTitle(), previewFocused))
 		for i := 0; i < previewRows; i++ {
@@ -4684,7 +4769,7 @@ func (m Model) renderStackedFrame(layout LayoutResult) []string {
 		}
 		lines = append(lines, m.fullBoxBottom(pw, previewFocused))
 	}
-	return lines
+	return lines, scrollOffset
 }
 
 // sidebarTitleText is the plain (uncoloured) form of the sidebar's title,
@@ -5229,21 +5314,30 @@ func (m Model) previewTitle() string {
 // previewContentLine/fullBoxPreviewContentLine are the only callers that
 // act on the provenance, and only to decide how to paint, never to alter
 // what these lines actually say.
-func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
+//
+// The third return is the interactive scroll offset actually used to
+// render this body (R133 part 1's healed, clamped value) when m.interactive
+// is true, 0 otherwise -- callers that go on to render the interactive
+// footer's own scrolled-back cue (R133 part 2, interactiveFooterLine) need
+// this exact value threaded back to them, since the heal this function's
+// interactiveBodyLines call performs lands on a value-receiver copy of m
+// that is discarded the moment this call returns.
+func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner, int) {
 	if m.interactive && m.interactiveGrid != nil {
-		return m.interactiveBodyLines(contentWidth, contentHeight)
+		lines, owners := m.interactiveBodyLines(contentWidth, contentHeight)
+		return lines, owners, m.interactiveScrollOffset
 	}
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
-		return lines, deckOwnedPreviewLines(len(lines))
+		return lines, deckOwnedPreviewLines(len(lines)), 0
 	}
 	session := m.sessions[m.selected]
 	if m.previewLive && m.previewSessionID == session.ID {
 		lines, owners := m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
-		return lines, owners
+		return lines, owners, 0
 	}
 	lines := fitLines(m.previewPlaceholderLines(session, contentWidth, contentHeight), contentHeight)
-	return lines, deckOwnedPreviewLines(len(lines))
+	return lines, deckOwnedPreviewLines(len(lines)), 0
 }
 
 // previewPlaceholderLines names, rather than papers over, why the preview
