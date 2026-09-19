@@ -1,0 +1,10 @@
+=== RUN   TestCreateGroupDefaultDegradesWhenRememberedGroupDeleted
+--- PASS: TestCreateGroupDefaultDegradesWhenRememberedGroupDeleted (0.02s)
+=== RUN   TestRememberedCreateGroupSurvivesRestart
+--- PASS: TestRememberedCreateGroupSurvivesRestart (0.02s)
+=== RUN   TestCreateIntoDefaultGroupForgetsTheRememberedNamedGroup
+--- PASS: TestCreateIntoDefaultGroupForgetsTheRememberedNamedGroup (0.02s)
+=== RUN   TestRememberedCreateGroupDoesNotRebindAcrossRestartAfterDeleteAndReplacement
+--- PASS: TestRememberedCreateGroupDoesNotRebindAcrossRestartAfterDeleteAndReplacement (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.095s
