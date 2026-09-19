@@ -4705,7 +4705,7 @@ func (m Model) renderSideBySideFrame(layout LayoutResult) ([]string, int) {
 	} else {
 		// sidebarVisibleEntries applies the wheel-scroll offset (task 028)
 		// through the identical entries hitTest resolves clicks against.
-		visible := m.sidebarVisibleEntries(max(sw-2, 0), contentRows)
+		visible := m.sidebarVisibleEntries(sidebarEntryContentWidth(layout), contentRows)
 		sidebar = make([]string, len(visible))
 		sidebarGutter = make([]string, len(visible))
 		sidebarBg = make([]theme.Token, len(visible))
@@ -4809,7 +4809,7 @@ func (m Model) renderStackedFrame(layout LayoutResult) ([]string, int) {
 	scrollOffset := 0
 	if lh >= 2 {
 		listRows := lh - 2
-		visible := m.sidebarVisibleEntries(max(lw-4, 0), listRows)
+		visible := m.sidebarVisibleEntries(sidebarEntryContentWidth(layout), listRows)
 		body := make([]string, len(visible))
 		gutters := make([]string, len(visible))
 		bgs := make([]theme.Token, len(visible))
@@ -4850,6 +4850,37 @@ func (m Model) renderStackedFrame(layout LayoutResult) ([]string, int) {
 // "deck" colour run the way sidebarTitleLine does.
 func (m Model) sidebarTitleText() string {
 	return "deck" + m.glyph(" — ", " - ") + "sessions"
+}
+
+// sidebarEntryContentWidth is the ONE answer to "how many columns of text
+// does a sidebar entry actually get this frame" (task 011's own rejection
+// cure): every caller that lays entries out -- renderSideBySideFrame,
+// renderStackedFrame, hitTest/hitTestStacked, scrollSessionIntoView and
+// sidebarContentDims -- reads it from here rather than re-deriving the
+// subtraction, because a caller that overstates the budget by even one
+// column hands sidebarEntries a width its own line builders trust, and
+// then sidebarContentLine's padTrunc silently crops the overflow off the
+// RIGHT edge -- which is exactly where groupHeaderText puts the member
+// count SPEC §11 says never elides.
+//
+// The figures come from the two line builders themselves, not from the
+// panel's total width:
+//   - side-by-side (sidebarContentLine): width-3 -- left border, one
+//     leading pad column (requirement 17), and the trailing pad column
+//     before the seam (requirement 18).
+//   - stacked (fullBoxContentLine): width-4 -- both borders plus both pad
+//     columns, since a stacked list box owns its right border too.
+//
+// A row entry's own gutter (the selection arrow / mark cue) shrinks the
+// budget further at render time, and is deliberately NOT subtracted here:
+// sidebarRowLines hands back raw untruncated row text by design and lets
+// padTrunc crop it, so a row is unaffected by this figure, while headers
+// (gutter "") get exactly their real budget.
+func sidebarEntryContentWidth(layout LayoutResult) int {
+	if layout.Effective == LayoutStacked {
+		return max(layout.Sidebar.Width-4, 0)
+	}
+	return max(layout.Sidebar.Width-3, 0)
 }
 
 // sidebarBodyLines is the sidebar's content, before it is fit to the
@@ -5023,7 +5054,7 @@ func (m *Model) resortSessionsLive() {
 // (e.g. its group is collapsed) leaves the scroll offset untouched.
 func (m *Model) scrollSessionIntoView(sessionIndex int) {
 	layout := m.computeLayout()
-	contentWidth := max(layout.Sidebar.Width-2, 0)
+	contentWidth := sidebarEntryContentWidth(layout)
 	contentHeight := layout.Sidebar.Height - 2
 	if contentHeight <= 0 {
 		return
