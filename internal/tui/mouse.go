@@ -92,7 +92,7 @@ func (m Model) hitTestSideBySide(layout LayoutResult, x, y int) hitResult {
 	}
 	contentRow := y - 1
 	contentHeight := height - 2
-	visible := m.sidebarVisibleEntries(max(sw-2, 0), contentHeight)
+	visible := m.sidebarVisibleEntries(sidebarEntryContentWidth(layout), contentHeight)
 	if contentRow < 0 || contentRow >= len(visible) {
 		return hitResult{panel: hitPanelSidebar}
 	}
@@ -117,7 +117,7 @@ func (m Model) hitTestStacked(layout LayoutResult, x, y int) hitResult {
 			}
 			contentRow := y - 1
 			contentHeight := lh - 2
-			visible := m.sidebarVisibleEntries(max(lw-4, 0), contentHeight)
+			visible := m.sidebarVisibleEntries(sidebarEntryContentWidth(layout), contentHeight)
 			if contentRow < 0 || contentRow >= len(visible) {
 				return hitResult{panel: hitPanelSidebar}
 			}
@@ -149,11 +149,10 @@ func sidebarEntryHit(e sidebarEntry) hitResult {
 // Effective mode, mirroring exactly what renderSideBySideFrame/
 // renderStackedFrame pass to sidebarVisibleEntries, so wheel-scroll
 // clamping (scrollSidebar below) agrees with what is actually on screen.
+// The width half is sidebarEntryContentWidth (tui.go), the single seam
+// every caller that lays out sidebar entries shares.
 func (m Model) sidebarContentDims(layout LayoutResult) (width, height int) {
-	if layout.Effective == LayoutStacked {
-		return max(layout.Sidebar.Width-4, 0), max(layout.Sidebar.Height-2, 0)
-	}
-	return max(layout.Sidebar.Width-2, 0), max(layout.Sidebar.Height-2, 0)
+	return sidebarEntryContentWidth(layout), max(layout.Sidebar.Height-2, 0)
 }
 
 // handleMouse is the tea.MouseMsg branch of Update (SPEC §11.8). Every

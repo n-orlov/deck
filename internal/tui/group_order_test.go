@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // TestGroupOrderAaaLeadsAlphabetically proves R129/task 011's group order:
@@ -107,45 +108,146 @@ func TestGroupHeaderTextCountsPopulatedAndEmptyGroups(t *testing.T) {
 }
 
 // TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount proves
-// SPEC §11's "The name elides; the count and the chevron never do": at
-// the sidebar's narrowest legal content budget (store.GroupNameMaxLength's
-// own comment derives this as the 20-cell content floor: §11.2 clamps
-// sidebar_width to [24, width-40], the narrowest legal sidebar has a
-// 20-cell content floor), a long group name is elided down, but the
-// leading chevron marker and the trailing "(<n>)" count are always
-// emitted in full and never touched by that elision.
+// SPEC §11's "The name elides; the count and the chevron never do" ON THE
+// REAL RENDER PATH at the 24-column sidebar floor (§11.2 clamps
+// sidebar_width to [24, width-40], so 24 is the narrowest legal sidebar).
+//
+// Driving the real pipeline is the whole point of this test, and the
+// reason it does not simply call groupHeaderText with a hand-picked
+// budget: the header text groupHeaderText returns is not what reaches the
+// screen -- sidebarEntries hands it to sidebarContentLine (side-by-side)
+// or fullBoxContentLine (stacked), whose padTrunc crops any overflow off
+// the RIGHT edge, which is exactly where the count lives. A header that
+// fits its own stated budget but not the panel's real one loses "(2)" and
+// keeps a dangling "(…" instead, so the assertions below run against the
+// composed panel line and against the whole rendered frame, never against
+// groupHeaderText's own return value alone.
 func TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount(t *testing.T) {
+	const longName = "a much longer group name than the 24-column sidebar floor can ever show in full"
+	sessions := []store.Session{
+		{ID: "a", Name: "alpha", GroupName: longName, Status: "running"},
+		{ID: "b", Name: "bravo", GroupName: longName, Status: "running"},
+	}
+
+	for _, tc := range []struct {
+		name      string
+		collapsed bool
+		chevron   string
+	}{
+		{"expanded", false, "\u25be"},
+		{"collapsed", true, "\u25b8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := groupTestModel(sessions)
+			m.width, m.height = AutoSideBySideWidth, MinRows
+			m.sidebarWidth = SidebarWidthFloor
+			if tc.collapsed {
+				m.collapsedGroups = map[string]bool{longName: true}
+			}
+
+			layout := m.computeLayout()
+			if layout.Effective != LayoutSideBySide {
+				t.Fatalf("test setup: Effective = %q, want side-by-side", layout.Effective)
+			}
+			if layout.Sidebar.Width != SidebarWidthFloor {
+				t.Fatalf("test setup: sidebar width = %d, want the %d-column floor", layout.Sidebar.Width, SidebarWidthFloor)
+			}
+
+			// The panel line, composed exactly the way the renderer does:
+			// the shared content-width seam, then sidebarContentLine's own
+			// padTrunc. No hand-picked budget anywhere.
+			var header sidebarEntry
+			found := false
+			for _, e := range m.sidebarEntries(sidebarEntryContentWidth(layout)) {
+				if e.kind == sidebarLineHeader {
+					header, found = e, true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("no group header entry rendered at the sidebar floor")
+			}
+			line := stripANSI(m.sidebarContentLine(layout.Sidebar.Width, header.gutter, header.text, theme.Token("")))
+
+			if !strings.Contains(line, tc.chevron+" ") {
+				t.Fatalf("sidebar floor header line = %q, want the %s chevron %q to survive", line, tc.name, tc.chevron)
+			}
+			if !strings.Contains(line, "(2)") {
+				t.Fatalf("sidebar floor header line = %q, want the count %q to survive the panel's own padTrunc (a cropped %q means the content-width seam overstates the real budget)", line, "(2)", "(\u2026")
+			}
+			if !strings.Contains(line, "\u2026") {
+				t.Fatalf("sidebar floor header line = %q, want the name elided with an ellipsis", line)
+			}
+			if strings.Contains(line, longName) {
+				t.Fatalf("sidebar floor header line = %q, want the full name elided rather than rendered whole", line)
+			}
+			if got := stringWidth(line); got != layout.Sidebar.Width {
+				t.Fatalf("sidebar floor header line = %q (width %d), want exactly the panel's %d columns", line, got, layout.Sidebar.Width)
+			}
+
+			// ...and once more through the whole frame, so nothing between
+			// sidebarEntries and the painted row can drop the count either.
+			frame, _ := m.renderSideBySideFrame(layout)
+			frameHeader := ""
+			for _, raw := range frame {
+				if s := stripANSI(raw); strings.Contains(s, tc.chevron+" ") {
+					frameHeader = s
+					break
+				}
+			}
+			if frameHeader == "" {
+				t.Fatalf("rendered frame carries no group header row:\n%s", strings.Join(frame, "\n"))
+			}
+			sidebarSpan := string([]rune(frameHeader)[:layout.Sidebar.Width])
+			if !strings.Contains(sidebarSpan, "(2)") || !strings.Contains(sidebarSpan, "\u2026") {
+				t.Fatalf("rendered frame's sidebar span = %q, want the elided name AND the surviving count %q", sidebarSpan, "(2)")
+			}
+		})
+	}
+}
+
+// TestSidebarEntryContentWidthMatchesEachModesRealTextBudget pins the seam
+// the test above leans on: sidebarEntryContentWidth must equal the number
+// of text columns the mode's own line builder (sidebarContentLine or
+// fullBoxContentLine) actually gives a gutter-less line. This is the
+// invariant whose breach cost task 011 its first validation attempt --
+// the render path passed Sidebar.Width-2 while sidebarContentLine's
+// padTrunc budget was Sidebar.Width-3, so every header was composed one
+// column too wide and had its rightmost cell (the count's closing paren)
+// cropped.
+func TestSidebarEntryContentWidthMatchesEachModesRealTextBudget(t *testing.T) {
 	m := groupTestModel(nil)
-	const sidebarFloorContentWidth = 20 // store.GroupNameMaxLength's own derivation
-	group := sidebarGroup{
-		Workspace: "a much longer group name than the 24-column sidebar floor can ever show in full",
-		Sessions: []indexedSession{
-			{Index: 0, Session: store.Session{ID: "a"}},
-			{Index: 1, Session: store.Session{ID: "b"}},
-		},
-	}
-	got := m.groupHeaderText(group, sidebarFloorContentWidth)
+	const probe = "\u2588" // a full block: padTrunc keeps or drops it visibly
 
-	if !strings.HasPrefix(got, "\u25be ") {
-		t.Fatalf("groupHeaderText at the sidebar floor = %q, want it to still start with the expanded chevron %q", got, "\u25be ")
-	}
-	if !strings.Contains(got, "(2)") {
-		t.Fatalf("groupHeaderText at the sidebar floor = %q, want the count %q to survive", got, "(2)")
-	}
-	if strings.Contains(got, group.Workspace) {
-		t.Fatalf("groupHeaderText at the sidebar floor = %q, want the full name elided rather than rendered whole", got)
-	}
-	if stringWidth(got) > sidebarFloorContentWidth {
-		t.Fatalf("groupHeaderText at the sidebar floor = %q (width %d), want it to fit within %d", got, stringWidth(got), sidebarFloorContentWidth)
-	}
-
-	// Collapsed marker must survive the same way.
-	m.collapsedGroups = map[string]bool{group.Workspace: true}
-	gotCollapsed := m.groupHeaderText(group, sidebarFloorContentWidth)
-	if !strings.HasPrefix(gotCollapsed, "\u25b8 ") {
-		t.Fatalf("collapsed groupHeaderText at the sidebar floor = %q, want it to start with the collapsed chevron %q", gotCollapsed, "\u25b8 ")
-	}
-	if !strings.Contains(gotCollapsed, "(2)") {
-		t.Fatalf("collapsed groupHeaderText at the sidebar floor = %q, want the count %q to survive", gotCollapsed, "(2)")
+	for _, tc := range []struct {
+		name      string
+		effective string
+		width     int
+		compose   func(width int, text string) string
+	}{
+		{"side-by-side", LayoutSideBySide, SidebarWidthFloor, func(width int, text string) string {
+			return m.sidebarContentLine(width, "", text, theme.Token(""))
+		}},
+		{"stacked", LayoutStacked, 60, func(width int, text string) string {
+			return m.fullBoxContentLine(width, "", text, false, theme.Token(""))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			layout := LayoutResult{Effective: tc.effective, Sidebar: Rect{Width: tc.width}}
+			budget := sidebarEntryContentWidth(layout)
+			if budget <= 0 {
+				t.Fatalf("sidebarEntryContentWidth = %d, want a positive budget at width %d", budget, tc.width)
+			}
+			// A text exactly budget wide must survive whole...
+			full := strings.Repeat(probe, budget)
+			if got := stripANSI(tc.compose(tc.width, full)); !strings.Contains(got, full) {
+				t.Fatalf("%s: a %d-column text was cropped by the panel line %q -- sidebarEntryContentWidth overstates the real budget", tc.name, budget, got)
+			}
+			// ...and one column wider must NOT, or the budget understates it.
+			over := strings.Repeat(probe, budget+1)
+			if got := stripANSI(tc.compose(tc.width, over)); strings.Contains(got, over) {
+				t.Fatalf("%s: a %d-column text survived the panel line %q -- sidebarEntryContentWidth understates the real budget", tc.name, budget+1, got)
+			}
+		})
 	}
 }
