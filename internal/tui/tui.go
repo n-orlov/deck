@@ -333,8 +333,10 @@ type Model struct {
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
-	startCWD        string
-	collapsedGroups map[string]bool
+	startCWD string
+	// collapsedGroups is keyed by group id (task 013/R129 part 3, sessionGroupID),
+	// never by display name -- 0 is the implicit default group's sentinel id.
+	collapsedGroups map[int64]bool
 	attachError     string
 	resumeNote      string
 	// selectionCopyNote is the drag-to-copy success counterpart to
@@ -1437,6 +1439,16 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 		// degrades to defaultCreateAgent's own fallback via pickCreateAgent.
 		if lastAgent, err := db.GetLastCreateAgent(ctx); err == nil {
 			m.lastCreateAgent = lastAgent
+		}
+		// Task 013 (R129 part 3): collapse state persists in ui_state's
+		// collapsed_groups, keyed by group id -- read once here so a
+		// restarted client (a fresh New(db, ...) call, exactly as task 016's
+		// layoutMode/sidebarWidth reads above) renders the same groups
+		// collapsed today that were collapsed yesterday. A read failure is
+		// not load-bearing: it degrades to the Go zero value (nothing
+		// collapsed), GetCollapsedGroups' own documented default.
+		if collapsed, err := db.GetCollapsedGroups(ctx); err == nil {
+			m.collapsedGroups = collapsed
 		}
 	}
 	return m
@@ -3454,24 +3466,25 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			// SPEC §11.8 gap (requirement 30's collapsible headers had no key):
-			// toggle the selected row's own workspace group collapsed/expanded,
-			// via the identical helper task 028's mouse header click will call
-			// (toggleGroupCollapse), so neither path is ever the only way to
-			// reach this capability. A no-op, like every other bare-letter
-			// binding, while help or the `i` detail overlay covers the sidebar,
-			// or when there is no row to resolve a group from.
+			// toggle the selected row's own group collapsed/expanded, keyed by
+			// the group's id (task 013/R129 part 3, sessionGroupID) rather than
+			// its display name, via the identical helper the mouse header click
+			// calls (toggleGroupCollapse, internal/tui/mouse.go), so neither
+			// path is ever the only way to reach this capability, and the
+			// result is persisted to ui_state's collapsed_groups (SPEC §11:
+			// "collapse state persists in ui_state") the same way `|`/`<`/`>`
+			// persist layout_mode/sidebar_width. A no-op, like every other
+			// bare-letter binding, while help or the `i` detail overlay covers
+			// the sidebar, or when there is no row to resolve a group from.
 			//
 			// Task 119: this was originally bound to `g`, which collides with
 			// SPEC.md:952's own keymap entry "g/G top/bottom" -- `g`/`G` were
 			// never actually wired to anything, so every keypress of `g` was
 			// silently doing collapse instead of the documented top/bottom jump.
 			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
-			// Requirement 35: with grouping off there is no group for `c`
-			// to collapse -- the binding is a no-op rather than silently
-			// populating m.collapsedGroups bookkeeping nothing will ever
-			// read (collapse state must be absent, not merely inert).
 			if !m.help && !m.detail && len(m.sessions) > 0 {
-				m.toggleGroupCollapse(sessionWorkspace(m.sessions[m.selected]))
+				m.toggleGroupCollapse(sessionGroupID(m.sessions[m.selected]))
+				return m, m.persistCollapsedGroups()
 			}
 		case "g":
 			// SPEC.md:952 "g/G top/bottom": jump to the first visible row in
@@ -3800,6 +3813,33 @@ func (m Model) persistLastCreateAgent(agentKind string) tea.Cmd {
 	}
 	return func() tea.Msg {
 		return uiStatePersisted{err: m.store.SetLastCreateAgent(context.Background(), agentKind)}
+	}
+}
+
+// persistCollapsedGroups is persistLayoutMode's collapsed_groups
+// counterpart (task 013/R129 part 3, SPEC §11: "collapse state persists in
+// ui_state"): it writes the FULL, just-updated set of collapsed group ids
+// to state.db's ui_state table, never to config.toml, so a restarted
+// client (a fresh New(db, ...) call) renders the same groups collapsed.
+// The set is copied into an independent map synchronously, before the
+// returned tea.Cmd's closure ever runs -- exactly the same value-copy
+// discipline persistSidebarWidth gets for free from `width` being an int --
+// so a later keypress that mutates m.collapsedGroups (the SAME underlying
+// map, shared by reference across every Model value derived from this one)
+// while this command is still in flight on Bubble Tea's own goroutine can
+// never race with the encode this command performs. With no store
+// attached (most unit tests) it is a no-op, exactly like
+// persistLayoutMode/persistSidebarWidth/persistLastCreateAgent.
+func (m Model) persistCollapsedGroups() tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	collapsed := make(map[int64]bool, len(m.collapsedGroups))
+	for id, on := range m.collapsedGroups {
+		collapsed[id] = on
+	}
+	return func() tea.Msg {
+		return uiStatePersisted{err: m.store.SetCollapsedGroups(context.Background(), collapsed)}
 	}
 }
 
@@ -4911,13 +4951,16 @@ const (
 )
 
 // sidebarEntry is one rendered line of the sidebar body, tagged with enough
-// to resolve a click: sidebarLineHeader carries Workspace, sidebarLineRow
+// to resolve a click: sidebarLineHeader carries workspace (its display
+// name) and groupID (its durable identity, task 013/R129 part 3 -- what
+// collapse state and the §11.8 hit-test actually key off of), sidebarLineRow
 // carries SessionIndex (an index into m.sessions), and sidebarLineOther
 // (the socket line, the empty state) carries neither.
 type sidebarEntry struct {
 	text         string
 	kind         sidebarLineKind
 	workspace    string
+	groupID      int64
 	sessionIndex int
 	// bg (task 321/R58b) is the selection/selection_idle/surface-stripe
 	// background token a sidebarLineRow entry wants painted across the
@@ -4968,8 +5011,8 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	// theme.Background (sidebarRowLines is never called for a header).
 	sessionPos := 0
 	for _, group := range m.groupSessions() {
-		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group, contentWidth), kind: sidebarLineHeader, workspace: group.Workspace})
-		if m.isGroupCollapsed(group.Workspace) {
+		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group, contentWidth), kind: sidebarLineHeader, workspace: group.Workspace, groupID: group.GroupID})
+		if m.isGroupCollapsed(group.GroupID) {
 			continue
 		}
 		for _, is := range group.Sessions {

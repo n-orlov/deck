@@ -88,9 +88,10 @@ func contentRowY(m Model, layout LayoutResult, contentRow int) int {
 // mainView actually drew (grouping and a long, elided name are both in
 // play).
 func TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide(t *testing.T) {
+	infraID, serviceID := int64(1), int64(2)
 	m := mouseTestModel([]store.Session{
-		{ID: "a1", Name: "alpha-session-with-a-very-long-name-that-must-be-elided", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
-		{ID: "b1", Name: "bravo", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
+		{ID: "a1", Name: "alpha-session-with-a-very-long-name-that-must-be-elided", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
+		{ID: "b1", Name: "bravo", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 	})
 	// Grouping is unconditional (R129 part 2): no on/off switch remains.
 	m.width, m.height = 100, 30 // side-by-side (width >= 80)
@@ -102,8 +103,8 @@ func TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide(t *testing.T) {
 	sw := layout.Sidebar.Width
 
 	hx, hy := findHeader(t, m, "infra")
-	if hit := m.hitTest(hx, hy); hit.panel != hitPanelSidebar || hit.target != hitTargetHeader || hit.workspace != "infra" {
-		t.Fatalf("hitTest(%d,%d) = %+v, want sidebar/header workspace=infra", hx, hy, hit)
+	if hit := m.hitTest(hx, hy); hit.panel != hitPanelSidebar || hit.target != hitTargetHeader || hit.groupID != infraID {
+		t.Fatalf("hitTest(%d,%d) = %+v, want sidebar/header groupID=%d", hx, hy, hit, infraID)
 	}
 
 	rx, ry := findRow(t, m, 0)
@@ -240,9 +241,10 @@ func TestClickSidebarPaddingBelowLastRowIsANoOp(t *testing.T) {
 // the identical helper task 039's `g` key uses, and touches no other
 // group's collapse state.
 func TestClickGroupHeaderTogglesOnlyThatGroup(t *testing.T) {
+	infraID, serviceID := int64(1), int64(2)
 	m := mouseTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
-		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 	})
 	// Grouping is unconditional (R129 part 2): no on/off switch remains.
 	m.width, m.height = 100, 30
@@ -250,10 +252,10 @@ func TestClickGroupHeaderTogglesOnlyThatGroup(t *testing.T) {
 	x, y := findHeader(t, m, "infra")
 	updated, _ := m.Update(press(x, y))
 	got := updated.(Model)
-	if !got.isGroupCollapsed("infra") {
+	if !got.isGroupCollapsed(infraID) {
 		t.Fatalf("clicking infra's header did not collapse it")
 	}
-	if got.isGroupCollapsed("service-a") {
+	if got.isGroupCollapsed(serviceID) {
 		t.Fatalf("clicking infra's header collapsed an unrelated group")
 	}
 }
