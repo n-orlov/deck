@@ -1,0 +1,235 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The create modal's §11.7 cwd prefill (requirement 12)
+  The create modal's working-directory field opens pre-filled rather than
+  blank: with any §11.7 recent_cwds history it shows the most recently
+  promoted entry, labelled on screen as the last used so the user can tell
+  it is a default and not something they typed; with no history at all it
+  falls back to the directory deck itself was started in. Either way, the
+  first keystroke in the field replaces the whole prefill rather than
+  appending to it -- the user never has to clear a default they did not
+  ask for before typing their own path.
+=== RUN   TestFeatures/with_no_recent_cwds_history_the_cwd_field_pre-fills_with_the_directory_deck_started_in
+
+  [1;37mScenario:[0m with no recent_cwds history the cwd field pre-fills with the directory deck started in [1;30m# create_session.feature:13[0m
+    [32mGiven[0m [32mdeck client "A" is started in a fresh directory labelled "start"[0m                         [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientStartedInFreshDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                    [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "start"[0m                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "(last used)"[0m                                      [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                   [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_cwd_field_pre-fills_with_the_most_recent_recent_cwds_entry,_labelled_"last_used"
+
+  [1;37mScenario:[0m the cwd field pre-fills with the most recent recent_cwds entry, labelled "last used"                 [1;30m# create_session.feature:22[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cs-seed-recent" with a fresh working directory labelled "recent"[0m [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" opens the create modal[0m                                                                   [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "recent"[0m                                         [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "(last used)"[0m                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                 [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/typing_in_the_cwd_field_replaces_the_prefill_wholesale_rather_than_appending_to_it
+
+  [1;37mScenario:[0m typing in the cwd field replaces the prefill wholesale rather than appending to it                                                [1;30m# create_session.feature:32[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cs-seed-recent2" with a fresh working directory labelled "recent2"[0m                            [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-typed-over" typing over the prefilled working directory with the directory labelled "typed"[0m [1;30m# create_session_test.go:26 -> github.com/n-orlov/deck/features.clientCreatesShellSessionTypingOverPrefillWithLabelled[0m
+    [32mThen[0m [32mthe state database session "cs-typed-over" has cwd exactly the directory labelled "typed"[0m                                            [1;30m# create_session_test.go:27 -> github.com/n-orlov/deck/features.sessionHasCWDExactlyLabelled[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/Ctrl+P/Ctrl+N_cycle_the_cwd_field_through_recent_cwds_history,_shell-history_style,_showing_"recent_N/M"
+
+  [1;37mScenario:[0m Ctrl+P/Ctrl+N cycle the cwd field through recent_cwds history, shell-history style, showing "recent N/M" [1;30m# create_session.feature:40[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cs-cycle-1" with a fresh working directory labelled "cycle-1"[0m        [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-cycle-2" with a fresh working directory labelled "cycle-2"[0m         [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-cycle-3" with a fresh working directory labelled "cycle-3"[0m         [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-cycle-4" with a fresh working directory labelled "cycle-4"[0m         [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-cycle-5" with a fresh working directory labelled "cycle-5"[0m         [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" opens the create modal[0m                                                                       [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "cycle-5"[0m                                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "recent 1/5"[0m                                                         [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" tabs to the cwd field[0m                                                                       [1;30m# create_session_test.go:29 -> github.com/n-orlov/deck/features.clientTabsToCWDField[0m
+    [32mAnd[0m [32mdeck client "A" presses "ctrl+p" in the cwd field 2 times[0m                                                    [1;30m# create_session_test.go:28 -> github.com/n-orlov/deck/features.clientPressesArrowInCWDFieldNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "cycle-4"[0m                                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "recent 2/5"[0m                                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses "ctrl+n" in the cwd field 1 times[0m                                                   [1;30m# create_session_test.go:28 -> github.com/n-orlov/deck/features.clientPressesArrowInCWDFieldNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "cycle-5"[0m                                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "recent 1/5"[0m                                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" presses "ctrl+n" in the cwd field 1 times[0m                                                   [1;30m# create_session_test.go:28 -> github.com/n-orlov/deck/features.clientPressesArrowInCWDFieldNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "cycle-5"[0m                                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "(last used)"[0m                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "recent 1/5"[0m                                                         [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                     [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_empty_name_defaults_to_<workspace>-<MMDD-HHMM>_from_the_frozen_clock
+
+  [1;37mScenario:[0m an empty name defaults to <workspace>-<MMDD-HHMM> from the frozen clock                                                     [1;30m# create_session.feature:65[0m
+    [32mGiven[0m [32mdeck client "A" is started in a fresh directory labelled "blank-name" with the clock frozen at "2025-08-20T14:43:00Z"[0m         [1;30m# create_blank_name_test.go:21 -> github.com/n-orlov/deck/features.clientStartedInFreshDirectoryLabelledWithFrozenClock[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                                                         [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal with a blank name[0m                                                                      [1;30m# create_blank_name_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalWithBlankName[0m
+    [32mThen[0m [32mthe state database has exactly one session in the directory labelled "blank-name", named "create-session-blank-name-0820-1443"[0m [1;30m# create_blank_name_test.go:23 -> github.com/n-orlov/deck/features.databaseHasOneSessionInDirectoryNamed[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_second_blank-name_create_in_the_same_directory_and_minute_gets_a_-2_collision_suffix
+
+  [1;37mScenario:[0m a second blank-name create in the same directory and minute gets a -2 collision suffix                                                                                                   [1;30m# create_session.feature:73[0m
+    [32mGiven[0m [32mdeck client "A" is started in a fresh directory labelled "blank-collide" with the clock frozen at "2025-08-20T14:43:00Z"[0m                                                                   [1;30m# create_blank_name_test.go:21 -> github.com/n-orlov/deck/features.clientStartedInFreshDirectoryLabelledWithFrozenClock[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                                                                                                                      [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal with a blank name[0m                                                                                                                                   [1;30m# create_blank_name_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalWithBlankName[0m
+    [32mAnd[0m [32mdeck client "A" opens the create modal[0m                                                                                                                                                       [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal with a blank name[0m                                                                                                                                   [1;30m# create_blank_name_test.go:22 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalWithBlankName[0m
+    [32mThen[0m [32mthe state database has sessions named "create-session-blank-collide-0820-1443" and "create-session-blank-collide-0820-1443-2", both with cwd exactly the directory labelled "blank-collide"[0m [1;30m# create_blank_name_test.go:24 -> github.com/n-orlov/deck/features.databaseHasTwoSessionsNamedInDirectory[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                                                               [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_create_modal_converges_on_the_shell_agent_even_after_a_non-shell_session_was_created_earlier
+
+  [1;37mScenario:[0m the create modal converges on the shell agent even after a non-shell session was created earlier               [1;30m# create_session.feature:97[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                        [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                         [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "cs-nonshell-seed" with permission profile "safe"[0m                          [1;30m# agent_steps_test.go:47 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithProfile[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-after-nonshell" with a fresh working directory labelled "after-nonshell"[0m [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mThen[0m [32mthe state database session "cs-after-nonshell" has cwd exactly the directory labelled "after-nonshell"[0m            [1;30m# create_session_test.go:27 -> github.com/n-orlov/deck/features.sessionHasCWDExactlyLabelled[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/submitting_a_name_that_already_exists_names_the_collision_and_keeps_the_modal_open
+
+  [1;37mScenario:[0m submitting a name that already exists names the collision and keeps the modal open                                                       [1;30m# create_session.feature:114[0m
+    [32mGiven[0m [32mdeck client "A" is started in a fresh directory labelled "dup-start"[0m                                                                       [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientStartedInFreshDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cv-dup-original" with a fresh working directory labelled "dup-original"[0m                              [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" attempts to create shell session "cv-dup-original" with a fresh working directory labelled "dup-second", expecting rejection[0m [1;30m# create_validation_test.go:24 -> github.com/n-orlov/deck/features.clientAttemptsShellSessionExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains "already exists"[0m                                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "cv-dup-original"[0m                                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                                                     [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/submitting_a_name_that_collides_with_an_existing_slug_names_the_collision_and_keeps_the_modal_open
+
+  [1;37mScenario:[0m submitting a name that collides with an existing slug names the collision and keeps the modal open                                          [1;30m# create_session.feature:124[0m
+    [32mGiven[0m [32mdeck client "A" is started in a fresh directory labelled "slug-start"[0m                                                                         [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientStartedInFreshDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" terminal is resized to 100x32[0m                                                                                                   [1;30m# resize_test.go:16 -> github.com/n-orlov/deck/features.resizeNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cv-slug original" with a fresh working directory labelled "slug-original"[0m                               [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" attempts to create shell session "cv-slug  original" with a fresh working directory labelled "slug-second", expecting rejection[0m [1;30m# create_validation_test.go:24 -> github.com/n-orlov/deck/features.clientAttemptsShellSessionExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains "collides with existing slug"[0m                                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "cv-slug  original"[0m                                                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                                                        [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/submitting_a_working_directory_that_does_not_exist_names_it_and_keeps_the_modal_open
+
+  [1;37mScenario:[0m submitting a working directory that does not exist names it and keeps the modal open       [1;30m# create_session.feature:141[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                   [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                        [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "cv-nonexistent-cwd" into the create modal name field[0m                    [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" types a nonexistent path labelled "cv-missing" into the create modal cwd field[0m [1;30m# create_validation_test.go:28 -> github.com/n-orlov/deck/features.clientTypesNonexistentPathIntoCreateCWDField[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal expecting rejection[0m                                   [1;30m# create_validation_test.go:30 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains, allowing word-wrap, "does not exist"[0m                         [1;30m# create_validation_test.go:32 -> github.com/n-orlov/deck/features.clientScreenContainsDewrapped[0m
+    [32mAnd[0m [32mdeck client "A" screen contains the directory labelled "cv-missing"[0m                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                       [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/submitting_a_working_directory_that_exists_but_is_a_file_names_it_and_keeps_the_modal_open
+
+  [1;37mScenario:[0m submitting a working directory that exists but is a file names it and keeps the modal open [1;30m# create_session.feature:153[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                   [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                        [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "cv-cwd-not-dir" into the create modal name field[0m                        [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" types a file path labelled "cv-notadir" into the create modal cwd field[0m        [1;30m# create_validation_test.go:29 -> github.com/n-orlov/deck/features.clientTypesFilePathIntoCreateCWDField[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal expecting rejection[0m                                   [1;30m# create_validation_test.go:30 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains, allowing word-wrap, "is not a directory"[0m                     [1;30m# create_validation_test.go:32 -> github.com/n-orlov/deck/features.clientScreenContainsDewrapped[0m
+    [32mAnd[0m [32mdeck client "A" screen contains the directory labelled "cv-notadir"[0m                            [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                       [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_malformed_env_entry_names_the_offending_entry_and_keeps_the_modal_open
+
+  [1;37mScenario:[0m a malformed env entry names the offending entry and keeps the modal open [1;30m# create_session.feature:165[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                      [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "cv-malformed-env" into the create modal name field[0m    [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" types "novalue,GOOD=1" into the create modal env field[0m       [1;30m# create_validation_test.go:26 -> github.com/n-orlov/deck/features.clientTypesIntoCreateEnvField[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal expecting rejection[0m                 [1;30m# create_validation_test.go:30 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains "key=value"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "novalue,GOOD=1"[0m                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                     [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/malformed_launch_args_JSON_names_the_problem_and_keeps_the_modal_open
+
+  [1;37mScenario:[0m malformed launch_args JSON names the problem and keeps the modal open         [1;30m# create_session.feature:177[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                      [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                           [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "cv-malformed-launch-args" into the create modal name field[0m [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" types "{not json" into the create modal launch args field[0m         [1;30m# create_validation_test.go:27 -> github.com/n-orlov/deck/features.clientTypesIntoCreateLaunchArgsField[0m
+    [32mAnd[0m [32mdeck client "A" submits the create modal expecting rejection[0m                      [1;30m# create_validation_test.go:30 -> github.com/n-orlov/deck/features.clientSubmitsCreateModalExpectingRejection[0m
+    [32mThen[0m [32mdeck client "A" screen contains "launch_args must be a JSON array"[0m               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "{not json"[0m                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                          [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/esc_abandons_the_create_modal,_creating_nothing
+
+  [1;37mScenario:[0m esc abandons the create modal, creating nothing                      [1;30m# create_session.feature:189[0m
+    [32mGiven[0m [32mdeck client "A" is started in a fresh directory labelled "esc-abandon"[0m [1;30m# create_session_test.go:21 -> github.com/n-orlov/deck/features.clientStartedInFreshDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                  [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" types "cv-esc-abandon" into the create modal name field[0m  [1;30m# create_validation_test.go:25 -> github.com/n-orlov/deck/features.clientTypesIntoCreateNameField[0m
+    [32mAnd[0m [32mdeck client "A" closes the create modal[0m                                  [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mThen[0m [32mthe state database has zero sessions[0m                                    [1;30m# create_validation_test.go:31 -> github.com/n-orlov/deck/features.stateDatabaseHasZeroSessions[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/creating_a_session_into_a_named_group_persists_its_group_id
+
+  [1;37mScenario:[0m creating a session into a named group persists its group_id                                                                  [1;30m# create_session.feature:203[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mthe state database has a group named "tooling"[0m                                                                                   [1;30m# create_session_test.go:30 -> github.com/n-orlov/deck/features.ensureGroupNamedExists[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cs-into-group" into group "tooling" with a fresh working directory labelled "into-group"[0m [1;30m# create_session_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesShellSessionIntoGroupWithFreshCWDLabelled[0m
+    [32mThen[0m [32mthe state database session "cs-into-group" was created into group "tooling"[0m                                                     [1;30m# create_session_test.go:33 -> github.com/n-orlov/deck/features.sessionWasCreatedIntoGroup[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_succeeding_pre-launch_command,_typed_into_the_create_dialog,_runs_before_the_agent_starts
+
+  [1;37mScenario:[0m a succeeding pre-launch command, typed into the create dialog, runs before the agent starts                                [1;30m# create_session.feature:221[0m
+    [32mGiven[0m [32ma fake "claude" binary is on PATH for future deck clients[0m                                                                    [1;30m# agent_steps_test.go:28 -> github.com/n-orlov/deck/features.fakeClaudeOnPATHForFutureClients[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                     [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates claude session "cs-pre-launch-ok" with permission profile "safe" and pre-launch command "echo PRE_OK"[0m [1;30m# agent_steps_test.go:83 -> github.com/n-orlov/deck/features.clientCreatesAgentSessionWithSucceedingPreLaunch[0m
+    [32mThen[0m [32mdeck client "A" screen contains "starting"[0m                                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe private tmux session for "cs-pre-launch-ok" shows "PRE_OK" before "Fake Claude Code"[0m                                       [1;30m# agent_steps_test.go:84 -> github.com/n-orlov/deck/features.privateTMuxSessionShowsTextBeforeOtherText[0m
+    [32mAnd[0m [32mthe state database session "cs-pre-launch-ok" has a non-empty conversation id[0m                                                  [1;30m# agent_steps_test.go:55 -> github.com/n-orlov/deck/features.sessionHasNonEmptyConversationID[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                 [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/recent_cwd_limit_bounds_the_cwd_field's_history_and_re-using_a_directory_does_not_duplicate_its_entry
+
+  [1;37mScenario:[0m recent_cwd_limit bounds the cwd field's history and re-using a directory does not duplicate its entry  [1;30m# create_session.feature:242[0m
+    [32mGiven[0m [32mthe scenario's config.toml is written with:[0m                                                              [1;30m# config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML[0m
+      [36m"""[0m
+      [36m[ui][0m
+      [36mrecent_cwd_limit = 2[0m
+      [36m"""[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                 [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "cs-limit-1" with a fresh working directory labelled "limit-1"[0m      [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-limit-2" with a fresh working directory labelled "limit-2"[0m       [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-limit-1-reuse" with a fresh working directory labelled "limit-1"[0m [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "cs-limit-3" with a fresh working directory labelled "limit-3"[0m       [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" opens the create modal[0m                                                                     [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "limit-3"[0m                                          [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "(last used)"[0m                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" tabs to the cwd field[0m                                                                     [1;30m# create_session_test.go:29 -> github.com/n-orlov/deck/features.clientTabsToCWDField[0m
+    [32mAnd[0m [32mdeck client "A" presses "ctrl+p" in the cwd field 2 times[0m                                                  [1;30m# create_session_test.go:28 -> github.com/n-orlov/deck/features.clientPressesArrowInCWDFieldNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "limit-1"[0m                                          [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "recent 2/2"[0m                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain the directory labelled "limit-2"[0m                                   [1;30m# create_session_test.go:24 -> github.com/n-orlov/deck/features.clientScreenDoesNotContainDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" presses "ctrl+p" in the cwd field 1 times[0m                                                 [1;30m# create_session_test.go:28 -> github.com/n-orlov/deck/features.clientPressesArrowInCWDFieldNTimes[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "limit-1"[0m                                          [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "recent 2/2"[0m                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                   [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" exits cleanly[0m                                                                              [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+17 scenarios ([32m17 passed[0m)
+146 steps ([32m146 passed[0m)
+12.515116544s
+--- PASS: TestFeatures (12.52s)
+    --- PASS: TestFeatures/with_no_recent_cwds_history_the_cwd_field_pre-fills_with_the_directory_deck_started_in (0.49s)
+    --- PASS: TestFeatures/the_cwd_field_pre-fills_with_the_most_recent_recent_cwds_entry,_labelled_"last_used" (0.56s)
+    --- PASS: TestFeatures/typing_in_the_cwd_field_replaces_the_prefill_wholesale_rather_than_appending_to_it (0.62s)
+    --- PASS: TestFeatures/Ctrl+P/Ctrl+N_cycle_the_cwd_field_through_recent_cwds_history,_shell-history_style,_showing_"recent_N/M" (1.29s)
+    --- PASS: TestFeatures/an_empty_name_defaults_to_<workspace>-<MMDD-HHMM>_from_the_frozen_clock (0.51s)
+    --- PASS: TestFeatures/a_second_blank-name_create_in_the_same_directory_and_minute_gets_a_-2_collision_suffix (0.59s)
+    --- PASS: TestFeatures/the_create_modal_converges_on_the_shell_agent_even_after_a_non-shell_session_was_created_earlier (1.10s)
+    --- PASS: TestFeatures/submitting_a_name_that_already_exists_names_the_collision_and_keeps_the_modal_open (0.62s)
+    --- PASS: TestFeatures/submitting_a_name_that_collides_with_an_existing_slug_names_the_collision_and_keeps_the_modal_open (0.62s)
+    --- PASS: TestFeatures/submitting_a_working_directory_that_does_not_exist_names_it_and_keeps_the_modal_open (0.56s)
+    --- PASS: TestFeatures/submitting_a_working_directory_that_exists_but_is_a_file_names_it_and_keeps_the_modal_open (0.55s)
+    --- PASS: TestFeatures/a_malformed_env_entry_names_the_offending_entry_and_keeps_the_modal_open (0.83s)
+    --- PASS: TestFeatures/malformed_launch_args_JSON_names_the_problem_and_keeps_the_modal_open (0.79s)
+    --- PASS: TestFeatures/esc_abandons_the_create_modal,_creating_nothing (0.45s)
+    --- PASS: TestFeatures/creating_a_session_into_a_named_group_persists_its_group_id (0.66s)
+    --- PASS: TestFeatures/a_succeeding_pre-launch_command,_typed_into_the_create_dialog,_runs_before_the_agent_starts (1.04s)
+    --- PASS: TestFeatures/recent_cwd_limit_bounds_the_cwd_field's_history_and_re-using_a_directory_does_not_duplicate_its_entry (1.12s)
+PASS
+ok  	github.com/n-orlov/deck/features	12.539s
