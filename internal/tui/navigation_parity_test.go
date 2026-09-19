@@ -49,10 +49,12 @@ func TestNavigationVisitsEveryVisualRowInBothGroupingModes(t *testing.T) {
 		grouping   bool
 		wantVisual []int
 	}{
-		// Grouped: idx0 (magpie) and idx3 (pytest-bdd-migration) bucket
-		// together since they share a workspace, giving painted order
-		// 0,3,1,2 -- matches TestNavigationFollowsVisualOrderNotIndexOrder.
-		{"grouped", true, []int{0, 3, 1, 2}},
+		// Grouped: alphabetical, case-insensitive group order (R129, task
+		// 011) puts "agent-sessions-tui" (deck-dev, idx1) first, then
+		// "invp-ops-dev-agents" (magpie idx0 and pytest-bdd-migration idx3,
+		// which bucket together since they share a group), then "ralphd"
+		// (ralphd-dev, idx2) -- painted order 1,0,3,2.
+		{"grouped", true, []int{1, 0, 3, 2}},
 		// Flat (requirement 35): no buckets, so painted order is simply
 		// index order -- the non-adjacency that matters in grouped mode is
 		// a non-event here.

@@ -2112,21 +2112,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// clobbered by it the moment ListSessions' own (archive-free)
 			// result lands.
 			//
-			// Task 305 (R53): attentionOrder is computed unconditionally
-			// -- not only when the configured order IS attention -- because
-			// it also supplies workspace GROUP order for a non-attention
-			// render (see reorderPreservingGrouping's doc comment): SPEC
-			// requirement 30's "group order follows each group's most
-			// urgent member" holds regardless of which order the ROWS
-			// within a group render in (task 309's own success criteria:
-			// "group order itself unchanged from today's behavior").
+			// Task 305 (R53), REMOVED by task 011 (R129): this used to
+			// compute attentionOrder unconditionally so a non-attention
+			// render could still borrow it for workspace GROUP order via
+			// reorderPreservingGrouping (deleted this task). R129 makes
+			// group order alphabetical, case-insensitive, default always
+			// last (internal/tui/group.go's groupSortsBefore) --
+			// deliberately not attention-ranked -- so attentionOrder is
+			// only ever needed for the order==SortOrderAttention branch
+			// itself now; grouping (when on) buckets whatever m.baseSessions
+			// ends up as here, with each bucket's OWN row order following
+			// that same resolved order untouched (groupSessions' own
+			// first-appearance-within-a-bucket rule).
 			order, _ := m.effectiveSortOrder()
-			attentionOrder := sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
-			switch {
-			case order == SortOrderAttention:
-				m.baseSessions = attentionOrder
-			case m.groupingEnabled():
-				m.baseSessions = reorderPreservingGrouping(attentionOrder, sortSessionsByOrder(m.baseSessions, msg.sessions, order))
+			switch order {
+			case SortOrderAttention:
+				m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
 			default:
 				m.baseSessions = sortSessionsByOrder(m.baseSessions, msg.sessions, order)
 			}
@@ -4958,7 +4959,7 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	// theme.Background (sidebarRowLines is never called for a header).
 	sessionPos := 0
 	for _, group := range m.groupSessions() {
-		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group), kind: sidebarLineHeader, workspace: group.Workspace})
+		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group, contentWidth), kind: sidebarLineHeader, workspace: group.Workspace})
 		if m.isGroupCollapsed(group.Workspace) {
 			continue
 		}
@@ -4990,12 +4991,14 @@ func (m *Model) resortSessionsLive() {
 		selectedID = m.sessions[m.selected].ID
 	}
 	order, _ := m.effectiveSortOrder()
-	attentionOrder := sortSessionsByAttentionStable(m.baseSessions, m.baseSessions)
-	switch {
-	case order == SortOrderAttention:
-		m.baseSessions = attentionOrder
-	case m.groupingEnabled():
-		m.baseSessions = reorderPreservingGrouping(attentionOrder, sortSessionsByOrder(m.baseSessions, m.baseSessions, order))
+	// R129/task 011: group order (when grouping is on) is now alphabetical
+	// with default last (internal/tui/group.go's groupSortsBefore), never
+	// attention-ranked, so this no longer needs reorderPreservingGrouping
+	// (deleted this task) to compose group order with a non-attention row
+	// order -- see sessionsLoaded's own identical simplification above.
+	switch order {
+	case SortOrderAttention:
+		m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, m.baseSessions)
 	default:
 		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order)
 	}
