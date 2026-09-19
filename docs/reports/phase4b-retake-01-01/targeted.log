@@ -1,0 +1,6 @@
+=== RUN   TestInteractiveBodyLinesHealsTheStoredOffsetToTheClampedUsedOffset
+--- PASS: TestInteractiveBodyLinesHealsTheStoredOffsetToTheClampedUsedOffset (0.09s)
+=== RUN   TestInteractiveBodyLinesHealingReenablesTheNotRepaintedNotice
+--- PASS: TestInteractiveBodyLinesHealingReenablesTheNotRepaintedNotice (0.07s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.177s
