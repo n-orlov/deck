@@ -207,3 +207,80 @@ func TestGroupNameRejectsControlCharactersAnywhere(t *testing.T) {
 		t.Fatalf("CreateGroup trimmed name = %q; want %q", g.Name, "tooling maintenance")
 	}
 }
+
+// TestDeleteGroupThenCreateNewGroupNeverReusesTheDeletedID is R128's own
+// durable-identity guarantee (schemaV7's groups.id is now
+// INTEGER PRIMARY KEY AUTOINCREMENT, not plain INTEGER PRIMARY KEY): a
+// group's numeric identity is never handed to a later, unrelated group,
+// even when the deleted group was the table's only row (the exact shape
+// where SQLite's ordinary rowid reuse -- max(rowid)+1 among rows CURRENTLY
+// present -- would otherwise reissue id 1 to the next INSERT). It then
+// proves the read-side consequence that makes the id matter at all: a
+// session whose group_id still names the deleted id (an orphan the delete
+// flow never touched, or one restored later by an undo) keeps reading back
+// under default, via the ordinary LEFT JOIN, even after a brand-new group
+// exists -- it must never silently resolve to that new group's name just
+// because a naive id assignment happened to collide.
+func TestDeleteGroupThenCreateNewGroupNeverReusesTheDeletedID(t *testing.T) {
+	home := t.TempDir()
+	s, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+
+	deleted, err := s.CreateGroup(ctx, "tooling")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	orphan, err := s.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000c3", Name: "orphan", CWD: "/x",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+		GroupID: &deleted.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteGroup(ctx, deleted.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement, err := s.CreateGroup(ctx, "sprint work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.ID == deleted.ID {
+		t.Fatalf("CreateGroup after delete reused the deleted id: got %d, want anything but %d", replacement.ID, deleted.ID)
+	}
+
+	sessions, err := s.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *Session
+	for i := range sessions {
+		if sessions[i].ID == orphan.ID {
+			got = &sessions[i]
+		}
+	}
+	if got == nil {
+		t.Fatalf("ListSessions() lost the orphan session %s entirely", orphan.ID)
+	}
+	if got.GroupName != "" {
+		t.Fatalf("orphan session GroupName = %q after a same-slot group was created, want %q (default) -- it must never rebind onto the new group %q", got.GroupName, "", replacement.Name)
+	}
+	if got.GroupID == nil || *got.GroupID != deleted.ID {
+		t.Fatalf("orphan session GroupID = %v, want it to keep pointing at the retired id %d untouched", got.GroupID, deleted.ID)
+	}
+
+	groups, err := s.ListGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0].ID != replacement.ID || groups[0].Name != "sprint work" {
+		t.Fatalf("ListGroups() = %+v; want exactly the replacement row %d=%q", groups, replacement.ID, "sprint work")
+	}
+}

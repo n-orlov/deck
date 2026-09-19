@@ -2393,8 +2393,30 @@ var schemaV6 = []string{
 // would only change behaviour for the one case SPEC explicitly wants
 // handled at read time instead: two independent deck processes racing
 // on the same state.db (task 020).
+//
+// groups.id is INTEGER PRIMARY KEY AUTOINCREMENT, not the plain
+// INTEGER PRIMARY KEY every other rowid-aliased table in this schema
+// uses: SQLite's ordinary rowid assignment (max(rowid)+1 among rows
+// CURRENTLY in the table) freely reuses the id of a row that has since
+// been deleted -- delete the one existing group, whose id happens to be
+// the table's current max, create another, and the new row lands on the
+// exact same id (proven by the id-reuse regression in
+// group_id_reuse_test.go). Membership (sessions.group_id), the
+// remembered create-modal group (ui_state's last_create_group) and the
+// collapse set (ui_state's collapsed_groups) are all keyed on this id
+// with no foreign key at all (see the comment below), so a reused id
+// would silently rebind every one of those stale references onto
+// whatever unrelated group next claims it, instead of the dangling
+// reference degrading to default the way R128/R130 require. AUTOINCREMENT
+// makes SQLite track the highest id a groups row has EVER held (via the
+// hidden sqlite_sequence table) and never hand it out again, so a
+// deleted group's identity is retired for good, matching sessions.id's
+// own approach to durable identity (a TEXT UUID primary key, immune to
+// this class of reuse by construction) for the one column here that
+// cannot use a UUID and still cycle through the create modal's numeric
+// picker.
 var schemaV7 = []string{
-	`CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE)`,
+	`CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE)`,
 	`ALTER TABLE sessions ADD COLUMN group_id INTEGER`,
 	`ALTER TABLE sessions DROP COLUMN workspace`,
 }
