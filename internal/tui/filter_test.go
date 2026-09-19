@@ -10,7 +10,7 @@ import (
 
 // filterTestSessions returns three active sessions distinguished so a
 // filter on exactly one field never accidentally matches another: each
-// name, workspace and cwd is unique across all three, and none of the
+// name, group and cwd is unique across all three, and none of the
 // three fields shares a substring with any other session's same field.
 func filterTestSessions() []store.Session {
 	return []store.Session{
@@ -44,7 +44,7 @@ func rowLine(view, needle string) string {
 
 // TestFilterByNameShowsOnlyTheMatchingRow proves SPEC requirement 33's
 // "filters ... by name": typing a query that matches exactly one session's
-// name (and no other session's name, workspace or cwd) leaves only that
+// name (and no other session's name, group or cwd) leaves only that
 // row on screen.
 func TestFilterByNameShowsOnlyTheMatchingRow(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())
@@ -68,7 +68,7 @@ func TestFilterByNameShowsOnlyTheMatchingRow(t *testing.T) {
 
 // TestFilterByGroupShowsOnlyTheMatchingRow proves the "group" leg
 // of requirement 33's three named fields, using a query that appears in NO
-// session's name or cwd -- only its workspace.
+// session's name or cwd -- only its group.
 func TestFilterByGroupShowsOnlyTheMatchingRow(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())
 	got, _ := model.Update(key("/"))
@@ -79,15 +79,87 @@ func TestFilterByGroupShowsOnlyTheMatchingRow(t *testing.T) {
 	}
 	view := model.View()
 	if rowLine(view, "beta-agent") == "" {
-		t.Fatalf("row whose workspace matches was not shown:\n%s", view)
+		t.Fatalf("row whose group matches was not shown:\n%s", view)
 	}
 	if rowLine(view, "alpha-agent") != "" || rowLine(view, "gamma-agent") != "" {
-		t.Fatalf("rows whose workspace does not match were still shown:\n%s", view)
+		t.Fatalf("rows whose group does not match were still shown:\n%s", view)
+	}
+}
+
+// TestFilterByGroupNameSurfacesEveryMemberOfThatGroup is task 015/R129 part
+// 4's own named criterion: a query matching only a group's NAME (not any
+// session's own name or cwd) surfaces every session belonging to that
+// group, not merely a single lucky match -- proving filterMatches' group
+// leg composes correctly with a multi-member group, which
+// TestFilterByGroupShowsOnlyTheMatchingRow above (one session per group)
+// cannot exercise on its own.
+func TestFilterByGroupNameSurfacesEveryMemberOfThatGroup(t *testing.T) {
+	sessions := []store.Session{
+		{ID: "s-one", Name: "crew-one", GroupName: "crew-north", CWD: "/repos/one", Agent: "shell", Status: "running"},
+		{ID: "s-two", Name: "crew-two", GroupName: "crew-north", CWD: "/repos/two", Agent: "shell", Status: "running"},
+		{ID: "s-three", Name: "crew-three", GroupName: "crew-south", CWD: "/repos/three", Agent: "shell", Status: "running"},
+	}
+	model := newFilterTestModel(sessions)
+	got, _ := model.Update(key("/"))
+	model = got.(Model)
+	for _, r := range "crew-north" {
+		got, _ = model.Update(key(string(r)))
+		model = got.(Model)
+	}
+	view := model.View()
+	if rowLine(view, "crew-one") == "" || rowLine(view, "crew-two") == "" {
+		t.Fatalf("query matching only the group's name did not surface every member of that group:\n%s", view)
+	}
+	if rowLine(view, "crew-three") != "" {
+		t.Fatalf("a session outside the matching group was still shown:\n%s", view)
+	}
+}
+
+// TestFilterHidesTheHeaderOfAGroupWithNoMatch is task 015/R129 part 4's
+// other named criterion: under an active filter, a group none of whose
+// members match renders no header at all -- headers only ever appear for
+// groups that survive filteredSessions() -- and the header that DOES
+// render for a matching group states that group's MATCHING count, not its
+// unfiltered total.
+func TestFilterHidesTheHeaderOfAGroupWithNoMatch(t *testing.T) {
+	sessions := []store.Session{
+		{ID: "s-one", Name: "crew-one", GroupName: "crew-north", CWD: "/repos/one", Agent: "shell", Status: "running"},
+		{ID: "s-two", Name: "crew-two", GroupName: "crew-north", CWD: "/repos/two", Agent: "shell", Status: "running"},
+		{ID: "s-three", Name: "crew-three", GroupName: "crew-south", CWD: "/repos/three", Agent: "shell", Status: "running"},
+	}
+	model := newFilterTestModel(sessions)
+
+	// Unfiltered: both group headers render, crew-north's carrying its full
+	// total of 2.
+	unfiltered := model.View()
+	if rowLine(unfiltered, "crew-north") == "" || rowLine(unfiltered, "crew-south") == "" {
+		t.Fatalf("setup failed: both group headers should render unfiltered:\n%s", unfiltered)
+	}
+	if !strings.Contains(rowLine(unfiltered, "crew-north"), "(2)") {
+		t.Fatalf("setup failed: crew-north's unfiltered header should carry its total of 2:\n%s", rowLine(unfiltered, "crew-north"))
+	}
+
+	got, _ := model.Update(key("/"))
+	model = got.(Model)
+	for _, r := range "crew-one" {
+		got, _ = model.Update(key(string(r)))
+		model = got.(Model)
+	}
+	view := model.View()
+	if rowLine(view, "crew-south") != "" {
+		t.Fatalf("a group with no matching member still rendered a header while filtering:\n%s", view)
+	}
+	header := rowLine(view, "crew-north")
+	if header == "" {
+		t.Fatalf("the matching group's own header did not render while filtering:\n%s", view)
+	}
+	if !strings.Contains(header, "(1)") {
+		t.Fatalf("matching group's header should state its MATCHING count (1), not its total (2):\n%s", header)
 	}
 }
 
 // TestFilterByCWDShowsOnlyTheMatchingRow is requirement 33's third named
-// field, using a query that appears in no session's name or workspace --
+// field, using a query that appears in no session's name or group --
 // only its cwd.
 func TestFilterByCWDShowsOnlyTheMatchingRow(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())

@@ -9,7 +9,8 @@ import (
 )
 
 // This file is task 123's `/` list filter (SPEC.md:984/§11.3, requirement
-// 33, I-10): filters the sidebar by name, workspace and cwd, incrementally,
+// 33, I-10; re-aimed off the removed workspace model by task 015/R129
+// part 4): filters the sidebar by name, group and cwd, incrementally,
 // clearing on Esc. Unlike every full-screen dialog in this package
 // (createView, renameView, eventLogView, ...), filtering never replaces
 // View() -- mainView keeps rendering the (now filtered) session list, with
@@ -28,10 +29,20 @@ import (
 // flag (R71, issue #8) and returns it to the default list.
 
 // filterMatches reports whether session matches query (SPEC requirement
-// 33) against its name, workspace or cwd -- the three fields the
-// requirement names, and the only three ever consulted -- as a plain,
-// case-insensitive substring test. An empty query matches everything (the
-// unfiltered state).
+// 33) against its name, group name (via sessionGroupKey -- task 015/R129
+// part 4, replacing the removed workspace field) or cwd -- the three
+// fields the requirement names, and the only three ever consulted -- as a
+// plain, case-insensitive substring test. An empty query matches
+// everything (the unfiltered state). Because a session's own group name
+// is one of the fields checked, a query matching only a group's name
+// (and no session's own name or cwd) makes every member of that group
+// match individually -- there is no separate "match the group" step: a
+// non-matching group simply has none of its sessions survive the filter,
+// so groupSessions() (internal/tui/group.go), which buckets
+// m.filteredSessions()' own output, never emits a header for it, and the
+// header it DOES emit for a matching group carries that group's matching
+// member count (len(group.Sessions), read off the already-filtered set),
+// never the group's unfiltered total.
 func filterMatches(session store.Session, query string) bool {
 	if query == "" {
 		return true

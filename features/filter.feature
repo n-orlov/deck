@@ -1,8 +1,8 @@
 @requirement-33
-Feature: The / list filter: by name, workspace and cwd, and the route back to an archived row (I-10, task 123)
+Feature: The / list filter: by name, group and cwd, and the route back to an archived row (I-10, task 123; re-aimed off workspace by task 015/R129 part 4)
 
   SPEC.md:984/\u00a711.3, requirement 33: `/` filters the sidebar by name,
-  workspace and cwd, incrementally as the query is typed, clearing on Esc.
+  group and cwd, incrementally as the query is typed, clearing on Esc.
   Archived rows (requirement 27) are hidden from store.ListSessions' own
   default view entirely, so the filter is the only way one is FOUND again
   (phase3-sessions-and-lifecycle.md item 33: "a stated filter term for
@@ -24,14 +24,12 @@ Feature: The / list filter: by name, workspace and cwd, and the route back to an
     Then deck client "A" screen contains "filter-name-beta"
     And deck client "A" exits cleanly
 
-  @requirement-33-filter-by-cwd-and-workspace
-  Scenario: / filters the list down to the one row whose cwd (and its default workspace) matches
-    # Workspace defaults to the basename of cwd (store.DefaultWorkspace)
-    # and there is no product path to set it to anything else, so a
-    # black-box scenario cannot distinguish the two fields from each other
-    # -- internal/tui/filter_test.go's own unit tests construct sessions
-    # with an explicit Workspace independent of CWD to prove the filter
-    # checks each field independently.
+  @requirement-33-filter-by-cwd
+  Scenario: / filters the list down to the one row whose cwd matches
+    # internal/tui/filter_test.go's own unit tests construct sessions with
+    # an explicit GroupName independent of CWD to prove the filter checks
+    # each field independently; this scenario proves the cwd leg alone,
+    # end to end through the real keystrokes.
     Given deck client "A" is started
     And deck client "A" creates shell session "filter-cwd-one" with a fresh working directory labelled "filter-cwd-target"
     And deck client "A" creates shell session "filter-cwd-two"
@@ -41,6 +39,26 @@ Feature: The / list filter: by name, workspace and cwd, and the route back to an
     And deck client "A" screen does not contain "filter-cwd-two"
     When deck client "A" clears the list filter with escape
     Then deck client "A" exits cleanly
+
+  @requirement-33-filter-by-group
+  Scenario: / filters the list down to the group whose name matches, hiding a group with no match and its header
+    Given deck client "A" is started
+    And deck client "A" creates shell session "filter-group-keep-a"
+    And deck client "A" creates shell session "filter-group-keep-b"
+    And deck client "A" creates shell session "filter-group-other"
+    And the state database session "filter-group-keep-a" is in group "filter-target-group"
+    And the state database session "filter-group-keep-b" is in group "filter-target-group"
+    And the state database session "filter-group-other" is in group "filter-other-group"
+    Then within one configured reconcile interval deck client "A" screen contains "filter-target-group"
+    When deck client "A" opens the list filter
+    And deck client "A" types "filter-target-group" into the filter field
+    Then deck client "A" screen contains "filter-group-keep-a"
+    And deck client "A" screen contains "filter-group-keep-b"
+    And deck client "A" screen does not contain "filter-group-other"
+    And deck client "A" screen does not contain "filter-other-group"
+    When deck client "A" clears the list filter with escape
+    Then deck client "A" screen contains "filter-group-other"
+    And deck client "A" exits cleanly
 
   @requirement-33-filter-reaches-archived-row
   Scenario: the filter is the only route back to a row hidden by A archive
