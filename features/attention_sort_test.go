@@ -20,7 +20,7 @@ import (
 // strip's attention count, and `space`'s non-vacuous, status-preserving walk.
 func registerAttentionSortSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has status "([^"]+)" ([0-9]+) seconds ago$`, setSessionStatusSecondsAgo)
-	sc.Step(`^the state database session "([^"]+)" has workspace "([^"]+)"$`, setSessionWorkspace)
+	sc.Step(`^the state database session "([^"]+)" is in group "([^"]+)"$`, setSessionGroup)
 	sc.Step(`^deck client "([^"]+)" selects session "([^"]+)"$`, clientSelectsSessionByName)
 	sc.Step(`^deck client "([^"]+)" has session "([^"]+)" selected$`, clientHasSessionSelected)
 	sc.Step(`^deck client "([^"]+)" screen shows sessions in this order:$`, clientShowsSessionsInOrder)
@@ -63,12 +63,19 @@ func setSessionStatusSecondsAgo(ctx context.Context, name, status string, second
 	return nil
 }
 
-// setSessionWorkspace poses SPEC requirement 30's grouping key directly,
-// since the create modal (the only user-facing way to set a session's cwd)
-// gives every session created within one scenario the same cwd and hence
-// the same default workspace -- there is no other black-box way to put two
-// sessions in different workspace groups within a single scenario.
-func setSessionWorkspace(ctx context.Context, name, workspace string) error {
+// setSessionGroup poses SPEC §4/§11's manual group membership directly:
+// it creates the named group if it does not exist yet and points the named
+// session's group_id at it, which is the only black-box way to put two
+// sessions in different groups within a single scenario (the create modal
+// gives every session created within one scenario the same cwd, and before
+// R128 that meant the same cwd-derived workspace).
+//
+// R128 (schemaV7, commit bf1c085) dropped sessions.workspace outright, so
+// this step's predecessor -- setSessionWorkspace, `UPDATE sessions SET
+// workspace = ?` -- could only fail with "no such column: workspace" from
+// that commit on; it is replaced here rather than re-aimed, along with the
+// "has workspace" phrasing every caller used.
+func setSessionGroup(ctx context.Context, name, group string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -78,11 +85,14 @@ func setSessionWorkspace(ctx context.Context, name, workspace string) error {
 		return err
 	}
 	defer db.Close()
-	result, err := db.ExecContext(ctx, `UPDATE sessions SET workspace = ? WHERE name = ?`, workspace, name)
-	if err != nil {
-		return fmt.Errorf("set session %q workspace %q: %w", name, workspace, err)
+	if _, err := db.ExecContext(ctx, `INSERT INTO groups(name) VALUES(?) ON CONFLICT(name) DO NOTHING`, group); err != nil {
+		return fmt.Errorf("create group %q: %w", group, err)
 	}
-	if err := requireOneRowAffected(result, "set session %q workspace %q", name, workspace); err != nil {
+	result, err := db.ExecContext(ctx, `UPDATE sessions SET group_id = (SELECT id FROM groups WHERE name = ?) WHERE name = ?`, group, name)
+	if err != nil {
+		return fmt.Errorf("put session %q in group %q: %w", name, group, err)
+	}
+	if err := requireOneRowAffected(result, "put session %q in group %q", name, group); err != nil {
 		return err
 	}
 	return nil

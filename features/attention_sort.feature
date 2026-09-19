@@ -51,7 +51,7 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     When deck client "A" creates shell session "grp-a-1"
     And deck client "A" creates shell session "grp-a-2"
     And deck client "A" creates shell session "grp-b-1"
-    And the state database session "grp-b-1" has workspace "second-workspace"
+    And the state database session "grp-b-1" is in group "second-workspace"
     Then within one configured reconcile interval deck client "A" screen contains "second-workspace"
     And deck client "A" screen contains "grp-a-1"
     And deck client "A" screen contains "grp-a-2"
@@ -82,21 +82,27 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     When deck client "A" creates shell session "gg-a-1"
     And deck client "A" creates shell session "gg-a-2"
     And deck client "A" creates shell session "gg-b-1"
-    And the state database session "gg-b-1" has workspace "gg-second-workspace"
+    And the state database session "gg-b-1" is in group "gg-second-workspace"
     And the state database session "gg-a-1" has status "waiting" 20 seconds ago
     And the state database session "gg-a-2" has status "idle" 10 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "gg-second-workspace"
-    When deck client "A" selects session "gg-b-1"
-    And deck client "A" sends "g"
-    Then deck client "A" has session "gg-a-1" selected
-    When deck client "A" sends "G"
-    Then deck client "A" has session "gg-b-1" selected
-    When deck client "A" selects session "gg-b-1"
-    And deck client "A" sends "c"
-    Then deck client "A" screen stops containing "gg-b-1"
+    # R129 (task 011) orders the sidebar's groups alphabetically with the
+    # implicit default group ALWAYS last, so the render is
+    # "gg-second-workspace" (gg-b-1) first, then "default" (gg-a-1 then
+    # gg-a-2, attention order within the group). g/G therefore land on
+    # gg-b-1 and gg-a-2 -- the pre-R129 expectations here (gg-a-1 first,
+    # gg-b-1 last) belonged to the group order this task replaced.
     When deck client "A" selects session "gg-a-2"
-    And deck client "A" sends "G"
+    And deck client "A" sends "g"
+    Then deck client "A" has session "gg-b-1" selected
+    When deck client "A" sends "G"
     Then deck client "A" has session "gg-a-2" selected
+    When deck client "A" selects session "gg-a-1"
+    And deck client "A" sends "c"
+    Then deck client "A" screen stops containing "gg-a-2"
+    When deck client "A" selects session "gg-b-1"
+    And deck client "A" sends "G"
+    Then deck client "A" has session "gg-b-1" selected
     When deck client "A" exits cleanly
 
   @requirement-31-attention-count @requirement-15-collapsed-strip
