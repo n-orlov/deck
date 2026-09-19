@@ -59,6 +59,49 @@ func emptyGroupsTestStore(t *testing.T) *store.Store {
 	return db
 }
 
+// TestUnfilteredSidebarAlwaysRendersDefaultWithZeroSessionsAndZeroGroups
+// is R129's "default always exists" half at its hardest point: a real,
+// freshly created state.db with NO sessions and NO persisted groups at
+// all. The first cure attempt kept sidebarEntries' zero-sessions
+// short-circuit for exactly this case, so the unfiltered sidebar rendered
+// only the empty-state copy and no default header -- the structural
+// default group must exist here too, with (0), alongside that copy.
+func TestUnfilteredSidebarAlwaysRendersDefaultWithZeroSessionsAndZeroGroups(t *testing.T) {
+	db := emptyGroupsTestStore(t)
+	m := New(db, config.Settings{}, "")
+	m.width, m.height = 100, 40
+	m = reviewReloadForEmptyGroups(t, m)
+
+	if len(m.sessions) != 0 || len(m.allGroups) != 0 {
+		t.Fatalf("fixture has %d sessions / %d groups, want 0/0", len(m.sessions), len(m.allGroups))
+	}
+	body := strings.Join(m.sidebarBodyLines(60), "\n")
+	if !strings.Contains(body, "default  (0)") {
+		t.Errorf("structural default header missing from an empty store's unfiltered sidebar; sidebar=%q", body)
+	}
+	// The empty-state copy (SPEC §11.3) still lives in the sidebar too --
+	// the default header is additional structure, never a replacement for
+	// the "press n" guidance an empty store needs.
+	if !strings.Contains(body, "No sessions yet") || !strings.Contains(body, "Press n") {
+		t.Errorf("empty-state copy lost from an empty store's sidebar; sidebar=%q", body)
+	}
+	// The same header must be a real, id-keyed header entry (id 0 is the
+	// structural default's own durable identity), so collapse and the
+	// §11.8 mouse hit-test resolve it exactly like any other group.
+	var headers int
+	for _, e := range m.sidebarEntries(60) {
+		if e.kind == sidebarLineHeader {
+			headers++
+			if e.groupName != "" || e.groupID != 0 {
+				t.Errorf("unexpected header entry %q (id %d), want only the structural default", e.groupName, e.groupID)
+			}
+		}
+	}
+	if headers != 1 {
+		t.Errorf("got %d header entries, want exactly 1 (the structural default)", headers)
+	}
+}
+
 // TestEmptyGroupsRenderFromDBWithZeroSessions is the review's own
 // "populated=false" case: a group is defined ("empty-visible") but the
 // store holds NO sessions at all. Before this task's fix,
@@ -81,9 +124,6 @@ func TestEmptyGroupsRenderFromDBWithZeroSessions(t *testing.T) {
 		t.Fatalf("fixture has %d sessions, want 0", len(m.sessions))
 	}
 	body := strings.Join(m.sidebarBodyLines(60), "\n")
-	if strings.Contains(body, "No sessions yet") {
-		t.Fatalf("zero-sessions message shown despite a defined group; sidebar=%q", body)
-	}
 	if !strings.Contains(body, g.Name+"  (0)") {
 		t.Errorf("defined empty group %q missing after reload; sidebar=%q", g.Name, body)
 	}

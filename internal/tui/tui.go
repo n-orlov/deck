@@ -5331,29 +5331,33 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 			entries = append(entries, sidebarEntry{text: line})
 		}
 	}
-	if len(m.sessions) == 0 && (m.filterQuery != "" || len(m.allGroups) == 0) {
-		// cure-01-02: the zero-sessions short-circuit below only applies
-		// when there is truly nothing to show a group header for -- a
-		// filter query in force (its own "no matches" copy already covers
-		// that state) or an unfiltered store with no DEFINED group at all,
-		// so the structural default group would render with nothing but
-		// (0) beside it. An unfiltered store that DOES have a defined
-		// group falls through to the groupSessions() loop below instead,
-		// which renders every defined group (and default) with (0), per
-		// SPEC §11's "a group the user defined but has not filled yet
-		// still renders".
-		msg := "No sessions yet. Press n to create a session."
-		if m.filterQuery != "" {
-			// Task 123/I-10: a filter query in force with zero matches is a
-			// different state from a genuinely empty store -- there is
-			// nothing to create here, and "press n" would be misleading
-			// copy while a query is narrowing an otherwise non-empty list.
-			msg = fmt.Sprintf("No sessions match %q.", m.filterQuery)
-		}
-		for _, line := range wrapText(msg, contentWidth) {
+	if len(m.sessions) == 0 && m.filterQuery != "" {
+		// Task 123/I-10: a filter query in force with zero matches is a
+		// different state from a genuinely empty store -- there is
+		// nothing to create here, and "press n" would be misleading copy
+		// while a query is narrowing an otherwise non-empty list. This is
+		// also the one state that renders NO group header at all: a
+		// defined-but-empty group can never match a query (SPEC §11's
+		// "under an active filter only groups with a match render"), so
+		// groupSessions() deliberately seeds nothing while filtering.
+		for _, line := range wrapText(fmt.Sprintf("No sessions match %q.", m.filterQuery), contentWidth) {
 			entries = append(entries, sidebarEntry{text: line})
 		}
 		return entries
+	}
+	if len(m.sessions) == 0 {
+		// cure-01-02: an unfiltered sidebar with no sessions still renders
+		// its group structure below -- every DEFINED group plus the
+		// structural default, each with (0), per SPEC §11's "a group the
+		// user defined but has not filled yet still renders" and R129's
+		// "default always exists". The empty-state copy is kept alongside
+		// it (SPEC §11.3: "the empty state and Press n copy now live
+		// inside the sidebar") rather than replacing it, and is emitted
+		// FIRST so it stays legible at the supported 80x24 floor however
+		// many empty groups are defined below it.
+		for _, line := range wrapText("No sessions yet. Press n to create a session.", contentWidth) {
+			entries = append(entries, sidebarEntry{text: line})
+		}
 	}
 	// Task 084: sessionPos counts only rendered SESSION rows, continuing
 	// across group boundaries -- a workspace header never advances or
