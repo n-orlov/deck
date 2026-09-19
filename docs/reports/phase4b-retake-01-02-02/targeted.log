@@ -1,0 +1,5 @@
+=== RUN   TestSharedStateDBGroupEditsVisibleAcrossClients
+--- PASS: TestSharedStateDBGroupEditsVisibleAcrossClients (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.025s
+EXIT:0
