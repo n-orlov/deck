@@ -1,23 +1,35 @@
 # Phase 4b — whole-suite gate sweep (task 021)
 
 Freeze-line sweep: the whole Go test suite, no test-name filter, no narrowed
-package list, run in the CI container at this task's launch sha.
+package list, run in the CI container at task 021's launch sha — and, under
+the follow-up task the red lanes were carved into, again from scratch at the
+cured sha.
 
-**Result at the re-sweep sha (`a224e43`, this task's launch sha): GREEN
-(exit 0).** Both red lanes the launch-sha gate (`baf92ed`) hit are cured
-(`021-cure-01` at `db9732b`, `021-cure-02` at `a224e43`) and this
-from-scratch re-run of the whole suite confirms it: all 15 tested packages
-`ok`, including `features`, with no test-name filter and no narrowed
-package list. The superseded `baf92ed` RED result stays in the record as
-history — see [Red lanes at the launch sha](#red-lanes-at-the-launch-sha-baf92ed-history--both-cured-confirmed-green-above)
-below; its log and exit-status file
-([`fullsuite-baf92ed.log`](./fullsuite-baf92ed.log),
-[`exit-status-baf92ed.txt`](./exit-status-baf92ed.txt)) are committed
-unchanged beside this README's new `a224e43` files.
+This file records TWO whole-suite runs, at two different shas, because two
+tasks gate here:
 
-## The gate run of record
+1. **Task 021's own gate, at task 021's launch sha `baf92ed`: RED (exit
+   1), 489s** — the run this task is accountable for. Its log
+   ([`fullsuite-baf92ed.log`](./fullsuite-baf92ed.log)) and exit-status
+   file ([`exit-status-baf92ed.txt`](./exit-status-baf92ed.txt)) are
+   committed beside this README and stay in the record as history; the RED
+   result was never erased by the green one. Section
+   [Task 021's gate at its launch sha](#task-021s-gate-at-its-launch-sha-baf92ed--red-exit-1)
+   below carries its invocation, wall clock, real exit status and every
+   package result line.
+2. **Task `021-resweep-01`'s from-scratch re-run, at ITS launch sha
+   `a224e43`: GREEN (exit 0), 463s** — the confirmation that both red lanes
+   task 021 found are cured (`021-cure-01` at `db9732b`, `021-cure-02` at
+   `a224e43`). All 15 tested packages `ok`, including `features`, with no
+   test-name filter and no narrowed package list.
 
-- **Code sha (this task's launch sha):**
+`a224e43` is NOT task 021's launch sha (an earlier revision of this README
+said so, wrongly): task 021 launched from `baf92ed`, and `a224e43` is where
+the second cure landed and where the re-sweep task launched from.
+
+## The re-sweep run of record (`021-resweep-01`)
+
+- **Code sha (task `021-resweep-01`'s launch sha):**
   `a224e4339173bad93342abdeb5e946da71753090`
   (`a224e43`, "features: retry the theme-geometry settle guard instead of
   one fixed 100ms sample (#30)", `021-cure-02`), tree clean at launch,
@@ -40,7 +52,7 @@ unchanged beside this README's new `a224e43` files.
   (committed beside this README, 18 lines — the package result lines only;
   this run produced no per-scenario frame dumps because nothing failed).
 
-## Package result lines (from the captured log)
+## Package result lines of the re-sweep (from `fullsuite-a224e43.log`)
 
 ```
 ok  	github.com/n-orlov/deck/cmd/deck	7.443s
@@ -87,7 +99,53 @@ were always the log's own.)
 so no package the module resolves is missing from the log. Every package ran
 (or reported `[no test files]`); none was excluded from the invocation.
 
-## Red lanes at the launch sha (`baf92ed`, history — both cured, confirmed green above)
+## Task 021's gate at its launch sha (`baf92ed`) — RED (exit 1)
+
+- **Code sha (task 021's launch sha):**
+  `baf92eda072f6b59ba9b788340f71ed798077504` (`baf92ed`, "docs: re-verify
+  task 019's group-delete branches at HEAD (R131 part 2, #30)").
+- **Invocation:** `ci/run.sh go test -p=1 -count=1 ./...` — no `-run`
+  filter, no package list, no `DECK_GODOG_TAGS` override.
+- **Wall clock:** 489s (8m09s) — start `2026-09-19T20:12:49Z`, end
+  `2026-09-19T20:20:58Z`.
+- **Real exit status:** `1` (RED), taken from the run's own exit code, in
+  [`exit-status-baf92ed.txt`](./exit-status-baf92ed.txt)
+  (`SHA:baf92ed…` / `EXIT:1` / `SECONDS:489`).
+- **Captured log:** [`fullsuite-baf92ed.log`](./fullsuite-baf92ed.log),
+  committed beside this README (6602 lines — the failing scenario's frame
+  dumps are why it is large).
+
+Package result lines from that log — 18 in total: 14 `ok`, 1 `FAIL`, 3
+`[no test files]`:
+
+```
+ok  	github.com/n-orlov/deck/cmd/deck	7.445s
+ok  	github.com/n-orlov/deck/cmd/fake-claude	0.789s
+ok  	github.com/n-orlov/deck/cmd/fake-codex	0.118s
+ok  	github.com/n-orlov/deck/cmd/fake-pi	0.769s
+FAIL	github.com/n-orlov/deck/features	413.717s
+ok  	github.com/n-orlov/deck/internal/agent	0.007s
+ok  	github.com/n-orlov/deck/internal/audit	0.018s
+ok  	github.com/n-orlov/deck/internal/config	0.024s
+ok  	github.com/n-orlov/deck/internal/hookrecv	4.427s
+ok  	github.com/n-orlov/deck/internal/interactive	15.412s
+?   	github.com/n-orlov/deck/internal/notify	[no test files]
+?   	github.com/n-orlov/deck/internal/search	[no test files]
+ok  	github.com/n-orlov/deck/internal/service	7.128s
+ok  	github.com/n-orlov/deck/internal/store	3.620s
+ok  	github.com/n-orlov/deck/internal/theme	0.007s
+ok  	github.com/n-orlov/deck/internal/tmux	25.706s
+ok  	github.com/n-orlov/deck/internal/tui	6.408s
+?   	github.com/n-orlov/deck/internal/unit	[no test files]
+```
+
+Reproducible from the committed log with the same tab-anchored patterns used
+for the re-sweep above: `grep -cE '^ok' fullsuite-baf92ed.log` → 14,
+`grep -cP '^FAIL\t' fullsuite-baf92ed.log` → 1,
+`grep -c 'no test files' fullsuite-baf92ed.log` → 3 (14+1+3 = 18 = the
+module's own package count).
+
+### The two red lanes (both cured; the cured sha is confirmed green above)
 
 Both failures were inside the `features` package and both were timeouts in
 the test harness's own waits, hit under whole-suite load:
@@ -113,10 +171,12 @@ the test harness's own waits, hit under whole-suite load:
 godog's own summary for the `baf92ed` run: `362 scenarios (361 passed, 1
 failed)` / `4343 steps (4314 passed, 1 failed, 28 skipped)`. The 28 skipped
 steps were the remainder of that one failed scenario, which godog skips
-after a step fails — not a skip anyone requested. This re-sweep's own godog
-summary is inside [`fullsuite-a224e43.log`](./fullsuite-a224e43.log)'s
-`features` run (367.756s, `ok`) — no scenario failed, so no steps were
-skipped for that reason.
+after a step fails — not a skip anyone requested. The re-sweep's own log
+([`fullsuite-a224e43.log`](./fullsuite-a224e43.log)) carries no godog
+summary at all: the invocation passed no `-v`, so `go test` prints a
+passing package's output nowhere — the log is the 18 package lines and
+nothing else, and `features` is `ok` (367.756s) among them. No scenario
+failed there, so no steps were skipped for that reason.
 
 ### Isolation re-runs (diagnostics at the time, not a substitute for the gate)
 
@@ -132,8 +192,9 @@ deterministic:
 That did not make the `baf92ed` gate green: **that gate's own exit status
 was 1**, and it stands in the record as the result of that run. A lane that
 is red on the gate IS red, whatever an isolated re-run shows — which is
-exactly why this task re-ran the whole suite from scratch rather than
-trusting the isolation re-runs or the cure commits' own targeted tests.
+exactly why a separate task (`021-resweep-01`) re-ran the whole suite from
+scratch rather than trusting the isolation re-runs or the cure commits' own
+targeted tests.
 
 ### How the fix was handled
 
@@ -148,7 +209,21 @@ re-sweep:
 | --- | --- | --- |
 | `021-cure-01` | the `kill_delete_undo.feature` create-step `starting` wait (red lane 1) | `db9732b` |
 | `021-cure-02` | the `theme_geometry_test.go` settle comparison (red lane 2) | `a224e43` |
-| `021-resweep-01` | the whole-suite gate re-run from scratch at the cured sha (this task) | `a224e43`'s tree, this file's own commit |
+| `021-resweep-01` | the whole-suite gate re-run from scratch at the cured sha | `7370e1d` (README update; suite run against `a224e43`'s tree) |
+
+All three are real entries in this run's own plan (`tasks.json`), each
+carrying `splitFrom: "021"`, and all three stand `validated` — that is the
+checkable form of "carved into a new task rather than patched under this
+one", and it is what makes the table above a record rather than an
+intention. A first attempt to carve them was refused by the harness on
+lint grounds and no task existed for a while; the accepted proposal is the
+one whose ids are listed here. Verify with:
+
+```
+$ python3 -c "import json;d=json.load(open('tasks.json'));
+print([(t['id'],t['status'],t.get('splitFrom')) for t in d['tasks']
+       if t.get('splitFrom')=='021'])"
+```
 
 Both cures re-ran their own lane 5x sequential + 3x concurrent green before
 landing (write-up: `docs/reports/phase4b-cure021/README.md`, one section
@@ -185,6 +260,19 @@ count was corrected in `f97774f` without re-running anything.
 That run no longer describes the tree: eight code-touching commits landed
 after it (`60a551d`, `f77368f`, `db0f94b`, `386649d`, `42c1ffc`, `43b7202`,
 `57e1a6a`, `d179b2c` — the review-cure wave plus the pipe-pane wait cure),
-18 non-doc files in all. That is why the gate was re-run at this task's
-current launch sha, and why the green 440s figure must not be quoted as this
-phase's gate result.
+18 non-doc files in all. That is why the gate was re-run at task 021's own
+launch sha `baf92ed`, and why the green 440s figure must not be quoted as
+this phase's gate result.
+
+## What these two runs do and do not cover
+
+Both runs are pinned to their own shas: `baf92ed` (task 021, RED) and
+`a224e43` (`021-resweep-01`, GREEN). Four code-touching commits landed after
+`a224e43` — `4a1e352`, `8d934d1` (the R133 offset cure, `cure-01-01-2`) and
+`8f8e9e8`, `f13c848` (the R131 settings-visibility cure, `cure-01-02-2`), all
+under `internal/tui/` — so neither log describes the tree at any sha later
+than `a224e43`. Those cures carry their own package-level evidence in
+`docs/reports/phase4b-retake-01-01-2/` and
+`docs/reports/phase4b-retake-01-04-01/`; a whole-suite gate at a sha later
+than `a224e43` belongs to whichever task gates there, and nothing in this
+file should be read as one.
