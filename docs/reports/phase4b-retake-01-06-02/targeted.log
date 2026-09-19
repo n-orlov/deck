@@ -1,0 +1,14 @@
+=== RUN   TestCollapsedGroupsRoundTripsAcrossReopen
+--- PASS: TestCollapsedGroupsRoundTripsAcrossReopen (0.03s)
+=== RUN   TestCollapsedGroupsAbsentRowYieldsEmptySet
+--- PASS: TestCollapsedGroupsAbsentRowYieldsEmptySet (0.02s)
+=== RUN   TestLastCreateGroupAbsentRowDegradesToDefault
+--- PASS: TestLastCreateGroupAbsentRowDegradesToDefault (0.02s)
+=== RUN   TestLastCreateGroupDanglingIDDegradesToDefaultNotEmptyValue
+--- PASS: TestLastCreateGroupDanglingIDDegradesToDefaultNotEmptyValue (0.02s)
+=== RUN   TestLastCreateGroupOverwritesInPlace
+--- PASS: TestLastCreateGroupOverwritesInPlace (0.02s)
+=== RUN   TestSetLastCreateGroupDefaultForgetsTheRememberedNamedGroup
+--- PASS: TestSetLastCreateGroupDefaultForgetsTheRememberedNamedGroup (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/store	0.139s
