@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -2409,6 +2410,105 @@ func (s *Store) GetLastCreateAgent(ctx context.Context) (string, error) {
 // opens pre-selecting it.
 func (s *Store) SetLastCreateAgent(ctx context.Context, agent string) error {
 	return s.setUIState(ctx, lastCreateAgentUIStateKey, agent)
+}
+
+// collapsedGroupsUIStateKey is the ui_state key GetCollapsedGroups/
+// SetCollapsedGroups use to persist SPEC §11's "collapse state persists in
+// ui_state" for manual groups (R129): the set of group ids the user has
+// toggled collapsed with `c` or a header click, so a group collapsed
+// yesterday is still collapsed today.
+const collapsedGroupsUIStateKey = "collapsed_groups"
+
+// GetCollapsedGroups returns the persisted set of collapsed group ids as a
+// membership map (collapsed[id] is true for every id in the set), or an
+// empty, non-nil map when no row exists yet, or when the stored value is
+// not valid JSON (ui_state is not load-bearing: nothing collapsed is the
+// documented default). It does not filter out an id that no longer
+// resolves to a real group -- SPEC §11 already renders a dangling group_id
+// under default on the session side, and a stale collapsed-id entry for a
+// deleted group is simply never looked up again, so there is nothing here
+// that needs healing.
+func (s *Store) GetCollapsedGroups(ctx context.Context) (map[int64]bool, error) {
+	value, err := s.getUIState(ctx, collapsedGroupsUIStateKey, "")
+	if err != nil {
+		return nil, err
+	}
+	collapsed := make(map[int64]bool)
+	if value == "" {
+		return collapsed, nil
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(value), &ids); err != nil {
+		return make(map[int64]bool), nil
+	}
+	for _, id := range ids {
+		collapsed[id] = true
+	}
+	return collapsed, nil
+}
+
+// SetCollapsedGroups persists the full set of collapsed group ids in
+// state.db's ui_state table, never in config.toml, replacing whatever set
+// was there before. Only ids mapped to true are persisted, so callers may
+// pass the same map they mutate with collapsed[id] = false to un-collapse.
+func (s *Store) SetCollapsedGroups(ctx context.Context, collapsed map[int64]bool) error {
+	ids := make([]int64, 0, len(collapsed))
+	for id, on := range collapsed {
+		if on {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return fmt.Errorf("encode collapsed groups: %w", err)
+	}
+	return s.setUIState(ctx, collapsedGroupsUIStateKey, string(encoded))
+}
+
+// lastCreateGroupUIStateKey is the ui_state key GetLastCreateGroup/
+// SetLastCreateGroup use to persist SPEC §11's "the create modal ... Group
+// field ... default[s] to the last group created into" (R130), mirroring
+// lastCreateAgentUIStateKey's own precedent for the Agent field.
+const lastCreateGroupUIStateKey = "last_create_group"
+
+// GetLastCreateGroup returns the id of the group most recently created
+// into, or nil when no create has ever targeted a real group (ui_state is
+// not load-bearing: a missing or unparsable row degrades to nil, meaning
+// default). It also degrades to nil when the remembered id no longer
+// resolves to a real group -- SPEC §11's "a group_id that no longer
+// resolves ... renders under default rather than vanishing" applies here
+// too: the create modal must never pre-select a group that was deleted
+// since the last create, so a dangling remembered id degrades to nil
+// (default) rather than to an empty, still-distinguishable value.
+func (s *Store) GetLastCreateGroup(ctx context.Context) (*int64, error) {
+	value, err := s.getUIState(ctx, lastCreateGroupUIStateKey, "")
+	if err != nil {
+		return nil, err
+	}
+	if value == "" {
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+	var exists int
+	err = s.db.QueryRowContext(ctx, `SELECT 1 FROM groups WHERE id = ?`, id).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("check last create group: %w", err)
+	}
+	return &id, nil
+}
+
+// SetLastCreateGroup persists the just-succeeded create modal's target
+// group id in state.db's ui_state table, never in config.toml, so a later
+// create opens pre-selecting it.
+func (s *Store) SetLastCreateGroup(ctx context.Context, groupID int64) error {
+	return s.setUIState(ctx, lastCreateGroupUIStateKey, strconv.FormatInt(groupID, 10))
 }
 
 // RecentCwd is one row of the §11.7 directory history: a resolved absolute
