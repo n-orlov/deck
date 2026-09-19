@@ -4,8 +4,9 @@ Companion to [`phase4b.md`](phase4b.md) (the per-requirement evidence report for
 R133–R135, R128–R131): what the requirement table does not carry — everything
 this run found while landing Tier 1 and Tier 2 and deliberately chose **not**
 to fix, plus the non-findings the plan names by name (`docs/reports/phase4b.md`
-line 235 explicitly defers "the residual gaps this run chose not to fix" to
-this file).
+defers "[r]esidual gaps this run chose not to fix" to this file, in its
+"Not shipped / still open" section — cited by section rather than by line
+number, since task 024 re-wrote that file at gate sha `baf92ed`).
 
 Written at gate sha `0806ba64ede4356af50b404affd10f26f68d4d84` (task 020, the
 last code-touching commit on the GO branch); every commit from task 021's
