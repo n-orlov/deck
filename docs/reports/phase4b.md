@@ -3,8 +3,10 @@
 Per-requirement record for the whole phase (`prds/phase4b-manual-groups-and-scroll-cue.md`,
 GH #25/#30), written at the point the freeze-line tail (tasks 021–027) is nearly closed out.
 
-- **Code sha this file is written against:** `c36fefa9168fec83c508983080d156e28f3f5a8c`
-  (task 023's docs commit — the tip of `main` at the moment this report was authored).
+- **Code sha this file is written against:** `b96015e1aa78f5a1de4476e888a5ddd6c958b67a`
+  (this file's own first landing, task 024 — the tip of `main` at the moment this
+  revision was authored; the revision corrects two commit attributions, see
+  "Attribution corrections" at the end of this file).
 - **Task 021's gate sha (the whole-suite sweep's launch sha, and the sha every
   requirement below is scored against):** `0806ba64ede4356af50b404affd10f26f68d4d84`
   (task 020, "tui: prove shared-state.db group edits reach another client on reload
@@ -73,13 +75,23 @@ task 005) and again at the whole-suite gate (task 021).
 **Shipped** in `c1dd5f1` (task 003). `interactiveFooterLine` now names
 Shift+PgUp/PgDn (already bound by interactive mode) and degrades three optional
 segments — the R133 cue, the new scroll-key advertisement, and the pre-existing
-forward-note reminder — from least to most essential via `elideToWidth`/
-`footerLegendWithin`, `Ctrl+Q` never dropping. Help (`tui.go:8002-8005`) and the
-mouse table (`tui.go:8231`) wording, and the pinned substrings in
-`cmd/deck/main_test.go`/`internal/tui/tui_test.go`, were updated in the same
-commit. Test: `internal/tui/interactive_footer_scroll_advertisement_test.go` — an
-80-column footer test asserting the frame is not exceeded with `Ctrl+Q` surviving
-every degradation step it drives, and a help/mouse-table wording-agreement test.
+forward-note reminder — from least to most essential, width-budgeted with
+`stringWidth` the same way `footerLegendWithin` degrades the list-mode legend
+(the commit's own comment names that function as the model it mirrors; it does
+not call it), `Ctrl+Q` never dropping. The commit touches exactly two
+files (`git diff-tree --no-commit-id --name-only -r c1dd5f1`):
+`internal/tui/tui.go` and the new test file below. Help (`helpText`'s Keys/Mouse
+sections) and the mouse table already documented Shift+PgUp/PgDn before this task
+and needed **no** wording change, so the pinned substrings in
+`cmd/deck/main_test.go`/`internal/tui/tui_test.go` were left untouched as well —
+the commit message records exactly this, and both packages' full suites were run
+green to confirm nothing had to move. Test:
+`internal/tui/interactive_footer_scroll_advertisement_test.go` — an 80-column
+footer test asserting the frame is not exceeded with `Ctrl+Q` surviving every
+degradation step it drives (widths 200/100/80/60/20), and
+`TestInteractiveFooterScrollKeyWordingAgreesWithHelpAndMouseTables`, which
+asserts the footer agrees with the *existing* help/mouse wording rather than
+changing either.
 Golden 80×24 frame test (`features/golden_frame_test.go`) green — see item 6 of
 `docs/reports/phase4b-tier1-suite/README.md`.
 
@@ -109,16 +121,30 @@ three interactive `.feature` files/golden-frame, all exit `0`) is recorded at
   (every existing session lands in `default`, group list starts empty), and the
   removal of `sessions.workspace`/`store.DefaultWorkspace`/`Session.Workspace`/
   `Session.WorkspaceColumn` — landed together in one commit per the standing
-  rules' irreversible-migration discipline. Test:
+  rules' irreversible-migration discipline. This same commit also carries the
+  environment rename `DECK_SESSION_WORKSPACE` → `DECK_SESSION_GROUP` (holding
+  `GroupName` verbatim, the old name never aliased) in
+  `internal/service/session_context.go`, with
+  `TestSessionContextEnvExportsGroupNotWorkspace` in
+  `internal/service/session_context_test.go`. Test:
   `internal/store/schema_v7_migration_test.go` — a fixture DB built by the
   previous schema with several distinct `workspace` values, asserting every row
   reads `default` afterwards and the file still opens, plus an atomicity test (a
   forced mid-way failure leaves the old schema intact and readable).
-- `9eefaa2` (part of task 008) — `DECK_SESSION_WORKSPACE` → `DECK_SESSION_GROUP`
-  and the hook payload's `workspace` field → `group`, no alias, in
-  `internal/service/session_context.go`. Test: added cases in
-  `internal/service/session_context_test.go` (pane-env test for the renamed
-  variable, payload test for the renamed field).
+- `9eefaa2` (part of task 008) — the notification-payload half `bf1c085` left
+  out: `internal/service/session_context.go` gains exported
+  `NotificationSession` (json tags = SPEC §10.1's eight session field names,
+  including `group` and never `workspace`) and `NotificationSessionPayload`,
+  which projects one `store.Session` row onto them, `group` reading
+  `store.Session.GroupName` verbatim with no cwd-derived fallback. The commit
+  touches exactly `internal/service/session_context.go` and
+  `internal/service/session_context_test.go`; it adds no schema and no
+  migration, and it does not rename the environment variable (that landed in
+  `bf1c085`, above). Test:
+  `TestNotificationSessionPayloadCarriesGroupNotWorkspace` in
+  `internal/service/session_context_test.go`, asserting the rendered JSON (not
+  the Go field) carries `group`, mentions `workspace` nowhere, and holds exactly
+  those eight fields.
 - `60075ec` + `5adeb83` (task 009, part 2) — group CRUD with SPEC's name rules:
   trimmed, non-empty, no control characters, case-insensitive uniqueness
   (`COLLATE NOCASE`), `default` reserved in any case, 32-char cap. Test:
@@ -208,6 +234,30 @@ was started and completed, per the GO decision at
 `docs/reports/phase4b-tier2-decision.md`. There is no unshipped requirement to
 account for here — the residual gaps this run chose not to fix (if any) are
 `docs/reports/phase4b-findings.md`'s job (task 025), not this file's.
+
+## Attribution corrections (this revision)
+
+The first landing of this file (`b96015e`) mis-attributed two changes; both are
+corrected above against `git diff-tree`/`git show` on the commits themselves, and
+are recorded here rather than silently rewritten:
+
+1. **R134 / `c1dd5f1`** — it claimed the commit also updated the help and mouse
+   wording and the pinned substrings in `cmd/deck/main_test.go` and
+   `internal/tui/tui_test.go`. It did not: `git diff-tree --no-commit-id
+   --name-only -r c1dd5f1` lists only `internal/tui/tui.go` and
+   `internal/tui/interactive_footer_scroll_advertisement_test.go`, and the commit
+   message states those existing strings already named the keys and needed no
+   update.
+2. **R128 / `9eefaa2`** — it attributed the `DECK_SESSION_WORKSPACE` →
+   `DECK_SESSION_GROUP` environment rename to `9eefaa2`. `git show bf1c085`
+   proves the rename landed in `bf1c085` (its message: "`DECK_SESSION_WORKSPACE`
+   -> `DECK_SESSION_GROUP` holding GroupName verbatim, old name never aliased");
+   `9eefaa2` added only the SPEC §10.1 notification-payload projection carrying
+   the `group` field.
+3. **R134 / `c1dd5f1`, minor** — it named `elideToWidth`/`footerLegendWithin` as
+   the seams the degradation runs through. The added code budgets with
+   `stringWidth` and only *mirrors* `footerLegendWithin` (named in its comment);
+   it calls neither.
 
 ## Report paths cited above (resolve at this commit)
 
