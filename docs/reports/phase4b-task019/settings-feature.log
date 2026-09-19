@@ -1,0 +1,493 @@
+=== RUN   TestFeatures
+[1;37mFeature:[0m The `,` settings takeover (requirement 48)
+  SPEC §11.5's settings takeover is generated from
+  internal/config.Schema, not a second, hand-written field list: every flat
+  config.toml key is reachable and, where it has an in-place editor
+  (toggle, bounded integer, cycled enum), editable; `/` searches every
+  field's label AND description; ctrl+s writes through the atomic writer
+  (task 012) and the file it leaves behind parses back to what the
+  takeover showed; esc with unsaved changes prompts before discarding and
+  never touches config.toml when it does; a key the environment already
+  overrides is labelled honestly instead of pretending a save changed the
+  running value; [env]'s restart-to-apply scope is stated on screen; and
+  [notify] is a single honestly-unavailable entry, per §6.5/§11.5.
+  None of this may ever create, delete or otherwise touch a session row
+  (requirement 24) -- the takeover edits config.toml, nothing else.
+=== RUN   TestFeatures/every_category_and_its_schema-declared_fields_are_reachable,_including_the_honestly-unavailable_[notify]_entry
+
+  [1;37mScenario:[0m every category and its schema-declared fields are reachable, including the honestly-unavailable [notify] entry [1;30m# settings.feature:17[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Categories"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Fields"[0m                                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "General"[0m                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Allow Yolo"[0m                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Stale After"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Capture Min Interval"[0m                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "UI"[0m                                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Theme"[0m                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Ascii"[0m                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Mouse"[0m                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Recent Cwd Limit"[0m                                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Environment Variables"[0m                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Notify"[0m                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Notification Rules: unavailable this phase"[0m                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "	"[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Notification Rules: unavailable this phase"[0m                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                     [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_toggle_and_a_bounded_integer_are_edited_in_place_and_ctrl+s_writes_config.toml_to_match_what_the_takeover_showed
+
+  [1;37mScenario:[0m a toggle and a bounded integer are edited in place and ctrl+s writes config.toml to match what the takeover showed [1;30m# settings.feature:44[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Allow Yolo: Off"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Allow Yolo: On"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Stale After: 45 seconds (min 1)"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "+"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Stale After: 46 seconds (min 1)"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "saved "[0m                                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with allow_yolo true[0m                                                                 [1;30m# config_file_test.go:28 -> github.com/n-orlov/deck/features.assertConfigAllowYolo[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with stale_after "46s"[0m                                                               [1;30m# config_file_test.go:30 -> github.com/n-orlov/deck/features.assertConfigStaleAfter[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/yolo_default_is_On_but_inert_while_allow_yolo_stays_off,_and_the_settings_row_itself_says_so_(steer_020_item_2)
+
+  [1;37mScenario:[0m yolo_default is On but inert while allow_yolo stays off, and the settings row itself says so (steer 020 item 2) [1;30m# settings.feature:67[0m
+    [32mGiven[0m [32mthe deck config defaults new sessions to yolo without allowing it[0m                                                 [1;30m# agent_steps_test.go:38 -> github.com/n-orlov/deck/features.deckConfigDefaultsYoloWithoutAllowing[0m
+    [32mAnd[0m [32mdeck client "A" is started with terminal size 220x30[0m                                                                [1;30m# resize_test.go:15 -> github.com/n-orlov/deck/features.startNamedClientWithSize[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                           [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Allow Yolo: Off"[0m                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "j"[0m                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Yolo Default: On (inert: allow_yolo is off, so this has no effect yet)"[0m           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                          [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                      [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/`/`_finds_a_field_only_its_description_mentions,_and_enter_jumps_both_lists_onto_it
+
+  [1;37mScenario:[0m `/` finds a field only its description mentions, and enter jumps both lists onto it [1;30m# settings.feature:90[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "/"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Search: "[0m                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "scrollback"[0m                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Capture Min Interval"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "Allow Yolo"[0m                                    [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Capture Min Interval: 5 seconds (min 1)"[0m              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/esc_with_an_unsaved_change_prompts_to_discard,_and_discarding_leaves_config.toml_exactly_as_it_was
+
+  [1;37mScenario:[0m esc with an unsaved change prompts to discard, and discarding leaves config.toml exactly as it was [1;30m# settings.feature:104[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                           [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mthe scenario's config.toml is captured as "before"[0m                                                     [1;30m# layout_modes_test.go:30 -> github.com/n-orlov/deck/features.scenarioConfigTOMLIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Allow Yolo: On"[0m                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "discard unsaved changes"[0m                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "y"[0m                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe scenario's config.toml still matches the captured "before"[0m                                         [1;30m# layout_modes_test.go:31 -> github.com/n-orlov/deck/features.scenarioConfigTOMLStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                         [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/an_environment-overridden_field_is_labelled_honestly_and_a_save_never_pretends_the_running_value_moved
+
+  [1;37mScenario:[0m an environment-overridden field is labelled honestly and a save never pretends the running value moved [1;30m# settings.feature:118[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"[0m          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Overridden by environment: DECK_ASCII is set, so the running"[0m             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Ascii: On (file value; overridden by DECK_ASCII, running: On)"[0m           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "saved "[0m                                                                  [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Ascii: On (file value; overridden by DECK_ASCII, running: On)"[0m            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/saving_with_ctrl+s_and_no_edit_leaves_an_environment-overridden_flat_key's_own_file_value_untouched_(requirement_21)
+
+  [1;37mScenario:[0m saving with ctrl+s and no edit leaves an environment-overridden flat key's own file value untouched (requirement 21) [1;30m# settings.feature:135[0m
+    [32mGiven[0m [32mthe scenario's config.toml is written with:[0m                                                                            [1;30m# config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML[0m
+      [36m"""[0m
+      [36m[ui][0m
+      [36mascii = false[0m
+      [36m"""[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"[0m                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "saved "[0m                                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"[0m                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with ascii false[0m                                                                       [1;30m# config_file_test.go:34 -> github.com/n-orlov/deck/features.assertConfigAscii[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/saving_an_edit_that_moves_away_from_an_env-overridden_field's_running_value_leaves_the_running_client_unaffected_(requirement_21_correction,_operator_steer_008-envoverride-applylive.md)
+
+  [1;37mScenario:[0m saving an edit that moves away from an env-overridden field's running value leaves the running client unaffected (requirement 21 correction, operator steer 008-envoverride-applylive.md) [1;30m# settings.feature:155[0m
+    [32mGiven[0m [32mthe scenario's config.toml is written with:[0m                                                                                                                                                 [1;30m# config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML[0m
+      [36m"""[0m
+      [36m[ui][0m
+      [36mascii = true[0m
+      [36m"""[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Ascii: On (file value; overridden by DECK_ASCII, running: On)"[0m                                                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"[0m                                                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "saved "[0m                                                                                                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Ascii: Off (file value; overridden by DECK_ASCII, running: On)"[0m                                                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "+"[0m                                                                                                                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "╭"[0m                                                                                                                                                   [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with ascii false[0m                                                                                                                                            [1;30m# config_file_test.go:34 -> github.com/n-orlov/deck/features.assertConfigAscii[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_[env]_table_states_its_restart-to-apply_scope_on_screen
+
+  [1;37mScenario:[0m the [env] table states its restart-to-apply scope on screen                   [1;30m# settings.feature:179[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                      [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Environment Variables: 0 entries"[0m               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Kind: list-of-strings · Scope: restart-to-apply"[0m [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                    [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_restart-to-apply_flat_key_states_so_in_its_own_on-screen_description,_not_only_its_Scope_label_(requirement_19)
+
+  [1;37mScenario:[0m a restart-to-apply flat key states so in its own on-screen description, not only its Scope label (requirement 19) [1;30m# settings.feature:190[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                          [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Stale After: 45 seconds (min 1)"[0m                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Kind: integer · Scope: restart-to-apply"[0m                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Restart-to-apply: saving here writes config"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/a_settings_takeover_save_of_ui.theme_changes_the_running_client's_own_render_live,_read_per_cell_(requirement_19)
+
+  [1;37mScenario:[0m a settings takeover save of ui.theme changes the running client's own render live, read per cell (requirement 19) [1;30m# settings.feature:206[0m
+    [32mGiven[0m [32mthe scenario's config.toml selects theme "empire"[0m                                                                   [1;30m# theme_pin_test.go:36 -> github.com/n-orlov/deck/features.scenarioConfigSelectsTheme[0m
+    [32mAnd[0m [32mdeck client "A" is started with colour enabled[0m                                                                        [1;30m# cell_attributes_test.go:20 -> github.com/n-orlov/deck/features.startNamedClientWithColour[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Theme: empire"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" cell at row 0 column 0 has foreground token "border"[0m                                                  [1;30m# cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken[0m
+    [32mWhen[0m [32mdeck client "A" sends "-"[0m                                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Theme: daylight"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "saved "[0m                                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" cell at row 0 column 0 has foreground token "border"[0m                                                  [1;30m# cell_attributes_test.go:40 -> github.com/n-orlov/deck/features.cellHasForegroundToken[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                            [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                        [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/driving_every_key_the_takeover_binds_leaves_the_session_set_untouched
+
+  [1;37mScenario:[0m driving every key the takeover binds leaves the session set untouched [1;30m# settings.feature:230[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                              [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "keep-a"[0m                           [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "keep-b"[0m                            [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mthe state database contains session "keep-a"[0m                             [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database contains session "keep-b"[0m                              [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database has exactly 2 sessions[0m                                 [1;30m# settings_test.go:24 -> github.com/n-orlov/deck/features.stateDatabaseHasExactlySessionCount[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "+"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "-"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "+"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "/"[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "mouse"[0m                                             [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "keep-a"[0m                              [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database contains session "keep-b"[0m                              [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database has exactly 2 sessions[0m                                 [1;30m# settings_test.go:24 -> github.com/n-orlov/deck/features.stateDatabaseHasExactlySessionCount[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                            [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/the_mouse_cannot_cancel_the_takeover,_attach_the_session_it_covers,_or_change_the_selected_session_while_it_is_open_(requirement_24)
+
+  [1;37mScenario:[0m the mouse cannot cancel the takeover, attach the session it covers, or change the selected session while it is open (requirement 24) [1;30m# settings.feature:259[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                             [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mthe scenario's config.toml is captured as "before-settings-mouse"[0m                                                                        [1;30m# layout_modes_test.go:30 -> github.com/n-orlov/deck/features.scenarioConfigTOMLIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "mouse-guard"[0m                                                                                     [1;30m# assertions_test.go:52 -> github.com/n-orlov/deck/features.clientCreatesShellSession[0m
+    [32mThen[0m [32mthe state database contains session "mouse-guard"[0m                                                                                       [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database has exactly 1 sessions[0m                                                                                                [1;30m# settings_test.go:24 -> github.com/n-orlov/deck/features.stateDatabaseHasExactlySessionCount[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Categories"[0m                                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" captures its frame as "settings-open-mouse"[0m                                                                             [1;30m# mouse_synthesis_test.go:120 -> github.com/n-orlov/deck/features.clientCapturesFrameAs[0m
+    [32mAnd[0m [32mdeck client "A" clicks at column 5 row 4[0m                                                                                                 [1;30m# mouse_synthesis_test.go:115 -> github.com/n-orlov/deck/features.clientClicksAt[0m
+    [32mAnd[0m [32mdeck client "A" double-clicks at column 5 row 4[0m                                                                                          [1;30m# mouse_synthesis_test.go:116 -> github.com/n-orlov/deck/features.clientDoubleClicksAt[0m
+    [32mAnd[0m [32mdeck client "A" scrolls the wheel down at column 5 row 4[0m                                                                                 [1;30m# mouse_synthesis_test.go:118 -> github.com/n-orlov/deck/features.clientScrollsWheelDownAt[0m
+    [32mThen[0m [32mdeck client "A" frame still matches the captured "settings-open-mouse" frame[0m                                                            [1;30m# mouse_synthesis_test.go:122 -> github.com/n-orlov/deck/features.clientFrameStillMatchesCaptured[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "Categories"[0m                                                                                             [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database contains session "mouse-guard"[0m                                                                                        [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database has exactly 1 sessions[0m                                                                                                [1;30m# settings_test.go:24 -> github.com/n-orlov/deck/features.stateDatabaseHasExactlySessionCount[0m
+    [32mAnd[0m [32mthe state database session "mouse-guard" has 0 attached events[0m                                                                           [1;30m# assertions_test.go:47 -> github.com/n-orlov/deck/features.databaseSessionAttachedEventCount[0m
+    [32mAnd[0m [32mthe scenario's config.toml still matches the captured "before-settings-mouse"[0m                                                            [1;30m# layout_modes_test.go:31 -> github.com/n-orlov/deck/features.scenarioConfigTOMLStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                           [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/adding_an_[env]_entry_and_saving_with_ctrl+s_round-trips_through_config.toml,_preserving_keys_and_sections_the_takeover_does_not_understand_(requirement_17)
+
+  [1;37mScenario:[0m adding an [env] entry and saving with ctrl+s round-trips through config.toml, preserving keys and sections the takeover does not understand (requirement 17) [1;30m# settings.feature:286[0m
+    [32mGiven[0m [32mthe scenario's config.toml is written with:[0m                                                                                                                    [1;30m# config_file_test.go:27 -> github.com/n-orlov/deck/features.writeScenarioConfigTOML[0m
+      [36m"""[0m
+      [36mallow_yolo = false[0m
+      [36msome_future_key = "whatever"[0m
+      [36m[0m
+      [36m[ui][0m
+      [36mmouse = true[0m
+      [36msome_future_ui_key = 7[0m
+      [36m[0m
+      [36m[notify][0m
+      [36mwebhook = "https://example.invalid/hook"[0m
+      [36m[0m
+      [36m[[notify.rule]][0m
+      [36mmatch = "idle"[0m
+      [36m[0m
+      [36m[[notify.rule]][0m
+      [36mmatch = "error"[0m
+      [36m"""[0m
+    [32mAnd[0m [32mdeck client "A" is started[0m                                                                                                                                       [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "+ add entry"[0m                                                                                                                   [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "GREETING"[0m                                                                                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "hello"[0m                                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "GREETING=hello"[0m                                                                                                                [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                                                                                        [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "saved "[0m                                                                                                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with env "GREETING" set to "hello"[0m                                                                                             [1;30m# config_file_test.go:36 -> github.com/n-orlov/deck/features.assertConfigEnv[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with allow_yolo false[0m                                                                                                          [1;30m# config_file_test.go:28 -> github.com/n-orlov/deck/features.assertConfigAllowYolo[0m
+    [32mAnd[0m [32mthe scenario's config.toml parses with mouse true[0m                                                                                                                [1;30m# config_file_test.go:32 -> github.com/n-orlov/deck/features.assertConfigMouse[0m
+    [32mAnd[0m [32mthe scenario's config.toml contains the raw text:[0m                                                                                                                [1;30m# config_file_test.go:38 -> github.com/n-orlov/deck/features.assertConfigContainsRawText[0m
+      [36m"""[0m
+      [36msome_future_key = "whatever"[0m
+      [36m"""[0m
+    [32mAnd[0m [32mthe scenario's config.toml contains the raw text:[0m                                                                                                                [1;30m# config_file_test.go:38 -> github.com/n-orlov/deck/features.assertConfigContainsRawText[0m
+      [36m"""[0m
+      [36msome_future_ui_key = 7[0m
+      [36m"""[0m
+    [32mAnd[0m [32mthe scenario's config.toml contains the raw text:[0m                                                                                                                [1;30m# config_file_test.go:38 -> github.com/n-orlov/deck/features.assertConfigContainsRawText[0m
+      [36m"""[0m
+      [36mwebhook = "https://example.invalid/hook"[0m
+      [36m"""[0m
+    [32mAnd[0m [32mthe scenario's config.toml contains the raw text:[0m                                                                                                                [1;30m# config_file_test.go:38 -> github.com/n-orlov/deck/features.assertConfigContainsRawText[0m
+      [36m"""[0m
+      [36mmatch = "idle"[0m
+      [36m"""[0m
+    [32mAnd[0m [32mthe scenario's config.toml contains the raw text:[0m                                                                                                                [1;30m# config_file_test.go:38 -> github.com/n-orlov/deck/features.assertConfigContainsRawText[0m
+      [36m"""[0m
+      [36mmatch = "error"[0m
+      [36m"""[0m
+    [32mAnd[0m [32mthe scenario's config.toml contains "[[notify.rule]]" exactly 2 times[0m                                                                                            [1;30m# config_file_test.go:39 -> github.com/n-orlov/deck/features.assertConfigContainsTimes[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                                   [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/discarding_an_unsaved_[env]_edit_leaves_config.toml_exactly_as_it_was_(requirement_17)
+
+  [1;37mScenario:[0m discarding an unsaved [env] edit leaves config.toml exactly as it was (requirement 17) [1;30m# settings.feature:349[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                               [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mAnd[0m [32mthe scenario's config.toml is captured as "before-env-discard"[0m                             [1;30m# layout_modes_test.go:30 -> github.com/n-orlov/deck/features.scenarioConfigTOMLIsCapturedAs[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "DISCARD_ME"[0m                                                         [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "temp"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "DISCARD_ME=temp"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                  [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "discard unsaved changes"[0m                                 [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "y"[0m                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe scenario's config.toml still matches the captured "before-env-discard"[0m                 [1;30m# layout_modes_test.go:31 -> github.com/n-orlov/deck/features.scenarioConfigTOMLStillMatchesCaptured[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                             [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/settings_offers_clearing_the_recent-directory_history,_and_clearing_it_costs_only_the_prefill,_never_a_session
+
+  [1;37mScenario:[0m settings offers clearing the recent-directory history, and clearing it costs only the prefill, never a session      [1;30m# settings.feature:372[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "clear-recent-seed" with a fresh working directory labelled "clear-recent-seed"[0m  [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" opens the create modal[0m                                                                                  [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen contains the directory labelled "clear-recent-seed"[0m                                             [1;30m# create_session_test.go:23 -> github.com/n-orlov/deck/features.clientScreenContainsDirectoryLabelled[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "(last used) the session's cwd"[0m                                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                                [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" sends ","[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"[0m                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "cleared recent directory history"[0m                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" opens the create modal[0m                                                                                 [1;30m# create_session_test.go:22 -> github.com/n-orlov/deck/features.clientOpensCreateModal[0m
+    [32mThen[0m [32mdeck client "A" screen does not contain "(last used) the session's cwd"[0m                                                [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain the directory labelled "clear-recent-seed"[0m                                      [1;30m# create_session_test.go:24 -> github.com/n-orlov/deck/features.clientScreenDoesNotContainDirectoryLabelled[0m
+    [32mWhen[0m [32mdeck client "A" closes the create modal[0m                                                                                [1;30m# assertions_test.go:56 -> github.com/n-orlov/deck/features.clientClosesCreateModal[0m
+    [32mAnd[0m [32mdeck client "A" creates shell session "clear-recent-after" with a fresh working directory labelled "clear-recent-after"[0m [1;30m# create_session_test.go:25 -> github.com/n-orlov/deck/features.clientCreatesShellSessionWithFreshCWDLabelled[0m
+    [32mThen[0m [32mthe state database contains session "clear-recent-seed"[0m                                                                [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database contains session "clear-recent-after"[0m                                                                [1;30m# assertions_test.go:42 -> github.com/n-orlov/deck/features.databaseContainsSession[0m
+    [32mAnd[0m [32mthe state database has exactly 2 sessions[0m                                                                               [1;30m# settings_test.go:24 -> github.com/n-orlov/deck/features.stateDatabaseHasExactlySessionCount[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/creating_a_group_in_the_settings_takeover_appears_in_the_sidebar_once_a_session_joins_it_(R131_part_1)
+
+  [1;37mScenario:[0m creating a group in the settings takeover appears in the sidebar once a session joins it (R131 part 1)                                      [1;30m# settings.feature:423[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                                    [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                                                      [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Groups"[0m                                                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "	"[0m                                                                                                                      [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "n"[0m                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "tooling"[0m                                                                                                                 [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "created group tooling"[0m                                                                                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                      [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "groups-into-tooling" into group "tooling" with a fresh working directory labelled "groups-into-tooling"[0m [1;30m# create_session_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesShellSessionIntoGroupWithFreshCWDLabelled[0m
+    [32mThen[0m [32mdeck client "A" screen contains "tooling"[0m                                                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "groups-into-tooling"[0m                                                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                  [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/deleting_an_empty_group_in_settings_removes_it_with_no_confirm_prompt_(R131_part_2)
+
+  [1;37mScenario:[0m deleting an empty group in settings removes it with no confirm prompt (R131 part 2) [1;30m# settings.feature:443[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                            [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Groups"[0m                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "	"[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "n"[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "empty-one"[0m                                                       [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "created group empty-one"[0m                              [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "d"[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deleted empty group empty-one"[0m                        [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "moves them to default"[0m                         [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "no groups yet"[0m                                         [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                              [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                          [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+=== RUN   TestFeatures/deleting_a_non-empty_group_in_settings_offers_moving_members_to_default_or_the_same_dd_confirm_(R131_part_2)
+
+  [1;37mScenario:[0m deleting a non-empty group in settings offers moving members to default or the same dd confirm (R131 part 2)                              [1;30m# settings.feature:464[0m
+    [32mGiven[0m [32mdeck client "A" is started[0m                                                                                                                  [1;30m# assertions_test.go:27 -> github.com/n-orlov/deck/features.startNamedClient[0m
+    [32mWhen[0m [32mdeck client "A" sends ","[0m                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "Groups"[0m                                                                                                     [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "	"[0m                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "n"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "tidy-up"[0m                                                                                                               [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends ""[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "created group tidy-up"[0m                                                                                      [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" creates shell session "groups-delete-move" into group "tidy-up" with a fresh working directory labelled "groups-delete-move"[0m [1;30m# create_session_test.go:32 -> github.com/n-orlov/deck/features.clientCreatesShellSessionIntoGroupWithFreshCWDLabelled[0m
+    [32mAnd[0m [32mdeck client "A" sends ","[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "j"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mAnd[0m [32mdeck client "A" sends "	"[0m                                                                                                                     [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "tidy-up"[0m                                                                                                    [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "d"[0m                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "1 session(s)"[0m                                                                                               [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "moves them to default"[0m                                                                                       [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends "m"[0m                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "moved to default"[0m                                                                                           [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mWhen[0m [32mdeck client "A" sends ""[0m                                                                                                                    [1;30m# assertions_test.go:28 -> github.com/n-orlov/deck/features.sendClientKeys[0m
+    [32mThen[0m [32mdeck client "A" screen contains "deck - sessions"[0m                                                                                            [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mdeck client "A" screen does not contain "tidy-up"[0m                                                                                             [1;30m# agent_steps_test.go:41 -> github.com/n-orlov/deck/features.clientScreenDoesNotContain[0m
+    [32mAnd[0m [32mdeck client "A" screen contains "groups-delete-move"[0m                                                                                          [1;30m# assertions_test.go:29 -> github.com/n-orlov/deck/features.clientScreenContains[0m
+    [32mAnd[0m [32mthe state database session "groups-delete-move" is not tombstoned[0m                                                                             [1;30m# kill_delete_undo_test.go:35 -> github.com/n-orlov/deck/features.stateDatabaseSessionIsNotTombstoned[0m
+    [32mWhen[0m [32mdeck client "A" exits cleanly[0m                                                                                                                [1;30m# assertions_test.go:66 -> github.com/n-orlov/deck/features.clientExitsCleanly[0m
+
+19 scenarios ([32m19 passed[0m)
+355 steps ([32m355 passed[0m)
+12.627735615s
+--- PASS: TestFeatures (12.63s)
+    --- PASS: TestFeatures/every_category_and_its_schema-declared_fields_are_reachable,_including_the_honestly-unavailable_[notify]_entry (0.54s)
+    --- PASS: TestFeatures/a_toggle_and_a_bounded_integer_are_edited_in_place_and_ctrl+s_writes_config.toml_to_match_what_the_takeover_showed (0.57s)
+    --- PASS: TestFeatures/yolo_default_is_On_but_inert_while_allow_yolo_stays_off,_and_the_settings_row_itself_says_so_(steer_020_item_2) (0.48s)
+    --- PASS: TestFeatures/`/`_finds_a_field_only_its_description_mentions,_and_enter_jumps_both_lists_onto_it (0.52s)
+    --- PASS: TestFeatures/esc_with_an_unsaved_change_prompts_to_discard,_and_discarding_leaves_config.toml_exactly_as_it_was (0.49s)
+    --- PASS: TestFeatures/an_environment-overridden_field_is_labelled_honestly_and_a_save_never_pretends_the_running_value_moved (0.54s)
+    --- PASS: TestFeatures/saving_with_ctrl+s_and_no_edit_leaves_an_environment-overridden_flat_key's_own_file_value_untouched_(requirement_21) (0.52s)
+    --- PASS: TestFeatures/saving_an_edit_that_moves_away_from_an_env-overridden_field's_running_value_leaves_the_running_client_unaffected_(requirement_21_correction,_operator_steer_008-envoverride-applylive.md) (0.56s)
+    --- PASS: TestFeatures/the_[env]_table_states_its_restart-to-apply_scope_on_screen (0.46s)
+    --- PASS: TestFeatures/a_restart-to-apply_flat_key_states_so_in_its_own_on-screen_description,_not_only_its_Scope_label_(requirement_19) (0.50s)
+    --- PASS: TestFeatures/a_settings_takeover_save_of_ui.theme_changes_the_running_client's_own_render_live,_read_per_cell_(requirement_19) (0.51s)
+    --- PASS: TestFeatures/driving_every_key_the_takeover_binds_leaves_the_session_set_untouched (1.01s)
+    --- PASS: TestFeatures/the_mouse_cannot_cancel_the_takeover,_attach_the_session_it_covers,_or_change_the_selected_session_while_it_is_open_(requirement_24) (0.72s)
+    --- PASS: TestFeatures/adding_an_[env]_entry_and_saving_with_ctrl+s_round-trips_through_config.toml,_preserving_keys_and_sections_the_takeover_does_not_understand_(requirement_17) (0.69s)
+    --- PASS: TestFeatures/discarding_an_unsaved_[env]_edit_leaves_config.toml_exactly_as_it_was_(requirement_17) (0.70s)
+    --- PASS: TestFeatures/settings_offers_clearing_the_recent-directory_history,_and_clearing_it_costs_only_the_prefill,_never_a_session (0.95s)
+    --- PASS: TestFeatures/creating_a_group_in_the_settings_takeover_appears_in_the_sidebar_once_a_session_joins_it_(R131_part_1) (0.94s)
+    --- PASS: TestFeatures/deleting_an_empty_group_in_settings_removes_it_with_no_confirm_prompt_(R131_part_2) (0.65s)
+    --- PASS: TestFeatures/deleting_a_non-empty_group_in_settings_offers_moving_members_to_default_or_the_same_dd_confirm_(R131_part_2) (1.16s)
+PASS
+ok  	github.com/n-orlov/deck/features	12.661s

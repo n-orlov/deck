@@ -1,0 +1,8 @@
+gofmt exit=0
+build exit=0
+vet exit=0
+pkgs exit=0
+targeted exit=0
+settings.feature exit=0
+kill_delete_undo.feature exit=0
+DONE
