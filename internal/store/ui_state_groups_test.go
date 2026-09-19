@@ -213,3 +213,54 @@ func TestLastCreateGroupOverwritesInPlace(t *testing.T) {
 		t.Fatalf("GetLastCreateGroup after overwrite = %v; want %d", got, g2.ID)
 	}
 }
+
+// TestSetLastCreateGroupDefaultForgetsTheRememberedNamedGroup pins the
+// other direction of R130's "the last group created into": a create into
+// the structural default group is itself a remembered choice, so recording
+// it (SetLastCreateGroup with id 0, the default group's id) must forget the
+// named group remembered before it rather than leaving that named group as
+// the value a later create opens on.
+func TestSetLastCreateGroupDefaultForgetsTheRememberedNamedGroup(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	g, err := st.CreateGroup(ctx, "platform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetLastCreateGroup(ctx, g.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetLastCreateGroup(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || *got != g.ID {
+		t.Fatalf("GetLastCreateGroup after remembering %q = %v; want %d", g.Name, got, g.ID)
+	}
+
+	// The create into default: the group still exists, so this cannot be
+	// mistaken for the dangling-id degrade the test above covers.
+	if err := st.SetLastCreateGroup(ctx, 0); err != nil {
+		t.Fatalf("SetLastCreateGroup(ctx, 0) returned err = %v", err)
+	}
+	got, err = st.GetLastCreateGroup(ctx)
+	if err != nil {
+		t.Fatalf("GetLastCreateGroup after a create into default returned err = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetLastCreateGroup after a create into default = %v; want nil (default), not the stale named group", got)
+	}
+	groups, err := st.ListGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0].ID != g.ID {
+		t.Fatalf("recording a create into default disturbed the groups table: %+v", groups)
+	}
+}

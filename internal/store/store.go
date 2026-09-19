@@ -2494,7 +2494,9 @@ func (s *Store) SetCollapsedGroups(ctx context.Context, collapsed map[int64]bool
 const lastCreateGroupUIStateKey = "last_create_group"
 
 // GetLastCreateGroup returns the id of the group most recently created
-// into, or nil when no create has ever targeted a real group (ui_state is
+// into, or nil when the most recent create targeted the structural default
+// group (see SetLastCreateGroup's note on groupID 0) or no create has ever
+// targeted a real group at all (ui_state is
 // not load-bearing: a missing or unparsable row degrades to nil, meaning
 // default). It also degrades to nil when the remembered id no longer
 // resolves to a real group -- SPEC §11's "a group_id that no longer
@@ -2528,7 +2530,20 @@ func (s *Store) GetLastCreateGroup(ctx context.Context) (*int64, error) {
 // SetLastCreateGroup persists the just-succeeded create modal's target
 // group id in state.db's ui_state table, never in config.toml, so a later
 // create opens pre-selecting it.
+//
+// groupID 0 is the structural default group (a session whose group_id is
+// NULL), and it is worth remembering exactly like a named group: a create
+// into default must make the NEXT create open on default, never on
+// whatever named group happened to be remembered before it. It is recorded
+// by clearing the row to the empty value, which GetLastCreateGroup already
+// reads back as nil (== default), so "remembered default" and "nothing
+// ever remembered" collapse into the single state the create modal already
+// treats identically -- open on default, unlabelled -- instead of needing
+// a third, separately-encoded value.
 func (s *Store) SetLastCreateGroup(ctx context.Context, groupID int64) error {
+	if groupID <= 0 {
+		return s.setUIState(ctx, lastCreateGroupUIStateKey, "")
+	}
 	return s.setUIState(ctx, lastCreateGroupUIStateKey, strconv.FormatInt(groupID, 10))
 }
 
