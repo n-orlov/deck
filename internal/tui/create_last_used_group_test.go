@@ -277,6 +277,60 @@ func TestCreateIntoDefaultGroupForgetsTheRememberedNamedGroup(t *testing.T) {
 	}
 }
 
+// TestRememberedCreateGroupDoesNotRebindAcrossRestartAfterDeleteAndReplacement
+// is R128/R130's durable-identity regression at the ui_state layer: the
+// remembered last-create group must degrade to default when its group is
+// deleted (TestCreateGroupDefaultDegradesWhenRememberedGroupDeleted already
+// covers that within one running Model), and it must STAY degraded to
+// default after a restart even under the exact pressure that used to make
+// a deleted group's numeric id reusable -- a brand-new group created right
+// after the delete, in the same "only row in the table" shape SQLite's
+// ordinary rowid assignment would otherwise reissue. Before schemaV7's
+// groups.id gained AUTOINCREMENT, the replacement group could land on the
+// very same id the remembered ui_state row still names, and a fresh New()
+// would then silently pre-select the WRONG group -- one the user never
+// created into -- instead of falling back to default.
+func TestRememberedCreateGroupDoesNotRebindAcrossRestartAfterDeleteAndReplacement(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+
+	deleted, err := db.CreateGroup(ctx, "tooling")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetLastCreateGroup(ctx, deleted.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteGroup(ctx, deleted.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement, err := db.CreateGroup(ctx, "sprint work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.ID == deleted.ID {
+		t.Fatalf("CreateGroup after delete reused the deleted id: got %d, want anything but %d", replacement.ID, deleted.ID)
+	}
+
+	restarted := New(db, config.Settings{}, "")
+	if restarted.lastCreateGroupID != 0 {
+		t.Fatalf("restarted model's lastCreateGroupID = %d after its remembered group was deleted and replaced, want 0 (default) -- it must never rebind onto %q (id %d)", restarted.lastCreateGroupID, replacement.Name, replacement.ID)
+	}
+
+	updated, _ := restarted.Update(key("n"))
+	m := updated.(Model)
+	if m.createGroupID != 0 {
+		t.Fatalf("create modal opened on Group id %d, want 0 (default)", m.createGroupID)
+	}
+	if got := m.createGroupName(m.createGroupID); got != "default" {
+		t.Fatalf("createGroupName(createGroupID) = %q, want %q", got, "default")
+	}
+	if m.createGroupLastUsed {
+		t.Fatal("create modal labelled default as last used after the remembered group was deleted and replaced")
+	}
+}
+
 // groupCycleContains reports whether the Group field's cycle still offers
 // id, so the assertion above distinguishes "forgot the remembered group"
 // from "lost the group entirely".

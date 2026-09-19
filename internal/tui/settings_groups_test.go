@@ -1216,3 +1216,92 @@ func TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombs
 		})
 	}
 }
+
+// TestSettingsGroupDeleteDBranchUndoDoesNotRebindOntoAGroupCreatedMeanwhile
+// is R128/R130's durable-identity regression for the destructive d branch's
+// own undo path: the group row is dropped once the batch commits
+// (TestSettingsGroupDeleteDBranchDropsTheGroupRowOnceTheBatchCommits), but
+// the tombstoned member rows are left with their old group_id untouched --
+// exactly the fixture shape TestSettingsGroupDeleteDBranchOneUndoRestoresTheWholeBatch
+// already restores from. This test creates a brand-new, unrelated group in
+// the window between the drop and the undo (the deleted group's id was the
+// table's only row, the exact shape SQLite's ordinary rowid reuse would
+// reissue) and then proves the restored member's GroupName still reads back
+// as default, never silently rebound onto the new group just because a
+// naive id assignment happened to collide.
+func TestSettingsGroupDeleteDBranchUndoDoesNotRebindOntoAGroupCreatedMeanwhile(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "restore-group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := mustCreateSessionInGroup(t, db, "s1", "alpha", g.ID, "stopped")
+
+	m := settingsOpenOnGroupsFields(t, db)
+	m.settings.DeleteGrace = time.Hour
+	m.deleteSvc = func(ctx context.Context, s store.Session) error {
+		return db.SoftDeleteSession(ctx, s.ID, 300)
+	}
+	m.restoreSvc = func(ctx context.Context, id string) (store.Session, error) {
+		if err := db.RestoreSession(ctx, id, 400); err != nil {
+			return store.Session{}, err
+		}
+		return db.GetSession(ctx, id)
+	}
+	m.baseSessions = []store.Session{member}
+	m.sessions = m.baseSessions
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	updated, _ = m.Update(key("d"))
+	m = updated.(Model)
+	if !m.deleteConfirming {
+		t.Fatal("the destructive d branch did not open the bulk delete confirm")
+	}
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+
+	if names := groupNamesIn(t, db); len(names) != 0 {
+		t.Fatalf("groups after the batch commits = %v, want none (the group row drops with the batch)", names)
+	}
+
+	// The pressure case: create a brand-new, unrelated group right in the
+	// window between the drop and the undo, the deleted group's id having
+	// been the only row in the table.
+	replacement, err := db.CreateGroup(ctx, "unrelated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replacement.ID == g.ID {
+		t.Fatalf("CreateGroup after the drop reused the deleted group's id: got %d, want anything but %d", replacement.ID, g.ID)
+	}
+
+	updated, cmd = m.Update(key("u"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("u returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	_ = updated.(Model)
+
+	restored, err := db.GetSession(ctx, member.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.DeletedAt != 0 {
+		t.Fatalf("%s.DeletedAt after u = %v, want 0 -- one u must restore the batch even with an unrelated group created meanwhile", "alpha", restored.DeletedAt)
+	}
+	if restored.GroupName != "" {
+		t.Fatalf("restored session GroupName = %q, want %q (default) -- it must never rebind onto %q (id %d) just because the deleted group's id happened to collide", restored.GroupName, "", replacement.Name, replacement.ID)
+	}
+	if restored.GroupID == nil || *restored.GroupID != g.ID {
+		t.Fatalf("restored session GroupID = %v, want it to keep pointing at the retired id %d untouched", restored.GroupID, g.ID)
+	}
+}
