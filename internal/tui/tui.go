@@ -527,6 +527,28 @@ type Model struct {
 	launchInputsLoginShell  bool
 	launchInputsNote        string
 	launchInputsScroll      int
+	// groupMover is R130 part 2's `i`-dialog-only `g` move-group action
+	// (SPEC §11): service.Service.SetSessionGroup, which moves ONE session
+	// into a different group or back to the structural default. nil means
+	// moving is unavailable and submitting states so rather than silently
+	// doing nothing, exactly like renamer/launchInputsSetter.
+	groupMover func(context.Context, string, int64) (store.Session, error)
+	// movingGroup is true while the `g` group-move picker (reachable ONLY
+	// from inside the `i` detail dialog, never as a top-level key -- see
+	// updateDetailView) is open; m.detail stays true underneath it the
+	// whole time, mirroring m.renaming/m.launchInputsEditing exactly.
+	// moveGroupOptions is this open's own snapshot of the available
+	// groups (computeAvailableGroups' own precedent -- fetched once when
+	// `g` opens the picker, never re-queried from a render path), always
+	// followed by the structural default group via moveGroupCycleOptions,
+	// never included in this slice itself (store.Group's own doc comment
+	// on why the default is not a row). moveGroupValue is the locally-held
+	// candidate group id the picker is cycling through, prefilled with the
+	// session's CURRENT group id. moveGroupNote is a failed-submit message.
+	movingGroup      bool
+	moveGroupOptions []store.Group
+	moveGroupValue   int64
+	moveGroupNote    string
 	// envEditing is task 020's `e` env editor (SPEC §6.1/§6.3): a listing
 	// of the selected session's effective environment, one row per key,
 	// naming which layer (server env, captured_path, config [env], session
@@ -975,6 +997,22 @@ func (m Model) WithTmuxClient(client tmux.Client) Model {
 // silently doing nothing -- see submitLaunchInputs.
 func (m Model) WithLaunchInputsSetter(setter func(context.Context, string, string, string, []string, bool) (store.Session, error)) Model {
 	m.launchInputsSetter = setter
+	return m
+}
+
+// WithGroupMover attaches R130 part 2's `i`-dialog-only `g` move-group
+// action (SPEC §11): service.Service.SetSessionGroup, which moves ONE
+// session into a different group or back to the structural default. It is
+// wired here, as a With... method, for the same reason WithLaunchInputsSetter
+// is above -- this dialog reaches the shipped binary through exactly one
+// dependency, and the NewWith...-chain is already at the limit of what a
+// positional parameter list can be read at. A Model built without it
+// (every constructor above, and every unit test that does not set the
+// field itself) has a nil mover, so the picker's Enter reports "moving a
+// session's group is unavailable" rather than silently doing nothing --
+// see submitGroupMove.
+func (m Model) WithGroupMover(mover func(context.Context, string, int64) (store.Session, error)) Model {
+	m.groupMover = mover
 	return m
 }
 
@@ -1515,6 +1553,14 @@ type envEdited struct {
 // persisted result (launch_dirty set), or the error that kept the row's
 // four launch-input columns exactly as they were before.
 type launchInputsSaved struct {
+	session store.Session
+	err     error
+}
+
+// sessionGroupMoved is the reply to a committed `g` group-move picker
+// submit (R130 part 2, SPEC §11): groupMover's persisted result, or the
+// error that kept sessions.group_id exactly as it was before.
+type sessionGroupMoved struct {
 	session store.Session
 	err     error
 }
@@ -2857,6 +2903,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.launchInputsEditing = false
 		m.launchInputsNote = ""
 		return m, m.loadSessions
+	case sessionGroupMoved:
+		// Mirrors sessionRenamed/launchInputsSaved exactly: a successful
+		// move closes the group-move picker (m.detail, underneath it,
+		// stays true -- moving is an action inside detail, so submitting
+		// it returns to detailView showing the new group, never all the
+		// way out to the main list).
+		if msg.err != nil {
+			m.moveGroupNote = "Cannot move group: " + msg.err.Error()
+			return m, nil
+		}
+		m.movingGroup = false
+		m.moveGroupNote = ""
+		return m, m.loadSessions
 	case envEdited:
 		// Unlike profileSwitched/resumeModeChanged, a committed edit does
 		// NOT close the dialog: SPEC §6.1/§6.3's env editor is a listing of
@@ -3049,6 +3108,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.launchInputsEditing {
 			return m.updateLaunchInputsDialog(msg)
+		}
+		if m.movingGroup {
+			return m.updateMoveGroupDialog(msg)
 		}
 		if m.detail {
 			return m.updateDetailView(msg)
@@ -4069,6 +4131,9 @@ func (m Model) View() string {
 	}
 	if m.launchInputsEditing && len(m.sessions) > 0 {
 		return m.launchInputsView()
+	}
+	if m.movingGroup && len(m.sessions) > 0 {
+		return m.moveGroupView()
 	}
 	if m.detail && len(m.sessions) > 0 {
 		return m.detailView()
@@ -6867,6 +6932,7 @@ func (m Model) detailBody() string {
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
 	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Group:              ", m.moveGroupName(sessionGroupID(session))))
 	if session.CapturedPathAdvisory() {
 		fmt.Fprintf(&b, "%s\n", m.detailField("Captured PATH:      ", "advisory only (login_shell overrides PATH; SPEC \u00a76.3)"))
 	}
@@ -6943,7 +7009,7 @@ func (m Model) detailBody() string {
 			fmt.Fprintf(&b, "\nCrash tail:\n%s\n", crashTail)
 		}
 	}
-	b.WriteString("\n" + m.glyph("r renames · l edits launch inputs · i or Esc closes detail", "r renames - l edits launch inputs - i or Esc closes detail") + "\n")
+	b.WriteString("\n" + m.glyph("r renames · l edits launch inputs · g moves group · i or Esc closes detail", "r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
 	return b.String()
 }
 
@@ -8498,7 +8564,9 @@ Keys
   i toggle detail view for the selected session; r inside it renames the
     session's display name only -- the tmux session keeps its own name
     (deck_<slug>), never renamed, so a rename can never move or disturb a
-    live pane's identity
+    live pane's identity; g inside it opens a picker that moves the session
+    to a different group (or back to default), left/right cycles the
+    candidate, Enter confirms
   e open the env editor for the selected session: every key deck resolved a
     layer for, its effective value, and which layer won -- server env,
     captured_path, config [env] or session env (SPEC §6.1/§6.3); j/k select
