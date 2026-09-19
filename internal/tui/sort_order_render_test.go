@@ -12,7 +12,7 @@ import (
 // non-fallback half of effectiveSortOrder: every value config.LoadFrom can
 // actually produce (the four schema names, or "" for a config.Settings{}
 // built directly the way tests -- and a real load's own defaultFileConfig
-// -- already treat ui.mouse/group_by_workspace's zero value) resolves
+// -- already treat ui.mouse's zero value) resolves
 // cleanly, with no reason to show.
 func TestEffectiveSortOrderResolvesKnownValuesWithNoReason(t *testing.T) {
 	cases := []struct {
@@ -154,7 +154,7 @@ func TestSessionsLoadedGroupingWithinGroupOrderIsNonVacuous(t *testing.T) {
 		{ID: "z2", Name: "zulu-two", Agent: "shell", Status: "idle", GroupName: "solo-workspace", StatusAt: 100},
 		{ID: "z1", Name: "zulu-one", Agent: "shell", Status: "idle", GroupName: "solo-workspace", StatusAt: 200},
 	}
-	model := New(nil, config.Settings{SortOrder: SortOrderName, GroupByWorkspace: true}, "")
+	model := New(nil, config.Settings{SortOrder: SortOrderName}, "")
 	updated, _ := model.Update(sessionsLoaded{sessions: sessions})
 	got := updated.(Model)
 

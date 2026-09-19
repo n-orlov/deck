@@ -92,10 +92,7 @@ func TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide(t *testing.T) {
 		{ID: "a1", Name: "alpha-session-with-a-very-long-name-that-must-be-elided", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
 		{ID: "b1", Name: "bravo", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
-	// Grouping must be explicit: config.Settings{} zero value now means
-	// grouping off (requirement 35). This test's own claim is about
-	// resolving a click to a group header, so it needs one.
-	m.settings.GroupByWorkspace = true
+	// Grouping is unconditional (R129 part 2): no on/off switch remains.
 	m.width, m.height = 100, 30 // side-by-side (width >= 80)
 
 	layout := m.computeLayout()
@@ -247,10 +244,7 @@ func TestClickGroupHeaderTogglesOnlyThatGroup(t *testing.T) {
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
-	// Grouping must be explicit: config.Settings{} zero value now means
-	// grouping off (requirement 35); this test's own claim is about a
-	// group header click, so it needs one.
-	m.settings.GroupByWorkspace = true
+	// Grouping is unconditional (R129 part 2): no on/off switch remains.
 	m.width, m.height = 100, 30
 
 	x, y := findHeader(t, m, "infra")

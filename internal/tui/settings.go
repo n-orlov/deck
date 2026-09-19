@@ -875,7 +875,6 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		Mouse:                s.File.Mouse,
 		PreviewFit:           s.File.PreviewFit,
 		PreviewPaint:         s.File.PreviewPaint,
-		GroupByWorkspace:     s.File.GroupByWorkspace,
 		SortOrder:            s.File.SortOrder,
 		RecentCwdLimit:       s.File.RecentCwdLimit,
 		EventRetentionDays:   s.File.EventRetentionDays,
@@ -920,8 +919,6 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 		return cfg.Mouse
 	case "ui.preview_fit":
 		return cfg.PreviewFit
-	case "ui.group_by_workspace":
-		return cfg.GroupByWorkspace
 	default:
 		b, _ := f.Default.(bool)
 		return b
@@ -942,8 +939,6 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 		cfg.Mouse = v
 	case "ui.preview_fit":
 		cfg.PreviewFit = v
-	case "ui.group_by_workspace":
-		cfg.GroupByWorkspace = v
 	}
 }
 

@@ -148,15 +148,15 @@ func TestSidebarStripeAbsentUnderNoColor(t *testing.T) {
 	}
 }
 
-// TestSidebarStripeHeaderNeverParticipates proves that with
-// [ui] group_by_workspace on, a workspace header row never gets the
-// stripe's theme.Surface background, and that the per-session phase
-// counter continues across a group boundary rather than resetting (task
-// 084's own stated choice, recorded here as an executable pin: session 3
-// -- the first session of the SECOND group -- continues the alternation
-// from the two sessions in the first group rather than restarting it).
+// TestSidebarStripeHeaderNeverParticipates proves that a workspace header
+// row never gets the stripe's theme.Surface background, and that the
+// per-session phase counter continues across a group boundary rather than
+// resetting (task 084's own stated choice, recorded here as an executable
+// pin: session 3 -- the first session of the SECOND group -- continues the
+// alternation from the two sessions in the first group rather than
+// restarting it).
 func TestSidebarStripeHeaderNeverParticipates(t *testing.T) {
-	m := New(nil, config.Settings{Color: true, GroupByWorkspace: true}, "")
+	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 100, 30
 	m.sessions = []store.Session{
 		{ID: "s1", Name: "one", Agent: "shell", Status: "running", GroupName: "wsA", CreatedAt: 1000},

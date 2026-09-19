@@ -33,11 +33,7 @@ func TestSessionWorkspaceKeyReadsGroupNameVerbatim(t *testing.T) {
 }
 
 func groupTestModel(sessions []store.Session) Model {
-	// This entire file exercises workspace grouping (SPEC requirement
-	// 30) directly, so grouping must be explicitly on: config.Settings{}
-	// zero value now means grouping off (requirement 35), same
-	// convention as m.settings.Mouse elsewhere in this package.
-	m := New(nil, config.Settings{GroupByWorkspace: true}, "")
+	m := New(nil, config.Settings{}, "")
 	m.sessions = sessions
 	return m
 }

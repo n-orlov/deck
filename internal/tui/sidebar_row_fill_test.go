@@ -19,7 +19,7 @@ func sidebarRowFillModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 100, 30
 	m.sessions = []store.Session{
-		{ID: "s1", Name: "a", Agent: "shell", Status: "running", CreatedAt: 1000},
+		{ID: "s1", Name: "z", Agent: "shell", Status: "running", CreatedAt: 1000},
 		{ID: "s2", Name: "bb", Agent: "shell", Status: "running", CreatedAt: 1000},
 		{ID: "s3", Name: "ccc", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
@@ -98,7 +98,7 @@ func assertRowBackgroundFillsFullWidthWithGutter(t *testing.T, m Model, rowLine1
 // the sidebar's flanking single-space columns) staying uncoloured.
 func TestSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 	m := sidebarRowFillModel(t)
-	m.selected = 0 // "a" -- the shortest name, so the pad-fill columns dominate
+	m.selected = 0 // "z" -- the shortest name, so the pad-fill columns dominate
 	selectionHex := tokenHex(t, m, theme.Selection)
 
 	layout := m.computeLayout()
@@ -106,7 +106,7 @@ func TestSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContaining(t, term, "a")
+	row := findRowContaining(t, term, "z")
 
 	assertRowBackgroundFillsFullWidthWithGutter(t, m, row, sw, selectionHex, tokenHex(t, m, theme.Accent), "selected row")
 }
@@ -125,7 +125,7 @@ func TestSidebarSelectionIdleBackgroundFillsFullPanelWidth(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContainingInSidebar(t, term, sw, "a")
+	row := findRowContainingInSidebar(t, term, sw, "z")
 
 	assertRowBackgroundFillsFullWidthWithGutter(t, m, row, sw, selIdleHex, tokenHex(t, m, theme.Accent), "selection_idle row")
 }
@@ -144,12 +144,12 @@ func TestSidebarStripeBackgroundFillsFullPanelWidth(t *testing.T) {
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 
-	// Sessions are rendered in creation order ("a","bb","ccc" all share
+	// Sessions are rendered in creation order ("z","bb","ccc" all share
 	// CreatedAt, so the attention/ID tie-break is stable); one of the
 	// three phases must paint theme.Surface -- find it by checking each
 	// row's own name column first, the way sidebar_stripe_test.go does,
 	// then assert the FULL width on whichever row that is.
-	for _, name := range []string{"a", "bb", "ccc"} {
+	for _, name := range []string{"z", "bb", "ccc"} {
 		row := findRowContaining(t, term, name)
 		col := findCol(t, term, row, name)
 		if hex, ok := cellBgHex(t, term, col, row); ok && hex == surfaceHex {
