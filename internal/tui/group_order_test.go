@@ -124,9 +124,10 @@ func TestGroupHeaderTextCountsPopulatedAndEmptyGroups(t *testing.T) {
 // groupHeaderText's own return value alone.
 func TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount(t *testing.T) {
 	const longName = "a much longer group name than the 24-column sidebar floor can ever show in full"
+	const longNameGroupID = int64(7)
 	sessions := []store.Session{
-		{ID: "a", Name: "alpha", GroupName: longName, Status: "running"},
-		{ID: "b", Name: "bravo", GroupName: longName, Status: "running"},
+		{ID: "a", Name: "alpha", GroupName: longName, GroupID: groupIDPtr(longNameGroupID), Status: "running"},
+		{ID: "b", Name: "bravo", GroupName: longName, GroupID: groupIDPtr(longNameGroupID), Status: "running"},
 	}
 
 	for _, tc := range []struct {
@@ -142,7 +143,7 @@ func TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount(t *testin
 			m.width, m.height = AutoSideBySideWidth, MinRows
 			m.sidebarWidth = SidebarWidthFloor
 			if tc.collapsed {
-				m.collapsedGroups = map[string]bool{longName: true}
+				m.collapsedGroups = map[int64]bool{longNameGroupID: true}
 			}
 
 			layout := m.computeLayout()

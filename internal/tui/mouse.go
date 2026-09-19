@@ -34,12 +34,16 @@ const (
 	hitTargetCollapsedStrip
 )
 
-// hitResult is hitTest's answer for one (x, y) cell.
+// hitResult is hitTest's answer for one (x, y) cell. groupID (task 013/
+// R129 part 3) is only meaningful when target is hitTargetHeader -- the
+// header's durable group identity, never its display name, since a
+// header hit exists to drive toggleGroupCollapse, which is itself keyed
+// by id (sessionGroupID).
 type hitResult struct {
 	panel        hitPanel
 	target       hitTarget
 	sessionIndex int
-	workspace    string
+	groupID      int64
 }
 
 // hitTest resolves one absolute terminal cell (as bubbletea's tea.MouseMsg
@@ -136,7 +140,7 @@ func (m Model) hitTestStacked(layout LayoutResult, x, y int) hitResult {
 func sidebarEntryHit(e sidebarEntry) hitResult {
 	switch e.kind {
 	case sidebarLineHeader:
-		return hitResult{panel: hitPanelSidebar, target: hitTargetHeader, workspace: e.workspace}
+		return hitResult{panel: hitPanelSidebar, target: hitTargetHeader, groupID: e.groupID}
 	case sidebarLineRow:
 		return hitResult{panel: hitPanelSidebar, target: hitTargetRow, sessionIndex: e.sessionIndex}
 	default:
@@ -232,9 +236,11 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m.restoreFromCollapsedStrip()
 		case hitTargetHeader:
 			// "click a workspace group header toggles collapse"
-			// (duplicates the grouping key, `g`).
-			m.toggleGroupCollapse(hit.workspace)
-			return m, nil
+			// (duplicates the grouping key, `c`), keyed by the header's
+			// durable group id (task 013/R129 part 3) and persisted to
+			// ui_state's collapsed_groups exactly like the `c` key.
+			m.toggleGroupCollapse(hit.groupID)
+			return m, m.persistCollapsedGroups()
 		case hitTargetRow:
 			return m.clickSidebarRow(hit.sessionIndex, e)
 		}

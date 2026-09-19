@@ -54,7 +54,7 @@ func TestMarkTogglesBySessionIDAndSurvivesReorderAndRegroup(t *testing.T) {
 	// loadSessions attention re-sort would) AND a re-group (collapse a
 	// workspace group) in the same step.
 	model.sessions = []store.Session{model.sessions[2], model.sessions[1], model.sessions[0]}
-	model.collapsedGroups = map[string]bool{sessionWorkspace(model.sessions[0]): true}
+	model.collapsedGroups = map[int64]bool{sessionGroupID(model.sessions[0]): true}
 
 	names := map[string]bool{}
 	for _, s := range model.markedSessions() {

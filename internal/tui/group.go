@@ -60,6 +60,28 @@ func sessionGroupDisplayName(session store.Session) string {
 	return sessionWorkspace(session)
 }
 
+// sessionGroupID resolves the durable group identity a session's collapse
+// state and §11.8 header hit-test key off of (task 013/R129 part 3): the
+// real groups.id when sessionWorkspace resolves to a real, named group, or
+// 0 -- a sentinel no real group row can ever hold, since SQLite rowids
+// start at 1 -- for the implicit default group, including a session whose
+// GroupID no longer resolves to a live groups row (SPEC §11: "a group_id
+// that no longer resolves ... renders under default rather than
+// vanishing"). This is deliberately keyed off sessionWorkspace's resolved
+// name, not off session.GroupID directly: a dangling GroupID is non-nil
+// but must still bucket under the SAME default identity (0) every true
+// default session already uses, never under a distinct, meaningless
+// id-shaped value.
+func sessionGroupID(session store.Session) int64 {
+	if sessionWorkspace(session) == "" {
+		return 0
+	}
+	if session.GroupID != nil {
+		return *session.GroupID
+	}
+	return 0
+}
+
 // indexedSession pairs a session with its index into m.sessions, so a
 // group can be rendered (and, once selected, resolved back to an index)
 // without re-scanning m.sessions to find it.
@@ -69,9 +91,16 @@ type indexedSession struct {
 }
 
 // sidebarGroup is one workspace's header plus the sessions rendered under
-// it, in m.sessions' own relative order.
+// it, in m.sessions' own relative order. GroupID (task 013/R129 part 3) is
+// the bucket's durable identity -- 0 for the implicit default group (a
+// sentinel no real groups.id row can ever hold, since SQLite rowids start
+// at 1) -- and is what collapse state and the §11.8 header hit-test key
+// off of now, never Workspace: a group's NAME can change (a rename), its
+// id cannot, so keying either one off Workspace would lose collapse state
+// across a rename even though nothing else about the group changed.
 type sidebarGroup struct {
 	Workspace string
+	GroupID   int64
 	Sessions  []indexedSession
 }
 
@@ -94,7 +123,7 @@ func (m Model) groupSessions() []sidebarGroup {
 			continue
 		}
 		firstSeen[ws] = len(groups)
-		groups = append(groups, sidebarGroup{Workspace: ws, Sessions: []indexedSession{{Index: i, Session: session}}})
+		groups = append(groups, sidebarGroup{Workspace: ws, GroupID: sessionGroupID(session), Sessions: []indexedSession{{Index: i, Session: session}}})
 	}
 	sort.SliceStable(groups, func(i, j int) bool {
 		return groupSortsBefore(groups[i].Workspace, groups[j].Workspace)
@@ -123,46 +152,48 @@ func groupSortsBefore(a, b string) bool {
 	return strings.ToLower(a) < strings.ToLower(b)
 }
 
-// isGroupCollapsed reports whether m has collapsed the given workspace's
-// group. A workspace never explicitly collapsed defaults to expanded, so a
-// nil map (the zero Model) behaves exactly like an empty one.
-func (m Model) isGroupCollapsed(workspace string) bool {
-	return m.collapsedGroups[workspace]
+// isGroupCollapsed reports whether m has collapsed the group named by
+// groupID (task 013/R129 part 3: keyed by the group's durable id, never
+// its display name -- see sessionGroupID). A group never explicitly
+// collapsed defaults to expanded, so a nil map (the zero Model) behaves
+// exactly like an empty one.
+func (m Model) isGroupCollapsed(groupID int64) bool {
+	return m.collapsedGroups[groupID]
 }
 
-// setGroupCollapsed collapses or expands one workspace's group. When
-// collapsing hides the currently selected session, selection moves to the
-// nearest still-visible session (forward first, then backward) so the
-// sidebar is never left selecting an invisible row.
-func (m *Model) setGroupCollapsed(workspace string, collapsed bool) {
+// setGroupCollapsed collapses or expands one group, by id. When collapsing
+// hides the currently selected session, selection moves to the nearest
+// still-visible session (forward first, then backward) so the sidebar is
+// never left selecting an invisible row.
+func (m *Model) setGroupCollapsed(groupID int64, collapsed bool) {
 	if collapsed {
 		if m.collapsedGroups == nil {
-			m.collapsedGroups = map[string]bool{}
+			m.collapsedGroups = map[int64]bool{}
 		}
-		m.collapsedGroups[workspace] = true
+		m.collapsedGroups[groupID] = true
 	} else if m.collapsedGroups != nil {
-		delete(m.collapsedGroups, workspace)
+		delete(m.collapsedGroups, groupID)
 	}
 	m.selected = m.nearestVisibleSelection(m.selected)
 }
 
-// toggleGroupCollapse flips one workspace's collapse state. Task 028's
-// mouse header click is the first caller this exists to serve; it is its
-// own method (rather than inlined there) so a future keyboard duplicate
-// (SPEC §11.8: "no capability is ever mouse-only") has the identical
-// behaviour to bind.
-func (m *Model) toggleGroupCollapse(workspace string) {
-	m.setGroupCollapsed(workspace, !m.isGroupCollapsed(workspace))
+// toggleGroupCollapse flips one group's collapse state, by id. The mouse
+// header click (internal/tui/mouse.go) is the other caller this exists to
+// serve; it is its own method (rather than inlined at either call site) so
+// the key binding and the mouse binding (SPEC §11.8: "no capability is
+// ever mouse-only") have identical behaviour.
+func (m *Model) toggleGroupCollapse(groupID int64) {
+	m.setGroupCollapsed(groupID, !m.isGroupCollapsed(groupID))
 }
 
 // isSessionVisible reports whether the session at index i is presently
-// shown in the sidebar: false only when its workspace group is collapsed,
-// or when i is out of range.
+// shown in the sidebar: false only when its group (by id, sessionGroupID)
+// is collapsed, or when i is out of range.
 func (m Model) isSessionVisible(i int) bool {
 	if i < 0 || i >= len(m.sessions) {
 		return false
 	}
-	return !m.isGroupCollapsed(sessionWorkspace(m.sessions[i]))
+	return !m.isGroupCollapsed(sessionGroupID(m.sessions[i]))
 }
 
 // visualOrder returns every m.sessions index in the exact order the
@@ -345,7 +376,7 @@ func (m Model) pageSelection(delta int) int {
 // when that leaves no room at all for the name.
 func (m Model) groupHeaderText(group sidebarGroup, contentWidth int) string {
 	marker := m.glyph("\u25be", "v") // expanded
-	if m.isGroupCollapsed(group.Workspace) {
+	if m.isGroupCollapsed(group.GroupID) {
 		marker = m.glyph("\u25b8", ">") // collapsed
 	}
 	name := group.Workspace

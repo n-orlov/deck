@@ -39,12 +39,13 @@ func TestNeedsAttentionMatchesWaitingAndErrorOnly(t *testing.T) {
 // around the end of the list, and skips a session hidden by a collapsed
 // workspace group even though that session's own status needs attention.
 func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
+	hiddenGroupID := int64(5)
 	m := Model{
 		sessions: []store.Session{
 			{ID: "a", GroupName: "ws", Status: "running"},
 			{ID: "b", GroupName: "ws", Status: "waiting"},
 			{ID: "c", GroupName: "ws", Status: "running"},
-			{ID: "d", GroupName: "hidden-ws", Status: "error"},
+			{ID: "d", GroupName: "hidden-ws", GroupID: &hiddenGroupID, Status: "error"},
 			{ID: "e", GroupName: "ws", Status: "idle"},
 		},
 	}
@@ -57,14 +58,14 @@ func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
 	// From "b" itself, the search wraps all the way around and lands back
 	// on "b" (index 1) since it is the only visible session needing
 	// attention once "d" is hidden below.
-	m.setGroupCollapsed("hidden-ws", true)
+	m.setGroupCollapsed(hiddenGroupID, true)
 	if got, ok := m.nextAttentionSelection(1); !ok || got != 1 {
 		t.Fatalf("from 1 with hidden-ws collapsed: got (%d, %v), want (1, true)", got, ok)
 	}
 
 	// Expand the group again: "d" (index 3) is now reachable and, searching
 	// forward from "c" (index 2), is the very next one.
-	m.setGroupCollapsed("hidden-ws", false)
+	m.setGroupCollapsed(hiddenGroupID, false)
 	if got, ok := m.nextAttentionSelection(2); !ok || got != 3 {
 		t.Fatalf("from 2 with hidden-ws expanded: got (%d, %v), want (3, true)", got, ok)
 	}
