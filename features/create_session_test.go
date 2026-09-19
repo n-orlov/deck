@@ -420,7 +420,27 @@ func clientCreatesShellSessionIntoGroupWithFreshCWDLabelled(ctx context.Context,
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForCreatedSessionPastStarting(ctx, client, sessionName)
+}
+
+// waitForCreatedSessionPastStarting waits for the just-submitted create
+// modal to close and the new session's row to render, accepting either
+// the transient "starting" frame or, if the shell fast-path in
+// internal/service/reconcile.go already promoted the row to "running"
+// before any frame happened to show "starting", the row reporting
+// sessionName as running instead. A plain
+// client.WaitForFrame(ctx, false, "starting") races that reconcile loop:
+// task 021-cure-01's gate run (docs/reports/phase4b-final-suite/
+// fullsuite-baf92ed.log) timed out on exactly this step with the frame
+// already showing "groups-delete-dd-one running" and "starting" nowhere
+// on screen -- the create had already succeeded, the wait was just still
+// looking for a label the client had already left.
+func waitForCreatedSessionPastStarting(ctx context.Context, client *ScreenDriver, sessionName string) error {
+	running := sessionName + " running"
+	_, err := client.WaitForFrameFunc(ctx, false, func(frame string) bool {
+		return strings.Contains(frame, "starting") || strings.Contains(frame, running)
+	})
+	return err
 }
 
 // cycleCreateModalGroupFieldTo assumes focus is already on the create
