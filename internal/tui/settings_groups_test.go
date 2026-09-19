@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1039,5 +1041,178 @@ func TestSettingsGroupDeleteDBranchOneUndoRestoresTheWholeBatch(t *testing.T) {
 	}
 	if stillArchived.ArchivedAt == 0 {
 		t.Error("archived member's ArchivedAt was lost across the delete/undo round trip; it must stay archived")
+	}
+}
+
+// mustCreateClaudeSessionWithTranscript persists a real group member whose
+// agent is "claude" and whose declared transcript (internal/agent's
+// TranscriptPaths, task 109) actually exists on disk under home -- the
+// same fixture shape TestDeleteConfirmPurgeShowsExactPathForClaudeWithATranscript
+// (delete_purge_test.go) builds for the single-session confirm, reused
+// here so cure-01-05's group-delete regression exercises the SAME
+// transcriptPathFor/purgeSvc seam rather than a stand-in. Returns the
+// persisted session and the exact absolute transcript path.
+func mustCreateClaudeSessionWithTranscript(t *testing.T, db *store.Store, home, id, name string, groupID int64) (store.Session, string) {
+	t.Helper()
+	cwd := filepath.Join(home, "work-"+id)
+	if err := os.MkdirAll(cwd, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	project := strings.ReplaceAll(cwd, string(filepath.Separator), "-")
+	transcriptDir := filepath.Join(home, ".claude", "projects", project)
+	if err := os.MkdirAll(transcriptDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	conversationID := id + "11111111-1111-1111-1111-111111111111"
+	if len(conversationID) > 36 {
+		conversationID = conversationID[len(conversationID)-36:]
+	}
+	transcriptPath := filepath.Join(transcriptDir, conversationID+".jsonl")
+	if err := os.WriteFile(transcriptPath, []byte(`{"message":"hi"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gid := groupID
+	s, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: id, Name: name, CWD: cwd, Agent: "claude", CapturedPath: "/bin",
+		Status: "stopped", StatusAt: 100, CreatedAt: 100, GroupID: &gid,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		t.Fatalf("CreateSession(%s): %v", name, err)
+	}
+	return s, transcriptPath
+}
+
+// TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones
+// is cure-01-05's own regression (R131/SPEC §11): the destructive "d"
+// branch reaches the SAME shared §9.2 bulk dd confirm an ordinary marked-set
+// delete does, and that confirm now offers the same non-default purge
+// choice the single-session dialog does -- opting out preserves every
+// declared transcript, opting in purges only the ELIGIBLE ones (a claude
+// member with a real fixture transcript, never the shell member, which has
+// none), and either choice still tombstones every member and restores the
+// whole batch with one shared u, exactly like the plain-delete regression
+// above.
+func TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		cyclePurge     bool
+		wantTranscript bool
+	}{
+		{name: "keep preserves the eligible transcript", cyclePurge: false, wantTranscript: true},
+		{name: "purge removes only the eligible transcript", cyclePurge: true, wantTranscript: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { db.Close() })
+			ctx := context.Background()
+			g, err := db.CreateGroup(ctx, "transcript-group")
+			if err != nil {
+				t.Fatal(err)
+			}
+			claudeSession, transcriptPath := mustCreateClaudeSessionWithTranscript(t, db, home, "s1", "alpha", g.ID)
+			shellSession := mustCreateSessionInGroup(t, db, "s2", "beta", g.ID, "stopped")
+
+			m := settingsOpenOnGroupsFields(t, db)
+			m.settings.DeleteGrace = time.Hour
+			var purgeCalls []string
+			m.purgeSvc = func(_ context.Context, path string) error {
+				purgeCalls = append(purgeCalls, path)
+				return os.Remove(path)
+			}
+			m.deleteSvc = func(ctx context.Context, s store.Session) error {
+				return db.SoftDeleteSession(ctx, s.ID, 300)
+			}
+			m.restoreSvc = func(ctx context.Context, id string) (store.Session, error) {
+				if err := db.RestoreSession(ctx, id, 400); err != nil {
+					return store.Session{}, err
+				}
+				return db.GetSession(ctx, id)
+			}
+			m.baseSessions = []store.Session{claudeSession, shellSession}
+			m.sessions = m.baseSessions
+
+			updated, _ := m.Update(key("d"))
+			m = updated.(Model)
+			updated, _ = m.Update(key("d"))
+			m = updated.(Model)
+			if !m.deleteConfirming {
+				t.Fatal("the destructive d branch did not open the bulk delete confirm")
+			}
+			if m.bulkDeletePurgeValue != "keep" {
+				t.Fatalf("bulkDeletePurgeValue = %q on open, want the non-default candidate %q", m.bulkDeletePurgeValue, "keep")
+			}
+			if tc.cyclePurge {
+				updated, _ = m.Update(key("right"))
+				m = updated.(Model)
+				if m.bulkDeletePurgeValue != "purge" {
+					t.Fatalf("right did not cycle bulkDeletePurgeValue to %q: got %q", "purge", m.bulkDeletePurgeValue)
+				}
+			}
+			body := m.deleteConfirmBody()
+			if !strings.Contains(body, "2 marked sessions") {
+				t.Fatalf("the routed confirm does not name the batch size:\n%s", body)
+			}
+
+			updated, cmd := m.Update(key("enter"))
+			m = updated.(Model)
+			if cmd == nil {
+				t.Fatal("submit returned no command")
+			}
+			updated, _ = m.Update(cmd())
+			m = updated.(Model)
+
+			if _, err := os.Stat(transcriptPath); tc.wantTranscript {
+				if err != nil {
+					t.Fatalf("keep must preserve the eligible transcript %q: %v", transcriptPath, err)
+				}
+				if len(purgeCalls) != 0 {
+					t.Fatalf("keep called the purge service: %#v", purgeCalls)
+				}
+			} else {
+				if err == nil {
+					t.Fatalf("purge did not remove the eligible transcript %q", transcriptPath)
+				}
+				if len(purgeCalls) != 1 || purgeCalls[0] != transcriptPath {
+					t.Fatalf("purge calls = %#v, want exactly one call for the eligible transcript %q (never the shell member, which has none)", purgeCalls, transcriptPath)
+				}
+			}
+
+			for _, sess := range []struct{ id, name string }{{claudeSession.ID, "alpha"}, {shellSession.ID, "beta"}} {
+				got, err := db.GetSession(ctx, sess.id)
+				if err != nil {
+					t.Fatalf("GetSession(%s): %v", sess.name, err)
+				}
+				if got.DeletedAt == 0 {
+					t.Fatalf("%s.DeletedAt after the batch = 0, want tombstoned", sess.name)
+				}
+			}
+			if len(m.batchDeleteUndoSessionIDs) != 2 {
+				t.Fatalf("batchDeleteUndoSessionIDs = %#v, want both members of the batch", m.batchDeleteUndoSessionIDs)
+			}
+
+			updated, cmd = m.Update(key("u"))
+			m = updated.(Model)
+			if cmd == nil {
+				t.Fatal("u returned no command")
+			}
+			updated, _ = m.Update(cmd())
+			_ = updated.(Model)
+
+			for _, sess := range []struct{ id, name string }{{claudeSession.ID, "alpha"}, {shellSession.ID, "beta"}} {
+				got, err := db.GetSession(ctx, sess.id)
+				if err != nil {
+					t.Fatalf("GetSession(%s): %v", sess.name, err)
+				}
+				if got.DeletedAt != 0 {
+					t.Errorf("%s.DeletedAt after u = %v, want 0 -- the shared one-u restore covers this batch exactly as an ordinary bulk dd does", sess.name, got.DeletedAt)
+				}
+			}
+		})
 	}
 }

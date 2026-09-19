@@ -848,10 +848,12 @@ func (m *Model) settingsMoveGroupMembersToDefaultAndDeleteGroup() tea.Cmd {
 // list's own second-`d` dd chord sets for a non-empty mark set
 // (Update's own pendingDelete branch, the dd chord's second key) --
 // m.deleteConfirming,
-// m.deleteScroll reset, purge left empty since a bulk delete never offers
-// it -- so control reaches updateBulkDeleteConfirm/bulkDeleteConfirmBody
-// through the exact same seam `dd` does, never a second deletion
-// implementation. The settings takeover itself closes (m.settingsOpen =
+// m.deleteScroll reset, m.bulkDeletePurgeValue defaulted to "keep" (cure-01-05:
+// the destructive branch reaches the SAME bulk confirm, so it offers the
+// SAME non-default purge choice) -- so control reaches
+// updateBulkDeleteConfirm/bulkDeleteConfirmBody through the exact same seam
+// `dd` does, never a second deletion implementation. The settings takeover
+// itself closes (m.settingsOpen =
 // false): deleteConfirming is already checked ahead of settingsOpen in
 // both Update and View, so the confirm would render either way, but
 // closing settings here is what lets the ORDINARY top-level `u` (only
@@ -891,6 +893,11 @@ func (m *Model) settingsRouteGroupDeleteToBulkConfirm() {
 	m.deleteConfirming = true
 	m.deleteNote = ""
 	m.deleteScroll = 0
+	// cure-01-05: same default as the ordinary mark-set path above -- the
+	// destructive branch reaches the SAME bulk confirm, so it must offer
+	// the SAME non-default purge choice, reset to "keep" every time this
+	// hand-off happens.
+	m.bulkDeletePurgeValue = "keep"
 	m.deletePurgeValue = ""
 	m.deletePurgePath = ""
 	m.deletePurgeOK = false

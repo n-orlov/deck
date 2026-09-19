@@ -330,6 +330,17 @@ type Model struct {
 	deletePurgeValue string
 	deletePurgePath  string
 	deletePurgeOK    bool
+	// bulkDeletePurgeValue is the same non-default "purge conversation"
+	// choice (task 110), offered a second time inside the shared §9.2 bulk
+	// `dd` confirm (cure-01-05, R131/SPEC §11): left/right cycles the same
+	// deletePurgeOptions, reset to "keep" every time the bulk confirm opens
+	// (both the ordinary mark-set path and R131's destructive group-delete
+	// hand-off). Unlike the single-session trio above there is no one path
+	// to cache -- a batch purge resolves each eligible session's own
+	// declared transcript independently, at submit time, via the same
+	// transcriptPathFor/purgeSvc seam -- so this is the only field the bulk
+	// dialog needs to remember between renders.
+	bulkDeletePurgeValue string
 	// archiveConfirming is R72's `A` confirm dialog (issue #10,
 	// SPEC.md:752): `A` writes NOTHING on the keypress -- it only opens
 	// this dialog, and the dialog's own Enter is the first thing that ever
@@ -1462,9 +1473,10 @@ type sessionsBulkResumed struct {
 // dd's bulk confirm submit: every marked session's own delete outcome, in
 // markedSessions()'s own order. A successful entry starts ONE shared
 // DECK_DELETE_GRACE_MS window (batchDeleteUndoSessionIDs) covering the
-// whole batch. Purge is not offered for a bulk delete (task 110's purge
-// choice resolves one session's one declared transcript path at a time;
-// see docs/reports/phase3-findings.md), so there is no purgeErr here.
+// whole batch. cure-01-05 (R131/SPEC §11): a bulk delete now offers the
+// same non-default purge choice the single-session confirm does, resolved
+// per session rather than once, so purgeErrs carries each row's own purge
+// outcome alongside hookMessages below.
 type sessionsBulkDeleted struct {
 	sessions []store.Session
 	errs     []error
@@ -1478,6 +1490,13 @@ type sessionsBulkDeleted struct {
 	// was lost). The sessionsBulkDeleted branch joins the non-empty ones,
 	// name-prefixed, into the same teardownHookNote a single dd raises.
 	hookMessages []string
+	// purgeErrs is index-aligned with sessions: entry i is the error the
+	// shared purge service returned for sessions[i]'s own declared
+	// transcript, or nil when purge was not chosen, that session had no
+	// eligible transcript, or the purge itself succeeded. Only ever
+	// populated when the delete for that same row succeeded -- exactly the
+	// single-session confirm's own rule ("err == nil && purgePath != \"\"").
+	purgeErrs []error
 }
 
 // batchDeleteGraceExpired mirrors deleteGraceExpired exactly, but for the
@@ -2769,6 +2788,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionsBulkDeleted:
 		var succeeded []string
 		var firstErr error
+		// cure-01-05: mirrors firstErr exactly, but for the batch's own purge
+		// outcomes -- only ever populated for a row whose delete succeeded
+		// (msg.purgeErrs' own doc), so this never masks a delete failure the
+		// firstErr branch below already reports.
+		var firstPurgeErr error
 		// task 048: the hook messages are collected for EVERY row, whether
 		// that row's delete errored or not -- runPostDestroy is fail-open
 		// and its message is about the hook, not about the delete, so a row
@@ -2785,6 +2809,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				hookNotes = append(hookNotes, label+": "+msg.hookMessages[i])
 			}
+			if i < len(msg.purgeErrs) && msg.purgeErrs[i] != nil && firstPurgeErr == nil {
+				firstPurgeErr = msg.purgeErrs[i]
+			}
 			if msg.errs[i] != nil {
 				if firstErr == nil {
 					firstErr = msg.errs[i]
@@ -2795,9 +2822,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.deleteConfirming = false
 		m.deleteNote = ""
-		if firstErr != nil {
+		switch {
+		case firstErr != nil:
 			m.attachError = "Cannot delete: " + firstErr.Error()
-		} else {
+		case firstPurgeErr != nil:
+			m.attachError = "Deleted, but purge failed: " + firstPurgeErr.Error()
+		default:
 			m.attachError = ""
 		}
 		cmds := []tea.Cmd{m.loadSessions}
@@ -3268,10 +3298,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.deleteNote = ""
 				m.deleteScroll = 0
 				if len(m.marked) > 0 {
-					// Task 112: purge resolves one session's one declared
-					// transcript path at a time (task 109/110) -- not
-					// offered at all for a bulk delete, so nothing here
-					// resolves a path.
+					// cure-01-05: the bulk confirm offers the same
+					// non-default purge choice the single-session dialog
+					// does, just resolved per session at submit time
+					// (transcriptPathFor has no single session to call
+					// eagerly here) -- so only the cycled VALUE resets;
+					// deletePurgePath/OK stay meaningless for a batch and
+					// are left alone.
+					m.bulkDeletePurgeValue = "keep"
 					m.deletePurgeValue = ""
 					m.deletePurgePath = ""
 					m.deletePurgeOK = false
@@ -6488,27 +6522,32 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateBulkDeleteConfirm is task 112's marked-set second-`d` confirm: no
-// Fields.Cycle at all (purge is not offered for a bulk delete -- it
-// resolves one session's one declared transcript path at a time, task
-// 109/110 -- so left/right/space are simply not contract keys here, which
-// applyDialogContract already handles via a nil Cycle). Submit clears the
-// mark set THE MOMENT it fires ("the marks clear on the action"), before
-// the async delete loop even runs, using the session list resolved right
-// now rather than re-reading m.marked after it is gone. Task 018: PgUp/PgDn
-// scroll m.deleteScroll over the MARK LIST alone (bulkDeleteScrollByPage,
-// measured off the plain regions -- never the coloured ones, so a theme
-// change can never move where a page boundary falls): the title and the
-// submit legend are pinned by bulkDeleteConfirmView, so paging moves which
-// marked names are on screen and never which controls are.
+// updateBulkDeleteConfirm is task 112's marked-set second-`d` confirm.
+// cure-01-05 (R131/SPEC §11): the shared batch seam now offers the same
+// non-default purge choice the single-session confirm does, cycled via
+// Fields.Cycle exactly as deletePurgeValue is above -- left/right/space
+// change m.bulkDeletePurgeValue between deletePurgeOptions, never a second
+// dialog contract. Submit clears the mark set THE MOMENT it fires ("the
+// marks clear on the action"), before the async delete loop even runs,
+// using the session list resolved right now rather than re-reading
+// m.marked after it is gone. Task 018: PgUp/PgDn scroll m.deleteScroll
+// over the MARK LIST alone (bulkDeleteScrollByPage, measured off the
+// plain regions -- never the coloured ones, so a theme change can never
+// move where a page boundary falls): the title and the submit legend are
+// pinned by bulkDeleteConfirmView, so paging moves which marked names are
+// on screen and never which controls are.
 func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	sessions := m.bulkDeleteBatch()
 	cmd, handled := applyDialogContract(msg, dialogContract{
+		Fields: dialogFields{Cycle: func(delta int) {
+			m.bulkDeletePurgeValue = cycleOption(deletePurgeOptions, m.bulkDeletePurgeValue, delta)
+		}},
 		Cancel: func() {
 			m.deleteConfirming = false
 			m.deleteNote = ""
 			m.marked = nil
 			m.bulkDeleteSessions = nil
+			m.bulkDeletePurgeValue = ""
 			// A cancelled batch commits nothing, so a group routed here by
 			// R131's `d` branch keeps both its members and its row.
 			m.bulkDeleteGroupID = 0
@@ -6526,11 +6565,27 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// on the floor (task 048). deleteSvc stays the fallback
 			// for every constructor that wires only the plain shape.
 			deleteHookReporter := m.deleteHookReporter
+			purgeSvc := m.purgeSvc
+			// cure-01-05: purge is resolved per session, at submit time,
+			// through the SAME transcriptPathFor seam the single-session
+			// confirm eagerly resolves once for its one row -- never
+			// implicit, never guessed, and skipped (not errored) for a
+			// session whose adapter declares no transcript at all.
+			purge := m.bulkDeletePurgeValue == "purge"
+			purgePaths := make([]string, len(sessions))
+			if purge {
+				for i, s := range sessions {
+					if path, ok := m.transcriptPathFor(s); ok {
+						purgePaths[i] = path
+					}
+				}
+			}
 			m.marked = nil
 			m.bulkDeleteSessions = nil
+			m.bulkDeletePurgeValue = ""
 			return func() tea.Msg {
 				result := sessionsBulkDeleted{}
-				for _, s := range sessions {
+				for i, s := range sessions {
 					var err error
 					var hookMessage string
 					if deleteHookReporter != nil {
@@ -6538,9 +6593,18 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					} else {
 						err = deleteSvc(context.Background(), s)
 					}
+					var purgeErr error
+					if err == nil && purge && purgePaths[i] != "" {
+						if purgeSvc == nil {
+							purgeErr = errors.New("purging the transcript is unavailable")
+						} else {
+							purgeErr = purgeSvc(context.Background(), purgePaths[i])
+						}
+					}
 					result.sessions = append(result.sessions, s)
 					result.errs = append(result.errs, err)
 					result.hookMessages = append(result.hookMessages, hookMessage)
+					result.purgeErrs = append(result.purgeErrs, purgeErr)
 				}
 				return result
 			}
@@ -6851,10 +6915,15 @@ func (m Model) styledDeleteConfirmBody() string {
 // bulkDeleteExplanationLines is the bulk confirm's own survives-text, one
 // physical line per entry so head/list/tail line counts (the scroll math in
 // bulkDeleteListBudget) never depend on where a wrap happens to fall.
+// cure-01-05 (R131/SPEC §11): the third line now names the batch's own
+// non-default purge choice instead of flatly declining it -- the choice
+// itself, and what it does or does not touch, is rendered separately by
+// bulkDeleteConfirmRegions right below the Purge: field this slice
+// precedes.
 var bulkDeleteExplanationLines = []string{
 	"This kills each live pane (if any) and removes each session from the",
 	"list. Every marked session's own conversation and working directory",
-	"survive, untouched. Purge is not offered for a bulk delete.",
+	"survive, untouched, unless purge is chosen below.",
 }
 
 const (
@@ -6869,19 +6938,30 @@ const (
 
 // bulkDeleteConfirmRegions splits the bulk confirm into the three regions
 // bulkDeleteConfirmView renders (task 018): a fixed head (title, blank,
-// survives-text, blank), the scrollable list of marked names, and a fixed
-// tail (blank, submit legend, and a failed-submit note when there is one).
-// The split is what keeps the submit line ON SCREEN at 80x24 for any mark
-// count: only the middle region ever scrolls, so head and tail are drawn
-// every frame rather than paged off the bottom. Every entry is one logical
-// line (no embedded \n) so wrapDialogRegion can count the regions without
-// losing a blank separator. scrollHint picks the submit-line variant; the
-// caller decides it once, via bulkDeleteConfirmScrolls, so this function
-// stays free of the recursion "does it overflow?" would otherwise create.
+// survives-text, blank, the Purge field and its own decline/eligibility
+// line -- cure-01-05, R131/SPEC §11), the scrollable list of marked names,
+// and a fixed tail (blank, submit legend, and a failed-submit note when
+// there is one). The split is what keeps the submit line ON SCREEN at
+// 80x24 for any mark count: only the middle region ever scrolls, so head
+// and tail are drawn every frame rather than paged off the bottom. Every
+// entry is one logical line (no embedded \n) so wrapDialogRegion can count
+// the regions without losing a blank separator. scrollHint picks the
+// submit-line variant; the caller decides it once, via
+// bulkDeleteConfirmScrolls, so this function stays free of the recursion
+// "does it overflow?" would otherwise create.
 func (m Model) bulkDeleteConfirmRegions(scrollHint bool) (head, list, tail []string) {
 	sessions := m.bulkDeleteBatch()
 	head = append(head, fmt.Sprintf("Delete %d marked sessions", len(sessions)), "")
 	head = append(head, bulkDeleteExplanationLines...)
+	head = append(head, "")
+	head = append(head, fmt.Sprintf("Purge:      %s (left/right cycles: %s)", m.bulkDeletePurgeValue, strings.Join(deletePurgeOptions, ", ")))
+	if m.bulkDeletePurgeValue == "purge" {
+		if n := m.bulkDeleteEligibleTranscriptCount(sessions); n > 0 {
+			head = append(head, fmt.Sprintf("Will purge %d of %d marked sessions' transcripts; the rest have none.", n, len(sessions)))
+		} else {
+			head = append(head, "No transcript could be located for any marked session; purge deletes nothing.")
+		}
+	}
 	head = append(head, "")
 	for _, s := range sessions {
 		list = append(list, "  "+s.Name)
@@ -6895,6 +6975,23 @@ func (m Model) bulkDeleteConfirmRegions(scrollHint bool) (head, list, tail []str
 		tail = append(tail, "", m.deleteNote)
 	}
 	return head, list, tail
+}
+
+// bulkDeleteEligibleTranscriptCount is bulkDeleteConfirmRegions' own
+// eligibility read (cure-01-05): how many of sessions have a transcript
+// path this batch's purge choice could actually delete, via the exact same
+// transcriptPathFor seam the single-session confirm resolves eagerly for
+// its one row. Never mutates m and never resolves a path for a session
+// whose adapter declares no transcript convention at all (a shell
+// session), which is what keeps this count honest rather than optimistic.
+func (m Model) bulkDeleteEligibleTranscriptCount(sessions []store.Session) int {
+	n := 0
+	for _, s := range sessions {
+		if _, ok := m.transcriptPathFor(s); ok {
+			n++
+		}
+	}
+	return n
 }
 
 // bulkDeleteConfirmScrolls answers whether the mark list has to scroll at

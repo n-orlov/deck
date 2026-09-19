@@ -156,9 +156,10 @@ func TestBulkKillActsOnMarkedSetSkipsAlreadyStoppedAndOneUndoRestoresTheBatch(t 
 
 // TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch proves
 // requirement 28's dd half: dd on a non-empty mark set opens the same
-// confirm dialog naming the batch, submitting deletes every marked
-// session and clears the marks at that moment, and a single u restores
-// every session dd just tombstoned.
+// confirm dialog naming the batch, offering the same non-default purge
+// choice the single-session confirm does (defaulted to "keep", cure-01-05),
+// submitting deletes every marked session and clears the marks at that
+// moment, and a single u restores every session dd just tombstoned.
 func TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch(t *testing.T) {
 	deleted := map[string]bool{}
 	restored := map[string]bool{}
@@ -207,8 +208,8 @@ func TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch(t *testing
 	if !strings.Contains(body, "alpha") || !strings.Contains(body, "beta") {
 		t.Fatalf("bulk delete confirm does not name every marked session:\n%s", body)
 	}
-	if strings.Contains(body, "Purge:") {
-		t.Fatalf("bulk delete confirm unexpectedly offers purge:\n%s", body)
+	if !strings.Contains(body, "Purge:      keep") {
+		t.Fatalf("bulk delete confirm does not offer the non-default purge choice, defaulted to keep:\n%s", body)
 	}
 
 	got, cmd := model.Update(key("enter"))
