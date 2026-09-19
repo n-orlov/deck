@@ -1,0 +1,24 @@
+=== RUN   TestSessionContextEnvAcrossAdaptersAndLaunchPaths
+=== RUN   TestSessionContextEnvAcrossAdaptersAndLaunchPaths/claude
+=== RUN   TestSessionContextEnvAcrossAdaptersAndLaunchPaths/pi
+=== RUN   TestSessionContextEnvAcrossAdaptersAndLaunchPaths/shell
+--- PASS: TestSessionContextEnvAcrossAdaptersAndLaunchPaths (0.33s)
+    --- PASS: TestSessionContextEnvAcrossAdaptersAndLaunchPaths/claude (0.11s)
+    --- PASS: TestSessionContextEnvAcrossAdaptersAndLaunchPaths/pi (0.11s)
+    --- PASS: TestSessionContextEnvAcrossAdaptersAndLaunchPaths/shell (0.11s)
+=== RUN   TestSessionContextEnvExportsGroupNotLegacyField
+--- PASS: TestSessionContextEnvExportsGroupNotLegacyField (0.00s)
+=== RUN   TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch
+=== RUN   TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/shell
+=== RUN   TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/claude
+=== RUN   TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/pi
+=== RUN   TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/codex
+--- PASS: TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch (0.17s)
+    --- PASS: TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/shell (0.04s)
+    --- PASS: TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/claude (0.04s)
+    --- PASS: TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/pi (0.04s)
+    --- PASS: TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch/codex (0.04s)
+=== RUN   TestSessionContextEnvGroupCreateResumeParityAndDanglingMembership
+--- PASS: TestSessionContextEnvGroupCreateResumeParityAndDanglingMembership (0.08s)
+PASS
+ok  	github.com/n-orlov/deck/internal/service	0.587s
