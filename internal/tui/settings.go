@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 )
 
@@ -101,6 +102,22 @@ func settingsCategories() []settingsCategory {
 		Name:    settingsCategoryName("notify"),
 		Section: "notify",
 		Fields:  []config.Field{settingsNotifyEntry()},
+	})
+	// "groups" (task 018, R131 part 1) is a second, deliberately empty-
+	// Fields synthetic category, appended last so the existing category
+	// walk order (General/UI/Environment/Notify) is undisturbed for every
+	// earlier task's own test/scenario sequence. It carries no config.Field
+	// entries at all -- unlike [notify]/ui.clear_recent_cwds, a group is
+	// not a flat key or a structured config.toml table either, it is a
+	// state.db row, so there is nothing here for
+	// TestSettingsSchemaParity_EveryRenderedFieldIsBackedBySchema to check
+	// against config.Schema. settingsGroupsViewLines (settings.go) renders
+	// this category's actual content -- the live m.settingsGroups snapshot
+	// -- itself, the same way settingsEnvViewLines takes over rendering for
+	// [env] rather than walking a Fields slice.
+	categories = append(categories, settingsCategory{
+		Name:    "Groups",
+		Section: "groups",
 	})
 	return categories
 }
@@ -230,6 +247,13 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.settingsStringEditing {
 		return m.updateSettingsStringEditing(msg)
 	}
+	// The Groups section's own "n"/"r" typing sub-modes (task 018, R131
+	// part 1) take over the whole keymap for the same reason the [env]/
+	// free-text editors above do: a typed group name is text, not
+	// navigation. Checked in the same tier as those, above `/` search.
+	if m.settingsGroupCreating || m.settingsGroupRenaming {
+		return m.updateSettingsGroupEditing(msg)
+	}
 	if m.settingsSearchActive {
 		return m.updateSettingsSearch(msg)
 	}
@@ -250,9 +274,17 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.settingsFocus = settingsFocusCategories
 		}
 	case "up", "k":
-		m.settingsMove(-1)
+		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
+			m.settingsMoveGroupSelection(-1)
+		} else {
+			m.settingsMove(-1)
+		}
 	case "down", "j":
-		m.settingsMove(1)
+		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
+			m.settingsMoveGroupSelection(1)
+		} else {
+			m.settingsMove(1)
+		}
 	case "enter", " ":
 		m.settingsActivateField()
 	case "+", "=":
@@ -263,6 +295,21 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsSearchActive = true
 		m.settingsSearchQuery = ""
 		m.settingsSearchIndex = 0
+	case "n":
+		// R131 part 1: "n" creates a group, reachable ONLY from inside the
+		// Groups section's own field panel -- everywhere else in settings
+		// (every schema category, the category list itself) it is
+		// deliberately unbound, exactly like every other key this switch
+		// does not name for a category it does not apply to.
+		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
+			m.settingsStartGroupCreate()
+		}
+	case "r":
+		// R131 part 1: "r" renames the selected group, same reachability
+		// rule as "n" above, and only when a group is actually selected.
+		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
+			m.settingsStartGroupRename()
+		}
 	}
 	return m, nil
 }
@@ -574,6 +621,170 @@ func (m *Model) settingsClearRecentCwds() {
 		return
 	}
 	m.settingsNote = "cleared recent directory history"
+}
+
+// settingsOnGroupsCategory reports whether the settings takeover's
+// currently selected category is the synthetic "groups" one (task 018).
+// Every Groups-specific key binding ("n"/"r", up/down's group-list
+// variant) and the dedicated settingsGroupsViewLines render path are
+// gated on this, the same way settingsEnvOpen/settingsStringEditing gate
+// their own takeover of the keymap and the view.
+func (m Model) settingsOnGroupsCategory() bool {
+	categories := settingsCategories()
+	if m.settingsCategoryIndex < 0 || m.settingsCategoryIndex >= len(categories) {
+		return false
+	}
+	return categories[m.settingsCategoryIndex].Section == "groups"
+}
+
+// settingsMoveGroupSelection moves the Groups section's own selection
+// (m.settingsGroupIndex, distinct from m.settingsFieldIndex since this
+// category's Fields list is always empty -- settingsCategories' own doc
+// comment) by delta, wrapping like every other cycled selection in this
+// package (settingsMove's own precedent). A no-op on an empty group list.
+func (m *Model) settingsMoveGroupSelection(delta int) {
+	n := len(m.settingsGroups)
+	if n == 0 {
+		return
+	}
+	m.settingsGroupIndex = (m.settingsGroupIndex + delta + n) % n
+}
+
+// settingsSelectedGroup returns the group m.settingsGroupIndex currently
+// points at, or ok=false when the list is empty or the index is out of
+// range (defensive, mirroring settingsSelectedField's own stance --
+// settingsMoveGroupSelection always keeps the index in range by
+// construction, but "r" and a rename commit stay defensive rather than
+// index a slice on trust).
+func (m Model) settingsSelectedGroup() (store.Group, bool) {
+	if m.settingsGroupIndex < 0 || m.settingsGroupIndex >= len(m.settingsGroups) {
+		return store.Group{}, false
+	}
+	return m.settingsGroups[m.settingsGroupIndex], true
+}
+
+// settingsStartGroupCreate opens "n"'s typing sub-mode: an empty buffer,
+// no target id (0 -- meaningless while creating, settingsCommitGroupEdit
+// dispatches on m.settingsGroupCreating/m.settingsGroupRenaming, never on
+// whether the id happens to be zero), and a cleared note so a stale error
+// from a previous attempt never lingers into a fresh one.
+func (m *Model) settingsStartGroupCreate() {
+	m.settingsGroupCreating = true
+	m.settingsGroupRenaming = false
+	m.settingsGroupEditID = 0
+	m.settingsGroupEditValue = ""
+	m.settingsGroupNote = ""
+}
+
+// settingsStartGroupRename opens "r"'s typing sub-mode on the currently
+// selected group, prefilled with its current name -- mirroring renameView's
+// own "prefilled with the session's current name" precedent (rename.go) --
+// or does nothing when no group is selected (an empty list).
+func (m *Model) settingsStartGroupRename() {
+	g, ok := m.settingsSelectedGroup()
+	if !ok {
+		return
+	}
+	m.settingsGroupRenaming = true
+	m.settingsGroupCreating = false
+	m.settingsGroupEditID = g.ID
+	m.settingsGroupEditValue = g.Name
+	m.settingsGroupNote = ""
+}
+
+// updateSettingsGroupEditing handles key input while "n"/"r"'s typing
+// sub-mode is open (m.settingsGroupCreating or m.settingsGroupRenaming):
+// typed runes extend m.settingsGroupEditValue, backspace shortens it BY
+// ONE RUNE (settingsStringEditing's own precedent -- a group name is
+// user-typed text that may contain a multi-byte rune), enter commits
+// through settingsCommitGroupEdit, and esc abandons the sub-mode with no
+// trace at all: unlike settingsDiscardConfirm, there is nothing here for
+// esc to discard, since nothing has been written to state.db yet (SPEC
+// §11.5: creating/renaming takes effect only on this commit, not on every
+// keystroke).
+func (m Model) updateSettingsGroupEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.settingsGroupCreating = false
+		m.settingsGroupRenaming = false
+		m.settingsGroupEditID = 0
+		m.settingsGroupEditValue = ""
+		m.settingsGroupNote = ""
+		return m, nil
+	case "enter":
+		m.settingsCommitGroupEdit()
+		return m, nil
+	case "backspace", "ctrl+h":
+		if r := []rune(m.settingsGroupEditValue); len(r) > 0 {
+			m.settingsGroupEditValue = string(r[:len(r)-1])
+		}
+		return m, nil
+	}
+	if runes := msg.Runes; len(runes) > 0 {
+		m.settingsGroupEditValue += string(runes)
+	}
+	return m, nil
+}
+
+// settingsCommitGroupEdit is enter's effect inside the Groups typing
+// sub-mode: it calls store.CreateGroup/RenameGroup (task 009) SYNCHRONOUSLY
+// -- mirroring settingsClearRecentCwds' own precedent for an immediate,
+// non-staged store action -- and writes to state.db right now, never
+// through m.settingsEdits/config.WriteConfigFile, per SPEC §11.5's "takes
+// effect immediately" rule for the group list. A validation error (task
+// 009's validateGroupName -- a reserved/duplicate/too-long/control-
+// character name) is surfaced verbatim in m.settingsGroupNote and the
+// typing sub-mode is left OPEN with the rejected value still in the
+// buffer, so the user can correct it in place rather than losing what
+// they typed; only a successful commit closes the sub-mode and refreshes
+// m.settingsGroups (computeAvailableGroups' own precedent) so the newly
+// created/renamed group is immediately visible and selected.
+func (m *Model) settingsCommitGroupEdit() {
+	if m.store == nil {
+		m.settingsGroupNote = "no store is open"
+		return
+	}
+	ctx := context.Background()
+	switch {
+	case m.settingsGroupCreating:
+		g, err := m.store.CreateGroup(ctx, m.settingsGroupEditValue)
+		if err != nil {
+			m.settingsGroupNote = err.Error()
+			return
+		}
+		m.settingsGroups = m.computeAvailableGroups()
+		m.selectSettingsGroupByID(g.ID)
+		m.settingsGroupNote = "created group " + g.Name
+	case m.settingsGroupRenaming:
+		if err := m.store.RenameGroup(ctx, m.settingsGroupEditID, m.settingsGroupEditValue); err != nil {
+			m.settingsGroupNote = err.Error()
+			return
+		}
+		renamedID := m.settingsGroupEditID
+		m.settingsGroups = m.computeAvailableGroups()
+		m.selectSettingsGroupByID(renamedID)
+		m.settingsGroupNote = "renamed group"
+	default:
+		return
+	}
+	m.settingsGroupCreating = false
+	m.settingsGroupRenaming = false
+	m.settingsGroupEditID = 0
+	m.settingsGroupEditValue = ""
+}
+
+// selectSettingsGroupByID points m.settingsGroupIndex at id's row in the
+// just-refreshed m.settingsGroups, or leaves it untouched (0, harmlessly,
+// on the zero Model) when id is not found -- it always is right after a
+// successful create/rename, since computeAvailableGroups is a live re-read
+// of the very row that commit just wrote.
+func (m *Model) selectSettingsGroupByID(id int64) {
+	for i, g := range m.settingsGroups {
+		if g.ID == id {
+			m.settingsGroupIndex = i
+			return
+		}
+	}
 }
 
 // settingsEnvKeys returns cfg.Env's keys in a stable (sorted) order, so
@@ -1604,6 +1815,16 @@ func (m Model) settingsView() string {
 	if m.settingsStringEditing {
 		return m.settingsStringEditViewLines(categories, leftWidth, rightWidth, contentRows, height)
 	}
+	// The Groups section (task 018, R131 part 1) is rendered by its own
+	// dedicated path whenever it is the selected category -- whether
+	// focus is on the category list or the field list, and whether "n"/
+	// "r"'s typing sub-mode is open -- exactly like settingsEnvViewLines/
+	// settingsStringEditViewLines above take over rendering for their own
+	// sub-modes, since this category's Fields list is always empty and has
+	// nothing for the generic per-field walk below to draw.
+	if m.settingsOnGroupsCategory() {
+		return m.settingsGroupsViewLines(categories, leftWidth, rightWidth, contentRows, height)
+	}
 
 	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
 	leftLines := make([]settingsListLine, len(categories))
@@ -1736,6 +1957,29 @@ func (m Model) settingsFooterLineContent() string {
 		// while a mode disabled it would be the same "binds a key it does
 		// not name" defect in reverse.
 		return truncateToWidth("type to edit - enter stages the value - esc cancels - ctrl+s saves after enter", width)
+	}
+	// The Groups section's own typing sub-mode (task 018): esc really does
+	// cancel outright here, never "stage" -- unlike the string editor
+	// above, nothing this footer names is later gated by ctrl+s, since
+	// creating/renaming a group commits straight to state.db on enter.
+	if m.settingsGroupCreating {
+		return truncateToWidth("type a group name - enter creates it now - esc cancels", width)
+	}
+	if m.settingsGroupRenaming {
+		return truncateToWidth("type a new name - enter renames it now - esc cancels", width)
+	}
+	if m.settingsOnGroupsCategory() {
+		// R131 part 1: "n"/"r" are named here instead of in the generic
+		// footer below, since they are reachable only from this one
+		// category (settingsOnGroupsCategory's own doc comment) -- naming
+		// them in every other category's footer would be the "advertises a
+		// key it doesn't grant" defect this package already avoids for
+		// every other sub-mode-only binding.
+		footer := "tab/left/right switch - up/down select - n new group - r rename - esc close"
+		if m.settingsGroupNote != "" {
+			footer = m.settingsGroupNote + " - " + footer
+		}
+		return truncateToWidth(footer, width)
 	}
 	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
 	if m.settingsNote != "" {
@@ -1894,6 +2138,97 @@ func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWi
 
 	lines := make([]string, 0, height)
 	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
+	for i := 0; i < contentRows; i++ {
+		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
+	}
+	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
+	lines = append(lines, m.settingsFooterLine())
+	return strings.Join(lines, "\n")
+}
+
+// settingsGroupsCopy is the Groups section's own stated difference from
+// every other category (SPEC §11.5: "That difference is stated in the
+// section itself rather than left for the user to discover"): groups
+// live in state.db, not config.toml, so "n" (create) and "r" (rename)
+// write to the store the moment they commit, never staged into
+// m.settingsEdits and never gated by ctrl+s or esc's discard prompt --
+// there is nothing for either one to act on here.
+const settingsGroupsCopy = "Groups live in state.db, not config.toml. Creating or renaming a group here applies immediately: there is nothing for ctrl+s to save and nothing for esc to discard."
+
+// settingsGroupsViewLines renders the settings takeover while the Groups
+// category (task 018, R131 part 1) is selected: the left panel keeps
+// showing the category list exactly like the generic path (settingsView)
+// does, and the right panel shows settingsGroupsCopy's own stated-
+// difference copy, one row per m.settingsGroups (marked/highlighted by
+// m.settingsGroupIndex whenever the field list has focus), and -- while
+// "n"/"r"'s typing sub-mode is open -- the name being typed plus (task
+// 009's validateGroupName surfacing) m.settingsGroupNote inline, exactly
+// where settingsEnvViewLines/settingsStringEditViewLines put their own
+// typing row and note.
+func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
+	leftFocused := m.settingsFocus == settingsFocusCategories
+	rightFocused := m.settingsFocus == settingsFocusFields
+
+	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
+	leftLines := make([]settingsListLine, len(categories))
+	for i, cat := range categories {
+		marker := "  "
+		selected := i == m.settingsCategoryIndex
+		if selected {
+			marker = "> "
+		}
+		bg := theme.Token("")
+		if selected {
+			bg = categorySelTok
+		}
+		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}), bg: bg}
+	}
+	leftLines = fitLines(leftLines, contentRows)
+
+	innerWidth := rightWidth - 4
+	var rightLines []settingsListLine
+	addLine := func(text string, tok, bg theme.Token) {
+		rightLines = append(rightLines, settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: text, Tok: tok}}), bg: bg})
+	}
+	for _, l := range wrapText(settingsGroupsCopy, innerWidth) {
+		addLine(l, theme.Dimmed, "")
+	}
+	addLine("", theme.Text, "")
+
+	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
+	for i, g := range m.settingsGroups {
+		marker := "  "
+		selected := i == m.settingsGroupIndex
+		if selected {
+			marker = "> "
+		}
+		bg := theme.Token("")
+		if selected {
+			bg = fieldSelTok
+		}
+		addLine(marker+g.Name, theme.Text, bg)
+	}
+	if len(m.settingsGroups) == 0 {
+		addLine("(no groups yet -- press n to create one)", theme.Dimmed, "")
+	}
+
+	if m.settingsGroupCreating || m.settingsGroupRenaming {
+		addLine("", theme.Text, "")
+		label := "New group name:  "
+		if m.settingsGroupRenaming {
+			label = "New name:  "
+		}
+		addLine(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
+	}
+	if m.settingsGroupNote != "" {
+		addLine("", theme.Text, "")
+		addLine(m.settingsGroupNote, theme.Error, "")
+	}
+
+	rightLines = fitLines(rightLines, contentRows)
+
+	lines := make([]string, 0, height)
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, "Groups", rightFocused))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}

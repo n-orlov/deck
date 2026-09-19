@@ -766,6 +766,32 @@ type Model struct {
 	settingsStringEditing   bool
 	settingsStringEditKey   string
 	settingsStringEditValue string
+	// settingsGroups/settingsGroupIndex/settingsGroupCreating/
+	// settingsGroupRenaming/settingsGroupEditID/settingsGroupEditValue/
+	// settingsGroupNote back the settings takeover's Groups section (SPEC
+	// §11.5, R131 part 1): unlike every other category, Groups is never
+	// staged into settingsEdits and never gated by ctrl+s/esc's discard
+	// prompt, because §11.5 states groups live in state.db, not
+	// config.toml, so "there is nothing for ctrl+s to write or for the
+	// discard prompt to revert". settingsGroups is a snapshot fetched (via
+	// computeAvailableGroups, the create modal's own precedent) when `,`
+	// opens and refreshed after every successful create/rename, never a
+	// live per-render store call; settingsGroupIndex selects a row in it.
+	// settingsGroupCreating/settingsGroupRenaming say which of "n"/"r"'s
+	// two sub-modes (if either) is currently typing into
+	// settingsGroupEditValue -- settingsGroupEditID is the target group's
+	// id while renaming (0, meaningless, while creating). settingsGroupNote
+	// surfaces store.CreateGroup/RenameGroup's own validation errors (task
+	// 009's validateGroupName) inline, exactly like settingsNote does for
+	// ctrl+s, without ever leaving the typing sub-mode on a rejected value
+	// so the user can correct it in place.
+	settingsGroups         []store.Group
+	settingsGroupIndex     int
+	settingsGroupCreating  bool
+	settingsGroupRenaming  bool
+	settingsGroupEditID    int64
+	settingsGroupEditValue string
+	settingsGroupNote      string
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -3236,6 +3262,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsStringEditing = false
 				m.settingsStringEditKey = ""
 				m.settingsStringEditValue = ""
+				m.settingsGroups = m.computeAvailableGroups()
+				m.settingsGroupIndex = 0
+				m.settingsGroupCreating = false
+				m.settingsGroupRenaming = false
+				m.settingsGroupEditID = 0
+				m.settingsGroupEditValue = ""
+				m.settingsGroupNote = ""
 			}
 		case "t":
 			if !m.help {
