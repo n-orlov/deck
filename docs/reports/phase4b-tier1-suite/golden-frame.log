@@ -1,0 +1,13 @@
+=== RUN   TestGoldenMinimumFrame
+=== RUN   TestGoldenMinimumFrame/run-1
+    golden_frame_test.go:89: rendered frame sha256 6b0187d02eb6f51845dbce68ccd895b4f03f96179369395c29c7b824af305dda (1937 bytes, theme "empire", DECK_COLOR_DEPTH "truecolor")
+=== RUN   TestGoldenMinimumFrame/run-2
+    golden_frame_test.go:89: rendered frame sha256 6b0187d02eb6f51845dbce68ccd895b4f03f96179369395c29c7b824af305dda (1937 bytes, theme "empire", DECK_COLOR_DEPTH "truecolor")
+--- PASS: TestGoldenMinimumFrame (2.64s)
+    --- PASS: TestGoldenMinimumFrame/run-1 (1.31s)
+    --- PASS: TestGoldenMinimumFrame/run-2 (1.33s)
+=== RUN   TestGoldenMinimumFrameRowCount
+--- PASS: TestGoldenMinimumFrameRowCount (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/features	2.644s
+EXIT:0
