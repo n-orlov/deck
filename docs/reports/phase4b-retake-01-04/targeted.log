@@ -1,0 +1,50 @@
+=== RUN   TestSettingsGroupsCategoryIsSynthetic
+--- PASS: TestSettingsGroupsCategoryIsSynthetic (0.00s)
+=== RUN   TestSettingsGroupsCopyStatesEditsApplyImmediately
+--- PASS: TestSettingsGroupsCopyStatesEditsApplyImmediately (0.00s)
+=== RUN   TestSettingsGroupsEscOffersNoDiscardPrompt
+--- PASS: TestSettingsGroupsEscOffersNoDiscardPrompt (0.02s)
+=== RUN   TestSettingsGroupsEscDuringCreateCancelsOnlyTheEditorNotTheTakeover
+--- PASS: TestSettingsGroupsEscDuringCreateCancelsOnlyTheEditorNotTheTakeover (0.02s)
+=== RUN   TestSettingsGroupsNCreatesGroupImmediately
+--- PASS: TestSettingsGroupsNCreatesGroupImmediately (0.02s)
+=== RUN   TestSettingsGroupsCreateShowsValidateGroupNameErrorInline
+--- PASS: TestSettingsGroupsCreateShowsValidateGroupNameErrorInline (0.02s)
+=== RUN   TestSettingsGroupsRenameLeavesMemberGroupIDsUntouched
+--- PASS: TestSettingsGroupsRenameLeavesMemberGroupIDsUntouched (0.02s)
+=== RUN   TestSettingsGroupDeleteWithNoGroupsIsANoOp
+--- PASS: TestSettingsGroupDeleteWithNoGroupsIsANoOp (0.02s)
+=== RUN   TestSettingsGroupDeleteEmptyGroupHasNoPrompt
+--- PASS: TestSettingsGroupDeleteEmptyGroupHasNoPrompt (0.02s)
+=== RUN   TestSettingsGroupDeleteNonEmptyOpensTwoBranchPrompt
+--- PASS: TestSettingsGroupDeleteNonEmptyOpensTwoBranchPrompt (0.02s)
+=== RUN   TestSettingsGroupDeleteMBranchMovesMembersToDefaultAndDropsGroup
+--- PASS: TestSettingsGroupDeleteMBranchMovesMembersToDefaultAndDropsGroup (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes
+--- PASS: TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchDropsTheGroupRowOnceTheBatchCommits
+--- PASS: TestSettingsGroupDeleteDBranchDropsTheGroupRowOnceTheBatchCommits (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchKeepsTheGroupWhenTheConfirmIsCancelled
+--- PASS: TestSettingsGroupDeleteDBranchKeepsTheGroupWhenTheConfirmIsCancelled (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchKeepsTheGroupWhenAMemberFailsToDelete
+--- PASS: TestSettingsGroupDeleteDBranchKeepsTheGroupWhenAMemberFailsToDelete (0.02s)
+=== RUN   TestOrdinaryBulkDeleteNeverDropsAGroupRow
+--- PASS: TestOrdinaryBulkDeleteNeverDropsAGroupRow (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchIncludesFilteredOutMembers
+--- PASS: TestSettingsGroupDeleteDBranchIncludesFilteredOutMembers (0.02s)
+=== RUN   TestSettingsGroupDeleteMBranchClearsArchivedMembersToo
+--- PASS: TestSettingsGroupDeleteMBranchClearsArchivedMembersToo (0.02s)
+=== RUN   TestSettingsGroupDeleteArchivedOnlyGroupStillOpensPrompt
+--- PASS: TestSettingsGroupDeleteArchivedOnlyGroupStillOpensPrompt (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchOneUndoRestoresTheWholeBatch
+--- PASS: TestSettingsGroupDeleteDBranchOneUndoRestoresTheWholeBatch (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones
+=== RUN   TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones/keep_preserves_the_eligible_transcript
+=== RUN   TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones/purge_removes_only_the_eligible_transcript
+--- PASS: TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones (0.04s)
+    --- PASS: TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones/keep_preserves_the_eligible_transcript (0.02s)
+    --- PASS: TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombstones/purge_removes_only_the_eligible_transcript (0.02s)
+=== RUN   TestSettingsGroupDeleteDBranchUndoDoesNotRebindOntoAGroupCreatedMeanwhile
+--- PASS: TestSettingsGroupDeleteDBranchUndoDoesNotRebindOntoAGroupCreatedMeanwhile (0.02s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.460s
