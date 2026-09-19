@@ -16,7 +16,7 @@ import (
 // launch paths; this file is the unit evidence for that.
 var sessionContextKeys = []string{
 	"DECK_SESSION_ID", "DECK_SESSION_NAME", "DECK_SESSION_SLUG", "DECK_SESSION_CWD",
-	"DECK_SESSION_AGENT", "DECK_SESSION_WORKSPACE", "DECK_SESSION_PROFILE",
+	"DECK_SESSION_AGENT", "DECK_SESSION_GROUP", "DECK_SESSION_PROFILE",
 	"DECK_SESSION_CONVERSATION_ID", "DECK_SESSION_LAUNCH_KIND", "DECK_HOME",
 }
 
@@ -79,7 +79,7 @@ func wantSessionContext(session store.Session, deckHome, launchKind string) map[
 		"DECK_SESSION_SLUG":            session.Slug,
 		"DECK_SESSION_CWD":             session.CWD,
 		"DECK_SESSION_AGENT":           session.Agent,
-		"DECK_SESSION_WORKSPACE":       session.WorkspaceColumn,
+		"DECK_SESSION_GROUP":           session.GroupName,
 		"DECK_SESSION_PROFILE":         session.PermissionProfile,
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,
@@ -147,18 +147,19 @@ func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create %s session: %v", kind, err)
 			}
-			// A brand-new row's workspace column is never written by any
+			// A brand-new row's group_id column is never written by any
 			// service call (no INSERT and no UPDATE in internal/store names
-			// it), so it is genuinely unset here on both launches of this
-			// same row -- the fixture this test uses to demonstrate R104's
-			// "empty rather than absent" rule for workspace.
-			if created.WorkspaceColumn != "" {
-				t.Fatalf("%s: create-returned session workspace column = %q, want unset -- this test's empty-not-absent fixture assumption no longer holds", kind, created.WorkspaceColumn)
+			// it, and group CRUD does not exist until task 009), so it is
+			// genuinely unset here on both launches of this same row --
+			// the fixture this test uses to demonstrate R104's
+			// "empty rather than absent" rule for the manual group.
+			if created.GroupName != "" {
+				t.Fatalf("%s: create-returned session group name = %q, want unset -- this test's empty-not-absent fixture assumption no longer holds", kind, created.GroupName)
 			}
 
 			createEnv := assertSessionContextEnv(t, socket, created, service.DeckHome, LaunchKindCreate)
-			if createEnv["DECK_SESSION_WORKSPACE"] != "" {
-				t.Fatalf("%s: create DECK_SESSION_WORKSPACE = %q, want present with an empty value (unset workspace)", kind, createEnv["DECK_SESSION_WORKSPACE"])
+			if createEnv["DECK_SESSION_GROUP"] != "" {
+				t.Fatalf("%s: create DECK_SESSION_GROUP = %q, want present with an empty value (unset group, the implicit default)", kind, createEnv["DECK_SESSION_GROUP"])
 			}
 			if createEnv["DECK_SESSION_NAME"] == "session-lied" || createEnv["DECK_SESSION_NAME"] == "config-lied" {
 				t.Fatalf("%s: create DECK_SESSION_NAME lost to a user-controlled layer: %q", kind, createEnv["DECK_SESSION_NAME"])
@@ -226,17 +227,45 @@ func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 			if createEnv["DECK_SESSION_LAUNCH_KIND"] != LaunchKindCreate || resumeEnv["DECK_SESSION_LAUNCH_KIND"] != LaunchKindResume {
 				t.Fatalf("%s: launch kinds = %q/%q, want %q/%q", kind, createEnv["DECK_SESSION_LAUNCH_KIND"], resumeEnv["DECK_SESSION_LAUNCH_KIND"], LaunchKindCreate, LaunchKindResume)
 			}
-			// The unset workspace column is exported empty on the resume path
-			// too, not silently replaced by store.GetSession's §11 grouping
-			// fallback (the cwd's basename) on the way back out of the row.
-			if resumeEnv["DECK_SESSION_WORKSPACE"] != "" {
-				t.Fatalf("%s: resume DECK_SESSION_WORKSPACE = %q, want present with an empty value (workspace column still unset)", kind, resumeEnv["DECK_SESSION_WORKSPACE"])
-			}
-			if resumed.Workspace == "" {
-				t.Fatalf("%s: resumed row's §11 grouping label unexpectedly empty -- the DECK_SESSION_WORKSPACE assertion above would then be vacuous", kind)
+			// The unset group is exported empty on the resume path too: SPEC
+			// §11's manual-groups model has no cwd-derived fallback for
+			// deck to have silently applied on the way back out of the row
+			// (unlike the removed Workspace label, which did).
+			if resumeEnv["DECK_SESSION_GROUP"] != "" {
+				t.Fatalf("%s: resume DECK_SESSION_GROUP = %q, want present with an empty value (group still unset)", kind, resumeEnv["DECK_SESSION_GROUP"])
 			}
 
 			_ = db
 		})
+	}
+}
+
+// TestSessionContextEnvExportsGroupNotWorkspace is task 008's (R128)
+// dedicated unit evidence for the DECK_SESSION_WORKSPACE ->
+// DECK_SESSION_GROUP rename: called directly against sessionContextEnv
+// (no tmux, no adapter), it proves the new key holds store.Session's
+// GroupName verbatim -- empty for a session with no GroupID (the
+// implicit default group) and the recorded name for one that has a
+// GroupID whose name resolved -- and that the old key is entirely gone
+// from the map, never aliased alongside the new one.
+func TestSessionContextEnvExportsGroupNotWorkspace(t *testing.T) {
+	svc := Service{DeckHome: "/home/deck"}
+
+	defaultSession := store.Session{ID: "s1", Name: "n1", Slug: "n1", CWD: "/work/a", Agent: "shell"}
+	env := svc.sessionContextEnv(defaultSession, LaunchKindCreate)
+	if got, present := env["DECK_SESSION_GROUP"]; !present || got != "" {
+		t.Fatalf("DECK_SESSION_GROUP for a groupless session = %q (present %v), want present with an empty value", got, present)
+	}
+	if _, present := env["DECK_SESSION_WORKSPACE"]; present {
+		t.Fatalf("DECK_SESSION_WORKSPACE unexpectedly present: %q -- the old name must never be aliased alongside DECK_SESSION_GROUP", env["DECK_SESSION_WORKSPACE"])
+	}
+
+	groupedSession := store.Session{ID: "s2", Name: "n2", Slug: "n2", CWD: "/work/b", Agent: "shell", GroupName: "sprint work"}
+	env = svc.sessionContextEnv(groupedSession, LaunchKindResume)
+	if got := env["DECK_SESSION_GROUP"]; got != "sprint work" {
+		t.Fatalf("DECK_SESSION_GROUP for a named group = %q, want %q", got, "sprint work")
+	}
+	if _, present := env["DECK_SESSION_WORKSPACE"]; present {
+		t.Fatalf("DECK_SESSION_WORKSPACE unexpectedly present on a grouped session: %q", env["DECK_SESSION_WORKSPACE"])
 	}
 }

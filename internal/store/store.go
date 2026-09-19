@@ -19,7 +19,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
@@ -197,22 +197,24 @@ type Session struct {
 	StatusSource string
 	StatusAt     int64
 	CreatedAt    int64
-	// Workspace is SPEC requirement 30's sidebar grouping key: the
-	// sessions.workspace column verbatim when a row has recorded one,
-	// defaulting to the basename of CWD when it has not (see
-	// DefaultWorkspace and scanSession below). It is never derived from
-	// any notion of "repo" — the column and this default are the only
-	// two sources.
-	Workspace string
-	// WorkspaceColumn is the sessions.workspace column verbatim: empty
-	// exactly when the row has never had one recorded, with no basename
-	// fallback applied. Workspace above is the §11 grouping label a
-	// reader displays; this is the column behind it, which SPEC §6.1's
-	// "empty rather than absent when the column behind it is unset" rule
-	// needs (DECK_SESSION_WORKSPACE must read the same on a create launch,
-	// where no read path has run yet, as on a resume launch of that same
-	// untouched row).
-	WorkspaceColumn string
+	// GroupID is SPEC §4's sessions.group_id column verbatim: the manual
+	// group (§11) this row belongs to, nil exactly when the column reads
+	// NULL -- either because the row has never been assigned a group (the
+	// implicit "default") or because the group it was assigned has since
+	// been deleted by another client and the id no longer resolves (SPEC
+	// §11: "renders under default rather than vanishing", the reason
+	// group_id carries no foreign key at all -- see schemaV7's own
+	// comment). There is deliberately no cwd-derived fallback here the
+	// way the removed Workspace field had one: SPEC's manual-groups model
+	// never derives a group from the filesystem.
+	GroupID *int64
+	// GroupName is the resolved §11 group label for GroupID, read via a
+	// LEFT JOIN against the groups table so a dangling GroupID (the group
+	// it named was deleted after this row's group_id was written) reads
+	// back empty exactly like the true-default nil case, both of which
+	// display as "default" per SPEC §11. Empty whenever GroupID is nil or
+	// does not resolve; the group's real name otherwise.
+	GroupName string
 
 	KilledByUser   bool
 	PaneExitStatus *int
@@ -536,7 +538,9 @@ func scanSession(row interface {
 }) (Session, error) {
 	var session Session
 	var launchArgsJSON, envJSON string
-	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, workspace, postDestroy sql.NullString
+	var preLaunch, permissionProfileReason, conversationID, resumePin, crashTail, lastMessage, postDestroy sql.NullString
+	var groupID sql.NullInt64
+	var groupName sql.NullString
 	var leaseOwner string
 	var loginShell, killedByUser, acknowledged, envDirty, launchDirty int
 	var paneExitStatus sql.NullInt64
@@ -545,7 +549,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&workspace, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
+		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner); err != nil {
 		return Session{}, err
 	}
@@ -555,12 +559,16 @@ func scanSession(row interface {
 	_, session.LaunchGeneration = splitOwnerGeneration(leaseOwner)
 	session.EnvDirty = envDirty != 0
 	session.LaunchDirty = launchDirty != 0
-	session.WorkspaceColumn = workspace.String
-	if workspace.Valid && workspace.String != "" {
-		session.Workspace = workspace.String
-	} else {
-		session.Workspace = DefaultWorkspace(session.CWD)
+	if groupID.Valid {
+		id := groupID.Int64
+		session.GroupID = &id
 	}
+	// groupName comes from the LEFT JOIN against groups: NULL both when
+	// GroupID is nil (true default) and when GroupID names a group row
+	// that no longer exists (SPEC §11's "renders under default rather
+	// than vanishing") -- either way GroupName reads back empty, with no
+	// cwd-derived fallback (that concept left with Workspace).
+	session.GroupName = groupName.String
 	if err := json.Unmarshal([]byte(launchArgsJSON), &session.LaunchArgs); err != nil {
 		return Session{}, fmt.Errorf("decode launch args: %w", err)
 	}
@@ -584,32 +592,26 @@ func scanSession(row interface {
 	return session, nil
 }
 
-// DefaultWorkspace is SPEC requirement 30's fallback grouping key when a
-// session row has no explicit sessions.workspace value: the basename of
-// its cwd, never anything repo-related. filepath.Base of an empty string
-// or "." both return ".", which is an honest (if unhelpful) label for a
-// cwd deck could not otherwise identify. Exported so internal/tui can apply
-// the identical fallback to a Session built directly in a test (bypassing
-// scanSession) without re-deriving the rule.
-func DefaultWorkspace(cwd string) string {
-	base := filepath.Base(strings.TrimRight(cwd, "/"))
-	if base == "" {
-		return cwd
-	}
-	return base
-}
-
-const sessionColumns = `id, name, slug, cwd, agent, captured_path, status,
+const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		workspace, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
+		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, '')`
+
+// sessionsFromClause is every sessionColumns-backed query's shared FROM:
+// a LEFT JOIN against groups so GroupName resolves (or reads back empty
+// for the default group, or for a GroupID that no longer names a live
+// group row -- SPEC §11's "renders under default rather than vanishing")
+// in the same read as the session row itself, with no second query per
+// row. LEFT, never an inner JOIN, so a session whose group_id is NULL
+// (the common case) is not silently dropped from the result set.
+const sessionsFromClause = `FROM sessions LEFT JOIN groups ON groups.id = sessions.group_id`
 
 // GetSession returns exactly one session by id, including every Phase 1
 // create field.
 func (s *Store) GetSession(ctx context.Context, id string) (Session, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` `+sessionsFromClause+` WHERE sessions.id = ?`, id)
 	session, err := scanSession(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1396,7 +1398,7 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 // connected clients' views deterministic.
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
-		FROM sessions WHERE deleted_at = 0 AND archived_at = 0 ORDER BY created_at, id`)
+		`+sessionsFromClause+` WHERE deleted_at = 0 AND archived_at = 0 ORDER BY created_at, sessions.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
@@ -1423,7 +1425,7 @@ func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 // determinism-under-a-frozen-clock reason.
 func (s *Store) ListDeletedSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
-		FROM sessions WHERE deleted_at != 0 ORDER BY created_at, id`)
+		`+sessionsFromClause+` WHERE deleted_at != 0 ORDER BY created_at, sessions.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list deleted sessions: %w", err)
 	}
@@ -1455,7 +1457,7 @@ func (s *Store) ListDeletedSessions(ctx context.Context) ([]Session, error) {
 // determinism-under-a-frozen-clock reason.
 func (s *Store) ListArchivedSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
-		FROM sessions WHERE deleted_at = 0 AND archived_at != 0 ORDER BY created_at, id`)
+		`+sessionsFromClause+` WHERE deleted_at = 0 AND archived_at != 0 ORDER BY created_at, sessions.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list archived sessions: %w", err)
 	}
@@ -1491,7 +1493,7 @@ func (s *Store) ListArchivedSessions(ctx context.Context) ([]Session, error) {
 // same way ListSessions is, for the same determinism reason.
 func (s *Store) ListSessionsIncludingArchived(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+sessionColumns+`
-		FROM sessions WHERE deleted_at = 0 ORDER BY created_at, id`)
+		`+sessionsFromClause+` WHERE deleted_at = 0 ORDER BY created_at, sessions.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions including archived: %w", err)
 	}
@@ -2192,6 +2194,13 @@ func (s *Store) migrate(version int) error {
 				return fmt.Errorf("create schema v6: %w", err)
 			}
 		}
+		fallthrough
+	case 6:
+		for _, statement := range schemaV7 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v7: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2280,6 +2289,47 @@ var schemaV5 = []string{
 var schemaV6 = []string{
 	`ALTER TABLE sessions ADD COLUMN post_destroy TEXT`,
 	`ALTER TABLE sessions ADD COLUMN launch_dirty INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV7 lands R128's manual session groups (SPEC §4/§11) in one
+// migration: the groups table (name unique, case-insensitively -- "a
+// rename carries membership" and a name collision must be caught
+// case-insensitively so "Infra" cannot coexist with "infra"), the
+// sessions.group_id column that carries membership, and the drop of
+// sessions.workspace, the column group_id replaces. It is applied on top
+// of schemaV1-6 for a fresh database and standalone for an existing
+// v1-v6 database, inside migrate()'s single transaction: a fresh v6
+// database's three statements below either all land or none do, and a
+// failure partway (the atomicity test in schema_v7_migration_test.go)
+// leaves the caller's v6 database exactly as it was, workspace column
+// and all, because the whole migrate() call -- this schema bump
+// included -- is one BEGIN/COMMIT, never per-statement commits.
+//
+// sessions.group_id deliberately carries NO foreign key at all -- not
+// even the seemingly obvious REFERENCES groups(id) ON DELETE SET NULL.
+// This store opens every connection with `PRAGMA foreign_keys=ON`
+// (OpenPath above), so a real FK here would have SQLite itself null out
+// group_id the instant a referenced groups row is deleted. But SPEC §11
+// spells out the opposite behaviour on purpose: "a group_id that no
+// longer resolves -- another client deleted it between this client's
+// load and its render -- renders under default rather than vanishing"
+// -- i.e. a dangling group_id is an EXPECTED transient state this
+// store's own read path (scanSession's LEFT JOIN, internal/tui's group
+// seam) is built to tolerate, not a corruption an FK should race to
+// erase before the next reader gets a chance to notice it went stale.
+// Group deletion (task 018/019, SPEC §11.5) is also already
+// app-orchestrated: the settings dialog decides what happens to a
+// group's members (move to default, or delete them via the batch dd
+// path) BEFORE the group row itself is removed, in the same operation --
+// so there is no moment in the intended, single-writer path where an
+// ON DELETE SET NULL would ever have anything to do. Adding one anyway
+// would only change behaviour for the one case SPEC explicitly wants
+// handled at read time instead: two independent deck processes racing
+// on the same state.db (task 020).
+var schemaV7 = []string{
+	`CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE)`,
+	`ALTER TABLE sessions ADD COLUMN group_id INTEGER`,
+	`ALTER TABLE sessions DROP COLUMN workspace`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

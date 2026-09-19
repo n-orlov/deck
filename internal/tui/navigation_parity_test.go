@@ -29,10 +29,10 @@ import (
 func TestNavigationVisitsEveryVisualRowInBothGroupingModes(t *testing.T) {
 	fixture := func() []store.Session {
 		return []store.Session{
-			{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", Workspace: "invp-ops-dev-agents", Status: "waiting"},
-			{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", Workspace: "agent-sessions-tui", Status: "waiting"},
-			{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", Workspace: "ralphd", Status: "waiting"},
-			{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", Workspace: "invp-ops-dev-agents", Status: "waiting"},
+			{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", GroupName: "invp-ops-dev-agents", Status: "waiting"},
+			{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", GroupName: "agent-sessions-tui", Status: "waiting"},
+			{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", GroupName: "ralphd", Status: "waiting"},
+			{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", GroupName: "invp-ops-dev-agents", Status: "waiting"},
 		}
 	}
 

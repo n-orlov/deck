@@ -8,20 +8,20 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
-// TestSessionWorkspaceDefaultsToCWDBasename proves SPEC requirement 30's
-// default derivation for a Session built directly (bypassing the store, as
-// every internal/tui test does): an explicit Workspace is used verbatim,
-// and one left at its zero value falls back to the basename of CWD, never
-// to anything repo-related.
-func TestSessionWorkspaceDefaultsToCWDBasename(t *testing.T) {
+// TestSessionWorkspaceKeyReadsGroupNameVerbatim proves task 008's (R128)
+// rewiring of internal/tui's group-key seam: sessionWorkspace now returns
+// store.Session.GroupName verbatim, with no cwd-derived fallback of any
+// kind -- unlike the removed Workspace field/store.DefaultWorkspace pair,
+// a session with no group recorded groups under the empty string (the
+// implicit default, SPEC §11), never under a basename of its cwd.
+func TestSessionWorkspaceKeyReadsGroupNameVerbatim(t *testing.T) {
 	cases := []struct {
 		name    string
 		session store.Session
 		want    string
 	}{
-		{"defaulted", store.Session{CWD: "/home/user/work/service-a"}, "service-a"},
-		{"defaulted trailing slash", store.Session{CWD: "/home/user/work/service-a/"}, "service-a"},
-		{"explicit wins", store.Session{CWD: "/home/user/work/service-a", Workspace: "team-shared"}, "team-shared"},
+		{"no group recorded", store.Session{CWD: "/home/user/work/service-a"}, ""},
+		{"explicit group name", store.Session{CWD: "/home/user/work/service-a", GroupName: "team-shared"}, "team-shared"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,10 +49,10 @@ func groupTestModel(sessions []store.Session) Model {
 // it, which a repo-based grouping would not do the same way).
 func TestGroupSessionsBucketsByWorkspacePreservingOrder(t *testing.T) {
 	m := groupTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Workspace: "infra"},
-		{ID: "b1", Name: "b1", CWD: "/work/service-a"},
-		{ID: "a2", Name: "a2", CWD: "/work/infra/subdir", Workspace: "infra"},
-		{ID: "b2", Name: "b2", CWD: "/work/service-a"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", GroupName: "infra"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", GroupName: "service-a"},
+		{ID: "a2", Name: "a2", CWD: "/work/infra/subdir", GroupName: "infra"},
+		{ID: "b2", Name: "b2", CWD: "/work/service-a", GroupName: "service-a"},
 	})
 	groups := m.groupSessions()
 	if len(groups) != 2 {
@@ -76,8 +76,8 @@ func TestGroupSessionsBucketsByWorkspacePreservingOrder(t *testing.T) {
 // collapsed group's own header stays put.
 func TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows(t *testing.T) {
 	m := groupTestModel([]store.Session{
-		{ID: "a1", Name: "alpha-session", CWD: "/work/infra", Status: "idle"},
-		{ID: "b1", Name: "bravo-session", CWD: "/work/service-a", Status: "idle"},
+		{ID: "a1", Name: "alpha-session", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "b1", Name: "bravo-session", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
 	expanded := strings.Join(m.sidebarBodyLines(60), "\n")
 	if !strings.Contains(expanded, "infra") || !strings.Contains(expanded, "service-a") {
@@ -113,9 +113,9 @@ func TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows(t *testing.T) {
 // pressing against them.
 func TestCollapsedGroupStaysNavigable(t *testing.T) {
 	m := groupTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
-		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle"},
-		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
 	m.selected = 0 // "a1", inside "infra"
 
@@ -170,7 +170,7 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	// same row across both collapse and the following expand, so two "c"
 	// presses in a row toggle the same group closed then open again.
 	one := groupTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
 	})
 	one.selected = 0
 
@@ -192,8 +192,8 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	// session" fixup actually triggers, since the collapsed group's own
 	// rows all become unselectable).
 	two := groupTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
-		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
 	two.selected = 0 // "a1", inside "infra"
 
@@ -216,7 +216,7 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 // a group from.
 func TestGKeyNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
 	m := groupTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
 	})
 	m.selected = 0
 
@@ -247,9 +247,9 @@ func TestGKeyNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
 // like a single ↑/↓ press would.
 func TestGGKeysJumpToFirstAndLastVisibleRow(t *testing.T) {
 	m := groupTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
-		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle"},
-		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
 	m.selected = 1
 
@@ -303,7 +303,7 @@ func TestGGKeysJumpToFirstAndLastVisibleRow(t *testing.T) {
 // TestToggleGroupCollapseFlipsState is the direct collapse/expand unit
 // test task 028's mouse header click will drive.
 func TestToggleGroupCollapseFlipsState(t *testing.T) {
-	m := groupTestModel([]store.Session{{ID: "a1", CWD: "/work/infra"}})
+	m := groupTestModel([]store.Session{{ID: "a1", CWD: "/work/infra", GroupName: "infra"}})
 	if m.isGroupCollapsed("infra") {
 		t.Fatalf("a fresh group must start expanded")
 	}

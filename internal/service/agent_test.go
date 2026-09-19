@@ -109,7 +109,7 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 		t.Fatalf("instrument settings = %q, want absolute deck executable %q", argv[len(argv)-1], service.DeckExecutable)
 	}
 	envKeys := jsonStrings(launch["env_keys"])
-	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,PATH,SECRET_TOKEN,VISIBLE" {
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_GROUP,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,PATH,SECRET_TOKEN,VISIBLE" {
 		t.Fatalf("launch env_keys = %#v, want user, deck-owned session-context, and instrumentation keys", envKeys)
 	}
 	assertTMuxEnvironment(t, socket, session.Slug, "DECK_SESSION_ID", session.ID)
@@ -270,7 +270,7 @@ func TestCreateAgentResolvesPATHInSPECOrder(t *testing.T) {
 			envKeys = jsonStrings(record["env_keys"])
 		}
 	}
-	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,FROM_CONFIG,FROM_SESSION,PATH" {
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_GROUP,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,FROM_CONFIG,FROM_SESSION,PATH" {
 		t.Fatalf("launch env_keys = %#v, want config, session, session-context, and instrumentation keys present", envKeys)
 	}
 }
@@ -776,7 +776,7 @@ func TestCreateAgentLoginShellInvocationForm(t *testing.T) {
 	// SPEC §6.1 (R104): every launch, login_shell included, still carries
 	// deck's own session-context layer -- only the PATH-resolution layers
 	// (captured_path/config/session) are affected by login_shell.
-	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,DECK_SESSION_WORKSPACE,FROM_SESSION" {
+	if strings.Join(envKeys, ",") != "DECK_HOME,DECK_SESSION_AGENT,DECK_SESSION_CONVERSATION_ID,DECK_SESSION_CWD,DECK_SESSION_GROUP,DECK_SESSION_ID,DECK_SESSION_LAUNCH_KIND,DECK_SESSION_NAME,DECK_SESSION_PROFILE,DECK_SESSION_SLUG,FROM_SESSION" {
 		t.Fatalf("login_shell launch env_keys = %#v, want session-context keys plus only FROM_SESSION", envKeys)
 	}
 }

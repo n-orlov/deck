@@ -159,9 +159,9 @@ func TestSidebarStripeHeaderNeverParticipates(t *testing.T) {
 	m := New(nil, config.Settings{Color: true, GroupByWorkspace: true}, "")
 	m.width, m.height = 100, 30
 	m.sessions = []store.Session{
-		{ID: "s1", Name: "one", Agent: "shell", Status: "running", Workspace: "wsA", CreatedAt: 1000},
-		{ID: "s2", Name: "two", Agent: "shell", Status: "running", Workspace: "wsA", CreatedAt: 1000},
-		{ID: "s3", Name: "three", Agent: "shell", Status: "running", Workspace: "wsB", CreatedAt: 1000},
+		{ID: "s1", Name: "one", Agent: "shell", Status: "running", GroupName: "wsA", CreatedAt: 1000},
+		{ID: "s2", Name: "two", Agent: "shell", Status: "running", GroupName: "wsA", CreatedAt: 1000},
+		{ID: "s3", Name: "three", Agent: "shell", Status: "running", GroupName: "wsB", CreatedAt: 1000},
 	}
 	m.selected = -1
 	surfaceHex := tokenHex(t, m, theme.Surface)
