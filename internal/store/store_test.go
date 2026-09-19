@@ -1212,6 +1212,76 @@ func TestListSessionsResolvesGroupIDAndGroupNameViaJoin(t *testing.T) {
 	}
 }
 
+// TestCreateSessionResolvesGroupNameOnReturnNotJustOnReread covers R128's
+// create-path bug directly at its source: CreateSession's own return value
+// used to build the Session struct field by field from CreateSessionInput
+// rather than resolving GroupID against the groups table, so GroupName
+// (and therefore DECK_SESSION_GROUP) read back empty on every create-path
+// launch no matter what group the caller named -- reads via
+// ListSessions/GetSession's LEFT JOIN masked the bug because every caller
+// that mattered to those tests re-read the row afterwards. This asserts
+// CreateSession's own return, never a subsequent Get/List call, for a real
+// group, a nil GroupID (default), and a GroupID naming no live group row
+// (dangling membership, SPEC §11's "renders under default rather than
+// vanishing").
+func TestCreateSessionResolvesGroupNameOnReturnNotJustOnReread(t *testing.T) {
+	home := t.TempDir()
+	st, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+
+	group, err := st.CreateGroup(ctx, "sprint work")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	named, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000b1", Name: "named", CWD: "/work/svc-d",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 200, CreatedAt: 200, GroupID: &group.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if named.GroupID == nil || *named.GroupID != group.ID {
+		t.Fatalf("create-returned GroupID = %v, want %d", named.GroupID, group.ID)
+	}
+	if named.GroupName != "sprint work" {
+		t.Fatalf("create-returned GroupName = %q, want %q (resolved on the CreateSession return, not only on a later read)", named.GroupName, "sprint work")
+	}
+
+	defaulted, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000b2", Name: "defaulted", CWD: "/work/svc-e",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 201, CreatedAt: 201,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaulted.GroupID != nil {
+		t.Fatalf("create-returned GroupID = %v, want nil", defaulted.GroupID)
+	}
+	if defaulted.GroupName != "" {
+		t.Fatalf("create-returned GroupName = %q, want empty (implicit default group)", defaulted.GroupName)
+	}
+
+	const danglingGroupID int64 = 999999
+	dangling, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000b3", Name: "dangling", CWD: "/work/svc-f",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 202, CreatedAt: 202, GroupID: func() *int64 { id := danglingGroupID; return &id }(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dangling.GroupID == nil || *dangling.GroupID != danglingGroupID {
+		t.Fatalf("create-returned dangling GroupID = %v, want %d (the raw value, unhealed)", dangling.GroupID, danglingGroupID)
+	}
+	if dangling.GroupName != "" {
+		t.Fatalf("create-returned dangling GroupName = %q, want empty (renders under default rather than vanishing)", dangling.GroupName)
+	}
+}
+
 // TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow covers
 // task 006: schemaV4 (recent_cwds, SPEC §4:276-279) must be reachable by
 // migration from schema versions 1, 2 and 3 alike, and none of those paths
