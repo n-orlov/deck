@@ -40,10 +40,19 @@ ok  	github.com/n-orlov/deck/internal/tui	6.203s
 ?   	github.com/n-orlov/deck/internal/unit	[no test files]
 ```
 
-Every package the module resolves is present in the list above: 14 `ok`
-lines and 3 `[no test files]` lines (`internal/notify`, `internal/search`,
-`internal/unit` — the out-of-scope Phase 5/6/7 packages that stay one-line
-`doc.go` per the standing rules), no `FAIL` lines.
+Every package the module resolves is present in the list above: 18 package
+lines in total — 15 `ok` lines and 3 `[no test files]` lines
+(`internal/notify`, `internal/search`, `internal/unit` — the out-of-scope
+Phase 5/6/7 packages that stay one-line `doc.go` per the standing rules),
+no `FAIL` lines. The count is reproducible from the committed log and the
+module's own package list: `grep -c '^ok' fullsuite.log` = 15,
+`grep -c 'no test files' fullsuite.log` = 3, `grep -c FAIL fullsuite.log`
+= 0, and `ci/run.sh go list ./... | wc -l` = 18, so no package the module
+resolves is missing from the log.
+
+(An earlier revision of this README miscounted the `ok` lines as 14; the
+committed log always held 15. Corrected here without re-running the gate —
+the run itself, its sha, wall time and exit status are unchanged.)
 
 ## Skips
 
