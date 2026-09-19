@@ -133,6 +133,19 @@ type sidebarGroup struct {
 // always last. Splitting the two steps like this keeps groupSortsBefore
 // entirely ignorant of m.sessions/attention/sort_order -- it only ever
 // compares two group names.
+//
+// cure-01-02 (R129/R131 review finding): while UNFILTERED, every group in
+// m.allGroups (the persisted list read alongside sessions on the most
+// recent reload, tui.go's sessionsLoaded) gets a bucket here too, even
+// when it currently has zero members, and so does the structural default
+// group -- SPEC §11: "Every header carries its member count, including
+// (0)... A group the user defined but has not filled yet still renders:
+// it is how they see the group exists and where to put something" and
+// "default is not a row... it always exists". This is intentionally
+// skipped while a filter query is in force: SPEC §11 states "Under an
+// active filter only groups with a match render", and a defined-but-empty
+// group by construction never has a filter match, so seeding it here
+// would surface a header a filtered render must not show.
 func (m Model) groupSessions() []sidebarGroup {
 	var groups []sidebarGroup
 	firstSeen := map[string]int{}
@@ -144,6 +157,19 @@ func (m Model) groupSessions() []sidebarGroup {
 		}
 		firstSeen[ws] = len(groups)
 		groups = append(groups, sidebarGroup{Name: ws, GroupID: sessionGroupID(session), Sessions: []indexedSession{{Index: i, Session: session}}})
+	}
+	if m.filterQuery == "" {
+		if _, ok := firstSeen[""]; !ok {
+			firstSeen[""] = len(groups)
+			groups = append(groups, sidebarGroup{Name: "", GroupID: 0})
+		}
+		for _, g := range m.allGroups {
+			if _, ok := firstSeen[g.Name]; ok {
+				continue
+			}
+			firstSeen[g.Name] = len(groups)
+			groups = append(groups, sidebarGroup{Name: g.Name, GroupID: g.ID})
+		}
 	}
 	sort.SliceStable(groups, func(i, j int) bool {
 		return groupSortsBefore(groups[i].Name, groups[j].Name)

@@ -60,8 +60,13 @@ func TestGroupSessionsBucketsByGroupKeyPreservingOrder(t *testing.T) {
 		{ID: "b2", Name: "b2", CWD: "/work/service-a", GroupName: "service-a"},
 	})
 	groups := m.groupSessions()
-	if len(groups) != 2 {
-		t.Fatalf("len(groups) = %d, want 2 (%v)", len(groups), groups)
+	// cure-01-02: the structural default group now always renders
+	// unfiltered even with zero members, appended after every real group
+	// (still last, per groupSortsBefore) -- two real groups plus default
+	// is 3, not 2; the two indices this test actually asserts against
+	// (infra, service-a) are unaffected.
+	if len(groups) != 3 {
+		t.Fatalf("len(groups) = %d, want 3 (%v)", len(groups), groups)
 	}
 	if groups[0].Name != "infra" || groups[1].Name != "service-a" {
 		t.Fatalf("group order = [%q, %q], want [infra, service-a] (first-seen order)", groups[0].Name, groups[1].Name)

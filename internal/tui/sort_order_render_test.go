@@ -159,8 +159,12 @@ func TestSessionsLoadedGroupingWithinGroupOrderIsNonVacuous(t *testing.T) {
 	got := updated.(Model)
 
 	groups := got.groupSessions()
-	if len(groups) != 1 || len(groups[0].Sessions) != 2 {
-		t.Fatalf("groupSessions() = %v, want one group of two", groups)
+	// cure-01-02: the structural default group now always renders
+	// unfiltered even with zero members, so one real group plus default
+	// is 2 buckets, not 1; groups[0] (still first, solo-workspace sorts
+	// before the always-last default) is the bucket this test cares about.
+	if len(groups) != 2 || len(groups[0].Sessions) != 2 {
+		t.Fatalf("groupSessions() = %v, want [solo-workspace(2 sessions), default(0)]", groups)
 	}
 	if groups[0].Sessions[0].Session.ID != "z1" || groups[0].Sessions[1].Session.ID != "z2" {
 		t.Fatalf("within-group order = [%s %s], want [z1 z2] (name order, which disagrees with insertion/attention order here)",

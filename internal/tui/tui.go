@@ -648,6 +648,19 @@ type Model struct {
 	// it should contain is far less invasive than teaching all of them
 	// about a filter.
 	baseSessions []store.Session
+	// allGroups is the cure-01-02/R129 fix's own persisted-group cache: the
+	// full store.ListGroups() result as of the most recent sessionsLoaded,
+	// refreshed on every normal reload exactly like baseSessions is.
+	// groupSessions() (group.go) reads this to seed a header for every
+	// DEFINED group even when it currently has zero members -- SPEC §11's
+	// "a group the user defined but has not filled yet still renders" --
+	// which m.sessions alone can never answer, since a group with no
+	// sessions leaves no trace there. Empty/nil (never a store error,
+	// matching computeAvailableGroups' own degrade) when there is no store
+	// or the read fails; a group deleted by another client between two
+	// reloads is simply absent here on the next one, same as it would be
+	// from a fresh ListGroups call directly.
+	allGroups []store.Group
 	// archivedSessions caches requirement 33's ONLY route back to an
 	// archived row (Store.ListArchivedSessions): fetched fresh every time
 	// `/` opens (loadArchivedSessions), so the filter's archived-side
@@ -1281,6 +1294,15 @@ func (m Model) registry() *agent.Registry {
 type sessionsLoaded struct {
 	sessions []store.Session
 	err      error
+	// groups is cure-01-02's own addition: the persisted group list read
+	// alongside sessions on every normal reload, so groupSessions() can
+	// render a header for a defined group with zero members. groupsErr
+	// deliberately never blocks the sessions half of this message (groups
+	// are supplementary, matching computeAvailableGroups' own degrade) --
+	// a failed groups read simply leaves m.allGroups at its last-known
+	// value, exactly like archivedSessionsLoaded's own error handling.
+	groups    []store.Group
+	groupsErr error
 }
 
 // Tick types are deliberately separate: reconciliation refreshes durable rows,
@@ -1927,7 +1949,13 @@ func (m Model) loadSessions() tea.Msg {
 		return sessionsLoaded{}
 	}
 	rows, err := m.store.ListSessions(context.Background())
-	return sessionsLoaded{sessions: rows, err: err}
+	// cure-01-02: fetched on the SAME reload as sessions (never a separate
+	// tea.Cmd), so a group created/renamed/deleted by another client is at
+	// most one reload stale, exactly matching sessions' own staleness --
+	// see groupSessions' own comment for why m.sessions alone cannot answer
+	// "does this defined group have zero members right now".
+	groups, groupsErr := m.store.ListGroups(context.Background())
+	return sessionsLoaded{sessions: rows, err: err, groups: groups, groupsErr: groupsErr}
 }
 
 // archivedSessionsLoaded carries task 123's fresh ListArchivedSessions
@@ -2313,6 +2341,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case sessionsLoaded:
+		// cure-01-02: applied regardless of msg.err, matching
+		// archivedSessionsLoaded's own error-preserves-the-last-good-frame
+		// convention -- a failed groups read leaves m.allGroups at its
+		// previous value rather than wiping it, and a groups-read failure
+		// never blocks the sessions half of this message from applying.
+		if msg.groupsErr == nil {
+			m.allGroups = msg.groups
+		}
 		if msg.err != nil {
 			m.startupNote = "Cannot read sessions: " + msg.err.Error()
 		} else {
@@ -5295,7 +5331,17 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 			entries = append(entries, sidebarEntry{text: line})
 		}
 	}
-	if len(m.sessions) == 0 {
+	if len(m.sessions) == 0 && (m.filterQuery != "" || len(m.allGroups) == 0) {
+		// cure-01-02: the zero-sessions short-circuit below only applies
+		// when there is truly nothing to show a group header for -- a
+		// filter query in force (its own "no matches" copy already covers
+		// that state) or an unfiltered store with no DEFINED group at all,
+		// so the structural default group would render with nothing but
+		// (0) beside it. An unfiltered store that DOES have a defined
+		// group falls through to the groupSessions() loop below instead,
+		// which renders every defined group (and default) with (0), per
+		// SPEC §11's "a group the user defined but has not filled yet
+		// still renders".
 		msg := "No sessions yet. Press n to create a session."
 		if m.filterQuery != "" {
 			// Task 123/I-10: a filter query in force with zero matches is a
