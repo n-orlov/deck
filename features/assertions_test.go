@@ -1088,11 +1088,12 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := privateOptionIs(stepCtx, "exit-empty", "off"); err != nil {
 		t.Fatal(err)
 	}
-	// SchemaVersion is 6 as of task 010 (post_destroy TEXT, launch_dirty
-	// INTEGER); this pin must track internal/store.SchemaVersion exactly,
-	// as it has every time that constant moved before it (see this file's
-	// own git history of "fix stale schema-version pin" commits).
-	if err := databaseSchemaVersion(stepCtx, 6); err != nil {
+	// SchemaVersion is 7 as of R128's schemaV7 (the groups table,
+	// sessions.group_id, and the sessions.workspace drop; commit bf1c085);
+	// this pin must track internal/store.SchemaVersion exactly, as it has
+	// every time that constant moved before it (see this file's own git
+	// history of "fix stale schema-version pin" commits).
+	if err := databaseSchemaVersion(stepCtx, 7); err != nil {
 		t.Fatal(err)
 	}
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {

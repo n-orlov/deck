@@ -168,7 +168,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Given deck client "A" is started
     When deck client "A" creates shell session "header-click-default"
     And deck client "A" creates shell session "header-click-other"
-    And the state database session "header-click-other" has workspace "header-click-workspace"
+    And the state database session "header-click-other" is in group "header-click-workspace"
     Then deck client "A" screen contains "header-click-workspace"
     And deck client "A" screen contains "header-click-default"
     And deck client "A" screen contains "header-click-other"
