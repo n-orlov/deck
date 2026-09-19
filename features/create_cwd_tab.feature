@@ -28,6 +28,13 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
     And a directory named "prefixaaa" exists in the scratch directory labelled "tablist"
     And a directory named "prefixbbb" exists in the scratch directory labelled "tablist"
     And deck client "A" is started
+    # The create modal's field set (task 016 added a tenth field, Group)
+    # plus its own candidate list just clears the default 100x30 harness
+    # geometry's budget; two extra rows give framedDialogScrollable
+    # (internal/tui/panel.go) enough room to show both candidates without
+    # scrolling them out of view, rather than trimming any field's own
+    # content to fit.
+    And deck client "A" terminal is resized to 100x32
     When deck client "A" opens the create modal
     And deck client "A" types "tab-list-session" as the session name
     And deck client "A" tabs to the cwd field

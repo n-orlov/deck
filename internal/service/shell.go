@@ -34,6 +34,11 @@ type ShellCreateInput struct {
 	// hook itself is not this field's scope -- that is wired by the callers
 	// task 013 adds.
 	PostDestroy string
+	// GroupID is SPEC §11's manual group this session is created into
+	// (R130), verbatim onto store.CreateSessionInput.GroupID -- nil is the
+	// structural default group, exactly as it is there. The create modal's
+	// Group field (internal/tui) is the only populated caller today.
+	GroupID *int64
 }
 
 // Service performs operations which must keep the SQLite store and private
@@ -192,7 +197,7 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
-		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy,
+		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, GroupID: input.GroupID,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable shell session: %w", err)

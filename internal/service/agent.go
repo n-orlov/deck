@@ -42,6 +42,11 @@ type AgentCreateInput struct {
 	// global post_destroy hook. Stored verbatim on the row; task 013 is
 	// what actually runs it.
 	PostDestroy string
+	// GroupID is SPEC §11's manual group this session is created into
+	// (R130), verbatim onto store.CreateSessionInput.GroupID -- nil is the
+	// structural default group, exactly as it is there. The create modal's
+	// Group field (internal/tui) is the only populated caller today.
+	GroupID *int64
 }
 
 // CreateAgent creates the durable row for a real coding-agent session,
@@ -118,6 +123,7 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
 		PostDestroy:       input.PostDestroy,
 		PermissionProfile: profile, PermissionProfileReason: degradationReason, ConversationID: conversationID,
+		GroupID: input.GroupID,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable agent session %q: %w", input.Name, err)

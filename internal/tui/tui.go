@@ -135,6 +135,35 @@ type Model struct {
 	// "no probe wired", in which case computeAvailableAgentKinds falls back
 	// to every registered kind, the exact pre-task-005 behaviour.
 	availableAgentKindsProber func() []string
+	// lastCreateGroupID is R130's persisted "last group a create actually
+	// succeeded into" (state.db's ui_state, never config.toml), mirroring
+	// lastCreateAgent exactly: read once in New and kept current in memory
+	// thereafter -- shellCreated's success path updates this field directly
+	// alongside the async persisting write, so a render path never touches
+	// the store itself. 0 means either no create has ever targeted a real
+	// group, or (GetLastCreateGroup's own degrade) the remembered group has
+	// since been deleted -- both read as "default", exactly as
+	// pickCreateGroup requires.
+	lastCreateGroupID int64
+	// createGroupID is the create modal's Group field (R130): a real
+	// groups.id, or 0 for the structural default group (sqlite
+	// AUTOINCREMENT ids start at 1, so 0 can never collide with a real
+	// group). Mirrors createAgent's own value/zero-value split.
+	createGroupID int64
+	// createGroupLastUsed is createAgentLastUsed's Group-field counterpart:
+	// true only when the field was opened on lastCreateGroupID rather than
+	// defaulting, driving createFieldRows' "(last used)" label on the Group
+	// field. Cleared the moment the Group field is cycled, since the value
+	// showing is then a deliberate choice, not the remembered one.
+	createGroupLastUsed bool
+	// createGroups is R130's per-open Group cycle set (createAvailableAgentKinds'
+	// own precedent): every real group, alphabetical (store.ListGroups' own
+	// order), fetched once on the "n" open path and held unchanged for the
+	// life of the open dialog -- never re-queried from a render path such as
+	// createFieldRows. The structural default group is NOT included here; it
+	// is appended by createGroupCycleOptions instead, since it is not a real
+	// row (store.Group's own doc comment).
+	createGroups []store.Group
 	// createCWDRecents is the §11.7 recent_cwds snapshot the cwd field is
 	// currently cycling through (task 009), fetched once when Ctrl+P/Ctrl+N
 	// (task 025) first starts a cycle rather than re-queried on every
@@ -1062,6 +1091,91 @@ func (m Model) pickCreateAgent() (string, bool) {
 	return defaultCreateAgent(kinds), false
 }
 
+// computeAvailableGroups is pickCreateGroup/the "n" handler's Group-field
+// counterpart to computeAvailableAgentKinds: a live store.ListGroups()
+// call (already alphabetical, case-insensitive), or nil when there is no
+// store attached (most unit tests) or the read fails -- ui_state/groups
+// are not load-bearing, so a failure here degrades to "no real groups
+// offered", never a panic.
+func (m Model) computeAvailableGroups() []store.Group {
+	if m.store == nil {
+		return nil
+	}
+	groups, err := m.store.ListGroups(context.Background())
+	if err != nil {
+		return nil
+	}
+	return groups
+}
+
+// pickCreateGroup chooses which group the create modal's Group field opens
+// on (R130), mirroring pickCreateAgent's identical precedent exactly:
+// m.lastCreateGroupID -- the group the most recent successful create
+// actually targeted, read once at store-open time (see New) and never
+// re-read from the store here -- when it still names a group in the
+// CURRENT available set (m.createGroups, populated by the "n" handler just
+// before this runs), otherwise 0 (the structural default group). Checking
+// it again here against the live createGroups set (rather than trusting
+// GetLastCreateGroup's own store-side degrade alone) also catches a group
+// deleted by ANOTHER client since m.lastCreateGroupID was read at startup,
+// which the store-side check at New time could not have seen -- exactly
+// the "remembered default degrades to default, never to an empty field,
+// once its group is deleted" requirement. The second result reports
+// whether the picked id came from lastCreateGroupID, driving the
+// "(last used)" label the same way createAgentLastUsed does for Agent.
+func (m Model) pickCreateGroup() (int64, bool) {
+	if m.lastCreateGroupID == 0 {
+		return 0, false
+	}
+	for _, g := range m.createGroups {
+		if g.ID == m.lastCreateGroupID {
+			return m.lastCreateGroupID, true
+		}
+	}
+	return 0, false
+}
+
+// createGroupCycleOptions returns the Group field's full cycle order
+// (R130): every group in m.createGroups (already alphabetical,
+// case-insensitive -- store.ListGroups' own order), plus the structural
+// default group appended last, matching R129's sidebar order (default
+// always sorts after every real group, never among them, since it is not
+// a row at all -- store.Group's own doc comment).
+func (m Model) createGroupCycleOptions() []store.Group {
+	options := make([]store.Group, 0, len(m.createGroups)+1)
+	options = append(options, m.createGroups...)
+	options = append(options, store.Group{ID: 0, Name: "default"})
+	return options
+}
+
+// createGroupName resolves id against createGroupCycleOptions, falling
+// back to "default" for 0 or for any id no longer present in the current
+// cycle set (e.g. a dangling m.createGroupID left over from a delete that
+// happened while the dialog was open) -- SPEC §11's "a group_id that no
+// longer resolves renders under default rather than vanishing" applies
+// here exactly as it does to a session row.
+func (m Model) createGroupName(id int64) string {
+	for _, g := range m.createGroupCycleOptions() {
+		if g.ID == id {
+			return g.Name
+		}
+	}
+	return "default"
+}
+
+// createGroupIDPointer converts m.createGroupID's 0-means-default
+// convention into the *int64 nil-means-default convention
+// store.CreateSessionInput.GroupID (and the two service *CreateInput
+// structs) actually use, so submitCreate never has to special-case 0
+// itself at either call site.
+func (m Model) createGroupIDPointer() *int64 {
+	if m.createGroupID == 0 {
+		return nil
+	}
+	id := m.createGroupID
+	return &id
+}
+
 // registry returns m.agents, falling back to defaultAgentRegistry() when the
 // model was built without one (e.g. via New or any constructor that predates
 // registry support).
@@ -1439,6 +1553,14 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 		// degrades to defaultCreateAgent's own fallback via pickCreateAgent.
 		if lastAgent, err := db.GetLastCreateAgent(ctx); err == nil {
 			m.lastCreateAgent = lastAgent
+		}
+		// Task 016 (R130): the last group a create actually succeeded into,
+		// mirroring lastCreateAgent's own read exactly. GetLastCreateGroup
+		// already degrades a deleted group's id to nil at the store level, so
+		// a read failure OR a nil result both leave lastCreateGroupID at its
+		// zero value (default), which pickCreateGroup treats identically.
+		if lastGroup, err := db.GetLastCreateGroup(ctx); err == nil && lastGroup != nil {
+			m.lastCreateGroupID = *lastGroup
 		}
 		// Task 013 (R129 part 3): collapse state persists in ui_state's
 		// collapsed_groups, keyed by group id -- read once here so a
@@ -2224,7 +2346,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// async persist below) is what lets the very next "n" in this same
 		// run see it without a store round trip in that render path.
 		m.lastCreateAgent = msg.session.Agent
-		return m, tea.Batch(m.loadSessions, m.persistLastCreateAgent(msg.session.Agent))
+		cmds := []tea.Cmd{m.loadSessions, m.persistLastCreateAgent(msg.session.Agent)}
+		// R130's counterpart: only a create that actually targeted a real
+		// group is worth remembering (GetLastCreateGroup's own doc comment --
+		// there is no way to persist "explicitly chose default", so a create
+		// into default simply leaves whatever was remembered before
+		// unchanged, exactly like never having set it). msg.session.GroupID,
+		// not m.createGroupID, is what actually got created, for the same
+		// reason msg.session.Agent is used above.
+		if msg.session.GroupID != nil {
+			m.lastCreateGroupID = *msg.session.GroupID
+			cmds = append(cmds, m.persistLastCreateGroup(*msg.session.GroupID))
+		}
+		return m, tea.Batch(cmds...)
 	case attachFinished:
 		if msg.err != nil {
 			m.attachError = "Cannot attach: " + msg.err.Error()
@@ -3055,6 +3189,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.createProfile = m.defaultCreateProfile(m.createAgent)
 				m.createProfileTouched, m.createProfileRequested = false, ""
 				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createPostDestroy, m.createLoginShell = "", "", "", "", false
+				m.createGroups = m.computeAvailableGroups()
+				m.createGroupID, m.createGroupLastUsed = m.pickCreateGroup()
 			}
 		case "up", "k":
 			if next, ok := m.prevVisibleSelection(m.selected); ok {
@@ -3813,6 +3949,23 @@ func (m Model) persistLastCreateAgent(agentKind string) tea.Cmd {
 	}
 	return func() tea.Msg {
 		return uiStatePersisted{err: m.store.SetLastCreateAgent(context.Background(), agentKind)}
+	}
+}
+
+// persistLastCreateGroup is persistLastCreateAgent's R130 counterpart: it
+// writes the just-succeeded create's target group id to state.db's
+// ui_state table, never to config.toml, so a later "n" (via
+// pickCreateGroup) opens pre-selecting it. Only ever called with a real
+// group id (the shellCreated handler's own nil check) -- there is no
+// "unset" call, mirroring SetLastCreateGroup's own int64-not-*int64
+// signature. With no store attached (most unit tests) it is a no-op,
+// exactly like persistLastCreateAgent.
+func (m Model) persistLastCreateGroup(groupID int64) tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		return uiStatePersisted{err: m.store.SetLastCreateGroup(context.Background(), groupID)}
 	}
 }
 
@@ -6977,7 +7130,7 @@ func (m Model) createProfileOptionsFor(kind string, allowYolo bool) []string {
 	return options
 }
 
-const createFieldCount = 9
+const createFieldCount = 10
 
 // createFieldIsText reports whether field accepts free-typed runes, as
 // opposed to being a cycled selection (agent, permission profile, login
@@ -7474,6 +7627,7 @@ func (m *Model) submitCreate() tea.Cmd {
 			Name: name, CWD: resolvedCWD, Agent: m.createAgent,
 			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
 			PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell, PostDestroy: m.createPostDestroy,
+			GroupID: m.createGroupIDPointer(),
 		}
 		createAgentSession := m.createAgentSession
 		return func() tea.Msg {
@@ -7485,7 +7639,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = "shell creation is unavailable"
 		return nil
 	}
-	cwd, create, preLaunch, postDestroy := resolvedCWD, m.create, m.createPreLaunch, m.createPostDestroy
+	cwd, create, preLaunch, postDestroy, groupID := resolvedCWD, m.create, m.createPreLaunch, m.createPostDestroy, m.createGroupIDPointer()
 	return func() tea.Msg {
 		// The modal's Pre-launch field is offered (and validated) for every
 		// agent, `shell` included, and SPEC §6.4's hook fires "on create" for
@@ -7494,7 +7648,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		// Post-destroy field (task 026) is passed through the same way, so a
 		// shell session's own teardown hook can be set at create time exactly
 		// as an agent session's can.
-		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy})
+		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy, GroupID: groupID})
 		return shellCreated{session: session, err: err}
 	}
 }
@@ -7617,6 +7771,23 @@ func (m *Model) cycleCreateField(delta int) {
 		}
 	case 8:
 		m.createLoginShell = !m.createLoginShell
+	case 9:
+		options := m.createGroupCycleOptions()
+		idx := 0
+		for i, g := range options {
+			if g.ID == m.createGroupID {
+				idx = i
+				break
+			}
+		}
+		idx = (idx + delta + len(options)) % len(options)
+		m.createGroupID = options[idx].ID
+		// The value showing is now a deliberate cycle, not the remembered
+		// one -- clear the "(last used)" label regardless of which way the
+		// cycle landed, even back on the original value, exactly as
+		// createAgentLastUsed/createCWDLastUsed are cleared on their own
+		// field's first edit.
+		m.createGroupLastUsed = false
 	}
 }
 
@@ -7833,6 +8004,15 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 	if !m.settings.AllowYolo {
 		profileHelp += "; yolo is not offered because allow_yolo is not enabled in config.toml"
 	}
+	groupOptions := m.createGroupCycleOptions()
+	groupNames := make([]string, 0, len(groupOptions))
+	for _, g := range groupOptions {
+		groupNames = append(groupNames, g.Name)
+	}
+	groupHelp := "which group this session belongs to; cycles alphabetically, default last"
+	if m.createGroupLastUsed {
+		groupHelp = "(last used) " + groupHelp
+	}
 	return []struct{ label, value, help string }{
 		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
 		{"Working directory", m.createCWDDisplayValue(), m.createCWDHelp()},
@@ -7843,6 +8023,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
 		{"Post-destroy command", m.createPostDestroy, "a command run after this session's own Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open)"},
 		{"Login shell", loginShell + " (space toggles)", "makes captured_path advisory only (not applied): runs via $SHELL -lc instead of the agent argv, so the login shell sets PATH"},
+		{"Group", m.createGroupName(m.createGroupID) + " (left/right cycles: " + strings.Join(groupNames, ", ") + ")", groupHelp},
 	}
 }
 
