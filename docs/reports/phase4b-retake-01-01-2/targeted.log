@@ -1,0 +1,6 @@
+=== RUN   TestStoredScrollOffsetHealedAcrossViewAndNextScroll
+--- PASS: TestStoredScrollOffsetHealedAcrossViewAndNextScroll (0.08s)
+=== RUN   TestInteractiveDispatcherNilDoesNotSnapStoredOffset
+--- PASS: TestInteractiveDispatcherNilDoesNotSnapStoredOffset (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.092s
