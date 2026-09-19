@@ -85,13 +85,13 @@ func TestInteractiveBodyLinesHealsTheStoredOffsetToTheClampedUsedOffset(t *testi
 	// scrollInteractiveByLines itself clamps to, set directly so this
 	// test exercises interactiveBodyLines' own healing regardless of
 	// scrollInteractiveByLines' own clamp.
-	got.interactiveScrollOffset = interactive.ScrollbackMaxLines
+	got.setInteractiveScrollOffset(interactive.ScrollbackMaxLines)
 
 	contentWidth, contentHeight := got.previewContentSize()
 	_, _ = got.interactiveBodyLines(contentWidth, contentHeight)
 
-	if got.interactiveScrollOffset != realScrollbackLen {
-		t.Fatalf("after interactiveBodyLines, m.interactiveScrollOffset = %d, want the clamped used offset %d (the grid's own real scrollback length) -- a stored offset stale-high past the real scrollback length must be healed back onto the model, not left at the value scrolled past it", got.interactiveScrollOffset, realScrollbackLen)
+	if got.interactiveScrollOffset() != realScrollbackLen {
+		t.Fatalf("after interactiveBodyLines, m.interactiveScrollOffset() = %d, want the clamped used offset %d (the grid's own real scrollback length) -- a stored offset stale-high past the real scrollback length must be healed back onto the model, not left at the value scrolled past it", got.interactiveScrollOffset(), realScrollbackLen)
 	}
 }
 
@@ -146,13 +146,13 @@ func TestInteractiveBodyLinesHealingReenablesTheNotRepaintedNotice(t *testing.T)
 
 	// A stale-high stored offset, exactly like the scenario above: past
 	// the real (zero) scrollback length.
-	got.interactiveScrollOffset = interactive.ScrollbackMaxLines
+	got.setInteractiveScrollOffset(interactive.ScrollbackMaxLines)
 
 	contentWidth, contentHeight := got.previewContentSize()
 	lines, _ := got.interactiveBodyLines(contentWidth, contentHeight)
 
-	if got.interactiveScrollOffset != 0 {
-		t.Fatalf("after interactiveBodyLines, m.interactiveScrollOffset = %d, want 0 (the clamped used offset against a zero-length real scrollback)", got.interactiveScrollOffset)
+	if got.interactiveScrollOffset() != 0 {
+		t.Fatalf("after interactiveBodyLines, m.interactiveScrollOffset() = %d, want 0 (the clamped used offset against a zero-length real scrollback)", got.interactiveScrollOffset())
 	}
 	if len(lines) == 0 || lines[0] != interactiveNotRepaintedNotice {
 		t.Fatalf("interactiveBodyLines' line 0 = %q, want the not-repainted notice %q now that the stale-high stored offset has been healed back to 0 against a genuinely blank live screen", firstOrEmpty(lines), interactiveNotRepaintedNotice)

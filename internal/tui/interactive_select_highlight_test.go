@@ -212,7 +212,7 @@ func TestInProgressSelectionHighlightsExactlyTheCellsTheCopyReturns(t *testing.T
 
 	// What the copy WOULD return for this very anchor/current pair, via
 	// the same AbsoluteRow conversion commitInteractiveSelection uses.
-	offset := afterMotion.interactiveScrollOffset
+	offset := afterMotion.interactiveScrollOffset()
 	fromRow := sess.AbsoluteRow(offset, contentHeight, anchorRow)
 	toRow := sess.AbsoluteRow(offset, contentHeight, curRow)
 	want := sess.SelectedText(anchorCol, fromRow, curCol, toRow)

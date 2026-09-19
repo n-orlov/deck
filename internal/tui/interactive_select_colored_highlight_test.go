@@ -145,7 +145,7 @@ func TestInProgressSelectionHighlightSurvivesColoredPaneContent(t *testing.T) {
 		t.Fatalf("press+motion inside the preview did not leave a drag in progress (selecting=%v dragged=%v)", afterMotion.interactiveSelecting, afterMotion.interactiveSelectDragged)
 	}
 
-	offset := afterMotion.interactiveScrollOffset
+	offset := afterMotion.interactiveScrollOffset()
 	absRow := sess.AbsoluteRow(offset, contentHeight, row)
 	want := sess.SelectedText(anchorCol, absRow, curCol, absRow)
 	if !strings.Contains(want, "HOT") {

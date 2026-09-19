@@ -60,7 +60,7 @@ func forwardGateTestModel(t *testing.T, socket, slug string, scrollBy int) Model
 	}
 	t.Cleanup(func() { got.exitInteractive() })
 
-	got.interactiveScrollOffset = scrollBy
+	got.setInteractiveScrollOffset(scrollBy)
 	return got
 }
 
@@ -91,8 +91,8 @@ func TestUpdateInteractiveLeavesTheScrollOffsetUntouchedForAKeyNeitherHelperForw
 	if cmd != nil {
 		t.Fatalf("updateInteractive(Alt+Insert) returned a non-nil cmd, want nil (nothing was forwarded)")
 	}
-	if got.interactiveScrollOffset != 5 {
-		t.Fatalf("updateInteractive(Alt+Insert) left the scroll offset at %d, want it UNCHANGED at 5 -- Alt+Insert forwards no bytes (the listed interactiveAltNamedKeys gap), so a scrolled-back view must not snap to the live bottom for it", got.interactiveScrollOffset)
+	if got.interactiveScrollOffset() != 5 {
+		t.Fatalf("updateInteractive(Alt+Insert) left the scroll offset at %d, want it UNCHANGED at 5 -- Alt+Insert forwards no bytes (the listed interactiveAltNamedKeys gap), so a scrolled-back view must not snap to the live bottom for it", got.interactiveScrollOffset())
 	}
 }
 
@@ -117,7 +117,7 @@ func TestUpdateInteractiveResetsTheScrollOffsetForAForwardedKey(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("updateInteractive(\"x\") returned a non-nil cmd, want nil")
 	}
-	if got.interactiveScrollOffset != 0 {
-		t.Fatalf("updateInteractive(\"x\") left the scroll offset at %d, want 0 -- a key that really forwards bytes must still snap a scrolled-back view back to the live bottom (PRD II-51)", got.interactiveScrollOffset)
+	if got.interactiveScrollOffset() != 0 {
+		t.Fatalf("updateInteractive(\"x\") left the scroll offset at %d, want 0 -- a key that really forwards bytes must still snap a scrolled-back view back to the live bottom (PRD II-51)", got.interactiveScrollOffset())
 	}
 }

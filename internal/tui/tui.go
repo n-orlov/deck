@@ -1021,8 +1021,8 @@ type Model struct {
 	// onward): built against the pane id, re-verifying identity before
 	// every send.
 	interactiveDispatcher *tmux.Dispatcher
-	// interactiveScrollOffset is PRD II-51's bounded scrollback position:
-	// 0 is the live bottom (interactiveBodyLines shows exactly what
+	// interactiveScroll holds PRD II-51's bounded scrollback position: 0 is
+	// the live bottom (interactiveBodyLines shows exactly what
 	// Grid().Render() itself would, unchanged from before task 068), and a
 	// positive value is how many lines back into the grid's own bounded
 	// scrollback (interactive.ScrollbackMaxLines) the view currently sits.
@@ -1030,7 +1030,20 @@ type Model struct {
 	// (exitInteractive) and every keystroke forwarded to the target
 	// (updateInteractive) -- scrolled-back history is read-only, so typing
 	// or leaving snaps straight back to the live view.
-	interactiveScrollOffset int
+	//
+	// It is a POINTER to a one-field cell, not a plain int field, for the
+	// reason interactiveScrollState's own doc (interactive_scroll.go)
+	// spells out: the offset RENDERING actually uses is only known inside
+	// the render itself, and every frame of that render (View, mainView,
+	// renderStackedFrame/renderSideBySideFrame, previewBodyLines,
+	// interactiveBodyLines) holds its own value-receiver COPY of this
+	// Model, discarded the instant the call returns. One shared cell every
+	// copy points at is what lets that clamped position survive the render
+	// and be the position the next input event starts from (R133,
+	// cure-01-01-2). Read it with m.interactiveScrollOffset(), write it
+	// with m.setInteractiveScrollOffset(n) -- never by reaching into the
+	// cell directly.
+	interactiveScroll *interactiveScrollState
 	// interactiveSelecting/interactiveSelectDragged/interactiveSelectAnchor*/
 	// interactiveSelectCurrent* back the drag-to-copy selection SPEC §11.8
 	// describes ("a drag beginning inside the preview selects, and
@@ -1049,7 +1062,7 @@ type Model struct {
 	// absolute row space, because that is the only space a hit-tested mouse
 	// cell can be expressed in; commitInteractiveSelection converts both
 	// through interactiveGrid.AbsoluteRow (keyed to the SAME
-	// interactiveScrollOffset the drag was performed against) right before
+	// interactiveScrollOffset() the drag was performed against) right before
 	// extracting text, so a resize or a scroll racing the drag can never
 	// silently select the wrong cells.
 	interactiveSelecting        bool
@@ -1686,7 +1699,7 @@ type sessionGroupMoved struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}
@@ -2358,7 +2371,7 @@ func (m Model) resumableWithNoConversationIDYet(session store.Session) bool {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	i1Trace("enter", message, m.selected)
 	i1TraceSessions(m)
-	// cure-01-01-2 (R133): heal m.interactiveScrollOffset against the
+	// cure-01-01-2 (R133): heal the stored scroll offset against the
 	// grid's REAL current scrollback length on every message, not only
 	// inside scrollInteractiveByLines/Page (cure-01-01's narrower fix).
 	// Nothing notifies Update when a resize reseeds the grid with a
@@ -4669,13 +4682,16 @@ func (m Model) mainView() string {
 	// The frame render above is the one call in this whole View() chain
 	// that actually invokes interactiveBodyLines (via previewBodyLines),
 	// which HEALS the scroll offset (R133 part 1) against the grid's real,
-	// current scrollback length -- but only on ITS OWN value-receiver copy
-	// of m, several stack frames deep, a copy this function's own m never
-	// sees mutated. Writing the returned, healed value back onto THIS m
-	// (still addressable -- it is mainView's own parameter) before
-	// footerLine runs below is what lets interactiveFooterLine's cue read
-	// the clamped position rather than the stale, unhealed field.
-	m.interactiveScrollOffset = scrollOffset
+	// current scrollback length. Storing the healed value here writes it
+	// into the SHARED cell (m.interactiveScroll, tui.go's own field doc),
+	// so it outlives this render instead of dying with mainView's own
+	// value-receiver copy of m: interactiveFooterLine's cue below reads
+	// the clamped position for THIS frame, and -- because the cell is the
+	// one every copy of Model points at -- the next input event starts
+	// from that same clamped position too, even when nothing but a render
+	// happened since a resize or a visible-only reseed shortened the real
+	// scrollback (cure-01-01-2).
+	m.setInteractiveScrollOffset(scrollOffset)
 	lines = append(lines, m.attachErrorLines(width)...)
 	lines = append(lines, m.resumeNoteLines(width)...)
 	lines = append(lines, m.selectionCopyNoteLines(width)...)
@@ -4874,17 +4890,18 @@ func (m Model) interactiveFooterLine() string {
 // while scrolled back into history, interactive mode's footer states how
 // far back the view is and that it is NOT live, so a scrolled-back pane
 // looking identical to a live one is never mistaken for one. It returns ""
-// at the live bottom (m.interactiveScrollOffset == 0), which is what lets
+// at the live bottom (m.interactiveScrollOffset() == 0), which is what lets
 // interactiveFooterLine fall back to its pre-existing, unchanged line
 // exactly there.
 //
-// m.interactiveScrollOffset is read directly rather than re-derived: by
+// m.interactiveScrollOffset() is read directly rather than re-derived: by
 // the time this runs (from interactiveFooterLine, called out of
-// mainView's own footerLine), mainView has already written the healed,
-// clamped offset previewBodyLines' own interactive branch returned back
-// onto this exact m (see mainView's doc) -- reading the field straight
-// used to be exactly the bug this cue must not repeat, back when nothing
-// threaded that healed value anywhere near the footer at all.
+// mainView's own footerLine), mainView has already stored the healed,
+// clamped offset previewBodyLines' own interactive branch returned into
+// the shared cell this reads (see mainView's doc) -- reading a stale,
+// unhealed position was exactly the bug this cue must not repeat, back
+// when nothing threaded that healed value anywhere near the footer at
+// all.
 //
 // The top-of-scrollback wording (interactiveAtTopOfScrollback) is
 // deliberately different from the ordinary scrolled-back wording, but
@@ -4892,17 +4909,18 @@ func (m Model) interactiveFooterLine() string {
 // operator scrolling further back will do nothing (there IS no more
 // history), which "scrolled back N lines" alone does not.
 func (m Model) interactiveScrollCue() string {
-	if !m.interactive || m.interactiveScrollOffset <= 0 {
+	offset := m.interactiveScrollOffset()
+	if !m.interactive || offset <= 0 {
 		return ""
 	}
 	dash := m.glyph(" \u2014 ", " - ")
 	if m.interactiveAtTopOfScrollback() {
-		return fmt.Sprintf("Top of scrollback (%d lines back)", m.interactiveScrollOffset) + dash + "not live"
+		return fmt.Sprintf("Top of scrollback (%d lines back)", offset) + dash + "not live"
 	}
-	return fmt.Sprintf("Scrolled back %d lines", m.interactiveScrollOffset) + dash + "not live"
+	return fmt.Sprintf("Scrolled back %d lines", offset) + dash + "not live"
 }
 
-// interactiveAtTopOfScrollback reports whether m.interactiveScrollOffset
+// interactiveAtTopOfScrollback reports whether the stored scroll offset
 // (already healed/clamped by the time this is called -- see
 // interactiveScrollCue's own doc) has reached the grid's REAL current
 // scrollback length, i.e. scrolling further back could not move the view
@@ -4914,7 +4932,7 @@ func (m Model) interactiveAtTopOfScrollback() bool {
 	if m.interactiveGrid == nil {
 		return false
 	}
-	return m.interactiveScrollOffset >= m.interactiveGrid.Grid().ScrollbackLen()
+	return m.interactiveScrollOffset() >= m.interactiveGrid.Grid().ScrollbackLen()
 }
 
 // belowMinimumNotice is SPEC requirement 14's exact below-minimum copy,
@@ -5878,7 +5896,7 @@ func (m Model) previewTitle() string {
 func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner, int) {
 	if m.interactive && m.interactiveGrid != nil {
 		lines, owners := m.interactiveBodyLines(contentWidth, contentHeight)
-		return lines, owners, m.interactiveScrollOffset
+		return lines, owners, m.interactiveScrollOffset()
 	}
 	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
 		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)

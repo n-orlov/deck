@@ -151,36 +151,36 @@ func TestShiftPageScrollStepsTheWholePreviewContentHeight(t *testing.T) {
 		t.Fatalf("test assumption violated: two pages (%d lines) exceed the grid's own %d-line bound, so scrollInteractiveByLines' clamp would answer these assertions instead of the page arithmetic", 2*page, interactive.ScrollbackMaxLines)
 	}
 
-	if m.interactiveScrollOffset != 0 {
-		t.Fatalf("a freshly entered interactive model starts at scroll offset %d, want 0 (the live bottom)", m.interactiveScrollOffset)
+	if m.interactiveScrollOffset() != 0 {
+		t.Fatalf("a freshly entered interactive model starts at scroll offset %d, want 0 (the live bottom)", m.interactiveScrollOffset())
 	}
 
 	back1 := pressPageKey(t, m, shiftPgUpRawCSI)
-	if back1.interactiveScrollOffset != page {
-		t.Fatalf("one Shift+PgUp moved the interactive scroll offset to %d, want %d -- the preview's whole content height (PRD II-51). A step of 1 would be a LINE, a step of %d would be the mouse wheel's notch (interactiveWheelStepLines); Shift+PgUp must page", back1.interactiveScrollOffset, page, interactiveWheelStepLines)
+	if back1.interactiveScrollOffset() != page {
+		t.Fatalf("one Shift+PgUp moved the interactive scroll offset to %d, want %d -- the preview's whole content height (PRD II-51). A step of 1 would be a LINE, a step of %d would be the mouse wheel's notch (interactiveWheelStepLines); Shift+PgUp must page", back1.interactiveScrollOffset(), page, interactiveWheelStepLines)
 	}
 
 	back2 := pressPageKey(t, back1, shiftPgUpRawCSI)
-	if back2.interactiveScrollOffset != 2*page {
-		t.Fatalf("a second Shift+PgUp moved the offset to %d, want %d (two whole pages) -- consecutive pages must tile the grid's rows exactly, sharing no row and skipping none", back2.interactiveScrollOffset, 2*page)
+	if back2.interactiveScrollOffset() != 2*page {
+		t.Fatalf("a second Shift+PgUp moved the offset to %d, want %d (two whole pages) -- consecutive pages must tile the grid's rows exactly, sharing no row and skipping none", back2.interactiveScrollOffset(), 2*page)
 	}
 
 	forward1 := pressPageKey(t, back2, shiftPgDownRawCSI)
-	if forward1.interactiveScrollOffset != page {
-		t.Fatalf("one Shift+PgDn from two pages back moved the offset to %d, want %d -- Shift+PgDn must undo exactly one Shift+PgUp, which is what lets a scenario mirror N pages back with N pages forward", forward1.interactiveScrollOffset, page)
+	if forward1.interactiveScrollOffset() != page {
+		t.Fatalf("one Shift+PgDn from two pages back moved the offset to %d, want %d -- Shift+PgDn must undo exactly one Shift+PgUp, which is what lets a scenario mirror N pages back with N pages forward", forward1.interactiveScrollOffset(), page)
 	}
 
 	forward2 := pressPageKey(t, forward1, shiftPgDownRawCSI)
-	if forward2.interactiveScrollOffset != 0 {
-		t.Fatalf("Shift+PgDn back to the live view left the offset at %d, want 0: an equal number of pages each way must land ON the live bottom, never short of it", forward2.interactiveScrollOffset)
+	if forward2.interactiveScrollOffset() != 0 {
+		t.Fatalf("Shift+PgDn back to the live view left the offset at %d, want 0: an equal number of pages each way must land ON the live bottom, never short of it", forward2.interactiveScrollOffset())
 	}
 
 	// One more at the bottom: scrollInteractiveByLines clamps at 0, so a
 	// page step cannot walk the offset negative and desynchronise a
 	// mirrored count.
 	forward3 := pressPageKey(t, forward2, shiftPgDownRawCSI)
-	if forward3.interactiveScrollOffset != 0 {
-		t.Fatalf("Shift+PgDn at the live bottom moved the offset to %d, want it clamped at 0", forward3.interactiveScrollOffset)
+	if forward3.interactiveScrollOffset() != 0 {
+		t.Fatalf("Shift+PgDn at the live bottom moved the offset to %d, want it clamped at 0", forward3.interactiveScrollOffset())
 	}
 }
 
@@ -208,10 +208,10 @@ func TestShiftPageScrollStepTracksTheTerminalHeight(t *testing.T) {
 		t.Fatalf("test assumption violated: a 24-row and a 60-row terminal both give a %d-row preview content height, so this test cannot tell a geometry-derived step from a constant one", shortPage)
 	}
 
-	if got := pressPageKey(t, short, shiftPgUpRawCSI).interactiveScrollOffset; got != shortPage {
+	if got := pressPageKey(t, short, shiftPgUpRawCSI).interactiveScrollOffset(); got != shortPage {
 		t.Errorf("Shift+PgUp in a 24-row terminal moved the offset by %d, want that terminal's own preview content height %d", got, shortPage)
 	}
-	if got := pressPageKey(t, tall, shiftPgUpRawCSI).interactiveScrollOffset; got != tallPage {
+	if got := pressPageKey(t, tall, shiftPgUpRawCSI).interactiveScrollOffset(); got != tallPage {
 		t.Errorf("Shift+PgUp in a 60-row terminal moved the offset by %d, want that terminal's own preview content height %d -- the page step must come from the live geometry, not a constant tuned to one size", got, tallPage)
 	}
 }

@@ -201,7 +201,7 @@ func (m Model) updateInteractiveSelection(x, y int) Model {
 // "a click over the preview does nothing" (SPEC §11.8) stays true) has
 // happened, it converts the anchor/current VIEW-relative cells into the
 // grid's own absolute row space via interactiveGrid.AbsoluteRow, keyed
-// to the SAME interactiveScrollOffset the drag was actually performed
+// to the SAME interactiveScrollOffset() the drag was actually performed
 // against (read once, up front, rather than re-read after extraction in
 // case a concurrent render already advanced it), extracts the plain text
 // of the linear run between them (interactive.Session.SelectedText),
@@ -230,7 +230,7 @@ func (m Model) commitInteractiveSelection() Model {
 	curCol, curRow := m.interactiveSelectCurrentCol, m.interactiveSelectCurrentRow
 	dragged := m.interactiveSelectDragged
 	grid := m.interactiveGrid
-	offset := m.interactiveScrollOffset
+	offset := m.interactiveScrollOffset()
 	client := m.tmuxClient
 
 	m.interactiveSelecting = false
@@ -295,7 +295,7 @@ var selectionCloseSGR = fmt.Sprintf("\x1b[%dm", 49)
 // press, set false by commitInteractiveSelection on release, so this is
 // automatically a no-op the instant a release commits the copy, with no
 // separate clearing step of its own). It resolves the selection's
-// per-row column range through the SAME m.interactiveScrollOffset and
+// per-row column range through the SAME m.interactiveScrollOffset() and
 // interactiveGrid.AbsoluteRow conversion commitInteractiveSelection uses
 // (via interactive.Session.SelectionHighlightRange, AbsoluteRow's own
 // sibling) -- never a second, independently derived row space -- and
@@ -317,7 +317,7 @@ func (m Model) highlightInProgressSelection(lines []string, contentHeight int) [
 		return lines
 	}
 	grid := m.interactiveGrid
-	offset := m.interactiveScrollOffset
+	offset := m.interactiveScrollOffset()
 	fromCol, anchorRow := m.interactiveSelectAnchorCol, m.interactiveSelectAnchorRow
 	toCol, curRow := m.interactiveSelectCurrentCol, m.interactiveSelectCurrentRow
 	fromRow := grid.AbsoluteRow(offset, contentHeight, anchorRow)
