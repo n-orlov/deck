@@ -6932,7 +6932,7 @@ func (m Model) detailBody() string {
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
 	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
-	fmt.Fprintf(&b, "%s\n", m.detailField("Group:              ", m.moveGroupName(sessionGroupID(session))))
+	fmt.Fprintf(&b, "%s\n", m.detailField("Group:              ", sessionGroupLabel(session)))
 	if session.CapturedPathAdvisory() {
 		fmt.Fprintf(&b, "%s\n", m.detailField("Captured PATH:      ", "advisory only (login_shell overrides PATH; SPEC \u00a76.3)"))
 	}
