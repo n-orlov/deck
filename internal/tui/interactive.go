@@ -528,8 +528,27 @@ func (m Model) previewContentSize() (width, height int) {
 // composed copy and are marked previewLineDeckOwned -- see
 // fitInteractiveBodyLines' own doc for why previewBodyLines used to mark
 // this whole slice foreign instead.
-func (m Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
-	lines, _ := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
+//
+// R133 (part 1): RenderRows' second return is the offset it actually
+// used, after clamping the requested one against the grid's REAL
+// scrollback length (internal/interactive/grid.go) -- a bound
+// scrollInteractiveByLines/scrollInteractiveByPage cannot see, since they
+// only clamp to [0, interactive.ScrollbackMaxLines] (interactive_scroll.go).
+// This used to be discarded (`lines, _ := ...`), which let
+// m.interactiveScrollOffset sit far past the real length while the view
+// was actually pinned at the top of scrollback. Healing it back onto the
+// model here, right after the call that knows the true bound, fixes that
+// AND the notice check two lines down for free: the II-49 "not
+// repainted" notice is gated on `offset == 0`, so a stale-high stored
+// offset used to suppress it even while looking at a genuinely blank live
+// screen. This heals the receiver's own copy of the field -- a pointer
+// receiver, so a caller holding an addressable Model (a test, or a
+// render-path copy mid-call) observes the healed value for the rest of
+// THIS call; R133 part 2 (the scrolled-back cue itself) and R135 read
+// the same healed field.
+func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
+	lines, usedOffset := m.interactiveGrid.RenderRows(m.interactiveScrollOffset, contentHeight)
+	m.interactiveScrollOffset = usedOffset
 	// R93/task 206: mark an in-progress drag-to-copy selection, if any,
 	// before the not-repainted check below -- highlightInProgressSelection
 	// only ever adds self-closing SGR spans around existing content, so
@@ -543,7 +562,9 @@ func (m Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, 
 	// definition real content that once appeared on screen, so it is never
 	// blank in the sense this check means, and showing the announcement
 	// over genuine history would misreport "nothing has happened yet" while
-	// looking straight at something that did.
+	// looking straight at something that did. m.interactiveScrollOffset is
+	// the HEALED value from above, so a stale-high stored offset can no
+	// longer suppress this while the real, clamped position is 0.
 	notice := m.interactiveScrollOffset == 0 && interactiveGridIsBlank(lines)
 	return fitInteractiveBodyLines(lines, contentHeight, notice)
 }
