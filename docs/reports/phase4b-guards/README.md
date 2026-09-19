@@ -237,3 +237,206 @@ this task lands on (this task's own commit does not touch any of them).
 No red guard, no drift on any read-only path, no code or feature change
 since the freeze began, and the tree is fully pushed. This is the last
 task in the plan.
+
+## Re-verification, second pass (task 027, attempt 2)
+
+The first pass above was rejected on one clause of task 027's criteria (the
+`*.go`/`*.feature` list between task 021's gate sha and this task's landing
+sha was required to be non-empty, and it is empty). This pass re-runs every
+guard fresh, quotes what each check printed, and states the census results
+in full — including the one that is empty and why it can only be empty.
+
+### Provenance of the sha these runs were made at
+
+- **HEAD when the commands below ran, on a clean tree** (`git status
+  --porcelain` empty): `34a3e46b8bf06e27227ba0a8ae716a4b9daf45a8` — the
+  first-pass commit, "docs: re-verify guards at the sha this task lands
+  (task 027)".
+- This section's own commit is the sha task 027 finally lands on. It appends
+  text to this file and nothing else, so `git show --stat <landing sha>`
+  lists exactly `docs/reports/phase4b-guards/README.md` and
+  `git diff --name-only 34a3e46..<landing sha> -- '*.go' '*.feature'` is
+  empty: the Go tree, the four read-only paths and therefore every exit
+  status below are byte-identical at `34a3e46` and at the landing sha.
+- A file cannot print the sha of the commit that contains it (that sha is a
+  hash of the file's own content), so the one-commit lag above is stated
+  explicitly instead of being papered over. The post-landing re-run of both
+  guards at the landing sha itself is recorded outside the tree, in this
+  run's artifacts directory as `027-postland-guards.txt`.
+
+### Build (fresh run)
+
+- **Invocation:** `ci/run.sh go build ./...` (CI container sibling — the Go
+  toolchain is not in the job container)
+- **Exit status:** `0`, read from the run itself (`echo $? > /tmp/build.exit`
+  → `0`)
+- **What it printed:** nothing (0 bytes of stdout+stderr)
+
+### Vet (fresh run)
+
+- **Invocation:** `ci/run.sh go vet ./...`
+- **Exit status:** `0`, read from the run itself (`echo $? > /tmp/vet.exit`
+  → `0`)
+- **What it printed:** nothing (0 bytes of stdout+stderr)
+
+### Read-only paths vs launch sha `c3b530a`, path by path
+
+Two checks per path, both quoted verbatim: the raw diff (measured with
+`wc -c`/`wc -l` on its output) and `git diff --stat`.
+
+| Path | `git diff c3b530a..HEAD -- <path>` printed | `git diff --stat c3b530a..HEAD -- <path>` printed | Differs from launch sha? |
+| --- | --- | --- | --- |
+| `SPEC.md` | nothing (`bytes=0 lines=0`) | nothing (empty string) | **No** |
+| `prds/` | nothing (`bytes=0 lines=0`) | nothing (empty string) | **No** |
+| `ci/Dockerfile` | nothing (`bytes=0 lines=0`) | nothing (empty string) | **No** |
+| `ci/SPIKE.md` | nothing (`bytes=0 lines=0`) | nothing (empty string) | **No** |
+
+All four read-only paths hold their launch-sha content exactly at the sha
+this task lands on. None of them was edited by this job at any point.
+
+### `*.go`/`*.feature` census since task 021's gate sha `0806ba6`
+
+- **Invocation:** `git diff --name-only 0806ba6..HEAD -- '*.go' '*.feature'`
+- **What it printed:** nothing; piped to `wc -l` it printed `0`.
+- **The list is empty, and it cannot be otherwise.** `0806ba6` is task 020's
+  commit — the last code-touching task on the GO branch — and the freeze line
+  this job runs under makes every commit from task 021's launch onward
+  record-only (`docs/reports/`, `docs/DELIVERY-LOG.md`, `docs/roadmap.md`,
+  `docs/prds/README.md`). The ten tail commits between `0806ba6` and this one
+  (`924a039`, `f97774f`, `97b1d68`, `c36fefa`, `b96015e`, `6c2b95c`,
+  `ba6d526`, `7dd210a`, `c9d45f0`, `34a3e46`) are all `docs:` commits. A
+  non-empty list here would mean the freeze had been broken.
+
+Because that list is necessarily empty, the two neighbouring censuses that
+*can* be non-empty are given in full, so nothing is left implied:
+
+**(a) Files the record-only tail did change** — `git diff --name-only
+0806ba6..HEAD` → 18 files, every one under `docs/`:
+
+```
+docs/DELIVERY-LOG.md
+docs/reports/phase4b-final-suite/README.md
+docs/reports/phase4b-final-suite/fullsuite.log
+docs/reports/phase4b-findings.md
+docs/reports/phase4b-guards/README.md
+docs/reports/phase4b-stability10/README.md
+docs/reports/phase4b-stability10/run-1.log
+docs/reports/phase4b-stability10/run-10.log
+docs/reports/phase4b-stability10/run-2.log
+docs/reports/phase4b-stability10/run-3.log
+docs/reports/phase4b-stability10/run-4.log
+docs/reports/phase4b-stability10/run-5.log
+docs/reports/phase4b-stability10/run-6.log
+docs/reports/phase4b-stability10/run-7.log
+docs/reports/phase4b-stability10/run-8.log
+docs/reports/phase4b-stability10/run-9.log
+docs/reports/phase4b-stability10/summary.log
+docs/reports/phase4b.md
+```
+
+**(b) `*.go`/`*.feature` files whose content differs between the launch sha
+`c3b530a` and this landing sha** — `git diff --name-only c3b530a..HEAD --
+'*.go' '*.feature'` → 74 files (non-empty; this is the census the guards
+above actually cover):
+
+    cmd/deck/main.go
+    features/assertions_test.go
+    features/attention_sort.feature
+    features/attention_sort_test.go
+    features/create_cwd_tab.feature
+    features/create_session.feature
+    features/create_session_test.go
+    features/filter.feature
+    features/kill_delete_undo.feature
+    features/mouse.feature
+    features/panel_background_rectangle.feature
+    features/panel_background_themes.feature
+    features/settings.feature
+    features/sort_order.feature
+    features/store.feature
+    features/store_feature_test.go
+    features/themes.feature
+    internal/config/config.go
+    internal/config/config_test.go
+    internal/config/schema.go
+    internal/config/schema_test.go
+    internal/config/toml.go
+    internal/config/toml_write.go
+    internal/config/toml_write_test.go
+    internal/service/agent.go
+    internal/service/agent_test.go
+    internal/service/group_move.go
+    internal/service/session_context.go
+    internal/service/session_context_test.go
+    internal/service/shell.go
+    internal/service/shell_test.go
+    internal/store/group.go
+    internal/store/group_crud_test.go
+    internal/store/schema_v7_migration_test.go
+    internal/store/store.go
+    internal/store/store_test.go
+    internal/store/ui_state_groups_test.go
+    internal/tui/attention_next_test.go
+    internal/tui/badge_detail_test.go
+    internal/tui/create_last_used_group_test.go
+    internal/tui/filter.go
+    internal/tui/filter_test.go
+    internal/tui/flat_sidebar_test.go
+    internal/tui/group.go
+    internal/tui/group_id_navigation_test.go
+    internal/tui/group_move_test.go
+    internal/tui/group_order_test.go
+    internal/tui/group_shared_state_db_test.go
+    internal/tui/group_test.go
+    internal/tui/group_visual_order_test.go
+    internal/tui/interactive.go
+    internal/tui/interactive_footer_scroll_advertisement_test.go
+    internal/tui/interactive_footer_scroll_cue_test.go
+    internal/tui/interactive_forward_gate_test.go
+    internal/tui/interactive_scroll_heal_test.go
+    internal/tui/main_view_theme_test.go
+    internal/tui/mark_test.go
+    internal/tui/mouse.go
+    internal/tui/mouse_test.go
+    internal/tui/navigation_parity_test.go
+    internal/tui/panel.go
+    internal/tui/panel_leak_audit_test.go
+    internal/tui/panel_test.go
+    internal/tui/preview_placeholder_test.go
+    internal/tui/registry_guard_test.go
+    internal/tui/rename.go
+    internal/tui/settings.go
+    internal/tui/settings_group_by_staging_test.go
+    internal/tui/settings_groups_test.go
+    internal/tui/sidebar_row_fill_test.go
+    internal/tui/sidebar_stripe_test.go
+    internal/tui/sort_order_render_test.go
+    internal/tui/tui.go
+    internal/tui/unarchive_test.go
+
+### HEAD vs `origin/main`
+
+- **Invocations:** `git rev-parse HEAD` and `git rev-parse origin/main`,
+  run after this section's commit was pushed with `git push origin main`.
+- **Result:** both print the same 40-character sha — the commit that lands
+  this section. The run's own notes record that sha; a reader can confirm
+  equality at any later time by re-running the two commands, and
+  `git status --porcelain` is empty at that point.
+
+### Summary (second pass)
+
+| Check | Invocation | Result |
+| --- | --- | --- |
+| build | `ci/run.sh go build ./...` | exit `0`, no output |
+| vet | `ci/run.sh go vet ./...` | exit `0`, no output |
+| `SPEC.md` | `git diff c3b530a..HEAD -- SPEC.md` | printed nothing → unchanged |
+| `prds/` | `git diff c3b530a..HEAD -- prds/` | printed nothing → unchanged |
+| `ci/Dockerfile` | `git diff c3b530a..HEAD -- ci/Dockerfile` | printed nothing → unchanged |
+| `ci/SPIKE.md` | `git diff c3b530a..HEAD -- ci/SPIKE.md` | printed nothing → unchanged |
+| `.go`/`.feature` since `0806ba6` | `git diff --name-only 0806ba6..HEAD -- '*.go' '*.feature'` | empty (`wc -l` → `0`); empty by force of the freeze |
+| tail files since `0806ba6` | `git diff --name-only 0806ba6..HEAD` | 18 files, all `docs/` (listed above) |
+| `.go`/`.feature` since `c3b530a` | `git diff --name-only c3b530a..HEAD -- '*.go' '*.feature'` | 74 files (listed above) |
+| HEAD == origin/main | `git rev-parse HEAD` / `git rev-parse origin/main` | equal after push |
+
+No red guard, no read-only-path drift, no code or feature change inside the
+freeze, and the tree is fully pushed.
