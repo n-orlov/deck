@@ -1,0 +1,16 @@
+=== RUN   TestMoveSessionGroupThroughPickerChangesOnlyThatOneRow
+--- PASS: TestMoveSessionGroupThroughPickerChangesOnlyThatOneRow (0.02s)
+=== RUN   TestMoveSessionGroupToDefaultClearsGroupID
+--- PASS: TestMoveSessionGroupToDefaultClearsGroupID (0.02s)
+=== RUN   TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens
+=== RUN   TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens/named_group
+=== RUN   TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens/structural_default
+--- PASS: TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens (0.00s)
+    --- PASS: TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens/named_group (0.00s)
+    --- PASS: TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens/structural_default (0.00s)
+=== RUN   TestGDoesNotDisturbQCtrlCIOrRInsideDetail
+--- PASS: TestGDoesNotDisturbQCtrlCIOrRInsideDetail (0.00s)
+=== RUN   TestDetailFooterAndHelpBothNameGForGroupMove
+--- PASS: TestDetailFooterAndHelpBothNameGForGroupMove (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.062s
