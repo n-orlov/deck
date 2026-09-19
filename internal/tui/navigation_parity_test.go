@@ -37,11 +37,11 @@ func TestNavigationVisitsEveryVisualRow(t *testing.T) {
 	}
 
 	// Task 113's own trap, asserted rather than assumed: idx0 and idx3
-	// must resolve to the SAME sessionWorkspace() key, or the rest of this
+	// must resolve to the SAME sessionGroupKey() key, or the rest of this
 	// test would silently exercise the adjacent case every other grouping
 	// test in this package already covers.
-	if ws0, ws3 := sessionWorkspace(fixture()[0]), sessionWorkspace(fixture()[3]); ws0 != ws3 {
-		t.Fatalf("fixture sanity: sessionWorkspace(idx0)=%q != sessionWorkspace(idx3)=%q, want equal (task 113 trap)", ws0, ws3)
+	if ws0, ws3 := sessionGroupKey(fixture()[0]), sessionGroupKey(fixture()[3]); ws0 != ws3 {
+		t.Fatalf("fixture sanity: sessionGroupKey(idx0)=%q != sessionGroupKey(idx3)=%q, want equal (task 113 trap)", ws0, ws3)
 	}
 
 	// Alphabetical, case-insensitive group order (R129, task 011) puts

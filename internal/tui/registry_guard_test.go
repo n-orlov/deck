@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -303,5 +307,91 @@ func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 		!strings.Contains(detailView, `"plan"`) ||
 		!strings.Contains(detailView, "falling back to safe") {
 		t.Fatalf("detail view missing the extra kind's degradation reason:\n%s", detailView)
+	}
+}
+
+// forbiddenGroupModelIdentifierRe matches a `workspace`/`Workspace` Go
+// identifier (or any longer identifier that carries it as a substring,
+// e.g. the old sessionWorkspace/DefaultWorkspace/GroupByWorkspace names
+// R128/R129 deleted) case-insensitively. It deliberately targets
+// *ast.Ident nodes only -- never the raw file text -- so it never trips
+// on the legitimate historical artifacts task 008/012 left behind on
+// purpose: schemaV1's `workspace TEXT` column literal and schemaV7's
+// `DROP COLUMN workspace` statement (both inside Go string literals,
+// needed verbatim because that really was the historical column's name
+// and the migration must name it exactly to drop it), and the handful of
+// doc comments/user-facing help text across these three trees that still
+// use "workspace" as an English word describing what the removed feature
+// used to be. Neither a string literal nor a comment is an *ast.Ident, so
+// this regexp only ever sees real identifiers: variable, field, function,
+// type and (deliberately, for full closure) test-function names.
+var forbiddenGroupModelIdentifierRe = regexp.MustCompile(`(?i)workspace`)
+
+// TestNoLegacyGroupModelIdentifierSurvivesInStoreTUIOrService is the
+// R128/R129 closure guard (task 014): it parses every .go file (product
+// and test) in internal/store, internal/tui and internal/service and
+// fails if any Go identifier -- a var, field, function, type, or test
+// name -- contains "workspace"/"Workspace", case-insensitively. R128
+// (task 008) deleted store.DefaultWorkspace/Session.Workspace/
+// Session.WorkspaceColumn and the sessions.workspace column (replaced by
+// groups/group_id); R129 (tasks 011-013, task 012 specifically) deleted
+// [ui] group_by_workspace, DECK_GROUP_BY_WORKSPACE and flat sidebar mode.
+// This guard is the one place that keeps that removal closed:
+// internal/tui's own group-key seam (sessionWorkspace, sidebarGroup.
+// Workspace, sidebarEntry.workspace, and every test identifier that named
+// them) was renamed to sessionGroupKey / sidebarGroup.Name /
+// sidebarEntry.groupName in the SAME commit that added this guard,
+// specifically so this test does not merely describe a rule -- it
+// enforces one. The guard's scope is exactly these three trees:
+// internal/agent/codex.go's `workspace-write` flag, cmd/fake-codex and
+// internal/tmux/key.go's doc comment (none of which have anything to do
+// with SPEC §11's manual groups) lie outside it by construction, because
+// they live in neither internal/store, internal/tui nor internal/service.
+//
+// Observed failing (by construction, not merely by inspection): reverting
+// the sessionGroupKey rename locally across internal/tui -- `sed -i
+// s/sessionGroupKey/sessionWorkspace/g internal/tui/*.go` -- and
+// rerunning this test reintroduces the exact identifier this guard exists
+// to catch, and it fails with eight t.Errorf lines naming filter.go:43,
+// group.go:47/60/76/120, group_test.go:28 and
+// navigation_parity_test.go:43 (twice) before the revert is undone; the
+// captured run is artifacts/task014-guard-observed-failing.log.
+func TestNoLegacyGroupModelIdentifierSurvivesInStoreTUIOrService(t *testing.T) {
+	dirs := []string{"../store", ".", "../service"}
+	fset := token.NewFileSet()
+	filesScanned := 0
+	for _, dir := range dirs {
+		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+		if err != nil {
+			t.Fatalf("glob %s: %v", dir, err)
+		}
+		if len(files) == 0 {
+			t.Fatalf("no .go files found in %s -- guard test may be broken", dir)
+		}
+		for _, f := range files {
+			node, err := parser.ParseFile(fset, f, nil, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", f, err)
+			}
+			filesScanned++
+			ast.Inspect(node, func(n ast.Node) bool {
+				ident, ok := n.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if forbiddenGroupModelIdentifierRe.MatchString(ident.Name) {
+					pos := fset.Position(ident.Pos())
+					t.Errorf("%s:%d: identifier %q contains \"workspace\"/\"Workspace\" -- "+
+						"R128/R129 removed the workspace grouping model from "+
+						"internal/store, internal/tui and internal/service entirely; "+
+						"no identifier in those three trees may name it, even in a test",
+						pos.Filename, pos.Line, ident.Name)
+				}
+				return true
+			})
+		}
+	}
+	if filesScanned == 0 {
+		t.Fatal("scanned zero .go files across internal/store, internal/tui and internal/service -- guard test may be broken")
 	}
 }

@@ -35,13 +35,13 @@ func buildSchemaV6Fixture(t *testing.T, home, path string) [3]string {
 	ids := [3]string{
 		"v6-fixture-session-a", "v6-fixture-session-b", "v6-fixture-session-c",
 	}
-	workspaces := [3]string{"team-a", "team-b", "team-c"}
+	legacyColumnValues := [3]string{"team-a", "team-b", "team-c"}
 	names := [3]string{"alpha", "bravo", "charlie"}
 	for i, id := range ids {
 		if _, err := fixture.Exec(`INSERT INTO sessions (
 			id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at, workspace
 		) VALUES (?, ?, ?, ?, 'shell', '/bin/sh', 'stopped', 'test', ?, ?, ?)`,
-			id, names[i], names[i], "/work/"+names[i], int64(i+1), int64(i+1), workspaces[i]); err != nil {
+			id, names[i], names[i], "/work/"+names[i], int64(i+1), int64(i+1), legacyColumnValues[i]); err != nil {
 			t.Fatalf("seed fixture session %d: %v", i, err)
 		}
 	}
@@ -78,7 +78,7 @@ func tableColumnSet(t *testing.T, db *sql.DB, table string) map[string]bool {
 	return cols
 }
 
-// TestSchemaV7MigratesV6WorkspaceRowsToNullGroupID is task 008's (R128,
+// TestSchemaV7MigratesV6LegacyColumnRowsToNullGroupID is task 008's (R128,
 // part 1) required migration proof: a schemaV6 fixture holding three
 // sessions with three DISTINCT sessions.workspace values migrates, in one
 // commit's single schemaV7 step, to three rows whose group_id reads back
@@ -86,7 +86,7 @@ func tableColumnSet(t *testing.T, db *sql.DB, table string) map[string]bool {
 // prohibition on "seeding groups from old workspace values"), an empty
 // groups table (schemaV7 creates it; nothing populates it), and the same
 // three sessions still listable by name after the file is reopened.
-func TestSchemaV7MigratesV6WorkspaceRowsToNullGroupID(t *testing.T) {
+func TestSchemaV7MigratesV6LegacyColumnRowsToNullGroupID(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, "state.db")
 	ids := buildSchemaV6Fixture(t, home, path)
@@ -214,9 +214,9 @@ func TestSchemaV7MigrationIsAtomicOnMidMigrationFailure(t *testing.T) {
 	if err := raw.QueryRow(`SELECT count(*) FROM sessions`).Scan(&sessionCount); err != nil || sessionCount != 3 {
 		t.Fatalf("post-failure session count = %d, %v; want 3 (the schemaV6 database is intact)", sessionCount, err)
 	}
-	var workspaceValues int
-	if err := raw.QueryRow(`SELECT count(*) FROM sessions WHERE workspace IS NOT NULL`).Scan(&workspaceValues); err != nil || workspaceValues != 3 {
-		t.Fatalf("post-failure rows with a workspace value = %d, %v; want 3 (readable, unchanged)", workspaceValues, err)
+	var legacyColumnNonNullCount int
+	if err := raw.QueryRow(`SELECT count(*) FROM sessions WHERE workspace IS NOT NULL`).Scan(&legacyColumnNonNullCount); err != nil || legacyColumnNonNullCount != 3 {
+		t.Fatalf("post-failure rows with a legacy column value = %d, %v; want 3 (readable, unchanged)", legacyColumnNonNullCount, err)
 	}
 	if err := raw.Close(); err != nil {
 		t.Fatal(err)

@@ -4959,7 +4959,7 @@ const (
 type sidebarEntry struct {
 	text         string
 	kind         sidebarLineKind
-	workspace    string
+	groupName    string
 	groupID      int64
 	sessionIndex int
 	// bg (task 321/R58b) is the selection/selection_idle/surface-stripe
@@ -5011,7 +5011,7 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	// theme.Background (sidebarRowLines is never called for a header).
 	sessionPos := 0
 	for _, group := range m.groupSessions() {
-		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group, contentWidth), kind: sidebarLineHeader, workspace: group.Workspace, groupID: group.GroupID})
+		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group, contentWidth), kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID})
 		if m.isGroupCollapsed(group.GroupID) {
 			continue
 		}

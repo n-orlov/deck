@@ -66,10 +66,10 @@ func TestFilterByNameShowsOnlyTheMatchingRow(t *testing.T) {
 	}
 }
 
-// TestFilterByWorkspaceShowsOnlyTheMatchingRow proves the "workspace" leg
+// TestFilterByGroupShowsOnlyTheMatchingRow proves the "group" leg
 // of requirement 33's three named fields, using a query that appears in NO
 // session's name or cwd -- only its workspace.
-func TestFilterByWorkspaceShowsOnlyTheMatchingRow(t *testing.T) {
+func TestFilterByGroupShowsOnlyTheMatchingRow(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())
 	got, _ := model.Update(key("/"))
 	model = got.(Model)
