@@ -1,121 +1,83 @@
-# Phase 4b — ten-run stability sweep (task 023)
+# Phase 4b — ten-run whole-suite stability sweep
 
-Freeze-line stability sweep: the whole Go test suite, no test-name filter, no
-narrowed package list, run **ten** times from a clean state in the CI
-container, at the same code sha task 021's whole-suite gate sweep gated.
+## Code sha and invocation
 
-- **Code sha (same sha task 021 gated):**
-  `0806ba64ede4356af50b404affd10f26f68d4d84` (task 020, "tui: prove
-  shared-state.db group edits reach another client on reload (R131)" — the
-  last code-touching commit on the GO branch). `HEAD` at the time this
-  sweep launched was `97b1d685742dbb4900d4815acbbb88fa65c94e78` (tasks
-  021/022's four record-only commits stacked on top of `0806ba6`);
-  `git diff --stat 0806ba6..HEAD -- '*.go' '*.feature'` printed nothing, so
-  the code tree at `HEAD` is byte-identical to the code tree at `0806ba6`
-  and this sweep's results hold at both shas.
-- **Invocation launched (exactly once, from a clean tree):**
+- Code sha: **baf92ed** — the sha task 021's whole-suite gate ran against (see
+  `docs/reports/phase4b-final-suite/README.md`). This report was written at HEAD
+  `c8e8c5e`, which is docs-only on top of baf92ed: `git diff --stat baf92ed..HEAD -- '*.go'`
+  is empty, so the code under test is byte-identical to baf92ed's.
+- Invocation, run ten times back-to-back from a clean state each time, via
+  `ci/stability.sh 10` (which itself shells out per run to
+  `ci/run.sh go test -p=1 -count=1 ./...` in the CI container, capturing the real
+  `go test` exit status per run — never a piped/tee'd status):
 
   ```
-  nohup sh -c 'timeout 7200 ci/stability.sh 10 > /tmp/stability10-run.log 2>&1; echo $? > /tmp/stability10-run.log.exitstatus' >/dev/null 2>&1 &
+  ci/stability.sh 10
   ```
 
-  `ci/stability.sh 10` runs `ci/run.sh go test -p=1 -count=1 ./...` (every
-  package, no `-run` filter, no narrowed package list, default godog tag
-  filter `~@real-agents && ~@nightly`) ten times from a clean state
-  (`-count=1` disables the test cache; each run gets its own `--rm` sibling
-  container so no tmux socket or other run-scoped state leaks between
-  runs), reading each run's **real** `go test` exit status — not a piped
-  `tee` status (see the script's own header comment on the
-  mislabelled-PASS defect it exists to avoid). `git status --porcelain` was
-  empty immediately before launch. The launch was backgrounded and
-  disowned; this iteration polled the log on a `sleep 120` cadence rather
-  than blocking on the command.
-- **Wall clock:** launched `2026-09-19T16:01:32Z`, last line of
-  `summary.log` written `2026-09-19T17:15:22Z` (`stat` mtime) — **1h13m50s
-  (73.83 min)**, inside the ~70–75 minute range measured at planning time
-  for ten runs at ~7m18s each.
-- **Scratch directory** `ci/stability.sh` created with `mktemp -d`:
-  `/tmp/deck-stability.2dvAoW` — ephemeral container state, not committed;
-  its ten `run-N.log` files and `summary.log` were copied into this report
-  directory (below) before that directory could be reaped.
+- `-count=1` disables the test cache and `--rm` on the sibling container drops any
+  tmux/SQLite state between runs, so each of the ten runs starts clean.
 
-## Result: 10/10 passed
+## Headline
 
-| Run | Result | Exit | Log |
-| --- | --- | --- | --- |
-| 1 | PASS | 0 | `run-1.log` |
-| 2 | PASS | 0 | `run-2.log` |
-| 3 | PASS | 0 | `run-3.log` |
-| 4 | PASS | 0 | `run-4.log` |
-| 5 | PASS | 0 | `run-5.log` |
-| 6 | PASS | 0 | `run-6.log` |
-| 7 | PASS | 0 | `run-7.log` |
-| 8 | PASS | 0 | `run-8.log` |
-| 9 | PASS | 0 | `run-9.log` |
-| 10 | PASS | 0 | `run-10.log` |
+**9/10 passed.**
 
-Taken directly from `ci/stability.sh`'s own PASS/FAIL labels, which come
-from each run's actual (never piped/`tee`'d) `go test` exit status — never
-inferred from log prose. `summary.log`'s final two lines, quoted verbatim:
+- Total wall clock for the ten runs: **~73 minutes** (started ~20:39:33 UTC,
+  finished 21:52:56 UTC 2026-09-19, per the per-run log file timestamps — within
+  the ~70–75 minute band expected for ten runs at the baseline ~7m18s/run).
+- One run (run 2) hit `exit 1`. The other nine (runs 1, 3–10) exited 0.
+
+## Per-run table
+
+| Run | Result | Exit | Duration (features pkg) | Log |
+| --- | ------ | ---- | ------------------------ | --- |
+| 1  | PASS | 0 | features 369.946s | [run-01.log](run-01.log) |
+| 2  | FAIL | 1 | features 416.885s (TestFeatures 399.57s) | [run-02.log](run-02.log) |
+| 3  | PASS | 0 | features 366.434s | [run-03.log](run-03.log) |
+| 4  | PASS | 0 | features 365.882s | [run-04.log](run-04.log) |
+| 5  | PASS | 0 | features 367.423s | [run-05.log](run-05.log) |
+| 6  | PASS | 0 | features 364.345s | [run-06.log](run-06.log) |
+| 7  | PASS | 0 | features 366.162s | [run-07.log](run-07.log) |
+| 8  | PASS | 0 | features 365.399s | [run-08.log](run-08.log) |
+| 9  | PASS | 0 | features 364.560s | [run-09.log](run-09.log) |
+| 10 | PASS | 0 | features 366.870s | [run-10.log](run-10.log) |
+
+Combined log of all ten runs (as the script wrote it, in order): [summary.log](summary.log)
+
+## The one FAIL, named
+
+Run 2, `exit 1`:
 
 ```
-full per-run logs and combined summary log kept in: /tmp/deck-stability.2dvAoW
-10/10 passed
+--- FAIL: TestFeatures/settings'_group-delete_d_branch_routes_through_the_same_dd_batch_confirm_and_one_u_restores_the_whole_batch_(R131_part_2) (47.23s)
+    suite.go:640: after scenario hook failed: timed out waiting for frame "starting": context deadline exceeded
 ```
 
-The overall `ci/stability.sh 10` script exit status, captured immediately
-after the command line that produced it
-(`/tmp/stability10-run.log.exitstatus`): `0`.
+- Scenario: `features/kill_delete_undo.feature:688` — *"settings' group-delete d
+  branch routes through the same dd batch confirm and one u restores the whole
+  batch (R131 part 2)"*.
+- This is the **transient-`starting` assertion** flake class already named as
+  open in `docs/reports/phase4b-final-suite/README.md` and carved as
+  `021-cure-01` (a different scenario in the same feature file, same wait
+  pattern: the client has already progressed past the transient `starting`
+  label — the dumped frame shows a live `$` prompt — by the time the harness's
+  post-scenario wait checks for it, so the wait times out against a state the
+  suite already moved past). It is named here as **advisory**, with its log
+  path (`run-02.log`, line ~6434 onward for the `--- FAIL` block), rather than
+  chased under this task: the fix for this flake class belongs to `021-cure-01`
+  / `021-cure-02` and the resweep at `021-resweep-01`, not to this stability
+  sweep.
+- No instance of the second known-open flake class (the SIGWINCH exact-count
+  assertion in `features/harness.feature:199`'s scenario outline) occurred in
+  any of the ten runs. Had one occurred, it would have been named here the same
+  way, advisory, with its log path — not chased.
+- All eighteen package result lines (14 `ok`, `features` at either `ok` or
+  `FAIL`, 3 `[no test files]` for `internal/notify`, `internal/search`,
+  `internal/unit`) are present in every one of the ten run logs; no other
+  package failed in any run.
 
-## Every failure named
+## Logs committed
 
-**None.** All ten runs passed with exit `0`. Verified two ways per run, not
-just from the script's own PASS label:
-
-- `grep -c FAIL run-N.log` → `0` for every `N` in `1..10` — no `FAIL` line
-  in any per-run log.
-- `grep -c '^ok' run-N.log` → `15`, and `grep -c 'no test files' run-N.log`
-  → `18` `− 15 = 3`, for every `N` — every one of the 18 packages
-  `ci/run.sh go list ./... | wc -l` resolves (15 with tests, `internal/notify`
-  /`internal/search`/`internal/unit` with none) reports a result in every
-  one of the ten runs, with no run short of the full package set.
-
-Because the headline is a clean `10/10`, there is no FAIL row to name a
-scenario/test or a log path for. This section states that plainly rather
-than omitting it — the task's own criteria call for a FAIL row "even when
-the headline is 10/10", and the honest answer this sweep produced is that
-none is needed.
-
-## Known-open flake classes: not observed this sweep
-
-Per this task's own criteria, the two known-open flake classes are
-advisory and, if hit, are named with their log paths rather than chased —
-they were checked for explicitly and **neither occurred in any of the ten
-runs**:
-
-- **Transient-`starting` assertion** (`TestGoldenMinimumFrame`,
-  `features/golden_frame_test.go:74`, `"frame kept changing... not
-  settled"`) — `grep -il "not settled" run-*.log` → no match in any of the
-  ten logs.
-- **SIGWINCH exact-count assertion**
-  (`TestSigwinchCountDistinguishesTwoFromThree`,
-  `features/sigwinch_count_test.go`) — `grep -il "sigwinch" run-*.log` → no
-  match in any of the ten logs.
-
-Both checks were run over all ten per-run logs, not only a sample. This
-sweep is a clean 10/10 with no recurrence of either flake class to
-disclose; nothing here needed chasing, and nothing was chased.
-
-## Files in this directory
-
-- `run-1.log` … `run-10.log` — the ten per-run logs, one per run, each the
-  full captured `ci/run.sh go test -p=1 -count=1 ./...` output for that run.
-- `summary.log` — the combined log `ci/stability.sh` itself accumulates
-  (all ten runs' output plus its own `=== RUN N ===` /
-  `=== RUN N: PASS|FAIL (exit S) ===` markers and the final `10/10 passed`
-  line), kept alongside the per-run logs for cross-reference.
-
-## Result
-
-Green: 10/10, exit `0`, wall clock 73.83 min. No red lane; no new task
-carved. Nothing to disclose from either known-open flake class this sweep.
+All eleven log files listed in the table above and referenced by filename,
+plus this README, live under `docs/reports/phase4b-stability10/`:
+`run-01.log` … `run-10.log`, `summary.log`.
