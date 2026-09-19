@@ -4332,17 +4332,89 @@ func (m Model) footerLineContent() string {
 // read directly at this point) is not the live bottom. At offset 0
 // interactiveScrollCue returns "" and this renders byte-identical to the
 // pre-R133-part-2 line.
+//
+// R134 (PRD phase4b, GH #30) adds a third, optional segment: Shift+PgUp/PgDn
+// IS bound while interactive (updateInteractive's mouse-wheel and key
+// handling), so this line's own "never name a key interactive mode does
+// not itself bind" rule already permits naming it -- the prior omission
+// was an oversight, not a policy. It is advertised only while scrolled
+// back (cue != ""), the PRD's own sanctioned simplification: at the live
+// bottom the line stays EXACTLY as it rendered before R134 (still
+// asserted by interactive_footer_scroll_cue_test.go's byte-identical,
+// no-"scroll"-wording check), never naming the scroll keys where there is
+// nothing to scroll back FROM.
+//
+// Room at 80 columns is tight -- the cue alone plus the mandatory Ctrl+Q
+// segment can already consume most of the frame -- so once scrolled back,
+// the three optional segments degrade the way footerLegendWithin degrades
+// the list-mode legend: whole segments drop, one at a time from the least
+// essential end, the instant the next one would not fit, and Ctrl+Q --
+// the one way out of interactive mode -- is never among the segments
+// considered for dropping; it is appended only once every other segment
+// has already been decided, and always renders in full. Priority, most
+// important (survives longest) first: the cue itself (states the view is
+// not live -- R133), then the R134 scroll-key advertisement, then the
+// pre-existing forward-note reminder (dropped first: it is the least
+// essential of the three, and unlike the other two it is not information
+// specific to being scrolled back at all).
 func (m Model) interactiveFooterLine() string {
 	forwardNote := m.colorToken(theme.Hint, "keystrokes forward to the live pane")
 	sep := m.glyph(" · ", " - ")
 	key := m.colorToken(theme.Key, m.glyph("Ctrl+Q", "Ctrl+Q"))
 	hint := m.colorToken(theme.Hint, "leave interactive mode")
-	base := forwardNote + sep + key + " " + hint
+	quit := key + " " + hint
+
 	cue := m.interactiveScrollCue()
 	if cue == "" {
-		return base
+		return forwardNote + sep + quit
 	}
-	return m.colorToken(theme.Hint, cue) + sep + base
+
+	width, _ := m.frameSize()
+	sepWidth := stringWidth(sep)
+	quitWidth := stringWidth("Ctrl+Q leave interactive mode")
+
+	scrollKey := m.colorToken(theme.Key, "Shift+PgUp/PgDn")
+	scrollHint := m.colorToken(theme.Hint, "scroll")
+	scrollAd := scrollKey + " " + scrollHint
+
+	type footerSegment struct {
+		styled string
+		width  int
+	}
+	segments := []footerSegment{
+		{m.colorToken(theme.Hint, cue), stringWidth(cue)},
+		{scrollAd, stringWidth("Shift+PgUp/PgDn scroll")},
+		{forwardNote, stringWidth("keystrokes forward to the live pane")},
+	}
+
+	budget := width - quitWidth
+	if budget < 0 {
+		// Narrower than deck's own 80-column floor guarantees (footerLine's
+		// caller never reaches here below that floor -- computeLayout's
+		// BelowMinimum short-circuits first); still never drop the one way
+		// out.
+		return key
+	}
+	kept, used := 0, 0
+	for _, s := range segments {
+		add := s.width
+		if kept > 0 {
+			add += sepWidth
+		}
+		if used+add+sepWidth > budget {
+			break
+		}
+		used += add
+		kept++
+	}
+	if kept == 0 {
+		return quit
+	}
+	parts := make([]string, kept)
+	for i := 0; i < kept; i++ {
+		parts[i] = segments[i].styled
+	}
+	return strings.Join(parts, sep) + sep + quit
 }
 
 // interactiveScrollCue is R133 part 2's own claim (PRD phase4b, GH #30):
