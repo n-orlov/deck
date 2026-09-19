@@ -21,17 +21,20 @@ func TestGroupOrderAaaLeadsAlphabetically(t *testing.T) {
 		{ID: "a1", GroupName: "AAA"}, // uppercase, still must sort as "aaa"
 	})
 	groups := m.groupSessions()
-	if len(groups) != 3 {
-		t.Fatalf("len(groups) = %d, want 3 (%v)", len(groups), groups)
+	// cure-01-02: the structural default group now always renders
+	// unfiltered even with zero members (SPEC §11 "it always exists"), so
+	// three real groups plus the trailing default is 4, not 3.
+	if len(groups) != 4 {
+		t.Fatalf("len(groups) = %d, want 4 (%v)", len(groups), groups)
 	}
 	var got []string
 	for _, g := range groups {
 		got = append(got, g.Name)
 	}
-	want := []string{"AAA", "Mmm", "zzz"}
+	want := []string{"AAA", "Mmm", "zzz", ""}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("group order = %v, want %v (case-insensitive alphabetical, insertion order zzz/Mmm/AAA must not survive)", got, want)
+			t.Fatalf("group order = %v, want %v (case-insensitive alphabetical, insertion order zzz/Mmm/AAA must not survive, default last)", got, want)
 		}
 	}
 }
