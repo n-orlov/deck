@@ -710,26 +710,41 @@ func (m *Model) settingsStartGroupRename() {
 }
 
 // settingsStartGroupDelete is "d"'s effect on the currently selected
-// group (task 019, R131 part 2): an empty group (no member sessions in
-// m.baseSessions -- SPEC's default view, the same population the sidebar
-// and the dd batch path itself act on) is dropped immediately via
+// group (task 019, R131 part 2): the group's COMPLETE persisted member set
+// (groupMemberSessions -- active AND archived sessions, never just
+// m.baseSessions' archive-free default view) decides empty-vs-non-empty.
+// Empty (no members at all, archived included) is dropped immediately via
 // store.DeleteGroup, with no prompt at all ("there is nothing to decide"),
 // while a non-empty one opens the two-branch confirm sub-mode instead of
-// deleting anything yet. Does nothing when no group is selected (an empty
-// list) -- and "default" can never reach here in the first place, since
-// it is never a row in m.settingsGroups to begin with.
+// deleting anything yet, with the resolved member set frozen onto
+// m.settingsGroupDeleteMembers for that confirm's own later use (the
+// prompt's count, "m"'s move loop, and "d"'s hand-off to the bulk dd path
+// all read that same frozen slice rather than re-querying three times).
+// Does nothing when no group is selected (an empty list) -- and "default"
+// can never reach here in the first place, since it is never a row in
+// m.settingsGroups to begin with.
 func (m *Model) settingsStartGroupDelete() {
 	g, ok := m.settingsSelectedGroup()
 	if !ok {
 		return
 	}
-	if len(m.sessionsInGroup(g.ID)) == 0 {
+	if m.store == nil {
+		m.settingsGroupNote = "no store is open"
+		return
+	}
+	members, err := m.groupMemberSessions(context.Background(), g.ID)
+	if err != nil {
+		m.settingsGroupNote = err.Error()
+		return
+	}
+	if len(members) == 0 {
 		m.settingsDeleteEmptyGroupNow(g)
 		return
 	}
 	m.settingsGroupDeleteConfirming = true
 	m.settingsGroupDeleteID = g.ID
 	m.settingsGroupDeleteName = g.Name
+	m.settingsGroupDeleteMembers = members
 	m.settingsGroupNote = ""
 }
 
@@ -766,6 +781,7 @@ func (m Model) updateSettingsGroupDeleteConfirm(msg tea.KeyMsg) (Model, tea.Cmd)
 		m.settingsGroupDeleteConfirming = false
 		m.settingsGroupDeleteID = 0
 		m.settingsGroupDeleteName = ""
+		m.settingsGroupDeleteMembers = nil
 		m.settingsGroupNote = ""
 		return m, nil
 	case "m":
@@ -796,13 +812,14 @@ func (m *Model) settingsMoveGroupMembersToDefaultAndDeleteGroup() tea.Cmd {
 		return nil
 	}
 	id, name := m.settingsGroupDeleteID, m.settingsGroupDeleteName
+	members := m.settingsGroupDeleteMembers
 	ctx := context.Background()
 	now := time.Now()
 	if m.settings.Clock != nil {
 		now = m.settings.Clock.Now()
 	}
 	at := now.UnixMilli()
-	for _, s := range m.sessionsInGroup(id) {
+	for _, s := range members {
 		if err := m.store.SetSessionGroup(ctx, s.ID, 0, "user", at); err != nil {
 			m.settingsGroupNote = err.Error()
 			return nil
@@ -819,6 +836,7 @@ func (m *Model) settingsMoveGroupMembersToDefaultAndDeleteGroup() tea.Cmd {
 	m.settingsGroupDeleteConfirming = false
 	m.settingsGroupDeleteID = 0
 	m.settingsGroupDeleteName = ""
+	m.settingsGroupDeleteMembers = nil
 	m.settingsGroupNote = "deleted group " + name + " -- its sessions moved to default"
 	return m.loadSessions
 }
@@ -848,16 +866,25 @@ func (m *Model) settingsMoveGroupMembersToDefaultAndDeleteGroup() tea.Cmd {
 // their group_id no longer resolves, which SPEC §11's dangling-group_id
 // rule already renders as default rather than crashing.
 func (m *Model) settingsRouteGroupDeleteToBulkConfirm() {
-	members := m.sessionsInGroup(m.settingsGroupDeleteID)
+	members := m.settingsGroupDeleteMembers
 	marked := make(map[string]bool, len(members))
 	for _, s := range members {
 		marked[s.ID] = true
 	}
 	m.bulkDeleteGroupID = m.settingsGroupDeleteID
 	m.bulkDeleteGroupName = m.settingsGroupDeleteName
+	// The complete member set (archived included) is handed to the shared
+	// dd seam VERBATIM here, via bulkDeleteSessions -- never re-derived from
+	// m.marked through markedSessions(), which would filter it back down to
+	// whatever the sidebar's current view (and any active filter) happens
+	// to show. m.marked is still populated alongside it, for the sidebar's
+	// own mark rendering if settings reopens mid-batch; bulkDeleteBatch
+	// never reads it while bulkDeleteSessions is set.
+	m.bulkDeleteSessions = members
 	m.settingsGroupDeleteConfirming = false
 	m.settingsGroupDeleteID = 0
 	m.settingsGroupDeleteName = ""
+	m.settingsGroupDeleteMembers = nil
 	m.settingsGroupNote = ""
 	m.settingsOpen = false
 	m.marked = marked
@@ -2408,7 +2435,7 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 	// prompt at all).
 	if m.settingsGroupDeleteConfirming {
 		addLine("", theme.Text, "")
-		count := len(m.sessionsInGroup(m.settingsGroupDeleteID))
+		count := len(m.settingsGroupDeleteMembers)
 		addLine(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), theme.Text, "")
 		addLine("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", theme.Dimmed, "")
 	}

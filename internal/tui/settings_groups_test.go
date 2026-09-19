@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
@@ -387,8 +388,8 @@ func TestSettingsGroupDeleteNonEmptyOpensTwoBranchPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mustCreateSessionInGroup(t, db, "s1", "alpha", g.ID, "")
 	m := settingsOpenOnGroupsFields(t, db)
-	m.baseSessions = []store.Session{{ID: "s1", Name: "alpha", GroupID: &g.ID}}
 
 	updated, _ := m.Update(key("d"))
 	m = updated.(Model)
@@ -503,6 +504,8 @@ func TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s1 := mustCreateSessionInGroup(t, db, "s1", "alpha", g.ID, "stopped")
+	s2 := mustCreateSessionInGroup(t, db, "s2", "beta", g.ID, "stopped")
 
 	var invocations []string
 	m := settingsOpenOnGroupsFields(t, db)
@@ -510,10 +513,7 @@ func TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes(t *testing.T)
 		invocations = append(invocations, s.ID)
 		return nil
 	}
-	m.baseSessions = []store.Session{
-		{ID: "s1", Name: "alpha", Status: "stopped", GroupID: &g.ID},
-		{ID: "s2", Name: "beta", Status: "stopped", GroupID: &g.ID},
-	}
+	m.baseSessions = []store.Session{s1, s2}
 	m.sessions = m.baseSessions
 
 	updated, _ := m.Update(key("d"))
@@ -551,6 +551,30 @@ func TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes(t *testing.T)
 	}
 }
 
+// mustCreateSessionInGroup persists a real session row belonging to
+// groupID (task 019/R131 part 2 cure): the group-delete empty/non-empty
+// decision and both its branches now read the group's PERSISTED member
+// set (store.ListSessionsIncludingArchived), never m.baseSessions/m.sessions
+// set directly on the Model -- a test session that only ever existed as a
+// bare struct literal in memory would look, from the store's own point of
+// view, like it was never a member at all. status "" defaults to
+// "stopped", since none of these tests need a live pane.
+func mustCreateSessionInGroup(t *testing.T, db *store.Store, id, name string, groupID int64, status string) store.Session {
+	t.Helper()
+	if status == "" {
+		status = "stopped"
+	}
+	gid := groupID
+	s, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: id, Name: name, CWD: "/x", Agent: "shell", CapturedPath: "/bin",
+		Status: status, StatusAt: 100, CreatedAt: 100, GroupID: &gid,
+	})
+	if err != nil {
+		t.Fatalf("CreateSession(%s): %v", name, err)
+	}
+	return s
+}
+
 // routeSettingsGroupDeleteIntoBulkConfirm drives the destructive branch of
 // R131 part 2 up to (but not through) the bulk confirm's own submit: it
 // creates group name holding the given member sessions, opens the Groups
@@ -564,13 +588,13 @@ func routeSettingsGroupDeleteIntoBulkConfirm(t *testing.T, db *store.Store, name
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := range members {
-		id := g.ID
-		members[i].GroupID = &id
+	persisted := make([]store.Session, 0, len(members))
+	for _, mem := range members {
+		persisted = append(persisted, mustCreateSessionInGroup(t, db, mem.ID, mem.Name, g.ID, mem.Status))
 	}
 	m := settingsOpenOnGroupsFields(t, db)
-	m.baseSessions = members
-	m.sessions = members
+	m.baseSessions = persisted
+	m.sessions = persisted
 
 	updated, _ := m.Update(key("d"))
 	m = updated.(Model)
@@ -735,5 +759,285 @@ func TestOrdinaryBulkDeleteNeverDropsAGroupRow(t *testing.T) {
 
 	if names := groupNamesIn(t, db); len(names) != 1 || names[0] != "untouched-group" {
 		t.Fatalf("ListGroups() = %v after an ordinary bulk dd, want the group row untouched", names)
+	}
+}
+
+// TestSettingsGroupDeleteDBranchIncludesFilteredOutMembers is task
+// 019/R131 part 2's own cure regression: the destructive "d" branch must
+// hand the group's COMPLETE member set to the shared dd path, never one
+// re-filtered through whatever the sidebar's active filter happens to
+// show right now. Two members, an active filter (m.filterQuery) that
+// narrows m.sessions down to one of them -- the confirm still names both,
+// deleteSvc still runs twice, and both rows end up tombstoned.
+func TestSettingsGroupDeleteDBranchIncludesFilteredOutMembers(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "filtered-group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := mustCreateSessionInGroup(t, db, "s1", "alpha", g.ID, "stopped")
+	b := mustCreateSessionInGroup(t, db, "s2", "beta", g.ID, "stopped")
+
+	var invocations []string
+	m := settingsOpenOnGroupsFields(t, db)
+	m.deleteSvc = func(ctx context.Context, s store.Session) error {
+		invocations = append(invocations, s.ID)
+		return db.SoftDeleteSession(ctx, s.ID, 300)
+	}
+	m.baseSessions = []store.Session{a, b}
+	// An active filter that matches only "alpha" -- m.sessions (the
+	// sidebar's current, narrowed view) holds just one of the two members.
+	m.filterQuery = "alpha"
+	m.sessions = m.filteredSessions()
+	if len(m.sessions) != 1 {
+		t.Fatalf("test setup: m.sessions = %+v, want exactly the one filtered-in member", m.sessions)
+	}
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on a non-empty group did not open the confirm")
+	}
+	body := m.settingsGroupsViewLines(settingsCategories(), settingsCategoryWidth(100), 100-settingsCategoryWidth(100), 20, 24)
+	if !strings.Contains(body, "2 session(s)") {
+		t.Errorf("groups view under an active filter = %q, want it to still name BOTH members, not just the filtered-in one", body)
+	}
+
+	updated, _ = m.Update(key("d"))
+	m = updated.(Model)
+	if !m.deleteConfirming {
+		t.Fatal("the destructive d branch did not open the bulk delete confirm")
+	}
+	body = m.deleteConfirmBody()
+	if !strings.Contains(body, "2 marked sessions") {
+		t.Fatalf("bulk delete confirm under an active filter = %q, want it to name BOTH members, not just the one the filter shows", body)
+	}
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	_ = updated.(Model)
+
+	if len(invocations) != 2 {
+		t.Fatalf("deleteSvc invoked %d time(s), want exactly 2 -- the filtered-out member must not be silently dropped: %#v", len(invocations), invocations)
+	}
+	for _, sess := range []struct{ id, name string }{{a.ID, "alpha"}, {b.ID, "beta"}} {
+		got, err := db.GetSession(ctx, sess.id)
+		if err != nil {
+			t.Fatalf("GetSession(%s): %v", sess.name, err)
+		}
+		if got.DeletedAt == 0 {
+			t.Errorf("%s.DeletedAt after the destructive branch = 0, want tombstoned -- filtering it out of the sidebar must not exempt it from the batch", sess.name)
+		}
+	}
+}
+
+// TestSettingsGroupDeleteMBranchClearsArchivedMembersToo is task
+// 019/R131 part 2's cure regression for the move branch: an archived
+// member is invisible to m.baseSessions (SPEC's default, archive-free
+// view), so the move loop must read the group's persisted member set
+// (including archived rows) rather than that view, or an archived member
+// would keep naming a group row that no longer exists.
+func TestSettingsGroupDeleteMBranchClearsArchivedMembersToo(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "mixed-group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := mustCreateSessionInGroup(t, db, "s1", "alpha", g.ID, "stopped")
+	archived := mustCreateSessionInGroup(t, db, "s2", "beta", g.ID, "stopped")
+	if err := db.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatal(err)
+	}
+
+	m := settingsOpenOnGroupsFields(t, db)
+	// m.baseSessions is the SPEC default, archive-free view -- it never
+	// holds the archived member, exactly like a live sidebar wouldn't.
+	m.baseSessions = []store.Session{active}
+	m.sessions = m.baseSessions
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on a group with a live member (plus an archived one) did not open the confirm")
+	}
+	body := m.settingsGroupsViewLines(settingsCategories(), settingsCategoryWidth(100), 100-settingsCategoryWidth(100), 20, 24)
+	if !strings.Contains(body, "2 session(s)") {
+		t.Errorf("groups view = %q, want the archived member counted too", body)
+	}
+
+	updated, _ = m.Update(key("m"))
+	m = updated.(Model)
+	if m.settingsGroupDeleteConfirming {
+		t.Fatal("m did not close the confirm sub-mode")
+	}
+
+	if names := groupNamesIn(t, db); len(names) != 0 {
+		t.Fatalf("ListGroups() = %v after the m branch, want the group row dropped", names)
+	}
+	for _, sess := range []struct{ id, name string }{{active.ID, "alpha"}, {archived.ID, "beta"}} {
+		got, err := db.GetSession(ctx, sess.id)
+		if err != nil {
+			t.Fatalf("GetSession(%s): %v", sess.name, err)
+		}
+		if got.GroupID != nil {
+			t.Errorf("%s.GroupID after the m branch = %v, want nil (structural default) -- an archived member must be cleared too", sess.name, got.GroupID)
+		}
+		if got.DeletedAt != 0 {
+			t.Errorf("%s.DeletedAt after the m branch = %v, want 0 -- the m branch destroys nothing, archived or not", sess.name, got.DeletedAt)
+		}
+	}
+	if archived.ArchivedAt == 0 {
+		fetched, err := db.GetSession(ctx, archived.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fetched.ArchivedAt == 0 {
+			t.Fatal("test setup: archived member was never actually archived")
+		}
+	}
+	stillArchived, err := db.GetSession(ctx, archived.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillArchived.ArchivedAt == 0 {
+		t.Error("archived member's ArchivedAt was cleared by the m branch; it must stay archived, only its group_id changes")
+	}
+}
+
+// TestSettingsGroupDeleteArchivedOnlyGroupStillOpensPrompt is task
+// 019/R131 part 2's cure regression for the empty/non-empty decision
+// itself: a group whose ONLY member is archived is not empty -- it has
+// exactly one member, invisible only to m.baseSessions' archive-free
+// default view -- so "d" must still open the two-branch confirm rather
+// than silently dropping the group (and orphaning the archived member's
+// group_id) with no prompt at all.
+func TestSettingsGroupDeleteArchivedOnlyGroupStillOpensPrompt(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "archived-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := mustCreateSessionInGroup(t, db, "s1", "solo", g.ID, "stopped")
+	if err := db.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatal(err)
+	}
+
+	m := settingsOpenOnGroupsFields(t, db)
+	// The archived member is, correctly, absent from the default view.
+	m.baseSessions = nil
+	m.sessions = nil
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on an archived-only group deleted it with no prompt; it has one member (archived) and must open the two-branch confirm")
+	}
+	if strings.Contains(m.settingsGroupNote, "deleted empty group") {
+		t.Errorf("settingsGroupNote = %q, want no \"deleted empty group\" note -- the group is not empty", m.settingsGroupNote)
+	}
+	body := m.settingsGroupsViewLines(settingsCategories(), settingsCategoryWidth(100), 100-settingsCategoryWidth(100), 20, 24)
+	if !strings.Contains(body, "1 session(s)") {
+		t.Errorf("groups view = %q, want the archived-only group's one member named in the prompt", body)
+	}
+	if names := groupNamesIn(t, db); len(names) != 1 {
+		t.Fatalf("ListGroups() = %v while the confirm is open, want the group row still standing", names)
+	}
+}
+
+// TestSettingsGroupDeleteDBranchOneUndoRestoresTheWholeBatch is task
+// 019/R131 part 2's cure regression for the undo half of the seam: the
+// destructive branch's batch (an active member plus an archived one, so
+// the whole point of routing through the ONE shared dd path rather than a
+// second implementation is exercised) restores with a SINGLE `u`, exactly
+// like any other bulk dd batch -- both rows' tombstones clear together.
+func TestSettingsGroupDeleteDBranchOneUndoRestoresTheWholeBatch(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "restore-group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := mustCreateSessionInGroup(t, db, "s1", "alpha", g.ID, "stopped")
+	archived := mustCreateSessionInGroup(t, db, "s2", "beta", g.ID, "stopped")
+	if err := db.ArchiveSession(ctx, archived.ID, 200); err != nil {
+		t.Fatal(err)
+	}
+
+	m := settingsOpenOnGroupsFields(t, db)
+	m.settings.DeleteGrace = time.Hour
+	m.deleteSvc = func(ctx context.Context, s store.Session) error {
+		return db.SoftDeleteSession(ctx, s.ID, 300)
+	}
+	m.restoreSvc = func(ctx context.Context, id string) (store.Session, error) {
+		if err := db.RestoreSession(ctx, id, 400); err != nil {
+			return store.Session{}, err
+		}
+		return db.GetSession(ctx, id)
+	}
+	// The active member is visible in the default view; the archived one
+	// never is -- exactly the shape a live sidebar would hand this in.
+	m.baseSessions = []store.Session{active}
+	m.sessions = m.baseSessions
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	updated, _ = m.Update(key("d"))
+	m = updated.(Model)
+	if !m.deleteConfirming {
+		t.Fatal("the destructive d branch did not open the bulk delete confirm")
+	}
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+
+	for _, sess := range []struct{ id, name string }{{active.ID, "alpha"}, {archived.ID, "beta"}} {
+		got, err := db.GetSession(ctx, sess.id)
+		if err != nil {
+			t.Fatalf("GetSession(%s): %v", sess.name, err)
+		}
+		if got.DeletedAt == 0 {
+			t.Fatalf("%s.DeletedAt after the batch = 0, want tombstoned", sess.name)
+		}
+	}
+	if len(m.batchDeleteUndoSessionIDs) != 2 {
+		t.Fatalf("batchDeleteUndoSessionIDs = %#v, want both members of the batch", m.batchDeleteUndoSessionIDs)
+	}
+
+	updated, cmd = m.Update(key("u"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("u returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	_ = updated.(Model)
+
+	for _, sess := range []struct{ id, name string }{{active.ID, "alpha"}, {archived.ID, "beta"}} {
+		got, err := db.GetSession(ctx, sess.id)
+		if err != nil {
+			t.Fatalf("GetSession(%s): %v", sess.name, err)
+		}
+		if got.DeletedAt != 0 {
+			t.Errorf("%s.DeletedAt after u = %v, want 0 -- one u must restore the WHOLE batch", sess.name, got.DeletedAt)
+		}
+	}
+	stillArchived, err := db.GetSession(ctx, archived.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillArchived.ArchivedAt == 0 {
+		t.Error("archived member's ArchivedAt was lost across the delete/undo round trip; it must stay archived")
 	}
 }

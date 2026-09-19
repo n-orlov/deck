@@ -821,6 +821,19 @@ type Model struct {
 	settingsGroupDeleteConfirming bool
 	settingsGroupDeleteID         int64
 	settingsGroupDeleteName       string
+	// settingsGroupDeleteMembers is the group's COMPLETE persisted member
+	// set (task 019/R131 part 2 cure), frozen the moment
+	// settingsStartGroupDelete opens the confirm: every session whose
+	// group_id names this group, read via store.ListSessionsIncludingArchived
+	// so an archived member is counted exactly like an active one --
+	// neither m.baseSessions (SPEC's default, archive-free view) nor
+	// m.sessions (that view further narrowed by any active filter) can
+	// answer this. The prompt's own count, the "m" move loop, and the "d"
+	// branch's hand-off to the bulk dd path all read this ONE slice rather
+	// than three different (and disagreeing) views of "current" membership.
+	// Freezing it at open time is safe: the confirm's own keymap swallows
+	// every other key, so nothing else can change membership while it is up.
+	settingsGroupDeleteMembers []store.Session
 	// bulkDeleteGroupID is the group row R131's destructive `d` branch
 	// routed into the §9.2 bulk `dd` path, kept only until that batch
 	// commits: "the group row goes once the batch commits" (PRD R131). It
@@ -833,6 +846,16 @@ type Model struct {
 	// since the row itself is gone by the time it is read.
 	bulkDeleteGroupID   int64
 	bulkDeleteGroupName string
+	// bulkDeleteSessions is the explicit, already-complete batch a group
+	// delete's destructive "d" branch hands to the shared §9.2 bulk dd
+	// path (settingsRouteGroupDeleteToBulkConfirm): settingsGroupDeleteMembers
+	// as it stood the moment "d" committed, archived members and all. Nil
+	// for an ordinary top-level dd (mark-set batch) -- bulkDeleteBatch falls
+	// back to markedSessions() in that case. Set once by
+	// settingsRouteGroupDeleteToBulkConfirm, read by bulkDeleteBatch alone,
+	// and cleared on both the bulk confirm's cancel and submit paths so it
+	// can never leak into a later, unrelated dd.
+	bulkDeleteSessions []store.Session
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -6479,12 +6502,13 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // submit legend are pinned by bulkDeleteConfirmView, so paging moves which
 // marked names are on screen and never which controls are.
 func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	sessions := m.markedSessions()
+	sessions := m.bulkDeleteBatch()
 	cmd, handled := applyDialogContract(msg, dialogContract{
 		Cancel: func() {
 			m.deleteConfirming = false
 			m.deleteNote = ""
 			m.marked = nil
+			m.bulkDeleteSessions = nil
 			// A cancelled batch commits nothing, so a group routed here by
 			// R131's `d` branch keeps both its members and its row.
 			m.bulkDeleteGroupID = 0
@@ -6503,6 +6527,7 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// for every constructor that wires only the plain shape.
 			deleteHookReporter := m.deleteHookReporter
 			m.marked = nil
+			m.bulkDeleteSessions = nil
 			return func() tea.Msg {
 				result := sessionsBulkDeleted{}
 				for _, s := range sessions {
@@ -6854,7 +6879,7 @@ const (
 // caller decides it once, via bulkDeleteConfirmScrolls, so this function
 // stays free of the recursion "does it overflow?" would otherwise create.
 func (m Model) bulkDeleteConfirmRegions(scrollHint bool) (head, list, tail []string) {
-	sessions := m.markedSessions()
+	sessions := m.bulkDeleteBatch()
 	head = append(head, fmt.Sprintf("Delete %d marked sessions", len(sessions)), "")
 	head = append(head, bulkDeleteExplanationLines...)
 	head = append(head, "")
@@ -7453,22 +7478,53 @@ func (m Model) markedSessions() []store.Session {
 	return out
 }
 
-// sessionsInGroup returns every session in m.baseSessions (SPEC's default
-// view -- excludes tombstoned and archived rows, exactly the population
-// the sidebar and the dd batch path itself act on) whose GroupID equals
-// groupID -- task 019/R131 part 2's own "is this group empty" test and the
-// source of the member set "d" hands off to the bulk dd path as m.marked.
-// Order is whatever m.baseSessions holds; callers that need visual order
-// (none today -- markedSessions' own visualOrder() walk is what the bulk
-// dd path actually renders from) would have to re-derive it separately.
-func (m Model) sessionsInGroup(groupID int64) []store.Session {
+// bulkDeleteBatch resolves the batch the OPEN §9.2 bulk `dd` confirm
+// actually operates on (task 019/R131 part 2 cure): m.bulkDeleteSessions,
+// the explicit, already-complete member set
+// settingsRouteGroupDeleteToBulkConfirm froze when a group's destructive
+// "d" branch routed here -- archived members and anyone the active filter
+// currently hides included -- when that field is non-nil, or
+// m.markedSessions()'s ordinary mark-set resolution otherwise (an ordinary
+// top-level dd never sets bulkDeleteSessions). bulkDeleteConfirmRegions
+// (the prompt/list render) and updateBulkDeleteConfirm (the actual submit)
+// are the only two callers, so the group's complete member set is read
+// through this ONE seam and never re-filtered through the sidebar's
+// current view a second time.
+func (m Model) bulkDeleteBatch() []store.Session {
+	if m.bulkDeleteSessions != nil {
+		return m.bulkDeleteSessions
+	}
+	return m.markedSessions()
+}
+
+// groupMemberSessions resolves a group's COMPLETE persisted member set
+// (task 019/R131 part 2 cure): every session, active OR archived, whose
+// group_id equals groupID, read via store.ListSessionsIncludingArchived --
+// never m.baseSessions (SPEC's default view, which excludes archived rows
+// entirely, so an archived-only group would read as empty) and never
+// m.sessions (that view further narrowed by whatever filter happens to be
+// active, so a filtered-out member would silently drop off the batch).
+// This is the ONE place R131's group-delete "d" reads membership from --
+// the empty/non-empty decision, the "m" move loop, and the "d" branch's
+// hand-off to the bulk dd path all need the same answer, or the confirm
+// prompt and the actual batch could each see a different member count.
+// Order is whatever ListSessionsIncludingArchived returns (created_at,
+// id -- deterministic, same ordering ListSessions itself uses).
+func (m Model) groupMemberSessions(ctx context.Context, groupID int64) ([]store.Session, error) {
+	if m.store == nil {
+		return nil, errors.New("no store is open")
+	}
+	all, err := m.store.ListSessionsIncludingArchived(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []store.Session
-	for _, s := range m.baseSessions {
+	for _, s := range all {
 		if s.GroupID != nil && *s.GroupID == groupID {
 			out = append(out, s)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // validateCreateFields checks the create modal's free-form fields (cwd,
