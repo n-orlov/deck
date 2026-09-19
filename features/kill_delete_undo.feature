@@ -717,8 +717,21 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then the state database session "groups-delete-dd-one" is tombstoned
     And the state database session "groups-delete-dd-two" is tombstoned
     And deck client "A" screen contains "Deleted 2 sessions"
+    # R131: the group row goes once the batch commits -- the operator asked
+    # for "delete all N sessions", not for an empty group to be left behind.
+    And the state database has no group named "batch-group"
+    # One top-level u restores the whole batch (the sessions, not the group:
+    # their group_id no longer resolves, which reads as default per R128).
     When deck client "A" presses u
     Then the state database session "groups-delete-dd-one" is not tombstoned
     And the state database session "groups-delete-dd-two" is not tombstoned
-    And deck client "A" screen contains "batch-group"
+    And deck client "A" screen contains "groups-delete-dd-one"
+    And deck client "A" screen contains "groups-delete-dd-two"
+    And the state database has no group named "batch-group"
+    # Both restored rows now sit under default: their group_id no longer
+    # resolves, which R128 renders as default rather than vanishing. This
+    # polling positive assertion has to land BEFORE the negative one below,
+    # which reads the current frame without waiting.
+    And deck client "A" screen contains "default  (2)"
+    And deck client "A" screen does not contain "batch-group"
     When deck client "A" exits cleanly

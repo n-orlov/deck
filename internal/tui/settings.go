@@ -839,12 +839,22 @@ func (m *Model) settingsMoveGroupMembersToDefaultAndDeleteGroup() tea.Cmd {
 // closing settings here is what lets the ORDINARY top-level `u` (only
 // reachable once nothing else has taken over the keymap) restore the
 // whole batch afterward, exactly like any other dd.
+//
+// The group ROW itself is not touched here: PRD R131 puts it at "once the
+// batch commits", so the id is parked on m.bulkDeleteGroupID and the
+// sessionsBulkDeleted branch drops the row after every member's delete has
+// actually succeeded (cancelling the confirm clears it instead, leaving
+// the group intact). A later `u` restores the sessions but not the group:
+// their group_id no longer resolves, which SPEC §11's dangling-group_id
+// rule already renders as default rather than crashing.
 func (m *Model) settingsRouteGroupDeleteToBulkConfirm() {
 	members := m.sessionsInGroup(m.settingsGroupDeleteID)
 	marked := make(map[string]bool, len(members))
 	for _, s := range members {
 		marked[s.ID] = true
 	}
+	m.bulkDeleteGroupID = m.settingsGroupDeleteID
+	m.bulkDeleteGroupName = m.settingsGroupDeleteName
 	m.settingsGroupDeleteConfirming = false
 	m.settingsGroupDeleteID = 0
 	m.settingsGroupDeleteName = ""
