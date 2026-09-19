@@ -23,46 +23,32 @@ import (
 // criteria only asks for the grouping and its collapse behaviour.
 
 // sessionWorkspace is internal/tui's one group-key accessor (task 007,
-// Tier 2 preparation): every other file that needs to know which group a
-// session belongs to calls this (or defaultGroupKey below, for the one
-// caller that only has a bare cwd) rather than reading
-// store.Session.Workspace or calling store.DefaultWorkspace itself, so
-// there is exactly one place to change when a later task (008's schemaV7
-// group model) makes the group key something other than the workspace
-// column. At this commit it still returns SPEC requirement 30's
-// workspace-derived key unchanged: internal/store's scanSession already
-// applies the store.DefaultWorkspace fallback (basename of cwd) when
-// reading a row with no explicit workspace, but a Session built directly
-// (as most internal/tui tests do, bypassing the store) will have a
-// zero-value Workspace, so this applies the identical fallback rather
-// than grouping every such session under an empty-string header.
+// Tier 2 preparation; task 008, R128, rewired it to read the actual group
+// model instead of borrowing it): every other file that needs to know
+// which group a session belongs to calls this (or sessionGroupDisplayName
+// below) rather than reading store.Session.GroupName directly, so there
+// is exactly one place to change when a later task (009's group CRUD,
+// 011-013's group-id sidebar) needs the key to carry more than a bare
+// name. It returns store.Session.GroupName verbatim -- empty for the
+// implicit default group, per SPEC §11, with no cwd-derived fallback of
+// any kind (that concept left with the removed Workspace field and
+// store.DefaultWorkspace; SPEC.md:203-204's OWN basename-of-cwd rule for
+// the create modal's blank-name default is unrelated and now lives in
+// tui.go's createNameCWDBasename, never through this seam).
 func sessionWorkspace(session store.Session) string {
-	if session.Workspace != "" {
-		return session.Workspace
-	}
-	return store.DefaultWorkspace(session.CWD)
+	return session.GroupName
 }
 
 // sessionGroupDisplayName is the seam's companion display-name accessor:
 // the label a group's header should show for one of its member sessions.
-// At this commit it is identical to sessionWorkspace's group key -- there
-// is no separate group-name storage yet -- but keeping it as its own
-// function now means whichever later task first makes a group's display
-// name diverge from its key (an explicit group name distinct from the
-// underlying id, once 008 lands) only has to change this function's
-// body, not every call site across internal/tui.
+// Identical to sessionWorkspace's group key at this commit -- there is
+// still no separate group-name storage distinct from the key itself (a
+// group's name IS its key, per SPEC §4's groups table) -- kept as its
+// own function so a later task that ever needs the two to diverge only
+// has to change this function's body, not every call site across
+// internal/tui.
 func sessionGroupDisplayName(session store.Session) string {
 	return sessionWorkspace(session)
-}
-
-// defaultGroupKey mirrors sessionWorkspace's own store.DefaultWorkspace
-// fallback for the one caller (resolveCreateName, tui.go) that only has a
-// bare cwd on hand, with no store.Session to read a Workspace field from.
-// Routing that caller through here, rather than through a direct
-// store.DefaultWorkspace call, keeps every group-key read in
-// filter.go/mouse.go/tui.go behind this same seam.
-func defaultGroupKey(cwd string) string {
-	return sessionWorkspace(store.Session{CWD: cwd})
 }
 
 // indexedSession pairs a session with its index into m.sessions, so a

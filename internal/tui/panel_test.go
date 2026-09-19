@@ -72,7 +72,7 @@ func TestSidebarContentHasOneColumnPaddingBeforeSeam(t *testing.T) {
 	model := New(nil, config.Settings{GroupByWorkspace: true}, "")
 	model.width, model.height = 100, 30
 	model.sessions = []store.Session{
-		{Name: "a session name so long it will not fit and must be elided with an ellipsis for sure", Workspace: "ws", Agent: "claude", Status: "running"},
+		{Name: "a session name so long it will not fit and must be elided with an ellipsis for sure", GroupName: "ws", Agent: "claude", Status: "running"},
 	}
 	view := model.View()
 	lines := strings.Split(view, "\n")

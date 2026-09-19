@@ -89,8 +89,8 @@ func contentRowY(m Model, layout LayoutResult, contentRow int) int {
 // play).
 func TestHitTestResolvesRowsHeadersSeamAndPreviewSideBySide(t *testing.T) {
 	m := mouseTestModel([]store.Session{
-		{ID: "a1", Name: "alpha-session-with-a-very-long-name-that-must-be-elided", CWD: "/work/infra", Status: "idle"},
-		{ID: "b1", Name: "bravo", CWD: "/work/service-a", Status: "idle"},
+		{ID: "a1", Name: "alpha-session-with-a-very-long-name-that-must-be-elided", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "b1", Name: "bravo", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
 	// Grouping must be explicit: config.Settings{} zero value now means
 	// grouping off (requirement 35). This test's own claim is about
@@ -244,8 +244,8 @@ func TestClickSidebarPaddingBelowLastRowIsANoOp(t *testing.T) {
 // group's collapse state.
 func TestClickGroupHeaderTogglesOnlyThatGroup(t *testing.T) {
 	m := mouseTestModel([]store.Session{
-		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle"},
-		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
+		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra"},
+		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a"},
 	})
 	// Grouping must be explicit: config.Settings{} zero value now means
 	// grouping off (requirement 35); this test's own claim is about a

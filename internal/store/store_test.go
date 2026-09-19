@@ -1121,14 +1121,18 @@ func TestSlugContainsOnlyTmuxSafeASCII(t *testing.T) {
 	}
 }
 
-// TestListSessionsDefaultsWorkspaceToCWDBasename covers SPEC requirement 30's
-// grouping key: sessions.workspace defaults to the basename of cwd when a
-// row has never had one recorded (every CreateSession call today, since
-// there is no create-time input for it yet), and an explicit column value
-// — written directly, the only way a workspace ever gets set right now —
-// is preserved verbatim rather than being overridden by the default. Never
-// derived from anything "repo"-shaped.
-func TestListSessionsDefaultsWorkspaceToCWDBasename(t *testing.T) {
+// TestListSessionsResolvesGroupIDAndGroupNameViaJoin covers SPEC §4/§11's
+// group-id read path (R128, task 008): a row whose group_id is NULL reads
+// back GroupID nil and GroupName empty (the implicit default group, with
+// no cwd-derived fallback of any kind -- that concept left with the
+// removed Workspace/DefaultWorkspace), a row whose group_id names a live
+// groups row reads back both the id and its name verbatim, and a row
+// whose group_id names a group that no longer exists (another client
+// deleted it) reads back the dangling id but an empty GroupName -- SPEC
+// §11's "renders under default rather than vanishing", which is exactly
+// what schemaV7's deliberate lack of an ON DELETE SET NULL foreign key
+// leaves for this read path to handle.
+func TestListSessionsResolvesGroupIDAndGroupNameViaJoin(t *testing.T) {
 	home := t.TempDir()
 	st, err := OpenPath(home, filepath.Join(home, "state.db"))
 	if err != nil {
@@ -1148,44 +1152,63 @@ func TestListSessionsDefaultsWorkspaceToCWDBasename(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.DB().ExecContext(ctx, `UPDATE sessions SET workspace = ? WHERE id = ?`, "team-shared", "00000000-0000-4000-8000-0000000000a2"); err != nil {
+	if _, err := st.CreateSession(ctx, CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000a3", Name: "dangling", CWD: "/work/svc-c",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 102, CreatedAt: 102,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var groupID int64
+	if err := st.DB().QueryRowContext(ctx, `INSERT INTO groups (name) VALUES (?) RETURNING id`, "team-shared").Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB().ExecContext(ctx, `UPDATE sessions SET group_id = ? WHERE id = ?`, groupID, "00000000-0000-4000-8000-0000000000a2"); err != nil {
+		t.Fatal(err)
+	}
+	// a3's group_id names an id that never resolves -- no groups row with
+	// that id was ever created (foreign_keys=ON permits this UPDATE only
+	// because schemaV7 declares no FOREIGN KEY on group_id at all).
+	const danglingGroupID = 999999
+	if _, err := st.DB().ExecContext(ctx, `UPDATE sessions SET group_id = ? WHERE id = ?`, danglingGroupID, "00000000-0000-4000-8000-0000000000a3"); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := st.ListSessions(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sessions) != 2 {
-		t.Fatalf("len(sessions) = %d, want 2", len(sessions))
+	if len(sessions) != 3 {
+		t.Fatalf("len(sessions) = %d, want 3", len(sessions))
 	}
-	if sessions[0].Workspace != "svc-a" {
-		t.Fatalf("defaulted workspace = %q, want basename of cwd %q", sessions[0].Workspace, "svc-a")
+	if sessions[0].GroupID != nil {
+		t.Fatalf("defaulted GroupID = %v, want nil", sessions[0].GroupID)
 	}
-	if sessions[1].Workspace != "team-shared" {
-		t.Fatalf("explicit workspace = %q, want the recorded value unchanged by the default", sessions[1].Workspace)
+	if sessions[0].GroupName != "" {
+		t.Fatalf("defaulted GroupName = %q, want empty", sessions[0].GroupName)
 	}
-	// WorkspaceColumn is the column verbatim beside that label: empty for
-	// the row that never recorded one (SPEC §6.1's DECK_SESSION_WORKSPACE
-	// reads it, so "unset" must stay distinguishable from the basename
-	// fallback), the recorded value for the row that did.
-	if sessions[0].WorkspaceColumn != "" {
-		t.Fatalf("defaulted workspace column = %q, want empty (no value ever recorded)", sessions[0].WorkspaceColumn)
+	if sessions[1].GroupID == nil || *sessions[1].GroupID != groupID {
+		t.Fatalf("explicit GroupID = %v, want %d", sessions[1].GroupID, groupID)
 	}
-	if sessions[1].WorkspaceColumn != "team-shared" {
-		t.Fatalf("explicit workspace column = %q, want %q verbatim", sessions[1].WorkspaceColumn, "team-shared")
+	if sessions[1].GroupName != "team-shared" {
+		t.Fatalf("explicit GroupName = %q, want %q", sessions[1].GroupName, "team-shared")
+	}
+	if sessions[2].GroupID == nil || *sessions[2].GroupID != danglingGroupID {
+		t.Fatalf("dangling GroupID = %v, want %d (the raw column value, unhealed)", sessions[2].GroupID, danglingGroupID)
+	}
+	if sessions[2].GroupName != "" {
+		t.Fatalf("dangling GroupName = %q, want empty (renders under default rather than vanishing)", sessions[2].GroupName)
 	}
 	// GetSession goes through the same scanSession/sessionColumns path;
 	// prove it independently rather than assuming ListSessions and GetSession
 	// can never drift.
-	got, err := st.GetSession(ctx, "00000000-0000-4000-8000-0000000000a1")
+	got, err := st.GetSession(ctx, "00000000-0000-4000-8000-0000000000a2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Workspace != "svc-a" {
-		t.Fatalf("GetSession workspace = %q, want %q", got.Workspace, "svc-a")
+	if got.GroupID == nil || *got.GroupID != groupID {
+		t.Fatalf("GetSession GroupID = %v, want %d", got.GroupID, groupID)
 	}
-	if got.WorkspaceColumn != "" {
-		t.Fatalf("GetSession workspace column = %q, want empty (no value ever recorded)", got.WorkspaceColumn)
+	if got.GroupName != "team-shared" {
+		t.Fatalf("GetSession GroupName = %q, want %q", got.GroupName, "team-shared")
 	}
 }
 
@@ -2101,9 +2124,6 @@ func TestOpenMigratesV5FixtureAddsPostDestroyAndLaunchDirtyWithoutTouchingExisti
 	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
 	}
-	if SchemaVersion != 6 {
-		t.Fatalf("SchemaVersion = %d, want 6", SchemaVersion)
-	}
 
 	var sessionCount int
 	if err := store.DB().QueryRow(`SELECT count(*) FROM sessions`).Scan(&sessionCount); err != nil || sessionCount != 2 {
@@ -2148,8 +2168,8 @@ func TestFreshDatabaseReportsSchemaVersion6WithPostDestroyAndLaunchDirtyColumns(
 	defer store.Close()
 
 	var version int
-	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != 6 {
-		t.Fatalf("fresh database schema version = %d, %v; want 6", version, err)
+	if err := store.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
+		t.Fatalf("fresh database schema version = %d, %v; want %d", version, err, SchemaVersion)
 	}
 
 	rows, err := store.DB().Query(`PRAGMA table_info(sessions)`)

@@ -46,11 +46,11 @@ func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
 		// off (requirement 35), same convention as m.settings.Mouse.
 		settings: config.Settings{GroupByWorkspace: true},
 		sessions: []store.Session{
-			{ID: "a", Workspace: "ws", Status: "running"},
-			{ID: "b", Workspace: "ws", Status: "waiting"},
-			{ID: "c", Workspace: "ws", Status: "running"},
-			{ID: "d", Workspace: "hidden-ws", Status: "error"},
-			{ID: "e", Workspace: "ws", Status: "idle"},
+			{ID: "a", GroupName: "ws", Status: "running"},
+			{ID: "b", GroupName: "ws", Status: "waiting"},
+			{ID: "c", GroupName: "ws", Status: "running"},
+			{ID: "d", GroupName: "hidden-ws", Status: "error"},
+			{ID: "e", GroupName: "ws", Status: "idle"},
 		},
 	}
 

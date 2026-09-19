@@ -150,7 +150,7 @@ func TestElisionMathAgreesInBothGroupingModesAt80x24(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := New(nil, config.Settings{GroupByWorkspace: tc.grouped}, "")
-			m.sessions = []store.Session{{Name: longName, Workspace: "ws", Status: "running"}}
+			m.sessions = []store.Session{{Name: longName, GroupName: "ws", Status: "running"}}
 			m.width, m.height = 80, 24
 
 			layout := m.computeLayout()

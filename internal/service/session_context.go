@@ -23,17 +23,16 @@ const (
 // layer (§6.1): a session `env` key or a config `[env]` key of the same
 // name can never lie to a hook about which session it is running for.
 // Every value is always exported -- empty rather than absent when the row's
-// own column is unset (e.g. an unset workspace or conversation id) -- so a
+// own column is unset (e.g. an unset group or conversation id) -- so a
 // hook can branch on a value without first testing for existence, exactly
-// as the SPEC table requires. DECK_SESSION_WORKSPACE therefore reads the
-// sessions.workspace column verbatim (store.Session.WorkspaceColumn), not
-// store.Session.Workspace's §11 grouping label with its basename-of-cwd
-// fallback: §6.1's rule is "empty rather than absent when the column behind
-// it is unset", and reading the label instead would make a row whose
-// workspace has never been recorded export "" on its create launch (where
-// no read path has applied the fallback) and the cwd's basename on every
-// resume of that same untouched row -- a launch-kind-dependent value for a
-// fact that did not change.
+// as the SPEC table requires. DECK_SESSION_GROUP (R128; this key replaces
+// the removed DECK_SESSION_WORKSPACE -- the old name is never aliased
+// alongside it) therefore reads store.Session.GroupName verbatim: SPEC
+// §6.1's "the manual group's name (§11), empty for the implicit default
+// group", which is exactly what GroupName already reads back empty for --
+// a nil GroupID, or a GroupID that no longer resolves to a live groups
+// row (§11: "renders under default rather than vanishing") -- with no
+// cwd-derived fallback of any kind, unlike the removed Workspace label.
 func (s Service) sessionContextEnv(session store.Session, launchKind string) map[string]string {
 	return map[string]string{
 		"DECK_SESSION_ID":              session.ID,
@@ -41,7 +40,7 @@ func (s Service) sessionContextEnv(session store.Session, launchKind string) map
 		"DECK_SESSION_SLUG":            session.Slug,
 		"DECK_SESSION_CWD":             session.CWD,
 		"DECK_SESSION_AGENT":           session.Agent,
-		"DECK_SESSION_WORKSPACE":       session.WorkspaceColumn,
+		"DECK_SESSION_GROUP":           session.GroupName,
 		"DECK_SESSION_PROFILE":         session.PermissionProfile,
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,

@@ -40,7 +40,7 @@ func (u *unarchiveRecorder) unarchive(_ context.Context, sessionID string) (stor
 // exactly that row -- not the row that would have been selected in the
 // unfiltered list, which is a different session entirely here.
 func TestUnarchiveKeyActsOnAnArchivedRowFoundThroughTheFilter(t *testing.T) {
-	archived := store.Session{ID: "s-old", Name: "retired-agent", Workspace: "ws-old", CWD: "/repos/old-project", Agent: "shell", Status: "stopped", ArchivedAt: 999}
+	archived := store.Session{ID: "s-old", Name: "retired-agent", GroupName: "ws-old", CWD: "/repos/old-project", Agent: "shell", Status: "stopped", ArchivedAt: 999}
 	recorder := &unarchiveRecorder{row: archived}
 	model := newFilterTestModel(filterTestSessions())
 	model.archivedSessions = []store.Session{archived}

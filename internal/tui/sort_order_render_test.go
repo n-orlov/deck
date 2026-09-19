@@ -154,9 +154,9 @@ func TestSessionsLoadedGroupingComposesOrderWithinGroupOnly(t *testing.T) {
 	// AFTER "z-workspace" alphabetically -- the fixture that would catch a
 	// group-order regression under sort_order "name".
 	sessions := []store.Session{
-		{ID: "z1", Name: "zulu-one", Agent: "shell", Status: "idle", Workspace: "z-workspace"},
-		{ID: "z2", Name: "zulu-two", Agent: "shell", Status: "idle", Workspace: "z-workspace"},
-		{ID: "a1", Name: "alpha-one", Agent: "shell", Status: "waiting", StatusAt: 500, Workspace: "a-workspace"},
+		{ID: "z1", Name: "zulu-one", Agent: "shell", Status: "idle", GroupName: "z-workspace"},
+		{ID: "z2", Name: "zulu-two", Agent: "shell", Status: "idle", GroupName: "z-workspace"},
+		{ID: "a1", Name: "alpha-one", Agent: "shell", Status: "waiting", StatusAt: 500, GroupName: "a-workspace"},
 	}
 	model := New(nil, config.Settings{SortOrder: SortOrderName, GroupByWorkspace: true}, "")
 	updated, _ := model.Update(sessionsLoaded{sessions: sessions})
@@ -194,8 +194,8 @@ func TestSessionsLoadedGroupingWithinGroupOrderIsNonVacuous(t *testing.T) {
 		// zulu-two created/inserted first (so attention/insertion order
 		// would list it before zulu-one), but "zulu-one" < "zulu-two"
 		// alphabetically, so name order must reverse them.
-		{ID: "z2", Name: "zulu-two", Agent: "shell", Status: "idle", Workspace: "solo-workspace", StatusAt: 100},
-		{ID: "z1", Name: "zulu-one", Agent: "shell", Status: "idle", Workspace: "solo-workspace", StatusAt: 200},
+		{ID: "z2", Name: "zulu-two", Agent: "shell", Status: "idle", GroupName: "solo-workspace", StatusAt: 100},
+		{ID: "z1", Name: "zulu-one", Agent: "shell", Status: "idle", GroupName: "solo-workspace", StatusAt: 200},
 	}
 	model := New(nil, config.Settings{SortOrder: SortOrderName, GroupByWorkspace: true}, "")
 	updated, _ := model.Update(sessionsLoaded{sessions: sessions})

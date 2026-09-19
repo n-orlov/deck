@@ -7451,14 +7451,19 @@ func (m *Model) submitCreate() tea.Cmd {
 // path as any other name (the store's own UNIQUE constraint surfaces a
 // collision on an explicitly typed name as "already exists", per
 // validateCreateFields' doc comment). Only a blank field synthesises
-// `<workspace>-<MMDD-HHMM>` from m.settings.Clock (so a frozen DECK_CLOCK
-// makes it deterministic, per SPEC.md:176) and defaultGroupKey's (group.go,
-// task 007's group-key seam over store.DefaultWorkspace's basename-of-cwd
-// rule) key, matching the sidebar's own grouping, then appends the
-// smallest free `-2`, `-3`, ... suffix by
-// checking the store's current names -- never failing the create outright
-// on a collision, per SPEC.md:175 ("collisions append a suffix rather than
-// failing the create").
+// `<basename of cwd>-<MMDD-HHMM>` from m.settings.Clock (so a frozen
+// DECK_CLOCK makes it deterministic, per SPEC.md:176) via
+// createNameCWDBasename below, then appends the smallest free `-2`, `-3`,
+// ... suffix by checking the store's current names -- never failing the
+// create outright on a collision, per SPEC.md:175 ("collisions append a
+// suffix rather than failing the create"). SPEC.md:203-204's basename
+// rule is a session-NAMING default, entirely independent of §11's manual
+// group model (task 008, R128): before task 008 this borrowed
+// group.go's own workspace-default derivation because the two rules
+// happened to compute the same thing, but a manually named group carries
+// no cwd at all, so the two must not stay wired together -- this
+// function owns its own basename-of-cwd derivation now, group.go's
+// group-key seam owns none.
 func (m *Model) resolveCreateName(resolvedCWD string) string {
 	if trimmed := strings.TrimSpace(m.createName); trimmed != "" {
 		return trimmed
@@ -7467,7 +7472,7 @@ func (m *Model) resolveCreateName(resolvedCWD string) string {
 	if m.settings.Clock != nil {
 		now = m.settings.Clock.Now()
 	}
-	base := defaultGroupKey(resolvedCWD) + "-" + now.Format("0102-1504")
+	base := createNameCWDBasename(resolvedCWD) + "-" + now.Format("0102-1504")
 	taken := make(map[string]bool)
 	if m.store != nil {
 		if sessions, err := m.store.ListSessions(context.Background()); err == nil {
@@ -7488,6 +7493,23 @@ func (m *Model) resolveCreateName(resolvedCWD string) string {
 	// Unreachable outside a pathological test setup deliberately creating
 	// 100000 collisions; fall back to the bare base rather than panicking,
 	// leaving the store's own UNIQUE constraint to report the failure.
+	return base
+}
+
+// createNameCWDBasename is SPEC.md:203-204's own basename-of-cwd rule for
+// the create modal's blank-name default, with no fallback to any notion
+// of §11 grouping: filepath.Base of an empty string or "." both return
+// ".", an honest (if unhelpful) label for a cwd deck could not otherwise
+// identify. This used to be the removed store.DefaultWorkspace/
+// defaultGroupKey (group.go) -- kept as its own function, not shared with
+// anything group-related, because SPEC.md:203-204's rule and §11's group
+// model are two independent facts that merely computed the same string
+// before manual groups existed.
+func createNameCWDBasename(cwd string) string {
+	base := filepath.Base(strings.TrimRight(cwd, "/"))
+	if base == "" {
+		return cwd
+	}
 	return base
 }
 

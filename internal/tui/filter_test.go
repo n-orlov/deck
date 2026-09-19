@@ -14,9 +14,9 @@ import (
 // three fields shares a substring with any other session's same field.
 func filterTestSessions() []store.Session {
 	return []store.Session{
-		{ID: "s-alpha", Name: "alpha-agent", Workspace: "ws-north", CWD: "/repos/north-project", Agent: "shell", Status: "running"},
-		{ID: "s-beta", Name: "beta-agent", Workspace: "ws-south", CWD: "/repos/south-project", Agent: "shell", Status: "running"},
-		{ID: "s-gamma", Name: "gamma-agent", Workspace: "ws-east", CWD: "/repos/east-project", Agent: "shell", Status: "running"},
+		{ID: "s-alpha", Name: "alpha-agent", GroupName: "ws-north", CWD: "/repos/north-project", Agent: "shell", Status: "running"},
+		{ID: "s-beta", Name: "beta-agent", GroupName: "ws-south", CWD: "/repos/south-project", Agent: "shell", Status: "running"},
+		{ID: "s-gamma", Name: "gamma-agent", GroupName: "ws-east", CWD: "/repos/east-project", Agent: "shell", Status: "running"},
 	}
 }
 
@@ -211,7 +211,7 @@ func TestFilterEnterKeepsQueryAppliedAndReturnsKeymap(t *testing.T) {
 func TestFilterReachesAnArchivedRowHiddenFromTheDefaultList(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())
 	model.archivedSessions = []store.Session{
-		{ID: "s-old", Name: "retired-agent", Workspace: "ws-old", CWD: "/repos/old-project", Agent: "shell", Status: "stopped", ArchivedAt: 999},
+		{ID: "s-old", Name: "retired-agent", GroupName: "ws-old", CWD: "/repos/old-project", Agent: "shell", Status: "stopped", ArchivedAt: 999},
 	}
 
 	// The default, unfiltered list never shows it.

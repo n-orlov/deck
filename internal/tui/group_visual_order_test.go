@@ -20,10 +20,10 @@ import (
 // end of m.sessions, so magpie's group is non-adjacent.
 func TestNavigationFollowsVisualOrderNotIndexOrder(t *testing.T) {
 	sessions := []store.Session{
-		{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", Workspace: "invp-ops-dev-agents"},                               // idx0
-		{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", Workspace: "agent-sessions-tui"},                             // idx1
-		{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", Workspace: "ralphd"},                                                 // idx2
-		{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", Workspace: "invp-ops-dev-agents"}, // idx3
+		{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", GroupName: "invp-ops-dev-agents"},                               // idx0
+		{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", GroupName: "agent-sessions-tui"},                             // idx1
+		{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", GroupName: "ralphd"},                                                 // idx2
+		{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", GroupName: "invp-ops-dev-agents"}, // idx3
 	}
 	m := groupTestModel(sessions)
 
@@ -86,10 +86,10 @@ func TestNavigationFollowsVisualOrderNotIndexOrder(t *testing.T) {
 // ↑/↓.
 func TestPageSelectionFollowsVisualOrder(t *testing.T) {
 	sessions := []store.Session{
-		{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", Workspace: "invp-ops-dev-agents"},
-		{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", Workspace: "agent-sessions-tui"},
-		{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", Workspace: "ralphd"},
-		{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", Workspace: "invp-ops-dev-agents"},
+		{ID: "magpie", Name: "magpie", CWD: "/home/x/invp-ops-dev-agents", GroupName: "invp-ops-dev-agents"},
+		{ID: "deck-dev", Name: "deck-dev", CWD: "/home/x/agent-sessions-tui", GroupName: "agent-sessions-tui"},
+		{ID: "ralphd-dev", Name: "ralphd-dev", CWD: "/home/x/ralphd", GroupName: "ralphd"},
+		{ID: "pytest-bdd-migration", Name: "pytest-bdd-migration", CWD: "/home/x/invp-ops-dev-agents-2", GroupName: "invp-ops-dev-agents"},
 	}
 	m := groupTestModel(sessions)
 
