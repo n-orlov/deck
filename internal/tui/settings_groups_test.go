@@ -326,3 +326,226 @@ func TestSettingsGroupsRenameLeavesMemberGroupIDsUntouched(t *testing.T) {
 		}
 	}
 }
+
+// TestSettingsGroupDeleteWithNoGroupsIsANoOp covers half of R131 part 2's
+// "default offers no delete at all": default is never a row in
+// m.settingsGroups (store.Group's own doc comment), so with no real group
+// created yet there is nothing selected and "d" does nothing at all.
+func TestSettingsGroupDeleteWithNoGroupsIsANoOp(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	m := settingsOpenOnGroupsFields(t, db)
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+
+	if m.settingsGroupDeleteConfirming {
+		t.Fatal("d with an empty group list opened the confirm sub-mode")
+	}
+	if m.settingsGroupNote != "" {
+		t.Errorf("settingsGroupNote = %q after d with no group selected, want untouched", m.settingsGroupNote)
+	}
+}
+
+// TestSettingsGroupDeleteEmptyGroupHasNoPrompt is R131 part 2's own "an
+// empty group is deleted with no prompt at all" (SPEC §11.5): "d" on a
+// group with no members calls store.DeleteGroup immediately --
+// settingsGroupDeleteConfirming is never set.
+func TestSettingsGroupDeleteEmptyGroupHasNoPrompt(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	if _, err := db.CreateGroup(context.Background(), "empty-one"); err != nil {
+		t.Fatal(err)
+	}
+	m := settingsOpenOnGroupsFields(t, db)
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+
+	if m.settingsGroupDeleteConfirming {
+		t.Fatal("d on an empty group opened the confirm sub-mode; SPEC \u00a711.5 says no prompt at all")
+	}
+	if !strings.Contains(m.settingsGroupNote, "deleted empty group empty-one") {
+		t.Errorf("settingsGroupNote = %q, want it to name the deleted empty group", m.settingsGroupNote)
+	}
+	groups, err := db.ListGroups(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 0 {
+		t.Fatalf("ListGroups() = %+v after deleting the only (empty) group; want none", groups)
+	}
+}
+
+// TestSettingsGroupDeleteNonEmptyOpensTwoBranchPrompt proves the
+// non-empty branch of R131 part 2's prompt: "d" opens a confirm naming
+// the member count and describing the "m" branch, and esc abandons it
+// leaving the group and its members untouched.
+func TestSettingsGroupDeleteNonEmptyOpensTwoBranchPrompt(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "tidy-up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := settingsOpenOnGroupsFields(t, db)
+	m.baseSessions = []store.Session{{ID: "s1", Name: "alpha", GroupID: &g.ID}}
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on a non-empty group did not open the two-branch confirm")
+	}
+	body := m.settingsGroupsViewLines(settingsCategories(), settingsCategoryWidth(100), 100-settingsCategoryWidth(100), 20, 24)
+	if !strings.Contains(body, "1 session(s)") {
+		t.Errorf("groups view does not name the member count while the confirm is open:\n%s", body)
+	}
+	if !strings.Contains(strings.ToLower(body), "moves them to default") {
+		t.Errorf("groups view does not describe the m branch:\n%s", body)
+	}
+
+	updated, _ = m.Update(key("esc"))
+	m = updated.(Model)
+	if m.settingsGroupDeleteConfirming {
+		t.Fatal("esc did not close the confirm sub-mode")
+	}
+	groups, err := db.ListGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("ListGroups() = %+v after esc; want the group untouched", groups)
+	}
+}
+
+// TestSettingsGroupDeleteMBranchMovesMembersToDefaultAndDropsGroup is
+// R131 part 2's non-destructive branch: "m" sets every member's group_id
+// to NULL (structural default) and drops the group row -- destroying no
+// session.
+func TestSettingsGroupDeleteMBranchMovesMembersToDefaultAndDropsGroup(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "tidy-up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := db.CreateSession(ctx, store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000c1", Name: "alpha", CWD: "/x",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
+		GroupID: &g.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := db.CreateSession(ctx, store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000d2", Name: "beta", CWD: "/x",
+		Agent: "shell", CapturedPath: "/bin", StatusAt: 101, CreatedAt: 101,
+		GroupID: &g.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := settingsOpenOnGroupsFields(t, db)
+	m.baseSessions = []store.Session{a, b}
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on a non-empty group did not open the confirm")
+	}
+
+	updated, cmd := m.Update(key("m"))
+	m = updated.(Model)
+	if m.settingsGroupDeleteConfirming {
+		t.Fatal("m did not close the confirm sub-mode")
+	}
+	if !strings.Contains(m.settingsGroupNote, "moved to default") {
+		t.Errorf("settingsGroupNote = %q, want it to say the sessions moved to default", m.settingsGroupNote)
+	}
+	if cmd == nil {
+		t.Fatal("m returned no command; want m.loadSessions so the already-loaded list picks up the new group_id")
+	}
+
+	groups, err := db.ListGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 0 {
+		t.Fatalf("ListGroups() = %+v after the m branch; want the group row dropped", groups)
+	}
+	for _, sess := range []struct{ id, name string }{{a.ID, "alpha"}, {b.ID, "beta"}} {
+		got, err := db.GetSession(ctx, sess.id)
+		if err != nil {
+			t.Fatalf("GetSession(%s): %v", sess.name, err)
+		}
+		if got.GroupID != nil {
+			t.Errorf("%s.GroupID after the m branch = %v, want nil (structural default)", sess.name, got.GroupID)
+		}
+		if got.DeletedAt != 0 {
+			t.Errorf("%s.DeletedAt after the m branch = %v, want 0 -- the m branch destroys nothing", sess.name, got.DeletedAt)
+		}
+	}
+}
+
+// TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes is task
+// 019's own guard test: the destructive branch never deletes anything
+// itself -- it populates m.marked with exactly the group's members and
+// sets the same fields the main list's own dd chord sets for a
+// non-empty mark set, closing the settings takeover so the ordinary
+// top-level `u` can restore the batch afterward. Submitting from there
+// must drive deleteSvc (internal/service.Delete's own seam, mark_test.go's
+// own precedent) once per marked session, exactly like a plain dd on a
+// marked set does -- never a second deletion implementation.
+func TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "batch-group")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var invocations []string
+	m := settingsOpenOnGroupsFields(t, db)
+	m.deleteSvc = func(_ context.Context, s store.Session) error {
+		invocations = append(invocations, s.ID)
+		return nil
+	}
+	m.baseSessions = []store.Session{
+		{ID: "s1", Name: "alpha", Status: "stopped", GroupID: &g.ID},
+		{ID: "s2", Name: "beta", Status: "stopped", GroupID: &g.ID},
+	}
+	m.sessions = m.baseSessions
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on a non-empty group did not open the confirm")
+	}
+
+	updated, _ = m.Update(key("d"))
+	m = updated.(Model)
+	if m.settingsOpen {
+		t.Fatal("the destructive d branch left the settings takeover open; it must hand off to the main dd confirm")
+	}
+	if !m.deleteConfirming {
+		t.Fatal("the destructive d branch did not open the bulk delete confirm (m.deleteConfirming)")
+	}
+	if len(m.marked) != 2 || !m.marked["s1"] || !m.marked["s2"] {
+		t.Fatalf("m.marked = %#v after the destructive d branch, want exactly the group's two members", m.marked)
+	}
+	body := m.deleteConfirmBody()
+	if !strings.Contains(body, "2 marked sessions") {
+		t.Fatalf("the destructive branch did not open the SAME bulk confirm dd itself opens:\n%s", body)
+	}
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	_ = updated.(Model)
+
+	if len(invocations) != 2 {
+		t.Fatalf("deleteSvc invoked %d time(s), want exactly 2 (the same per-session call dd's own bulk path makes): %#v", len(invocations), invocations)
+	}
+}

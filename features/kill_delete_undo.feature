@@ -684,3 +684,41 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And the state database contains session "batch-esc-one" with status "running"
     When deck client "A" exits cleanly
 
+
+  Scenario: settings' group-delete d branch routes through the same dd batch confirm and one u restores the whole batch (R131 part 2)
+    Given deck client "A" is started
+    And 200 milliseconds pass
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "n"
+    And deck client "A" sends "batch-group"
+    And deck client "A" sends ""
+    And deck client "A" sends ""
+    And deck client "A" creates shell session "groups-delete-dd-one" into group "batch-group" with a fresh working directory labelled "groups-delete-dd-one"
+    And deck client "A" creates shell session "groups-delete-dd-two" into group "batch-group" with a fresh working directory labelled "groups-delete-dd-two"
+    And deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    Then deck client "A" screen contains "batch-group"
+    When deck client "A" sends "d"
+    Then deck client "A" screen contains "2 session(s)"
+    When deck client "A" sends "d"
+    Then deck client "A" screen contains "Delete 2 marked sessions"
+    And deck client "A" screen contains "groups-delete-dd-one"
+    And deck client "A" screen contains "groups-delete-dd-two"
+    When deck client "A" submits the open dialog
+    Then the state database session "groups-delete-dd-one" is tombstoned
+    And the state database session "groups-delete-dd-two" is tombstoned
+    And deck client "A" screen contains "Deleted 2 sessions"
+    When deck client "A" presses u
+    Then the state database session "groups-delete-dd-one" is not tombstoned
+    And the state database session "groups-delete-dd-two" is not tombstoned
+    And deck client "A" screen contains "batch-group"
+    When deck client "A" exits cleanly
