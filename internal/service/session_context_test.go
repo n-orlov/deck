@@ -241,7 +241,7 @@ func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 	}
 }
 
-// TestSessionContextEnvExportsGroupNotWorkspace is task 008's (R128)
+// TestSessionContextEnvExportsGroupNotLegacyField is task 008's (R128)
 // dedicated unit evidence for the DECK_SESSION_WORKSPACE ->
 // DECK_SESSION_GROUP rename: called directly against sessionContextEnv
 // (no tmux, no adapter), it proves the new key holds store.Session's
@@ -249,7 +249,7 @@ func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 // implicit default group) and the recorded name for one that has a
 // GroupID whose name resolved -- and that the old key is entirely gone
 // from the map, never aliased alongside the new one.
-func TestSessionContextEnvExportsGroupNotWorkspace(t *testing.T) {
+func TestSessionContextEnvExportsGroupNotLegacyField(t *testing.T) {
 	svc := Service{DeckHome: "/home/deck"}
 
 	defaultSession := store.Session{ID: "s1", Name: "n1", Slug: "n1", CWD: "/work/a", Agent: "shell"}
@@ -271,7 +271,7 @@ func TestSessionContextEnvExportsGroupNotWorkspace(t *testing.T) {
 	}
 }
 
-// TestNotificationSessionPayloadCarriesGroupNotWorkspace is task 008's
+// TestNotificationSessionPayloadCarriesGroupNotLegacyField is task 008's
 // (R128) dedicated unit evidence for the second half of the same rename:
 // SPEC section 10.1's payload field. It asserts the rendered JSON -- the
 // shape a body template actually sees -- carries `group` holding
@@ -281,7 +281,7 @@ func TestSessionContextEnvExportsGroupNotWorkspace(t *testing.T) {
 // alias beside the new one. The field names are checked through
 // encoding/json rather than the Go field, because the json tags are what
 // section 10.1 documents as the versioned payload.
-func TestNotificationSessionPayloadCarriesGroupNotWorkspace(t *testing.T) {
+func TestNotificationSessionPayloadCarriesGroupNotLegacyField(t *testing.T) {
 	decode := func(t *testing.T, payload NotificationSession) map[string]any {
 		t.Helper()
 		encoded, err := json.Marshal(payload)

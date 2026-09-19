@@ -8,13 +8,13 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
-// TestSessionWorkspaceKeyReadsGroupNameVerbatim proves task 008's (R128)
-// rewiring of internal/tui's group-key seam: sessionWorkspace now returns
+// TestSessionGroupKeyReadsGroupNameVerbatim proves task 008's (R128)
+// rewiring of internal/tui's group-key seam: sessionGroupKey now returns
 // store.Session.GroupName verbatim, with no cwd-derived fallback of any
 // kind -- unlike the removed Workspace field/store.DefaultWorkspace pair,
 // a session with no group recorded groups under the empty string (the
 // implicit default, SPEC §11), never under a basename of its cwd.
-func TestSessionWorkspaceKeyReadsGroupNameVerbatim(t *testing.T) {
+func TestSessionGroupKeyReadsGroupNameVerbatim(t *testing.T) {
 	cases := []struct {
 		name    string
 		session store.Session
@@ -25,8 +25,8 @@ func TestSessionWorkspaceKeyReadsGroupNameVerbatim(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := sessionWorkspace(tc.session); got != tc.want {
-				t.Fatalf("sessionWorkspace(%+v) = %q, want %q", tc.session, got, tc.want)
+			if got := sessionGroupKey(tc.session); got != tc.want {
+				t.Fatalf("sessionGroupKey(%+v) = %q, want %q", tc.session, got, tc.want)
 			}
 		})
 	}
@@ -47,12 +47,12 @@ func groupIDPtr(id int64) *int64 {
 	return &id
 }
 
-// TestGroupSessionsBucketsByWorkspacePreservingOrder proves requirement 30's
+// TestGroupSessionsBucketsByGroupKeyPreservingOrder proves requirement 30's
 // grouping itself: sessions land in one group per workspace, in the order
 // each workspace was first seen, and never grouped by anything derived from
 // a repo (two sessions here share a workspace despite different cwds under
 // it, which a repo-based grouping would not do the same way).
-func TestGroupSessionsBucketsByWorkspacePreservingOrder(t *testing.T) {
+func TestGroupSessionsBucketsByGroupKeyPreservingOrder(t *testing.T) {
 	m := groupTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", GroupName: "infra"},
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", GroupName: "service-a"},
@@ -63,8 +63,8 @@ func TestGroupSessionsBucketsByWorkspacePreservingOrder(t *testing.T) {
 	if len(groups) != 2 {
 		t.Fatalf("len(groups) = %d, want 2 (%v)", len(groups), groups)
 	}
-	if groups[0].Workspace != "infra" || groups[1].Workspace != "service-a" {
-		t.Fatalf("group order = [%q, %q], want [infra, service-a] (first-seen order)", groups[0].Workspace, groups[1].Workspace)
+	if groups[0].Name != "infra" || groups[1].Name != "service-a" {
+		t.Fatalf("group order = [%q, %q], want [infra, service-a] (first-seen order)", groups[0].Name, groups[1].Name)
 	}
 	if len(groups[0].Sessions) != 2 || groups[0].Sessions[0].Session.ID != "a1" || groups[0].Sessions[1].Session.ID != "a2" {
 		t.Fatalf("infra group = %+v, want [a1, a2] in that order", groups[0].Sessions)
@@ -359,8 +359,8 @@ func TestSessionGroupIDDefaultsAndDanglingBothResolveToZero(t *testing.T) {
 	// (GroupID 0), not two.
 	m := groupTestModel([]store.Session{cases[0].session, cases[1].session})
 	groups := m.groupSessions()
-	if len(groups) != 1 || groups[0].Workspace != "" || groups[0].GroupID != 0 {
-		t.Fatalf("groupSessions() = %+v, want exactly one default bucket (Workspace=\"\", GroupID=0)", groups)
+	if len(groups) != 1 || groups[0].Name != "" || groups[0].GroupID != 0 {
+		t.Fatalf("groupSessions() = %+v, want exactly one default bucket (Name=\"\", GroupID=0)", groups)
 	}
 	if len(groups[0].Sessions) != 2 {
 		t.Fatalf("default bucket has %d sessions, want 2", len(groups[0].Sessions))

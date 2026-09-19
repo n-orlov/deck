@@ -57,17 +57,17 @@ func findRow(t *testing.T, m Model, sessionIndex int) (x, y int) {
 	return 0, 0
 }
 
-func findHeader(t *testing.T, m Model, workspace string) (x, y int) {
+func findHeader(t *testing.T, m Model, groupName string) (x, y int) {
 	t.Helper()
 	layout := m.computeLayout()
 	width, height := m.sidebarContentDims(layout)
 	visible := m.sidebarVisibleEntries(width, height)
 	for i, e := range visible {
-		if e.kind == sidebarLineHeader && e.workspace == workspace {
+		if e.kind == sidebarLineHeader && e.groupName == groupName {
 			return layout.Sidebar.Width / 2, contentRowY(m, layout, i)
 		}
 	}
-	t.Fatalf("no visible header found for workspace %q", workspace)
+	t.Fatalf("no visible header found for group %q", groupName)
 	return 0, 0
 }
 

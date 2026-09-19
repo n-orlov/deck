@@ -10,7 +10,7 @@ import (
 )
 
 // §11/§11.3 manual groups (SPEC requirement 30, R128/R129): the sidebar
-// groups rows by sessions.group_id (via sessionWorkspace's group-key
+// groups rows by sessions.group_id (via sessionGroupKey's group-key
 // seam), never by cwd or repo. Each group has a collapsible header;
 // collapsing a group hides its member rows but leaves the sidebar
 // otherwise navigable — selection never lands on a hidden row.
@@ -31,7 +31,7 @@ import (
 // whose headers reshuffle when a session starts waiting is a list you
 // cannot navigate from memory").
 
-// sessionWorkspace is internal/tui's one group-key accessor (task 007,
+// sessionGroupKey is internal/tui's one group-key accessor (task 007,
 // Tier 2 preparation; task 008, R128, rewired it to read the actual group
 // model instead of borrowing it): every other file that needs to know
 // which group a session belongs to calls this (or sessionGroupDisplayName
@@ -44,36 +44,36 @@ import (
 // store.DefaultWorkspace; SPEC.md:203-204's OWN basename-of-cwd rule for
 // the create modal's blank-name default is unrelated and now lives in
 // tui.go's createNameCWDBasename, never through this seam).
-func sessionWorkspace(session store.Session) string {
+func sessionGroupKey(session store.Session) string {
 	return session.GroupName
 }
 
 // sessionGroupDisplayName is the seam's companion display-name accessor:
 // the label a group's header should show for one of its member sessions.
-// Identical to sessionWorkspace's group key at this commit -- there is
+// Identical to sessionGroupKey's group key at this commit -- there is
 // still no separate group-name storage distinct from the key itself (a
 // group's name IS its key, per SPEC §4's groups table) -- kept as its
 // own function so a later task that ever needs the two to diverge only
 // has to change this function's body, not every call site across
 // internal/tui.
 func sessionGroupDisplayName(session store.Session) string {
-	return sessionWorkspace(session)
+	return sessionGroupKey(session)
 }
 
 // sessionGroupID resolves the durable group identity a session's collapse
 // state and §11.8 header hit-test key off of (task 013/R129 part 3): the
-// real groups.id when sessionWorkspace resolves to a real, named group, or
+// real groups.id when sessionGroupKey resolves to a real, named group, or
 // 0 -- a sentinel no real group row can ever hold, since SQLite rowids
 // start at 1 -- for the implicit default group, including a session whose
 // GroupID no longer resolves to a live groups row (SPEC §11: "a group_id
 // that no longer resolves ... renders under default rather than
-// vanishing"). This is deliberately keyed off sessionWorkspace's resolved
+// vanishing"). This is deliberately keyed off sessionGroupKey's resolved
 // name, not off session.GroupID directly: a dangling GroupID is non-nil
 // but must still bucket under the SAME default identity (0) every true
 // default session already uses, never under a distinct, meaningless
 // id-shaped value.
 func sessionGroupID(session store.Session) int64 {
-	if sessionWorkspace(session) == "" {
+	if sessionGroupKey(session) == "" {
 		return 0
 	}
 	if session.GroupID != nil {
@@ -99,9 +99,9 @@ type indexedSession struct {
 // id cannot, so keying either one off Workspace would lose collapse state
 // across a rename even though nothing else about the group changed.
 type sidebarGroup struct {
-	Workspace string
-	GroupID   int64
-	Sessions  []indexedSession
+	Name     string
+	GroupID  int64
+	Sessions []indexedSession
 }
 
 // groupSessions splits m.sessions into groups (SPEC requirement 30):
@@ -117,23 +117,23 @@ func (m Model) groupSessions() []sidebarGroup {
 	var groups []sidebarGroup
 	firstSeen := map[string]int{}
 	for i, session := range m.sessions {
-		ws := sessionWorkspace(session)
+		ws := sessionGroupKey(session)
 		if gi, ok := firstSeen[ws]; ok {
 			groups[gi].Sessions = append(groups[gi].Sessions, indexedSession{Index: i, Session: session})
 			continue
 		}
 		firstSeen[ws] = len(groups)
-		groups = append(groups, sidebarGroup{Workspace: ws, GroupID: sessionGroupID(session), Sessions: []indexedSession{{Index: i, Session: session}}})
+		groups = append(groups, sidebarGroup{Name: ws, GroupID: sessionGroupID(session), Sessions: []indexedSession{{Index: i, Session: session}}})
 	}
 	sort.SliceStable(groups, func(i, j int) bool {
-		return groupSortsBefore(groups[i].Workspace, groups[j].Workspace)
+		return groupSortsBefore(groups[i].Name, groups[j].Name)
 	})
 	return groups
 }
 
 // groupSortsBefore is R129's group ORDER rule (task 011): alphabetical,
 // case-insensitive, with the implicit default group (the empty
-// sessionWorkspace key) always sorting last regardless of where its
+// sessionGroupKey key) always sorting last regardless of where its
 // display name ("default") would otherwise land -- SPEC §11: "Order is
 // alphabetical, case-insensitive, with default always last regardless of
 // where its name would sort." This replaces the deleted
@@ -379,7 +379,7 @@ func (m Model) groupHeaderText(group sidebarGroup, contentWidth int) string {
 	if m.isGroupCollapsed(group.GroupID) {
 		marker = m.glyph("\u25b8", ">") // collapsed
 	}
-	name := group.Workspace
+	name := group.Name
 	if name == "" {
 		name = "default"
 	}

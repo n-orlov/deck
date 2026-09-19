@@ -26,7 +26,7 @@ func TestGroupOrderAaaLeadsAlphabetically(t *testing.T) {
 	}
 	var got []string
 	for _, g := range groups {
-		got = append(got, g.Workspace)
+		got = append(got, g.Name)
 	}
 	want := []string{"AAA", "Mmm", "zzz"}
 	for i := range want {
@@ -50,8 +50,8 @@ func TestGroupOrderZzzSortsBeforeDefaultDespiteName(t *testing.T) {
 	if len(groups) != 2 {
 		t.Fatalf("len(groups) = %d, want 2 (%v)", len(groups), groups)
 	}
-	if groups[0].Workspace != "zzz" || groups[1].Workspace != "" {
-		t.Fatalf("group order = [%q, %q], want [zzz, \"\"] (default always last, even after the alphabetically-latest real group)", groups[0].Workspace, groups[1].Workspace)
+	if groups[0].Name != "zzz" || groups[1].Name != "" {
+		t.Fatalf("group order = [%q, %q], want [zzz, \"\"] (default always last, even after the alphabetically-latest real group)", groups[0].Name, groups[1].Name)
 	}
 }
 
@@ -71,8 +71,8 @@ func TestGroupOrderDefaultAlwaysLastRegardlessOfEmptyStringSortingFirst(t *testi
 	if len(groups) != 2 {
 		t.Fatalf("len(groups) = %d, want 2 (%v)", len(groups), groups)
 	}
-	if groups[0].Workspace != "aaa" || groups[1].Workspace != "" {
-		t.Fatalf("group order = [%q, %q], want [aaa, \"\"] (default must not win a naive \"\" < \"aaa\" string comparison)", groups[0].Workspace, groups[1].Workspace)
+	if groups[0].Name != "aaa" || groups[1].Name != "" {
+		t.Fatalf("group order = [%q, %q], want [aaa, \"\"] (default must not win a naive \"\" < \"aaa\" string comparison)", groups[0].Name, groups[1].Name)
 	}
 }
 
@@ -85,14 +85,14 @@ func TestGroupOrderDefaultAlwaysLastRegardlessOfEmptyStringSortingFirst(t *testi
 func TestGroupHeaderTextCountsPopulatedAndEmptyGroups(t *testing.T) {
 	m := groupTestModel(nil)
 	populated := sidebarGroup{
-		Workspace: "tooling maintenance",
+		Name: "tooling maintenance",
 		Sessions: []indexedSession{
 			{Index: 0, Session: store.Session{ID: "a"}},
 			{Index: 1, Session: store.Session{ID: "b"}},
 			{Index: 2, Session: store.Session{ID: "c"}},
 		},
 	}
-	empty := sidebarGroup{Workspace: "sprint work"} // no Sessions: defined but empty
+	empty := sidebarGroup{Name: "sprint work"} // no Sessions: defined but empty
 
 	gotPopulated := m.groupHeaderText(populated, 60)
 	if !strings.Contains(gotPopulated, "(3)") {

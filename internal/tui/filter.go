@@ -40,7 +40,7 @@ func filterMatches(session store.Session, query string) bool {
 	if strings.Contains(strings.ToLower(session.Name), q) {
 		return true
 	}
-	if strings.Contains(strings.ToLower(sessionWorkspace(session)), q) {
+	if strings.Contains(strings.ToLower(sessionGroupKey(session)), q) {
 		return true
 	}
 	if strings.Contains(strings.ToLower(session.CWD), q) {
