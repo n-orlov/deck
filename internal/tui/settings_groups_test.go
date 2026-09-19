@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -547,5 +548,192 @@ func TestSettingsGroupDeleteDBranchReachesTheSameServiceCallDDDoes(t *testing.T)
 
 	if len(invocations) != 2 {
 		t.Fatalf("deleteSvc invoked %d time(s), want exactly 2 (the same per-session call dd's own bulk path makes): %#v", len(invocations), invocations)
+	}
+}
+
+// routeSettingsGroupDeleteIntoBulkConfirm drives the destructive branch of
+// R131 part 2 up to (but not through) the bulk confirm's own submit: it
+// creates group name holding the given member sessions, opens the Groups
+// category, presses `d` twice (the two-branch confirm, then its
+// destructive answer) and hands back the model sitting on the ordinary
+// §9.2 bulk delete confirm. Every test below shares it so they all agree
+// on exactly which keys reach that state.
+func routeSettingsGroupDeleteIntoBulkConfirm(t *testing.T, db *store.Store, name string, members ...store.Session) (Model, store.Group) {
+	t.Helper()
+	g, err := db.CreateGroup(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range members {
+		id := g.ID
+		members[i].GroupID = &id
+	}
+	m := settingsOpenOnGroupsFields(t, db)
+	m.baseSessions = members
+	m.sessions = members
+
+	updated, _ := m.Update(key("d"))
+	m = updated.(Model)
+	if !m.settingsGroupDeleteConfirming {
+		t.Fatal("d on a non-empty group did not open the two-branch confirm")
+	}
+	updated, _ = m.Update(key("d"))
+	m = updated.(Model)
+	if !m.deleteConfirming {
+		t.Fatal("the destructive d branch did not reach the bulk delete confirm")
+	}
+	return m, g
+}
+
+// groupNamesIn is a tiny read helper so the assertions below name what
+// they mean ("is the row still there") rather than indexing ListGroups.
+func groupNamesIn(t *testing.T, db *store.Store) []string {
+	t.Helper()
+	groups, err := db.ListGroups(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, g := range groups {
+		names = append(names, g.Name)
+	}
+	return names
+}
+
+// TestSettingsGroupDeleteDBranchDropsTheGroupRowOnceTheBatchCommits is
+// R131's own "The group row goes once the batch commits": the destructive
+// branch deletes nothing itself, but the moment the routed §9.2 batch
+// reports back (sessionsBulkDeleted, every member's delete having
+// succeeded) the group row is gone -- so the operator who asked for
+// "delete all N sessions" is not left with an empty group standing.
+func TestSettingsGroupDeleteDBranchDropsTheGroupRowOnceTheBatchCommits(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	m, g := routeSettingsGroupDeleteIntoBulkConfirm(t, db, "batch-group",
+		store.Session{ID: "s1", Name: "alpha", Status: "stopped"},
+		store.Session{ID: "s2", Name: "beta", Status: "stopped"},
+	)
+	m.deleteSvc = func(_ context.Context, _ store.Session) error { return nil }
+
+	if m.bulkDeleteGroupID != g.ID {
+		t.Fatalf("bulkDeleteGroupID = %d after routing into the batch, want the routed group %d", m.bulkDeleteGroupID, g.ID)
+	}
+	if names := groupNamesIn(t, db); len(names) != 1 {
+		t.Fatalf("ListGroups() = %v before the batch commits; the row must still stand until then", names)
+	}
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+
+	if names := groupNamesIn(t, db); len(names) != 0 {
+		t.Fatalf("ListGroups() = %v after the batch committed, want the group row dropped (R131: it goes once the batch commits)", names)
+	}
+	if m.bulkDeleteGroupID != 0 || m.bulkDeleteGroupName != "" {
+		t.Errorf("bulkDeleteGroup{ID,Name} = %d/%q after the batch, want cleared so a later ordinary dd never inherits it", m.bulkDeleteGroupID, m.bulkDeleteGroupName)
+	}
+	if m.attachError != "" {
+		t.Errorf("attachError = %q, want empty on the happy path", m.attachError)
+	}
+}
+
+// TestSettingsGroupDeleteDBranchKeepsTheGroupWhenTheConfirmIsCancelled is
+// the other half of that timing: esc on the routed bulk confirm commits no
+// batch at all, so both the members and the group row survive and nothing
+// is left parked for the next dd to trip over.
+func TestSettingsGroupDeleteDBranchKeepsTheGroupWhenTheConfirmIsCancelled(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	m, _ := routeSettingsGroupDeleteIntoBulkConfirm(t, db, "kept-group",
+		store.Session{ID: "s1", Name: "alpha", Status: "stopped"},
+	)
+	m.deleteSvc = func(_ context.Context, _ store.Session) error {
+		t.Fatal("esc on the bulk confirm still called deleteSvc")
+		return nil
+	}
+
+	updated, _ := m.Update(key("esc"))
+	m = updated.(Model)
+
+	if m.deleteConfirming {
+		t.Fatal("esc did not close the bulk delete confirm")
+	}
+	if names := groupNamesIn(t, db); len(names) != 1 || names[0] != "kept-group" {
+		t.Fatalf("ListGroups() = %v after cancelling the batch, want the group row untouched", names)
+	}
+	if m.bulkDeleteGroupID != 0 || m.bulkDeleteGroupName != "" {
+		t.Errorf("bulkDeleteGroup{ID,Name} = %d/%q after a cancelled batch, want cleared", m.bulkDeleteGroupID, m.bulkDeleteGroupName)
+	}
+}
+
+// TestSettingsGroupDeleteDBranchKeepsTheGroupWhenAMemberFailsToDelete
+// pins the partial-failure rule: a group that still holds a live member
+// keeps its row, because dropping it would silently move that survivor to
+// default -- which is the OTHER branch's behaviour, the one the operator
+// did not pick.
+func TestSettingsGroupDeleteDBranchKeepsTheGroupWhenAMemberFailsToDelete(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	m, _ := routeSettingsGroupDeleteIntoBulkConfirm(t, db, "half-group",
+		store.Session{ID: "s1", Name: "alpha", Status: "stopped"},
+		store.Session{ID: "s2", Name: "beta", Status: "stopped"},
+	)
+	m.deleteSvc = func(_ context.Context, s store.Session) error {
+		if s.ID == "s2" {
+			return errors.New("boom")
+		}
+		return nil
+	}
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+
+	if names := groupNamesIn(t, db); len(names) != 1 || names[0] != "half-group" {
+		t.Fatalf("ListGroups() = %v after a partially failed batch, want the group row kept (a live member still names it)", names)
+	}
+	if !strings.Contains(m.attachError, "boom") {
+		t.Errorf("attachError = %q, want the batch's own failure surfaced", m.attachError)
+	}
+	if m.bulkDeleteGroupID != 0 {
+		t.Errorf("bulkDeleteGroupID = %d after the batch reported, want cleared either way", m.bulkDeleteGroupID)
+	}
+}
+
+// TestOrdinaryBulkDeleteNeverDropsAGroupRow is the containment guard for
+// the field above: the group-row deletion belongs to R131's settings
+// branch alone, so a plain top-level `dd` over a marked set that happens
+// to live in one group deletes the sessions and leaves the group standing.
+func TestOrdinaryBulkDeleteNeverDropsAGroupRow(t *testing.T) {
+	db := openStoreForLastCreateGroup(t)
+	ctx := context.Background()
+	g, err := db.CreateGroup(ctx, "untouched-group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(db, config.Settings{}, "")
+	m.width, m.height = 100, 40
+	m.deleteSvc = func(_ context.Context, _ store.Session) error { return nil }
+	id := g.ID
+	m.baseSessions = []store.Session{{ID: "s1", Name: "alpha", Status: "stopped", GroupID: &id}}
+	m.sessions = m.baseSessions
+	m.marked = map[string]bool{"s1": true}
+	m.deleteConfirming = true
+
+	updated, cmd := m.Update(key("enter"))
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("submit returned no command")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+
+	if names := groupNamesIn(t, db); len(names) != 1 || names[0] != "untouched-group" {
+		t.Fatalf("ListGroups() = %v after an ordinary bulk dd, want the group row untouched", names)
 	}
 }

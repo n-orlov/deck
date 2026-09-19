@@ -28,6 +28,7 @@ func registerCreateSessionCWDPrefillSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" presses "(up|down|ctrl\+p|ctrl\+n)" in the cwd field (\d+) times?$`, clientPressesArrowInCWDFieldNTimes)
 	sc.Step(`^deck client "([^"]+)" tabs to the cwd field$`, clientTabsToCWDField)
 	sc.Step(`^the state database has a group named "([^"]+)"$`, ensureGroupNamedExists)
+	sc.Step(`^the state database has no group named "([^"]+)"$`, groupNamedIsGone)
 	sc.Step(`^deck client "([^"]+)" creates shell session "([^"]+)" into group "([^"]+)" with a fresh working directory labelled "([^"]+)"$`, clientCreatesShellSessionIntoGroupWithFreshCWDLabelled)
 	sc.Step(`^the state database session "([^"]+)" was created into group "([^"]+)"$`, sessionWasCreatedIntoGroup)
 }
@@ -313,6 +314,51 @@ func ensureGroupNamedExists(ctx context.Context, name string) error {
 		return fmt.Errorf("create group %q: %w", name, err)
 	}
 	return nil
+}
+
+// groupNamedIsGone backs "the state database has no group named" (R131
+// part 2's "the group row goes once the batch commits"): it POLLS, exactly
+// as stateDatabaseSessionIsTombstoned does, because the row is dropped by
+// the TUI on the routed batch's own result message rather than by the
+// keypress that submitted it -- a single immediate read would be a race,
+// and a negative assertion that races is a test that passes for the wrong
+// reason.
+func groupNamedIsGone(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		count, err := groupRowCount(ctx, h, name)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("group %q is still in the state database after 3s, want its row gone", name)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// groupRowCount is groupNamedIsGone's one read, kept separate so the
+// observed database handle is opened and closed per poll rather than held
+// open across the wait (every other assertion here opens its own handle
+// too -- the released binary owns the file).
+func groupRowCount(ctx context.Context, h *ScenarioHarness, name string) (int, error) {
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM groups WHERE name = ?`, name).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count group %q: %w", name, err)
+	}
+	return count, nil
 }
 
 // createModalCWDToGroupFieldDowns is the number of ↓ presses that move

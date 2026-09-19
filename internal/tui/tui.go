@@ -808,6 +808,18 @@ type Model struct {
 	settingsGroupDeleteConfirming bool
 	settingsGroupDeleteID         int64
 	settingsGroupDeleteName       string
+	// bulkDeleteGroupID is the group row R131's destructive `d` branch
+	// routed into the §9.2 bulk `dd` path, kept only until that batch
+	// commits: "the group row goes once the batch commits" (PRD R131). It
+	// is set by settingsRouteGroupDeleteToBulkConfirm alone -- an ordinary
+	// top-level dd never sets it and so never drops a group -- read (and
+	// cleared) exactly once, in the sessionsBulkDeleted branch, and cleared
+	// without a store call when the bulk confirm is cancelled instead of
+	// submitted. 0 means "this batch is not a group delete".
+	// bulkDeleteGroupName is carried alongside for the note's own wording,
+	// since the row itself is gone by the time it is read.
+	bulkDeleteGroupID   int64
+	bulkDeleteGroupName string
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -2738,6 +2750,27 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.teardownHookNoteGeneration++
 			teardownGeneration := m.teardownHookNoteGeneration
 			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		}
+		// R131's destructive branch: the batch has now committed, so the
+		// group row settings routed here goes too -- only when every member's
+		// delete actually succeeded, since a group that still holds a live
+		// member must keep its row (a partial failure leaves both the row and
+		// the surviving members alone, with firstErr already on screen).
+		// Cleared unconditionally: this batch is over either way, and a later
+		// ordinary dd must never inherit it.
+		if groupID := m.bulkDeleteGroupID; groupID != 0 {
+			groupName := m.bulkDeleteGroupName
+			m.bulkDeleteGroupID = 0
+			m.bulkDeleteGroupName = ""
+			if firstErr == nil && m.store != nil {
+				if err := m.store.DeleteGroup(context.Background(), groupID); err != nil {
+					m.attachError = "Cannot delete group " + groupName + ": " + err.Error()
+				} else if m.settingsOpen {
+					// Only meaningful if something reopened settings in the
+					// meantime; `,` recomputes this snapshot on open anyway.
+					m.settingsGroups = m.computeAvailableGroups()
+				}
+			}
 		}
 		if len(succeeded) == 0 {
 			return m, tea.Batch(cmds...)
@@ -6402,6 +6435,10 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteConfirming = false
 			m.deleteNote = ""
 			m.marked = nil
+			// A cancelled batch commits nothing, so a group routed here by
+			// R131's `d` branch keeps both its members and its row.
+			m.bulkDeleteGroupID = 0
+			m.bulkDeleteGroupName = ""
 		},
 		Submit: func() tea.Cmd {
 			if m.deleteSvc == nil {
