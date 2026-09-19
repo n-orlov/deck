@@ -254,6 +254,12 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.settingsGroupCreating || m.settingsGroupRenaming {
 		return m.updateSettingsGroupEditing(msg)
 	}
+	// task 019/R131 part 2: "d"'s own two-branch prompt on a non-empty
+	// group takes over the whole keymap for the same reason -- it is
+	// itself a confirm dialog, not a navigable field.
+	if m.settingsGroupDeleteConfirming {
+		return m.updateSettingsGroupDeleteConfirm(msg)
+	}
 	if m.settingsSearchActive {
 		return m.updateSettingsSearch(msg)
 	}
@@ -309,6 +315,17 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 		// rule as "n" above, and only when a group is actually selected.
 		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
 			m.settingsStartGroupRename()
+		}
+	case "d":
+		// R131 part 2: "d" deletes the selected group, same reachability
+		// rule as "n"/"r" above. settingsStartGroupDelete itself decides
+		// between an immediate no-prompt delete (empty group) and opening
+		// the two-branch confirm (non-empty group) -- "default" is never a
+		// row in m.settingsGroups (store.Group's own doc comment) so it can
+		// never be selected here at all, which is what "default offers no
+		// delete" reduces to.
+		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
+			m.settingsStartGroupDelete()
 		}
 	}
 	return m, nil
@@ -690,6 +707,156 @@ func (m *Model) settingsStartGroupRename() {
 	m.settingsGroupEditID = g.ID
 	m.settingsGroupEditValue = g.Name
 	m.settingsGroupNote = ""
+}
+
+// settingsStartGroupDelete is "d"'s effect on the currently selected
+// group (task 019, R131 part 2): an empty group (no member sessions in
+// m.baseSessions -- SPEC's default view, the same population the sidebar
+// and the dd batch path itself act on) is dropped immediately via
+// store.DeleteGroup, with no prompt at all ("there is nothing to decide"),
+// while a non-empty one opens the two-branch confirm sub-mode instead of
+// deleting anything yet. Does nothing when no group is selected (an empty
+// list) -- and "default" can never reach here in the first place, since
+// it is never a row in m.settingsGroups to begin with.
+func (m *Model) settingsStartGroupDelete() {
+	g, ok := m.settingsSelectedGroup()
+	if !ok {
+		return
+	}
+	if len(m.sessionsInGroup(g.ID)) == 0 {
+		m.settingsDeleteEmptyGroupNow(g)
+		return
+	}
+	m.settingsGroupDeleteConfirming = true
+	m.settingsGroupDeleteID = g.ID
+	m.settingsGroupDeleteName = g.Name
+	m.settingsGroupNote = ""
+}
+
+// settingsDeleteEmptyGroupNow is settingsStartGroupDelete's no-prompt
+// branch: store.DeleteGroup outright (there are no members to decide
+// anything about), then the same refresh/reselect/note dance
+// settingsCommitGroupEdit's own create/rename branches already use.
+func (m *Model) settingsDeleteEmptyGroupNow(g store.Group) {
+	if m.store == nil {
+		m.settingsGroupNote = "no store is open"
+		return
+	}
+	if err := m.store.DeleteGroup(context.Background(), g.ID); err != nil {
+		m.settingsGroupNote = err.Error()
+		return
+	}
+	m.settingsGroups = m.computeAvailableGroups()
+	if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
+		m.settingsGroupIndex--
+	}
+	m.settingsGroupNote = "deleted empty group " + g.Name
+}
+
+// updateSettingsGroupDeleteConfirm handles key input while "d"'s
+// two-branch confirm sub-mode is open (task 019, R131 part 2, SPEC §11.5's
+// carve-out): "m" is the non-destructive branch (move every member to
+// default, then drop the group row -- destroying nothing),
+// "d" is the destructive branch, handed off wholesale to the EXISTING
+// §9.2 bulk `dd` confirm rather than a second deletion implementation, and
+// esc abandons the whole sub-mode, writing nothing.
+func (m Model) updateSettingsGroupDeleteConfirm(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.settingsGroupDeleteConfirming = false
+		m.settingsGroupDeleteID = 0
+		m.settingsGroupDeleteName = ""
+		m.settingsGroupNote = ""
+		return m, nil
+	case "m":
+		return m, m.settingsMoveGroupMembersToDefaultAndDeleteGroup()
+	case "d":
+		m.settingsRouteGroupDeleteToBulkConfirm()
+		return m, nil
+	}
+	return m, nil
+}
+
+// settingsMoveGroupMembersToDefaultAndDeleteGroup is "m"'s commit (task
+// 019, R131 part 2's non-destructive branch): every current member
+// (re-read from m.baseSessions right now, never a stale snapshot) is moved
+// to the structural default group (store.SetSessionGroup with groupID 0,
+// SetSessionGroup's own "<=0 means default" contract) before the group row
+// itself is dropped (store.DeleteGroup) -- ordered that way on purpose, so
+// a mid-loop failure never leaves the group row gone while a member still
+// names it (which would just degrade that member to default anyway per
+// SPEC §11's dangling-group_id rule, but leaving the row alone on error is
+// simpler to reason about). Returns m.loadSessions so the already-loaded
+// session list picks up every member's new group_id right away, mirroring
+// the `g` picker's own submitGroupMove precedent, rather than waiting for
+// the next periodic reconcile.
+func (m *Model) settingsMoveGroupMembersToDefaultAndDeleteGroup() tea.Cmd {
+	if m.store == nil {
+		m.settingsGroupNote = "no store is open"
+		return nil
+	}
+	id, name := m.settingsGroupDeleteID, m.settingsGroupDeleteName
+	ctx := context.Background()
+	now := time.Now()
+	if m.settings.Clock != nil {
+		now = m.settings.Clock.Now()
+	}
+	at := now.UnixMilli()
+	for _, s := range m.sessionsInGroup(id) {
+		if err := m.store.SetSessionGroup(ctx, s.ID, 0, "user", at); err != nil {
+			m.settingsGroupNote = err.Error()
+			return nil
+		}
+	}
+	if err := m.store.DeleteGroup(ctx, id); err != nil {
+		m.settingsGroupNote = err.Error()
+		return nil
+	}
+	m.settingsGroups = m.computeAvailableGroups()
+	if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
+		m.settingsGroupIndex--
+	}
+	m.settingsGroupDeleteConfirming = false
+	m.settingsGroupDeleteID = 0
+	m.settingsGroupDeleteName = ""
+	m.settingsGroupNote = "deleted group " + name + " -- its sessions moved to default"
+	return m.loadSessions
+}
+
+// settingsRouteGroupDeleteToBulkConfirm is "d"'s commit inside the
+// two-branch confirm (task 019, R131 part 2's destructive branch): it
+// populates m.marked with exactly the group's current members (re-read
+// from m.baseSessions right now) and sets the very same fields the main
+// list's own second-`d` dd chord sets for a non-empty mark set
+// (Update's own pendingDelete branch, the dd chord's second key) --
+// m.deleteConfirming,
+// m.deleteScroll reset, purge left empty since a bulk delete never offers
+// it -- so control reaches updateBulkDeleteConfirm/bulkDeleteConfirmBody
+// through the exact same seam `dd` does, never a second deletion
+// implementation. The settings takeover itself closes (m.settingsOpen =
+// false): deleteConfirming is already checked ahead of settingsOpen in
+// both Update and View, so the confirm would render either way, but
+// closing settings here is what lets the ORDINARY top-level `u` (only
+// reachable once nothing else has taken over the keymap) restore the
+// whole batch afterward, exactly like any other dd.
+func (m *Model) settingsRouteGroupDeleteToBulkConfirm() {
+	members := m.sessionsInGroup(m.settingsGroupDeleteID)
+	marked := make(map[string]bool, len(members))
+	for _, s := range members {
+		marked[s.ID] = true
+	}
+	m.settingsGroupDeleteConfirming = false
+	m.settingsGroupDeleteID = 0
+	m.settingsGroupDeleteName = ""
+	m.settingsGroupNote = ""
+	m.settingsOpen = false
+	m.marked = marked
+	m.deleteConfirming = true
+	m.deleteNote = ""
+	m.deleteScroll = 0
+	m.deletePurgeValue = ""
+	m.deletePurgePath = ""
+	m.deletePurgeOK = false
 }
 
 // updateSettingsGroupEditing handles key input while "n"/"r"'s typing
@@ -1968,14 +2135,19 @@ func (m Model) settingsFooterLineContent() string {
 	if m.settingsGroupRenaming {
 		return truncateToWidth("type a new name - enter renames it now - esc cancels", width)
 	}
+	// task 019/R131 part 2's own two-branch confirm sub-mode, same tier as
+	// the create/rename typing sub-modes just above.
+	if m.settingsGroupDeleteConfirming {
+		return truncateToWidth("m moves members to default and drops the group - d deletes them too (same confirm section 9.2's dd uses) - esc cancels", width)
+	}
 	if m.settingsOnGroupsCategory() {
-		// R131 part 1: "n"/"r" are named here instead of in the generic
-		// footer below, since they are reachable only from this one
+		// R131 part 1/2: "n"/"r"/"d" are named here instead of in the
+		// generic footer below, since they are reachable only from this one
 		// category (settingsOnGroupsCategory's own doc comment) -- naming
 		// them in every other category's footer would be the "advertises a
 		// key it doesn't grant" defect this package already avoids for
 		// every other sub-mode-only binding.
-		footer := "tab/left/right switch - up/down select - n new group - r rename - esc close"
+		footer := "tab/left/right switch - up/down select - n new group - r rename - d delete - esc close"
 		if m.settingsGroupNote != "" {
 			footer = m.settingsGroupNote + " - " + footer
 		}
@@ -2219,6 +2391,16 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 			label = "New name:  "
 		}
 		addLine(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
+	}
+	// task 019/R131 part 2's two-branch confirm, appended the same way the
+	// create/rename typing row is above -- only ever shown for a non-empty
+	// group (settingsStartGroupDelete drops an empty one immediately, no
+	// prompt at all).
+	if m.settingsGroupDeleteConfirming {
+		addLine("", theme.Text, "")
+		count := len(m.sessionsInGroup(m.settingsGroupDeleteID))
+		addLine(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), theme.Text, "")
+		addLine("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", theme.Dimmed, "")
 	}
 	if m.settingsGroupNote != "" {
 		addLine("", theme.Text, "")

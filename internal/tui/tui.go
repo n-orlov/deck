@@ -792,6 +792,22 @@ type Model struct {
 	settingsGroupEditID    int64
 	settingsGroupEditValue string
 	settingsGroupNote      string
+	// settingsGroupDeleteConfirming/settingsGroupDeleteID/
+	// settingsGroupDeleteName back "d"'s own sub-mode (task 019, R131 part
+	// 2): opened only on a NON-empty group (an empty one is dropped
+	// immediately by settingsStartGroupDelete, no prompt at all, per SPEC
+	// §11.5's "an empty group is deleted with no prompt"). While open, "m"
+	// moves every member's group_id to NULL (structural default) and drops
+	// the group row -- destroying nothing -- and "d" hands off to the
+	// EXISTING §9.2 bulk `dd` confirm (updateBulkDeleteConfirm/
+	// bulkDeleteConfirmBody) by populating m.marked with the group's
+	// members and setting m.deleteConfirming, rather than a second
+	// deletion implementation. settingsGroupDeleteName is kept only for the
+	// prompt's own wording, since the group row it names may already be
+	// gone by the time "m"/"d" actually commits.
+	settingsGroupDeleteConfirming bool
+	settingsGroupDeleteID         int64
+	settingsGroupDeleteName       string
 	// themePicking is task 025's `t` picker (SPEC §11.6, requirement 27): it
 	// does NOT replace the whole frame the way m.creating/m.settingsOpen do
 	// -- the point of the picker is that the REAL session list stays on
@@ -7345,6 +7361,24 @@ func (m Model) markedSessions() []store.Session {
 		session := m.sessions[idx]
 		if m.marked[session.ID] {
 			out = append(out, session)
+		}
+	}
+	return out
+}
+
+// sessionsInGroup returns every session in m.baseSessions (SPEC's default
+// view -- excludes tombstoned and archived rows, exactly the population
+// the sidebar and the dd batch path itself act on) whose GroupID equals
+// groupID -- task 019/R131 part 2's own "is this group empty" test and the
+// source of the member set "d" hands off to the bulk dd path as m.marked.
+// Order is whatever m.baseSessions holds; callers that need visual order
+// (none today -- markedSessions' own visualOrder() walk is what the bulk
+// dd path actually renders from) would have to re-derive it separately.
+func (m Model) sessionsInGroup(groupID int64) []store.Session {
+	var out []store.Session
+	for _, s := range m.baseSessions {
+		if s.GroupID != nil && *s.GroupID == groupID {
+			out = append(out, s)
 		}
 	}
 	return out
