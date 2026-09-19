@@ -471,23 +471,31 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+q" {
 		return m.exitInteractive()
 	}
-	// Any keystroke forwarded to the target snaps the view back to the
-	// live bottom first (PRD II-51): scrolled-back history is read-only by
-	// construction (there is nowhere on screen to place a cursor a
-	// scrollback line's own text came from), so typing "blindly" into a
-	// pane the user cannot currently see would be far more surprising than
-	// the ordinary terminal-emulator convention this matches -- scrolling
-	// back, then resuming input, jumps back to the bottom.
-	m.interactiveScrollOffset = 0
 	if m.interactiveDispatcher == nil {
 		return m, nil
 	}
 	ctx := context.Background()
 	if named, ok := interactiveNamedKey(msg); ok {
+		// Any keystroke forwarded to the target snaps the view back to
+		// the live bottom first (PRD II-51/R135): scrolled-back history
+		// is read-only by construction (there is nowhere on screen to
+		// place a cursor a scrollback line's own text came from), so
+		// typing "blindly" into a pane the user cannot currently see
+		// would be far more surprising than the ordinary terminal-emulator
+		// convention this matches -- scrolling back, then resuming input,
+		// jumps back to the bottom. This must run only once the dispatcher
+		// is known live AND one of the two forwarding helpers below has
+		// actually agreed to forward this key -- a key neither helper
+		// recognises (e.g. Alt+Insert, the listed gap
+		// interactiveAltNamedKeys documents) writes no bytes at all and
+		// must leave a scrolled-back view exactly where it was, not snap
+		// it to the bottom for a keystroke nobody's pane ever saw.
+		m.interactiveScrollOffset = 0
 		_ = m.interactiveDispatcher.SendNamedKey(ctx, named)
 		return m, nil
 	}
 	if payload, ok := interactiveLiteralPayload(msg); ok {
+		m.interactiveScrollOffset = 0
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
 	}
 	return m, nil
