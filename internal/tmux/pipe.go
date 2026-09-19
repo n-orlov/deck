@@ -32,6 +32,39 @@ const interactivePipeTempDirPrefix = "deck-interactive-pipe-"
 // sentinel.
 var interactivePipeTempRoot = ""
 
+// fifoWriterProbeGrace and fifoWriterConnectTimeout bound ArmPipePane's
+// wait for pipe-pane's forked job to open the FIFO (waitForFifoWriter
+// below). They are two different things, deliberately:
+//
+//   - fifoWriterProbeGrace is how long a missing writer is treated as
+//     ordinary fork/exec scheduling latency and nothing else. It is not a
+//     failure bound: when it expires the wait does not give up, it asks
+//     tmux whether the pipe is still armed at all (`#{pane_pipe}`) and
+//     keeps waiting if the answer is yes.
+//   - fifoWriterConnectTimeout bounds the whole wait, for the pathological
+//     case where tmux keeps reporting the pipe armed yet its job never
+//     reaches its own open(). It is a last-resort bound on a case that
+//     should never happen, NOT a latency budget.
+//
+// The split exists because a single 5s wall-clock bound conflated the two
+// and was measurably wrong on a loaded host: the same fork+exec that
+// takes single-digit milliseconds idle can miss a 5s deadline when the
+// machine is saturated by unrelated work, and the failure that produced
+// was "timed out after 5s waiting for pipe-pane's job to open the fifo"
+// from a pipe that was armed, healthy and about to connect --
+// reproducibly so under load (docs/reports/phase3j-findings.md recorded
+// two such failures in internal/tui, and the same class took down
+// TestRaiseLostAttachOnStolenClaimTouchesNothing in this run). A genuinely
+// broken arm (pane dead, job never forked, pipe disarmed) is still caught
+// at the grace mark by the `#{pane_pipe}` probe rather than by waiting out
+// the long bound, so the cure costs nothing in the failure case it
+// replaces: what used to be "5s then a misleading timeout" is now "5s
+// then either a truthful 'no longer armed' error or more patience".
+const (
+	fifoWriterProbeGrace     = 5 * time.Second
+	fifoWriterConnectTimeout = 60 * time.Second
+)
+
 // PanePipe is a long-lived stream of one pane's raw bytes, produced by
 // `pipe-pane -IO` (PRD phase3b II-16). It is the ONLY primitive that reads
 // a pane's live output; nothing else in this package taps pipe-pane, and
@@ -154,7 +187,16 @@ func (c Client) ArmPipePane(ctx context.Context, target string) (*PanePipe, erro
 	// until it can positively confirm a writer -- EAGAIN on a non-blocking
 	// read means "empty, but a writer IS attached", not "no writer yet",
 	// confirmed as the discriminator directly.
-	leftover, err := waitForFifoWriter(fd, 5*time.Second)
+	//
+	// The wait is load-tolerant by construction (see
+	// fifoWriterProbeGrace/fifoWriterConnectTimeout above): a writer that
+	// has not appeared within the grace period is diagnosed by re-reading
+	// `#{pane_pipe}` -- still armed means keep waiting, no longer armed
+	// means fail now and say so -- instead of being declared a timeout on
+	// a fixed wall clock the arm itself never promised to meet.
+	leftover, err := waitForFifoWriter(ctx, fd, func(probeCtx context.Context) (bool, error) {
+		return c.PanePipe(probeCtx, target)
+	}, fifoWriterProbeGrace, fifoWriterConnectTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("wait for pipe-pane's job to connect to %s: %w", fifoPath, err)
 	}
@@ -190,9 +232,26 @@ func (c Client) ArmPipePane(ctx context.Context, target string) (*PanePipe, erro
 // means no writer has connected YET (indistinguishable, by return value
 // alone, from a writer having connected and already gone again -- but
 // this early, right after arming, that second reading is not yet
-// possible) and is retried until timeout.
-func waitForFifoWriter(fd int, timeout time.Duration) ([]byte, error) {
-	deadline := time.Now().Add(timeout)
+// possible) and is retried.
+//
+// Retried for how long is the part that matters under load. There are two
+// bounds, not one (see fifoWriterProbeGrace/fifoWriterConnectTimeout):
+// once grace has passed with no writer, stillArmed is consulted ONCE --
+// it reports whether tmux still considers a pipe armed on the target --
+// and the answer decides which error the caller gets. Not armed is a real
+// failure and returns immediately, naming it. Still armed means the job
+// exists and simply has not been scheduled through its own open() yet, so
+// polling continues up to timeout; that is the case a single short bound
+// used to misreport as a timeout on a healthy pipe whenever the host was
+// busy enough. ctx is honoured throughout, so a caller that wants a
+// tighter bound than timeout imposes one by passing a deadline rather
+// than by shrinking the pathology bound for everybody. stillArmed may be
+// nil, in which case polling simply continues to timeout (the shape a
+// caller with no tmux to ask uses).
+func waitForFifoWriter(ctx context.Context, fd int, stillArmed func(context.Context) (bool, error), grace, timeout time.Duration) ([]byte, error) {
+	start := time.Now()
+	deadline := start.Add(timeout)
+	probed := false
 	buf := make([]byte, 64*1024)
 	for {
 		n, err := unix.Read(fd, buf)
@@ -206,8 +265,21 @@ func waitForFifoWriter(fd int, timeout time.Duration) ([]byte, error) {
 		} else {
 			return nil, err
 		}
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("waiting for pipe-pane's job to open the fifo: %w", err)
+		}
+		if !probed && stillArmed != nil && time.Since(start) >= grace {
+			probed = true
+			armed, probeErr := stillArmed(ctx)
+			if probeErr != nil {
+				return nil, fmt.Errorf("no writer after %s; probing whether pipe-pane is still armed failed: %w", grace, probeErr)
+			}
+			if !armed {
+				return nil, fmt.Errorf("pipe-pane is no longer armed on the target after %s without its job ever opening the fifo", grace)
+			}
+		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timed out after %s waiting for pipe-pane's job to open the fifo", timeout)
+			return nil, fmt.Errorf("timed out after %s waiting for pipe-pane's job to open the fifo (tmux reported the pipe still armed throughout)", timeout)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
