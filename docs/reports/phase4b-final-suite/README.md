@@ -63,11 +63,18 @@ standing rules). The tally is reproducible from the committed log and the
 module's own package list:
 
 ```
-$ grep -cE '^ok[ \t]'   fullsuite-baf92ed.log   # 14
-$ grep -cE '^FAIL[ \t]' fullsuite-baf92ed.log   # 1
-$ grep -c 'no test files' fullsuite-baf92ed.log # 3
-$ ci/run.sh go list ./... | wc -l               # 18
+$ grep -c  '^ok'           fullsuite-baf92ed.log   # 14
+$ grep -cP '^FAIL\t'        fullsuite-baf92ed.log   # 1   (the package line)
+$ grep -c  'no test files'  fullsuite-baf92ed.log   # 3
+$ ci/run.sh go list ./... | wc -l                   # 18
 ```
+
+(`go test` separates a package line's verdict from its import path with a
+tab, so the `FAIL` package line is matched on that tab — `grep -c '^FAIL'`
+would count 3, picking up the two bare `FAIL` markers godog and `go test`
+also print. An earlier revision of this block used an `[ ]`-class pattern
+that never matched a tab and so printed 0; the counts in the paragraph above
+were always the log's own.)
 
 so no package the module resolves is missing from the log. Every package ran
 (or reported `[no test files]`); none was excluded from the invocation.
@@ -123,13 +130,13 @@ tasks carry the work instead, one per red lane plus the re-sweep:
 | `021-cure-02` | the `theme_geometry_test.go` settle comparison (red lane 2) |
 | `021-resweep-01` | the whole-suite gate re-run from scratch at the cured sha; depends on both cures |
 
-Those ids live in the run's own task state, not in this repo — the plan of
-record is the authority for their status, and this file claims nothing about
-whether they have run yet. An earlier revision of this section named two
-follow-ups (`021-cure-01`, `021-resweep-01`) as already carved while the
-harness had in fact refused that batch; the table above is the corrected
-request, with the theme-geometry cure split out so each task carries one
-lane.
+All three ids are carved and live in the run's own task state, not in this
+repo — that plan is the authority for their status, and this file claims
+nothing about whether they have run yet. An earlier revision of this section
+named two follow-ups (`021-cure-01`, `021-resweep-01`) as carved while the
+harness had in fact refused that batch; the batch was re-sent with the
+theme-geometry cure split out so each task carries one lane, and the table
+above names what the plan now holds.
 
 This file is updated in place by the re-sweep task with the new sha and its
 exit status; until then the red result above is this phase's gate result, and
