@@ -1,0 +1,22 @@
+=== RUN   TestGroupOrderAaaLeadsAlphabetically
+--- PASS: TestGroupOrderAaaLeadsAlphabetically (0.00s)
+=== RUN   TestGroupOrderZzzSortsBeforeDefaultDespiteName
+--- PASS: TestGroupOrderZzzSortsBeforeDefaultDespiteName (0.00s)
+=== RUN   TestGroupOrderDefaultAlwaysLastRegardlessOfEmptyStringSortingFirst
+--- PASS: TestGroupOrderDefaultAlwaysLastRegardlessOfEmptyStringSortingFirst (0.00s)
+=== RUN   TestGroupHeaderTextCountsPopulatedAndEmptyGroups
+--- PASS: TestGroupHeaderTextCountsPopulatedAndEmptyGroups (0.00s)
+=== RUN   TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount
+=== RUN   TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount/expanded
+=== RUN   TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount/collapsed
+--- PASS: TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount (0.00s)
+    --- PASS: TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount/expanded (0.00s)
+    --- PASS: TestGroupHeaderTextElidesNameAtSidebarFloorKeepingChevronAndCount/collapsed (0.00s)
+=== RUN   TestSidebarEntryContentWidthMatchesEachModesRealTextBudget
+=== RUN   TestSidebarEntryContentWidthMatchesEachModesRealTextBudget/side-by-side
+=== RUN   TestSidebarEntryContentWidthMatchesEachModesRealTextBudget/stacked
+--- PASS: TestSidebarEntryContentWidthMatchesEachModesRealTextBudget (0.00s)
+    --- PASS: TestSidebarEntryContentWidthMatchesEachModesRealTextBudget/side-by-side (0.00s)
+    --- PASS: TestSidebarEntryContentWidthMatchesEachModesRealTextBudget/stacked (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.023s
