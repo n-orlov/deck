@@ -1,0 +1,24 @@
+=== pytest verification of task 005's pinned revision, run BEFORE this task's own commit ===
+=== repo=/workspace  DECK_TASK_COMMIT=HEAD -> 485f9b547a096895c609211e4936aeda888b3b9d (the previous record-only commit) ===
+$ python3 -m pytest --version
+pytest 9.1.1
+$ DECK_REPO=/workspace DECK_TASK_COMMIT=485f9b547a096895c609211e4936aeda888b3b9d python3 -m pytest -v /run/ralphd/artifacts/a2-005-pytest/test_pinned_revision.py
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python3
+rootdir: /run/ralphd/artifacts/a2-005-pytest
+plugins: anyio-4.15.1
+collecting ... collected 10 items
+
+test_pinned_revision.py::test_pinned_rev_is_the_last_code_touching_commit PASSED [ 10%]
+test_pinned_revision.py::test_tree_hash_pair_equal_at_rev_and_task_commit[ci] PASSED [ 20%]
+test_pinned_revision.py::test_tree_hash_pair_equal_at_rev_and_task_commit[cmd] PASSED [ 30%]
+test_pinned_revision.py::test_tree_hash_pair_equal_at_rev_and_task_commit[features] PASSED [ 40%]
+test_pinned_revision.py::test_tree_hash_pair_equal_at_rev_and_task_commit[internal] PASSED [ 50%]
+test_pinned_revision.py::test_record_only_commits_changed_no_go_or_feature_file PASSED [ 60%]
+test_pinned_revision.py::test_cure_commit_resolves[001/B1] PASSED        [ 70%]
+test_pinned_revision.py::test_cure_commit_resolves[002/B2] PASSED        [ 80%]
+test_pinned_revision.py::test_cure_commit_resolves[003/B3] PASSED        [ 90%]
+test_pinned_revision.py::test_cure_commit_resolves[004/R1] PASSED        [100%]
+
+============================== 10 passed in 0.03s ==============================
+pytest exit=0

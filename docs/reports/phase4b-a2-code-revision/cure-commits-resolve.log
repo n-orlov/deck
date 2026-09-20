@@ -1,4 +1,4 @@
-=== git cat-file -e <sha>^{commit} for the four cure commits (tasks 001-004) ===
+=== git cat-file -e <sha>^{commit} for the four cure commits (tasks 001-004), re-derived at this commit ===
 113b552 (113b552ca2fe42bb1b3d10e42f14cdc3f735c8e6) resolves as a commit object: exit=0
 075c59c (075c59c35fbbc22461f748bbe87e87a8ac4139e4) resolves as a commit object: exit=0
 00f33a5 (00f33a5ac204bc2f558352a18c40fefa24ad3bab) resolves as a commit object: exit=0

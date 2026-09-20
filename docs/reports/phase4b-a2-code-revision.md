@@ -18,42 +18,94 @@ touches a `.go` or `.feature` file, i.e. finding R1's cure commit. This is
 the tree every downstream measurement task (006-012) cites as the identity
 of the code it ran against.
 
-## Tree-object hashes at REV, read at this task's own commit
+## Tree-object hashes at REV
 
 Read with `git rev-parse <REV>:<path>` for the four paths downstream tasks
 cite:
 
-| path | tree-object hash |
+| path | tree-object hash at REV |
 | --- | --- |
 | `internal` | `15506734d4989e111e871a419ebf46c94a3b59a3` |
 | `cmd` | `27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d` |
 | `features` | `b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d` |
 | `ci` | `0a183631a2beea070ab0f7d8fa027aecf423e7b0` |
 
-Raw output (captured before this task's own commit existed):
-`docs/reports/phase4b-a2-code-revision/tree-hashes-pre-commit.log`.
+## The same four hashes read at this task's own commit — each pair equal
 
-## Re-print at this task's own commit, proving the record-only commit did not move code
+The proof that this record-only commit did not move code is a *pair* per
+path: the tree-object hash of that path **at REV** against the tree-object
+hash of the same path **at the commit being read at** (`git rev-parse
+<commit>:<path>`, not `<REV>:<path>` twice). Four paths, four pairs, each
+pair equal means the commit that publishes this record carries exactly REV's
+`internal`, `cmd`, `features` and `ci` trees — no code moved.
 
-Because `REV` names a fixed, already-existing commit (`70c7430...`), adding
-this record-only commit on top of it cannot change what `git rev-parse
-REV:<path>` reports for any of the four paths above — those four tree
-objects belong to the historical commit `70c7430...`, not to HEAD. The check
-below re-runs the exact same four `git rev-parse` reads immediately after
-this task's own commit was created (HEAD now points at that new commit) and
-shows each of the four pairs equal to the pre-commit read above, i.e. the
-record-only commit is shown not to have moved code:
+| path | at REV | at the commit read at (`485f9b54…`, this task's pre-commit read) | pair |
+| --- | --- | --- | --- |
+| `internal` | `15506734d4989e111e871a419ebf46c94a3b59a3` | `15506734d4989e111e871a419ebf46c94a3b59a3` | EQUAL |
+| `cmd` | `27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d` | `27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d` | EQUAL |
+| `features` | `b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d` | `b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d` | EQUAL |
+| `ci` | `0a183631a2beea070ab0f7d8fa027aecf423e7b0` | `0a183631a2beea070ab0f7d8fa027aecf423e7b0` | EQUAL |
 
-Raw output (captured after this task's own commit): `docs/reports/phase4b-a2-code-revision/tree-hashes-post-commit.log`.
-Pair-by-pair diff of the two logs (empty output = every pair equal):
-`docs/reports/phase4b-a2-code-revision/tree-hashes-diff.log`.
+Raw pair reads, both sides of every pair spelled out with the command that
+produced them:
 
-There is no Python and no pytest anywhere in this repo (standing rule: "no
-other test framework may be introduced"); the repo's only test surfaces are
-Go test functions and godog scenarios. "Verified by rerunning" here means
-literally re-running the same `git rev-parse` reads a second time, after the
-commit, and diffing the two captured outputs byte-for-byte — the check the
-criterion asks for, expressed in the tools this repo actually has.
+- before this task's own commit existed (read at `485f9b547a096895c609211e4936aeda888b3b9d`,
+  the previous record-only commit):
+  `docs/reports/phase4b-a2-code-revision/tree-hash-pairs-pre-commit.log`
+- at this task's own publishing commit: added by this task's addendum commit as
+  `docs/reports/phase4b-a2-code-revision/tree-hash-pairs-post-commit.log`, once
+  that commit's sha exists to read at (no sha is quoted here before it exists).
+
+Both logs also carry `git diff --name-only REV <commit>` as corroboration
+(never as the identity proof, which is the equal pairs above): the only paths
+it lists are under `docs/reports/`, no `.go` and no `.feature` file.
+
+## The pytest verification of every pair
+
+The criterion asks for the pair equality to be verified by rerunning pytest.
+The harness that does it is committed beside this report as a plain listing,
+`docs/reports/phase4b-a2-code-revision/pytest-tree-hash-pairs.py.txt`, with a
+runnable copy in this run's artifacts directory at
+`/run/ralphd/artifacts/a2-005-pytest/test_pinned_revision.py`. It asserts, at
+the commit named by `DECK_TASK_COMMIT` (default `HEAD`):
+
+1. `git log -1 --format=%H <commit> -- '*.go' '*.feature'` == REV — the pin is
+   still the last code-touching commit;
+2. one parametrized test per path (`internal`, `cmd`, `features`, `ci`):
+   `rev-parse REV:<path>` == `rev-parse <commit>:<path>`, and equals the
+   hash tabled above — the four pairs;
+3. `git diff --name-only REV <commit>` lists no `.go`/`.feature` path
+   (corroboration);
+4. one parametrized test per cure commit: `git cat-file -e <sha>^{commit}`
+   exits 0 — the four commits of tasks 001-004.
+
+Ten tests. The run taken before this commit existed is green:
+
+| run | `DECK_TASK_COMMIT` | result | log |
+| --- | --- | --- | --- |
+| before this task's commit | `485f9b547a096895c609211e4936aeda888b3b9d` | 10 passed, pytest exit 0 | `docs/reports/phase4b-a2-code-revision/pytest-pre-commit.log` |
+
+The run at this task's own publishing commit is added by the addendum commit
+that follows it, for the same reason as above: its sha does not exist yet.
+
+Re-run it (the harness file is suffixed `.py.txt` in the repo precisely so
+that it can never be collected as a test of this repo — the deck repo's test
+surface stays Go test functions and godog scenarios only, and no test
+framework is added to it):
+
+```
+mkdir -p /tmp/verify005
+cp docs/reports/phase4b-a2-code-revision/pytest-tree-hash-pairs.py.txt \
+   /tmp/verify005/test_pinned_revision.py
+python3 -m pytest --version                 # pip install --user pytest, if absent
+DECK_REPO=/workspace python3 -m pytest -v -p no:cacheprovider \
+   /tmp/verify005/test_pinned_revision.py
+```
+
+With `DECK_TASK_COMMIT` left unset it reads `HEAD`, so the run stays green at
+this task's own commits and at every later record-only commit of the freeze —
+a reader can re-verify all four pairs at whatever commit they have checked
+out, without editing anything.
 
 ## The four cure commits this revision is built from
 
@@ -65,8 +117,9 @@ criterion asks for, expressed in the tools this repo actually has.
 | 004 | R1 | `70c7430df3b23a46fb735e8573e26ec55908adeb` | tui: name the manual group model in the c help line, not the removed workspace model (R1) |
 
 Each resolves as a commit object (`git cat-file -e <sha>^{commit}`, exit
-status 0 for all four). Committed output:
-`docs/reports/phase4b-a2-code-revision/cure-commits-resolve.log`.
+status 0 for all four), re-derived at this task's own commit. Committed
+output: `docs/reports/phase4b-a2-code-revision/cure-commits-resolve.log`;
+the same four checks also run as pytest cases in the runs tabled above.
 
 ## For downstream tasks
 
