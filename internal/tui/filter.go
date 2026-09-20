@@ -21,8 +21,8 @@ import (
 // own default view entirely -- SPEC requirement 27 -- so the filter is the
 // only way one is found again: while a query is in force, archivedSessions
 // (fetched by loadArchivedSessions every time `/` opens) is searched by the
-// same name/workspace/cwd match as every other row, so typing enough of an
-// archived session's own name, workspace or cwd surfaces it exactly the
+// same name/group/cwd match as every other row, so typing enough of an
+// archived session's own name, group or cwd surfaces it exactly the
 // way it would surface a live one -- there is no separate "show archived"
 // mode or keyword. Finding it is not the whole way back: SPEC.md:323-332
 // makes archived_at reversible, so `U` on a row surfaced here clears the
