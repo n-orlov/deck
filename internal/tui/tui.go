@@ -8955,11 +8955,11 @@ Keys
   E open/close the event log: every recorded event across every session --
     kind, reason, a bounded payload -- newest first; a payload's
     secret-shaped values mask the same way the env editor's do; Esc closes
-  / filter the list by name, workspace or cwd, incrementally as you type;
+  / filter the list by name, group or cwd, incrementally as you type;
     Enter keeps the filter applied and returns the keymap to the (now
     narrowed) list, Esc clears it back to the full list; this is also the
     only route to an archived session (A), which is hidden from the
-    default list entirely -- type enough of its name, workspace or cwd to
+    default list entirely -- type enough of its name, group or cwd to
     match it and it appears like any other row, and U there unarchives it
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
