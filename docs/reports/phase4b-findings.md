@@ -24,6 +24,12 @@ commit. Every path cited is tracked under `git ls-files --error-unmatch`
   - [2.2 The two known-open flake classes named by the PRD](#22-the-two-known-open-flake-classes-named-by-the-prd)
 - [3. Tier 2 status](#3-tier-2-status)
 - [4. How to re-check every citation in this report](#4-how-to-re-check-every-citation-in-this-report)
+- [5. Approach 2 addendum (task 010)](#5-approach-2-addendum-task-010)
+  - [5.1 VG-6 — `groups.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, diverging from `SPEC.md:332`](#51-vg-6--groupsid-is-integer-primary-key-autoincrement-diverging-from-specmd332)
+  - [5.2 Task 008's failure list (approach 2 stability10 sweep): none](#52-task-008s-failure-list-approach-2-stability10-sweep-none)
+  - [5.3 The `mkfifo`/`osc11` flake instance seen during this approach's planning](#53-the-mkfifoosc11-flake-instance-seen-during-this-approachs-planning)
+  - [5.4 gofmt drift, re-checked for approach 2](#54-gofmt-drift-re-checked-for-approach-2)
+  - [5.5 How to re-check §5](#55-how-to-re-check-5)
 
 ## 1. Findings — discovered and left alone
 
@@ -190,3 +196,165 @@ $ grep -il "TestForceEntersDespiteAnAttachedClient\|fifo" docs/reports/phase4b-s
 exit:1   # no match either -- the §1.2 occurrence was task 017's own targeted
          # run, not the stability sweep; it did not recur there
 ```
+
+## 5. Approach 2 addendum (task 010)
+
+Everything above (§1-§4) is approach 1's own findings record, written at gate
+sha `0806ba6` and left as history per this run's standing rules ("Approach
+1's task ids ... are HISTORY, not work"); it is not re-scored here. This
+section is approach 2's own addition -- new findings/non-findings this
+approach's own work (tasks 001-009) surfaced, on top of, not instead of, §1-§4.
+
+Approach 2's own measurement anchor is task 005's pinned revision,
+`70c7430df3b23a46fb735e8573e26ec55908adeb` (REV), with the four tree-object
+hashes `docs/reports/phase4b-a2-code-revision.md` pins for `internal`, `cmd`,
+`features`, `ci`. Every commit from task 005 onward (including this one) is
+record-only, so every `file:line` below resolves identically at REV and at
+this file's own commit -- re-checked in §5.5, not assumed.
+
+### 5.1 VG-6 — `groups.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`, diverging from `SPEC.md:332`
+
+**Finding, stated and explicitly NOT edited** (per this run's standing rules,
+"[w]here PRD and SPEC disagree, SPEC wins and the disagreement is a finding,
+not an edit" — and here the disagreement is between SPEC itself and the
+shipped schema, which is the same instruction: disclose, do not edit either
+side):
+
+- **`SPEC.md:332`** (inside the `CREATE TABLE groups` block, `SPEC.md:331-333`)
+  reads the plain form: `  id         INTEGER PRIMARY KEY,`.
+- **`internal/store/store.go:2419`** (the `schemaV7` migration that actually
+  creates the table) reads the AUTOINCREMENT form: `` `CREATE TABLE IF NOT
+  EXISTS groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL
+  UNIQUE COLLATE NOCASE)` ``.
+
+The divergence is deliberate and documented in-tree, not an oversight: the
+comment directly above the migration (`internal/store/store.go:2397-2419`)
+explains that plain `INTEGER PRIMARY KEY` lets SQLite's ordinary rowid
+assignment reuse a deleted row's id (`max(rowid)+1` among rows *currently* in
+the table), which would silently rebind stale references held by
+`sessions.group_id`, `ui_state`'s `last_create_group` and `collapsed_groups`
+(all keyed on this id with no foreign key) onto whatever unrelated group next
+claims the reused id, instead of degrading to default the way R128/R130
+require — proven by the id-reuse regression in `group_id_reuse_test.go`.
+AUTOINCREMENT retires a deleted id for good (via SQLite's hidden
+`sqlite_sequence` table), matching `sessions.id`'s own durable-identity
+approach (a TEXT UUID, immune to this reuse class by construction) for the
+one column here that cannot use a UUID and still cycle through the create
+modal's numeric picker.
+
+**Left as a finding, not edited**, for the reason the standing rules already
+give: SPEC wins the disagreement, but the AUTOINCREMENT-vs-plain question here
+is not "which one is correct" — it is that the code's own choice is correct
+for durable identity (proven by a regression test) while SPEC's prose has not
+been updated to say so. Changing either side is out of scope for this task
+(SPEC.md is read-only per the standing rules; the schema is frozen code from
+task 004 onward). Disclosure only.
+
+### 5.2 Task 008's failure list (approach 2 stability10 sweep): none
+
+Task 008's own README (`docs/reports/phase4b-a2-stability10/README.md`,
+"Failure list" section) publishes the list this clause quantifies over —
+one `grep -n 'FAIL'` invocation across the ten committed per-run logs
+(`run-1.log` … `run-10.log`) — and it is empty: the committed
+`docs/reports/phase4b-a2-stability10/failure-grep.log` is a zero-byte file,
+and the README's own body says so explicitly ("none", "grep produced zero
+matching lines"). Re-confirmed here (not copied forward): the same ten
+committed logs, re-grepped, still produce nothing — §5.5 and
+`check-findings.py.txt`'s own `test_failure_list_is_still_empty_across_the_ten_committed_logs`
+check this directly. No entries to list; stated explicitly per this
+clause's own instruction for when the list is empty.
+
+### 5.3 The `mkfifo`/`osc11` flake instance seen during this approach's planning
+
+**`internal/interactive/replydrain_test.go:86`** (`func
+TestTerminalQueryInPaneOutputNeverStallsSession`), specifically its `osc11`
+subtest, failed during this approach's own planning (a disposable
+`.plan-probe` scratch worktree, not a committed suite run) with an `ENOENT`
+on the FIFO-creation exec at **`internal/interactive/replydrain_test.go:100`**
+(the `t.Fatalf("Start: %v", err)` this subtest's own `Start` call reaches):
+`mkfifo /tmp/deck-interactive-pipe-630249350/pane.fifo: exit status 1: mkfifo:
+cannot create fifo '/tmp/deck-interactive-pipe-630249350/pane.fifo': No such
+file or directory`. A second, differently-shaped instance of the same
+subtest racing the same temp-dir/FIFO-arming path (a 5s connect timeout
+rather than an ENOENT) was also captured during planning.
+
+**Committed log path:**
+[`docs/reports/phase4b-a2-findings/mkfifo-flake-planning.log`](phase4b-a2-findings/mkfifo-flake-planning.log)
+(both captured instances, verbatim, with their own provenance and the
+command line that produced each).
+
+**Left alone because:** this is the same pre-existing tmux/FIFO temp-dir
+contention class the standing notes' own gotcha already names ("internal/tui
+can hit rare tmux pipe-pane timeouts under sibling load"), not a regression —
+neither instance happened inside this task's or any other approach-2 task's
+own suite run, and the underlying `ArmPipePane` code path
+(`internal/tmux/pipe.go`) is unit-tested and untouched by any of tasks
+001-004's cures. It did not recur in task 007's gate sweep
+(`docs/reports/phase4b-a2-final-suite/gate-run.log`) or task 008's ten-run
+stability sweep (`docs/reports/phase4b-a2-stability10/run-*.log`) — checked
+directly in §5.5, not assumed — so there is nothing open to chase beyond
+this one disclosed pair of planning-time occurrences.
+
+### 5.4 gofmt drift, re-checked for approach 2
+
+Re-confirmed fresh for this approach (not copied forward from §2.1's
+approach-1 evidence, per the standing rules' "a FACT to re-derive at the
+commit that writes it"):
+
+- `ci/run.sh gofmt -l .` at this file's own tree lists exactly the same three
+  untracked, gitignored paths §2.1 already named —
+  `.spike-preview/cmd/conformance/main.go`,
+  `.spike-preview/conformance/conformance.go`,
+  `.spike-preview/conformance/conformance_test.go` — and no other file.
+  Committed output:
+  [`docs/reports/phase4b-a2-findings/gofmt.log`](phase4b-a2-findings/gofmt.log)
+  (exit `0`).
+- **Correction, re-confirmed:** `internal/theme/quantize_test.go` — which the
+  PRD claims drifts — is in fact clean today, same as §2.1 already found:
+  `ci/run.sh gofmt -l internal/theme/quantize_test.go` → empty output, exit
+  `0`. Committed output:
+  [`docs/reports/phase4b-a2-findings/gofmt-quantize.log`](phase4b-a2-findings/gofmt-quantize.log).
+
+No new drift; the three-file, untracked, `.spike-preview`-only shape §2.1
+recorded still holds, and the `quantize_test.go` correction still holds.
+
+### 5.5 How to re-check §5
+
+```
+$ sed -n '332p' SPEC.md
+  id         INTEGER PRIMARY KEY,
+
+$ sed -n '2419p' internal/store/store.go
+	`CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE)`,
+
+$ sed -n '86p;100p' internal/interactive/replydrain_test.go
+func TestTerminalQueryInPaneOutputNeverStallsSession(t *testing.T) {
+				t.Fatalf("Start: %v", err)
+
+$ grep -n 'FAIL' docs/reports/phase4b-a2-stability10/run-*.log; echo "exit:$?"
+exit:1   # empty -- matches §5.2's "none" and task 008's own failure-grep.log
+
+$ grep -il 'mkfifo\|osc11' docs/reports/phase4b-a2-final-suite/gate-run.log \
+    docs/reports/phase4b-a2-stability10/run-*.log; echo "exit:$?"
+exit:1   # no match in either sweep -- matches §5.3's "did not recur"
+
+$ cat docs/reports/phase4b-a2-findings/gofmt.log
+.spike-preview/cmd/conformance/main.go
+.spike-preview/conformance/conformance.go
+.spike-preview/conformance/conformance_test.go
+EXIT:0
+
+$ cat docs/reports/phase4b-a2-findings/gofmt-quantize.log
+EXIT:0
+
+$ DECK_REPO=/workspace python3 -m pytest -q docs/reports/phase4b-a2-findings/check-findings.py.txt
+# committed at docs/reports/phase4b-a2-findings/check-findings.log -- 7 passed, exit 0
+```
+
+All six `file:line` citations §5 adds (`SPEC.md:332`;
+`internal/store/store.go:2397`, `:2419`;
+`internal/interactive/replydrain_test.go:86`, `:100`) resolve at this file's
+own commit — the code tree they point into is untouched by this commit (a
+`docs/reports/**`-only, record-only change per the freeze in effect since
+task 004), so the reads above, taken against the working tree immediately
+before this commit, hold identically once this commit lands.
