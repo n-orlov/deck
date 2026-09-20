@@ -1,0 +1,8 @@
+=== RUN   TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed
+--- PASS: TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed (0.08s)
+=== RUN   TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween
+--- PASS: TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween (0.07s)
+=== RUN   TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched
+--- PASS: TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.166s

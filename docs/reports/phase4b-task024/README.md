@@ -6,8 +6,11 @@ same iteration so nothing in it is a count or a status copied forward.
 
 ## Sha
 
-- HEAD at measurement time: **`0563dab`** (`0563dab728ebdae4303f6ddabad1f6aef28f5333`),
-  i.e. the commit immediately before this task's own docs-only commit.
+- HEAD at measurement time for the guards and targeted-package sections below:
+  **`0563dab`** (`0563dab728ebdae4303f6ddabad1f6aef28f5333`),
+  i.e. the commit immediately before this task's first docs-only commit
+  (`20ac5a6`). The R133 test-name section at the end was measured one commit
+  later, at `20ac5a6` — both are code-identical to `f13c848`.
 - Final code sha: **`f13c848`**. `git diff --stat f13c848..HEAD -- . ':(exclude)docs/'`
   prints nothing, so the code measured here is byte-identical to `f13c848` — the
   seven commits between them (`0d966e4`, `257133e`, `c6a0876`, `b502044`,
@@ -54,3 +57,23 @@ evidence for this same code is the ten-run stability sweep at `c6a0876`
 this directory does not claim a single-run gate beyond it.
 
 Real exit statuses for all four invocations: [exit-status.txt](exit-status.txt).
+
+## R133's shipped test names, re-read at this commit
+
+Task 024's second validation attempt rejected the record for naming `8d934d1`'s
+regression test `TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate`.
+That name is `4a1e352`'s; `8d934d1` rewrote
+`internal/tui/interactive_scroll_render_heal_test.go` and replaced it with two
+names. Re-derived here, not carried forward:
+
+- `git show 4a1e352:internal/tui/interactive_scroll_render_heal_test.go | grep '^func Test'`
+  → `TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate`,
+  `TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched`.
+- `git show 8d934d1:internal/tui/interactive_scroll_render_heal_test.go | grep '^func Test'`
+  → `TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed`,
+  `TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween`,
+  `TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched`.
+  The same three are the names in the tree today (`f13c848`'s code).
+- All three PASS at HEAD `20ac5a6` (code-identical to `f13c848`; the commits
+  between them are docs-only): `ci/run.sh go test -count=1 -v -run '<the three names>'
+  ./internal/tui/` → exit `0` ([r133-test-names.log](r133-test-names.log)).
