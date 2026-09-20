@@ -2418,6 +2418,43 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.groupsErr == nil {
 			m.allGroups = msg.groups
 		}
+		// B2: the settings takeover's own Groups panel (m.settingsGroups)
+		// is a live per-render store snapshot (computeAvailableGroups'
+		// own doc comment) recomputed only from the Groups-panel key
+		// paths themselves (create/rename/delete commits) -- the
+		// ORDINARY periodic/on-demand reload that lands here never
+		// touched it, so a create/rename/delete applied from a second
+		// client (the shared-state-db precedent this package already
+		// tests, group_shared_state_db_test.go) stayed invisible in an
+		// already-open Groups panel until the user next pressed n/r/d
+		// themselves. Refreshed here too, gated on the panel actually
+		// being open on the groups category (never unconditionally --
+		// there is no reason to pay a live store.ListGroups() call while
+		// the panel is closed or on some other category), and reselected
+		// by the currently selected row's durable group id (never by
+		// index -- an edit elsewhere in the list must not silently move
+		// the selection off the group the user is looking at). Only on a
+		// successful groups read: msg.groupsErr != nil must leave
+		// m.settingsGroups at its previous value, exactly like
+		// m.allGroups just above -- a transient read failure is not a
+		// reason to blank out an already-open panel. This never touches
+		// m.settingsGroupCreating/Renaming/EditID/EditValue (the n/r
+		// typing sub-mode) or m.settingsEdits (staged scalar edits): the
+		// ordinary reload has never reset either, and this fix keeps it
+		// that way.
+		if msg.groupsErr == nil && m.settingsOpen && m.settingsOnGroupsCategory() {
+			var selectedGroupID int64
+			if g, ok := m.settingsSelectedGroup(); ok {
+				selectedGroupID = g.ID
+			}
+			m.settingsGroups = m.computeAvailableGroups()
+			if selectedGroupID != 0 {
+				m.selectSettingsGroupByID(selectedGroupID)
+			}
+			if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
+				m.settingsGroupIndex--
+			}
+		}
 		if msg.err != nil {
 			m.startupNote = "Cannot read sessions: " + msg.err.Error()
 		} else {
