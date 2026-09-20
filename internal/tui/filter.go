@@ -29,20 +29,24 @@ import (
 // flag (R71, issue #8) and returns it to the default list.
 
 // filterMatches reports whether session matches query (SPEC requirement
-// 33) against its name, group name (via sessionGroupKey -- task 015/R129
-// part 4, replacing the removed workspace field) or cwd -- the three
-// fields the requirement names, and the only three ever consulted -- as a
-// plain, case-insensitive substring test. An empty query matches
-// everything (the unfiltered state). Because a session's own group name
-// is one of the fields checked, a query matching only a group's name
-// (and no session's own name or cwd) makes every member of that group
-// match individually -- there is no separate "match the group" step: a
-// non-matching group simply has none of its sessions survive the filter,
-// so groupSessions() (internal/tui/group.go), which buckets
-// m.filteredSessions()' own output, never emits a header for it, and the
-// header it DOES emit for a matching group carries that group's matching
-// member count (len(group.Sessions), read off the already-filtered set),
-// never the group's unfiltered total.
+// 33) against its name, group LABEL (via sessionGroupLabel -- finding B1's
+// cure: sessionGroupKey alone returns "" for both a NULL group_id and a
+// dangling one, so "/default" matched nothing even though the sidebar
+// header both cases fall under literally reads "default"; sessionGroupLabel
+// resolves that same empty key to the literal "default" string the header
+// and the `i`/`g` dialogs already show, so the filter matches whatever
+// label a session actually renders under) or cwd -- the three fields the
+// requirement names, and the only three ever consulted -- as a plain,
+// case-insensitive substring test. An empty query matches everything (the
+// unfiltered state). Because a session's own group label is one of the
+// fields checked, a query matching only a group's label (and no session's
+// own name or cwd) makes every member of that group match individually --
+// there is no separate "match the group" step: a non-matching group simply
+// has none of its sessions survive the filter, so groupSessions()
+// (internal/tui/group.go), which buckets m.filteredSessions()' own output,
+// never emits a header for it, and the header it DOES emit for a matching
+// group carries that group's matching member count (len(group.Sessions),
+// read off the already-filtered set), never the group's unfiltered total.
 func filterMatches(session store.Session, query string) bool {
 	if query == "" {
 		return true
@@ -51,7 +55,7 @@ func filterMatches(session store.Session, query string) bool {
 	if strings.Contains(strings.ToLower(session.Name), q) {
 		return true
 	}
-	if strings.Contains(strings.ToLower(sessionGroupKey(session)), q) {
+	if strings.Contains(strings.ToLower(sessionGroupLabel(session)), q) {
 		return true
 	}
 	if strings.Contains(strings.ToLower(session.CWD), q) {

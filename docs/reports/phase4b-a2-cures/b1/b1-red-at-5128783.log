@@ -1,0 +1,46 @@
+=== RUN   TestFilterByDefaultMatchesTheSidebarsOwnDefaultLabel
+    filter_default_label_test.go:142: NULL-group_id session missing from the /default filter:
+        ╭ deck — sessions ─────────────────┬───────────────────────────────────────────────────────────────╮
+        │ No sessions match "default".     │ Select or create a session to preview it here.                │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        │                                  │                                                               │
+        ╰──────────────────────────────────┴───────────────────────────────────────────────────────────────╯
+        Filter: default_
+        ↑/↓ · n new · , settings · ? help · q quit
+--- FAIL: TestFilterByDefaultMatchesTheSidebarsOwnDefaultLabel (0.03s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.029s
+FAIL
