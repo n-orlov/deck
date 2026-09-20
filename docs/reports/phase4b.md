@@ -8,11 +8,13 @@ the guards (task 022) and the ten-run stability sweep (task 023) had run.
   (`f13c848`, "settings: keep a rejected group name's inline validation on
   screen (R131, #30)") — the **final code sha**: the last commit touching any
   `*.go` or `*.feature` file, per `git log --oneline -- '*.go' '*.feature'`
-  with HEAD at this file's own commit. Every commit after it
-  (`0d966e4`…this file's own) is docs-only
-  (`docs/reports/`, `docs/DELIVERY-LOG.md`, `docs/roadmap.md`,
-  `docs/prds/README.md`); this file's own commit sits on top of that docs-only
-  tail and is itself record-only.
+  with HEAD at this file's own commit. Every commit after it — `0d966e4`,
+  `257133e`, `c6a0876`, `b502044`, `93f5790`, `0e1d6e8`, `0563dab`, and this
+  file's own — is docs-only (`docs/reports/`, `docs/DELIVERY-LOG.md`,
+  `docs/roadmap.md`, `docs/prds/README.md`); re-derived at this commit with
+  `git diff --stat f13c848..HEAD -- . ':(exclude)docs/'`, which prints nothing.
+  This file's own commit sits on top of that docs-only tail and is itself
+  record-only.
 - **Task 021's gate sha (the whole-suite sweep's own launch sha):**
   `baf92eda072f6b59ba9b788340f71ed798077504` (`baf92ed`, "docs: re-verify task
   019's group-delete branches at HEAD (R131 part 2, #30)") — task 021's own
@@ -55,6 +57,21 @@ the guards (task 022) and the ten-run stability sweep (task 023) had run.
   keeping `baf92ed`'s RED result and the superseded 9/10 result on the record
   as history, per "Attribution corrections carried forward" and "Gate result
   and stability headline" below.
+- **What task 024's own landing adds on top of that.** Every sha, path, test
+  name, line reference and commit-count statement in this file was re-derived
+  against the tree at this commit rather than carried forward: the two
+  mis-attributions the first validation attempt rejected (`c1dd5f1`'s file set
+  and `9eefaa2` vs `bf1c085`'s environment rename) were re-proved with
+  `git diff-tree`/`git show` and are recorded under "Attribution corrections
+  carried forward" item 5; two commit-count phrasings under R128 and R129 that
+  did not match their own bullet lists were corrected (eight and nine commits,
+  not seven and eight); the guards item that an earlier revision listed as
+  still open is closed, because task 022 (`0e1d6e8`) re-took its report at
+  `baf92ed` by its own criteria and this task re-ran build/vet/`gofmt` at the
+  shipped code as well (all exit `0`,
+  [`docs/reports/phase4b-task024/README.md`](./phase4b-task024/README.md));
+  and the four targeted packages were re-run green at the shipped code in this
+  same iteration.
 
 ## Tier 1 → Tier 2 decision
 
@@ -98,13 +115,21 @@ does not restate its budget arithmetic.
   which stays on the historical record at commit `bcd80b9` and in
   `docs/DELIVERY-LOG.md`, never erased. Source:
   [`docs/reports/phase4b-stability10/README.md`](./phase4b-stability10/README.md).
-- **Guards (task 022):** build, vet and `gofmt` over the touched set, plus the
-  read-only path check, all exit `0` — recorded at
-  `docs/reports/phase4b-guards/README.md`, still measured at `baf92ed` (task
-  021's gate sha), predating the four cure commits named above; that report has
-  not been re-taken at the shipped sha as of this revision, the same caveat
-  [`docs/reports/phase4b-final-suite/README.md`](./phase4b-final-suite/README.md)
-  itself already carries for it and for the superseded stability report.
+- **Guards (task 022, commit `0e1d6e8`):** build, vet and `gofmt` over the
+  touched set (that report's own `git diff --name-only c3b530a..baf92ed -- '*.go'`,
+  67 Go files), plus the read-only
+  path check, all exit `0` — recorded at
+  [`docs/reports/phase4b-guards/README.md`](./phase4b-guards/README.md).
+  That report is measured at `baf92ed` **by its own criteria** ("at the same
+  code sha task 021 gated"), in a scratch worktree pinned to that sha, since
+  HEAD has diverged from it; it is deliberately not re-anchored to the shipped
+  sha. Because that leaves the shipped code itself unguarded by that report,
+  the same three guards were re-run at HEAD under this task —
+  `ci/run.sh go build ./...`, `ci/run.sh go vet ./...`, `ci/run.sh gofmt -l .`,
+  all exit `0`, with `gofmt -l` listing only the three untracked
+  `.spike-preview/` files this run's standing rules leave alone. Logs and real
+  exit statuses:
+  [`docs/reports/phase4b-task024/README.md`](./phase4b-task024/README.md).
 - Task 021's own red lanes and how they were carried are restated under
   ["Not shipped / still open"](#not-shipped--still-open) at the end of this file.
 
@@ -112,7 +137,7 @@ does not restate its budget arithmetic.
 
 ### R133 — the scrolled-back view says so, from the offset actually used
 
-**Shipped**, in five commits (two landings plus three cures) — the mechanism actually shipped is the shared `interactiveScrollState` cell written in the render path (`internal/tui/interactive.go:562-563` calling `m.setInteractiveScrollOffset`, `internal/tui/interactive_scroll.go:40-70`), not `scrollInteractiveByLines` storing the clamp on its own int field as the first cure (`60a551d`) landed it; the two cures below (`cure-01-01-2`) replaced that mechanism after review found it incomplete:
+**Shipped**, in five commits (two landings plus three cures) — the mechanism actually shipped is the shared `interactiveScrollState` cell written in the render path (`internal/tui/interactive.go:562-563` calling `m.setInteractiveScrollOffset`, `internal/tui/interactive_scroll.go:43-72`), not `scrollInteractiveByLines` storing the clamp on its own int field as the first cure (`60a551d`) landed it; the two cures below (`cure-01-01-2`) replaced that mechanism after review found it incomplete:
 
 - `8bd8a91` (task 001) — `interactiveBodyLines` (`internal/tui/interactive.go`)
   now consumes `RenderRows`' second return (the clamped, actually-used offset)
@@ -228,7 +253,7 @@ recorded at
 
 ### R128 — the group model replaces the workspace label
 
-**Shipped**, across seven commits (four landings, one preparatory seam, two cures):
+**Shipped**, across eight commits (five landings, one preparatory seam, two cures):
 
 - `6104aec` (task 007, preparation) — the old workspace reads routed through one
   group-key seam in `internal/tui/group.go`, behaviour unchanged, so the model
@@ -301,7 +326,8 @@ recorded at
 
 ### R129 — the sidebar renders manual groups
 
-**Shipped**, across eight commits (six landings plus two cure landings):
+**Shipped**, across nine commits (seven landings plus two cure landings), with a
+tenth (`e67dd63`) repairing the `features` suite behind them:
 
 - `35806e8` + `3e3e9f7` (task 011, part 1) — alphabetical, case-insensitive group
   order with `default` always last; the header budgeted against the panel's real
@@ -496,7 +522,12 @@ at `c6a0876` (code-identical to the final code sha `f13c848`, per
 `ok internal/tui` (7.177s–8.034s across the retakes above), `ok internal/store`,
 `ok internal/config`, `ok internal/service` — exit 0 in every re-take, so
 every store/tui/config/service test named above is green at the sha this
-record is written against.
+record is written against. Re-run once more at this file's own commit's parent
+(`0563dab`, byte-identical in code to `f13c848` per the exclude-docs diff
+above): `ok internal/tui 7.719s`, `ok internal/store 4.715s`,
+`ok internal/config 0.035s`, `ok internal/service 7.994s`, exit `0`
+([`docs/reports/phase4b-task024/targeted-tests.log`](./phase4b-task024/targeted-tests.log),
+exit status in the same directory's `exit-status.txt`).
 
 ## Not shipped / still open
 
@@ -530,13 +561,22 @@ history of how they got there, not an open gap:
   passed, no instance of either known-open flake class. The superseded 9/10
   result stays on the historical record at commit `bcd80b9` and in
   `docs/DELIVERY-LOG.md`, never erased.
-- **Still genuinely open:** `docs/reports/phase4b-guards/README.md` (task 022)
-  still measures the build/vet/gofmt/read-only-path guards at `baf92ed`,
-  predating the four cure commits above, and has not been re-taken at the
-  shipped tree as of this revision — the guards themselves are not known to
-  be red at the later sha, only unmeasured there; that re-take belongs to
-  whichever task (022, still `pending` in the run's own task state) next
-  touches that report.
+- **Previously listed as open, now closed:** an earlier revision of this file
+  recorded the guards as unmeasured at the shipped tree, because
+  `docs/reports/phase4b-guards/README.md` is pinned to `baf92ed`. Task 022
+  (`0e1d6e8`) re-took that report at `baf92ed` on purpose — that is what its
+  own criteria ask for — and this task re-ran build, vet and `gofmt` at the
+  shipped code as well, all exit `0`
+  ([`docs/reports/phase4b-task024/README.md`](./phase4b-task024/README.md)).
+  Both shas are now measured, so nothing about the guards is outstanding.
+- **The one evidence asymmetry that remains, stated plainly:** there is no
+  *single-run* whole-suite gate log taken at the final code sha `f13c848`
+  itself. The from-scratch gate of record ran at `a224e43`, four cure commits
+  earlier; the gate-strength evidence for `f13c848` is the ten-run stability
+  sweep at `c6a0876` (code-identical to `f13c848`), which runs the same
+  unfiltered `ci/run.sh go test -p=1 -count=1 ./...` ten times and passed
+  10/10. This run deliberately did not spend a further ~8 minutes
+  re-single-running a suite already run ten times green on that exact code.
 - Residual gaps this run chose not to fix — including anything that is a finding
   rather than an unmet requirement — are
   [`docs/reports/phase4b-findings.md`](./phase4b-findings.md)'s job (task 025),
@@ -568,11 +608,26 @@ dropped, together with a third correction:
    anywhere, so neither requirement's record described what actually shipped:
    R133 heals through the shared `interactiveScrollState` cell written in the
    render path (`internal/tui/interactive.go:562-563`,
-   `internal/tui/interactive_scroll.go:40-70`, landed by `4a1e352`/`8d934d1`),
+   `internal/tui/interactive_scroll.go:43-72`, landed by `4a1e352`/`8d934d1`),
    and R131's settings panel keeps a rejected group name's inline validation on
    screen past the viewport (`8f8e9e8`/`f13c848`). All four commits are named,
    with their own mechanism and tests, under R133 and R131 above in this
    revision.
+
+5. **Where the validation rejection of `eb6b2ce` landed.** Task 024's first
+   validation attempt rejected the `eb6b2ce` revision of this file for exactly
+   the two mis-attributions numbered 1 and 2 above (`c1dd5f1` claimed to have
+   touched `cmd/deck/main_test.go`/`internal/tui/tui_test.go`, and the
+   `DECK_SESSION_GROUP` rename attributed to `9eefaa2`). Both proofs were
+   re-run at this commit, not carried forward:
+   `git diff-tree --no-commit-id --name-only -r c1dd5f1` prints exactly
+   `internal/tui/interactive_footer_scroll_advertisement_test.go` and
+   `internal/tui/tui.go`; `git show bf1c085 -- internal/service/session_context.go`
+   contains the `-"DECK_SESSION_WORKSPACE": session.WorkspaceColumn` /
+   `+DECK_SESSION_GROUP` change, while `git show 9eefaa2 --stat` touches only
+   `internal/service/session_context.go` and its test, adding 124 lines and
+   renaming no environment variable. R134's section and R128's `bf1c085`/
+   `9eefaa2` bullets above state it that way.
 
 Test function names quoted in this revision were re-read from the files in the
 tree at `f13c848`, not carried forward: the `f171168` guard renamed several of
@@ -589,3 +644,4 @@ them (for example the service test is
 - [`docs/reports/phase4b-retake-01-01-2/README.md`](./phase4b-retake-01-01-2/README.md)
 - [`docs/reports/phase4b-retake-01-04-01/README.md`](./phase4b-retake-01-04-01/README.md)
 - [`docs/reports/phase4b-guards/README.md`](./phase4b-guards/README.md)
+- [`docs/reports/phase4b-task024/README.md`](./phase4b-task024/README.md)
