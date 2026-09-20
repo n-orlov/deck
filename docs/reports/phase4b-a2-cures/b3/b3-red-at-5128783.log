@@ -1,0 +1,6 @@
+=== RUN   TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue
+    interactive_displacement_scrollcue_test.go:136: grid's scrollback length = 3 after the fallback reseed, want 0: the displacement notice's own write must never leave artificial scrollback behind
+--- FAIL: TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue (0.30s)
+FAIL
+FAIL	github.com/n-orlov/deck/internal/tui	0.302s
+FAIL

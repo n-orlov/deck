@@ -690,7 +690,7 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 	case <-s.fallbackCh:
 	}
 
-	s.writeNotice(pipeDisplacedNotice)
+	s.writeDisplacementNotice()
 
 	ticker := time.NewTicker(pipeDisplacedFallbackInterval)
 	defer ticker.Stop()
@@ -715,8 +715,45 @@ func (s *Session) fallbackLoop(ctx context.Context, client tmux.Client, target s
 		}
 		s.installGrid(fresh)
 		s.renders.MarkDirty()
-		s.writeNotice(pipeDisplacedNotice)
+		s.writeDisplacementNotice()
 	}
+}
+
+// writeDisplacementNotice writes pipeDisplacedNotice into the session's
+// CURRENT grid and then clears whatever scrollback that very write just
+// pushed into it (finding B3): CaptureSeed's own capture is
+// visible-screen-only (CaptureSeed's doc, TestVisibleOnlyCaptureSeedLeavesScrollbackEmpty),
+// so a freshly reseeded grid's real scrollback is 0 right up until this
+// write -- but writing the notice's own "\r\n...\r\n" at the bottom of an
+// already-full screen is ordinary terminal output as far as vt is
+// concerned, and vt scrolls the screen exactly like any other write that
+// overflows it, pushing rows of the just-captured content into
+// scrollback that has nothing to do with the pane's real history. Left
+// alone, that artificial scrollback both survives the reseed it was never
+// really part of AND is what R133's own cue then advertises as a
+// scrolled-back position, even though nothing the operator did moved the
+// view anywhere.
+//
+// ClearScrollback runs INSIDE the same s.writes-locked, single-grid-
+// pointer scope the write itself uses (mirroring writeGrid's own
+// doc/lock ordering) rather than as a separate writeNotice-then-clear
+// pair of calls, so nothing else can observe the notice's write with its
+// artificial scrollback still attached, however briefly, and so the grid
+// this clears is provably the exact instance that just received the
+// write (never a different one a concurrent reseed swapped in between
+// two separate currentGrid() calls). It does NOT touch
+// interactive_scroll.go's own [0, ScrollbackMaxLines] clamps or either
+// reseed loop's seed range -- both stay exactly as II-51/issue #29 pinned
+// them; this only removes scrollback THIS write itself manufactured, on
+// the one grid instance that received it, never a pane's own real
+// history.
+func (s *Session) writeDisplacementNotice() {
+	g := s.currentGrid()
+	s.writes.Lock()
+	_, _ = g.Write([]byte(pipeDisplacedNotice))
+	g.ClearScrollback()
+	s.writes.Unlock()
+	s.renders.MarkDirty()
 }
 
 // writeNotice writes plain text (no escape sequences of its own) into the
