@@ -1,0 +1,4 @@
+ok  	github.com/n-orlov/deck/internal/tui	7.719s
+ok  	github.com/n-orlov/deck/internal/store	4.715s
+ok  	github.com/n-orlov/deck/internal/config	0.035s
+ok  	github.com/n-orlov/deck/internal/service	7.994s
