@@ -1,83 +1,92 @@
 # Phase 4b — ten-run whole-suite stability sweep
 
+## Why this report was replaced
+
+The previous version of this report pinned itself to **baf92ed** ("the code
+under test is byte-identical to baf92ed's") and reported 9/10, the one
+failure being the transient-`starting` assertion class later cured by
+`021-cure-01` (db9732b). At that point `git diff --stat baf92ed..HEAD --
+'*.go' '*.feature'` was already 18 files, +925/-167 (including
+`internal/tui/interactive_scroll.go` +163 and `internal/tui/settings.go`
++200) — real product code landed by `021-cure-01`/`021-cure-02`,
+`cure-01-01-2` and `cure-01-02-2` after that sweep ran, so the old report no
+longer described the tree it claimed to describe, and no stability run of
+any kind existed for the shipped tree. This report replaces it with a fresh
+ten-run sweep taken at the current shipped sha.
+
 ## Code sha and invocation
 
-- Code sha: **baf92ed** — the sha task 021's whole-suite gate ran against (see
-  `docs/reports/phase4b-final-suite/README.md`). This report was written at HEAD
-  `c8e8c5e`, which is docs-only on top of baf92ed: `git diff --stat baf92ed..HEAD -- '*.go'`
-  is empty, so the code under test is byte-identical to baf92ed's.
+- Code sha: **c6a0876** (`HEAD` at the time this sweep was run) — includes
+  all of `021-cure-01` (db9732b), `021-cure-02` (a224e43), `cure-01-01-2`
+  (8d934d1), and `cure-01-02-2` / its follow-up (8f8e9e8, f13c848).
 - Invocation, run ten times back-to-back from a clean state each time, via
   `ci/stability.sh 10` (which itself shells out per run to
-  `ci/run.sh go test -p=1 -count=1 ./...` in the CI container, capturing the real
-  `go test` exit status per run — never a piped/tee'd status):
+  `ci/run.sh go test -p=1 -count=1 ./...` in the CI container, capturing the
+  real `go test` exit status per run — never a piped/tee'd status):
 
   ```
   ci/stability.sh 10
   ```
 
-- `-count=1` disables the test cache and `--rm` on the sibling container drops any
-  tmux/SQLite state between runs, so each of the ten runs starts clean.
+- `-count=1` disables the test cache and `--rm` on the sibling container drops
+  any tmux/SQLite state between runs, so each of the ten runs starts clean.
 
 ## Headline
 
-**9/10 passed.**
+**10/10 passed.**
 
-- Total wall clock for the ten runs: **~73 minutes** (started ~20:39:33 UTC,
-  finished 21:52:56 UTC 2026-09-19, per the per-run log file timestamps — within
-  the ~70–75 minute band expected for ten runs at the baseline ~7m18s/run).
-- One run (run 2) hit `exit 1`. The other nine (runs 1, 3–10) exited 0.
+- Total wall clock for the ten runs: **~74 minutes** (started ~00:13:45 UTC,
+  finished 01:27:33 UTC 2026-09-20, per the output directory's own creation
+  time and the summary log's last line — within the ~70–75 minute band
+  expected for ten runs at the baseline ~7m18s/run).
+- All ten runs exited 0. No failure occurred in any run.
 
 ## Per-run table
 
 | Run | Result | Exit | Duration (features pkg) | Log |
 | --- | ------ | ---- | ------------------------ | --- |
-| 1  | PASS | 0 | features 369.946s | [run-01.log](run-01.log) |
-| 2  | FAIL | 1 | features 416.885s (TestFeatures 399.57s) | [run-02.log](run-02.log) |
-| 3  | PASS | 0 | features 366.434s | [run-03.log](run-03.log) |
-| 4  | PASS | 0 | features 365.882s | [run-04.log](run-04.log) |
-| 5  | PASS | 0 | features 367.423s | [run-05.log](run-05.log) |
-| 6  | PASS | 0 | features 364.345s | [run-06.log](run-06.log) |
-| 7  | PASS | 0 | features 366.162s | [run-07.log](run-07.log) |
-| 8  | PASS | 0 | features 365.399s | [run-08.log](run-08.log) |
-| 9  | PASS | 0 | features 364.560s | [run-09.log](run-09.log) |
-| 10 | PASS | 0 | features 366.870s | [run-10.log](run-10.log) |
+| 1  | PASS | 0 | features 369.229s | [run-01.log](run-01.log) |
+| 2  | PASS | 0 | features 366.149s | [run-02.log](run-02.log) |
+| 3  | PASS | 0 | features 365.882s | [run-03.log](run-03.log) |
+| 4  | PASS | 0 | features 366.912s | [run-04.log](run-04.log) |
+| 5  | PASS | 0 | features 369.560s | [run-05.log](run-05.log) |
+| 6  | PASS | 0 | features 365.672s | [run-06.log](run-06.log) |
+| 7  | PASS | 0 | features 368.638s | [run-07.log](run-07.log) |
+| 8  | PASS | 0 | features 368.847s | [run-08.log](run-08.log) |
+| 9  | PASS | 0 | features 368.972s | [run-09.log](run-09.log) |
+| 10 | PASS | 0 | features 368.071s | [run-10.log](run-10.log) |
 
-Combined log of all ten runs (as the script wrote it, in order): [summary.log](summary.log)
+Combined log of all ten runs (as the script wrote it, in order):
+[summary.log](summary.log)
 
-## The one FAIL, named
+## Failures, named
 
-Run 2, `exit 1`:
+**None.** All ten runs exited 0 and every one of the eighteen package result
+lines (14 `ok`, `features` `ok`, 3 `[no test files]` for `internal/notify`,
+`internal/search`, `internal/unit`) is present and green in every one of the
+ten run logs — checked with `grep FAIL run-*.log` (no matches in any of the
+ten files) and `grep -c '^ok\|^?' run-*.log` (18 in every file). This
+headline is published with the same failure-naming discipline the criteria
+require even though there is nothing to name: had any run failed, the
+failing scenario or test and that run's committed log path would be listed
+here, per the pattern used in the superseded baf92ed-era report.
 
-```
---- FAIL: TestFeatures/settings'_group-delete_d_branch_routes_through_the_same_dd_batch_confirm_and_one_u_restores_the_whole_batch_(R131_part_2) (47.23s)
-    suite.go:640: after scenario hook failed: timed out waiting for frame "starting": context deadline exceeded
-```
+Neither of the two known-open flake classes occurred in any of the ten runs:
 
-- Scenario: `features/kill_delete_undo.feature:688` — *"settings' group-delete d
-  branch routes through the same dd batch confirm and one u restores the whole
-  batch (R131 part 2)"*.
-- This is the **transient-`starting` assertion** flake class already named as
-  open in `docs/reports/phase4b-final-suite/README.md` and carved as
-  `021-cure-01` (a different scenario in the same feature file, same wait
-  pattern: the client has already progressed past the transient `starting`
-  label — the dumped frame shows a live `$` prompt — by the time the harness's
-  post-scenario wait checks for it, so the wait times out against a state the
-  suite already moved past). It is named here as **advisory**, with its log
-  path (`run-02.log`, line ~6434 onward for the `--- FAIL` block), rather than
-  chased under this task: the fix for this flake class belongs to `021-cure-01`
-  / `021-cure-02` and the resweep at `021-resweep-01`, not to this stability
-  sweep.
-- No instance of the second known-open flake class (the SIGWINCH exact-count
-  assertion in `features/harness.feature:199`'s scenario outline) occurred in
-  any of the ten runs. Had one occurred, it would have been named here the same
-  way, advisory, with its log path — not chased.
-- All eighteen package result lines (14 `ok`, `features` at either `ok` or
-  `FAIL`, 3 `[no test files]` for `internal/notify`, `internal/search`,
-  `internal/unit`) are present in every one of the ten run logs; no other
-  package failed in any run.
+- The transient-`starting` assertion (the class the superseded report's one
+  failure belonged to, cured by `021-cure-01`/`021-cure-02`).
+- The SIGWINCH exact-count assertion in `features/harness.feature:199`'s
+  scenario outline.
+
+Had either occurred, it would be named here the same way — advisory, with
+its log path — rather than chased under this task.
 
 ## Logs committed
 
 All eleven log files listed in the table above and referenced by filename,
 plus this README, live under `docs/reports/phase4b-stability10/`:
-`run-01.log` … `run-10.log`, `summary.log`.
+`run-01.log` … `run-10.log`, `summary.log`. The prior baf92ed-era per-run
+logs (including the unpadded `run-1.log` … `run-9.log` duplicates and the
+9/10 `run-02.log` FAIL log) have been removed from this directory; that
+9/10 result and its FAIL detail remain on the historical record in git
+history at commit `bcd80b9` and in `docs/DELIVERY-LOG.md`.
