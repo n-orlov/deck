@@ -2,3 +2,4 @@ build exit=0
 vet exit=0
 gofmt exit=0
 targeted exit=0
+go test -count=1 -v -run "TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed|TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween|TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched" ./internal/tui/ exit=0 (log: r133-test-names.log, HEAD 20ac5a6)

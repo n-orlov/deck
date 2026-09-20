@@ -9,7 +9,8 @@ the guards (task 022) and the ten-run stability sweep (task 023) had run.
   screen (R131, #30)") — the **final code sha**: the last commit touching any
   `*.go` or `*.feature` file, per `git log --oneline -- '*.go' '*.feature'`
   with HEAD at this file's own commit. Every commit after it — `0d966e4`,
-  `257133e`, `c6a0876`, `b502044`, `93f5790`, `0e1d6e8`, `0563dab`, and this
+  `257133e`, `c6a0876`, `b502044`, `93f5790`, `0e1d6e8`, `0563dab`, `20ac5a6`,
+  and this
   file's own — is docs-only (`docs/reports/`, `docs/DELIVERY-LOG.md`,
   `docs/roadmap.md`, `docs/prds/README.md`); re-derived at this commit with
   `git diff --stat f13c848..HEAD -- . ':(exclude)docs/'`, which prints nothing.
@@ -175,8 +176,10 @@ does not restate its budget arithmetic.
   (`internal/tui/interactive_scroll.go`), factored out of
   `scrollInteractiveByLines`' own inline heal, and called it both there and at
   the top of `Update` (`internal/tui/tui.go`) for every message while
-  `m.interactive` is true. Test
-  (`internal/tui/interactive_scroll_render_heal_test.go`):
+  `m.interactive` is true. Tests — the two this commit added in the new
+  `internal/tui/interactive_scroll_render_heal_test.go` (`git show
+  4a1e352:internal/tui/interactive_scroll_render_heal_test.go`):
+  `TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate` and
   `TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched`.
 - `8d934d1` (`cure-01-01-2`, the fix that actually ships) — neither `60a551d`
   nor `4a1e352` reaches a render with no `Update` between it and the next
@@ -190,9 +193,21 @@ does not restate its budget arithmetic.
   `m.setInteractiveScrollOffset(n)`; `scrollInteractiveByLines` now heals its
   base from that cell before applying its delta. RED FIRST at `4a1e352`
   (`artifacts/cure-01-01-2/redfirst-at-4a1e352.log`): stored offset stuck at
-  76 against a real scrollback of 0. Test
-  (`internal/tui/interactive_scroll_render_heal_test.go`):
-  `TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate`. The
+  76 against a real scrollback of 0. Tests: this commit rewrote
+  `internal/tui/interactive_scroll_render_heal_test.go`, REPLACING
+  `4a1e352`'s single `…HealsAfterVisibleOnlyReseedOnTheNextUpdate` with the two
+  names that ship and still stand at this report's code sha `f13c848` —
+  `TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed` (the
+  render-path heal itself: a visible-only reseed, a `View()`, then one line
+  back — the case the finding names) and
+  `TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween` (the
+  other order: a reseed whose next event is an ordinary message with no render
+  in between, caught by `Update`'s top-of-function heal) —
+  keeping `4a1e352`'s
+  `TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched`
+  guard (verify with `git show
+  8d934d1:internal/tui/interactive_scroll_render_heal_test.go | grep '^func
+  Test'`). The
   `[0, interactive.ScrollbackMaxLines]` clamp and the entry-only history seed
   policy are unchanged by any of the three commits above.
 
@@ -586,7 +601,7 @@ history of how they got there, not an open gap:
 
 Two mis-attributions from this file's first landing (`b96015e`, corrected in
 `6c2b95c`) are stated correctly above and recorded here rather than silently
-dropped, together with a third correction:
+dropped, together with the later corrections:
 
 1. **R134 / `c1dd5f1`** — the first landing claimed the commit also updated the
    help and mouse wording and the pinned substrings in `cmd/deck/main_test.go`
@@ -634,6 +649,22 @@ tree at `f13c848`, not carried forward: the `f171168` guard renamed several of
 them (for example the service test is
 `TestSessionContextEnvExportsGroupNotLegacyField`, not the
 `…NotWorkspace` name the superseded revision used).
+
+6. **R133 / `8d934d1`'s regression test name, this revision.** Task 024's
+   *second* validation attempt rejected the previous revision (`20ac5a6`) for
+   attributing `TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate`
+   to `8d934d1`. That name belongs to `4a1e352`, which introduced
+   `internal/tui/interactive_scroll_render_heal_test.go` with it and with the
+   `…HealAtUpdateTopLeavesNonInteractiveModelsUntouched` guard; `8d934d1`
+   rewrote that file and replaced the first name with the two that ship,
+   `TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed` and
+   `TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween`
+   (`git show 8d934d1:internal/tui/interactive_scroll_render_heal_test.go |
+   grep '^func Test'`; the same three names are what the tree holds at
+   `f13c848`). The `4a1e352` and `8d934d1` bullets under R133 above now state it
+   that way, and all three tests were re-run PASS at this commit
+   ([`docs/reports/phase4b-task024/r133-test-names.log`](./phase4b-task024/r133-test-names.log),
+   exit `0`).
 
 ## Report paths cited above (resolve at this commit)
 
