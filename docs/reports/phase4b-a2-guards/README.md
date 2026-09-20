@@ -57,4 +57,4 @@ approach's own final clean boundary.
 
 - `build.log`, `vet.log`, `gofmt.log` — raw guard output (build/vet empty on success)
 - `protected-hashes.log` — raw `git rev-parse` output for the four protected-path pairs
-- `post-push-heads.log` — added by the follow-up commit; HEAD == origin/main after push
+- `post-push-heads.log` — added by this follow-up commit; HEAD == origin/main after push, confirmed

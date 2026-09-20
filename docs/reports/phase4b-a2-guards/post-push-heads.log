@@ -1,0 +1,3 @@
+git rev-parse HEAD        = 00408e8d539759c7ee4a57cb7ab94feb3b324b6c
+git rev-parse origin/main = 00408e8d539759c7ee4a57cb7ab94feb3b324b6c
+equal = YES
