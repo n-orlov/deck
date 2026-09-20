@@ -1,0 +1,12 @@
+$ ci/run.sh go test -count=1 -v -run '^(TestFilterByDefaultMatchesTheSidebarsOwnDefaultLabel|TestSettingsGroupsPanelRefreshesOnOrdinaryReload|TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue|TestEmptyAndHelpViewsAreDiscoverable)$' ./internal/tui
+=== RUN   TestFilterByDefaultMatchesTheSidebarsOwnDefaultLabel
+--- PASS: TestFilterByDefaultMatchesTheSidebarsOwnDefaultLabel (0.02s)
+=== RUN   TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue
+--- PASS: TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue (0.30s)
+=== RUN   TestSettingsGroupsPanelRefreshesOnOrdinaryReload
+--- PASS: TestSettingsGroupsPanelRefreshesOnOrdinaryReload (0.02s)
+=== RUN   TestEmptyAndHelpViewsAreDiscoverable
+--- PASS: TestEmptyAndHelpViewsAreDiscoverable (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.347s
+EXIT:0
