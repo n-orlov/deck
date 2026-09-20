@@ -1,0 +1,3 @@
+.spike-preview/cmd/conformance/main.go
+.spike-preview/conformance/conformance.go
+.spike-preview/conformance/conformance_test.go
