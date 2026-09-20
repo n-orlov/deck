@@ -8964,7 +8964,7 @@ Keys
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
-  c toggle the selected row's workspace group collapsed/expanded
+  c toggle the selected row's manual group collapsed/expanded
   g / G jump to the first / last visible row
   , open/close settings (edit config.toml's keys); Esc closes, prompting to
     discard if there are unsaved changes
