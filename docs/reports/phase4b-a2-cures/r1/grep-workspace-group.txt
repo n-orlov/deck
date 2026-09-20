@@ -1,0 +1,42 @@
+$ grep -rn "workspace group" internal cmd   (run at HEAD after the R1 cure commit)
+
+internal/tui/mark_test.go:18:// loadSessions/attention re-sort does) and collapsing a workspace group
+  -> `//` line comment inside a test file, describing test setup in prose. Not
+     product-rendered; not read by any assertion.
+
+internal/tui/mark_test.go:55:	// workspace group) in the same step.
+  -> `//` line comment inside a test file (continuation of a sentence). Not
+     product-rendered; not read by any assertion.
+
+internal/tui/mouse.go:238:			// "click a workspace group header toggles collapse"
+  -> `//` line comment in product code, quoting an old scenario description for
+     the reader's benefit. Not a string literal in the compiled binary; the
+     quotes are part of the comment text, not a Go string -- nothing here is
+     rendered to a user or returned by any function.
+
+internal/tui/attention_next_test.go:40:// workspace group even though that session's own status needs attention.
+  -> `//` line comment inside a test file. Not product-rendered; not read by
+     any assertion.
+
+internal/tui/group.go:269:// shown right now (i.e. not hidden by a collapsed workspace group).
+  -> `//` line comment in product code, documenting a function's contract for
+     the reader. Not product-rendered; the function itself returns booleans,
+     no strings.
+
+internal/tui/registry_guard_test.go:385:						"R128/R129 removed the workspace grouping model from "+
+  -> Go string literal, but it is the GUARD TEST's OWN t.Errorf diagnostic
+     message (registry_guard_test.go), emitted only if the guard itself finds
+     a forbidden "workspace"/"Workspace" identifier in internal/store,
+     internal/tui or internal/service -- i.e. only on a guard FAILURE, never
+     during ordinary product operation and never seen by an end user. It
+     documents removed history (R128/R129's removal of the workspace grouping
+     model), the same as the five comments above; it is simply phrased as a
+     diagnostic string rather than a `//` comment. (Substring matched here is
+     "workspace group" as a prefix of "workspace grouping", not a second,
+     separate occurrence of "workspace group" verbatim.)
+
+Conclusion: zero remaining occurrences of "workspace group" are text the
+product renders (help screen, dialog, status line, etc.). All six matches are
+either source comments or a test's own internal failure-diagnostic string,
+both describing R128/R129's removed workspace grouping model for the benefit
+of a future reader, not the removed model itself.

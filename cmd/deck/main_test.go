@@ -479,7 +479,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"resolved data root", "the trigger updates it and every process reads it", "DECK_ID_SEED",
 		"DECK_RECONCILE_MS", "DECK_PREVIEW_MS", "DECK_ASCII", "DECK_ANIM", "DECK_COLOR", "NO_COLOR",
 		"space move to the next session needing attention", "changes any session's status",
-		"c toggle the selected row's workspace group",
+		"c toggle the selected row's manual group",
 		"g / G jump to the first / last visible row",
 		"cycle the layout mode", "shrink/grow the sidebar",
 		", open/close settings", "prompting to", "discard if there are unsaved changes",
