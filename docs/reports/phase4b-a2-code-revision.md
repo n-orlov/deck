@@ -39,7 +39,7 @@ hash of the same path **at the commit being read at** (`git rev-parse
 pair equal means the commit that publishes this record carries exactly REV's
 `internal`, `cmd`, `features` and `ci` trees — no code moved.
 
-| path | at REV | at the commit read at (`485f9b54…`, this task's pre-commit read) | pair |
+| path | at REV | at this task's own publishing commit (`154c63e1…`) | pair |
 | --- | --- | --- | --- |
 | `internal` | `15506734d4989e111e871a419ebf46c94a3b59a3` | `15506734d4989e111e871a419ebf46c94a3b59a3` | EQUAL |
 | `cmd` | `27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d` | `27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d` | EQUAL |
@@ -52,9 +52,11 @@ produced them:
 - before this task's own commit existed (read at `485f9b547a096895c609211e4936aeda888b3b9d`,
   the previous record-only commit):
   `docs/reports/phase4b-a2-code-revision/tree-hash-pairs-pre-commit.log`
-- at this task's own publishing commit: added by this task's addendum commit as
-  `docs/reports/phase4b-a2-code-revision/tree-hash-pairs-post-commit.log`, once
-  that commit's sha exists to read at (no sha is quoted here before it exists).
+- at this task's own publishing commit (`154c63e109e4cfebd9586eae8c5328eeee823930`):
+  `docs/reports/phase4b-a2-code-revision/tree-hash-pairs-post-commit.log`
+  (read after that commit existed, and committed by this task's addendum
+  commit — the only reason the task has two commits is that a commit's own sha
+  cannot be quoted before it exists).
 
 Both logs also carry `git diff --name-only REV <commit>` as corroboration
 (never as the identity proof, which is the equal pairs above): the only paths
@@ -79,14 +81,12 @@ the commit named by `DECK_TASK_COMMIT` (default `HEAD`):
 4. one parametrized test per cure commit: `git cat-file -e <sha>^{commit}`
    exits 0 — the four commits of tasks 001-004.
 
-Ten tests. The run taken before this commit existed is green:
+Ten tests, green both before and at this task's own publishing commit:
 
 | run | `DECK_TASK_COMMIT` | result | log |
 | --- | --- | --- | --- |
 | before this task's commit | `485f9b547a096895c609211e4936aeda888b3b9d` | 10 passed, pytest exit 0 | `docs/reports/phase4b-a2-code-revision/pytest-pre-commit.log` |
-
-The run at this task's own publishing commit is added by the addendum commit
-that follows it, for the same reason as above: its sha does not exist yet.
+| at this task's publishing commit | `154c63e109e4cfebd9586eae8c5328eeee823930` | 10 passed, pytest exit 0 | `docs/reports/phase4b-a2-code-revision/pytest-post-commit.log` |
 
 Re-run it (the harness file is suffixed `.py.txt` in the repo precisely so
 that it can never be collected as a test of this repo — the deck repo's test

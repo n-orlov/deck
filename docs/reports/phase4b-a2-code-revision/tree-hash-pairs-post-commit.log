@@ -1,0 +1,17 @@
+=== tree-object hash PAIRS: REV=70c7430df3b23a46fb735e8573e26ec55908adeb  vs  the commit being read at ===
+=== read AT this task's own publishing commit: DECK_TASK_COMMIT=154c63e109e4cfebd9586eae8c5328eeee823930 ===
+internal: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:internal = 15506734d4989e111e871a419ebf46c94a3b59a3
+internal: git rev-parse 154c63e109e4cfebd9586eae8c5328eeee823930:internal = 15506734d4989e111e871a419ebf46c94a3b59a3   -> EQUAL
+cmd: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:cmd = 27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d
+cmd: git rev-parse 154c63e109e4cfebd9586eae8c5328eeee823930:cmd = 27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d   -> EQUAL
+features: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:features = b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d
+features: git rev-parse 154c63e109e4cfebd9586eae8c5328eeee823930:features = b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d   -> EQUAL
+ci: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:ci = 0a183631a2beea070ab0f7d8fa027aecf423e7b0
+ci: git rev-parse 154c63e109e4cfebd9586eae8c5328eeee823930:ci = 0a183631a2beea070ab0f7d8fa027aecf423e7b0   -> EQUAL
+$ git diff --name-only 70c7430df3b23a46fb735e8573e26ec55908adeb 154c63e109e4cfebd9586eae8c5328eeee823930
+docs/reports/phase4b-a2-code-revision.md
+docs/reports/phase4b-a2-code-revision/cure-commits-resolve.log
+docs/reports/phase4b-a2-code-revision/pytest-pre-commit.log
+docs/reports/phase4b-a2-code-revision/pytest-tree-hash-pairs.py.txt
+docs/reports/phase4b-a2-code-revision/tree-hash-pairs-pre-commit.log
+(no .go / .feature path above = no code moved between REV and the commit read at)
