@@ -1,0 +1,5 @@
+=== post-commit tree-object hash read at REV=70c7430df3b23a46fb735e8573e26ec55908adeb (HEAD=d83a79f7c81172032dd1bc94f2de45b65a49e58c) ===
+internal: 15506734d4989e111e871a419ebf46c94a3b59a3
+cmd: 27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d
+features: b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d
+ci: 0a183631a2beea070ab0f7d8fa027aecf423e7b0
