@@ -14,6 +14,15 @@ longer described the tree it claimed to describe, and no stability run of
 any kind existed for the shipped tree. This report replaces it with a fresh
 ten-run sweep taken at the current shipped sha.
 
+This same artifact also satisfies task 023 ("sweep: ten-run stability with
+every failure named"), whose own criteria target this exact file. Verified
+fresh at task 023's own launch: `git diff --stat c6a0876..HEAD -- '*.go'
+'*.feature'` is empty — no code-touching commit has landed since this sweep
+was taken, including through the two docs-only commits (`93f5790`,
+`0e1d6e8`) that followed it — so the 10/10 result and every per-run log
+below still describe the code sha currently checked out, and no re-run was
+needed.
+
 ## Code sha and invocation
 
 - Code sha: **c6a0876** (`HEAD` at the time this sweep was run) — includes
