@@ -1,0 +1,17 @@
+=== tree-object hash PAIRS: REV=70c7430df3b23a46fb735e8573e26ec55908adeb  vs  the commit being read at ===
+=== read BEFORE this task's own commit: DECK_TASK_COMMIT=485f9b547a096895c609211e4936aeda888b3b9d (the previous record-only commit) ===
+internal: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:internal = 15506734d4989e111e871a419ebf46c94a3b59a3
+internal: git rev-parse 485f9b547a096895c609211e4936aeda888b3b9d:internal = 15506734d4989e111e871a419ebf46c94a3b59a3   -> EQUAL
+cmd: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:cmd = 27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d
+cmd: git rev-parse 485f9b547a096895c609211e4936aeda888b3b9d:cmd = 27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d   -> EQUAL
+features: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:features = b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d
+features: git rev-parse 485f9b547a096895c609211e4936aeda888b3b9d:features = b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d   -> EQUAL
+ci: git rev-parse 70c7430df3b23a46fb735e8573e26ec55908adeb:ci = 0a183631a2beea070ab0f7d8fa027aecf423e7b0
+ci: git rev-parse 485f9b547a096895c609211e4936aeda888b3b9d:ci = 0a183631a2beea070ab0f7d8fa027aecf423e7b0   -> EQUAL
+$ git diff --name-only 70c7430df3b23a46fb735e8573e26ec55908adeb 485f9b547a096895c609211e4936aeda888b3b9d
+docs/reports/phase4b-a2-code-revision.md
+docs/reports/phase4b-a2-code-revision/cure-commits-resolve.log
+docs/reports/phase4b-a2-code-revision/tree-hashes-diff.log
+docs/reports/phase4b-a2-code-revision/tree-hashes-post-commit.log
+docs/reports/phase4b-a2-code-revision/tree-hashes-pre-commit.log
+(no .go / .feature path above = no code moved between REV and the commit read at)
