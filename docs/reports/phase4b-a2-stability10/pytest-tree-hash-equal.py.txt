@@ -1,0 +1,69 @@
+"""Task 008 (approach 2) — pytest verification that the tree the ten-run
+stability sweep was taken at matches task 005's pinned tree-object hashes.
+
+This file is NOT part of the deck repo's test surface: the repo's tests are Go
+test functions and godog scenarios only, and no test framework may be added to
+it. It is a record-verification harness for task 008's own claims, kept in the
+run's artifacts directory and committed into this report directory as a plain
+listing (``pytest-tree-hash-equal.py.txt``) so the checks can be re-run by
+hand at any later commit without ever being collected by the repo's tests.
+
+Adapted from task 006's own copy of the same harness
+(docs/reports/phase4b-a2-cures/pytest-tree-hash-equal.py.txt); only the
+default DECK_READ_COMMIT and this docstring changed.
+
+Run it as::
+
+    DECK_REPO=/workspace python3 -m pytest -q <this file>
+
+Optional ``DECK_READ_COMMIT`` (default: the commit the ten-run sweep was
+launched at, 5fb84b9cc6866bb60e0884b912ec56ccc5feb0c0, which is task 007's
+own commit and already existed before this task started — no
+self-reference) names the commit whose path trees are compared against
+task 005's pinned tree-object hashes.
+"""
+
+import os
+import subprocess
+
+import pytest
+
+REPO = os.environ.get("DECK_REPO", "/workspace")
+
+# The commit the ten-run stability sweep in this task's README was launched
+# at. This is task 007's own commit (already existing, not this task's own
+# commit), so citing its sha here is not self-reference.
+READ_COMMIT = os.environ.get(
+    "DECK_READ_COMMIT", "5fb84b9cc6866bb60e0884b912ec56ccc5feb0c0"
+)
+
+# The four labelled tree-object hashes task 005 pinned for this approach.
+EXPECTED_TREE_HASHES = {
+    "internal": "15506734d4989e111e871a419ebf46c94a3b59a3",
+    "cmd": "27ff2eba72ef6a63a6cf49285c4ddc6660b7fb0d",
+    "features": "b5dbe2f565eb96b2654f8d1d64fcc51eb711f60d",
+    "ci": "0a183631a2beea070ab0f7d8fa027aecf423e7b0",
+}
+
+
+def git(*args):
+    out = subprocess.run(
+        ["git", "-C", REPO, *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return out.stdout.strip()
+
+
+@pytest.mark.parametrize("path", sorted(EXPECTED_TREE_HASHES))
+def test_tree_hash_at_read_commit_equals_task_005_pinned_hash(path):
+    """`rev-parse <READ_COMMIT>:<path>` equals the hash task 005 pinned for <path>.
+
+    This is the pair the criterion asks for: the tree the ten-run stability
+    sweep was taken at, versus the hash task 005 pinned for the same path.
+    """
+    at_read_commit = git("rev-parse", f"{READ_COMMIT}:{path}")
+    assert at_read_commit == EXPECTED_TREE_HASHES[path], (
+        f"{path}: {at_read_commit} != {EXPECTED_TREE_HASHES[path]}"
+    )
