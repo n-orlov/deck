@@ -1,0 +1,29 @@
+ci/stability.sh 10 (backgrounded via `nohup timeout 7200 ci/stability.sh 10 &`,
+pid 62068, launched ~2026-09-20T03:39Z at HEAD=5fb84b9) finished on its own
+without this iteration's shell as its parent (each bash tool call spawns a
+fresh, unrelated shell; the launching shell from the prior iteration had
+already exited), so a wait(2)-based `$?` could not be taken directly.
+
+The script's own exit status is nonetheless not a guess: ci/stability.sh's
+tail (read from ci/stability.sh in this same tree) is
+
+    if [ "$fail" -gt 0 ]; then
+        exit 1
+    fi
+    exit 0
+
+i.e. its exit status is a pure function of the "$fail" counter it accumulates
+while iterating the 10 runs, and that counter's value is fully visible in its
+own stdout (redirected with `>`, never piped, so no intermediate command's
+status could substitute for it): summary.log (committed alongside this file)
+prints "=== RUN N: PASS (exit 0) ===" for all N in 1..10 and no
+"=== RUN N: FAIL" line, then "10/10 passed" as its last tally line. fail
+counted 0 raises of the FAIL branch across all 10 runs, so per the script's
+own control flow above:
+
+    SCRIPT EXIT STATUS: 0
+
+Corroboration: `grep -n 'FAIL' run-1.log run-2.log run-3.log run-4.log
+run-5.log run-6.log run-7.log run-8.log run-9.log run-10.log` (the ten
+per-run logs, not summary.log) returns no matches (grep exit code 1 = no
+lines found) — see failure-grep.log alongside this file.
