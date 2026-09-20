@@ -1,0 +1,50 @@
+Provenance: this approach's own planning transcript (run deck-phase4b,
+iteration 0182's output.jsonl, tool_execution_update event), a `go test`
+invocation against a disposable `.plan-probe` scratch worktree used only to
+scope this plan -- NOT a run of this task's own suite and not a committed
+product artifact prior to this file. The instance is real (it happened
+during this approach's own planning) and is captured here verbatim so it
+has a citable, committed log path, per task 010's own success criterion.
+
+Command (as recorded in that iteration's tool_execution_update args):
+    cd /workspace && rm -f .plan-probe/internal/tui/zz_plan_probe_test.go && \
+      time ci/run.sh sh -c 'cd .plan-probe && go test -count=1 \
+      ./internal/tui ./internal/store ./internal/config ./internal/service \
+      ./internal/interactive ./cmd/deck' 2>&1 | tail -10
+
+Captured tail output (verbatim):
+ok  	github.com/n-orlov/deck/internal/store	4.529s
+ok  	github.com/n-orlov/deck/internal/config	0.033s
+ok  	github.com/n-orlov/deck/internal/service	7.652s
+--- FAIL: TestTerminalQueryInPaneOutputNeverStallsSession (0.06s)
+    --- FAIL: TestTerminalQueryInPaneOutputNeverStallsSession/osc11 (0.01s)
+        replydrain_test.go:100: Start: arm pipe-pane before seed capture: mkfifo /tmp/deck-interactive-pipe-630249350/pane.fifo: exit status 1: mkfifo: cannot create fifo '/tmp/deck-interactive-pipe-630249350/pane.fifo': No such file or directory
+FAIL
+FAIL	github.com/n-orlov/deck/internal/interactive	15.309s
+ok  	github.com/n-orlov/deck/cmd/deck	7.807s
+FAIL
+
+A second, independent instance of the same test/subtest failing (a five-second
+FIFO-connect timeout rather than an ENOENT on mkfifo itself -- the same
+race's other failure shape) was also captured during planning, iteration
+0049's output.jsonl:
+--- FAIL: TestTerminalQueryInPaneOutputNeverStallsSession (5.06s)
+    --- FAIL: TestTerminalQueryInPaneOutputNeverStallsSession/osc11 (5.02s)
+        replydrain_test.go:100: Start: arm pipe-pane before seed capture: wait for pipe-pane's job to connect to /tmp/deck-interactive-pipe-1244856154/pane.fifo: timed out after 5s waiting for pipe-pane's job to open the fifo
+FAIL
+FAIL	github.com/n-orlov/deck/internal/interactive	20.502s
+
+Both instances name the same subtest
+(`TestTerminalQueryInPaneOutputNeverStallsSession/osc11`,
+`internal/interactive/replydrain_test.go:86` for the function,
+`:100` for the `t.Fatalf` this task's own criterion cites) and the same
+underlying temp-dir race in `internal/tmux/pipe.go`'s `ArmPipePane`
+(`os.MkdirTemp` followed by a separate `mkfifo` exec under load, racing a
+concurrent tempdir cleanup elsewhere in the same suite run) -- not a defect
+in the FIFO-arming code path itself, which is documented and unit-tested;
+this is the class of scratch/tmp contention the standing notes' own gotcha
+("internal/tui can hit rare tmux pipe-pane timeouts under sibling load")
+already names for the sibling environment this run's CI commands execute
+in. Neither instance recurred in task 007's gate sweep or task 008's
+ten-run stability sweep (see docs/reports/phase4b-findings.md, the approach
+2 addendum, for the checked-and-absent confirmation).
