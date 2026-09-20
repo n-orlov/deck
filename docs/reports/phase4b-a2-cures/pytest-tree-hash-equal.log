@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python3
+rootdir: /tmp/verify006
+plugins: anyio-4.15.1
+collecting ... collected 4 items
+
+../tmp/verify006/test_cure_attestation.py::test_tree_hash_at_read_commit_equals_task_005_pinned_hash[ci] PASSED [ 25%]
+../tmp/verify006/test_cure_attestation.py::test_tree_hash_at_read_commit_equals_task_005_pinned_hash[cmd] PASSED [ 50%]
+../tmp/verify006/test_cure_attestation.py::test_tree_hash_at_read_commit_equals_task_005_pinned_hash[features] PASSED [ 75%]
+../tmp/verify006/test_cure_attestation.py::test_tree_hash_at_read_commit_equals_task_005_pinned_hash[internal] PASSED [100%]
+
+============================== 4 passed in 0.01s ===============================
+EXIT:0

@@ -1,0 +1,10 @@
+OK   commit resolves: B1 113b552ca2fe42bb1b3d10e42f14cdc3f735c8e6
+OK   func found: B1 TestFilterByDefaultMatchesTheSidebarsOwnDefaultLabel( in internal/tui/filter_default_label_test.go at 113b552ca2fe42bb1b3d10e42f14cdc3f735c8e6
+OK   commit resolves: B2 075c59c35fbbc22461f748bbe87e87a8ac4139e4
+OK   func found: B2 TestSettingsGroupsPanelRefreshesOnOrdinaryReload( in internal/tui/settings_groups_reload_test.go at 075c59c35fbbc22461f748bbe87e87a8ac4139e4
+OK   commit resolves: B3 00f33a5ac204bc2f558352a18c40fefa24ad3bab
+OK   func found: B3 TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue( in internal/tui/interactive_displacement_scrollcue_test.go at 00f33a5ac204bc2f558352a18c40fefa24ad3bab
+OK   commit resolves: R1 70c7430df3b23a46fb735e8573e26ec55908adeb
+OK   func found: R1 TestEmptyAndHelpViewsAreDiscoverable( in internal/tui/tui_test.go at 70c7430df3b23a46fb735e8573e26ec55908adeb
+verify-citations.sh: all eight citations (four commits, four test functions) resolve
+EXIT:0
