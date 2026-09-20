@@ -4,38 +4,57 @@ Per-requirement record for the whole phase (`prds/phase4b-manual-groups-and-scro
 GH #25/#30), written on the freeze-line tail after the whole-suite gate (task 021),
 the guards (task 022) and the ten-run stability sweep (task 023) had run.
 
-- **Code sha this file is written against:** `bcd80b923670f0de3f0859bed8dd2e7dacb3f468`
-  (`bcd80b9`, "docs: run the ten-run stability sweep at baf92ed …" — the tip of
-  `main` at the moment this revision was authored, tree clean, `HEAD ==
-  origin/main`). This file's own commit sits directly on top of it and is
-  record-only.
-- **Task 021's gate sha (the whole-suite sweep's launch sha, and the sha every
-  requirement below is scored against):** `baf92eda072f6b59ba9b788340f71ed798077504`
-  (`baf92ed`, "docs: re-verify task 019's group-delete branches at HEAD (R131
-  part 2, #30)"). `baf92ed` is itself a docs commit; the last code-touching
-  commit under it is `d179b2c` ("tmux: wait out a slow pipe-pane job instead of
-  timing out on it"), so those two carry identical Go sources. Every commit from
-  `8d28f01` (task 021's record) through this file's own commit is record-only
+- **Code sha this file is written against:** `f13c848ee21da85d00dfa2e26026ab640f9624ef`
+  (`f13c848`, "settings: keep a rejected group name's inline validation on
+  screen (R131, #30)") — the **final code sha**: the last commit touching any
+  `*.go` or `*.feature` file, per `git log --oneline -- '*.go' '*.feature'`
+  with HEAD at this file's own commit. Every commit after it
+  (`0d966e4`…this file's own) is docs-only
   (`docs/reports/`, `docs/DELIVERY-LOG.md`, `docs/roadmap.md`,
-  `docs/prds/README.md`): `git diff --stat baf92ed..HEAD -- '*.go' '*.feature'`
-  prints nothing, so the code tree at `bcd80b9` — and at this file's own commit —
-  is byte-identical to `baf92ed`'s, and the requirement scoring below holds at
-  all of them.
+  `docs/prds/README.md`); this file's own commit sits on top of that docs-only
+  tail and is itself record-only.
+- **Task 021's gate sha (the whole-suite sweep's own launch sha):**
+  `baf92eda072f6b59ba9b788340f71ed798077504` (`baf92ed`, "docs: re-verify task
+  019's group-delete branches at HEAD (R131 part 2, #30)") — task 021's own
+  gate ran here and returned RED (exit 1); that result stands in the record as
+  history and is never erased. It is **not**, as an earlier revision of this
+  file claimed, the sha the requirements below are scored against, and it is no
+  longer byte-identical to the shipped tree: four code-touching commits landed
+  after it under the cure track (a standing exception to the freeze line, which
+  otherwise runs docs-only from task 021's launch on) — `4a1e352`/`8d934d1`
+  (`cure-01-01-2`, R133) and `8f8e9e8`/`f13c848` (`cure-01-02-2`, R131) — on top
+  of `021-cure-01`/`021-cure-02` (`db9732b`/`a224e43`), which themselves landed
+  before those four. `git diff --stat baf92ed..HEAD -- '*.go' '*.feature'` now
+  prints **18 files, +925/-167**, not nothing; every requirement below is scored
+  at this file's own code sha, `f13c848`, not at `baf92ed`.
 - **Docs-only tail:** this file, `docs/reports/phase4b-findings.md` (task 025) and
-  this phase's row in `docs/DELIVERY-LOG.md` (task 026) are the docs-only tail of
-  the phase — no code lands after the freeze line, which began at task 021's
-  launch.
-- **What this revision supersedes.** The first two landings of this file
-  (`b96015e`, corrected in `6c2b95c`) scored the phase at the earlier gate sha
-  `0806ba6` and quoted a *green* gate (exit 0, 440s) and a 10/10 stability run.
-  Both of those sweeps were re-run after the cure wave (`60a551d`…`57e1a6a`) and
-  the task 016–020 re-verifications landed, and the numbers changed: the gate of
-  record is now **RED at `baf92ed`** and stability is **9/10 at `baf92ed`**. The
-  quotations in "Gate result and stability headline" below are taken from the
-  current contents of the two report files named there, not carried forward from
-  the superseded revision. Two commit attributions that the earlier revision got
-  wrong are restated correctly here and listed under "Attribution corrections
-  carried forward".
+  this phase's row in `docs/DELIVERY-LOG.md` (task 026) are the docs-only tail
+  sitting on top of `f13c848` — no code lands after it outside the cure track
+  itself, which by this file's own commit has closed.
+- **What this revision supersedes.** The previous landing (`eb6b2ce`, itself
+  correcting `b96015e`/`6c2b95c`) scored the phase at gate sha `baf92ed` and
+  quoted a gate **RED at `baf92ed`** (exit 1) and stability **9/10 at `baf92ed`**,
+  true statements about the tree at the moment `eb6b2ce` landed (22:03:53Z).
+  Since then: `021-cure-01` (`db9732b`, 22:13:13Z) and `021-cure-02` (`a224e43`,
+  22:18:14Z) fixed the gate's own two red lanes (a `features` create-step wait
+  and a theme-settle comparison, neither a defect in any of the seven
+  requirements), and `021-resweep-01` re-ran the whole suite from scratch at
+  `a224e43` and got GREEN (exit 0) — the gate is now green at the shipped tree,
+  not merely in isolation. Separately, `cure-01-01-2` (`4a1e352`/`8d934d1`) and
+  `cure-01-02-2` (`8f8e9e8`/`f13c848`) landed real product code AFTER
+  `a224e43` — R133's offset now heals through the shared
+  `interactiveScrollState` cell rather than only inside
+  `scrollInteractiveByLines`, and R131's settings panel keeps a rejected group
+  name's inline validation visible past the viewport — neither of which the
+  gate at `a224e43` covers, so `cure-01-01-3` re-ran the ten-run stability
+  sweep at the fully-shipped tree, `c6a0876` (code-identical to `f13c848`):
+  **10/10 passed**, the gate-strength evidence for the sha this file is
+  written against. This revision scores every requirement at `f13c848`, names
+  all four of the R133/R131 cure commits `eb6b2ce` omitted entirely, and
+  restates the gate/stability headline from the current green record while
+  keeping `baf92ed`'s RED result and the superseded 9/10 result on the record
+  as history, per "Attribution corrections carried forward" and "Gate result
+  and stability headline" below.
 
 ## Tier 1 → Tier 2 decision
 
@@ -48,35 +67,52 @@ does not restate its budget arithmetic.
 
 ## Gate result and stability headline
 
-- **Whole-suite gate (task 021): RED, exit `1`,** 489s wall clock, at gate sha
-  `baf92eda072f6b59ba9b788340f71ed798077504` — 18 package lines = 14 `ok`, 1
-  `FAIL` (`features`, 413.717s) and 3 `[no test files]` (`internal/notify`,
-  `internal/search`, `internal/unit`). Quoted from the source: "**Result at the
-  launch sha: RED (exit 1).** One package, `features`, failed with two
-  load-sensitive timeouts; every other package is green", and "**the gate's own
-  exit status at `baf92ed` is 1**, and it stands as the result of record. A lane
-  that is red on the gate IS red". Invocation, per the same source:
-  `ci/run.sh go test -p=1 -count=1 ./...`, no `-run` filter and no package list.
-  Source: [`docs/reports/phase4b-final-suite/README.md`](./phase4b-final-suite/README.md).
-- **Ten-run stability (task 023): 9/10 passed,** same gate sha `baf92ed`, ~73
-  minutes wall clock for the ten runs. Quoted from the source: "**9/10 passed.**
-  … One run (run 2) hit `exit 1`. The other nine (runs 1, 3–10) exited 0."
-  The one failure is the transient-`starting` flake class already open from the
-  gate, named there as advisory with its log path (`run-02.log`); no instance of
-  the second known-open class (the SIGWINCH exact-count assertion) occurred in
-  any of the ten runs. Source:
+- **Whole-suite gate: GREEN, exit `0`,** at `021-resweep-01`'s launch sha
+  `a224e4339173bad93342abdeb5e946da71753090` (`a224e43`) — 463s wall clock, 18
+  package lines = 15 `ok`, 0 `FAIL`, 3 `[no test files]` (`internal/notify`,
+  `internal/search`, `internal/unit`), no `-run` filter and no package list
+  (`ci/run.sh go test -p=1 -count=1 ./...`). This is the gate result of record
+  for the shipped tree. **Task 021's own gate, at its own launch sha `baf92ed`,
+  was RED (exit 1, 489s)** on two load-sensitive `features` timeouts — that
+  result is history, never erased, and is restated under
+  ["Not shipped / still open"](#not-shipped--still-open) together with the two
+  carve tasks (`021-cure-01` at `db9732b`, `021-cure-02` at `a224e43` itself)
+  that cured each lane and the from-scratch re-sweep (`021-resweep-01`) that
+  produced the green result quoted here, per this run's standing rule that a
+  red lane's fix is carved into a new task and the sweep re-run from scratch.
+  Four more code-touching commits landed after `a224e43` under the cure
+  track — `4a1e352`/`8d934d1` (R133) and `8f8e9e8`/`f13c848` (R131) — so
+  `a224e43`'s own gate log does not by itself cover the final code sha
+  `f13c848`; the ten-run stability sweep below re-ran the whole suite at that
+  later, fully-shipped tree and is the gate-strength evidence for it. Source:
+  [`docs/reports/phase4b-final-suite/README.md`](./phase4b-final-suite/README.md).
+- **Ten-run stability: 10/10 passed,** at HEAD `c6a0876` (`cure-01-01-3`),
+  code-identical to the final code sha `f13c848` (only docs commits sit
+  between them) — ~74 minutes wall clock for the ten runs, all eighteen package
+  result lines green in every run, zero `FAIL` anywhere. Quoted from the
+  source: "**10/10 passed.** … All ten runs exited 0. No failure occurred in
+  any run." Neither known-open flake class (the transient-`starting` assertion
+  cured by `021-cure-01`/`021-cure-02`, or the SIGWINCH exact-count assertion)
+  occurred in any of the ten runs. This supersedes an earlier 9/10 result taken
+  at `baf92ed` (the one failure being the now-cured transient-`starting` class),
+  which stays on the historical record at commit `bcd80b9` and in
+  `docs/DELIVERY-LOG.md`, never erased. Source:
   [`docs/reports/phase4b-stability10/README.md`](./phase4b-stability10/README.md).
 - **Guards (task 022):** build, vet and `gofmt` over the touched set, plus the
-  read-only path check, all exit `0` at the same sha — recorded at
-  `docs/reports/phase4b-guards/README.md`.
-- Both red lanes and how they are carried are restated under
+  read-only path check, all exit `0` — recorded at
+  `docs/reports/phase4b-guards/README.md`, still measured at `baf92ed` (task
+  021's gate sha), predating the four cure commits named above; that report has
+  not been re-taken at the shipped sha as of this revision, the same caveat
+  [`docs/reports/phase4b-final-suite/README.md`](./phase4b-final-suite/README.md)
+  itself already carries for it and for the superseded stability report.
+- Task 021's own red lanes and how they were carried are restated under
   ["Not shipped / still open"](#not-shipped--still-open) at the end of this file.
 
 ## Tier 1 — the interactive scroll cue (GH #30)
 
 ### R133 — the scrolled-back view says so, from the offset actually used
 
-**Shipped**, in three commits (two landings plus one cure):
+**Shipped**, in five commits (two landings plus three cures) — the mechanism actually shipped is the shared `interactiveScrollState` cell written in the render path (`internal/tui/interactive.go:562-563` calling `m.setInteractiveScrollOffset`, `internal/tui/interactive_scroll.go:40-70`), not `scrollInteractiveByLines` storing the clamp on its own int field as the first cure (`60a551d`) landed it; the two cures below (`cure-01-01-2`) replaced that mechanism after review found it incomplete:
 
 - `8bd8a91` (task 001) — `interactiveBodyLines` (`internal/tui/interactive.go`)
   now consumes `RenderRows`' second return (the clamped, actually-used offset)
@@ -105,11 +141,43 @@ does not restate its budget arithmetic.
   (`internal/tui/interactive_scroll_persist_test.go`):
   `TestStoredScrollOffsetHealedAcrossViewAndNextScroll` and
   `TestInteractiveDispatcherNilDoesNotSnapStoredOffset`.
+- `4a1e352` (`cure-01-01-2`, first attempt) — a resize that reseeds the grid
+  with a shorter or empty real history, or a background visible-only reseed
+  under `interactive_transport = capture`, changed what `RenderRows` would
+  clamp to without either scroll helper ever running, so the stored offset
+  stayed stale-high until whatever scroll command happened next, if ever.
+  Added `healInteractiveScrollOffsetFromRender`
+  (`internal/tui/interactive_scroll.go`), factored out of
+  `scrollInteractiveByLines`' own inline heal, and called it both there and at
+  the top of `Update` (`internal/tui/tui.go`) for every message while
+  `m.interactive` is true. Test
+  (`internal/tui/interactive_scroll_render_heal_test.go`):
+  `TestInteractiveScrollHealAtUpdateTopLeavesNonInteractiveModelsUntouched`.
+- `8d934d1` (`cure-01-01-2`, the fix that actually ships) — neither `60a551d`
+  nor `4a1e352` reaches a render with no `Update` between it and the next
+  input event (the case `artifacts/review2/tui-reviewer-prd-test.go`'s
+  `TestReviewerScrollHealAfterVisibleOnlyReseed` finding names), because the
+  offset still lived in a plain `int` field on `Model`, and a clamped value
+  `RenderRows` returned could only ever be written onto whichever
+  value-receiver copy of `Model` happened to be on the stack. The fix moves
+  the position into `interactiveScrollState`, one cell every copy of `Model`
+  points at, read through `m.interactiveScrollOffset()` and written through
+  `m.setInteractiveScrollOffset(n)`; `scrollInteractiveByLines` now heals its
+  base from that cell before applying its delta. RED FIRST at `4a1e352`
+  (`artifacts/cure-01-01-2/redfirst-at-4a1e352.log`): stored offset stuck at
+  76 against a real scrollback of 0. Test
+  (`internal/tui/interactive_scroll_render_heal_test.go`):
+  `TestInteractiveScrollOffsetHealsAfterVisibleOnlyReseedOnTheNextUpdate`. The
+  `[0, interactive.ScrollbackMaxLines]` clamp and the entry-only history seed
+  policy are unchanged by any of the three commits above.
 
 Evidence: `internal/tui` green in Tier 1's targeted record
 (`docs/reports/phase4b-tier1-suite/internal-tui.log`, task 005), re-taken after
-the cure at `docs/reports/phase4b-retake-01-01/` (commit `d99dc5c`), and green
-again in the gate's `internal/tui 6.408s` line at `baf92ed`.
+the first cure at `docs/reports/phase4b-retake-01-01/` (commit `d99dc5c`),
+green again in the gate's `internal/tui 6.408s` line at `baf92ed`, and
+re-taken a second time at `cure-01-01-2`'s own leaves
+(`docs/reports/phase4b-retake-01-01-2/`, tree sha `f13c848`): both
+`interactive_scroll_persist_test.go` tests plus the package as a whole PASS.
 
 ### R134 — the interactive footer advertises the scroll keys
 
@@ -326,7 +394,7 @@ change) keeps the `features` suite in step with this requirement's landing.
 
 ### R131 — the group list is edited in settings
 
-**Shipped**, across six commits (three landings, three cures):
+**Shipped**, across eight commits (three landings, five cures):
 
 - `8038b4d` (task 018, part 1) — a settings Groups section where `n` creates
   (inline validation from R128's name rules), `r` renames, both applied
@@ -383,34 +451,92 @@ change) keeps the `features` suite in step with this requirement's landing.
   `TestSharedStateDBGroupEditsVisibleAcrossClients`,
   `TestGroupCreatedByAnotherClientAppearsAfterReload`; re-taken after the cures
   at `docs/reports/phase4b-retake-01-02-02/` (commit `049199f`).
+- `8f8e9e8` (`cure-01-02-2`, first attempt) — `settingsGroupsViewLines` built
+  the create/rename input and the delete confirm AFTER every group row, then
+  handed the whole slice to `fitLines`, which just truncates to the frame's
+  row budget: at 80x24 with 24 persisted groups, selecting a group near the
+  end (group-23) left the selected row — and any editor/confirm attached to
+  it — entirely off screen. Fix: attach the create/rename input or the delete
+  confirm directly to the selected group's own row, and size/center a
+  scrolling window (`settingsGroupsWindow`) over the group rows so the
+  selected block always stays inside the row budget, appending a
+  `groups N-M of T -- up/down scrolls` line when the window is narrower than
+  the full list. Tests
+  (`internal/tui/settings_groups_test.go`):
+  `TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible`,
+  `TestSettingsGroupsWindowKeepsSelectedBlockWhollyInsideCapacity`.
+- `f13c848` (`cure-01-02-2`, attempt 2, the fix that actually ships) — attempt
+  1 above still appended `m.settingsGroupNote` (the inline validation row
+  explaining a rejected name) AFTER the selected block's window had already
+  spent the row budget, so the trailing `fitLines` truncated exactly the row
+  that says why the typed name was refused (reproduced: 24 groups at 80x24,
+  select group-23, `n`, type `default`, enter — the frame showed the input
+  but no `reserved` note anywhere). `settingsGroupsViewLines` now builds the
+  selected group's whole extra block — separator, input/confirm, and any
+  attached inline note — as a measured slice BEFORE the window is sized, and
+  passes its real length as `settingsGroupsWindow`'s `selectedExtra`, so the
+  note's row (and the scroll-position row) is reserved out of the window's
+  capacity instead of being truncated behind it. Tests (same file):
+  `TestSettingsGroupsListLongerThanViewportKeepsSelectionAndEditorVisible`
+  gains the two rejected-name subtests
+  (`create_rejected_name_keeps_the_validation_visible`,
+  `rename_rejected_name_keeps_the_validation_visible`, at both 80x24 and
+  100x40);
+  `TestSettingsGroupsWindowKeepsSelectedBlockWhollyInsideCapacity` now spans
+  extras 0,2,3,4,6,9 since the block cost is measured, not a constant.
+  Re-taken at cure-01-02-2's own leaves
+  (`docs/reports/phase4b-retake-01-04-01/`, tree sha `0d966e4`, code-identical
+  to `f13c848`): all 9 top-level `TestSettingsGroups*` tests (and every
+  subtest) PASS, package green.
 
 **Targeted re-verification at this file's code sha.** `ci/run.sh go test -count=1
-./internal/tui/ ./internal/store/ ./internal/config/ ./internal/service/` at
-`bcd80b9` (code-identical to `baf92ed`): `ok internal/tui 7.177s`,
-`ok internal/store 4.479s`, `ok internal/config 0.035s`,
-`ok internal/service 7.691s` — exit 0, so every store/tui/config/service test
-named above is green at the sha this record is written against.
+./internal/tui/ ./internal/store/ ./internal/config/ ./internal/service/`
+at `c6a0876` (code-identical to the final code sha `f13c848`, per
+`docs/reports/phase4b-stability10/README.md`'s own sha statement):
+`ok internal/tui` (7.177s–8.034s across the retakes above), `ok internal/store`,
+`ok internal/config`, `ok internal/service` — exit 0 in every re-take, so
+every store/tui/config/service test named above is green at the sha this
+record is written against.
 
 ## Not shipped / still open
 
 Every one of the seven requirements (R133, R134, R135, R128, R129, R130, R131)
-shipped; Tier 2 was started and completed per the GO decision. What is *not*
-delivered is a green whole-suite gate:
+shipped; Tier 2 was started and completed per the GO decision. The whole-suite
+gate and the ten-run stability sweep are both **green at the shipped tree**
+(gate `a224e43`, stability `c6a0876`) as of this revision — what follows is the
+history of how they got there, not an open gap:
 
-- **The gate is RED at `baf92ed` (exit 1)** on two load-sensitive timeouts inside
-  the `features` harness, both green when re-run in isolation at the same sha:
-  the `kill_delete_undo.feature:688` scenario's create step waiting for a
-  transient `starting` frame the client has already left, and
+- **Task 021's own gate was RED at `baf92ed` (exit 1)** on two load-sensitive
+  timeouts inside the `features` harness, both green when re-run in isolation
+  at the same sha: the `kill_delete_undo.feature:688` scenario's create step
+  waiting for a transient `starting` frame the client has already left, and
   `TestThemeChangesAttributesButNotFrameGeometry/ascii`
   (`features/theme_geometry_test.go:185`) comparing two snapshots 100ms apart.
-  Neither is a product defect in any of the seven requirements, and neither was
-  patched under task 021: per this run's standing rule, a red lane a sweep finds
-  is a new task and the sweep is re-run from scratch afterwards. The three
-  follow-ups (`021-cure-01`, `021-cure-02`, `021-resweep-01`) live in the run's
-  own task state, which is the authority for their status; this file claims
-  nothing about whether they have run.
-- **Stability is 9/10 at the same sha**, the one failure being the same
-  transient-`starting` class, recorded as advisory with its log path.
+  Neither was a product defect in any of the seven requirements, and neither
+  was patched under task 021 itself: per this run's standing rule, a red lane
+  a sweep finds is a new task and the sweep is re-run from scratch afterwards.
+  `021-cure-01` (`db9732b`) and `021-cure-02` (`a224e43`) cured the two lanes,
+  and `021-resweep-01` re-ran the whole suite from scratch at `a224e43` and
+  got GREEN (exit 0, 463s, all 18 package lines `ok`/`[no test files]`,
+  0 `FAIL`) — the gate result of record quoted under "Gate result and
+  stability headline" above. All three carry `splitFrom: "021"` in the run's
+  own task state and stand `validated`.
+- **Stability was 9/10 at `baf92ed`**, the one failure being the same
+  transient-`starting` class, recorded as advisory with its log path at the
+  time. `cure-01-01-3` re-ran the ten-run sweep at the fully-shipped tree,
+  `c6a0876` (code-identical to the final code sha `f13c848`), after four more
+  code-touching commits (`4a1e352`, `8d934d1`, `8f8e9e8`, `f13c848`) landed
+  past `a224e43` with no stability run of the shipped tree yet on record: 10/10
+  passed, no instance of either known-open flake class. The superseded 9/10
+  result stays on the historical record at commit `bcd80b9` and in
+  `docs/DELIVERY-LOG.md`, never erased.
+- **Still genuinely open:** `docs/reports/phase4b-guards/README.md` (task 022)
+  still measures the build/vet/gofmt/read-only-path guards at `baf92ed`,
+  predating the four cure commits above, and has not been re-taken at the
+  shipped tree as of this revision — the guards themselves are not known to
+  be red at the later sha, only unmeasured there; that re-take belongs to
+  whichever task (022, still `pending` in the run's own task state) next
+  touches that report.
 - Residual gaps this run chose not to fix — including anything that is a finding
   rather than an unmet requirement — are
   [`docs/reports/phase4b-findings.md`](./phase4b-findings.md)'s job (task 025),
@@ -436,9 +562,20 @@ dropped, together with a third correction:
    the seams the degradation runs through. The added code budgets with
    `stringWidth` and only *mirrors* `footerLegendWithin` (named in its comment);
    it calls neither.
+4. **R133 and R131, this revision** — the previous landing (`eb6b2ce`) described
+   R133's shipped mechanism as `scrollInteractiveByLines` storing the clamp
+   (`60a551d`) and never mentioned `4a1e352`, `8d934d1`, `8f8e9e8` or `f13c848`
+   anywhere, so neither requirement's record described what actually shipped:
+   R133 heals through the shared `interactiveScrollState` cell written in the
+   render path (`internal/tui/interactive.go:562-563`,
+   `internal/tui/interactive_scroll.go:40-70`, landed by `4a1e352`/`8d934d1`),
+   and R131's settings panel keeps a rejected group name's inline validation on
+   screen past the viewport (`8f8e9e8`/`f13c848`). All four commits are named,
+   with their own mechanism and tests, under R133 and R131 above in this
+   revision.
 
 Test function names quoted in this revision were re-read from the files in the
-tree at `bcd80b9`, not carried forward: the `f171168` guard renamed several of
+tree at `f13c848`, not carried forward: the `f171168` guard renamed several of
 them (for example the service test is
 `TestSessionContextEnvExportsGroupNotLegacyField`, not the
 `…NotWorkspace` name the superseded revision used).
@@ -449,3 +586,6 @@ them (for example the service test is
 - [`docs/reports/phase4b-final-suite/README.md`](./phase4b-final-suite/README.md)
 - [`docs/reports/phase4b-stability10/README.md`](./phase4b-stability10/README.md)
 - [`docs/reports/phase4b-tier2-decision.md`](./phase4b-tier2-decision.md)
+- [`docs/reports/phase4b-retake-01-01-2/README.md`](./phase4b-retake-01-01-2/README.md)
+- [`docs/reports/phase4b-retake-01-04-01/README.md`](./phase4b-retake-01-04-01/README.md)
+- [`docs/reports/phase4b-guards/README.md`](./phase4b-guards/README.md)
