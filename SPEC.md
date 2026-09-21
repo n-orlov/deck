@@ -573,7 +573,7 @@ One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -1283,23 +1283,48 @@ hold them side by side.
     the user says otherwise, and a `group_id` that no longer resolves — another client deleted
     it between this client's load and its render — renders under `default` rather than
     vanishing.
-  - **Order is alphabetical, case-insensitive, with `default` always last** regardless of
-    where its name would sort. Rows *within* a group follow the sort order below. Group order
+  - **Order is alphabetical, case-insensitive, with `default` last by default** regardless of
+    where its name would sort — or **first**, when `[ui] default_group_first` is set (§6.5).
+    Rows *within* a group follow the sort order below. Group order
     is deliberately not attention-ranked: a manual group is a stable place the user learns the
     position of, and a list whose headers reshuffle when a session starts waiting is a list
     you cannot navigate from memory. The cost is real and accepted — a `waiting` row can sit
     below the fold in an alphabetically-late group — and it is paid for by the same two things
     that make a non-`attention` sort order safe: the attention-walk key and the collapsed
     strip's count.
+    - **`default_group_first` moves one pivot and nothing else.** It is the single exception
+      to "not attention-ranked", and it is not one: it is a *stable* user choice, made once,
+      that says where the ungrouped sessions live. For a user whose ungrouped sessions are
+      the ones they work in, pinning them to the bottom of the sidebar puts the most-used
+      list furthest from the eye. The remaining groups stay alphabetical either way, so the
+      positions the user has learned do not otherwise move. This is a preference, not
+      machine-local state, so it lives in `config.toml` beside `sort_order` and not in
+      `ui_state`.
   - **Every header carries its member count, including `(0)`.** A group the user defined but
     has not filled yet still renders: it is how they see the group exists and where to put
     something. Under an active filter (§11.10) only groups with a match render, and the count
     is what is shown — an empty group is a standing place in the default list, not a row to
     pad filter results with.
-  - **Groups collapse; rows do not.** `c` toggles the selected row's group, a header click does
-    the same (§11.8), and **collapse state persists in `ui_state`** so a group collapsed
+  - **Groups collapse; rows do not.** A header click toggles collapse (§11.8), and
+    **collapse state persists in `ui_state`** so a group collapsed
     yesterday is still collapsed today — a durable named group is not a transient view the way
     the old derived buckets were. Selection never lands on a hidden row.
+    - **A group header is a cursor stop.** `↑`/`↓` and the rest of §11.3's list navigation
+      land on headers as well as on session rows, and `c` folds or unfolds **the header under
+      the cursor** (`←`/`→` fold and unfold explicitly). Resolving the fold target from the
+      *selected session's* group instead cannot express the operation at all: a folded group
+      has no visible row to select, so the group the user most wants to reopen is the one
+      group they cannot name, and a defined-but-empty group can never be reached by keyboard
+      at any time. A header cursor is also what makes the empty group's standing place above
+      usable rather than merely visible.
+    - **Folding never evicts the cursor from the group it folded.** Folding from a session
+      row leaves the cursor on that group's own header, so the same key immediately undoes it;
+      folding from a header leaves the cursor where it is. A fold that pushed the cursor into
+      the *next* group would turn one key into a walk down the sidebar, folding everything.
+    - **Every session-scoped key is inert while the cursor is on a header** — it names no
+      session, so `↵`, `a`, `x`, `dd`, `i` and the rest do nothing rather than acting on some
+      nearby row the user did not point at. This is one rule for all of them, not a decision
+      each binding makes for itself.
   - **Membership is set where the session is.** The create modal has a `Group` field that
     cycles the available groups exactly as the `Agent` field cycles kinds (§11.4), defaulting
     to the last group created into; the `i` detail dialog moves an existing session between
@@ -1335,6 +1360,15 @@ hold them side by side.
   still holds, and it is not in `ui_state`. The **group list**, by contrast, is machine-local
   and lives in `state.db` (§4) — a group is a place on this machine, not a preference that
   travels with a config file.
+- **The viewport follows the cursor, always.** Every key that moves the selection — `↑`/`↓`,
+  `PgUp`/`PgDn`, `g`/`G`, the attention walk, a fold, an edit to the `/` query — leaves the
+  selected row inside the visible window, keeping one whole row of context beyond it where the
+  list allows and sitting flush at the list's own ends where it does not. A sidebar that
+  renders no visible selection is a sidebar whose next keystroke acts on a session the user
+  cannot see, which is the same class of defect as a mis-aimed click (§11.8). The wheel is the
+  one deliberate exception and stays one: it scrolls without selecting (§11.8), so it may drift
+  away from the cursor — and the next selection move brings the cursor back into view rather
+  than the wheel's position being preserved.
 - **A re-sort never moves the selection.** Selection follows the session, not the row index —
   whatever was selected before a reload, a re-group or a sort-order change is still selected
   after it, and the viewport scrolls to keep it visible rather than the selection sliding to
@@ -1476,7 +1510,8 @@ resume/start · `R` restart preserving conversation · `x` kill (undo toast) · 
 are actions inside it**, not top-level keys) · `e` env editor · `P` permission profile ·
 `p` pin conversation · `E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
 filter list · `m` mark · `z` snooze · `A` archive
-(confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `,` settings
+(confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `c` fold/unfold the
+group under the cursor, `←`/`→` fold/unfold explicitly (§11) · `,` settings
 (§11.5) · `t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) ·
 `?` help · `q` quit.
 
@@ -2435,11 +2470,13 @@ features/
                                 for error, placeholder with no pane
   attention_sort.feature        §7/§11 — attention order, the collapsed strip's count,
                                 space walks what needs me
-  session_groups.feature        §11 — manual groups: alphabetical with default last, counts
-                                including (0), collapse persisted, create/move/edit/delete
+  session_groups.feature        §11 — manual groups: alphabetical with default last or first,
+                                counts including (0), collapse persisted, header as a cursor
+                                stop and fold/unfold by keyboard, create/move/edit/delete
   mouse.feature                 §11.8 — click selects and enters interactive, wheel scrolls
-                                without selecting, seam drag resizes, preview drag selects and
-                                release copies, DECK_MOUSE=0 disables
+                                without selecting, the header click toggling collapse in list
+                                mode and in interactive mode alike, seam drag resizes, preview
+                                drag selects and release copies, DECK_MOUSE=0 disables
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
   themes.feature                §11.6 — picker, live preview/revert, fallback says so,
                                 quantised rendering under DECK_COLOR_DEPTH=16
