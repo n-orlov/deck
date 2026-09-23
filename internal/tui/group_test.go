@@ -341,6 +341,44 @@ func TestGGKeysJumpToFirstAndLastVisibleRow(t *testing.T) {
 	_ = updated.(Model) // must not panic with no sessions
 }
 
+// TestGGKeysLandOnStopsWhenTheSidebarIsHeaderOnly is cure-012-01's own
+// regression: task 012 made a group header a visual stop in its own
+// right, so a sidebar with NO sessions at all -- one persisted,
+// still-empty group plus the structural default group -- has two visual
+// stops, and SPEC.md:952's "g/G top/bottom" must land on the first and
+// last of them. Both handlers used to be gated on len(m.sessions) > 0,
+// a row-only assumption that made g/G dead keys in exactly this state
+// (the probe: visualOrder() = [headerCursor(7), headerCursor(0)] while g
+// stayed on header 0 and G stayed on header 7).
+func TestGGKeysLandOnStopsWhenTheSidebarIsHeaderOnly(t *testing.T) {
+	m := groupTestModel(nil)
+	m.allGroups = []store.Group{{ID: 7, Name: "infra"}}
+
+	order := m.visualOrder()
+	if len(order) != 2 {
+		t.Fatalf("a header-only sidebar should still offer both headers as stops, got %+v", order)
+	}
+	first, last := order[0], order[len(order)-1]
+	if first == last {
+		t.Fatalf("first and last stop must differ for this probe, got %+v", order)
+	}
+
+	// Start parked on the LAST stop, so a g that does nothing is
+	// distinguishable from a g that works.
+	m.selected = last
+	updated, _ := m.Update(key("g"))
+	m = updated.(Model)
+	if m.selected != first {
+		t.Fatalf("g on a header-only sidebar: got %+v, want the first visual stop %+v", m.selected, first)
+	}
+
+	updated, _ = m.Update(key("G"))
+	m = updated.(Model)
+	if m.selected != last {
+		t.Fatalf("G on a header-only sidebar: got %+v, want the last visual stop %+v", m.selected, last)
+	}
+}
+
 // TestToggleGroupCollapseFlipsState is the direct collapse/expand unit
 // test task 028's mouse header click drives.
 func TestToggleGroupCollapseFlipsState(t *testing.T) {

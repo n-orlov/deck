@@ -3991,14 +3991,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// mirrors up/down's own visualOrder-based navigation, so a
 			// collapsed group's hidden rows are skipped exactly like a
 			// single up/down press would skip them.
-			if !m.help && !m.detail && len(m.sessions) > 0 {
+			//
+			// Deliberately NOT gated on len(m.sessions) > 0 (cure-012-01):
+			// since task 012 a header is a visual stop in its own right, so a
+			// sidebar holding only headers (every persisted group empty, or
+			// just the implicit default group's own header) still has a first
+			// and a last stop for g/G to land on. visibleSessionIndices()'s
+			// own emptiness check is the only guard this needs.
+			if !m.help && !m.detail {
 				if visible := m.visibleSessionIndices(); len(visible) > 0 {
 					m.setSelection(visible[0])
 				}
 			}
 		case "G":
 			// SPEC.md:952 "g/G top/bottom": jump to the last visible stop.
-			if !m.help && !m.detail && len(m.sessions) > 0 {
+			// Same cure-012-01 reasoning as `g` above: header-only sidebars
+			// have a last stop too, so no len(m.sessions) gate here either.
+			if !m.help && !m.detail {
 				if visible := m.visibleSessionIndices(); len(visible) > 0 {
 					m.setSelection(visible[len(visible)-1])
 				}
