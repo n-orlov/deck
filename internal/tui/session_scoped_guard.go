@@ -18,10 +18,20 @@ package tui
 // letter -- the two are guarded through this one shared map under
 // distinct keys so neither collides with or gates the other.
 var sessionScopedKeys = map[string]bool{
-	"enter": true, "a": true, "x": true, "r": true, "R": true, "i": true,
-	"e": true, "P": true, "p": true, "Y": true, "m": true, "A": true,
-	"U": true, "s": true, "z": true, "detail:g": true,
+	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
+	"i": true, "e": true, "P": true, "p": true, "Y": true, "m": true,
+	"A": true, "U": true, "s": true, "z": true, "detail:g": true,
 }
+
+// markBatchKeys are the two session-scoped keys task 112 gave a second,
+// batch meaning: with a non-empty mark set, `x` kills and `dd` deletes the
+// WHOLE marked set rather than the cursor's own row, so neither may be
+// gated by a header cursor while marks are in force -- the batch does not
+// need the cursor to name anything. With an empty mark set both act on the
+// cursor's row alone and are guarded exactly like every other key above.
+// This is one map rather than two ad-hoc `key == "x"` tests so the two
+// batch keys can never drift apart on the header question.
+var markBatchKeys = map[string]bool{"x": true, "d": true}
 
 // guardSessionScopedKey is the ONE place task 013/D.2 decides whether a
 // session-scoped keypress is allowed to reach its own handler at all. Before
@@ -41,17 +51,24 @@ var sessionScopedKeys = map[string]bool{
 // header or because m.sessions is empty or the cursor has drifted out of
 // range (hasSelectedSession covers both).
 //
-// "x" carries one deliberate exception: task 112's non-empty mark set means
-// x acts on the WHOLE marked batch instead of the cursor's own row, so a
-// header cursor must never gate that batch path -- only the single-row path
-// still needs a resolvable selection, and it still checks for one itself
-// (case "x" below) exactly as it always did, now that the guard has let it
-// through.
+// The two markBatchKeys carry one deliberate exception: a non-empty mark
+// set (task 112) means they act on the WHOLE marked batch instead of the
+// cursor's own row, so a header cursor must never gate that batch path.
+//
+// `d` is in the map above and goes through this guard TWICE per dd chord,
+// because both halves of the chord mutate: the first `d` raises
+// m.pendingDelete (tui.go's case "d"), which the guard now refuses on a
+// header before it happens, and the second `d` is intercepted by
+// m.pendingDelete's own branch in Update, which runs ahead of this guard on
+// purpose (it must swallow and clear the indicator for EVERY key, including
+// keys this guard would otherwise refuse) and so asks this guard itself
+// rather than re-deciding the header question with a second selectedSession
+// check of its own.
 func (m Model) guardSessionScopedKey(key string) bool {
 	if !sessionScopedKeys[key] {
 		return false
 	}
-	if key == "x" && len(m.marked) > 0 {
+	if markBatchKeys[key] && len(m.marked) > 0 {
 		return false
 	}
 	return !m.hasSelectedSession()

@@ -3397,12 +3397,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.deletePurgeValue = ""
 				m.deletePurgePath = ""
 				m.deletePurgeOK = false
-			} else if session, ok := m.selectedSession(); msg.String() == "d" && len(m.sessions) > 0 && ok && canDelete(session) {
-				m.deleteConfirming = true
-				m.deleteNote = ""
-				m.deleteScroll = 0
-				m.deletePurgeValue = "keep"
-				m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
+			} else if msg.String() == "d" && len(m.sessions) > 0 && !m.guardSessionScopedKey("d") {
+				// task 013/D.2: the single-row second `d` asks the ONE shared
+				// guard the header question (it cannot run after the guard --
+				// this intercept has to swallow and clear the indicator for
+				// every key, guarded ones included -- so it calls the guard
+				// instead of carrying a second selectedSession check of its
+				// own). The guard having let this through means the cursor
+				// resolves to a session, so selectedSession is ok here.
+				session, _ := m.selectedSession()
+				if canDelete(session) {
+					m.deleteConfirming = true
+					m.deleteNote = ""
+					m.deleteScroll = 0
+					m.deletePurgeValue = "keep"
+					m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
+				}
 			}
 			return m, nil
 		}
@@ -3720,6 +3730,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// the m.pendingDelete intercept above, on the NEXT tea.KeyMsg) is
 			// either another `d` (opens the confirm dialog) or clears this
 			// with no destructive action.
+			//
+			// task 013/D.2: the shared guard above has already refused this
+			// key outright when the cursor rests on a header with no marks in
+			// force, so the indicator can no longer be raised for a
+			// selection that names no session at all. The len check stays for
+			// the one case the guard deliberately exempts -- a non-empty mark
+			// set, task 112's batch dd -- where m.sessions may still be
+			// empty.
 			if len(m.sessions) > 0 {
 				m.pendingDelete = true
 			}

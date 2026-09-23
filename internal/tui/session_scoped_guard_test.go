@@ -2,12 +2,13 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 	"unsafe"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
@@ -113,26 +114,74 @@ func modelSnapshotForEquality(m Model) Model {
 	return m
 }
 
-// assertInertOnHeader is the one shared assertion every case below makes:
-// running msg through Update from the (optionally adjusted) fixture must
-// return the SAME model (modulo the func-field wrinkle above) and a nil
-// tea.Cmd. setup, when non-nil, adjusts the fixture (e.g. opening the `i`
-// detail dialog) and runs BEFORE the "before" snapshot is taken, so a
-// setup step's own, deliberate mutation is never mistaken for one Update
-// produced.
-func assertInertOnHeader(t *testing.T, name string, setup func(m Model) Model, run func(m Model) (Model, tea.Cmd)) {
+// readPossiblyUnexportedField returns field v's value as an interface even
+// when v is an unexported struct field: reflect.Value.Interface() refuses
+// one outright, but the field's ADDRESS is readable regardless of
+// exported-ness, which is the same door zeroFuncFieldsForEquality above
+// walks through.
+func readPossiblyUnexportedField(v reflect.Value) any {
+	if !v.CanAddr() {
+		return nil
+	}
+	return reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem().Interface()
+}
+
+// differingModelFields names the top-level Model fields on which two
+// snapshots disagree, as "field: before -> after". The whole point is the
+// failure message: a Model has ~250 fields, so dumping two of them whole
+// (what this file used to do) buries the one field a missing guard actually
+// moved -- and that one field name is precisely what a commit message or a
+// validation note needs to quote.
+func differingModelFields(before, after Model) []string {
+	bv := reflect.ValueOf(&before).Elem()
+	av := reflect.ValueOf(&after).Elem()
+	var diffs []string
+	for i := 0; i < bv.NumField(); i++ {
+		b := readPossiblyUnexportedField(bv.Field(i))
+		a := readPossiblyUnexportedField(av.Field(i))
+		if !reflect.DeepEqual(b, a) {
+			diffs = append(diffs, fmt.Sprintf("%s: %+v -> %+v", bv.Type().Field(i).Name, b, a))
+		}
+	}
+	if len(diffs) == 0 {
+		return []string{"(fields compare equal one by one, yet the whole structs do not -- a nested or map-valued field changed)"}
+	}
+	return diffs
+}
+
+// assertInertOnHeaderAfterEveryKey is the one shared assertion every case
+// below makes: from the (optionally adjusted) fixture, each key in keys is
+// fed to Update one at a time, and after EVERY one of them the model must
+// still equal the pre-press snapshot (modulo the func-field wrinkle above)
+// and the returned tea.Cmd must be nil. Asserting after every press, not
+// merely after the last, is what makes a multi-key chord honest: `dd`'s
+// first `d` raises m.pendingDelete and its second `d` clears that same
+// field again, so a test that inspected only the final model would report a
+// chord whose first half mutated the model on a header as inert -- exactly
+// the hole D.2's validation found in this file's previous shape.
+// setup, when non-nil, adjusts the fixture (e.g. opening the `i` detail
+// dialog) and runs BEFORE the snapshot is taken, so a setup step's own,
+// deliberate mutation is never mistaken for one Update produced.
+func assertInertOnHeaderAfterEveryKey(t *testing.T, name string, setup func(m Model) Model, keys []string) {
 	t.Helper()
 	m := sessionScopedKeyGuardFixture()
 	if setup != nil {
 		m = setup(m)
 	}
 	before := modelSnapshotForEquality(m)
-	after, cmd := run(m)
-	if cmd != nil {
-		t.Fatalf("%s on a header returned a non-nil tea.Cmd; every session-scoped key must be inert with the cursor on a header", name)
-	}
-	if got, want := modelSnapshotForEquality(after), before; !reflect.DeepEqual(got, want) {
-		t.Fatalf("%s mutated the model while the cursor rested on a header:\nbefore: %+v\nafter:  %+v", name, want, got)
+	for i, k := range keys {
+		updated, cmd := m.Update(key(k))
+		out, ok := updated.(Model)
+		if !ok {
+			t.Fatalf("%s: Update(%q) (keypress %d of %d) returned %T, not tui.Model", name, k, i+1, len(keys), updated)
+		}
+		if cmd != nil {
+			t.Fatalf("%s: keypress %d of %d (%q) returned a non-nil tea.Cmd; every session-scoped key must be inert with the cursor on a header, at every step of a chord", name, i+1, len(keys), k)
+		}
+		if got := modelSnapshotForEquality(out); !reflect.DeepEqual(got, before) {
+			t.Fatalf("%s: keypress %d of %d (%q) mutated the model while the cursor rested on a header: %s", name, i+1, len(keys), k, strings.Join(differingModelFields(before, got), "; "))
+		}
+		m = out
 	}
 }
 
@@ -143,55 +192,85 @@ func assertInertOnHeader(t *testing.T, name string, setup func(m Model) Model, r
 // wired to anything yet in this codebase (out of scope this phase) -- they
 // are included because guardSessionScopedKey's own map already lists them,
 // and an unbound key is trivially, uninterestingly inert either way; the
-// real content of this test is the other fourteen.
+// real content of this test is the other fifteen.
 func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
-	singleKeyCases := []string{
-		"enter", "a", "x", "r", "R", "i", "e", "P", "p", "Y", "m", "A", "U", "s", "z",
-	}
-	for _, k := range singleKeyCases {
-		k := k
-		t.Run(k, func(t *testing.T) {
-			assertInertOnHeader(t, k, nil, func(m Model) (Model, tea.Cmd) {
-				updated, cmd := m.Update(key(k))
-				out, ok := updated.(Model)
-				if !ok {
-					t.Fatalf("Update(%q) returned %T, not tui.Model", k, updated)
-				}
-				return out, cmd
-			})
-		})
-	}
-
-	t.Run("dd", func(t *testing.T) {
-		assertInertOnHeader(t, "dd", nil, func(m Model) (Model, tea.Cmd) {
-			updated1, cmd1 := m.Update(key("d"))
-			m1, ok := updated1.(Model)
-			if !ok {
-				t.Fatalf("Update(%q) (first d) returned %T, not tui.Model", "d", updated1)
-			}
-			if cmd1 != nil {
-				t.Fatalf("the first d of dd on a header already returned a non-nil tea.Cmd")
-			}
-			updated2, cmd2 := m1.Update(key("d"))
-			m2, ok := updated2.(Model)
-			if !ok {
-				t.Fatalf("Update(%q) (second d) returned %T, not tui.Model", "d", updated2)
-			}
-			return m2, cmd2
-		})
-	})
-
-	t.Run("detail g (move-group picker)", func(t *testing.T) {
-		assertInertOnHeader(t, "detail g", func(m Model) Model {
+	cases := []struct {
+		name  string
+		keys  []string
+		setup func(m Model) Model
+	}{
+		{name: "enter", keys: []string{"enter"}},
+		{name: "a", keys: []string{"a"}},
+		{name: "x", keys: []string{"x"}},
+		// Both halves of the chord are asserted, not just the end state:
+		// the first `d` is the press that used to raise m.pendingDelete on
+		// a header without ever consulting the shared guard.
+		{name: "dd", keys: []string{"d", "d"}},
+		{name: "r", keys: []string{"r"}},
+		{name: "R", keys: []string{"R"}},
+		{name: "i", keys: []string{"i"}},
+		{name: "e", keys: []string{"e"}},
+		{name: "P", keys: []string{"P"}},
+		{name: "p", keys: []string{"p"}},
+		{name: "s", keys: []string{"s"}},
+		{name: "z", keys: []string{"z"}},
+		{name: "Y", keys: []string{"Y"}},
+		{name: "m", keys: []string{"m"}},
+		{name: "A", keys: []string{"A"}},
+		{name: "U", keys: []string{"U"}},
+		{name: "detail g (move-group picker)", keys: []string{"g"}, setup: func(m Model) Model {
 			m.detail = true
 			return m
-		}, func(m Model) (Model, tea.Cmd) {
-			updated, cmd := m.Update(key("g"))
-			out, ok := updated.(Model)
-			if !ok {
-				t.Fatalf("updateDetailView's Update(%q) returned %T, not tui.Model", "g", updated)
-			}
-			return out, cmd
+		}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			assertInertOnHeaderAfterEveryKey(t, tc.name, tc.setup, tc.keys)
 		})
-	})
+	}
+}
+
+// TestFirstDOfDDAsksTheSharedGuardOnAHeader pins the specific regression
+// D.2's validation caught: the dd chord's FIRST `d` must be refused by
+// guardSessionScopedKey itself (the shared guard), not by any private check
+// of the delete path's own. It asserts both halves of that claim directly --
+// the guard reports "swallow" for "d" with the cursor on a header, and the
+// keypress leaves m.pendingDelete false -- so a change that made the guard
+// ignore "d" again would fail here even if some other check happened to keep
+// the indicator down.
+func TestFirstDOfDDAsksTheSharedGuardOnAHeader(t *testing.T) {
+	m := sessionScopedKeyGuardFixture()
+	if !m.guardSessionScopedKey("d") {
+		t.Fatalf("guardSessionScopedKey(%q) = false with the cursor on a group header; the dd chord is session-scoped and must be gated by the shared guard, not by the delete path's own check", "d")
+	}
+	updated, cmd := m.Update(key("d"))
+	after, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("Update(%q) returned %T, not tui.Model", "d", updated)
+	}
+	if cmd != nil {
+		t.Fatalf("the first d of dd on a header returned a non-nil tea.Cmd")
+	}
+	if after.pendingDelete {
+		t.Fatalf("the first d of dd raised m.pendingDelete while the cursor rested on a group header: false -> true")
+	}
+
+	// The same key with a non-empty mark set is task 112's batch dd, which
+	// acts on the marked set and not on the cursor's row -- so the guard
+	// must NOT gate it, header cursor or not. Pinned here so the exemption
+	// stays deliberate rather than becoming collateral of the check above.
+	batch := sessionScopedKeyGuardFixture()
+	batch.marked = map[string]bool{"s1": true}
+	if batch.guardSessionScopedKey("d") {
+		t.Fatalf("guardSessionScopedKey(%q) = true with a non-empty mark set; batch dd acts on the marked set, so a header cursor must not gate it", "d")
+	}
+	batchUpdated, _ := batch.Update(key("d"))
+	batchAfter, ok := batchUpdated.(Model)
+	if !ok {
+		t.Fatalf("Update(%q) returned %T, not tui.Model", "d", batchUpdated)
+	}
+	if !batchAfter.pendingDelete {
+		t.Fatalf("the first d of a batch dd did not raise m.pendingDelete with a non-empty mark set")
+	}
 }
