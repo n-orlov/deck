@@ -132,16 +132,17 @@ func TestCollapsedGroupStaysNavigable(t *testing.T) {
 	m.selected = rowCursor(0) // "a1", inside "infra"
 
 	// Task 012/D.1: collapsing "infra" hides a1/a2 but never infra's OWN
-	// header (a header is never hidden by its own group's collapse), so
-	// setGroupCollapsed's internal nearestVisibleSelection search forward
-	// from a1 now lands on service-a's header -- the very next visible
-	// STOP -- rather than skipping straight through to b1's row.
+	// header (a header is never hidden by its own group's collapse).
+	// Task 014/D.3 changed WHERE the cursor lands when its own row gets
+	// hidden by the fold: onto that SAME group's own header (never a
+	// neighbour's), so a fold from a row always leaves the cursor naming
+	// the group it just folded.
 	m.setGroupCollapsed(infraID, true)
 	if !m.isStopVisible(m.selected) {
 		t.Fatalf("selection %+v landed on a hidden stop after collapsing its group", m.selected)
 	}
-	if want := headerCursor(serviceID); m.selected != want {
-		t.Fatalf("selection after collapsing = %+v, want %+v (service-a's header, the nearest visible stop forward)", m.selected, want)
+	if want := headerCursor(infraID); m.selected != want {
+		t.Fatalf("selection after collapsing = %+v, want %+v (infra's own header, task 014's no-eviction rule)", m.selected, want)
 	}
 
 	// With "infra" still collapsed, re-select a1 directly (as if a mouse
@@ -192,16 +193,11 @@ func TestCollapsedGroupStaysNavigable(t *testing.T) {
 // g/G for top/bottom navigation, which this key previously silently
 // shadowed.
 func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
-	// Single-workspace round trip: unfiltered groupSessions() always seeds
-	// the implicit default group's own header too (cure-01-02, SPEC §11:
-	// "default is not a row... it always exists"), so collapsing infra --
-	// its only member row's group -- pushes selection off infra entirely,
-	// onto that empty default header (task 012/D.1's own
-	// nearestVisibleSelection, searching forward first). This re-selects
-	// infra's own header explicitly before the second "c" -- the operator
-	// action a real k/j press back onto infra would produce -- so the
-	// second press targets the SAME group instead of toggling the default
-	// group (which has no rows to hide) by accident.
+	// Single-workspace round trip: collapsing infra -- the selected row's
+	// only group -- lands the cursor on infra's OWN header (task 014/D.3's
+	// no-eviction rule: a fold from a row never leaves the group it just
+	// folded), so the second "c" (fired from that same header) targets the
+	// SAME group and expands it back.
 	infraID := int64(1)
 	one := groupTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
@@ -213,8 +209,10 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	if !one.isGroupCollapsed(infraID) {
 		t.Fatalf("c did not collapse the selected row's only group")
 	}
+	if want := headerCursor(infraID); one.selected != want {
+		t.Fatalf("c folding from a row left the cursor at %+v, want %+v (that group's own header)", one.selected, want)
+	}
 
-	one.selected = headerCursor(infraID)
 	updated, _ = one.Update(key("c"))
 	one = updated.(Model)
 	if one.isGroupCollapsed(infraID) {
@@ -222,10 +220,9 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	}
 
 	// Multi-workspace: collapsing the selected row's group must never touch
-	// a different, unrelated group's own collapse state (this is the case
-	// setGroupCollapsed's "move selection to the nearest still-visible
-	// session" fixup actually triggers, since the collapsed group's own
-	// rows all become unselectable).
+	// a different, unrelated group's own collapse state, and (task 014/D.3)
+	// must still land the cursor on infra's own header rather than sliding
+	// onto service-a's.
 	serviceID := int64(2)
 	two := groupTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
@@ -243,6 +240,9 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	}
 	if !two.isStopVisible(two.selected) {
 		t.Fatalf("selection %+v landed on a hidden stop after c collapsed its group", two.selected)
+	}
+	if want := headerCursor(infraID); two.selected != want {
+		t.Fatalf("c folding from a row left the cursor at %+v, want %+v (infra's own header, never service-a's)", two.selected, want)
 	}
 }
 

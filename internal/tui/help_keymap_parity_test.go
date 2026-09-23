@@ -100,6 +100,7 @@ func listModeBoundKeys(t *testing.T) map[string]bool {
 // its own.
 var helpKeyTokenToBoundKeys = map[string][]string{
 	"↑/↓":       {"up", "down"},
+	"←/→":       {"left", "right"},
 	"j/k":       {"j", "k"},
 	"↵":         {"enter"},
 	"a":         {"a"},

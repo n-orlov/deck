@@ -4005,6 +4005,30 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.persistCollapsedGroups()
 				}
 			}
+		case "left":
+			// Task 014/D.3's explicit-direction companions to `c` above: left
+			// FOLDS the group under the cursor, right (below) UNFOLDS it --
+			// never toggling, so a repeated left on an already-folded group
+			// (or a repeated right on an already-unfolded one) is a no-op
+			// rather than flipping back. Same guards, same group resolution
+			// (cursorGroupID: the cursor's own header id, or the group id of
+			// the session under a row cursor) and the same ui_state
+			// persistence as `c`.
+			if !m.help && !m.detail && len(m.sessions) > 0 {
+				if groupID, ok := m.cursorGroupID(); ok {
+					m.setGroupCollapsed(groupID, true)
+					m.setSelection(m.selected)
+					return m, m.persistCollapsedGroups()
+				}
+			}
+		case "right":
+			if !m.help && !m.detail && len(m.sessions) > 0 {
+				if groupID, ok := m.cursorGroupID(); ok {
+					m.setGroupCollapsed(groupID, false)
+					m.setSelection(m.selected)
+					return m, m.persistCollapsedGroups()
+				}
+			}
 		case "g":
 			// SPEC.md:952 "g/G top/bottom": jump to the first visible visual
 			// stop (task 012/D.1: a header counts now, not only a row) --
@@ -9218,7 +9242,8 @@ Keys
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
-  c toggle the selected row's manual group collapsed/expanded
+  c / ←/→ toggle (c), fold (←) or unfold (→) the group whose header is
+    under the cursor -- from a session row, that row's own group
   g / G jump to the first / last visible row
   , open/close settings (edit config.toml's keys); Esc closes, prompting to
     discard if there are unsaved changes
