@@ -227,25 +227,55 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// preview.
 		return m, nil
 	case hitPanelSidebar:
-		switch hit.target {
-		case hitTargetCollapsedStrip:
-			// "click the collapsed strip restores the previous
-			// non-collapsed mode" (SPEC §11.8 requirement 33) -- not the
-			// same landing spot as `|`, which always advances to auto
-			// from collapsed.
-			return m.restoreFromCollapsedStrip()
-		case hitTargetHeader:
-			// "click a workspace group header toggles collapse"
-			// (duplicates the grouping key, `c`), keyed by the header's
-			// durable group id (task 013/R129 part 3) and persisted to
-			// ui_state's collapsed_groups exactly like the `c` key.
-			m.toggleGroupCollapse(hit.groupID)
-			return m, m.persistCollapsedGroups()
-		case hitTargetRow:
-			return m.clickSidebarRow(hit.sessionIndex, e)
-		}
+		updated, cmd, _ := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
+			return mm.clickSidebarRow(h.sessionIndex, e)
+		})
+		return updated, cmd
 	}
 	return m, nil
+}
+
+// resolveSidebarPress is the one shared press resolver (task 005/#33,
+// R138) list mode (handleMousePress above) and interactive mode (Update's
+// own tea.MouseMsg branch, tui.go, staying upstream of
+// beginInteractiveSelection) both call once hitTest has already narrowed a
+// left press down to hitPanelSidebar, rather than keeping two copies of
+// this switch. hitTargetHeader and hitTargetCollapsedStrip are
+// byte-identical in both modes -- a header press toggles that group's
+// collapse and persists it exactly like the `c` key, a collapsed-strip
+// press restores the previous non-collapsed mode -- and live here exactly
+// once; onRow supplies the one target (hitTargetRow) the two modes still
+// want to handle differently (list mode selects the row and enters
+// interactive via clickSidebarRow; interactive mode re-targets onto it via
+// retargetInteractiveSidebarClick), so it is invoked, never duplicated,
+// from each caller's own closure. ok is false only for hitTargetNone (or
+// any panel other than sidebar reaching here, which never happens given
+// both callers only call this after resolving hitPanelSidebar themselves):
+// list mode's caller returns handleMousePress's own default (m, nil, no
+// case), and interactive mode's caller instead falls through to
+// drag-to-copy, exactly as it did before this press hit-tested to the
+// sidebar at all.
+func (m Model) resolveSidebarPress(hit hitResult, onRow func(Model, hitResult) (tea.Model, tea.Cmd)) (tea.Model, tea.Cmd, bool) {
+	switch hit.target {
+	case hitTargetCollapsedStrip:
+		// "click the collapsed strip restores the previous
+		// non-collapsed mode" (SPEC §11.8 requirement 33) -- not the
+		// same landing spot as `|`, which always advances to auto
+		// from collapsed.
+		updated, cmd := m.restoreFromCollapsedStrip()
+		return updated, cmd, true
+	case hitTargetHeader:
+		// "click a workspace group header toggles collapse"
+		// (duplicates the grouping key, `c`), keyed by the header's
+		// durable group id (task 013/R129 part 3) and persisted to
+		// ui_state's collapsed_groups exactly like the `c` key.
+		m.toggleGroupCollapse(hit.groupID)
+		return m, m.persistCollapsedGroups(), true
+	case hitTargetRow:
+		updated, cmd := onRow(m, hit)
+		return updated, cmd, true
+	}
+	return m, nil, false
 }
 
 // clickSidebarRow implements SPEC §11.8's reversed decision (task

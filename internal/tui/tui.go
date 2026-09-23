@@ -4008,16 +4008,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Task 313/R54, SPEC §11.8: hit-test a left PRESS first, before
 			// ever assuming it is task 216's drag-to-copy gesture -- a press
-			// that resolves to a sidebar row re-targets interactive mode onto
-			// that session (leaving the current one, restoring its window
-			// geometry byte-exact, then entering the new one; a press on the
-			// row that is ALREADY the interactive target is a no-op: no
-			// leave, no re-enter, no resize). A press over the preview or the
-			// seam falls straight through, unchanged, to the drag-to-copy
-			// path below.
+			// that resolves to the sidebar is resolved by the SAME shared
+			// resolver list mode's own handleMousePress calls (task 005/#33,
+			// R138): a header press toggles that group's collapse (and
+			// persists it) and a collapsed-strip press restores the previous
+			// non-collapsed mode, byte-identically to list mode; a row hit
+			// re-targets interactive mode onto that session instead (leaving
+			// the current one, restoring its window geometry byte-exact, then
+			// entering the new one; a press on the row that is ALREADY the
+			// interactive target is a no-op: no leave, no re-enter, no
+			// resize). A press over the preview or the seam falls straight
+			// through, unchanged, to the drag-to-copy path below.
 			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
-				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelSidebar && hit.target == hitTargetRow {
-					return m.retargetInteractiveSidebarClick(hit.sessionIndex)
+				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelSidebar {
+					if updated, cmd, ok := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
+						return mm.retargetInteractiveSidebarClick(h.sessionIndex)
+					}); ok {
+						return updated, cmd
+					}
 				}
 			}
 			// Steer 017 item 3/task 216, SPEC §11.8: a left-button drag
