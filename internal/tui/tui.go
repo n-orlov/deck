@@ -3982,16 +3982,21 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "c":
 			// SPEC §11.8 gap (requirement 30's collapsible headers had no key):
-			// toggle the selected row's own group collapsed/expanded, keyed by
-			// the group's id (task 013/R129 part 3, sessionGroupID) rather than
-			// its display name, via the identical helper the mouse header click
-			// calls (toggleGroupCollapse, internal/tui/mouse.go), so neither
-			// path is ever the only way to reach this capability, and the
-			// result is persisted to ui_state's collapsed_groups (SPEC §11:
-			// "collapse state persists in ui_state") the same way `|`/`<`/`>`
-			// persist layout_mode/sidebar_width. A no-op, like every other
-			// bare-letter binding, while help or the `i` detail overlay covers
-			// the sidebar, or when there is no row to resolve a group from.
+			// toggle the group whose HEADER IS UNDER THE CURSOR collapsed/
+			// expanded -- task 014/D.3 re-aimed this from "the selected row's
+			// own group" (true only before task 012/D.1 made a header a cursor
+			// stop in its own right) to cursorGroupID's own resolution: the
+			// cursor's own header id when it rests on one, or the group id of
+			// the session under a row cursor otherwise. Keyed by the group's id
+			// (task 013/R129 part 3, sessionGroupID) rather than its display
+			// name, via the identical helper the mouse header click calls
+			// (toggleGroupCollapse, internal/tui/mouse.go), so neither path is
+			// ever the only way to reach this capability, and the result is
+			// persisted to ui_state's collapsed_groups (SPEC §11: "collapse
+			// state persists in ui_state") the same way `|`/`<`/`>` persist
+			// layout_mode/sidebar_width. A no-op, like every other bare-letter
+			// binding, while help or the `i` detail overlay covers the
+			// sidebar, or when there is no row to resolve a group from.
 			//
 			// Task 119: this was originally bound to `g`, which collides with
 			// SPEC.md:952's own keymap entry "g/G top/bottom" -- `g`/`G` were
