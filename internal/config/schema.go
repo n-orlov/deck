@@ -424,29 +424,6 @@ var Schema = []Field{
 	},
 	{
 		Section: "ui",
-		Key:     "default_group_first",
-		Kind:    KindToggle,
-		Default: false,
-		Description: "When true, the sidebar's default sort keeps every group's " +
-			"header (and its member sessions) ordered ahead of ungrouped sessions, " +
-			"regardless of the active sort order's own key (SPEC §11). false " +
-			"(default) leaves groups interleaved among ungrouped sessions purely by " +
-			"the active sort key, matching today's behaviour. Restart-to-apply: " +
-			"saving here writes config.toml immediately, but nothing in the " +
-			"already-running client reads it again until deck restarts.",
-		// requirement 19: this task (001) only plumbs the key through config,
-		// schema, parse and write -- groupSortsBefore does not read it yet
-		// (`grep -rn DefaultGroupFirst` outside config/settings plumbing finds
-		// nothing in internal/tui, internal/service or cmd/deck). Same
-		// reasoning as capture_min_interval/ui.recent_cwd_limit above: labelled
-		// restart-to-apply as the honest, conservative default pending that
-		// consumer, rather than ScopeGlobal implying a live effect this tree
-		// cannot demonstrate yet. A later task in this phase (003) is expected
-		// to make it live and can upgrade this Scope alongside that wiring.
-		Scope: ScopeRestartToApply,
-	},
-	{
-		Section: "ui",
 		Key:     "mouse",
 		Kind:    KindToggle,
 		Default: true,
@@ -584,6 +561,31 @@ var Schema = []Field{
 		// takes effect in the already-running client, matching
 		// ui.mouse/ui.preview_fit's own ScopeGlobal reasoning above.
 		Scope: ScopeGlobal,
+	},
+	{
+		Section: "ui",
+		Key:     "default_group_first",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "When true, the implicit default group's header sorts to the " +
+			"FRONT of the sidebar's group order instead of always last (SPEC " +
+			"§11's baseline). false (default) matches R129's original rule: " +
+			"groups sort alphabetically, case-insensitive, with the implicit " +
+			"default group always last regardless of where its name would " +
+			"otherwise sort. Restart-to-apply: saving here writes config.toml " +
+			"immediately, but nothing in the already-running client reads it " +
+			"again until deck restarts.",
+		// requirement 19: task 002 threaded this flag into groupSortsBefore
+		// itself (internal/tui/group.go) -- the function signature already
+		// takes it as a parameter, and groupSessions already passes
+		// m.settings.DefaultGroupFirst through on every call -- but nothing
+		// yet refreshes m.settings.DefaultGroupFirst on save the way
+		// ui.sort_order's own ScopeGlobal row above does, so a save only
+		// takes effect the NEXT time deck starts and re-reads config.toml,
+		// same as capture_min_interval/ui.recent_cwd_limit's "no live-apply
+		// wiring yet" reasoning. Task 003 is expected to add that wiring and
+		// upgrade this Scope to ScopeGlobal alongside it.
+		Scope: ScopeRestartToApply,
 	},
 	{
 		Section: "",

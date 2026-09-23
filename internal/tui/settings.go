@@ -1295,6 +1295,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		TmuxMouse:            s.File.TmuxMouse,
 		ASCII:                s.File.ASCII,
 		Mouse:                s.File.Mouse,
+		DefaultGroupFirst:    s.File.DefaultGroupFirst,
 		PreviewFit:           s.File.PreviewFit,
 		PreviewPaint:         s.File.PreviewPaint,
 		SortOrder:            s.File.SortOrder,
@@ -1339,6 +1340,8 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 		return cfg.ASCII
 	case "ui.mouse":
 		return cfg.Mouse
+	case "ui.default_group_first":
+		return cfg.DefaultGroupFirst
 	case "ui.preview_fit":
 		return cfg.PreviewFit
 	default:
@@ -1359,6 +1362,8 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 		cfg.ASCII = v
 	case "ui.mouse":
 		cfg.Mouse = v
+	case "ui.default_group_first":
+		cfg.DefaultGroupFirst = v
 	case "ui.preview_fit":
 		cfg.PreviewFit = v
 	}
