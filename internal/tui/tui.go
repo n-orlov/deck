@@ -3406,6 +3406,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		// task 013/D.2: the one shared guard every session-scoped binding
+		// below now runs through (session_scoped_guard.go) instead of each
+		// one deciding for itself whether the cursor names a session.
+		// Reverting just this call, leaving guardSessionScopedKey itself in
+		// place, restores the per-site gaps it closed.
+		if m.guardSessionScopedKey(msg.String()) {
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -3466,15 +3474,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// dialog is caught by the session-id mismatch guard in the
 			// detailDroppedHookLoaded case below, never rendered against the
 			// wrong row.
-			if session, ok := m.selectedSession(); ok {
-				m.detail = true
-				m.detailScroll = 0
-				target := session.ID
-				m.detailDroppedHookSessionID = target
-				m.detailDroppedHookFound = false
-				m.detailDroppedHookEvent = store.Event{}
-				return m, m.loadDetailDroppedHook(target)
-			}
+			// task 013/D.2: guardSessionScopedKey above already refused this
+			// keypress entirely when the cursor has no selected session, so
+			// selectedSession is guaranteed ok here.
+			session, _ := m.selectedSession()
+			m.detail = true
+			m.detailScroll = 0
+			target := session.ID
+			m.detailDroppedHookSessionID = target
+			m.detailDroppedHookFound = false
+			m.detailDroppedHookEvent = store.Event{}
+			return m, m.loadDetailDroppedHook(target)
 		case ",":
 			if !m.help {
 				m.settingsOpen = true
@@ -3542,9 +3552,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			m.setSelection(m.pageSelection(m.sidebarRowsPerPage()))
 		case "Y":
-			if m.acknowledge == nil || len(m.sessions) == 0 {
+			if m.acknowledge == nil {
 				return m, nil
 			}
+			// task 013/D.2: the guard above already refused this keypress when
+			// the cursor has no selected session.
 			session, _ := m.selectedSession()
 			if !canAcknowledge(session) {
 				return m, nil
@@ -3554,7 +3566,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return sessionAcknowledged{err: m.acknowledge(context.Background(), sessionID)}
 			}
 		case "x":
-			if m.kill == nil || len(m.sessions) == 0 {
+			if m.kill == nil {
 				return m, nil
 			}
 			if len(m.marked) > 0 {
@@ -3584,14 +3596,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return result
 				}
 			}
-			session, ok := m.selectedSession()
-			if !ok {
-				// task 012/D.1: the cursor is on a header, not a row -- x's
-				// single-row path has no session to act on, and (with no
-				// marks either, the branch above already returned) there is
-				// nothing left for a lone x to do.
-				return m, nil
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when there were no marks AND no selected session (a header
+			// cursor with nothing marked); reaching here with no marks means
+			// selectedSession is guaranteed ok.
+			session, _ := m.selectedSession()
 			// Task 807 (review finding 2): the single-row path now consults
 			// the same canKill the footer's x slot already used, instead of
 			// deferring the already-stopped refusal to the service's own
@@ -3627,18 +3636,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// survives a re-sort or re-group untouched -- markedSessions()
 			// re-resolves it through visualOrder() fresh every time it is
 			// consulted rather than caching anything positional.
-			if !m.help && len(m.sessions) > 0 {
-				if session, ok := m.selectedSession(); ok {
-					id := session.ID
-					if m.marked == nil {
-						m.marked = map[string]bool{}
-					}
-					if m.marked[id] {
-						delete(m.marked, id)
-					} else {
-						m.marked[id] = true
-					}
-				}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session.
+			session, _ := m.selectedSession()
+			id := session.ID
+			if m.marked == nil {
+				m.marked = map[string]bool{}
+			}
+			if m.marked[id] {
+				delete(m.marked, id)
+			} else {
+				m.marked[id] = true
 			}
 		case "A":
 			// R72 (issue #10), SPEC.md:752: `A` writes NOTHING on the keypress.
@@ -3654,10 +3662,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// chord here (the operator declined both): the confirm alone is what
 			// stops `A` -- one Shift away from `a`, attach -- from killing a live
 			// agent on a single keystroke.
-			if m.archiveSvc == nil || len(m.sessions) == 0 {
-				if len(m.sessions) > 0 {
-					m.attachError = "Archiving is unavailable"
-				}
+			if m.archiveSvc == nil {
+				m.attachError = "Archiving is unavailable"
 				return m, nil
 			}
 			// canArchive is review finding 2/R80's single A eligibility
@@ -3668,10 +3674,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// call to the footer's own predicate by name, never a local
 			// copy of `ArchivedAt == 0`: archive_eligibility_test.go's
 			// source parse fails if this case stops naming it.
-			session, ok := m.selectedSession()
-			if !ok {
-				return m, nil
-			}
+			//
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session, so selectedSession is
+			// guaranteed ok here.
+			session, _ := m.selectedSession()
 			if !canArchive(session) {
 				m.attachError = "Cannot archive: session is already archived; press U to unarchive"
 				return m, nil
@@ -3691,16 +3698,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// that is not archived is refused here rather than being handed to
 			// the store, so `U` can never record an "unarchived" event for a
 			// row that was never archived.
-			if m.unarchiveSvc == nil || len(m.sessions) == 0 {
-				if len(m.sessions) > 0 {
-					m.attachError = "Unarchiving is unavailable"
-				}
+			if m.unarchiveSvc == nil {
+				m.attachError = "Unarchiving is unavailable"
 				return m, nil
 			}
-			session, ok := m.selectedSession()
-			if !ok {
-				return m, nil
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session, so selectedSession is
+			// guaranteed ok here.
+			session, _ := m.selectedSession()
 			if !canUnarchive(session) {
 				m.attachError = "Cannot unarchive: session is not archived"
 				return m, nil
@@ -3821,13 +3826,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "r":
-			if m.resume == nil || len(m.sessions) == 0 {
+			if m.resume == nil {
 				return m, nil
 			}
-			session, ok := m.selectedSession()
-			if !ok {
-				return m, nil
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session.
+			session, _ := m.selectedSession()
 			if !canResume(session) {
 				m.attachError = "Cannot resume: session is not stopped"
 				return m, nil
@@ -3842,13 +3846,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return sessionResumed{session: resumed, outcome: outcome, err: err}
 			}
 		case "R":
-			if m.restart == nil || len(m.sessions) == 0 {
+			if m.restart == nil {
 				return m, nil
 			}
-			session, ok := m.selectedSession()
-			if !ok {
-				return m, nil
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session.
+			session, _ := m.selectedSession()
 			if !canRestart(session) {
 				m.attachError = "Cannot restart: session is not running (use r to resume it)"
 				return m, nil
@@ -3873,13 +3876,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return sessionRestarted{session: restarted, outcome: outcome, err: err}
 			}
 		case "P":
-			if m.profileSwitch == nil || len(m.sessions) == 0 {
+			if m.profileSwitch == nil {
 				return m, nil
 			}
-			session, ok := m.selectedSession()
-			if !ok {
-				return m, nil
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session.
+			session, _ := m.selectedSession()
 			if !m.canSwitchProfile(session) {
 				m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
 				return m, nil
@@ -3889,13 +3891,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.profileSwitchNote = ""
 			return m, nil
 		case "p":
-			if m.resumeMode == nil || len(m.sessions) == 0 {
+			if m.resumeMode == nil {
 				return m, nil
 			}
-			session, ok := m.selectedSession()
-			if !ok {
-				return m, nil
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session.
+			session, _ := m.selectedSession()
 			if !m.canPinResume(session) {
 				m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
 				return m, nil
@@ -3912,14 +3913,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// `P`/`p`, which gate on adapter capabilities) since every session,
 			// including a plain shell one, has an effective environment worth
 			// showing -- there is no "not applicable here" case to refuse.
-			if !m.help && m.hasSelectedSession() {
-				m.envEditing = true
-				m.envCursor = 0
-				m.envEditKey, m.envEditValue, m.envNote = "", "", ""
-				m.envEditPrefilled = false
-				m.envReveal = false
-				m.envScroll = 0
-			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session, so no local check is
+			// needed here anymore.
+			m.envEditing = true
+			m.envCursor = 0
+			m.envEditKey, m.envEditValue, m.envNote = "", "", ""
+			m.envEditPrefilled = false
+			m.envReveal = false
+			m.envScroll = 0
 		case "E":
 			// SPEC §12/requirement 32, task 124: unlike `e`, this is global
 			// -- not gated on a selected session -- since the event log
@@ -4176,9 +4178,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 // instead (see clickSidebarRow/enterInteractive) -- so attachSelected is
 // reachable only by the `a` key.
 func (m Model) attachSelected() (tea.Model, tea.Cmd) {
-	if m.attach == nil || !m.hasSelectedSession() {
+	if m.attach == nil {
 		return m, nil
 	}
+	// task 013/D.2: attachSelected's only caller is case "a" in tui.go's
+	// main switch, which already runs through guardSessionScopedKey before
+	// ever reaching here -- so selectedSession is guaranteed ok below.
 	session, _ := m.selectedSession()
 	if !canReachPane(session) {
 		m.attachError = "Cannot attach: " + stoppedSessionRefusalTail

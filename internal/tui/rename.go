@@ -86,13 +86,22 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// checked against list-level g/G (top/bottom, tui.go's own
 		// visibleSessionIndices navigation): both are guarded by
 		// !m.detail, so there is no dispatch conflict with this case.
-		if len(m.sessions) > 0 {
-			session, _ := m.selectedSession()
-			m.movingGroup = true
-			m.moveGroupOptions = m.computeAvailableGroups()
-			m.moveGroupValue = sessionGroupID(session)
-			m.moveGroupNote = ""
+		//
+		// task 013/D.2: this used to mutate unconditionally with no check
+		// at all -- the one site the guard's own doc comment calls out by
+		// name as the defect it exists to close. Routed through the same
+		// shared guardSessionScopedKey (session_scoped_guard.go) every
+		// top-level session-scoped binding now uses, under the synthetic
+		// "detail:g" key so it can never collide with the unrelated
+		// top-level `g` (jump to first stop).
+		if m.guardSessionScopedKey("detail:g") {
+			return m, nil
 		}
+		session, _ := m.selectedSession()
+		m.movingGroup = true
+		m.moveGroupOptions = m.computeAvailableGroups()
+		m.moveGroupValue = sessionGroupID(session)
+		m.moveGroupNote = ""
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.
