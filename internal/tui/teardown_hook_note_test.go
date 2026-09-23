@@ -31,7 +31,7 @@ func TestTeardownHookFailureRendersAsANoteForArchive(t *testing.T) {
 	model := New(nil, config.Settings{Undo: time.Hour}, "")
 	model.width, model.height = 100, 40
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	// archiveSvc stays wired with its pre-existing signature -- submit's
 	// own availability check consults it regardless of the reporter.
 	model.archiveSvc = func(context.Context, store.Session) error { return nil }
@@ -74,7 +74,7 @@ func TestTeardownHookFailureRendersAsANoteForDelete(t *testing.T) {
 	model := New(nil, config.Settings{Undo: time.Hour}, "")
 	model.width, model.height = 100, 40
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	// deleteSvc stays wired with its pre-existing signature, for the same
 	// reason archiveSvc does above.
 	model.deleteSvc = func(context.Context, store.Session) error { return nil }
@@ -156,7 +156,7 @@ func TestTeardownHookFailureRendersAsANoteForBulkDelete(t *testing.T) {
 	)
 
 	for _, idx := range []int{0, 1} {
-		model.selected = idx
+		model.selected = rowCursor(idx)
 		got, _ := model.Update(key("m"))
 		model = got.(Model)
 	}
@@ -219,7 +219,7 @@ func TestBulkDeleteWithoutHookFailuresRaisesNoNote(t *testing.T) {
 	)
 
 	for _, idx := range []int{0, 1} {
-		model.selected = idx
+		model.selected = rowCursor(idx)
 		got, _ := model.Update(key("m"))
 		model = got.(Model)
 	}

@@ -39,7 +39,7 @@ func TestDeleteConfirmPurgeShowsExactPathForClaudeWithATranscript(t *testing.T) 
 
 	model := NewWithShellCreator(nil, config.Settings{}, "", nil)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped", CWD: cwd, ConversationID: conversationID}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("d"))
 	model = got.(Model)
@@ -77,7 +77,7 @@ func TestDeleteConfirmPurgeDeclinesWhenNoTranscriptCanBeLocated(t *testing.T) {
 
 	model := NewWithShellCreator(nil, config.Settings{}, "", nil)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped", CWD: home}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("d"))
 	model = got.(Model)

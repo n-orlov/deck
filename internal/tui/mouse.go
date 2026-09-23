@@ -290,7 +290,7 @@ func (m Model) resolveSidebarPress(hit hitResult, onRow func(Model, hitResult) (
 // via a mouse gesture -- unlike interactive entry, full attach hands over
 // the WHOLE terminal and Ctrl+Q cannot undo it.
 func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
-	m.selected = index
+	m.selected = rowCursor(index)
 	return m.enterInteractive()
 }
 
@@ -315,12 +315,12 @@ func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
 // sequence Ctrl+Q runs) before entering the newly clicked one, so a
 // concurrent claimant of the OLD window never observes it left resized.
 func (m Model) retargetInteractiveSidebarClick(index int) (tea.Model, tea.Cmd) {
-	if !m.interactive || index == m.selected {
+	if !m.interactive || m.selected == rowCursor(index) {
 		return m, nil
 	}
 	left, _ := m.exitInteractive()
 	next := left.(Model)
-	next.selected = index
+	next.selected = rowCursor(index)
 	return next.enterInteractive()
 }
 

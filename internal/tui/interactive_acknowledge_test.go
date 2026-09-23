@@ -30,7 +30,7 @@ func TestEnterInteractiveRecordsAttachment(t *testing.T) {
 	newQuietSelectionPane(t, socket, "deck_ackentry", 80, 24)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-ack-1", Name: "ackentry", Slug: "ackentry", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	var recorded []string
 	m.prepareAttach = func(_ context.Context, id string) error {
 		recorded = append(recorded, id)
@@ -63,7 +63,7 @@ func TestEnterInteractiveRefusalDoesNotRecordAttachment(t *testing.T) {
 	}
 	m.tmuxClient = tmux.Client{Socket: "deck-tui-ack-no-server"}
 	m.sessions = []store.Session{{ID: "sess-ack-2", Name: "ackfloor", Slug: "ackfloor", Status: "error"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	calls := 0
 	m.prepareAttach = func(context.Context, string) error { calls++; return nil }
 
@@ -95,7 +95,7 @@ func TestEnterInteractiveAttachmentFailureUnwinds(t *testing.T) {
 	newQuietSelectionPane(t, socket, "deck_ackunwind", 80, 24)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-ack-3", Name: "ackunwind", Slug: "ackunwind", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.prepareAttach = func(context.Context, string) error { return errors.New("state.db is locked") }
 
 	next, _ := m.enterInteractive()

@@ -135,7 +135,7 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 		}
 		m.tmuxClient = modelClient
 		m.sessions = []store.Session{{ID: "sess-teardownstolen-1", Name: "teardownstolen", Slug: "teardownstolen", Status: "waiting"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		return m
 	}
 
@@ -310,7 +310,7 @@ func TestRaiseLostAttachOnClientAttachRunsOrdinaryTeardown(t *testing.T) {
 	binary, wireLog := newTmuxWireLogger(t)
 	m.tmuxClient = tmux.Client{Socket: socket, Binary: binary}
 	m.sessions = []store.Session{{ID: "sess-teardownattach-1", Name: "teardownattach", Slug: "teardownattach", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	ctx := context.Background()
 

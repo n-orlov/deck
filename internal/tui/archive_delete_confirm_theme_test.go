@@ -25,7 +25,7 @@ func task019ArchiveModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "idle", CWD: "/repo/alpha", ConversationID: "conv-1"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.archiveConfirming = true
 	return m
 }
@@ -37,7 +37,7 @@ func task019DeleteModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped", CWD: "/repo/alpha", ConversationID: "conv-1"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.deleteConfirming = true
 	m.deletePurgeValue = "keep"
 	return m

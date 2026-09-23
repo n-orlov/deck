@@ -354,7 +354,14 @@ type Model struct {
 	archiveConfirming bool
 	archiveNote       string
 	profileSwitch     func(context.Context, string, string) (store.Session, error)
-	selected          int
+	// selected is the sidebar cursor (task 012/D.1): a sidebarCursor, never
+	// a bare int, since it can now rest on a group header as well as a
+	// session row -- see sidebarCursor's own doc comment (group.go) for why
+	// that type deliberately has no bare-int session-index field. Its zero
+	// value (rowCursor(0)) matches the old bare-int field's own zero value,
+	// so every fixture that never sets this explicitly keeps selecting row
+	// 0 exactly as before.
+	selected sidebarCursor
 	// pendingSelectSessionID is requirement 52's one-shot "select the
 	// session I just created" intent: submitCreate's shellCreated success
 	// path (below) records the new session's id here rather than acting
@@ -2043,13 +2050,13 @@ func (m Model) loadArchivedSessions() tea.Msg {
 // whatever is selected when the reply arrives, so a selection change
 // mid-flight cannot mislabel a frame.
 func (m Model) capturePreview() tea.Cmd {
-	if m.previewCapture == nil || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+	if m.previewCapture == nil || !m.hasSelectedSession() {
 		return nil
 	}
 	if !m.computeLayout().PreviewShown {
 		return nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	capture := m.previewCapture
 	return func() tea.Msg {
 		result, err := capture(context.Background(), session.Slug)
@@ -2137,13 +2144,13 @@ func (m *Model) previewFit() tea.Cmd {
 	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
 		return nil
 	}
-	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+	if !m.hasSelectedSession() {
 		return nil
 	}
 	if !m.computeLayout().PreviewShown {
 		return nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	if session.ID == m.previewFitSessionID || m.previewFitInFlight != "" {
 		return nil
 	}
@@ -2468,8 +2475,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// bucketing already promises once m.sessions is in this
 			// order.
 			var selectedID string
-			if m.selected >= 0 && m.selected < len(m.sessions) {
-				selectedID = m.sessions[m.selected].ID
+			selectedWasRow := false
+			if idx, ok := m.selected.SessionIndex(); ok {
+				selectedWasRow = true
+				if idx >= 0 && idx < len(m.sessions) {
+					selectedID = m.sessions[idx].ID
+				}
 			}
 			// sortSessionsByAttentionStable, not the plain
 			// sortSessionsByAttention: a genuine tie on both rank and
@@ -2508,10 +2519,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.baseSessions = sortSessionsByOrder(m.baseSessions, msg.sessions, order)
 			}
 			m.sessions = m.filteredSessions()
-			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-				m.selected = idx
-			} else if m.selected >= len(m.sessions) {
-				m.selected = max(0, len(m.sessions)-1)
+			// A header cursor (task 012/D.1) needs none of this: its own
+			// identity is a durable group id, never an m.sessions index, so
+			// a reload that changes which indices exist never invalidates
+			// it -- this preserve-by-id/clamp dance is a ROW cursor's own
+			// problem exclusively.
+			if selectedWasRow {
+				if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+					m.selected = rowCursor(idx)
+				} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+					m.selected = rowCursor(max(0, len(m.sessions)-1))
+				}
 			}
 			// Requirement 52: the one-shot new-session intent (see
 			// pendingSelectSessionID's doc comment) overrides the
@@ -2523,7 +2541,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// itself is hiding.
 			if m.pendingSelectSessionID != "" {
 				if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
-					m.selected = idx
+					m.selected = rowCursor(idx)
 					m.pendingSelectSessionID = ""
 					m.scrollSessionIntoView(idx)
 				}
@@ -2539,8 +2557,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.archivedSessions = msg.sessions
 		}
 		m.sessions = m.filteredSessions()
-		if m.selected >= len(m.sessions) {
-			m.selected = max(0, len(m.sessions)-1)
+		if idx, ok := m.selected.SessionIndex(); ok && idx >= len(m.sessions) {
+			m.selected = rowCursor(max(0, len(m.sessions)-1))
 		}
 	case eventLogLoaded:
 		// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
@@ -3193,8 +3211,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.interactive {
 			if m.interactiveDisplacementFastPath() {
 				name := ""
-				if m.selected >= 0 && m.selected < len(m.sessions) {
-					name = m.sessions[m.selected].Name
+				if session, ok := m.selectedSession(); ok {
+					name = session.Name
 				}
 				next, cmd := m.raiseLostAttach(name)
 				m = next
@@ -3357,26 +3375,34 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// whatever that other key would normally have done.
 		if m.pendingDelete {
 			m.pendingDelete = false
-			if msg.String() == "d" && len(m.sessions) > 0 && canDelete(m.sessions[m.selected]) {
+			// A non-empty mark set (task 112's batch dd) never gates on
+			// m.selected's own canDelete -- the confirm opens for the
+			// MARKED set regardless of the cursor's current session, and
+			// (task 012/D.1) regardless of whether the cursor even names a
+			// session right now (it may be resting on a header). Only the
+			// single-row path below still requires a selected, deletable
+			// row.
+			if msg.String() == "d" && len(m.sessions) > 0 && len(m.marked) > 0 {
 				m.deleteConfirming = true
 				m.deleteNote = ""
 				m.deleteScroll = 0
-				if len(m.marked) > 0 {
-					// cure-01-05: the bulk confirm offers the same
-					// non-default purge choice the single-session dialog
-					// does, just resolved per session at submit time
-					// (transcriptPathFor has no single session to call
-					// eagerly here) -- so only the cycled VALUE resets;
-					// deletePurgePath/OK stay meaningless for a batch and
-					// are left alone.
-					m.bulkDeletePurgeValue = "keep"
-					m.deletePurgeValue = ""
-					m.deletePurgePath = ""
-					m.deletePurgeOK = false
-				} else {
-					m.deletePurgeValue = "keep"
-					m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(m.sessions[m.selected])
-				}
+				// cure-01-05: the bulk confirm offers the same
+				// non-default purge choice the single-session dialog
+				// does, just resolved per session at submit time
+				// (transcriptPathFor has no single session to call
+				// eagerly here) -- so only the cycled VALUE resets;
+				// deletePurgePath/OK stay meaningless for a batch and
+				// are left alone.
+				m.bulkDeletePurgeValue = "keep"
+				m.deletePurgeValue = ""
+				m.deletePurgePath = ""
+				m.deletePurgeOK = false
+			} else if session, ok := m.selectedSession(); msg.String() == "d" && len(m.sessions) > 0 && ok && canDelete(session) {
+				m.deleteConfirming = true
+				m.deleteNote = ""
+				m.deleteScroll = 0
+				m.deletePurgeValue = "keep"
+				m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
 			}
 			return m, nil
 		}
@@ -3440,10 +3466,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// dialog is caught by the session-id mismatch guard in the
 			// detailDroppedHookLoaded case below, never rendered against the
 			// wrong row.
-			if len(m.sessions) > 0 {
+			if session, ok := m.selectedSession(); ok {
 				m.detail = true
 				m.detailScroll = 0
-				target := m.sessions[m.selected].ID
+				target := session.ID
 				m.detailDroppedHookSessionID = target
 				m.detailDroppedHookFound = false
 				m.detailDroppedHookEvent = store.Event{}
@@ -3519,7 +3545,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.acknowledge == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
-			session := m.sessions[m.selected]
+			session, _ := m.selectedSession()
 			if !canAcknowledge(session) {
 				return m, nil
 			}
@@ -3558,7 +3584,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return result
 				}
 			}
-			session := m.sessions[m.selected]
+			session, ok := m.selectedSession()
+			if !ok {
+				// task 012/D.1: the cursor is on a header, not a row -- x's
+				// single-row path has no session to act on, and (with no
+				// marks either, the branch above already returned) there is
+				// nothing left for a lone x to do.
+				return m, nil
+			}
 			// Task 807 (review finding 2): the single-row path now consults
 			// the same canKill the footer's x slot already used, instead of
 			// deferring the already-stopped refusal to the service's own
@@ -3595,14 +3628,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// re-resolves it through visualOrder() fresh every time it is
 			// consulted rather than caching anything positional.
 			if !m.help && len(m.sessions) > 0 {
-				id := m.sessions[m.selected].ID
-				if m.marked == nil {
-					m.marked = map[string]bool{}
-				}
-				if m.marked[id] {
-					delete(m.marked, id)
-				} else {
-					m.marked[id] = true
+				if session, ok := m.selectedSession(); ok {
+					id := session.ID
+					if m.marked == nil {
+						m.marked = map[string]bool{}
+					}
+					if m.marked[id] {
+						delete(m.marked, id)
+					} else {
+						m.marked[id] = true
+					}
 				}
 			}
 		case "A":
@@ -3633,7 +3668,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// call to the footer's own predicate by name, never a local
 			// copy of `ArchivedAt == 0`: archive_eligibility_test.go's
 			// source parse fails if this case stops naming it.
-			if !canArchive(m.sessions[m.selected]) {
+			session, ok := m.selectedSession()
+			if !ok {
+				return m, nil
+			}
+			if !canArchive(session) {
 				m.attachError = "Cannot archive: session is already archived; press U to unarchive"
 				return m, nil
 			}
@@ -3658,7 +3697,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			session := m.sessions[m.selected]
+			session, ok := m.selectedSession()
+			if !ok {
+				return m, nil
+			}
 			if !canUnarchive(session) {
 				m.attachError = "Cannot unarchive: session is not archived"
 				return m, nil
@@ -3782,7 +3824,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.resume == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
-			session := m.sessions[m.selected]
+			session, ok := m.selectedSession()
+			if !ok {
+				return m, nil
+			}
 			if !canResume(session) {
 				m.attachError = "Cannot resume: session is not stopped"
 				return m, nil
@@ -3800,7 +3845,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.restart == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
-			session := m.sessions[m.selected]
+			session, ok := m.selectedSession()
+			if !ok {
+				return m, nil
+			}
 			if !canRestart(session) {
 				m.attachError = "Cannot restart: session is not running (use r to resume it)"
 				return m, nil
@@ -3828,7 +3876,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.profileSwitch == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
-			session := m.sessions[m.selected]
+			session, ok := m.selectedSession()
+			if !ok {
+				return m, nil
+			}
 			if !m.canSwitchProfile(session) {
 				m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
 				return m, nil
@@ -3841,7 +3892,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.resumeMode == nil || len(m.sessions) == 0 {
 				return m, nil
 			}
-			session := m.sessions[m.selected]
+			session, ok := m.selectedSession()
+			if !ok {
+				return m, nil
+			}
 			if !m.canPinResume(session) {
 				m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
 				return m, nil
@@ -3858,7 +3912,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// `P`/`p`, which gate on adapter capabilities) since every session,
 			// including a plain shell one, has an effective environment worth
 			// showing -- there is no "not applicable here" case to refuse.
-			if !m.help && len(m.sessions) > 0 {
+			if !m.help && m.hasSelectedSession() {
 				m.envEditing = true
 				m.envCursor = 0
 				m.envEditKey, m.envEditValue, m.envNote = "", "", ""
@@ -3925,22 +3979,25 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// silently doing collapse instead of the documented top/bottom jump.
 			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
 			if !m.help && !m.detail && len(m.sessions) > 0 {
-				m.toggleGroupCollapse(sessionGroupID(m.sessions[m.selected]))
-				m.setSelection(m.selected)
-				return m, m.persistCollapsedGroups()
+				if groupID, ok := m.cursorGroupID(); ok {
+					m.toggleGroupCollapse(groupID)
+					m.setSelection(m.selected)
+					return m, m.persistCollapsedGroups()
+				}
 			}
 		case "g":
-			// SPEC.md:952 "g/G top/bottom": jump to the first visible row in
-			// visual order (mirrors ↑/↓'s own visualOrder-based navigation, so
-			// a collapsed group's hidden rows are skipped exactly like a single
-			// ↑/↓ press would skip them).
+			// SPEC.md:952 "g/G top/bottom": jump to the first visible visual
+			// stop (task 012/D.1: a header counts now, not only a row) --
+			// mirrors up/down's own visualOrder-based navigation, so a
+			// collapsed group's hidden rows are skipped exactly like a
+			// single up/down press would skip them.
 			if !m.help && !m.detail && len(m.sessions) > 0 {
 				if visible := m.visibleSessionIndices(); len(visible) > 0 {
 					m.setSelection(visible[0])
 				}
 			}
 		case "G":
-			// SPEC.md:952 "g/G top/bottom": jump to the last visible row.
+			// SPEC.md:952 "g/G top/bottom": jump to the last visible stop.
 			if !m.help && !m.detail && len(m.sessions) > 0 {
 				if visible := m.visibleSessionIndices(); len(visible) > 0 {
 					m.setSelection(visible[len(visible)-1])
@@ -4110,10 +4167,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 // instead (see clickSidebarRow/enterInteractive) -- so attachSelected is
 // reachable only by the `a` key.
 func (m Model) attachSelected() (tea.Model, tea.Cmd) {
-	if m.attach == nil || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+	if m.attach == nil || !m.hasSelectedSession() {
 		return m, nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	if !canReachPane(session) {
 		m.attachError = "Cannot attach: " + stoppedSessionRefusalTail
 		return m, nil
@@ -4643,7 +4700,11 @@ func (m Model) pendingDeleteLines(width int) []string {
 	if len(m.marked) > 0 {
 		return m.canvasWrapText(fmt.Sprintf("Delete %d marked sessions? press d again to confirm, any other key cancels", len(m.marked)), width)
 	}
-	return m.canvasWrapText(fmt.Sprintf("Delete %q? press d again to confirm, any other key cancels", m.sessions[m.selected].Name), width)
+	session, ok := m.selectedSession()
+	if !ok {
+		return nil
+	}
+	return m.canvasWrapText(fmt.Sprintf("Delete %q? press d again to confirm, any other key cancels", session.Name), width)
 }
 
 // computeLayout is the one place mainView and the page-size math below call
@@ -5030,10 +5091,11 @@ func footerRowEligible(m Model, batch bool, predicate func(store.Session) bool) 
 		}
 		return false
 	}
-	if m.selected < 0 || m.selected >= len(m.sessions) {
+	if !m.hasSelectedSession() {
 		return false
 	}
-	return predicate(m.sessions[m.selected])
+	session, _ := m.selectedSession()
+	return predicate(session)
 }
 
 // footerLegend is SPEC requirement 20's key legend, SPEC requirement 35's
@@ -5288,24 +5350,28 @@ func (m Model) attentionCount() int {
 // session needs attention at all, in which case the caller must leave
 // selection (and everything else) untouched — this function never
 // mutates m.sessions or any session's status, only answers where to move.
-func (m Model) nextAttentionSelection(from int) (int, bool) {
+func (m Model) nextAttentionSelection(from sidebarCursor) (sidebarCursor, bool) {
 	order := m.visualOrder()
 	n := len(order)
 	if n == 0 {
 		return from, false
 	}
 	pos := -1
-	for i, idx := range order {
-		if idx == from {
+	for i, c := range order {
+		if c == from {
 			pos = i
 			break
 		}
 	}
 	for step := 1; step <= n; step++ {
 		i := (pos + step) % n
-		idx := order[i]
+		c := order[i]
+		idx, ok := c.SessionIndex()
+		if !ok {
+			continue
+		}
 		if m.isSessionVisible(idx) && NeedsAttention(m.sessions[idx]) {
-			return idx, true
+			return c, true
 		}
 	}
 	return from, false
@@ -5426,6 +5492,23 @@ const (
 	sidebarLineRow
 )
 
+// entryMatchesCursor reports whether sidebarEntry e is the visual line a
+// given sidebarCursor names (task 012/D.1): a header cursor matches the
+// sidebarLineHeader entry sharing its group id, a row cursor matches the
+// sidebarLineRow entry(ies) sharing its session index -- a multi-line row
+// can have more than one matching entry, which is exactly why callers
+// (followSelectionViewport, scrollSessionIntoView's row case) track both
+// the first and last matching index rather than assuming one.
+func (m Model) entryMatchesCursor(e sidebarEntry, c sidebarCursor) bool {
+	if idx, ok := c.SessionIndex(); ok {
+		return e.kind == sidebarLineRow && e.sessionIndex == idx
+	}
+	if gid, ok := c.GroupID(); ok {
+		return e.kind == sidebarLineHeader && e.groupID == gid
+	}
+	return false
+}
+
 // sidebarEntry is one rendered line of the sidebar body, tagged with enough
 // to resolve a click: sidebarLineHeader carries workspace (its display
 // name) and groupID (its durable identity, task 013/R129 part 3 -- what
@@ -5529,8 +5612,12 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 // window, mirroring requirement 52's own one-shot new-session path.
 func (m *Model) resortSessionsLive() {
 	var selectedID string
-	if m.selected >= 0 && m.selected < len(m.sessions) {
-		selectedID = m.sessions[m.selected].ID
+	selectedWasRow := false
+	if idx, ok := m.selected.SessionIndex(); ok {
+		selectedWasRow = true
+		if idx >= 0 && idx < len(m.sessions) {
+			selectedID = m.sessions[idx].ID
+		}
 	}
 	order, _ := m.effectiveSortOrder()
 	// R129/task 011: group order (when grouping is on) is now alphabetical
@@ -5545,26 +5632,59 @@ func (m *Model) resortSessionsLive() {
 		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order)
 	}
 	m.sessions = m.filteredSessions()
+	// A header cursor (task 012/D.1) is untouched here -- its own identity
+	// is a durable group id, never an m.sessions index, so a same-set
+	// re-sort that only shuffles ROW order never invalidates it.
+	if !selectedWasRow {
+		return
+	}
 	if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-		m.selected = idx
+		m.selected = rowCursor(idx)
 		m.scrollSessionIntoView(idx)
-	} else if m.selected >= len(m.sessions) {
-		m.selected = max(0, len(m.sessions)-1)
+	} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+		m.selected = rowCursor(max(0, len(m.sessions)-1))
 	}
 }
 
 // setSelection is the one seam every selection-changing gesture (task
-// 007/R136: ↑/↓, PgUp/PgDn, space, `c`, `g`/`G`, and both `/` filter paths)
-// assigns the selection through, instead of writing m.selected directly.
-// It assigns idx and then follows it with followSelectionViewport, so the
-// viewport-follow behaviour lives in exactly one place rather than being
-// re-derived at each of those call sites. scrollSidebar (mouse.go's wheel
-// binding, SPEC §11.8 "wheel scrolls the list, without changing
-// selection") deliberately never calls this -- it moves sidebarScroll
+// 007/R136: up/down, PgUp/PgDn, space, `c`, `g`/`G`, and both `/` filter
+// paths) assigns the selection through, instead of writing m.selected
+// directly. It assigns c (task 012/D.1: a sidebarCursor -- a header or a
+// row -- rather than a bare session index) and then follows it with
+// followSelectionViewport, so the viewport-follow behaviour lives in
+// exactly one place rather than being re-derived at each of those call
+// sites. scrollSidebar (mouse.go's wheel binding, SPEC §11.8 "wheel
+// scrolls the list, without changing selection") deliberately never calls
+// this -- it moves sidebarScroll
 // without touching m.selected at all, the opposite half of the contract.
-func (m *Model) setSelection(idx int) {
-	m.selected = idx
+func (m *Model) setSelection(c sidebarCursor) {
+	m.selected = c
 	m.followSelectionViewport()
+}
+
+// hasSelectedSession reports whether the cursor currently names a valid
+// row: false when it rests on a header (task 012/D.1 -- sidebarCursor's
+// SessionIndex is deliberately unreadable there) or when its session
+// index has drifted out of m.sessions' current bounds (the same guard
+// every direct m.sessions[m.selected] read used to need before the cursor
+// could ever be anything but a bare row index).
+func (m Model) hasSelectedSession() bool {
+	idx, ok := m.selected.SessionIndex()
+	return ok && idx >= 0 && idx < len(m.sessions)
+}
+
+// selectedSession resolves the session the cursor currently names, or
+// ok=false exactly when hasSelectedSession would be false -- the one
+// seam every session-scoped dialog body/handler below reads the
+// selection through instead of indexing m.sessions[m.selected] directly
+// (which no longer compiles: sidebarCursor has no bare int field to index
+// with).
+func (m Model) selectedSession() (store.Session, bool) {
+	idx, ok := m.selected.SessionIndex()
+	if !ok || idx < 0 || idx >= len(m.sessions) {
+		return store.Session{}, false
+	}
+	return m.sessions[idx], true
 }
 
 // followSelectionViewport scrolls the sidebar viewport (SPEC requirement
@@ -5594,12 +5714,13 @@ func (m *Model) followSelectionViewport() {
 	entries := m.sidebarEntries(contentWidth)
 	start, end := -1, -1
 	for i, e := range entries {
-		if e.kind == sidebarLineRow && e.sessionIndex == m.selected {
-			if start == -1 {
-				start = i
-			}
-			end = i
+		if !m.entryMatchesCursor(e, m.selected) {
+			continue
 		}
+		if start == -1 {
+			start = i
+		}
+		end = i
 	}
 	if start == -1 {
 		return
@@ -5803,7 +5924,7 @@ func (m Model) sidebarGutterBar(selected, marked bool) (string, string) {
 // line, so it is the one dropped rather than risk ellipsis-truncating a
 // word an assertion depends on.
 func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([]string, []string, theme.Token) {
-	selected := index == m.selected
+	selected := m.selected == rowCursor(index)
 	marked := m.marked[session.ID]
 	// R119: the gutter is the row's own reserved leftmost columns, composed
 	// OUTSIDE the text handed to padTrunc -- sidebarContentLine's job, never
@@ -5983,8 +6104,8 @@ func (m Model) sidebarRowBackground(selected, stripe bool) theme.Token {
 func (m Model) previewTitle() string {
 	if m.interactive {
 		name := ""
-		if m.selected >= 0 && m.selected < len(m.sessions) {
-			name = m.sessions[m.selected].Name + " "
+		if session, ok := m.selectedSession(); ok {
+			name = session.Name + " "
 		}
 		width, height := m.previewContentSize()
 		geom := fmt.Sprintf("%dx%d fitted", width, height)
@@ -6032,11 +6153,11 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []pr
 		lines, owners := m.interactiveBodyLines(contentWidth, contentHeight)
 		return lines, owners, m.interactiveScrollOffset()
 	}
-	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+	if !m.hasSelectedSession() {
 		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
 		return lines, deckOwnedPreviewLines(len(lines)), 0
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	if m.previewLive && m.previewSessionID == session.ID {
 		lines, owners := m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
 		return lines, owners, 0
@@ -6116,10 +6237,10 @@ func (m Model) crashTailPreviewLines(tail string, contentWidth, contentHeight in
 // meant to be where the selected row's "why" is legible without opening
 // the `i` detail.
 func (m Model) selectedRowReason() string {
-	if len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+	if !m.hasSelectedSession() {
 		return ""
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	switch {
 	case session.Status == "stopped":
 		return session.Status + m.glyph(" · resumable", " - resumable")
@@ -6189,7 +6310,7 @@ func statusSourceQuality(source string) string {
 // value and, on confirmation, persists it through m.profileSwitch; it never
 // issues any argv to the selected session's pane, live or otherwise.
 func (m Model) updateProfileSwitch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	cycle := func(delta int) {
 		m.profileSwitchValue = cycleOption(options, m.profileSwitchValue, delta)
@@ -6237,7 +6358,7 @@ var cycleConfirmFooterKeyTokens = map[string]bool{
 // separate from the coloured styledProfileSwitchBody below and from
 // framedDialog's own terminal-width clamp.
 func (m Model) profileSwitchBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Change permission profile for %s\n\n", session.Name)
@@ -6269,7 +6390,7 @@ func (m Model) profileSwitchBody() string {
 // the same helper -- label in `hint`, value in `text`, matching
 // detailField's own pre-existing split so the two rows read consistently.
 func (m Model) styledProfileSwitchBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
 	wrap := m.wrapDialogLines
 	var out []string
@@ -6347,7 +6468,7 @@ var resumeModeOptions = []string{"auto", "pinned", "fresh-once"}
 // any argv to the selected session's pane, live or otherwise, and takes
 // effect only on the session's next resume.
 func (m Model) updatePinDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{Cycle: func(delta int) {
 			m.pinValue = cycleOption(resumeModeOptions, m.pinValue, delta)
@@ -6378,7 +6499,7 @@ func (m Model) updatePinDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // gets anywhere near it, the same plain/styled split profileSwitchBody
 // draws one section up.
 func (m Model) pinBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	state := session.ResumeState
 	if state == "" {
 		state = "auto"
@@ -6403,7 +6524,7 @@ func (m Model) pinBody() string {
 // the pinned/fresh-once explanatory sentence in `dimmed`, footer keys in
 // `key` over `hint` prose, a failed-submit note in `error`.
 func (m Model) styledPinBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	state := session.ResumeState
 	if state == "" {
 		state = "auto"
@@ -6485,7 +6606,7 @@ var restartChoiceOptions = []string{"restart", "inject"}
 // selected session's pane itself -- that happens inside the dispatched
 // service call, exactly as a direct (non-shell) `R` already does.
 func (m Model) updateRestartChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{Cycle: func(delta int) {
 			m.restartChoiceValue = cycleOption(restartChoiceOptions, m.restartChoiceValue, delta)
@@ -6536,7 +6657,7 @@ func (m Model) restartChoiceView() string {
 // box-width padTrunc gets anywhere near it, the same plain/styled split
 // profileSwitchBody/pinBody draw above.
 func (m Model) restartChoiceBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "Restart or inject for %s\n\n", session.Name)
 	fmt.Fprintf(&b, "%s\n", m.detailField("Choice:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.restartChoiceValue, strings.Join(restartChoiceOptions, ", "))))
@@ -6563,7 +6684,7 @@ func (m Model) restartChoiceBody() string {
 // outcomes -- footer keys in `key` over `hint` prose, a failed-submit note
 // in `error`.
 func (m Model) styledRestartChoiceBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	wrap := m.wrapDialogLines
 	var out []string
 	colorWhole := func(tok theme.Token, line string) {
@@ -6638,7 +6759,7 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if len(m.marked) > 0 {
 		return m.updateBulkDeleteConfirm(msg)
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{Cycle: func(delta int) {
 			m.deletePurgeValue = cycleOption(deletePurgeOptions, m.deletePurgeValue, delta)
@@ -6805,7 +6926,7 @@ func (m Model) updateArchiveConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.archiveNote = ""
 		return m, nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	cmd, handled := applyDialogContract(msg, dialogContract{
 		Cancel: func() {
 			m.archiveConfirming = false
@@ -6855,7 +6976,7 @@ func (m Model) archiveConfirmView() string {
 // only archived_at, so promising a kill there would be a lie in the other
 // direction.
 func (m Model) archiveConfirmBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "Archive %s\n\n", session.Name)
 	if session.Status != "stopped" {
@@ -6900,7 +7021,7 @@ var archiveConfirmFooterKeyTokens = map[string]bool{
 // hint/text, task 022 -- untouched here), the footer legend's keys in
 // `key` and the rest of it in `hint`, and a failed-submit note in `error`.
 func (m Model) styledArchiveConfirmBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var out []string
 	colorWhole := func(tok theme.Token, line string) {
 		for _, l := range m.wrapDialogLines(line) {
@@ -6986,7 +7107,7 @@ func (m Model) deleteConfirmBody() string {
 	if len(m.marked) > 0 {
 		return m.bulkDeleteConfirmBody()
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "Delete %s\n\n", session.Name)
 	if session.ArchivedAt != 0 {
@@ -7031,7 +7152,7 @@ var deleteConfirmFooterKeyTokens = map[string]bool{
 // untouched), the footer legend's keys in `key` and the rest in `hint`,
 // and a failed-submit note in `error`.
 func (m Model) styledDeleteConfirmBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var out []string
 	colorWhole := func(tok theme.Token, line string) {
 		for _, l := range m.wrapDialogLines(line) {
@@ -7351,7 +7472,7 @@ func (m Model) bulkDeleteConfirmView() string {
 // (task 078) so updateDetailView's PgUp/PgDn handling can measure the
 // same content dialogMaxScroll would, without re-deriving it.
 func (m Model) detailBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
 	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
@@ -7732,7 +7853,11 @@ func (m Model) markedSessions() []store.Session {
 		return nil
 	}
 	var out []store.Session
-	for _, idx := range m.visualOrder() {
+	for _, c := range m.visualOrder() {
+		idx, ok := c.SessionIndex()
+		if !ok {
+			continue
+		}
 		session := m.sessions[idx]
 		if m.marked[session.ID] {
 			out = append(out, session)

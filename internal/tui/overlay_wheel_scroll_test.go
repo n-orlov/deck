@@ -160,7 +160,7 @@ func overlayClickFixtures(t *testing.T) []overlayClickFixture {
 		m := New(nil, config.Settings{Mouse: true}, "")
 		m.width, m.height = 80, 24
 		m.sessions = clickTestSessions()
-		m.selected = 0
+		m.selected = rowCursor(0)
 		m.attach = func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil }
 		return m
 	}

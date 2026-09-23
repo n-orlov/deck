@@ -79,7 +79,7 @@ func newCapturedPaneModel(t *testing.T, stacked bool, firstRow string) (Model, *
 		m.width, m.height = 100, 30
 	}
 	m.sessions = []store.Session{{ID: "sess-1", Name: "coloured-session", Agent: "shell", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.previewLive = true
 	m.previewSessionID = "sess-1"
 

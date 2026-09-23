@@ -36,7 +36,7 @@ func TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow(t *testing.T) {
 				return nil
 			}
 			model.sessions = []store.Session{{ID: "s1", Name: "alpha", Status: tc.status}}
-			model.selected = 0
+			model.selected = rowCursor(0)
 
 			got, cmd := model.Update(key("x"))
 			model = got.(Model)

@@ -25,7 +25,7 @@ func launchInputsWiringModel() Model {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", Slug: "alpha"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.detail = true
 	m.launchInputsEditing = true
 	m.launchInputsPreLaunch = "echo pre"

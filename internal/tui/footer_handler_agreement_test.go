@@ -91,7 +91,7 @@ func buildFooterAgreementModel(selected store.Session, extra []store.Session, ma
 	if selected.ID != "" {
 		m.sessions = append([]store.Session{selected}, extra...)
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.marked = marked
 	m.kill = func(context.Context, store.Session) error {
 		rec.killCalled = true

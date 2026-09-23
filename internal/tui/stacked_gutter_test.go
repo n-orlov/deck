@@ -29,7 +29,7 @@ func stackedGutterTestModel(t *testing.T, ascii, color bool) Model {
 	m.sessions = []store.Session{
 		{ID: "s1", Name: "gutx", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
-	m.selected = -1
+	m.selected = rowCursor(-1)
 	layout := m.computeLayout()
 	if layout.Effective != LayoutStacked {
 		t.Fatalf("test setup: Effective = %q, want %q", layout.Effective, LayoutStacked)
@@ -50,7 +50,7 @@ func stackedGutterRow(t *testing.T, m Model) int {
 // foreground is `background`, both read per-cell off a real vt.Emulator.
 func TestStackedSidebarGutterSelectedRowIsAccentWithBackgroundArrow(t *testing.T) {
 	m := stackedGutterTestModel(t, false, true)
-	m.selected = 0
+	m.selected = rowCursor(0)
 	accentHex := tokenHex(t, m, theme.Accent)
 	backgroundHex := tokenHex(t, m, theme.Background)
 
@@ -114,7 +114,7 @@ func TestStackedSidebarGutterGlyphsSurviveNoColor(t *testing.T) {
 	for _, mode := range gutterGlyphModes {
 		t.Run(mode.name, func(t *testing.T) {
 			m := stackedGutterTestModel(t, mode.ascii, false)
-			m.selected = 0
+			m.selected = rowCursor(0)
 			m.marked = map[string]bool{"s1": true}
 
 			row := stackedGutterRow(t, m)

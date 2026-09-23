@@ -23,7 +23,7 @@ func mainViewColorTestModel(t *testing.T) Model {
 		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", CWD: "/repo/alpha"},
 		{ID: "s2", Name: "beta", Agent: "shell", Status: "running", CWD: "/repo/beta"},
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m
 }
 

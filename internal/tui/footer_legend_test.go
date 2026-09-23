@@ -20,7 +20,7 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 	newModel := func(sessions []store.Session, selected int, marked map[string]bool) Model {
 		m := New(nil, config.Settings{}, "")
 		m.sessions = sessions
-		m.selected = selected
+		m.selected = rowCursor(selected)
 		m.marked = marked
 		return m
 	}
@@ -297,7 +297,7 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 		m := New(nil, config.Settings{}, "")
 		m.width, m.height = 200, 24
 		m.sessions = []store.Session{{ID: "s1", Name: "sess", Agent: "shell", Status: "stopped"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		line := checkShared(t, m, "stopped · resumable")
 		// With 200 columns nothing has to give: the whole legend is there,
 		// tail entries included, and nothing is elided.
@@ -331,7 +331,7 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 		m := New(nil, config.Settings{}, "")
 		m.width, m.height = 80, 24
 		m.sessions = []store.Session{{ID: "s1", Name: "sess", Agent: "shell", Status: "stopped"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		line := checkShared(t, m, "stopped · resumable")
 		// The reason is short enough to survive whole here; the legend is
 		// the half that has to give, and it must have given something (the
@@ -356,7 +356,7 @@ func TestFooterLineSharesLineWithLongStatusReason(t *testing.T) {
 			ID: "s1", Name: "sess", Agent: "shell", Status: "error",
 			StatusReason: "pane failed after the stale frame",
 		}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		if got := m.selectedRowReason(); !strings.Contains(got, "pane failed after the stale frame") {
 			t.Fatalf("the row's stored status reason must reach the footer, got %q", got)
 		}

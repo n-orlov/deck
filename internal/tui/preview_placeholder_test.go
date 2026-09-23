@@ -53,7 +53,7 @@ func TestPreviewBodyLinesNoLivePaneStates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := New(nil, config.Settings{}, "")
 			m.sessions = []store.Session{tc.session}
-			m.selected = 0
+			m.selected = rowCursor(0)
 			// Never captured for this session id: previewLive stays false
 			// so the placeholder branch, never the live crop, is exercised.
 

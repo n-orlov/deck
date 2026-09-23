@@ -71,8 +71,8 @@ func (m Model) checkInteractiveDisplacementBackstop() tea.Cmd {
 	ownership := m.interactiveOwnership
 	target := m.interactiveWindowTarget
 	name := ""
-	if m.selected >= 0 && m.selected < len(m.sessions) {
-		name = m.sessions[m.selected].Name
+	if session, ok := m.selectedSession(); ok {
+		name = session.Name
 	}
 	return func() tea.Msg {
 		ctx := context.Background()

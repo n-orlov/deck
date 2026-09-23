@@ -20,7 +20,7 @@ var errRenameCollisionForTest = errors.New(`session name "b" already exists`)
 func TestRenameOnlyReachableInsideDetailNotAsTopLevelKey(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("r"))
 	model = got.(Model)
@@ -62,7 +62,7 @@ func TestRenameDialogPrefillsSubmitsAndClosesBackToDetail(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", Slug: "alpha"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 
 	got, _ := model.Update(key("r"))
@@ -123,7 +123,7 @@ func TestRenameDialogEscCancelsWithoutPersistingAndKeepsDetailOpen(t *testing.T)
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 
 	got, _ := model.Update(key("r"))
@@ -159,7 +159,7 @@ func TestRenameDialogRejectionRetainsCandidateForCorrection(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 
 	got, _ := model.Update(key("r"))
@@ -193,7 +193,7 @@ func TestRenameDialogRejectionRetainsCandidateForCorrection(t *testing.T) {
 func TestRenameDialogUnavailableWithoutRenamerWired(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 
 	got, _ := model.Update(key("r"))

@@ -34,7 +34,7 @@ func TestBareQWhileDetailOpenQuitsInsteadOfNoOp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := New(nil, config.Settings{}, "")
 			m.sessions = []store.Session{{ID: "s1", Name: "alpha"}}
-			m.selected = 0
+			m.selected = rowCursor(0)
 			m.detail = true
 
 			next, cmd := m.updateDetailView(tc.msg)

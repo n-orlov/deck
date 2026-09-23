@@ -26,7 +26,7 @@ func TestSidebarRowHidesSafeBadgeButKeepsNonSafeBadgeAtMinimumWidth(t *testing.T
 			{ID: "s1", Name: "aa", Agent: "claude", Status: "running", PermissionProfile: "safe", CreatedAt: now},
 			{ID: "s2", Name: "bb", Agent: "claude", Status: "running", PermissionProfile: profile, CreatedAt: now},
 		}
-		m.selected = -1
+		m.selected = rowCursor(-1)
 		view := m.View()
 		lines := strings.Split(view, "\n")
 

@@ -23,7 +23,7 @@ func sidebarRowFillModel(t *testing.T) Model {
 		{ID: "s2", Name: "bb", Agent: "shell", Status: "running", CreatedAt: 1000},
 		{ID: "s3", Name: "ccc", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
-	m.selected = -1
+	m.selected = rowCursor(-1)
 	return m
 }
 
@@ -98,7 +98,7 @@ func assertRowBackgroundFillsFullWidthWithGutter(t *testing.T, m Model, rowLine1
 // the sidebar's flanking single-space columns) staying uncoloured.
 func TestSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 	m := sidebarRowFillModel(t)
-	m.selected = 0 // "z" -- the shortest name, so the pad-fill columns dominate
+	m.selected = rowCursor(0) // "z" -- the shortest name, so the pad-fill columns dominate
 	selectionHex := tokenHex(t, m, theme.Selection)
 
 	layout := m.computeLayout()
@@ -116,7 +116,7 @@ func TestSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 // SPEC requirement 44) -- the second of R58b's two focus-cue tokens.
 func TestSidebarSelectionIdleBackgroundFillsFullPanelWidth(t *testing.T) {
 	m := sidebarRowFillModel(t)
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.interactive = true
 	selIdleHex := tokenHex(t, m, theme.SelectionIdle)
 
@@ -135,7 +135,7 @@ func TestSidebarSelectionIdleBackgroundFillsFullPanelWidth(t *testing.T) {
 // the third of R58b's three backgrounds.
 func TestSidebarStripeBackgroundFillsFullPanelWidth(t *testing.T) {
 	m := sidebarRowFillModel(t)
-	m.selected = -1
+	m.selected = rowCursor(-1)
 	surfaceHex := tokenHex(t, m, theme.Surface)
 
 	layout := m.computeLayout()

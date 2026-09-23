@@ -79,7 +79,7 @@ func TestForceEntersDespiteAnAttachedClient(t *testing.T) {
 	client := tmux.Client{Socket: socket}
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-force-1", Name: "forceattached", Slug: "forceattached", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	windowTarget, err := tmux.SessionName("forceattached")
 	if err != nil {
@@ -130,7 +130,7 @@ func TestForceStillRefusesAStoppedRow(t *testing.T) {
 	m.width, m.height = 100, 30
 	m.tmuxClient = tmux.Client{Socket: "deck-tui-force-no-server"}
 	m.sessions = []store.Session{{ID: "sess-force-2", Name: "forcestopped", Slug: "forcestopped", Status: "stopped"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, cmd := m.enterInteractiveBody(true)
 	got := next.(Model)
@@ -156,7 +156,7 @@ func TestForceStillRefusesBelowTheFloor(t *testing.T) {
 	}
 	m.tmuxClient = tmux.Client{Socket: "deck-tui-force-no-server"}
 	m.sessions = []store.Session{{ID: "sess-force-3", Name: "forcefloor", Slug: "forcefloor", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, cmd := m.enterInteractiveBody(true)
 	got := next.(Model)
@@ -178,7 +178,7 @@ func TestForceStillRefusesBelowTheFloor(t *testing.T) {
 func TestFKeyRoutesToForceEnterInteractiveBody(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.sessions = []store.Session{{ID: "s1", Name: "one", Agent: "shell", Status: "running", Slug: "one"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	next, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune("F")}))
 	got := next.(Model)
 	if got.interactive {

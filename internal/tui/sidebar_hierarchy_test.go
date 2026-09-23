@@ -26,7 +26,7 @@ func sidebarHierarchyTestModel(t *testing.T) Model {
 		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", StatusSource: "hook", CWD: "/repo/alpha", CreatedAt: now},
 		{ID: "s2", Name: "beta", Agent: "shell", Status: "starting", CWD: "/repo/beta", CreatedAt: now},
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m
 }
 

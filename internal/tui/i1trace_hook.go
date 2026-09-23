@@ -28,7 +28,7 @@ var (
 	i1TraceOnce sync.Once
 )
 
-func i1Trace(label string, message tea.Msg, selectedBefore int) {
+func i1Trace(label string, message tea.Msg, selectedBefore sidebarCursor) {
 	path := os.Getenv(i1TraceFileEnvironment)
 	if path == "" {
 		return
@@ -44,7 +44,7 @@ func i1Trace(label string, message tea.Msg, selectedBefore int) {
 	}
 	i1TraceMu.Lock()
 	defer i1TraceMu.Unlock()
-	fmt.Fprintf(i1TraceFile, "%d %s %s selBefore=%d\n", time.Now().UnixNano(), label, describeMsg(message), selectedBefore)
+	fmt.Fprintf(i1TraceFile, "%d %s %s selBefore=%+v\n", time.Now().UnixNano(), label, describeMsg(message), selectedBefore)
 }
 
 func describeMsg(message tea.Msg) string {

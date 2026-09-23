@@ -75,7 +75,7 @@ func TestPreviewTickRaisesLostAttachOnStolenClaim(t *testing.T) {
 		m.width, m.height = 100, 30
 		m.tmuxClient = client
 		m.sessions = []store.Session{{ID: "sess-stolen-1", Name: "displacestolen", Slug: "displacestolen", Status: "waiting"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		return m
 	}
 
@@ -133,7 +133,7 @@ func TestPreviewTickRaisesLostAttachOnClientAttach(t *testing.T) {
 	m.width, m.height = 100, 30
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-attach-1", Name: "displaceattach", Slug: "displaceattach", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractiveBody(false)
 	got := next.(Model)

@@ -141,7 +141,7 @@ func TestStartingCopyDistinguishesShellFromSignalledAgents(t *testing.T) {
 	}
 
 	// Selecting the shell row: the footer shows no reason at all.
-	model.selected = 0
+	model.selected = rowCursor(0)
 	view = model.View()
 	if strings.Contains(view, "awaiting signal") {
 		t.Fatalf("shell selected but footer shows 'awaiting signal':\n%s", view)
@@ -150,7 +150,7 @@ func TestStartingCopyDistinguishesShellFromSignalledAgents(t *testing.T) {
 	// Selecting either signalled agent's row: the footer, and only the
 	// footer, carries the reason — exactly once.
 	for _, index := range []int{1, 2} {
-		model.selected = index
+		model.selected = rowCursor(index)
 		view = model.View()
 		if strings.Count(view, "starting · awaiting signal") != 1 {
 			t.Fatalf("selecting row %d did not put exactly one 'starting · awaiting signal' on the footer:\n%s", index, view)
@@ -163,7 +163,7 @@ func TestStartingCopyDistinguishesShellFromSignalledAgents(t *testing.T) {
 	}
 
 	model.sessions = model.sessions[:1]
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 	detail := model.View()
 	if !strings.Contains(detail, "Status:             starting") || strings.Contains(detail, "awaiting signal") {

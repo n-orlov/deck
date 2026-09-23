@@ -37,7 +37,7 @@ func TestInteractiveHeaderPressTogglesCollapseWithoutResize(t *testing.T) {
 	}
 	m.width, m.height = 100, 30
 	m.interactive = true
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.setInteractiveScrollOffset(7)
 	m.previewFitSessionID = "a1"
 
@@ -87,7 +87,7 @@ func TestInteractiveCollapsedStripPressRestoresLayout(t *testing.T) {
 		t.Fatalf("test setup: layoutMode = %q, want collapsed", m.layoutMode)
 	}
 	m.interactive = true
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.setInteractiveScrollOffset(3)
 
 	if hit := m.hitTest(1, 2); hit.panel != hitPanelSidebar || hit.target != hitTargetCollapsedStrip {
@@ -120,7 +120,7 @@ func TestHeaderPressParityBetweenListAndInteractiveMode(t *testing.T) {
 			{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 		})
 		m.width, m.height = 100, 30
-		m.selected = 0
+		m.selected = rowCursor(0)
 		return m
 	}
 

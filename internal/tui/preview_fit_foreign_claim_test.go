@@ -57,7 +57,7 @@ func TestPreviewFitStandsDownNonLatchingUnderForeignLiveClaim(t *testing.T) {
 	}
 	m.tmuxClient = tmux.Client{Socket: socket, Binary: binary}
 	m.sessions = []store.Session{{ID: "sess-previewfitforeign-1", Slug: slug, Name: slug, Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	// A foreign LIVE claim on the very window previewFit is about to
 	// probe -- a plain ClaimWindowOwnership by a client that is not the

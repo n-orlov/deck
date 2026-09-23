@@ -29,7 +29,7 @@ func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("r"))
 	model = updated.(Model)
@@ -79,7 +79,7 @@ func TestResumeStartingElsewhereIsNotAnError(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("r"))
 	model = updated.(Model)
@@ -112,7 +112,7 @@ func TestResumeAlreadyRunningIsNotAnError(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{stopped}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("r"))
 	model = updated.(Model)
@@ -145,7 +145,7 @@ func TestResumeNonLeasableRendersActualStatusAndReason(t *testing.T) {
 	)
 	// This stopped row is deliberately stale: it is what made r available.
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("r"))
 	model = updated.(Model)
@@ -177,7 +177,7 @@ func TestResumeFailureRendersAsError(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("r"))
 	model = updated.(Model)
@@ -202,7 +202,7 @@ func TestResumeKeyRequiresStoppedRow(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "starting"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, _ := model.Update(key("r"))
 	model = updated.(Model)

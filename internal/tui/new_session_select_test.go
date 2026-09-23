@@ -27,11 +27,11 @@ func TestPendingSelectSessionIDSelectsNewRowNotIndexZero(t *testing.T) {
 	if model.sessions[0].ID != "already-here" || model.sessions[1].ID != "brand-new" {
 		t.Fatalf("setup: rendered order = %v, want [already-here brand-new] (waiting outranks idle)", sessionIDs(model.sessions))
 	}
-	if model.selected != 1 {
+	if model.selected != rowCursor(1) {
 		t.Fatalf("selected = %d, want 1 (brand-new's actual row, not index 0)", model.selected)
 	}
-	if model.sessions[model.selected].ID != "brand-new" {
-		t.Fatalf("selected session = %q, want %q", model.sessions[model.selected].ID, "brand-new")
+	if testSelectedSession(model).ID != "brand-new" {
+		t.Fatalf("selected session = %q, want %q", testSelectedSession(model).ID, "brand-new")
 	}
 	if model.pendingSelectSessionID != "" {
 		t.Fatalf("pendingSelectSessionID = %q, want cleared once consumed", model.pendingSelectSessionID)
@@ -51,22 +51,22 @@ func TestPendingSelectSessionIDIsOneShot(t *testing.T) {
 	}
 	updated, _ := model.Update(sessionsLoaded{sessions: sessions})
 	model = updated.(Model)
-	if model.selected != 1 {
+	if model.selected != rowCursor(1) {
 		t.Fatalf("setup: selected = %d, want 1", model.selected)
 	}
 
 	// User moves the selection away from the just-created row.
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	// A later load (e.g. a reconcile tick) with the same sessions must
 	// leave the user's own move alone.
 	updated, _ = model.Update(sessionsLoaded{sessions: sessions})
 	model = updated.(Model)
-	if model.selected != 0 {
+	if model.selected != rowCursor(0) {
 		t.Fatalf("selected = %d, want 0 (one-shot intent must not re-fire)", model.selected)
 	}
-	if model.sessions[model.selected].ID != "already-here" {
-		t.Fatalf("selected session = %q, want %q", model.sessions[model.selected].ID, "already-here")
+	if testSelectedSession(model).ID != "already-here" {
+		t.Fatalf("selected session = %q, want %q", testSelectedSession(model).ID, "already-here")
 	}
 }
 
@@ -82,18 +82,18 @@ func TestPendingSelectSessionIDNeverAppearing(t *testing.T) {
 		{ID: "already-here", Status: "waiting", StatusAt: 100},
 		{ID: "another-one", Status: "idle", StatusAt: 200},
 	}
-	model.selected = 1 // already-here.. picks whatever it resolves to below
+	model.selected = rowCursor(1) // already-here.. picks whatever it resolves to below
 	// Establish a baseline selection the ordinary preserved-selection path
 	// would keep: select "another-one" first via a normal load.
 	updated, _ := model.Update(sessionsLoaded{sessions: sessions})
 	model = updated.(Model)
 	model.pendingSelectSessionID = "never-shows-up"
-	beforeSelectedID := model.sessions[model.selected].ID
+	beforeSelectedID := testSelectedSession(model).ID
 
 	updated, _ = model.Update(sessionsLoaded{sessions: sessions})
 	model = updated.(Model)
 
-	if got := model.sessions[model.selected].ID; got != beforeSelectedID {
+	if got := testSelectedSession(model).ID; got != beforeSelectedID {
 		t.Fatalf("selected session = %q, want unchanged %q", got, beforeSelectedID)
 	}
 }
@@ -117,7 +117,7 @@ func TestPendingSelectSessionIDRespectsActiveFilter(t *testing.T) {
 	if len(model.sessions) != 1 || model.sessions[0].ID != "kept" {
 		t.Fatalf("setup: filtered sessions = %v, want just [kept]", sessionIDs(model.sessions))
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.pendingSelectSessionID = "brand-new"
 
 	withNew := []store.Session{
@@ -133,8 +133,8 @@ func TestPendingSelectSessionIDRespectsActiveFilter(t *testing.T) {
 	if len(model.sessions) != 1 || model.sessions[0].ID != "kept" {
 		t.Fatalf("filtered sessions = %v, want the filter to still exclude brand-new", sessionIDs(model.sessions))
 	}
-	if model.selected != 0 || model.sessions[model.selected].ID != "kept" {
-		t.Fatalf("selection moved despite the new session being filtered out: selected=%d session=%v", model.selected, sessionIDs(model.sessions))
+	if model.selected != rowCursor(0) || model.sessions[0].ID != "kept" {
+		t.Fatalf("selection moved despite the new session being filtered out: selected=%+v session=%v", model.selected, sessionIDs(model.sessions))
 	}
 }
 
@@ -169,7 +169,7 @@ func TestPendingSelectSessionIDScrollsIntoView(t *testing.T) {
 	if idx < 0 {
 		t.Fatalf("brand-new not found in rendered sessions")
 	}
-	if model.selected != idx {
+	if model.selected != rowCursor(idx) {
 		t.Fatalf("selected = %d, want %d (brand-new's row)", model.selected, idx)
 	}
 

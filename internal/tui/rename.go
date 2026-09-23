@@ -60,7 +60,7 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detail = false
 	case "r":
 		if len(m.sessions) > 0 {
-			session := m.sessions[m.selected]
+			session, _ := m.selectedSession()
 			m.renaming = true
 			m.renameValue = session.Name
 			m.renamePrefilled = true
@@ -70,7 +70,7 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Task 023 (SPEC §6.2/§11.4, PRD R108): the launch-inputs editor,
 		// reachable ONLY from inside `i` detail, exactly like "r" above.
 		if len(m.sessions) > 0 {
-			session := m.sessions[m.selected]
+			session, _ := m.selectedSession()
 			m.launchInputsEditing = true
 			m.launchInputsField = 0
 			m.launchInputsPreLaunch = session.PreLaunch
@@ -87,7 +87,7 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// visibleSessionIndices navigation): both are guarded by
 		// !m.detail, so there is no dispatch conflict with this case.
 		if len(m.sessions) > 0 {
-			session := m.sessions[m.selected]
+			session, _ := m.selectedSession()
 			m.movingGroup = true
 			m.moveGroupOptions = m.computeAvailableGroups()
 			m.moveGroupValue = sessionGroupID(session)
@@ -169,7 +169,7 @@ func (m *Model) submitRename() tea.Cmd {
 	if len(m.sessions) == 0 {
 		return nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	sessionID, newName := session.ID, m.renameValue
 	renamer := m.renamer
 	return func() tea.Msg {
@@ -197,7 +197,7 @@ func (m Model) renameView() string {
 // is: a test can assert the exact wording without a terminal-rendering
 // concern in between.
 func (m Model) renameBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "Rename %s\n\n", session.Name)
 	fmt.Fprintf(&b, "%s\n", m.detailField("New name:  ", m.renameValue))
@@ -255,7 +255,7 @@ func (m Model) renderRenameFieldRow() string {
 // explanation in `dimmed`, the footer legend's keys in `key` and the rest
 // of it in `hint`, and a failed-submit note in `error`.
 func (m Model) styledRenameBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var out []string
 	colorWhole := func(tok theme.Token, line string) {
 		for _, l := range m.wrapDialogLines(line) {
@@ -363,7 +363,7 @@ func (m *Model) submitGroupMove() tea.Cmd {
 	if len(m.sessions) == 0 {
 		return nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	sessionID, groupID := session.ID, m.moveGroupValue
 	mover := m.groupMover
 	return func() tea.Msg {
@@ -385,7 +385,7 @@ func (m Model) moveGroupView() string {
 // profileSwitchBody/renameBody are: a test can assert the exact wording
 // without a terminal-rendering concern in between.
 func (m Model) moveGroupBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	options := m.moveGroupCycleOptions()
 	names := make([]string, 0, len(options))
 	for _, g := range options {
@@ -416,7 +416,7 @@ func (m Model) moveGroupBody() string {
 // row is not a cycle target, so it renders through the ordinary unfocused
 // branch of the same helper.
 func (m Model) styledMoveGroupBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	options := m.moveGroupCycleOptions()
 	names := make([]string, 0, len(options))
 	for _, g := range options {

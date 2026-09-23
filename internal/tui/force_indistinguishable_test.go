@@ -196,7 +196,7 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	m.width, m.height = 100, 30
 	m.tmuxClient = enterClient
 	m.sessions = []store.Session{{ID: "sess-indist-enter", Name: "indistkey", Slug: "indistkey", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	var enterRecorded []string
 	m.prepareAttach = func(_ context.Context, id string) error {
 		enterRecorded = append(enterRecorded, id)
@@ -231,7 +231,7 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	m2.width, m2.height = 100, 30
 	m2.tmuxClient = forceClient
 	m2.sessions = []store.Session{{ID: "sess-indist-force", Name: "indistforce", Slug: "indistforce", Status: "waiting"}}
-	m2.selected = 0
+	m2.selected = rowCursor(0)
 	var forceRecorded []string
 	m2.prepareAttach = func(_ context.Context, id string) error {
 		forceRecorded = append(forceRecorded, id)
@@ -322,7 +322,7 @@ func TestRefusedForceRecordsNoPrepareAttach(t *testing.T) {
 		m.width, m.height = 100, 30
 		m.tmuxClient = client
 		m.sessions = []store.Session{{ID: "sess-indist-refuse", Name: "indistrefuse", Slug: "indistrefuse", Status: "waiting"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		var recorded []string
 		m.prepareAttach = func(_ context.Context, id string) error {
 			recorded = append(recorded, id)

@@ -94,7 +94,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 32
 				m.sessions = canvasForegroundSessions()
-				m.selected = 0
+				m.selected = rowCursor(0)
 				m.marked = map[string]bool{"s2": true}
 				if got := m.computeLayout().Effective; got != LayoutSideBySide {
 					t.Fatalf("theme %q: frame computed as %q, want %q", bt.Name, got, LayoutSideBySide)
@@ -122,7 +122,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 				m.width, m.height = 70, 34
 				m.layoutMode = LayoutStacked
 				m.sessions = canvasForegroundSessions()
-				m.selected = 1
+				m.selected = rowCursor(1)
 				if got := m.computeLayout().Effective; got != LayoutStacked {
 					t.Fatalf("theme %q: frame computed as %q, want %q", bt.Name, got, LayoutStacked)
 				}
@@ -138,7 +138,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 32
 				m.sessions = canvasForegroundSessions()[:2]
-				m.selected = 0
+				m.selected = rowCursor(0)
 				m.filterQuery = "api"
 				return m
 			},
@@ -187,7 +187,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 40
 				m.sessions = canvasForegroundSessions()
-				m.selected = 0
+				m.selected = rowCursor(0)
 				m.detail = true
 				return m
 			},
@@ -212,7 +212,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 60, 18
 				m.sessions = canvasForegroundSessions()
-				m.selected = 0
+				m.selected = rowCursor(0)
 				return m
 			},
 		},
@@ -225,7 +225,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 30
 				m.sessions = canvasForegroundSessions()
-				m.selected = 0
+				m.selected = rowCursor(0)
 				m.sidebarWidth = 3
 				return m
 			},
@@ -489,7 +489,7 @@ func TestCropMarkerAndGeometryLineCarryExplicitForeground(t *testing.T) {
 			m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 			m.width, m.height = 110, 32
 			m.sessions = []store.Session{{ID: "s1", Name: "live-one", Agent: "codex", Status: "running", CWD: "/home/op/w", CreatedAt: 1000}}
-			m.selected = 0
+			m.selected = rowCursor(0)
 			m.previewLive = true
 			m.previewSessionID = "s1"
 
@@ -593,7 +593,7 @@ func TestSidebarGutterCellsNeverFallBackToCanvasForeground(t *testing.T) {
 			m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 			m.width, m.height = 110, 32
 			m.sessions = canvasForegroundSessions()
-			m.selected = 0
+			m.selected = rowCursor(0)
 			m.marked = map[string]bool{"s2": true}
 			if got := m.computeLayout().Effective; got != LayoutSideBySide {
 				t.Fatalf("theme %q: frame computed as %q, want side-by-side", bt.Name, got)

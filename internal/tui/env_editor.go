@@ -172,7 +172,7 @@ func (m Model) envEditPromptLine() (label, value string) {
 // colour token styledEnvBody adds can never move where a page boundary
 // falls.
 func (m Model) envBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	rows := m.sessionEnvRows(session)
 	var lines []string
 	lines = append(lines, fmt.Sprintf("Environment for %s", session.Name))
@@ -285,7 +285,7 @@ func (m Model) styledEnvBody() string {
 		}
 	}
 
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	rows := m.sessionEnvRows(session)
 	colorWhole(theme.Title, fmt.Sprintf("Environment for %s", session.Name))
 	out = append(out, "")
@@ -374,7 +374,7 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}); handled {
 		return m, cmd
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	rows := m.sessionEnvRows(session)
 	switch msg.String() {
 	case "up", "k":
@@ -433,7 +433,7 @@ func (m *Model) submitEnvEdit() tea.Cmd {
 		m.envEditKey, m.envEditValue, m.envEditPrefilled = "", "", false
 		return nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	sessionID, key, value := session.ID, m.envEditKey, m.envEditValue
 	setSessionEnv := m.setSessionEnv
 	m.envEditKey, m.envEditValue, m.envEditPrefilled = "", "", false

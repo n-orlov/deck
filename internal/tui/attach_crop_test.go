@@ -38,7 +38,7 @@ func TestPassiveFitLeavesNoWindowSizePinBehindIt(t *testing.T) {
 	m.width, m.height = 100, 30
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-previewfitunpin-1", Slug: slug, Name: slug, Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	wantWidth, wantHeight := m.previewContentSize()
 	if wantHeight < interactiveMinInnerRows {
 		t.Fatalf("test setup: preview content height %d below the %d-row floor", wantHeight, interactiveMinInnerRows)
@@ -122,7 +122,7 @@ func TestFullAttachReleasesAPreviewPinButNeverALiveOwnersPin(t *testing.T) {
 			m.width, m.height = 100, 30
 			m.tmuxClient = client
 			m.sessions = []store.Session{{ID: "sess-attachunpin-1", Slug: slug, Name: slug, Status: "running"}}
-			m.selected = 0
+			m.selected = rowCursor(0)
 			var attached int
 			m.attach = func(context.Context, string) (*exec.Cmd, error) {
 				attached++
@@ -170,7 +170,7 @@ func TestAttachFinishedRelicensesOneFitForTheAttachedRow(t *testing.T) {
 	m.width, m.height = 100, 30
 	m.tmuxClient = tmux.Client{Socket: "deck-attachfinished-unused"}
 	m.sessions = []store.Session{{ID: "s1", Slug: "s1", Name: "s1", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.previewFitSessionID = "s1"
 
 	// Before: the latch suppresses the fit, which is the whole point of it.
@@ -226,7 +226,7 @@ func TestPassiveFitStandsDownForAnAttachedClientAndReleasesItsPin(t *testing.T) 
 	binary, wireLog := newTmuxWireLogger(t)
 	m.tmuxClient = tmux.Client{Socket: socket, Binary: binary}
 	m.sessions = []store.Session{{ID: "sess-fitattached-1", Slug: slug, Name: slug, Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	panelWidth, panelHeight := m.previewContentSize()
 	if panelHeight < interactiveMinInnerRows {
 		t.Fatalf("test setup: preview content height %d below the %d-row floor", panelHeight, interactiveMinInnerRows)

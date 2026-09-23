@@ -39,7 +39,7 @@ func TestTwoSequentialStealsRestorePreEntryGeometry(t *testing.T) {
 		}
 		m.tmuxClient = client
 		m.sessions = []store.Session{{ID: "sess-doublesteal-1", Name: "doublesteal", Slug: "doublesteal", Status: "waiting"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		return m
 	}
 

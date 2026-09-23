@@ -19,7 +19,7 @@ import (
 func TestEnterWithoutATmuxClientDoesNotEnterInteractiveMode(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.sessions = []store.Session{{ID: "s1", Name: "one", Agent: "shell", Status: "running", Slug: "one"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	next, cmd := m.enterInteractive()
 	got := next.(Model)
 	if got.interactive {
@@ -41,7 +41,7 @@ func TestEnterWithoutATmuxClientDoesNotEnterInteractiveMode(t *testing.T) {
 func TestEnterKeyRoutesToEnterInteractiveNotAttachSelected(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.sessions = []store.Session{{ID: "s1", Name: "one", Agent: "shell", Status: "running", Slug: "one"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	next, cmd := m.Update(tea.KeyMsg(tea.Key{Type: tea.KeyEnter}))
 	got := next.(Model)
 	if got.interactive {
@@ -142,7 +142,7 @@ func TestPreviewTitleNamesInteractiveModeAndTheExitChord(t *testing.T) {
 func TestPreviewTitleNamesTheTargetSessionWhileInteractive(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.sessions = []store.Session{{ID: "s1", Name: "focus-target", Agent: "shell", Status: "running", Slug: "focus-target"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.interactive = true
 	got := m.previewTitle()
 	if !strings.Contains(got, "focus-target") {
@@ -166,7 +166,7 @@ func TestPreviewTitleStatesFittedGeometryDifferentlyFromACrop(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 100, 30
 	m.sessions = []store.Session{{ID: "s1", Name: "focus-target", Agent: "shell", Status: "running", Slug: "focus-target"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.interactive = true
 	got := m.previewTitle()
 	width, height := m.previewContentSize()
@@ -709,7 +709,7 @@ func TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall(t *testi
 	m := New(nil, config.Settings{}, "")
 	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-203"})
 	m.sessions = []store.Session{{ID: "s1", Name: "squeezed", Agent: "shell", Status: "running", Slug: "squeezed"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.width, m.height = 80, 9
 
 	width, height := m.previewContentSize()
@@ -762,7 +762,7 @@ func TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall(t *testi
 func TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.sessions = []store.Session{{ID: "s1", Name: "squeezed", Agent: "shell", Status: "running", Slug: "squeezed"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.width, m.height = 80, 24
 	m.interactive = true
 

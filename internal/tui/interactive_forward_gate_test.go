@@ -45,7 +45,7 @@ func forwardGateTestModel(t *testing.T, socket, slug string, scrollBy int) Model
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-" + slug, Name: slug, Slug: slug, Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)

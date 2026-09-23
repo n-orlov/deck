@@ -292,7 +292,7 @@ func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 		PermissionProfileReason: reason,
 	}
 	m.sessions = []store.Session{session}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.creating = false
 	m.detail = true
 	detailView := m.View()

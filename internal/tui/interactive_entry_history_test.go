@@ -166,7 +166,7 @@ func TestEnterInteractiveSeedsTheGridWithThePanesOwnTmuxHistory(t *testing.T) {
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-entryhist-1", Name: "entryhist", Slug: "entryhist", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got := next.(Model)

@@ -63,7 +63,7 @@ func TestEventLogDisplaysTheDroppedHookKindAndReasonAfterPressingE(t *testing.T)
 	model := New(db, config.Settings{}, "")
 	model.width, model.height = 100, 40
 	model.sessions = []store.Session{session}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("E"))
 	model = updated.(Model)
@@ -102,7 +102,7 @@ func TestDetailViewDisplaysTheDroppedHookKindAndReasonAfterPressingI(t *testing.
 	model := New(db, config.Settings{}, "")
 	model.width, model.height = 100, 40
 	model.sessions = []store.Session{session}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	updated, cmd := model.Update(key("i"))
 	model = updated.(Model)
@@ -134,7 +134,7 @@ func TestDetailViewDisplaysTheDroppedHookKindAndReasonAfterPressingI(t *testing.
 func TestDetailViewOmitsTheDroppedHookLabelWhenNoneWasDeclined(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.sessions = []store.Session{{ID: "plain", Name: "plain-shell", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 	view := model.View()
 	if strings.Contains(view, "Hook declined:") {

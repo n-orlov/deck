@@ -83,7 +83,7 @@ func TestSetSelectionKeepsWholeContextRowAcrossAGroupHeader(t *testing.T) {
 	// selection's first line, so the seam has to scroll UP to uncover the
 	// context row the criterion asks for.
 	m.sidebarScroll = start
-	m.setSelection(3)
+	m.setSelection(rowCursor(3))
 	wantAtMost := before[len(before)-2] // first line of the preceding session row
 	if m.sidebarScroll > wantAtMost {
 		t.Fatalf("sidebarScroll = %d after selecting the first session of group b; that clips the preceding session row (entries %v), want <= %d", m.sidebarScroll, before[len(before)-2:], wantAtMost)
@@ -109,7 +109,7 @@ func TestSetSelectionStaysInBoundsAndFlushAtTheListEnds(t *testing.T) {
 		entries := m.sidebarEntries(contentWidth)
 		maxOffset := max(0, len(entries)-contentHeight)
 		for i := 0; i < n; i++ {
-			m.setSelection(i)
+			m.setSelection(rowCursor(i))
 			if m.sidebarScroll < 0 || m.sidebarScroll > maxOffset {
 				t.Fatalf("n=%d selected=%d: sidebarScroll = %d, want within [0,%d]", n, i, m.sidebarScroll, maxOffset)
 			}

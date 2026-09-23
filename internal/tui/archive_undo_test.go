@@ -34,7 +34,7 @@ func archiveUndoTestModel(t *testing.T) (Model, *archiveRecorder, *[]string) {
 	model.sessions = []store.Session{
 		{ID: "s-live", Name: "live-agent", Agent: "claude", Status: "idle", CWD: "/repos/project"},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.archiveSvc = archiver.archive
 	model.kill = func(context.Context, store.Session) error { return nil }
 	model.unarchiveSvc = func(_ context.Context, id string) (store.Session, error) {
@@ -132,7 +132,7 @@ func TestArchiveUndoPressingUUnarchivesTheRowAndClearsTheToast(t *testing.T) {
 	// The archived row leaves the default list, exactly as it does in the
 	// real reload: `u` must still know what to unarchive.
 	model.sessions = nil
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, cmd = model.Update(key("u"))
 	model = got.(Model)

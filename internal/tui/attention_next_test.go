@@ -51,23 +51,23 @@ func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
 	}
 
 	// From "a" (index 0), the next session needing attention is "b".
-	if got, ok := m.nextAttentionSelection(0); !ok || got != 1 {
-		t.Fatalf("from 0: got (%d, %v), want (1, true)", got, ok)
+	if got, ok := m.nextAttentionSelection(rowCursor(0)); !ok || got != rowCursor(1) {
+		t.Fatalf("from 0: got (%+v, %v), want (1, true)", got, ok)
 	}
 
 	// From "b" itself, the search wraps all the way around and lands back
 	// on "b" (index 1) since it is the only visible session needing
 	// attention once "d" is hidden below.
 	m.setGroupCollapsed(hiddenGroupID, true)
-	if got, ok := m.nextAttentionSelection(1); !ok || got != 1 {
-		t.Fatalf("from 1 with hidden-ws collapsed: got (%d, %v), want (1, true)", got, ok)
+	if got, ok := m.nextAttentionSelection(rowCursor(1)); !ok || got != rowCursor(1) {
+		t.Fatalf("from 1 with hidden-ws collapsed: got (%+v, %v), want (1, true)", got, ok)
 	}
 
 	// Expand the group again: "d" (index 3) is now reachable and, searching
 	// forward from "c" (index 2), is the very next one.
 	m.setGroupCollapsed(hiddenGroupID, false)
-	if got, ok := m.nextAttentionSelection(2); !ok || got != 3 {
-		t.Fatalf("from 2 with hidden-ws expanded: got (%d, %v), want (3, true)", got, ok)
+	if got, ok := m.nextAttentionSelection(rowCursor(2)); !ok || got != rowCursor(3) {
+		t.Fatalf("from 2 with hidden-ws expanded: got (%+v, %v), want (3, true)", got, ok)
 	}
 }
 
@@ -79,8 +79,8 @@ func TestNextAttentionSelectionNoopWhenNothingNeedsAttention(t *testing.T) {
 		{ID: "b", Status: "idle"},
 		{ID: "c", Status: "stopped"},
 	}}
-	if got, ok := m.nextAttentionSelection(1); ok || got != 1 {
-		t.Fatalf("got (%d, %v), want (1, false)", got, ok)
+	if got, ok := m.nextAttentionSelection(rowCursor(1)); ok || got != rowCursor(1) {
+		t.Fatalf("got (%+v, %v), want (1, false)", got, ok)
 	}
 }
 
@@ -142,13 +142,17 @@ func TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus(t *testing.T) {
 	// (it does not itself need attention) rather than assuming index 0.
 	for i, s := range model.sessions {
 		if s.ID == "running-one" {
-			model.selected = i
+			model.selected = rowCursor(i)
 		}
 	}
 
 	updated, _ = model.Update(key(" "))
 	model = updated.(Model)
-	if got := model.sessions[model.selected].ID; got != "waiting-one" {
+	if idx, ok := model.selected.SessionIndex(); !ok || model.sessions[idx].ID != "waiting-one" {
+		var got string
+		if ok {
+			got = model.sessions[idx].ID
+		}
 		t.Fatalf("after first space, selected = %q, want %q", got, "waiting-one")
 	}
 
@@ -156,7 +160,11 @@ func TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus(t *testing.T) {
 	// need attention).
 	updated, _ = model.Update(key(" "))
 	model = updated.(Model)
-	if got := model.sessions[model.selected].ID; got != "error-one" {
+	if idx, ok := model.selected.SessionIndex(); !ok || model.sessions[idx].ID != "error-one" {
+		var got string
+		if ok {
+			got = model.sessions[idx].ID
+		}
 		t.Fatalf("after second space, selected = %q, want %q", got, "error-one")
 	}
 
@@ -164,7 +172,11 @@ func TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus(t *testing.T) {
 	// running-one and idle-one still do not need attention.
 	updated, _ = model.Update(key(" "))
 	model = updated.(Model)
-	if got := model.sessions[model.selected].ID; got != "waiting-one" {
+	if idx, ok := model.selected.SessionIndex(); !ok || model.sessions[idx].ID != "waiting-one" {
+		var got string
+		if ok {
+			got = model.sessions[idx].ID
+		}
 		t.Fatalf("after third space (wrap), selected = %q, want %q", got, "waiting-one")
 	}
 
@@ -193,10 +205,10 @@ func TestSpaceNoopWhenSelectionAlreadyOnSoleAttentionRow(t *testing.T) {
 		{ID: "b", Status: "waiting"},
 		{ID: "c", Status: "idle"},
 	}}
-	m.selected = 1
+	m.selected = rowCursor(1)
 	updated, _ := m.Update(key(" "))
 	got := updated.(Model)
-	if got.selected != 1 {
+	if got.selected != rowCursor(1) {
 		t.Fatalf("selected = %d, want 1 (unchanged)", got.selected)
 	}
 }

@@ -50,7 +50,7 @@ func TestLostAttachDialogSwallowsListKeysAndReleasesOnEnter(t *testing.T) {
 	if len(m.sessions) != 2 {
 		t.Fatalf("want 2 loaded sessions, got %d", len(m.sessions))
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.kill = func(context.Context, store.Session) error {
 		killCalled = true
 		return nil

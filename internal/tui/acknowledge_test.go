@@ -138,7 +138,7 @@ func TestYAcknowledgesOnlySelectedRowDurably(t *testing.T) {
 	}
 	for i, session := range model.sessions {
 		if session.ID == "selected" {
-			model.selected = i
+			model.selected = rowCursor(i)
 		}
 	}
 	if got := strings.Count(model.View(), "!"); got != 2 {

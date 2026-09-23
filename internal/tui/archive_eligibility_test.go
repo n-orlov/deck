@@ -45,7 +45,7 @@ func TestArchiveKeyOnAnArchivedRowRefusesAndNamesU(t *testing.T) {
 	model.sessions = []store.Session{
 		{ID: "s-archived", Name: "gone", Agent: "shell", Status: "stopped", ArchivedAt: 100},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.archiveSvc = archiver.archive
 	model.attach = func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil }
 

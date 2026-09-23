@@ -125,19 +125,19 @@ func TestSessionsLoadedPreservesSelectionByIDAcrossSortOrderChange(t *testing.T)
 	updated, _ := model.Update(sessionsLoaded{sessions: sessions})
 	got := updated.(Model)
 	// Under "name" order, alpha (id "b") is index 0.
-	if got.selected != 0 || got.sessions[0].ID != "b" {
+	if got.selected != rowCursor(0) || got.sessions[0].ID != "b" {
 		t.Fatalf("setup: selected = %d (%v), want index 0 = session %q", got.selected, idsOf(got.sessions), "b")
 	}
-	got.selected = 1 // select "Bravo" (id "c"), the middle row under name order
+	got.selected = rowCursor(1) // select "Bravo" (id "c"), the middle row under name order
 	got.settings.SortOrder = SortOrderCreated
 	updated2, _ := got.Update(sessionsLoaded{sessions: sessions})
 	got2 := updated2.(Model)
-	if got2.selected < 0 || got2.selected >= len(got2.sessions) {
-		t.Fatalf("selected index %d out of range after reorder (%v)", got2.selected, idsOf(got2.sessions))
+	if idx, ok := got2.selected.SessionIndex(); !ok || idx < 0 || idx >= len(got2.sessions) {
+		t.Fatalf("selected cursor %+v out of range after reorder (%v)", got2.selected, idsOf(got2.sessions))
 	}
-	if got2.sessions[got2.selected].ID != "c" {
+	if testSelectedSession(got2).ID != "c" {
 		t.Fatalf("selection followed the OLD index, not the session id: now selects %q, want %q",
-			got2.sessions[got2.selected].ID, "c")
+			testSelectedSession(got2).ID, "c")
 	}
 }
 
