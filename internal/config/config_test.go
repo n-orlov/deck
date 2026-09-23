@@ -653,6 +653,79 @@ func TestConfigFileUIRecentCwdLimitAboveBoundsIsRejected(t *testing.T) {
 	}
 }
 
+func TestConfigFileUIDefaultGroupFirstDefaultsToFalseAndRoundTripsThroughWrite(t *testing.T) {
+	// Absent file/key defaults to false (task 001: default_group_first, SPEC
+	// §11), modelled on ui.preview_fit's own default test shape.
+	dirAbsent := t.TempDir()
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dirAbsent}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.DefaultGroupFirst {
+		t.Fatal("DefaultGroupFirst should default to false when config.toml is absent")
+	}
+
+	// A config.toml value is honoured.
+	dir := writeConfigFile(t, "[ui]\ndefault_group_first = true\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.DefaultGroupFirst {
+		t.Fatal("[ui] default_group_first = true should set Settings.DefaultGroupFirst")
+	}
+
+	// Writing the field back out preserves an unknown top-level key and an
+	// unknown [ui] key exactly as loadConfigFile found them (the same
+	// contract TestWriteConfigFileRoundTripsUnknownKeysAndSections proves for
+	// allow_yolo), and re-reading the written file yields the same value.
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("some_future_key = \"whatever\"\n\n[ui]\ndefault_group_first = false\nsome_future_ui_key = 7\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DefaultGroupFirst {
+		t.Fatal("loadConfigFile should have read default_group_first = false")
+	}
+	cfg.DefaultGroupFirst = true // the one field this test changes
+	if err := WriteConfigFile(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"some_future_key = \"whatever\"",
+		"some_future_ui_key = 7",
+		"default_group_first = true",
+	} {
+		if !strings.Contains(string(written), want) {
+			t.Fatalf("write dropped or altered content %q; got:\n%s", want, written)
+		}
+	}
+
+	rereadCfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rereadCfg.DefaultGroupFirst {
+		t.Fatal("re-reading the written file should still yield default_group_first = true")
+	}
+
+	rereadSettings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rereadSettings.DefaultGroupFirst {
+		t.Fatal("LoadFrom against the written file should yield Settings.DefaultGroupFirst = true")
+	}
+}
+
 func TestConfigFileUnknownKeyIsIgnored(t *testing.T) {
 	dir := writeConfigFile(t, "allow_yolo = true\nsome_future_key = \"whatever\"\n\n[ui]\nsome_future_ui_key = 7\n")
 	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)

@@ -10,10 +10,12 @@ import (
 // task 031's interactive_transport, steer 017 item 2's yolo_default,
 // steer 018 item 4/task 215's preview_fit, task 303's [ui] sort_order,
 // steer 3e-001's event_retention_days, task 332, phase3j task 004's
-// pre_launch, and phase3j task 012's post_destroy):
+// pre_launch, phase3j task 012's post_destroy, and phase4c task 001's
+// [ui] default_group_first):
 // allow_yolo, yolo_default, stale_after, capture_min_interval,
 // interactive_ms, interactive_transport, tmux_mouse, event_retention_days,
-// pre_launch, post_destroy, [ui] theme, [ui] ascii, [ui] mouse, [ui] preview_fit,
+// pre_launch, post_destroy, [ui] theme, [ui] ascii, [ui] mouse,
+// [ui] default_group_first, [ui] preview_fit,
 // [ui] sort_order, [ui] recent_cwd_limit, and the
 // [env] table. Adding, removing or renaming a key must be a deliberate edit
 // to this test alongside the schema, never a silent drift.
@@ -30,6 +32,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.theme",
 		"ui.ascii",
 		"ui.mouse",
+		"ui.default_group_first",
 		"ui.preview_fit",
 		"ui.preview_paint",
 		"ui.sort_order",
@@ -156,24 +159,25 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     shape pre_launch already has.
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
-		"allow_yolo":            ScopeGlobal,
-		"yolo_default":          ScopeGlobal,
-		"stale_after":           ScopeRestartToApply,
-		"capture_min_interval":  ScopeRestartToApply,
-		"interactive_ms":        ScopeRestartToApply,
-		"interactive_transport": ScopeRestartToApply,
-		"tmux_mouse":            ScopeRestartToApply,
-		"event_retention_days":  ScopeRestartToApply,
-		"ui.theme":              ScopeGlobal,
-		"ui.ascii":              ScopeGlobal,
-		"ui.mouse":              ScopeGlobal,
-		"ui.preview_fit":        ScopeGlobal,
-		"ui.preview_paint":      ScopeGlobal,
-		"ui.sort_order":         ScopeGlobal,
-		"ui.recent_cwd_limit":   ScopeRestartToApply,
-		"pre_launch":            ScopeRestartToApply,
-		"post_destroy":          ScopeRestartToApply,
-		"[env]":                 ScopeRestartToApply,
+		"allow_yolo":             ScopeGlobal,
+		"yolo_default":           ScopeGlobal,
+		"stale_after":            ScopeRestartToApply,
+		"capture_min_interval":   ScopeRestartToApply,
+		"interactive_ms":         ScopeRestartToApply,
+		"interactive_transport":  ScopeRestartToApply,
+		"tmux_mouse":             ScopeRestartToApply,
+		"event_retention_days":   ScopeRestartToApply,
+		"ui.theme":               ScopeGlobal,
+		"ui.ascii":               ScopeGlobal,
+		"ui.mouse":               ScopeGlobal,
+		"ui.default_group_first": ScopeRestartToApply,
+		"ui.preview_fit":         ScopeGlobal,
+		"ui.preview_paint":       ScopeGlobal,
+		"ui.sort_order":          ScopeGlobal,
+		"ui.recent_cwd_limit":    ScopeRestartToApply,
+		"pre_launch":             ScopeRestartToApply,
+		"post_destroy":           ScopeRestartToApply,
+		"[env]":                  ScopeRestartToApply,
 	}
 	for _, field := range Schema {
 		full := field.FullKey()

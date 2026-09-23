@@ -424,6 +424,29 @@ var Schema = []Field{
 	},
 	{
 		Section: "ui",
+		Key:     "default_group_first",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "When true, the sidebar's default sort keeps every group's " +
+			"header (and its member sessions) ordered ahead of ungrouped sessions, " +
+			"regardless of the active sort order's own key (SPEC §11). false " +
+			"(default) leaves groups interleaved among ungrouped sessions purely by " +
+			"the active sort key, matching today's behaviour. Restart-to-apply: " +
+			"saving here writes config.toml immediately, but nothing in the " +
+			"already-running client reads it again until deck restarts.",
+		// requirement 19: this task (001) only plumbs the key through config,
+		// schema, parse and write -- groupSortsBefore does not read it yet
+		// (`grep -rn DefaultGroupFirst` outside config/settings plumbing finds
+		// nothing in internal/tui, internal/service or cmd/deck). Same
+		// reasoning as capture_min_interval/ui.recent_cwd_limit above: labelled
+		// restart-to-apply as the honest, conservative default pending that
+		// consumer, rather than ScopeGlobal implying a live effect this tree
+		// cannot demonstrate yet. A later task in this phase (003) is expected
+		// to make it live and can upgrade this Scope alongside that wiring.
+		Scope: ScopeRestartToApply,
+	},
+	{
+		Section: "ui",
 		Key:     "mouse",
 		Kind:    KindToggle,
 		Default: true,

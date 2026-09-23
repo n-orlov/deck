@@ -240,6 +240,8 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.FormatBool(cfg.ASCII)
 	case "ui.mouse":
 		return strconv.FormatBool(cfg.Mouse)
+	case "ui.default_group_first":
+		return strconv.FormatBool(cfg.DefaultGroupFirst)
 	case "ui.preview_fit":
 		return strconv.FormatBool(cfg.PreviewFit)
 	case "ui.sort_order":
