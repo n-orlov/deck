@@ -5166,6 +5166,17 @@ func footerRowEligible(m Model, batch bool, predicate func(store.Session) bool) 
 // concatenated visible text (key legend and Unicode fallback) is byte-for-
 // byte what it always was, and pending tests that grep for a plain
 // substring like "up/down" or "Enter interactive" never see the joins move.
+//
+// Task 015/D.4: the header cursor's own keys (`c`, `←`, `→`) are NOT here
+// and must not be added. This slice is a closed set against SPEC §11.3's
+// own fixed-set sentence -- footer_bindings_parity_test.go re-parses
+// SPEC.md itself in both directions (TestFooterLegendGlyphSetIsClosedAgainstSpec:
+// "tui.go's footerLegend has glyph %q that SPEC.md §11.3's footer
+// fixed-set sentence does not name") -- and SPEC.md is read-only to this
+// phase, so a glyph SPEC does not name cannot be added without either
+// amending the protected spec or weakening its guard. The header cursor is
+// documented where it can be: the `?` overlay's own "c / ←/→" keymap line
+// (helpText) and detailBody's header-cursor footer line.
 var footerLegend = []footerKeyHint{
 	{"↑/↓", "up/down", "", nil},
 	{"↵", "Enter", "interactive", func(m Model) bool { return footerRowEligible(m, false, canReachPane) }},
@@ -7615,7 +7626,29 @@ func (m Model) detailBody() string {
 			fmt.Fprintf(&b, "\nCrash tail:\n%s\n", crashTail)
 		}
 	}
-	b.WriteString("\n" + m.glyph("r renames · l edits launch inputs · g moves group · i or Esc closes detail", "r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
+	// Task 015/D.4 (R137, PRD "Footer and `?` help must say what the cursor
+	// can do in each position", which names this footer by file and line):
+	// the detail dialog is session-scoped -- `i` is inert while the cursor
+	// sits on a group header (task 013's shared guard), so every key on the
+	// line BELOW acts on the selected session -- and that is exactly why the
+	// header cursor needs saying here too: a reader who only ever opens this
+	// dialog otherwise never learns that `c`, `←` and `→` do anything, nor
+	// that `c` is no longer "the selected row's own group" (its old, now-false
+	// description) but whichever group the cursor itself rests on.
+	//
+	// It is a separate line ABOVE the dialog's own keys, not an extension of
+	// them, for two reasons: the existing line is already 74 columns (at
+	// dialogWidth's 80-column ceiling, appending would wrap it mid-phrase),
+	// and group_move_test.go's detailFooterLine helper reads detailBody's
+	// LAST non-empty line as "the footer legend" -- keeping the dialog's own
+	// keys last leaves that helper, and every test built on it, meaning what
+	// it always did.
+	//
+	// The main list footer (footerLegend) deliberately does NOT gain these
+	// three keys: SPEC §11.3's fixed set is closed there, and SPEC.md is
+	// read-only to this job -- see footerLegend's own doc comment.
+	b.WriteString("\n" + m.glyph("header cursor: c folds/unfolds its group · ← folds it · → unfolds it", "header cursor: c folds/unfolds its group - left folds it - right unfolds it") + "\n")
+	b.WriteString(m.glyph("r renames · l edits launch inputs · g moves group · i or Esc closes detail", "r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
 	return b.String()
 }
 
@@ -9374,7 +9407,7 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a sidebar row       select it (like ↑/↓); the preview follows on
                             its next tick
   double-click a row        enter interactive mode (like ↵)
-  click a group header      toggle that group's collapse (like g)
+  click a group header      toggle that group's collapse (like c)
   wheel over the sidebar    scroll the list without changing selection
                             (like ↑/↓/PgUp/PgDn)
   wheel over an overlay     scroll ? help, E the event log or i the
