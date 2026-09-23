@@ -28,7 +28,7 @@ func task017EnvTestModel(t *testing.T) Model {
 			"BETA_VAR":  "beta-value",
 		},
 	}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.envEditing = true
 	m.envCursor = 0
 	return m
@@ -47,7 +47,7 @@ func task017ManyEnvKeysModel(t *testing.T) Model {
 		env[task017EnvKeyName(i)] = "value"
 	}
 	m.sessions = []store.Session{{ID: "s1", Name: "overflow session", Env: env}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.envEditing = true
 	m.envCursor = 0
 	return m

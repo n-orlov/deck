@@ -107,7 +107,7 @@ func TestDetailViewStaysWithinFrameBudgetAt80x24(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.width, model.height = 80, 24
 	model.sessions = []store.Session{heightBoundTestSession()}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 	view := model.View()
 	if n := countViewLines(view); n > 24 {
@@ -215,7 +215,7 @@ func TestDetailViewScrollReachesEveryLineAndFieldsScrollTogether(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.width, model.height = 80, 24
 	model.sessions = []store.Session{session}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 
 	first := model.View()

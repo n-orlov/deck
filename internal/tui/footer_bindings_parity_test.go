@@ -164,7 +164,7 @@ func newFooterParityRow(session store.Session) Model {
 	if session.ID != "" {
 		m.sessions = []store.Session{session}
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m
 }
 

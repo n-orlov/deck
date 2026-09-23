@@ -47,7 +47,7 @@ func newModelWithSessionAndRegistry(t *testing.T, registry *agent.Registry, sess
 		profileSwitch, resumeMode, nil, registry,
 	)
 	m.sessions = []store.Session{session}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m
 }
 

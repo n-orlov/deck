@@ -60,7 +60,7 @@ func TestCapturedPaneSideBySideKeepsOwnColourFrameCarriesDeckBackground(t *testi
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 100, 30
 	m.sessions = []store.Session{{ID: "sess-1", Name: "coloured-session", Agent: "shell", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.previewLive = true
 	m.previewSessionID = "sess-1"
 
@@ -147,7 +147,7 @@ func TestCapturedPaneStackedKeepsOwnColourFrameCarriesDeckBackground(t *testing.
 	m.width, m.height = 60, 30
 	m.layoutMode = LayoutStacked
 	m.sessions = []store.Session{{ID: "sess-1", Name: "coloured-session", Agent: "shell", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.previewLive = true
 	m.previewSessionID = "sess-1"
 

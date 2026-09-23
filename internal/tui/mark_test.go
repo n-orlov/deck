@@ -25,10 +25,10 @@ func TestMarkTogglesBySessionIDAndSurvivesReorderAndRegroup(t *testing.T) {
 		{ID: "s3", Name: "gamma", Status: "running", CWD: "/tmp/work-a"},
 	}
 
-	model.selected = 0
+	model.selected = rowCursor(0)
 	got, _ := model.Update(key("m"))
 	model = got.(Model)
-	model.selected = 2
+	model.selected = rowCursor(2)
 	got, _ = model.Update(key("m"))
 	model = got.(Model)
 
@@ -37,13 +37,13 @@ func TestMarkTogglesBySessionIDAndSurvivesReorderAndRegroup(t *testing.T) {
 	}
 
 	// Toggling s1 again clears it -- m is a plain toggle, not "add only".
-	model.selected = 0
+	model.selected = rowCursor(0)
 	got, _ = model.Update(key("m"))
 	model = got.(Model)
 	if model.marked["s1"] {
 		t.Fatal("a second m on the same row did not clear its mark")
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	got, _ = model.Update(key("m"))
 	model = got.(Model)
 	if !model.marked["s1"] {
@@ -70,7 +70,7 @@ func TestMarkTogglesBySessionIDAndSurvivesReorderAndRegroup(t *testing.T) {
 func TestEscClearsMarkSet(t *testing.T) {
 	model := NewWithShellCreator(nil, config.Settings{}, "", nil)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("m"))
 	model = got.(Model)
@@ -110,7 +110,7 @@ func TestBulkKillActsOnMarkedSetSkipsAlreadyStoppedAndOneUndoRestoresTheBatch(t 
 		{ID: "s3", Name: "gamma", Status: "stopped"},
 	}
 	for _, idx := range []int{0, 1, 2} {
-		model.selected = idx
+		model.selected = rowCursor(idx)
 		got, _ := model.Update(key("m"))
 		model = got.(Model)
 	}
@@ -178,7 +178,7 @@ func TestBulkDeleteOpensConfirmForMarkedSetAndOneUndoRestoresTheBatch(t *testing
 		{ID: "s2", Name: "beta", Status: "stopped"},
 	}
 	for _, idx := range []int{0, 1} {
-		model.selected = idx
+		model.selected = rowCursor(idx)
 		got, _ := model.Update(key("m"))
 		model = got.(Model)
 	}
@@ -267,7 +267,7 @@ func TestBulkDeleteInvokesDeleterOncePerMarkedSessionWithItsOwnRow(t *testing.T)
 		{ID: "s2", Name: "beta", Status: "stopped", CWD: "/tmp/work-b"},
 	}
 	for _, idx := range []int{0, 1} {
-		model.selected = idx
+		model.selected = rowCursor(idx)
 		got, _ := model.Update(key("m"))
 		model = got.(Model)
 	}

@@ -128,7 +128,7 @@ const launchInputsVerbatimNote = "Pre-launch and Post-destroy are shown verbatim
 // measure (mirroring createBody's own role), so a colour token
 // styledLaunchInputsBody adds can never move where a page boundary falls.
 func (m Model) launchInputsBody() string {
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "Launch inputs for %s\n\n", session.Name)
 	for field, row := range m.launchInputsFieldRows() {
@@ -216,7 +216,7 @@ func (m Model) styledLaunchInputsBody() string {
 		}
 	}
 
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	colorWhole(theme.Title, fmt.Sprintf("Launch inputs for %s", session.Name))
 	out = append(out, "")
 	for field, row := range m.launchInputsFieldRows() {
@@ -343,7 +343,7 @@ func (m *Model) submitLaunchInputs() tea.Cmd {
 	if len(m.sessions) == 0 {
 		return nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	sessionID := session.ID
 	preLaunch, postDestroy, loginShell := m.launchInputsPreLaunch, m.launchInputsPostDestroy, m.launchInputsLoginShell
 	setter := m.launchInputsSetter

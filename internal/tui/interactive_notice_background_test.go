@@ -105,7 +105,7 @@ func newInteractiveNoticeModel(t *testing.T, bt *theme.Theme, stacked bool) (Mod
 	newQuietSelectionPane(t, socket, target, 80, 24)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-" + slug, Name: slug, Slug: slug, Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)

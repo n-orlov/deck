@@ -32,12 +32,12 @@ func TestCoalescedKeyMsgDispatchesNavigationalThenDestructiveRune(t *testing.T) 
 		{ID: "s1", Name: "alpha", Status: "running"},
 		{ID: "s2", Name: "beta", Status: "running"},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, cmd := model.Update(key("jx"))
 	model = got.(Model)
 
-	if model.selected != 1 {
+	if model.selected != rowCursor(1) {
 		t.Fatalf("selected = %d after coalesced \"jx\", want 1 (the 'j' half moved nothing)", model.selected)
 	}
 	if cmd == nil {
@@ -69,7 +69,7 @@ func TestCoalescedKeyMsgDispatchesDDChordAsTwoSeparateDeletes(t *testing.T) {
 	model.sessions = []store.Session{
 		{ID: "s1", Name: "alpha", Status: "stopped"},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("dd"))
 	model = got.(Model)
@@ -93,11 +93,11 @@ func TestCoalescedKeyMsgSinglePressUnaffected(t *testing.T) {
 		{ID: "s1", Name: "alpha", Status: "running"},
 		{ID: "s2", Name: "beta", Status: "running"},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("j"))
 	model = got.(Model)
-	if model.selected != 1 {
+	if model.selected != rowCursor(1) {
 		t.Fatalf("a single 'j' moved selected to %d, want 1", model.selected)
 	}
 }

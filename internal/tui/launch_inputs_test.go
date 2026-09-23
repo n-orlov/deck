@@ -61,7 +61,7 @@ func launchInputsTestModel(t *testing.T, db *store.Store, id string) Model {
 		},
 	)
 	m.sessions = []store.Session{session}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	got, _ := m.Update(key("i"))
 	m = got.(Model)
 	got, _ = m.Update(key("l"))

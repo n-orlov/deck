@@ -81,7 +81,7 @@ func attachedClientRefusalMessage(t *testing.T) string {
 	client := tmux.Client{Socket: socket}
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-fname-1", Name: "fnameattached", Slug: "fnameattached", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	windowTarget, err := tmux.SessionName("fnameattached")
 	if err != nil {
@@ -115,7 +115,7 @@ func liveOwnershipRefusalMessage(t *testing.T) string {
 	client := tmux.Client{Socket: socket}
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-fname-2", Name: "fnameowned", Slug: "fnameowned", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	windowTarget, err := tmux.SessionName("fnameowned")
 	if err != nil {
@@ -144,7 +144,7 @@ func floorRefusalMessage(t *testing.T) string {
 	m := New(nil, config.Settings{}, "")
 	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-106"})
 	m.sessions = []store.Session{{ID: "s1", Name: "squeezed", Agent: "shell", Status: "running", Slug: "squeezed"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.width, m.height = 80, 9
 
 	if _, height := m.previewContentSize(); height >= interactiveMinInnerRows {
@@ -169,7 +169,7 @@ func noWidthRefusalMessage(t *testing.T) string {
 	m := New(nil, config.Settings{}, "")
 	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-106-width"})
 	m.sessions = []store.Session{{ID: "s1", Name: "narrow", Agent: "shell", Status: "running", Slug: "narrow"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.width, m.height = 3, 30
 
 	width, _ := m.previewContentSize()

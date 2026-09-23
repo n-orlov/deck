@@ -102,6 +102,81 @@ func sessionGroupLabel(session store.Session) string {
 	return "default"
 }
 
+// sidebarCursorKind distinguishes the two kinds of visual stop the
+// sidebar cursor (Model.selected) can rest on (task 012/D.1, R137): a
+// session row, or a group header. Headers became stops in their own
+// right this task -- up/down/PgUp/PgDn/g/G all now step onto one, not
+// just past it -- so "the selected session" is no longer a safe
+// assumption anywhere that reads the cursor; see sidebarCursor below.
+type sidebarCursorKind int
+
+const (
+	cursorRow sidebarCursorKind = iota
+	cursorHeader
+)
+
+// sidebarCursor is the sidebar cursor's own type (Model.selected):
+// deliberately NOT a bare int. SessionIndex below is the only way to read
+// "which session the cursor names", and it reports ok=false on a header
+// cursor -- there is no bare integer field left on this type for a caller
+// to read around that check, so a header position can never be silently
+// misread as session index 0 (or whatever an int field's zero value would
+// otherwise carry). Symmetrically, GroupID is the only way to read "which
+// header", ok=false on a row cursor.
+//
+// The zero value is rowCursor(0): kind defaults to cursorRow and index to
+// 0, so a freshly zero-valued Model (every test fixture that never sets
+// Model.selected explicitly) keeps behaving exactly as it did when
+// Model.selected was a bare `int` defaulting to 0.
+type sidebarCursor struct {
+	kind    sidebarCursorKind
+	index   int   // valid m.sessions index, only when kind == cursorRow
+	groupID int64 // valid durable group id, only when kind == cursorHeader
+}
+
+// rowCursor builds a cursor resting on the session at m.sessions[index].
+func rowCursor(index int) sidebarCursor {
+	return sidebarCursor{kind: cursorRow, index: index}
+}
+
+// headerCursor builds a cursor resting on one group's header, keyed by
+// its durable group id -- 0 is the implicit default group's sentinel,
+// exactly like sessionGroupID's own sentinel (no real groups.id row can
+// ever be 0, since SQLite rowids start at 1). No header cursor is ever
+// built for a persisted-but-empty group while a filter is active:
+// groupSessions itself already skips seeding one (cure-01-02's own
+// comment above, "deliberately skipped while a filter query is in
+// force"), and every header cursor this file builds comes from walking
+// groupSessions' own output, never from m.allGroups directly.
+func headerCursor(groupID int64) sidebarCursor {
+	return sidebarCursor{kind: cursorHeader, groupID: groupID}
+}
+
+// IsHeader/IsRow report which kind of stop c is.
+func (c sidebarCursor) IsHeader() bool { return c.kind == cursorHeader }
+func (c sidebarCursor) IsRow() bool    { return c.kind == cursorRow }
+
+// SessionIndex resolves c's m.sessions index. ok is false when c is a
+// header cursor: there is deliberately no other way to read a session
+// index out of a sidebarCursor, so every caller that needs one is forced
+// to decide, at the call site, what a header cursor means for it (usually
+// "there is no selected session right now").
+func (c sidebarCursor) SessionIndex() (int, bool) {
+	if c.kind != cursorRow {
+		return 0, false
+	}
+	return c.index, true
+}
+
+// GroupID resolves c's header group id. ok is false when c is a row
+// cursor.
+func (c sidebarCursor) GroupID() (int64, bool) {
+	if c.kind != cursorHeader {
+		return 0, false
+	}
+	return c.groupID, true
+}
+
 // indexedSession pairs a session with its index into m.sessions, so a
 // group can be rendered (and, once selected, resolved back to an index)
 // without re-scanning m.sessions to find it.
@@ -257,92 +332,141 @@ func (m Model) isSessionVisible(i int) bool {
 	return !m.isGroupCollapsed(sessionGroupID(m.sessions[i]))
 }
 
-// visualOrder returns every m.sessions index in the exact order the
-// sidebar paints them: groupSessions()'s workspace buckets, flattened,
-// ignoring collapse state entirely. This is the one place index order is
-// reconciled with paint order (operator-reported defect, 002-steering.md,
-// found on 786dfde): groupSessions() appends a later session into an
-// EARLIER group when its workspace was already seen, so painted order and
-// m.sessions order only coincide when every workspace's sessions happen to
-// be adjacent. Every navigation primitive below resolves through this
-// list (or visibleSessionIndices, its collapse-filtered view) rather than
-// stepping m.sessions by +1/-1 directly, so one press always moves exactly
-// one visual row. This does not reorder m.sessions itself (that stays the
-// attention sort's job, SPEC.md:876) and does not touch groupSessions'
-// own bucketing (SPEC requirement 30).
-func (m Model) visualOrder() []int {
-	var order []int
+// isStopVisible is isSessionVisible's counterpart for a whole visual stop
+// (task 012/D.1): a header stop is never hidden by its OWN collapse state
+// (collapsing a group hides its ROWS, not its header -- there would be no
+// way to reach `c`/click to expand it again otherwise), so this is true
+// for every header cursor unconditionally, and defers to isSessionVisible
+// for a row cursor.
+func (m Model) isStopVisible(c sidebarCursor) bool {
+	if c.IsHeader() {
+		return true
+	}
+	idx, ok := c.SessionIndex()
+	return ok && m.isSessionVisible(idx)
+}
+
+// cursorGroupID resolves the durable group id the CURRENT cursor names --
+// the group a row cursor's session belongs to (sessionGroupID), or a
+// header cursor's own id directly -- for `c`'s collapse toggle (task
+// 012/D.1: `c` now also works from a header cursor, not only from one of
+// its member rows). ok is false only when the cursor is a row whose
+// session index has drifted out of m.sessions' current bounds.
+func (m Model) cursorGroupID() (int64, bool) {
+	if idx, ok := m.selected.SessionIndex(); ok {
+		if idx < 0 || idx >= len(m.sessions) {
+			return 0, false
+		}
+		return sessionGroupID(m.sessions[idx]), true
+	}
+	if gid, ok := m.selected.GroupID(); ok {
+		return gid, true
+	}
+	return 0, false
+}
+
+// visualOrder returns every visual STOP -- one header cursor per
+// groupSessions() bucket plus one row cursor per session in it -- in the
+// exact order the sidebar paints them, ignoring collapse state entirely
+// (task 012/D.1: headers and rows are both stops now, so this walks
+// groupSessions()'s buckets themselves rather than flattening straight to
+// session indices the way it did before headers were navigable). This is
+// the one place stop order is reconciled with paint order (operator-
+// reported defect, 002-steering.md, found on 786dfde): groupSessions()
+// appends a later session into an EARLIER group when its workspace was
+// already seen, so painted order and m.sessions order only coincide when
+// every workspace's sessions happen to be adjacent. Every navigation
+// primitive below resolves through this list (or visibleSessionIndices,
+// its visibility-filtered view) rather than stepping m.sessions by +1/-1
+// directly, so one press always moves exactly one visual stop. This does
+// not reorder m.sessions itself (that stays the attention sort's job,
+// SPEC.md:876) and does not touch groupSessions' own bucketing (SPEC
+// requirement 30). A caller that only ever wants session rows (attention
+// jump, the mark set) filters this list for IsRow()/SessionIndex() itself
+// rather than this function growing a second, row-only sibling.
+func (m Model) visualOrder() []sidebarCursor {
+	var order []sidebarCursor
 	for _, group := range m.groupSessions() {
+		order = append(order, headerCursor(group.GroupID))
 		for _, is := range group.Sessions {
-			order = append(order, is.Index)
+			order = append(order, rowCursor(is.Index))
 		}
 	}
 	return order
 }
 
-// visibleSessionIndices is visualOrder filtered to the sessions actually
-// shown right now (i.e. not hidden by a collapsed workspace group).
-// Paging (sidebarRowsPerPage) and any future "how many rows can I move"
-// primitive should walk this list, since a collapsed group's hidden rows
-// must not count as a step.
-func (m Model) visibleSessionIndices() []int {
-	var out []int
-	for _, idx := range m.visualOrder() {
-		if m.isSessionVisible(idx) {
-			out = append(out, idx)
+// visibleSessionIndices is visualOrder filtered to the stops actually
+// shown right now (i.e. a row not hidden by a collapsed group; every
+// header, since a header is never itself hidden by its own collapse).
+// Paging (sidebarRowsPerPage) and g/G walk this list, since a collapsed
+// group's hidden rows must not count as a step -- its still-visible
+// header does.
+func (m Model) visibleSessionIndices() []sidebarCursor {
+	var out []sidebarCursor
+	for _, c := range m.visualOrder() {
+		if m.isStopVisible(c) {
+			out = append(out, c)
 		}
 	}
 	return out
 }
 
-// nearestVisibleSelection returns the closest visible session index to
-// from IN VISUAL ORDER, searching forward first (so expanding/collapsing
-// near the top of the list keeps selection moving in the direction of
-// travel) and then backward, or 0 when no session is visible (an empty
-// list is handled by every caller already, since m.selected is
-// meaningless there).
-func (m Model) nearestVisibleSelection(from int) int {
+// nearestVisibleSelection returns the closest visible stop to from IN
+// VISUAL ORDER, searching forward first (so expanding/collapsing near the
+// top of the list keeps selection moving in the direction of travel) and
+// then backward, or rowCursor(0) when nothing is visible (an empty list
+// is handled by every caller already, since m.selected is meaningless
+// there). from's own session index (if it is a row cursor) is clamped
+// into m.sessions' current bounds first, exactly as the bare int version
+// of this function used to clamp from itself -- a header cursor never
+// needs clamping, since a group id does not go stale the way a session
+// index does when m.sessions shrinks.
+func (m Model) nearestVisibleSelection(from sidebarCursor) sidebarCursor {
 	if len(m.sessions) == 0 {
-		return 0
+		return rowCursor(0)
 	}
-	if from < 0 {
-		from = 0
-	}
-	if from > len(m.sessions)-1 {
-		from = len(m.sessions) - 1
+	if idx, ok := from.SessionIndex(); ok {
+		if idx < 0 {
+			idx = 0
+		}
+		if idx > len(m.sessions)-1 {
+			idx = len(m.sessions) - 1
+		}
+		from = rowCursor(idx)
 	}
 	order := m.visualOrder()
 	pos := 0
-	for i, idx := range order {
-		if idx == from {
+	for i, c := range order {
+		if c == from {
 			pos = i
 			break
 		}
 	}
 	for i := pos; i < len(order); i++ {
-		if m.isSessionVisible(order[i]) {
+		if m.isStopVisible(order[i]) {
 			return order[i]
 		}
 	}
 	for i := pos - 1; i >= 0; i-- {
-		if m.isSessionVisible(order[i]) {
+		if m.isStopVisible(order[i]) {
 			return order[i]
 		}
 	}
-	return 0
+	return rowCursor(0)
 }
 
-// nextVisibleSelection and prevVisibleSelection are ↑/↓'s SPEC requirement
-// 30 "remains navigable" behaviour: stepping past a collapsed group's
-// hidden rows in one keypress rather than requiring one press per hidden
-// row (which would silently do nothing on each of those presses). Both
-// step through visualOrder (painted order), never m.sessions index order
-// directly, so one press always moves exactly one visual row.
-func (m Model) nextVisibleSelection(from int) (int, bool) {
+// nextVisibleSelection and prevVisibleSelection are up/down's SPEC
+// requirement 30 "remains navigable" behaviour: stepping past a collapsed
+// group's hidden rows in one keypress rather than requiring one press per
+// hidden row (which would silently do nothing on each of those presses),
+// and (task 012/D.1) landing on a header exactly like any other stop.
+// Both step through visualOrder (painted order), never m.sessions index
+// order directly, so one press always moves exactly one visual stop.
+func (m Model) nextVisibleSelection(from sidebarCursor) (sidebarCursor, bool) {
 	order := m.visualOrder()
 	pos := -1
-	for i, idx := range order {
-		if idx == from {
+	for i, c := range order {
+		if c == from {
 			pos = i
 			break
 		}
@@ -351,18 +475,18 @@ func (m Model) nextVisibleSelection(from int) (int, bool) {
 		return from, false
 	}
 	for i := pos + 1; i < len(order); i++ {
-		if m.isSessionVisible(order[i]) {
+		if m.isStopVisible(order[i]) {
 			return order[i], true
 		}
 	}
 	return from, false
 }
 
-func (m Model) prevVisibleSelection(from int) (int, bool) {
+func (m Model) prevVisibleSelection(from sidebarCursor) (sidebarCursor, bool) {
 	order := m.visualOrder()
 	pos := -1
-	for i, idx := range order {
-		if idx == from {
+	for i, c := range order {
+		if c == from {
 			pos = i
 			break
 		}
@@ -371,7 +495,7 @@ func (m Model) prevVisibleSelection(from int) (int, bool) {
 		return from, false
 	}
 	for i := pos - 1; i >= 0; i-- {
-		if m.isSessionVisible(order[i]) {
+		if m.isStopVisible(order[i]) {
 			return order[i], true
 		}
 	}
@@ -379,28 +503,28 @@ func (m Model) prevVisibleSelection(from int) (int, bool) {
 }
 
 // pageSelection is PgUp/PgDn's own step (SPEC requirement 19): moves delta
-// VISUAL rows (positive = down, negative = up) from m.selected's current
-// visual position among the presently visible rows, clamping at either
+// VISUAL stops (positive = down, negative = up) from m.selected's current
+// visual position among the presently visible stops, clamping at either
 // end rather than wrapping. Like nextVisibleSelection/prevVisibleSelection,
 // this walks visibleSessionIndices (painted order) rather than doing
-// index arithmetic against m.sessions, which is the same defect ↑/↓ had
-// (002-steering.md). Returns 0 when nothing is visible.
-func (m Model) pageSelection(delta int) int {
+// index arithmetic against m.sessions, which is the same defect up/down
+// had (002-steering.md). Returns rowCursor(0) when nothing is visible.
+func (m Model) pageSelection(delta int) sidebarCursor {
 	visible := m.visibleSessionIndices()
 	if len(visible) == 0 {
-		return 0
+		return rowCursor(0)
 	}
 	pos := -1
-	for i, idx := range visible {
-		if idx == m.selected {
+	for i, c := range visible {
+		if c == m.selected {
 			pos = i
 			break
 		}
 	}
 	if pos == -1 {
 		near := m.nearestVisibleSelection(m.selected)
-		for i, idx := range visible {
-			if idx == near {
+		for i, c := range visible {
+			if c == near {
 				pos = i
 				break
 			}

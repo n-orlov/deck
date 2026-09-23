@@ -65,7 +65,7 @@ func TestForeignBoundaryResetClosesRealTmuxCaptureUnderNoColor(t *testing.T) {
 					m.layoutMode = LayoutStacked
 				}
 				m.sessions = []store.Session{{ID: "s", Name: "foreign", Slug: slug, Agent: "shell", Status: "running"}}
-				m.selected = 0
+				m.selected = rowCursor(0)
 				m.previewLive = true
 				m.previewSessionID = "s"
 				m.previewBytes = capture.Bytes

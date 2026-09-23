@@ -48,7 +48,7 @@ func TestStolenFromTeardownIssuesNoPipePaneDisarm(t *testing.T) {
 	}
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-stolenpipe-1", Name: "stolenpipe", Slug: "stolenpipe", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractiveBody(false)
 	got := next.(Model)

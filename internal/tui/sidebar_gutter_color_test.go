@@ -41,7 +41,7 @@ func sidebarGutterTestModel(t *testing.T, ascii bool) Model {
 	m.sessions = []store.Session{
 		{ID: "s1", Name: "gutx", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
-	m.selected = -1
+	m.selected = rowCursor(-1)
 	return m
 }
 
@@ -125,7 +125,7 @@ func TestSidebarGutterPlainRowPaintsNoBar(t *testing.T) {
 // bytes.
 func TestSidebarGutterSelectedRowIsAccentWithBackgroundArrow(t *testing.T) {
 	m := sidebarGutterTestModel(t, false)
-	m.selected = 0
+	m.selected = rowCursor(0)
 	accentHex := tokenHex(t, m, theme.Accent)
 	backgroundHex := tokenHex(t, m, theme.Background)
 
@@ -198,7 +198,7 @@ func TestSidebarGutterMarkedAndSelectedRowStaysAccent(t *testing.T) {
 	for _, mode := range gutterGlyphModes {
 		t.Run(mode.name, func(t *testing.T) {
 			m := sidebarGutterTestModel(t, mode.ascii)
-			m.selected = 0
+			m.selected = rowCursor(0)
 			m.marked = map[string]bool{"s1": true}
 			accentHex := tokenHex(t, m, theme.Accent)
 			badgeHex := tokenHex(t, m, theme.Badge)

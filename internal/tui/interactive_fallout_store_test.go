@@ -92,7 +92,7 @@ func newFalloutStoreModel(t *testing.T, client tmux.Client, slug, sessionID stri
 	}
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: sessionID, Name: slug, Slug: slug, Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m, db
 }
 
@@ -183,7 +183,7 @@ func TestPreviewTickStolenFalloutRecordsNothingDurable(t *testing.T) {
 	winner.width, winner.height = 120, 40
 	winner.tmuxClient = client
 	winner.sessions = []store.Session{{ID: "sess-falloutstolen-2", Name: "falloutstolen", Slug: "falloutstolen", Status: "waiting"}}
-	winner.selected = 0
+	winner.selected = rowCursor(0)
 	if winner.prepareAttach != nil {
 		t.Fatal("test assumption violated: the stealing model has a prepareAttach, so its own entry could write durable state")
 	}

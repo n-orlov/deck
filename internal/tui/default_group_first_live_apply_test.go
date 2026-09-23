@@ -69,7 +69,7 @@ func TestSettingsSaveReordersGroupsLivePreservingSelection(t *testing.T) {
 	if idx < 0 {
 		t.Fatalf("setup: %s not found in m.sessions", targetID)
 	}
-	model.selected = idx
+	model.selected = rowCursor(idx)
 
 	model.settingsEdits = settingsEditsFromSettings(model.settings)
 	model.settingsEdits.DefaultGroupFirst = true
@@ -91,8 +91,8 @@ func TestSettingsSaveReordersGroupsLivePreservingSelection(t *testing.T) {
 		t.Fatal("rendered sidebar header order unchanged after a live default_group_first save")
 	}
 
-	if model.sessions[model.selected].ID != targetID {
-		t.Fatalf("selected session = %q after live reorder, want %q -- selection followed the OLD index, not the session id", model.sessions[model.selected].ID, targetID)
+	if testSelectedSession(model).ID != targetID {
+		t.Fatalf("selected session = %q after live reorder, want %q -- selection followed the OLD index, not the session id", testSelectedSession(model).ID, targetID)
 	}
 }
 

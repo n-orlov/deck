@@ -39,7 +39,7 @@ func TestStolenFromExitInteractiveTouchesNeitherOptionNorGeometry(t *testing.T) 
 		}
 		m.tmuxClient = client
 		m.sessions = []store.Session{{ID: "sess-stolengate-1", Name: "stolengate", Slug: "stolengate", Status: "waiting"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		return m
 	}
 

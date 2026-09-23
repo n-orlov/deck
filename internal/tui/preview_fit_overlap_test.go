@@ -34,7 +34,7 @@ func previewFitModel(t *testing.T) Model {
 		{ID: "s1", Slug: "one", Name: "one", Status: "running"},
 		{ID: "s2", Slug: "two", Name: "two", Status: "running"},
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.width, m.height = 100, 30
 	// Never dialled: no test here runs the fit closure, so this only has to
 	// be non-empty to pass previewFit's "is there a tmux client wired" guard.
@@ -120,7 +120,7 @@ func TestPreviewFitResumesAfterItsDoneLands(t *testing.T) {
 	}
 
 	// The selection settles somewhere else, so this tick owes a real fit.
-	m.selected = 1
+	m.selected = rowCursor(1)
 	updated, cmd = m.Update(previewTick(time.Now()))
 	m = updated.(Model)
 	if got := previewTickCmds(t, cmd); len(got) != 2 {
@@ -146,7 +146,7 @@ func TestPreviewFitDoneForUnselectedSessionClearsTheMarker(t *testing.T) {
 	}
 
 	// Navigate away while s1's fit is still running, then let it report.
-	m.selected = 1
+	m.selected = rowCursor(1)
 	updated, _ = m.Update(previewFitDone{sessionID: "s1"})
 	m = updated.(Model)
 	if m.previewFitInFlight != "" {

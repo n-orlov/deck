@@ -54,7 +54,7 @@ func TestSessionsLoadedTracksSelectionByIDAcrossResort(t *testing.T) {
 	if model.sessions[1].ID != "a" {
 		t.Fatalf("setup: sessions[1] = %q, want %q", model.sessions[1].ID, "a")
 	}
-	model.selected = 1
+	model.selected = rowCursor(1)
 
 	// A reload where "a" is now waiting (and so sorts to the front) and a
 	// brand new session "c" is running must keep "a" selected, even though
@@ -66,7 +66,7 @@ func TestSessionsLoadedTracksSelectionByIDAcrossResort(t *testing.T) {
 	}
 	updated, _ = model.Update(sessionsLoaded{sessions: second})
 	model = updated.(Model)
-	if got := model.sessions[model.selected].ID; got != "a" {
+	if got := testSelectedSession(model).ID; got != "a" {
 		t.Fatalf("selected session after resort = %q, want %q (selected index now %d)", got, "a", model.selected)
 	}
 }
@@ -84,16 +84,16 @@ func TestSessionsLoadedClampsWhenSelectedSessionVanishes(t *testing.T) {
 	updated, _ := model.Update(sessionsLoaded{sessions: first})
 	model = updated.(Model)
 	// [b, a]; select "a" at index 1.
-	model.selected = 1
+	model.selected = rowCursor(1)
 
 	second := []store.Session{
 		{ID: "b", Status: "waiting", StatusAt: 100},
 	}
 	updated, _ = model.Update(sessionsLoaded{sessions: second})
 	model = updated.(Model)
-	if model.selected < 0 || model.selected >= len(model.sessions) {
-		t.Fatalf("selected = %d out of bounds for %d sessions", model.selected, len(model.sessions))
+	if idx, ok := model.selected.SessionIndex(); !ok || idx < 0 || idx >= len(model.sessions) {
+		t.Fatalf("selected = %+v out of bounds for %d sessions", model.selected, len(model.sessions))
 	}
 	// Access must not panic.
-	_ = model.sessions[model.selected]
+	_ = testSelectedSession(model)
 }

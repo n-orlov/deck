@@ -22,7 +22,7 @@ func task021RenameModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", Slug: "alpha"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.renaming = true
 	m.renameValue = "alpha"
 	m.renamePrefilled = true

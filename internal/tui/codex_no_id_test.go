@@ -41,7 +41,7 @@ func buildCodexNoIDModel(session store.Session) (m Model, resumeCalled, restartC
 		return store.Session{}, service.ResumeStarted, nil
 	}
 	m.sessions = []store.Session{session}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m, resumeCalled, restartCalled
 }
 
@@ -135,7 +135,7 @@ func TestDetailDialogShowsMissingCodexConversationIDHonestly(t *testing.T) {
 	m.agents = codexRegistry()
 	session := store.Session{ID: "s1", Name: "codex-no-id", Agent: "codex", Status: "running", ConversationID: ""}
 	m.sessions = []store.Session{session}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	body := m.detailBody()
 	if !strings.Contains(body, "Conversation id:") {
@@ -147,7 +147,7 @@ func TestDetailDialogShowsMissingCodexConversationIDHonestly(t *testing.T) {
 
 	shellSession := store.Session{ID: "s2", Name: "a-shell", Agent: "shell", Status: "running", ConversationID: ""}
 	m.sessions = []store.Session{shellSession}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	shellBody := m.detailBody()
 	if strings.Contains(shellBody, "Conversation id:") {
 		t.Fatalf("detail body invented a Conversation id field for shell, which has none:\n%s", shellBody)
@@ -171,7 +171,7 @@ func TestStatusSourceQualityReadsSampledForAnIDlessCodexRowWithNoPerKindBadge(t 
 		ConversationID: "", StatusSource: "probe", StatusAt: 1,
 	}
 	m.sessions = []store.Session{session}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	body := m.detailBody()
 	if !strings.Contains(body, "Verdict source:     probe (sampled)") {

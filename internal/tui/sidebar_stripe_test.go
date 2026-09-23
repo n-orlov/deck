@@ -28,7 +28,7 @@ func sidebarStripeTestModel(t *testing.T) Model {
 		{ID: "s2", Name: "two", Agent: "shell", Status: "running", CreatedAt: now},
 		{ID: "s3", Name: "three", Agent: "shell", Status: "running", CreatedAt: now},
 	}
-	m.selected = -1
+	m.selected = rowCursor(-1)
 	return m
 }
 
@@ -111,7 +111,7 @@ func TestSidebarStripeSelectionWinsRegardlessOfPhase(t *testing.T) {
 	}
 
 	// Select session index 1 ("two"), whichever stripe phase it lands on.
-	m.selected = 1
+	m.selected = rowCursor(1)
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 	row := findRowContaining(t, term, "two")
@@ -136,7 +136,7 @@ func TestSidebarStripeAbsentUnderNoColor(t *testing.T) {
 		{ID: "s2", Name: "two", Agent: "shell", Status: "running", CreatedAt: 1000},
 		{ID: "s3", Name: "three", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
-	m.selected = -1
+	m.selected = rowCursor(-1)
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
@@ -163,7 +163,7 @@ func TestSidebarStripeHeaderNeverParticipates(t *testing.T) {
 		{ID: "s2", Name: "two", Agent: "shell", Status: "running", GroupName: "wsA", CreatedAt: 1000},
 		{ID: "s3", Name: "three", Agent: "shell", Status: "running", GroupName: "wsB", CreatedAt: 1000},
 	}
-	m.selected = -1
+	m.selected = rowCursor(-1)
 	surfaceHex := tokenHex(t, m, theme.Surface)
 	backgroundHex := tokenHex(t, m, theme.Background)
 

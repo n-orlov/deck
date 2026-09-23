@@ -30,7 +30,7 @@ func task020ProfileModel(t *testing.T) Model {
 	)
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "safe"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	got, _ := m.Update(key("P"))
 	return got.(Model)
 }
@@ -47,7 +47,7 @@ func task020PinModel(t *testing.T) Model {
 	)
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: "auto"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	got, _ := m.Update(key("p"))
 	return got.(Model)
 }
@@ -59,7 +59,7 @@ func task020RestartChoiceModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.restartChoosing = true
 	m.restartChoiceValue = "restart"
 	m.restartChoiceNote = ""

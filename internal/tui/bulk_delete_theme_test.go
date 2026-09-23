@@ -45,7 +45,7 @@ func task018BulkDeleteModel(t *testing.T, marks int) Model {
 		})
 		m.marked[id] = true
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.deleteConfirming = true
 	return m
 }

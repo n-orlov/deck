@@ -62,7 +62,7 @@ func TestFirstEntryWritesIsizeGeometryThenStealAdoptsWithoutRewrite(t *testing.T
 		}
 		m.tmuxClient = client
 		m.sessions = []store.Session{{ID: "sess-isize-1", Name: "isizefirstwrite", Slug: "isizefirstwrite", Status: "waiting"}}
-		m.selected = 0
+		m.selected = rowCursor(0)
 		return m
 	}
 

@@ -70,7 +70,7 @@ func TestInteractiveFooterCueReportsTheClampedScrolledBackPosition(t *testing.T)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-footercue-1", Name: "footercue", Slug: "footercue", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)
@@ -133,7 +133,7 @@ func TestInteractiveFooterCueTopOfScrollbackWordingDiffersFromOrdinary(t *testin
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-footercuewords-1", Name: "footercuewords", Slug: "footercuewords", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)
@@ -186,7 +186,7 @@ func TestInteractiveFooterAtLiveBottomRendersNoCueAndMatchesPreChangeFooter(t *t
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-footercuezero-1", Name: "footercuezero", Slug: "footercuezero", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)

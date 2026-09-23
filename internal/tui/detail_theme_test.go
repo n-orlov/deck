@@ -29,7 +29,7 @@ func detailColorTestModel(t *testing.T) Model {
 		PermissionProfile: "safe",
 		ConversationID:    "conv-123",
 	}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.detail = true
 	return m
 }

@@ -41,7 +41,7 @@ func TestDetailViewShowsProfileAndDegradation(t *testing.T) {
 			PermissionProfileReason: `pi does not support permission profile "plan"; falling back to safe`,
 		},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 	view := model.View()
 	if !strings.Contains(view, "Permission profile: safe") {
@@ -57,7 +57,7 @@ func TestDetailViewShowsProfileAndDegradation(t *testing.T) {
 func TestDetailViewOmitsProfileForShell(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.sessions = []store.Session{{Name: "plain-shell", Agent: "shell", Status: "running", PermissionProfile: "safe"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 	view := model.View()
 	if !strings.Contains(view, "n/a") {
@@ -79,14 +79,14 @@ func TestDetailViewShowsCapturedPathAdvisoryWhenLoginShellSet(t *testing.T) {
 		{Name: "login-claude", Agent: "claude", Status: "starting", CapturedPath: "/usr/bin:/bin", LoginShell: true},
 		{Name: "plain-claude", Agent: "claude", Status: "starting", CapturedPath: "/usr/bin:/bin"},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.detail = true
 	view := model.View()
 	if !strings.Contains(view, "Captured PATH:") || !strings.Contains(view, "advisory") {
 		t.Fatalf("login_shell detail view missing advisory marking:\n%s", view)
 	}
 
-	model.selected = 1
+	model.selected = rowCursor(1)
 	view = model.View()
 	if strings.Contains(view, "Captured PATH:") {
 		t.Fatalf("plain agent detail view showed advisory marking it does not have:\n%s", view)

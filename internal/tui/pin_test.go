@@ -23,7 +23,7 @@ func TestPinDialogPersistsPinnedMode(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: "auto"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("p"))
 	model = got.(Model)
@@ -73,7 +73,7 @@ func TestPinDialogEscCancelsWithoutPersisting(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("p"))
 	model = got.(Model)
@@ -98,7 +98,7 @@ func TestPinDialogNotOfferedForShell(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "term", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("p"))
 	model = got.(Model)

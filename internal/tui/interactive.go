@@ -60,10 +60,10 @@ func (m Model) enterInteractive() (tea.Model, tea.Cmd) {
 // other refusal (the floor, the stopped-session check, no live pane, a
 // LIVE claim holder surviving the force claim itself) still applies.
 func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
-	if m.interactive || m.tmuxClient.Socket == "" || len(m.sessions) == 0 || m.selected < 0 || m.selected >= len(m.sessions) {
+	if m.interactive || m.tmuxClient.Socket == "" || len(m.sessions) == 0 || !m.hasSelectedSession() {
 		return m, nil
 	}
-	session := m.sessions[m.selected]
+	session, _ := m.selectedSession()
 	if !canReachPane(session) {
 		m.attachError = "Cannot enter interactive mode: " + stoppedSessionRefusalTail
 		return m, nil

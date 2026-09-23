@@ -129,36 +129,52 @@ func TestCollapsedGroupStaysNavigable(t *testing.T) {
 		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 	})
-	m.selected = 0 // "a1", inside "infra"
+	m.selected = rowCursor(0) // "a1", inside "infra"
 
+	// Task 012/D.1: collapsing "infra" hides a1/a2 but never infra's OWN
+	// header (a header is never hidden by its own group's collapse), so
+	// setGroupCollapsed's internal nearestVisibleSelection search forward
+	// from a1 now lands on service-a's header -- the very next visible
+	// STOP -- rather than skipping straight through to b1's row.
 	m.setGroupCollapsed(infraID, true)
-	if !m.isSessionVisible(m.selected) {
-		t.Fatalf("selection %d landed on a hidden row after collapsing its group", m.selected)
+	if !m.isStopVisible(m.selected) {
+		t.Fatalf("selection %+v landed on a hidden stop after collapsing its group", m.selected)
 	}
-	if m.sessions[m.selected].ID != "b1" {
-		t.Fatalf("selection after collapsing = %q, want the nearest visible session b1", m.sessions[m.selected].ID)
+	if want := headerCursor(serviceID); m.selected != want {
+		t.Fatalf("selection after collapsing = %+v, want %+v (service-a's header, the nearest visible stop forward)", m.selected, want)
 	}
 
 	// With "infra" still collapsed, re-select a1 directly (as if a mouse
 	// click on a hidden row were somehow issued) and prove ↑/↓ skip clean
 	// over the whole hidden group rather than stopping on it or doing
-	// nothing.
-	m.selected = 0
+	// nothing -- landing on service-a's header, one visual stop away.
+	m.selected = rowCursor(0)
 	next, ok := m.nextVisibleSelection(m.selected)
-	if !ok || m.sessions[next].ID != "b1" {
-		t.Fatalf("nextVisibleSelection from a hidden a1 = (%d, %v), want b1", next, ok)
+	if !ok || next != headerCursor(serviceID) {
+		t.Fatalf("nextVisibleSelection from a hidden a1 = (%+v, %v), want (%+v, true)", next, ok, headerCursor(serviceID))
 	}
-	if _, ok := m.prevVisibleSelection(0); ok {
-		t.Fatalf("prevVisibleSelection before any visible row should report none, got ok=true")
+	// prevVisibleSelection from a1 now lands on infra's OWN header --
+	// still visible despite infra's rows being hidden -- rather than
+	// reporting no predecessor at all.
+	prev, ok := m.prevVisibleSelection(rowCursor(0))
+	if !ok || prev != headerCursor(infraID) {
+		t.Fatalf("prevVisibleSelection(rowCursor(0)) = (%+v, %v), want (%+v, true) (infra's own header)", prev, ok, headerCursor(infraID))
 	}
 
-	m.selected = 2 // "b1", the only visible row
-	if _, ok := m.nextVisibleSelection(m.selected); ok {
-		t.Fatalf("nextVisibleSelection past the last visible row should report none")
+	m.selected = rowCursor(2) // "b1", second-to-last visual stop
+	// The implicit default group's own header (cure-01-02: always seeded
+	// while unfiltered, even with no default-group member in this
+	// fixture) sits right after b1, so nextVisibleSelection now reports
+	// it rather than "none".
+	next, ok = m.nextVisibleSelection(m.selected)
+	if !ok || next != headerCursor(0) {
+		t.Fatalf("nextVisibleSelection(rowCursor(2)) = (%+v, %v), want (%+v, true) (the default group's own header)", next, ok, headerCursor(0))
 	}
-	prev, ok := m.prevVisibleSelection(m.selected)
-	if ok {
-		t.Fatalf("prevVisibleSelection with only one visible row (itself excluded) should report none, got %d", prev)
+	// service-a's own header sits immediately before b1 in visual order
+	// and is never hidden, so this now reports it rather than "none".
+	prev, ok = m.prevVisibleSelection(m.selected)
+	if !ok || prev != headerCursor(serviceID) {
+		t.Fatalf("prevVisibleSelection(rowCursor(2)) = (%+v, %v), want (%+v, true) (service-a's own header)", prev, ok, headerCursor(serviceID))
 	}
 
 	m.setGroupCollapsed(infraID, false)
@@ -176,16 +192,21 @@ func TestCollapsedGroupStaysNavigable(t *testing.T) {
 // g/G for top/bottom navigation, which this key previously silently
 // shadowed.
 func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
-	// Single-workspace round trip: with nothing else to move selection to,
-	// setGroupCollapsed's own "fall back to 0" behaviour (internal/tui/
-	// group.go's nearestVisibleSelection) keeps m.selected pointing at the
-	// same row across both collapse and the following expand, so two "c"
-	// presses in a row toggle the same group closed then open again.
+	// Single-workspace round trip: unfiltered groupSessions() always seeds
+	// the implicit default group's own header too (cure-01-02, SPEC §11:
+	// "default is not a row... it always exists"), so collapsing infra --
+	// its only member row's group -- pushes selection off infra entirely,
+	// onto that empty default header (task 012/D.1's own
+	// nearestVisibleSelection, searching forward first). This re-selects
+	// infra's own header explicitly before the second "c" -- the operator
+	// action a real k/j press back onto infra would produce -- so the
+	// second press targets the SAME group instead of toggling the default
+	// group (which has no rows to hide) by accident.
 	infraID := int64(1)
 	one := groupTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
 	})
-	one.selected = 0
+	one.selected = rowCursor(0)
 
 	updated, _ := one.Update(key("c"))
 	one = updated.(Model)
@@ -193,6 +214,7 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 		t.Fatalf("c did not collapse the selected row's only group")
 	}
 
+	one.selected = headerCursor(infraID)
 	updated, _ = one.Update(key("c"))
 	one = updated.(Model)
 	if one.isGroupCollapsed(infraID) {
@@ -209,7 +231,7 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 	})
-	two.selected = 0 // "a1", inside "infra"
+	two.selected = rowCursor(0) // "a1", inside "infra"
 
 	updated, _ = two.Update(key("c"))
 	two = updated.(Model)
@@ -219,8 +241,8 @@ func TestGKeyTogglesOnlySelectedRowsGroup(t *testing.T) {
 	if two.isGroupCollapsed(serviceID) {
 		t.Fatalf("c collapsed a group other than the selected row's own")
 	}
-	if !two.isSessionVisible(two.selected) {
-		t.Fatalf("selection %d landed on a hidden row after c collapsed its group", two.selected)
+	if !two.isStopVisible(two.selected) {
+		t.Fatalf("selection %+v landed on a hidden stop after c collapsed its group", two.selected)
 	}
 }
 
@@ -233,7 +255,7 @@ func TestGKeyNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
 	m := groupTestModel([]store.Session{
 		{ID: "a1", Name: "a1", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
 	})
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	m.help = true
 	updated, _ := m.Update(key("c"))
@@ -257,9 +279,11 @@ func TestGKeyNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
 }
 
 // TestGGKeysJumpToFirstAndLastVisibleRow is task 119's SPEC.md:952 "g/G
-// top/bottom" keyboard binding: g selects the first visible row in visual
-// order, G the last, and both skip a collapsed group's hidden rows exactly
-// like a single ↑/↓ press would.
+// top/bottom" keyboard binding: g selects the first visible STOP in
+// visual order, G the last, and both skip a collapsed group's hidden
+// ROWS exactly like a single ↑/↓ press would -- but never skip a header,
+// which (task 012/D.1) is never itself hidden by its own group's
+// collapse.
 func TestGGKeysJumpToFirstAndLastVisibleRow(t *testing.T) {
 	infraID, serviceID := int64(1), int64(2)
 	m := groupTestModel([]store.Session{
@@ -267,35 +291,36 @@ func TestGGKeysJumpToFirstAndLastVisibleRow(t *testing.T) {
 		{ID: "a2", Name: "a2", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 	})
-	m.selected = 1
+	m.selected = rowCursor(1)
 
 	updated, _ := m.Update(key("g"))
 	m = updated.(Model)
-	if m.sessions[m.selected].ID != "a1" {
-		t.Fatalf("g did not select the first visible row, got %q", m.sessions[m.selected].ID)
+	if want := headerCursor(infraID); m.selected != want {
+		t.Fatalf("g did not select the first visible stop, got %+v, want %+v (infra's own header)", m.selected, want)
 	}
 
 	updated, _ = m.Update(key("G"))
 	m = updated.(Model)
-	if got := m.sessions[m.selected].ID; got != "a1" && got != "a2" && got != "b1" {
-		t.Fatalf("G selected an unexpected row %q", got)
-	}
 	// visualOrder groups by workspace; the last group's last row is the
-	// overall last visible row regardless of which workspace sorts last.
+	// overall last visible stop regardless of which workspace sorts last
+	// (a header always precedes its own rows, so the very last stop is
+	// always a row here).
 	order := m.visualOrder()
-	lastID := m.sessions[order[len(order)-1]].ID
-	if m.sessions[m.selected].ID != lastID {
-		t.Fatalf("G did not select the last visible row: got %q, want %q", m.sessions[m.selected].ID, lastID)
+	want := order[len(order)-1]
+	if m.selected != want {
+		t.Fatalf("G did not select the last visible stop: got %+v, want %+v", m.selected, want)
 	}
 
-	// Collapse the "infra" group: g must now skip straight to "b1", the
-	// first remaining visible row, not land on a hidden a1/a2.
-	m.selected = 2 // b1
+	// Collapse the "infra" group: g must still land on infra's own
+	// header -- the first visible stop -- never on a hidden a1/a2, and
+	// never skipped past straight to b1 either, since a header is never
+	// hidden by its own group's collapse.
+	m.selected = rowCursor(2) // b1
 	m.toggleGroupCollapse(infraID)
 	updated, _ = m.Update(key("g"))
 	m = updated.(Model)
-	if m.sessions[m.selected].ID != "b1" {
-		t.Fatalf("g with infra collapsed should land on the first visible row b1, got %q", m.sessions[m.selected].ID)
+	if want := headerCursor(infraID); m.selected != want {
+		t.Fatalf("g with infra collapsed should land on infra's own header (still visible), got %+v, want %+v", m.selected, want)
 	}
 
 	// No-ops: help/detail cover the sidebar, and no sessions means nothing

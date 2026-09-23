@@ -22,11 +22,13 @@ import (
 // Fixture: two real groups by explicit id -- "alpha" (id 1, two members)
 // and "bravo" (id 2, one member) -- plus one implicit default-group member
 // (no GroupID, GroupName ""). R129's alphabetical-with-default-last order
-// puts the visual order at [a1, a2, b1, d1] (indices 1,2,3,0 in m.sessions,
-// which is deliberately NOT already index order -- see
-// group_visual_order_test.go's own non-adjacency precedent). Collapsing
+// puts the visual order at [H(alpha), a1, a2, H(bravo), b1, H(default),
+// d1] (task 012/D.1: a header stop ahead of each bucket, rows at indices
+// 1,2,3,0 in m.sessions, which is deliberately NOT already index order --
+// see group_visual_order_test.go's own non-adjacency precedent). Collapsing
 // "alpha" (id 1) by id must hide a1/a2 from every primitive below while
-// leaving b1/d1 fully reachable.
+// leaving alpha's OWN header, b1, bravo's header, d1 and default's header
+// fully reachable (a header is never hidden by its own group's collapse).
 func TestNavigationPrimitivesRespectGroupIDKeyedCollapse(t *testing.T) {
 	alphaID, bravoID := int64(1), int64(2)
 	m := groupTestModel([]store.Session{
@@ -36,63 +38,71 @@ func TestNavigationPrimitivesRespectGroupIDKeyedCollapse(t *testing.T) {
 		{ID: "b1", Name: "b1", Status: "idle", GroupName: "bravo", GroupID: groupIDPtr(bravoID)}, // idx3
 	})
 
-	wantVisual := []int{1, 2, 3, 0}
-	if got := m.visualOrder(); !intsEqual(got, wantVisual) {
+	wantVisual := []sidebarCursor{
+		headerCursor(alphaID), rowCursor(1), rowCursor(2),
+		headerCursor(bravoID), rowCursor(3),
+		headerCursor(0), rowCursor(0),
+	}
+	if got := m.visualOrder(); !cursorsEqual(got, wantVisual) {
 		t.Fatalf("fixture sanity: visualOrder() = %v, want %v", got, wantVisual)
 	}
 
 	m.setGroupCollapsed(alphaID, true)
 
 	t.Run("visibleSessionIndices", func(t *testing.T) {
-		if got, want := m.visibleSessionIndices(), []int{3, 0}; !intsEqual(got, want) {
-			t.Fatalf("visibleSessionIndices() = %v, want %v (alpha's a1/a2 hidden by its id, not its name)", got, want)
+		want := []sidebarCursor{headerCursor(alphaID), headerCursor(bravoID), rowCursor(3), headerCursor(0), rowCursor(0)}
+		if got := m.visibleSessionIndices(); !cursorsEqual(got, want) {
+			t.Fatalf("visibleSessionIndices() = %v, want %v (alpha's a1/a2 hidden by its id, not its name; alpha's own header stays visible)", got, want)
 		}
 	})
 
 	t.Run("nearestVisibleSelection", func(t *testing.T) {
 		// From a1 (idx1), now hidden: forward search lands on the next
-		// visible row, b1 (idx3), never on the still-hidden a2 (idx2).
-		if got := m.nearestVisibleSelection(1); got != 3 {
-			t.Fatalf("nearestVisibleSelection(1) = %d, want 3 (b1, the nearest visible row forward)", got)
+		// visible STOP, bravo's own header, never on the still-hidden a2
+		// (idx2) or straight past bravo's header onto b1.
+		if got, want := m.nearestVisibleSelection(rowCursor(1)), headerCursor(bravoID); got != want {
+			t.Fatalf("nearestVisibleSelection(rowCursor(1)) = %+v, want %+v (bravo's header, the nearest visible stop forward)", got, want)
 		}
 	})
 
 	t.Run("nextPrevVisibleSelection", func(t *testing.T) {
 		// One nextVisibleSelection call from b1 (idx3) moves exactly one
-		// visual row, to d1 (idx0) -- never landing on a1/a2.
-		next, ok := m.nextVisibleSelection(3)
-		if !ok || next != 0 {
-			t.Fatalf("nextVisibleSelection(3) = (%d, %v), want (0, true)", next, ok)
+		// visual stop, to the default group's header -- never landing on
+		// a1/a2, and never skipping straight to d1 past that header.
+		next, ok := m.nextVisibleSelection(rowCursor(3))
+		if !ok || next != headerCursor(0) {
+			t.Fatalf("nextVisibleSelection(rowCursor(3)) = (%+v, %v), want (%+v, true)", next, ok, headerCursor(0))
 		}
-		// And prevVisibleSelection from b1 (idx3) must report none: the
-		// only visual row before it, a2 (idx2), is hidden by the same
-		// collapsed id.
-		if _, ok := m.prevVisibleSelection(3); ok {
-			t.Fatalf("prevVisibleSelection(3) reported a visible predecessor, want none (a1/a2 are both hidden)")
+		// And prevVisibleSelection from b1 (idx3) lands on bravo's OWN
+		// header -- the stop immediately ahead of it in visual order,
+		// unaffected by alpha's a1/a2 being hidden.
+		prev, ok := m.prevVisibleSelection(rowCursor(3))
+		if !ok || prev != headerCursor(bravoID) {
+			t.Fatalf("prevVisibleSelection(rowCursor(3)) = (%+v, %v), want (%+v, true) (bravo's own header)", prev, ok, headerCursor(bravoID))
 		}
 	})
 
 	t.Run("pageSelection", func(t *testing.T) {
-		m.selected = 3 // b1, the first visible row
-		if got, want := m.pageSelection(1), 0; got != want {
-			t.Fatalf("pageSelection(1) from b1 = %d, want %d (one visual row down: d1, never landing on hidden alpha rows)", got, want)
+		m.selected = rowCursor(3) // b1
+		if got, want := m.pageSelection(1), headerCursor(0); got != want {
+			t.Fatalf("pageSelection(1) from b1 = %+v, want %+v (one visual stop down: the default group's header, never landing on hidden alpha rows)", got, want)
 		}
-		if got, want := m.pageSelection(-5), 3; got != want {
-			t.Fatalf("pageSelection(-5) overshooting past the top clamps at %d (b1, the first VISIBLE row), got %d", want, got)
+		if got, want := m.pageSelection(-5), headerCursor(alphaID); got != want {
+			t.Fatalf("pageSelection(-5) overshooting past the top clamps at %+v (alpha's header, the first VISIBLE stop), got %+v", want, got)
 		}
 	})
 
 	t.Run("gG", func(t *testing.T) {
-		m.selected = 0
+		m.selected = rowCursor(0)
 		updated, _ := m.Update(key("g"))
 		got := updated.(Model)
-		if got.selected != 3 {
-			t.Fatalf("g landed on %d, want 3 (b1, the first visible row -- alpha's rows are hidden by id)", got.selected)
+		if got.selected != headerCursor(alphaID) {
+			t.Fatalf("g landed on %+v, want %+v (alpha's own header, the first visible stop -- alpha's ROWS are hidden by id, but not its header)", got.selected, headerCursor(alphaID))
 		}
 		updated, _ = got.Update(key("G"))
 		got = updated.(Model)
-		if got.selected != 0 {
-			t.Fatalf("G landed on %d, want 0 (d1, the last visible row)", got.selected)
+		if got.selected != rowCursor(0) {
+			t.Fatalf("G landed on %+v, want %+v (d1, the last visible stop)", got.selected, rowCursor(0))
 		}
 	})
 

@@ -136,12 +136,12 @@ func TestClickSidebarRowSelectsAndEntersInteractiveNeverCallsAttachSelected(t *t
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
 	})
 	m.width, m.height = 100, 30
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	x, y := findRow(t, m, 1)
 	updated, cmd := m.Update(press(x, y))
 	got := updated.(Model)
-	if got.selected != 1 {
+	if got.selected != rowCursor(1) {
 		t.Fatalf("selected = %d, want 1", got.selected)
 	}
 	if cmd != nil {
@@ -168,12 +168,12 @@ func TestClickSidebarRowEntersInteractiveModeOnOnePress(t *testing.T) {
 	})
 	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-311"})
 	m.width, m.height = 80, 9 // requirement 48's own godog fixture size (previewContentSize -> 41x6, below the 7-row floor)
-	m.selected = -1
+	m.selected = rowCursor(-1)
 
 	x, y := findRow(t, m, 0)
 	updated, cmd := m.Update(press(x, y))
 	got := updated.(Model)
-	if got.selected != 0 {
+	if got.selected != rowCursor(0) {
 		t.Fatalf("selected = %d, want 0", got.selected)
 	}
 	if cmd != nil {
@@ -206,7 +206,7 @@ func TestClickSidebarPaddingBelowLastRowIsANoOp(t *testing.T) {
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
 	})
 	m.width, m.height = 100, 30
-	m.selected = 1
+	m.selected = rowCursor(1)
 
 	layout := m.computeLayout()
 	width, height := m.sidebarContentDims(layout)
@@ -226,7 +226,7 @@ func TestClickSidebarPaddingBelowLastRowIsANoOp(t *testing.T) {
 
 	updated, cmd := m.Update(press(x, y))
 	got := updated.(Model)
-	if got.selected != 1 {
+	if got.selected != rowCursor(1) {
 		t.Fatalf("selected changed after a click on sidebar padding: %d, want unchanged 1", got.selected)
 	}
 	if got.interactive {
@@ -343,14 +343,14 @@ func TestWheelScrollsSidebarWithoutChangingSelectionOrFocus(t *testing.T) {
 	}
 	m := mouseTestModel(sessions)
 	m.width, m.height = 100, 30
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	updated, _ := m.Update(wheelDown(10, 5))
 	got := updated.(Model)
 	if got.sidebarScroll == 0 {
 		t.Fatalf("wheel down over the sidebar did not scroll")
 	}
-	if got.selected != 0 {
+	if got.selected != rowCursor(0) {
 		t.Fatalf("selected changed from a wheel event: %d", got.selected)
 	}
 
@@ -377,13 +377,13 @@ func TestClickAndWheelOverPreviewAreNoops(t *testing.T) {
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
 	})
 	m.width, m.height = 100, 30
-	m.selected = 0
+	m.selected = rowCursor(0)
 	layout := m.computeLayout()
 	previewX := layout.Sidebar.Width + 3
 
 	updated, cmd := m.Update(press(previewX, 5))
 	got := updated.(Model)
-	if got.selected != 0 {
+	if got.selected != rowCursor(0) {
 		t.Fatalf("selected changed after a click over the preview: %d", got.selected)
 	}
 	if cmd != nil {
@@ -471,13 +471,13 @@ func TestMouseIgnoredWhileOverlayOpen(t *testing.T) {
 		{ID: "b1", Name: "b1", CWD: "/work/service-a", Status: "idle"},
 	})
 	m.width, m.height = 100, 30
-	m.selected = 0
+	m.selected = rowCursor(0)
 	x, y := findRow(t, m, 1)
 
 	m.help = true
 	updated, cmd := m.Update(press(x, y))
 	got := updated.(Model)
-	if got.selected != 0 || cmd != nil {
+	if got.selected != rowCursor(0) || cmd != nil {
 		t.Fatalf("mouse press acted while help was open: selected=%d cmd=%v", got.selected, cmd)
 	}
 }
@@ -517,13 +517,13 @@ func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
 				return exec.Command("true"), nil
 			}
 			m.width, m.height = 100, 30
-			m.selected = 0
+			m.selected = rowCursor(0)
 			x, y := findRow(t, m, 1)
 			tc.set(&m)
 
 			updated, cmd := m.Update(press(x, y))
 			got := updated.(Model)
-			if got.selected != 0 || cmd != nil {
+			if got.selected != rowCursor(0) || cmd != nil {
 				t.Fatalf("single press reached the hidden sidebar: selected=%d cmd=%v", got.selected, cmd)
 			}
 			if !got.settingsOpen {
@@ -532,7 +532,7 @@ func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
 
 			updated, cmd = got.Update(press(x, y))
 			got = updated.(Model)
-			if got.selected != 0 || cmd != nil {
+			if got.selected != rowCursor(0) || cmd != nil {
 				t.Fatalf("second press (double click) reached the hidden sidebar: selected=%d cmd=%v", got.selected, cmd)
 			}
 			if !got.settingsOpen {
@@ -541,7 +541,7 @@ func TestSettingsTakeoverMouseIgnoredWhileOpen(t *testing.T) {
 
 			updated, cmd = got.Update(wheelDown(x, y))
 			got = updated.(Model)
-			if got.selected != 0 || cmd != nil {
+			if got.selected != rowCursor(0) || cmd != nil {
 				t.Fatalf("wheel event reached the hidden sidebar: selected=%d cmd=%v", got.selected, cmd)
 			}
 
@@ -650,7 +650,7 @@ func TestAllDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 					return exec.Command("true"), nil
 				}
 				m.width, m.height = 100, 30
-				m.selected = 0
+				m.selected = rowCursor(0)
 				tc.setup(&m)
 				if !tc.open(m) {
 					t.Fatalf("setup did not open the %s dialog", tc.name)
@@ -679,7 +679,7 @@ func TestAllDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 					if cmd != nil {
 						t.Fatalf("%s %s press at (%d,%d) returned a non-nil cmd", tc.name, pos.where, pos.x, pos.y)
 					}
-					if got.selected != 0 {
+					if got.selected != rowCursor(0) {
 						t.Fatalf("%s %s press at (%d,%d) changed selected from 0 to %d", tc.name, pos.where, pos.x, pos.y, got.selected)
 					}
 					if !tc.open(got) {
@@ -697,7 +697,7 @@ func TestAllDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 					if cmd2 != nil {
 						t.Fatalf("%s %s second press (double click) at (%d,%d) returned a non-nil cmd", tc.name, pos.where, pos.x, pos.y)
 					}
-					if got2.selected != 0 || !tc.open(got2) {
+					if got2.selected != rowCursor(0) || !tc.open(got2) {
 						t.Fatalf("%s %s double click at (%d,%d) changed selected/open state", tc.name, pos.where, pos.x, pos.y)
 					}
 					if afterView := got2.View(); afterView != beforeView {

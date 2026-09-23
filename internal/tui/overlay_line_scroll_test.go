@@ -96,7 +96,7 @@ func scrollableOverlayFixtures(t *testing.T) []scrollableOverlay {
 	detail := New(nil, config.Settings{}, "")
 	detail.width, detail.height = 80, 24
 	detail.sessions = []store.Session{heightBoundTestSession()}
-	detail.selected = 0
+	detail.selected = rowCursor(0)
 	detail.detail = true
 
 	db := openEventLogTestStore(t)

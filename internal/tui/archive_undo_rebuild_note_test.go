@@ -41,7 +41,7 @@ func archiveUndoRebuildFrameAfterUndo(t *testing.T, sessionHook, globalHook stri
 	// The archived row leaves the default list exactly as it does in a real
 	// reload; `u` still knows what it archived.
 	model.sessions = nil
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, cmd = model.Update(key("u"))
 	model = got.(Model)

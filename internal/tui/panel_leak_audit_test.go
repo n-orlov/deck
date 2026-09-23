@@ -49,7 +49,7 @@ func TestStackedSidebarSelectionBackgroundFillsFullPanelWidth(t *testing.T) {
 		{ID: "s1", Name: "z", Agent: "shell", Status: "running", CreatedAt: 1000},
 		{ID: "s2", Name: "bb", Agent: "shell", Status: "running", CreatedAt: 1000},
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	selectionHex := tokenHex(t, m, theme.Selection)
 	// accentHex (task 046): once renderStackedFrame retains and paints the
 	// row's own gutter (R119, mirroring the side-by-side sidebar's

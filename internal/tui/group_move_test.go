@@ -77,7 +77,7 @@ func groupMoveTestModel(t *testing.T, db *store.Store, sessions []store.Session,
 		},
 	)
 	m.sessions = sessions
-	m.selected = selectedIndex
+	m.selected = rowCursor(selectedIndex)
 	got, _ := m.Update(key("i"))
 	m = got.(Model)
 	got, _ = m.Update(key("g"))
@@ -245,7 +245,7 @@ func TestDetailDialogNamesTheSessionsGroupBeforeThePickerOpens(t *testing.T) {
 			m := New(nil, config.Settings{}, "")
 			m.width, m.height = 80, 30
 			m.sessions = []store.Session{tc.session}
-			m.selected = 0
+			m.selected = rowCursor(0)
 			got, _ := m.Update(key("i"))
 			m = got.(Model)
 			if !m.detail {
@@ -295,7 +295,7 @@ func TestGDoesNotDisturbQCtrlCIOrRInsideDetail(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped", Slug: "alpha"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	got, _ := m.Update(key("i"))
 	m = got.(Model)
 	if !m.detail {
@@ -326,7 +326,7 @@ func TestGDoesNotDisturbQCtrlCIOrRInsideDetail(t *testing.T) {
 	// "q"/"ctrl+c" still quit.
 	m2 := New(nil, config.Settings{}, "")
 	m2.sessions = m.sessions
-	m2.selected = 0
+	m2.selected = rowCursor(0)
 	got, _ = m2.Update(key("i"))
 	m2 = got.(Model)
 	_, cmd := m2.Update(key("q"))
@@ -345,7 +345,7 @@ func TestDetailFooterAndHelpBothNameGForGroupMove(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "stopped", Slug: "alpha"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	footer := detailFooterLine(m.detailBody())
 	if !strings.Contains(footer, "g moves group") {

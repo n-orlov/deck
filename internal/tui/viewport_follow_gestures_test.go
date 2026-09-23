@@ -21,11 +21,19 @@ import (
 // exact failure text each assertion below produces when run against that
 // sha.
 
-// viewportFollowTestModel builds n sessions in one real group ("grp"), all
-// distinguishable by ID/Name, at the given terminal height -- tall enough
-// that sidebarScroll actually has room to differ from 0 once n is large
-// enough relative to height.
+// viewportFollowTestModel builds n sessions in one real group ("grp",
+// with an explicit, real GroupID -- task 008 gotcha, the same one
+// viewportFollowCollapseTestModel's own doc comment names: sessionGroupID
+// falls back to the shared default sentinel 0 for a session whose
+// store.Session.GroupID is nil, which would make "grp"'s own header
+// (task 012/D.1: itself a visual stop now) indistinguishable from the
+// implicit default group's own always-present, always-empty header that
+// cure-01-02 seeds trailing every unfiltered render), all distinguishable
+// by ID/Name, at the given terminal height -- tall enough that
+// sidebarScroll actually has room to differ from 0 once n is large enough
+// relative to height.
 func viewportFollowTestModel(n, height int) Model {
+	grpID := int64(1)
 	var sessions []store.Session
 	for i := 0; i < n; i++ {
 		sessions = append(sessions, store.Session{
@@ -33,6 +41,7 @@ func viewportFollowTestModel(n, height int) Model {
 			Name:      fmt.Sprintf("s%02d", i),
 			CWD:       "/work/grp",
 			GroupName: "grp",
+			GroupID:   &grpID,
 			Status:    "idle",
 		})
 	}
@@ -66,18 +75,41 @@ func viewportFollowFilterTestModel(nKeep, nDrop, height int) Model {
 	return m
 }
 
+// cursorSpan is selectionSpan's cursor-aware counterpart (task 012/D.1):
+// the sidebar entry-line span of WHATEVER visual stop c names -- a
+// session row's own entries (sidebarLineRow, by session index) or a
+// header's own entry (sidebarLineHeader, by group id) -- via the same
+// entryMatchesCursor used by followSelectionViewport itself, so this
+// test file's own notion of "is the selection in view" matches production
+// exactly regardless of which kind of stop is selected.
+func cursorSpan(m Model, entries []sidebarEntry, c sidebarCursor) (start, end int) {
+	start, end = -1, -1
+	for i, e := range entries {
+		if !m.entryMatchesCursor(e, c) {
+			continue
+		}
+		if start == -1 {
+			start = i
+		}
+		end = i
+	}
+	return start, end
+}
+
 // assertSelectionInView is the one invariant every gesture below is
 // checked against: R136's own requirement, "the selected row's entry
-// lines fall inside [sidebarScroll, sidebarScroll+contentHeight)".
+// lines fall inside [sidebarScroll, sidebarScroll+contentHeight)" --
+// extended (task 012/D.1) to a header cursor's own entry line, since a
+// header is a real, followable visual stop now too.
 func assertSelectionInView(t *testing.T, m Model, label string) {
 	t.Helper()
 	layout := m.computeLayout()
 	contentWidth := sidebarEntryContentWidth(layout)
 	contentHeight := layout.Sidebar.Height - 2
 	entries := m.sidebarEntries(contentWidth)
-	start, end, _, _ := selectionSpan(entries, m.selected)
+	start, end := cursorSpan(m, entries, m.selected)
 	if start == -1 {
-		t.Fatalf("%s: selected session %d has no row entries in the current sidebar (hidden by a collapsed group?)", label, m.selected)
+		t.Fatalf("%s: selected cursor %+v has no entries in the current sidebar (hidden by a collapsed group?)", label, m.selected)
 	}
 	if m.sidebarScroll < 0 || start < m.sidebarScroll || end >= m.sidebarScroll+contentHeight {
 		t.Fatalf("%s: sidebarScroll = %d leaves selection span [%d,%d] outside window [%d,%d)", label, m.sidebarScroll, start, end, m.sidebarScroll, m.sidebarScroll+contentHeight)
@@ -106,11 +138,11 @@ func TestViewportFollowsUpAndK(t *testing.T) {
 	for _, k := range []string{"up", "k"} {
 		t.Run(k, func(t *testing.T) {
 			m := viewportFollowTestModel(30, 13)
-			m.selected = 29
+			m.selected = rowCursor(29)
 			m.sidebarScroll = 0
 			updated, _ := m.Update(key(k))
 			m = updated.(Model)
-			if m.selected != 28 {
+			if m.selected != rowCursor(28) {
 				t.Fatalf("%s: selected = %d, want 28", k, m.selected)
 			}
 			assertSelectionInView(t, m, k)
@@ -128,11 +160,11 @@ func TestViewportFollowsDownAndJ(t *testing.T) {
 	for _, k := range []string{"down", "j"} {
 		t.Run(k, func(t *testing.T) {
 			m := viewportFollowTestModel(30, 13)
-			m.selected = 0
+			m.selected = rowCursor(0)
 			m.sidebarScroll = maxSidebarOffset(m)
 			updated, _ := m.Update(key(k))
 			m = updated.(Model)
-			if m.selected != 1 {
+			if m.selected != rowCursor(1) {
 				t.Fatalf("%s: selected = %d, want 1", k, m.selected)
 			}
 			assertSelectionInView(t, m, k)
@@ -147,11 +179,11 @@ func TestViewportFollowsDownAndJ(t *testing.T) {
 // 0 leaves selection span [49,50] outside window [0,10)".
 func TestViewportFollowsPgUp(t *testing.T) {
 	m := viewportFollowTestModel(30, 13)
-	m.selected = 29
+	m.selected = rowCursor(29)
 	m.sidebarScroll = 0
 	updated, _ := m.Update(key("pgup"))
 	m = updated.(Model)
-	if m.selected == 29 {
+	if m.selected == rowCursor(29) {
 		t.Fatalf("pgup did not move the selection (fixture too short to page)")
 	}
 	assertSelectionInView(t, m, "pgup")
@@ -164,46 +196,51 @@ func TestViewportFollowsPgUp(t *testing.T) {
 // [11,12] outside window [52,62)".
 func TestViewportFollowsPgDown(t *testing.T) {
 	m := viewportFollowTestModel(30, 13)
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.sidebarScroll = maxSidebarOffset(m)
 	updated, _ := m.Update(key("pgdown"))
 	m = updated.(Model)
-	if m.selected == 0 {
+	if m.selected == rowCursor(0) {
 		t.Fatalf("pgdown did not move the selection (fixture too short to page)")
 	}
 	assertSelectionInView(t, m, "pgdown")
 }
 
 // TestViewportFollowsG is R136's row 3, top half: `g` jumps to
-// visibleSessionIndices()[0]. Failure against 2752c9e: starting flush at
-// the bottom with the selection in the middle, `g` lands on session 0
-// while sidebarScroll stays at maxSidebarOffset (52) -- "g: sidebarScroll = 52
-// leaves selection span [1,2] outside window [52,62)".
+// visibleSessionIndices()[0] -- task 012/D.1 made that "grp"'s own header,
+// the true first visual stop, not session 0's row. Failure against
+// 2752c9e: starting flush at the bottom with the selection in the middle,
+// `g` lands on session 0 while sidebarScroll stays at maxSidebarOffset
+// (52) -- "g: sidebarScroll = 52 leaves selection span [1,2] outside
+// window [52,62)".
 func TestViewportFollowsG(t *testing.T) {
 	m := viewportFollowTestModel(30, 13)
-	m.selected = 15
+	m.selected = rowCursor(15)
 	m.sidebarScroll = maxSidebarOffset(m)
 	updated, _ := m.Update(key("g"))
 	m = updated.(Model)
-	if m.selected != 0 {
-		t.Fatalf("g landed on %d, want 0", m.selected)
+	if want := headerCursor(1); m.selected != want {
+		t.Fatalf("g landed on %+v, want %+v (grp's own header, the first visual stop)", m.selected, want)
 	}
 	assertSelectionInView(t, m, "g")
 }
 
 // TestViewportFollowsCapitalG is R136's row 3, bottom half: `G` jumps to
-// the last visible session. Failure against 2752c9e: starting flush at
-// the top with the selection in the middle, `G` lands on session 29 while
+// the last visible stop -- task 012/D.1 made that the implicit default
+// group's own header (cure-01-02: always seeded, trailing, while
+// unfiltered, even with no default-group member in this fixture), not
+// session 29's row. Failure against 2752c9e: starting flush at the top
+// with the selection in the middle, `G` lands on session 29 while
 // sidebarScroll stays 0 -- "G: sidebarScroll = 0 leaves selection span
 // [59,60] outside window [0,10)".
 func TestViewportFollowsCapitalG(t *testing.T) {
 	m := viewportFollowTestModel(30, 13)
-	m.selected = 15
+	m.selected = rowCursor(15)
 	m.sidebarScroll = 0
 	updated, _ := m.Update(key("G"))
 	m = updated.(Model)
-	if m.selected != 29 {
-		t.Fatalf("G landed on %d, want 29", m.selected)
+	if want := headerCursor(0); m.selected != want {
+		t.Fatalf("G landed on %+v, want %+v (the implicit default group's own trailing header)", m.selected, want)
 	}
 	assertSelectionInView(t, m, "G")
 }
@@ -219,11 +256,11 @@ func TestViewportFollowsSpace(t *testing.T) {
 	m := viewportFollowTestModel(30, 13)
 	m.sessions[29].Status = "waiting"
 	m.baseSessions = m.sessions
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.sidebarScroll = 0
 	updated, _ := m.Update(key(" "))
 	m = updated.(Model)
-	if m.selected != 29 {
+	if m.selected != rowCursor(29) {
 		t.Fatalf("space landed on %d, want 29", m.selected)
 	}
 	assertSelectionInView(t, m, "space")
@@ -253,24 +290,28 @@ func viewportFollowCollapseTestModel(nA, nB, height int) Model {
 
 // TestViewportFollowsC is R136's row 5: `c` collapses the selected
 // session's own group (task 013's toggleGroupCollapse), which relocates
-// m.selected to the nearest still-visible session BEFORE tui.go's own `c`
-// handler re-runs the follow via setSelection(m.selected). The fixture
-// splits into group "a" (sessions 0-2) and group "b" (sessions 3-29):
-// selecting a session inside "b" and collapsing it relocates the cursor
-// backward onto session 2 (the last member of "a", still visible).
+// m.selected to the nearest still-visible STOP (task 012/D.1: forward
+// first) BEFORE tui.go's own `c` handler re-runs the follow via
+// setSelection(m.selected). The fixture splits into group "a" (sessions
+// 0-2) and group "b" (sessions 3-29): selecting a session inside "b" and
+// collapsing it hides every row after it with nothing else visible
+// forward except the implicit default group's own always-present
+// trailing header (cure-01-02) -- nearestVisibleSelection's forward
+// search reaches THAT before it ever falls back to searching backward
+// into group "a", so the cursor relocates there, not onto session 2.
 // Failure against 2752c9e: seeded flush at the bottom of the UNcollapsed
 // list, sidebarScroll stays there (now far past the end of the much
-// shorter collapsed list) while the selection lands on session 2 --
-// "c: sidebarScroll = 53 leaves selection span [5,6] outside window
+// shorter collapsed list) while the selection relocates -- "c:
+// sidebarScroll = 53 leaves selection span [...] outside window
 // [53,63)".
 func TestViewportFollowsC(t *testing.T) {
 	m := viewportFollowCollapseTestModel(3, 27, 13)
-	m.selected = 15
+	m.selected = rowCursor(15)
 	m.sidebarScroll = maxSidebarOffset(m)
 	updated, _ := m.Update(key("c"))
 	m = updated.(Model)
-	if m.selected != 2 {
-		t.Fatalf("c relocated the cursor to %d, want 2 (last member of group a, the nearest still-visible session)", m.selected)
+	if want := headerCursor(0); m.selected != want {
+		t.Fatalf("c relocated the cursor to %+v, want %+v (the implicit default group's own header, the nearest visible stop FORWARD of the now-hidden group b)", m.selected, want)
 	}
 	assertSelectionInView(t, m, "c")
 }
@@ -288,7 +329,7 @@ func TestViewportFollowsC(t *testing.T) {
 // window [0,9)".
 func TestViewportFollowsFilterQueryEdit(t *testing.T) {
 	m := viewportFollowFilterTestModel(20, 10, 13)
-	m.selected = 29
+	m.selected = rowCursor(29)
 	m.sidebarScroll = 0
 	got, _ := m.Update(key("/"))
 	m = got.(Model)
@@ -302,7 +343,7 @@ func TestViewportFollowsFilterQueryEdit(t *testing.T) {
 	if len(m.sessions) != 20 {
 		t.Fatalf("query %q left %d sessions, want 20 (the keep group alone)", m.filterQuery, len(m.sessions))
 	}
-	if m.selected != 19 {
+	if m.selected != rowCursor(19) {
 		t.Fatalf("selected = %d after filtering, want 19 (clamped onto the last keep session)", m.selected)
 	}
 	assertSelectionInView(t, m, "/ query edit")
@@ -320,14 +361,14 @@ func TestViewportFollowsFilterQueryEdit(t *testing.T) {
 func TestViewportWheelDriftIsNotPreservedAfterDown(t *testing.T) {
 	m := viewportFollowTestModel(30, 13)
 	m.settings.Mouse = true
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.sidebarScroll = 0
 	x, y := findRow(t, m, 0)
 	for i := 0; i < 40; i++ {
 		updated, _ := m.Update(wheelDown(x, y))
 		m = updated.(Model)
 	}
-	if m.selected != 0 {
+	if m.selected != rowCursor(0) {
 		t.Fatalf("the wheel changed the selection to %d, want 0 (wheel must never move the selection)", m.selected)
 	}
 	driftedScroll := m.sidebarScroll
@@ -345,7 +386,7 @@ func TestViewportWheelDriftIsNotPreservedAfterDown(t *testing.T) {
 
 	updated, _ := m.Update(key("down"))
 	m = updated.(Model)
-	if m.selected != 1 {
+	if m.selected != rowCursor(1) {
 		t.Fatalf("down after wheel drift moved the selection to %d, want 1", m.selected)
 	}
 	if m.sidebarScroll == driftedScroll {

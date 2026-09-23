@@ -45,7 +45,7 @@ func TestSettingsSaveResortsLivePreservingSelectionByID(t *testing.T) {
 	if idx != 0 {
 		t.Fatalf("setup: %s is at index %d, want 0 (attention order ties fall back to insertion order)", targetID, idx)
 	}
-	model.selected = idx
+	model.selected = rowCursor(idx)
 
 	// Stage a switch to "created" order: CreatedAt descending puts s19
 	// first and s00 (this test's selection) dead last, index 19 -- as far
@@ -68,11 +68,11 @@ func TestSettingsSaveResortsLivePreservingSelectionByID(t *testing.T) {
 	if newIdx != 19 {
 		t.Fatalf("setup: %s landed at index %d after resort, want 19 (fixture no longer non-vacuous)", targetID, newIdx)
 	}
-	if model.selected != newIdx {
+	if model.selected != rowCursor(newIdx) {
 		t.Fatalf("selected index = %d after live resort, want %d (the row %s now occupies) -- selection followed the OLD index, not the session id", model.selected, newIdx, targetID)
 	}
-	if model.sessions[model.selected].ID != targetID {
-		t.Fatalf("selected session = %q after live resort, want %q", model.sessions[model.selected].ID, targetID)
+	if testSelectedSession(model).ID != targetID {
+		t.Fatalf("selected session = %q after live resort, want %q", testSelectedSession(model).ID, targetID)
 	}
 
 	layout := model.computeLayout()
@@ -81,12 +81,12 @@ func TestSettingsSaveResortsLivePreservingSelectionByID(t *testing.T) {
 	visible := model.sidebarVisibleEntries(contentWidth, contentHeight)
 	found := false
 	for _, e := range visible {
-		if e.kind == sidebarLineRow && e.sessionIndex == model.selected {
+		if e.kind == sidebarLineRow && model.entryMatchesCursor(e, model.selected) {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("%s's row (session index %d) is not within the sidebar's visible window after the live re-sort; sidebarScroll=%d", targetID, model.selected, model.sidebarScroll)
+		t.Fatalf("%s's row (selected cursor %+v) is not within the sidebar's visible window after the live re-sort; sidebarScroll=%d", targetID, model.selected, model.sidebarScroll)
 	}
 }

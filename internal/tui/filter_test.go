@@ -27,7 +27,7 @@ func newFilterTestModel(sessions []store.Session) Model {
 	model := New(nil, config.Settings{}, "")
 	model.baseSessions = sessions
 	model.sessions = sessions
-	model.selected = 0
+	model.selected = rowCursor(0)
 	return model
 }
 
@@ -382,7 +382,7 @@ func TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter(t *testing.T) {
 	model := newFilterTestModel(filterTestSessions())
 	model.filterQuery = "alpha-agent"
 	model.sessions = model.filteredSessions()
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("m"))
 	model = got.(Model)

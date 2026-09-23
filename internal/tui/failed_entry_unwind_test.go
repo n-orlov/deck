@@ -93,7 +93,7 @@ func TestFailedFitUnwindRestoresGeometryAndClearsIsizeRecord(t *testing.T) {
 	wantWidth, wantHeight := m.previewContentSize()
 	m.tmuxClient = client
 	m.sessions = []store.Session{{ID: "sess-fitunwind-1", Name: "fitunwind", Slug: "fitunwind", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	// Premise, measured on the twin: the very fit enterInteractiveBody is
 	// about to attempt fails, and fails only after it has already resized

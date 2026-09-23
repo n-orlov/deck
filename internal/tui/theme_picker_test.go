@@ -32,7 +32,7 @@ func themePickerTestModel(t *testing.T) (Model, string) {
 	m.sessions = []store.Session{
 		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", CWD: "/repo/alpha"},
 	}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	return m, path
 }
 

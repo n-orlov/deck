@@ -47,7 +47,7 @@ func stripANSI(s string) string {
 func TestColouredPreviewKeepsFullFrameBordersColumnAligned(t *testing.T) {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.sessions = []store.Session{{ID: "sess-1", Name: "coloured-session", Agent: "shell", Status: "running"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.previewLive = true
 	m.previewSessionID = "sess-1"
 

@@ -61,7 +61,7 @@ func TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue(t *testing.
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-dispb3-1", Name: slug, Slug: slug, Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)

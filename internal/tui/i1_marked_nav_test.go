@@ -136,12 +136,20 @@ func TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether(t *testing.T) {
 		t.Fatalf("first load order = %v, want [bk-one bk-two]", idsOf(model.sessions))
 	}
 
-	// "k" (up): already topmost, must stay a no-op.
+	// "k" (up): task 012/D.1 made the default group's own header a real
+	// visual stop too, and since every session here is in the implicit
+	// default group, that header is now the TRUE topmost stop -- one row
+	// above the first row, not the first row itself -- so "k" from row 0
+	// moves onto it rather than staying a no-op. Move back down onto row 0
+	// explicitly afterwards: this test's real subject is the k,m,j idiom
+	// below, not this header's own reachability (group_id_navigation_test.go
+	// and group_visual_order_test.go already cover that).
 	got, _ = model.Update(key("k"))
 	model = got.(Model)
-	if model.selected != 0 {
-		t.Fatalf("k moved off the topmost row: selected=%d", model.selected)
+	if model.selected != headerCursor(0) {
+		t.Fatalf("k did not move onto the default group's own header: selected=%+v", model.selected)
 	}
+	model.selected = rowCursor(0)
 
 	// Second load: both promoted to running in the same reconcile pass --
 	// identical StatusAt, and bk-two's ID sorts before bk-one's ID.
@@ -150,8 +158,8 @@ func TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether(t *testing.T) {
 		{ID: "aaa-bk-two", Name: "bk-two", Status: "running", StatusAt: 9000},
 	}})
 	model = got.(Model)
-	if model.sessions[model.selected].Name != "bk-one" {
-		t.Fatalf("selection followed the wrong session after the tied promotion: now selected %q", model.sessions[model.selected].Name)
+	if testSelectedSession(model).Name != "bk-one" {
+		t.Fatalf("selection followed the wrong session after the tied promotion: now selected %q", testSelectedSession(model).Name)
 	}
 
 	// "m": marks bk-one.
@@ -164,7 +172,7 @@ func TestMarkedSetKMJSurvivesBothSessionsRacingToRunningTogether(t *testing.T) {
 	// "j" (down): must reach bk-two -- the whole point of the idiom.
 	got, _ = model.Update(key("j"))
 	model = got.(Model)
-	if model.sessions[model.selected].Name != "bk-two" {
-		t.Fatalf("after k,m,j selected=%q, want bk-two (I-1's exact failure: stuck on the first marked row)", model.sessions[model.selected].Name)
+	if testSelectedSession(model).Name != "bk-two" {
+		t.Fatalf("after k,m,j selected=%q, want bk-two (I-1's exact failure: stuck on the first marked row)", testSelectedSession(model).Name)
 	}
 }

@@ -23,7 +23,7 @@ func TestInteractivePressOnAlreadyTargetRowIsANoOp(t *testing.T) {
 	})
 	m.width, m.height = 100, 30
 	m.interactive = true
-	m.selected = 1
+	m.selected = rowCursor(1)
 	m.setInteractiveScrollOffset(7)
 	m.previewFitSessionID = "b1"
 	m.attachError = "sentinel"
@@ -38,7 +38,7 @@ func TestInteractivePressOnAlreadyTargetRowIsANoOp(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("press on the already-interactive row returned a non-nil cmd, want nil")
 	}
-	if !got.interactive || got.selected != 1 {
+	if !got.interactive || got.selected != rowCursor(1) {
 		t.Fatalf("press on the already-interactive row changed selection/interactive state: %+v", got)
 	}
 	if got.interactiveScrollOffset() != 7 || got.previewFitSessionID != "b1" {
@@ -70,7 +70,7 @@ func TestInteractivePressOnADifferentSidebarRowRetargets(t *testing.T) {
 	m = m.WithTmuxClient(tmux.Client{Socket: "no-such-tmux-server-313"})
 	m.width, m.height = 80, 9 // previewContentSize -> 41x6, below interactiveMinInnerRows
 	m.interactive = true
-	m.selected = 0
+	m.selected = rowCursor(0)
 	m.setInteractiveScrollOffset(7)
 	m.previewFitSessionID = "a1"
 
@@ -84,7 +84,7 @@ func TestInteractivePressOnADifferentSidebarRowRetargets(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("retargeting press returned a non-nil cmd, want nil")
 	}
-	if got.selected != 1 {
+	if got.selected != rowCursor(1) {
 		t.Fatalf("retargeting press left selected = %d, want 1", got.selected)
 	}
 	if got.interactiveScrollOffset() != 0 || got.previewFitSessionID != "" {
@@ -111,7 +111,7 @@ func TestInteractivePressOverPreviewStillFallsThroughToDragToCopy(t *testing.T) 
 	})
 	m.width, m.height = 100, 30
 	m.interactive = true
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	layout := m.computeLayout()
 	px, py := layout.Sidebar.Width+2, 5
@@ -127,7 +127,7 @@ func TestInteractivePressOverPreviewStillFallsThroughToDragToCopy(t *testing.T) 
 	if got.interactiveSelecting {
 		t.Fatalf("beginInteractiveSelection began a selection with a nil interactiveGrid")
 	}
-	if got.selected != 0 || !got.interactive {
+	if got.selected != rowCursor(0) || !got.interactive {
 		t.Fatalf("a press over the preview re-targeted interactive mode instead of falling through to drag-to-copy: %+v", got)
 	}
 }

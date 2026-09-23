@@ -58,7 +58,7 @@ func TestInteractiveBodyLinesHealsTheStoredOffsetToTheClampedUsedOffset(t *testi
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-scrollheal-1", Name: "scrollheal", Slug: "scrollheal", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)
@@ -125,7 +125,7 @@ func TestInteractiveBodyLinesHealingReenablesTheNotRepaintedNotice(t *testing.T)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-noticeheal-1", Name: "noticeheal", Slug: "noticeheal", Status: "waiting"}}
-	m.selected = 0
+	m.selected = rowCursor(0)
 
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)

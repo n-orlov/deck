@@ -42,7 +42,7 @@ func archiveConfirmTestModel(t *testing.T) (Model, *archiveRecorder, *int) {
 		{ID: "s-live", Name: "live-agent", Agent: "claude", Status: "idle", CWD: "/repos/project", ConversationID: "conv-live"},
 		{ID: "s-other", Name: "bystander", Agent: "shell", Status: "idle", CWD: "/repos/other"},
 	}
-	model.selected = 0
+	model.selected = rowCursor(0)
 	model.archiveSvc = archiver.archive
 	model.kill = func(context.Context, store.Session) error {
 		kills++
@@ -175,7 +175,7 @@ func TestArchiveConfirmSuppressesTheBareLetterKeymap(t *testing.T) {
 		if model.pendingDelete {
 			t.Fatalf("%q inside the archive confirm armed the dd chord", k)
 		}
-		if model.selected != 0 {
+		if model.selected != rowCursor(0) {
 			t.Fatalf("%q inside the archive confirm moved the selection to %d", k, model.selected)
 		}
 		if len(model.marked) != 0 {

@@ -25,7 +25,7 @@ func TestProfileSwitchPersistsAndStatesRestartToApply(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "safe"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("P"))
 	model = got.(Model)
@@ -76,7 +76,7 @@ func TestProfileSwitchEscCancelsWithoutPersisting(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "safe"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("P"))
 	model = got.(Model)
@@ -105,7 +105,7 @@ func TestProfileSwitchToYoloTakesEffectWithNoConfirm(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "safe"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("P"))
 	model = got.(Model)
@@ -149,7 +149,7 @@ func TestProfileSwitchAwayFromYoloNeedsNoConfirm(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "yolo"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("P"))
 	model = got.(Model)
@@ -184,7 +184,7 @@ func TestProfileSwitchYoloAbsentWhenNotAllowed(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "safe"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("P"))
 	model = got.(Model)
@@ -211,7 +211,7 @@ func TestProfileSwitchNotOfferedForShell(t *testing.T) {
 		},
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running"}}
-	model.selected = 0
+	model.selected = rowCursor(0)
 
 	got, _ := model.Update(key("P"))
 	model = got.(Model)
