@@ -3500,11 +3500,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "up", "k":
 			if next, ok := m.prevVisibleSelection(m.selected); ok {
-				m.selected = next
+				m.setSelection(next)
 			}
 		case "down", "j":
 			if next, ok := m.nextVisibleSelection(m.selected); ok {
-				m.selected = next
+				m.setSelection(next)
 			}
 		case "pgup":
 			// ·11.3 requirement 19: PgUp/PgDn always drive the list, since the
@@ -3512,9 +3512,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// cycle to move the page keys onto instead. pageSelection walks
 			// VISUAL rows (002-steering.md), not raw m.sessions index
 			// arithmetic, so a page of hidden/non-adjacent rows can't skew it.
-			m.selected = m.pageSelection(-m.sidebarRowsPerPage())
+			m.setSelection(m.pageSelection(-m.sidebarRowsPerPage()))
 		case "pgdown":
-			m.selected = m.pageSelection(m.sidebarRowsPerPage())
+			m.setSelection(m.pageSelection(m.sidebarRowsPerPage()))
 		case "Y":
 			if m.acknowledge == nil || len(m.sessions) == 0 {
 				return m, nil
@@ -3903,7 +3903,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// clears "waiting" on the attached session.
 			if !m.help && len(m.sessions) > 0 {
 				if next, ok := m.nextAttentionSelection(m.selected); ok {
-					m.selected = next
+					m.setSelection(next)
 				}
 			}
 		case "c":
@@ -3926,6 +3926,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
 			if !m.help && !m.detail && len(m.sessions) > 0 {
 				m.toggleGroupCollapse(sessionGroupID(m.sessions[m.selected]))
+				m.setSelection(m.selected)
 				return m, m.persistCollapsedGroups()
 			}
 		case "g":
@@ -3935,14 +3936,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// ↑/↓ press would skip them).
 			if !m.help && !m.detail && len(m.sessions) > 0 {
 				if visible := m.visibleSessionIndices(); len(visible) > 0 {
-					m.selected = visible[0]
+					m.setSelection(visible[0])
 				}
 			}
 		case "G":
 			// SPEC.md:952 "g/G top/bottom": jump to the last visible row.
 			if !m.help && !m.detail && len(m.sessions) > 0 {
 				if visible := m.visibleSessionIndices(); len(visible) > 0 {
-					m.selected = visible[len(visible)-1]
+					m.setSelection(visible[len(visible)-1])
 				}
 			}
 		case "|":
@@ -5550,6 +5551,63 @@ func (m *Model) resortSessionsLive() {
 	} else if m.selected >= len(m.sessions) {
 		m.selected = max(0, len(m.sessions)-1)
 	}
+}
+
+// setSelection is the one seam every selection-changing gesture (task
+// 007/R136: ↑/↓, PgUp/PgDn, space, `c`, `g`/`G`, and both `/` filter paths)
+// assigns the selection through, instead of writing m.selected directly.
+// It assigns idx and then follows it with followSelectionViewport, so the
+// viewport-follow behaviour lives in exactly one place rather than being
+// re-derived at each of those call sites. scrollSidebar (mouse.go's wheel
+// binding, SPEC §11.8 "wheel scrolls the list, without changing
+// selection") deliberately never calls this -- it moves sidebarScroll
+// without touching m.selected at all, the opposite half of the contract.
+func (m *Model) setSelection(idx int) {
+	m.selected = idx
+	m.followSelectionViewport()
+}
+
+// followSelectionViewport scrolls the sidebar viewport (SPEC requirement
+// 52-style) so the CURRENT selection's own entry-line span (its two
+// sidebarLineRow entries, sidebarEntries) ends up fully inside the
+// sidebar's content window, the same as scrollSessionIntoView below, but
+// additionally keeping one whole session row (selectionViewportMargin's
+// two sidebarLineRow entries) of context on the side being approached --
+// where the list actually has a row there to show. Where it does not (the
+// selection is within one row of the list's own top or bottom), the
+// window instead sits flush against that end: clampSidebarScroll is the
+// single place that bounds the result into [0, max(0, total-
+// contentHeight)], so this never returns a negative offset or leaves a
+// blank tail below the last entry.
+func (m *Model) followSelectionViewport() {
+	layout := m.computeLayout()
+	contentWidth := sidebarEntryContentWidth(layout)
+	contentHeight := layout.Sidebar.Height - 2
+	if contentHeight <= 0 {
+		return
+	}
+	entries := m.sidebarEntries(contentWidth)
+	start, end := -1, -1
+	for i, e := range entries {
+		if e.kind == sidebarLineRow && e.sessionIndex == m.selected {
+			if start == -1 {
+				start = i
+			}
+			end = i
+		}
+	}
+	if start == -1 {
+		return
+	}
+	const selectionViewportMargin = 2 // one whole session row: two sidebarLineRow entries
+	offset := m.sidebarScroll
+	if start-selectionViewportMargin < offset {
+		offset = start - selectionViewportMargin
+	}
+	if end+selectionViewportMargin >= offset+contentHeight {
+		offset = end + selectionViewportMargin - contentHeight + 1
+	}
+	m.sidebarScroll = clampSidebarScroll(offset, len(entries), contentHeight)
 }
 
 // scrollSessionIntoView adjusts m.sidebarScroll (SPEC requirement 52) so

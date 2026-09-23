@@ -131,7 +131,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filtering = false
 		m.filterQuery = ""
 		m.sessions = m.filteredSessions()
-		m.selected = m.nearestVisibleSelection(m.selected)
+		m.setSelection(m.nearestVisibleSelection(m.selected))
 		return m, nil
 	case "enter":
 		// Closes the text field only; the query and the narrowed list it
@@ -151,7 +151,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.sessions = m.filteredSessions()
-	m.selected = m.nearestVisibleSelection(m.selected)
+	m.setSelection(m.nearestVisibleSelection(m.selected))
 	return m, nil
 }
 
