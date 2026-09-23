@@ -7,6 +7,7 @@ import (
 
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/sidebarcursor"
 )
 
 // §11/§11.3 manual groups (SPEC requirement 30, R128/R129): the sidebar
@@ -102,41 +103,38 @@ func sessionGroupLabel(session store.Session) string {
 	return "default"
 }
 
-// sidebarCursorKind distinguishes the two kinds of visual stop the
-// sidebar cursor (Model.selected) can rest on (task 012/D.1, R137): a
-// session row, or a group header. Headers became stops in their own
-// right this task -- up/down/PgUp/PgDn/g/G all now step onto one, not
-// just past it -- so "the selected session" is no longer a safe
-// assumption anywhere that reads the cursor; see sidebarCursor below.
-type sidebarCursorKind int
-
-const (
-	cursorRow sidebarCursorKind = iota
-	cursorHeader
-)
-
 // sidebarCursor is the sidebar cursor's own type (Model.selected):
-// deliberately NOT a bare int. SessionIndex below is the only way to read
-// "which session the cursor names", and it reports ok=false on a header
-// cursor -- there is no bare integer field left on this type for a caller
-// to read around that check, so a header position can never be silently
-// misread as session index 0 (or whatever an int field's zero value would
-// otherwise carry). Symmetrically, GroupID is the only way to read "which
-// header", ok=false on a row cursor.
+// deliberately NOT a bare int, and -- since task 012/D.1's cure-03 --
+// deliberately not declared in THIS package either. It is an alias for
+// sidebarcursor.Cursor (internal/tui/sidebarcursor), whose fields are all
+// unexported, so the package boundary is what stops a caller from reading
+// a session index off a cursor without resolving its kind first: from here
+// `m.selected.index` does not compile ("m.selected.index undefined (cannot
+// refer to unexported field index)"), and the only ways in are the
+// two-result accessors SessionIndex() (int, bool) and
+// GroupID() (int64, bool). A per-package-visibility field declared here
+// would have been readable by all ~490 cursor reads across internal/tui,
+// which is exactly the misread this type exists to make impossible --
+// headers became navigable stops this task (up/down/PgUp/PgDn/g/G all step
+// onto one, not just past it), so "the selected session" is no longer a
+// safe assumption anywhere that reads the cursor.
 //
-// The zero value is rowCursor(0): kind defaults to cursorRow and index to
-// 0, so a freshly zero-valued Model (every test fixture that never sets
+// The alias (rather than a fresh named type wrapping it) keeps every
+// existing internal/tui call site, test assertion and `[]sidebarCursor`
+// literal reading exactly as it did, and keeps the value comparable.
+// cursor_kind_guard_test.go pins the two properties that make the
+// enforcement real: the type is declared outside package tui, and it
+// exposes no field and no bare-int accessor.
+//
+// The zero value is rowCursor(0): kind defaults to a row and index to 0,
+// so a freshly zero-valued Model (every test fixture that never sets
 // Model.selected explicitly) keeps behaving exactly as it did when
 // Model.selected was a bare `int` defaulting to 0.
-type sidebarCursor struct {
-	kind    sidebarCursorKind
-	index   int   // valid m.sessions index, only when kind == cursorRow
-	groupID int64 // valid durable group id, only when kind == cursorHeader
-}
+type sidebarCursor = sidebarcursor.Cursor
 
 // rowCursor builds a cursor resting on the session at m.sessions[index].
 func rowCursor(index int) sidebarCursor {
-	return sidebarCursor{kind: cursorRow, index: index}
+	return sidebarcursor.Row(index)
 }
 
 // headerCursor builds a cursor resting on one group's header, keyed by
@@ -149,32 +147,7 @@ func rowCursor(index int) sidebarCursor {
 // force"), and every header cursor this file builds comes from walking
 // groupSessions' own output, never from m.allGroups directly.
 func headerCursor(groupID int64) sidebarCursor {
-	return sidebarCursor{kind: cursorHeader, groupID: groupID}
-}
-
-// IsHeader/IsRow report which kind of stop c is.
-func (c sidebarCursor) IsHeader() bool { return c.kind == cursorHeader }
-func (c sidebarCursor) IsRow() bool    { return c.kind == cursorRow }
-
-// SessionIndex resolves c's m.sessions index. ok is false when c is a
-// header cursor: there is deliberately no other way to read a session
-// index out of a sidebarCursor, so every caller that needs one is forced
-// to decide, at the call site, what a header cursor means for it (usually
-// "there is no selected session right now").
-func (c sidebarCursor) SessionIndex() (int, bool) {
-	if c.kind != cursorRow {
-		return 0, false
-	}
-	return c.index, true
-}
-
-// GroupID resolves c's header group id. ok is false when c is a row
-// cursor.
-func (c sidebarCursor) GroupID() (int64, bool) {
-	if c.kind != cursorHeader {
-		return 0, false
-	}
-	return c.groupID, true
+	return sidebarcursor.Header(groupID)
 }
 
 // indexedSession pairs a session with its index into m.sessions, so a
