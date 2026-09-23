@@ -119,6 +119,13 @@ type Settings struct {
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
+	// DefaultGroupFirst mirrors config.toml's [ui] default_group_first key
+	// (default false, SPEC §11): when true, the sidebar's default sort keeps
+	// every group ordered ahead of ungrouped sessions regardless of the
+	// active sort key. Plumbed straight from the file, the same shape
+	// SortOrder already has -- no DECK_ env override is documented for this
+	// key.
+	DefaultGroupFirst bool
 	// SortOrder mirrors config.toml's [ui] sort_order key (default
 	// "attention", SPEC §11, amendment 6584299): which of the four total
 	// orders (attention/created/activity/name) the sidebar renders in.
@@ -303,6 +310,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
+		DefaultGroupFirst:  fileCfg.DefaultGroupFirst,
 		PreLaunch:          fileCfg.PreLaunch,
 		PostDestroy:        fileCfg.PostDestroy,
 		SortOrder:          fileCfg.SortOrder,

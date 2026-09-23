@@ -28,6 +28,7 @@ type FileConfig struct {
 	TmuxMouse            bool
 	ASCII                bool
 	Mouse                bool
+	DefaultGroupFirst    bool
 	PreviewFit           bool
 	PreviewPaint         string
 	SortOrder            string
@@ -148,6 +149,8 @@ func defaultFileConfig() FileConfig {
 			cfg.ASCII, _ = field.Default.(bool)
 		case "ui.mouse":
 			cfg.Mouse, _ = field.Default.(bool)
+		case "ui.default_group_first":
+			cfg.DefaultGroupFirst, _ = field.Default.(bool)
 		case "ui.preview_fit":
 			cfg.PreviewFit, _ = field.Default.(bool)
 		case "ui.preview_paint":
@@ -194,6 +197,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.ASCII = value
 		case "ui.mouse":
 			cfg.Mouse = value
+		case "ui.default_group_first":
+			cfg.DefaultGroupFirst = value
 		case "ui.preview_fit":
 			cfg.PreviewFit = value
 		}
