@@ -172,28 +172,43 @@ func (m Model) groupSessions() []sidebarGroup {
 		}
 	}
 	sort.SliceStable(groups, func(i, j int) bool {
-		return groupSortsBefore(groups[i].Name, groups[j].Name)
+		return groupSortsBefore(groups[i].Name, groups[j].Name, m.settings.DefaultGroupFirst)
 	})
 	return groups
 }
 
-// groupSortsBefore is R129's group ORDER rule (task 011): alphabetical,
-// case-insensitive, with the implicit default group (the empty
-// sessionGroupKey key) always sorting last regardless of where its
-// display name ("default") would otherwise land -- SPEC §11: "Order is
-// alphabetical, case-insensitive, with default always last regardless of
-// where its name would sort." This replaces the deleted
+// groupSortsBefore is R129's group ORDER rule (task 011), plus task 002's
+// `[ui] default_group_first` flag (task 001 plumbed the config field;
+// task 003 wires it live): alphabetical, case-insensitive, with the
+// implicit default group (the empty sessionGroupKey key, i.e. a == "" or
+// b == "") sorting either always LAST (defaultFirst == false, R129's
+// original rule, SPEC §11: "Order is alphabetical, case-insensitive, with
+// default always last regardless of where its name would sort") or always
+// FIRST (defaultFirst == true) -- in neither case as a consequence of
+// comparing the literal string "default"/"" against a real name, and in
+// neither case by consulting anything about a real group's NAME: a
+// user-created group literally named "Default" is not the implicit
+// default group -- its sessionGroupKey is the non-empty string "Default",
+// not "" -- so it never hits either of the two `== ""` branches below and
+// sorts purely alphabetically against every other real group, same as any
+// other name. This still only ever compares the two group KEYS passed in
+// (deliberately ignorant of m.sessions/attention/sort_order, so
+// groupSessions above stays the one place that decides what those two
+// keys ARE) -- see this function's docs for why: it replaces the deleted
 // reorderPreservingGrouping's attention-ranked group order (R53) entirely
 // -- SPEC §11 states group order is "deliberately not attention-ranked":
 // a manual group is a stable place the user learns the position of, and a
 // list whose headers reshuffle when a session starts waiting is a list
 // you cannot navigate from memory.
-func groupSortsBefore(a, b string) bool {
-	if a == "" {
+func groupSortsBefore(a, b string, defaultFirst bool) bool {
+	if a == "" && b == "" {
 		return false
 	}
+	if a == "" {
+		return defaultFirst
+	}
 	if b == "" {
-		return true
+		return !defaultFirst
 	}
 	return strings.ToLower(a) < strings.ToLower(b)
 }
