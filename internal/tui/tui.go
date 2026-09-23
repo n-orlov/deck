@@ -5573,12 +5573,17 @@ func (m *Model) setSelection(idx int) {
 // sidebar's content window, the same as scrollSessionIntoView below, but
 // additionally keeping one whole session row (selectionViewportMargin's
 // two sidebarLineRow entries) of context on the side being approached --
-// where the list actually has a row there to show. Where it does not (the
-// selection is within one row of the list's own top or bottom), the
-// window instead sits flush against that end: clampSidebarScroll is the
-// single place that bounds the result into [0, max(0, total-
-// contentHeight)], so this never returns a negative offset or leaves a
-// blank tail below the last entry.
+// where the list actually has a row there to show. The margin is measured
+// in sidebarLineRow entries, not in raw entry lines, so an intervening
+// group header (a sidebarLineGroupHeader entry at a group boundary) is
+// carried in addition to that whole row rather than eating half of it.
+// Where the list has no row to offer there (the selection is within one
+// row of the list's own top or bottom), the window instead sits flush
+// against that end: clampSidebarScroll is the single place that bounds the
+// result into [0, max(0, total-contentHeight)], so this never returns a
+// negative offset or leaves a blank tail below the last entry. The
+// selection's own span always wins over the context margin, so a window
+// too short to hold both still shows the selected row itself.
 func (m *Model) followSelectionViewport() {
 	layout := m.computeLayout()
 	contentWidth := sidebarEntryContentWidth(layout)
@@ -5600,12 +5605,38 @@ func (m *Model) followSelectionViewport() {
 		return
 	}
 	const selectionViewportMargin = 2 // one whole session row: two sidebarLineRow entries
-	offset := m.sidebarScroll
-	if start-selectionViewportMargin < offset {
-		offset = start - selectionViewportMargin
+	// topTarget/bottomTarget are the outermost entry indices the margin asks
+	// for: walk outward from the selection's span until selectionViewport-
+	// Margin *row* entries have been consumed, so headers passed on the way
+	// are included on top of that whole row instead of counting against it.
+	topTarget := start
+	for i, want := start-1, selectionViewportMargin; i >= 0 && want > 0; i-- {
+		if entries[i].kind == sidebarLineRow {
+			want--
+		}
+		topTarget = i
 	}
-	if end+selectionViewportMargin >= offset+contentHeight {
-		offset = end + selectionViewportMargin - contentHeight + 1
+	bottomTarget := end
+	for i, want := end+1, selectionViewportMargin; i < len(entries) && want > 0; i++ {
+		if entries[i].kind == sidebarLineRow {
+			want--
+		}
+		bottomTarget = i
+	}
+	offset := m.sidebarScroll
+	if topTarget < offset {
+		offset = topTarget
+	}
+	if bottomTarget >= offset+contentHeight {
+		offset = bottomTarget - contentHeight + 1
+	}
+	// The selected row itself outranks the context margin: in a window too
+	// short to hold both, keep the selection visible and drop the context.
+	if end >= offset+contentHeight {
+		offset = end - contentHeight + 1
+	}
+	if start < offset {
+		offset = start
 	}
 	m.sidebarScroll = clampSidebarScroll(offset, len(entries), contentHeight)
 }
