@@ -49,6 +49,7 @@ type settingsResolvedSnapshot struct {
 	PreviewPaint       string
 	RecentCwdLimit     int
 	SortOrder          string
+	DefaultGroupFirst  bool
 	Env                map[string]string
 	ThemeName          string
 	ThemeReason        string
@@ -74,6 +75,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		PreviewPaint:       s.PreviewPaint,
 		RecentCwdLimit:     s.RecentCwdLimit,
 		SortOrder:          s.SortOrder,
+		DefaultGroupFirst:  s.DefaultGroupFirst,
 		Env:                env,
 		ThemeName:          themeName,
 		ThemeReason:        s.ThemeReason,

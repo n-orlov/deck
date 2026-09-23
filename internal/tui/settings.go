@@ -487,6 +487,22 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 		m.settings.SortOrder = m.settingsEdits.SortOrder
 		m.resortSessionsLive()
 	}
+	// task 003 (schema.go's ui.default_group_first row names this exact
+	// code path as its live-apply consumer, mirroring ui.sort_order's own
+	// comment immediately above): groupSessions() (internal/tui/group.go)
+	// reads m.settings.DefaultGroupFirst directly on every call -- it is
+	// never cached into a separate group list the way m.sessions caches
+	// session order -- so refreshing the resolved field here is the whole
+	// of the live-apply wiring this field needs; no resort call like
+	// resortSessionsLive is required because the very next render already
+	// calls groupSessions() fresh. Guarded by EnvOverrides the same way
+	// every other ScopeGlobal field is, even though config.LoadFrom
+	// defines no DECK_DEFAULT_GROUP_FIRST override today (task 001's own
+	// note): an override path added later must not have to remember to
+	// add this check too.
+	if _, overridden := m.settings.EnvOverrides["ui.default_group_first"]; !overridden && m.settingsEdits.DefaultGroupFirst != previous.DefaultGroupFirst {
+		m.settings.DefaultGroupFirst = m.settingsEdits.DefaultGroupFirst
+	}
 	return cmd
 }
 
