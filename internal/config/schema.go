@@ -572,20 +572,21 @@ var Schema = []Field{
 			"§11's baseline). false (default) matches R129's original rule: " +
 			"groups sort alphabetically, case-insensitive, with the implicit " +
 			"default group always last regardless of where its name would " +
-			"otherwise sort. Restart-to-apply: saving here writes config.toml " +
-			"immediately, but nothing in the already-running client reads it " +
-			"again until deck restarts.",
+			"otherwise sort. Saving here takes effect immediately in the " +
+			"already-running client -- the sidebar's group order reorders on " +
+			"the very next frame, no restart needed.",
 		// requirement 19: task 002 threaded this flag into groupSortsBefore
 		// itself (internal/tui/group.go) -- the function signature already
 		// takes it as a parameter, and groupSessions already passes
-		// m.settings.DefaultGroupFirst through on every call -- but nothing
-		// yet refreshes m.settings.DefaultGroupFirst on save the way
-		// ui.sort_order's own ScopeGlobal row above does, so a save only
-		// takes effect the NEXT time deck starts and re-reads config.toml,
-		// same as capture_min_interval/ui.recent_cwd_limit's "no live-apply
-		// wiring yet" reasoning. Task 003 is expected to add that wiring and
-		// upgrade this Scope to ScopeGlobal alongside it.
-		Scope: ScopeRestartToApply,
+		// m.settings.DefaultGroupFirst through on every call. Task 003
+		// upgrades this row to ScopeGlobal and adds the matching
+		// settingsApplyLiveFields (internal/tui/settings.go) case that
+		// refreshes m.settings.DefaultGroupFirst on save -- groupSessions()
+		// reads that resolved field directly on every render (never a
+		// cached group list), so refreshing it there is the whole of the
+		// live-apply wiring this field needs, the same shape ui.sort_order's
+		// own ScopeGlobal row above already uses for its own resort.
+		Scope: ScopeGlobal,
 	},
 	{
 		Section: "",

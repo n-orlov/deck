@@ -157,6 +157,13 @@ func TestSchemaFieldsAreComplete(t *testing.T) {
 //     cmd/deck/main.go, which reads settings.PostDestroy once into
 //     service.Service before the Model exists, the same restart-to-apply
 //     shape pre_launch already has.
+//   - ui.default_group_first: ScopeGlobal as of task 003 -- groupSessions()
+//     (internal/tui/group.go) already reads m.settings.DefaultGroupFirst
+//     live on every render (never a cached group list), and
+//     settingsApplyLiveFields now copies a changed value into the running
+//     m.settings on save, guarded by EnvOverrides the same way
+//     ui.sort_order's own case is above -- no resort call is needed since
+//     the very next render already calls groupSessions() fresh.
 func TestSchemaScopes(t *testing.T) {
 	want := map[string]Scope{
 		"allow_yolo":             ScopeGlobal,
@@ -170,7 +177,7 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.theme":               ScopeGlobal,
 		"ui.ascii":               ScopeGlobal,
 		"ui.mouse":               ScopeGlobal,
-		"ui.default_group_first": ScopeRestartToApply,
+		"ui.default_group_first": ScopeGlobal,
 		"ui.preview_fit":         ScopeGlobal,
 		"ui.preview_paint":       ScopeGlobal,
 		"ui.sort_order":          ScopeGlobal,
