@@ -602,9 +602,17 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     And deck client "A" screen does not contain "press u to undo"
     And deck client "A" creates shell session "batch-beta"
     And deck client "A" creates shell session "batch-gamma"
-    And deck client "A" sends "k"
-    And 100 milliseconds pass
-    And deck client "A" sends "k"
+    # R137/D.1 (task 012) made a group header a cursor stop, and R137/D.2
+    # (task 013) makes every session-scoped key -- `m` among them -- inert
+    # while the cursor rests on one (SPEC §11). The `k`, `k` walk this
+    # scenario used to open with therefore overshot the top ROW onto the
+    # `default` header, where the first `m` correctly did nothing, leaving
+    # only one of the two rows marked. Selecting the row by name states the
+    # intent (mark batch-beta, then its neighbour batch-gamma) instead of
+    # counting keystrokes against a stop list that has since gained an
+    # entry; `j` between the two marks stays a plain row-to-row move, both
+    # rows being in the same group.
+    And deck client "A" selects session "batch-beta"
     And 100 milliseconds pass
     And deck client "A" sends "m"
     And 100 milliseconds pass

@@ -397,8 +397,13 @@ Feature: The `,` settings takeover (requirement 48)
     # a SEVENTH "j" was needed. ui.preview_paint (SPEC §11.3) then
     # landed after preview_fit, making it EIGHT. Task 012 (R129 part 2)
     # then removed `[ui] group_by_workspace` entirely, dropping it back to
-    # SEVEN. Grep this feature file
+    # SEVEN. Phase 4c task 001 then added `[ui] default_group_first`, which
+    # the UI category renders after sort_order and before this synthetic
+    # Clear Recent Cwds entry, so it is EIGHT again -- without this eighth
+    # "j" the cursor stops on "Default Group First" and enter toggles that
+    # flag instead of clearing the history. Grep this feature file
     # before adding any future ui.* schema field or settings-only entry.
+    And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     Then deck client "A" screen contains "Clear Recent Cwds: press enter/space to clear now"
