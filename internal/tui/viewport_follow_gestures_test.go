@@ -289,29 +289,29 @@ func viewportFollowCollapseTestModel(nA, nB, height int) Model {
 }
 
 // TestViewportFollowsC is R136's row 5: `c` collapses the selected
-// session's own group (task 013's toggleGroupCollapse), which relocates
-// m.selected to the nearest still-visible STOP (task 012/D.1: forward
-// first) BEFORE tui.go's own `c` handler re-runs the follow via
+// session's own group (task 013's toggleGroupCollapse). Task 014/D.3
+// changed where the cursor lands when its own row is hidden by the fold:
+// onto that SAME group's own header (never a neighbour's, and never the
+// nearest visible stop searched forward across the whole sidebar) --
+// BEFORE tui.go's own `c` handler re-runs the follow via
 // setSelection(m.selected). The fixture splits into group "a" (sessions
 // 0-2) and group "b" (sessions 3-29): selecting a session inside "b" and
-// collapsing it hides every row after it with nothing else visible
-// forward except the implicit default group's own always-present
-// trailing header (cure-01-02) -- nearestVisibleSelection's forward
-// search reaches THAT before it ever falls back to searching backward
-// into group "a", so the cursor relocates there, not onto session 2.
+// collapsing it hides every row in "b" but leaves "b"'s own header
+// visible and selected.
 // Failure against 2752c9e: seeded flush at the bottom of the UNcollapsed
 // list, sidebarScroll stays there (now far past the end of the much
 // shorter collapsed list) while the selection relocates -- "c:
 // sidebarScroll = 53 leaves selection span [...] outside window
 // [53,63)".
 func TestViewportFollowsC(t *testing.T) {
+	idB := int64(2)
 	m := viewportFollowCollapseTestModel(3, 27, 13)
 	m.selected = rowCursor(15)
 	m.sidebarScroll = maxSidebarOffset(m)
 	updated, _ := m.Update(key("c"))
 	m = updated.(Model)
-	if want := headerCursor(0); m.selected != want {
-		t.Fatalf("c relocated the cursor to %+v, want %+v (the implicit default group's own header, the nearest visible stop FORWARD of the now-hidden group b)", m.selected, want)
+	if want := headerCursor(idB); m.selected != want {
+		t.Fatalf("c relocated the cursor to %+v, want %+v (group b's own header, task 014's no-eviction rule)", m.selected, want)
 	}
 	assertSelectionInView(t, m, "c")
 }

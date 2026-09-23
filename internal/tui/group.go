@@ -270,20 +270,34 @@ func (m Model) isGroupCollapsed(groupID int64) bool {
 	return m.collapsedGroups[groupID]
 }
 
-// setGroupCollapsed collapses or expands one group, by id. When collapsing
-// hides the currently selected session, selection moves to the nearest
-// still-visible session (forward first, then backward) so the sidebar is
-// never left selecting an invisible row.
+// setGroupCollapsed collapses or expands one group, by id. Task 014/D.3
+// removed the eviction this used to do on every collapse
+// (m.nearestVisibleSelection(m.selected), which could walk the cursor onto
+// a DIFFERENT group's header entirely): folding must leave the cursor
+// naming the SAME group it just folded, never a neighbour's, so `c`/left
+// repeated on one header always re-targets that same group rather than
+// sliding onto whichever one happens to sort next. A header cursor is
+// never itself hidden by its own group's collapse (isStopVisible), so a
+// header cursor never needs to move at all -- folding from a header
+// leaves it in place. A row cursor whose session belongs to the group
+// being folded loses its own row to the fold, so it lands on that same
+// group's own header, the one still-visible stop that still names it. A
+// row cursor belonging to some OTHER group is left exactly where it is:
+// collapsing group X can never hide a row that already belongs to a
+// different group. Expanding never hides anything the cursor could have
+// been resting on, so it never touches m.selected either.
 func (m *Model) setGroupCollapsed(groupID int64, collapsed bool) {
 	if collapsed {
 		if m.collapsedGroups == nil {
 			m.collapsedGroups = map[int64]bool{}
 		}
 		m.collapsedGroups[groupID] = true
+		if idx, ok := m.selected.SessionIndex(); ok && idx >= 0 && idx < len(m.sessions) && sessionGroupID(m.sessions[idx]) == groupID {
+			m.selected = headerCursor(groupID)
+		}
 	} else if m.collapsedGroups != nil {
 		delete(m.collapsedGroups, groupID)
 	}
-	m.selected = m.nearestVisibleSelection(m.selected)
 }
 
 // toggleGroupCollapse flips one group's collapse state, by id. The mouse

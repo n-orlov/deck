@@ -70,7 +70,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"tmux -L deck ls", "Plain tmux attach does not find deck",
 		"space move to the next session needing attention", "changes any session's status",
 		"e open the env editor", "which layer won", "captured_path, config [env] or session env",
-		"c toggle the selected row's manual group",
+		"c / ←/→ toggle (c), fold (←) or unfold (→)",
 		"g / G jump to the first / last visible row",
 		"| cycle the layout mode", "< / > shrink/grow the sidebar",
 		", open/close settings", "prompting to", "discard if there are unsaved changes",
