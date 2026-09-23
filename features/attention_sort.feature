@@ -94,14 +94,31 @@ Feature: The attention sort, workspace grouping/collapse, and `space` (requireme
     # gg-b-1 last) belonged to the group order this task replaced.
     When deck client "A" selects session "gg-a-2"
     And deck client "A" sends "g"
+    # R137/D.1 (task 012) made a group header a cursor stop of its own (SPEC
+    # §11: "`↑`/`↓` and the rest of §11.3's list navigation land on headers as
+    # well as on session rows"), so `g` now lands on the FIRST stop -- the
+    # "gg-second-workspace" header -- rather than on the first row under it.
+    # One `↓` from there is gg-b-1, which is what pins "g went to the very
+    # top": before R137 the same two keys would have left the cursor on
+    # gg-a-1, the second row. The header cursor itself is not asserted
+    # directly because the sidebar renders no selection marker on a header.
+    And deck client "A" sends "j"
     Then deck client "A" has session "gg-b-1" selected
     When deck client "A" sends "G"
+    # The last stop is a ROW here (nothing is collapsed yet): the default
+    # group renders last and gg-a-2 is its bottom row, so G's own landing
+    # place is unchanged by headers becoming stops.
     Then deck client "A" has session "gg-a-2" selected
     When deck client "A" selects session "gg-a-1"
     And deck client "A" sends "c"
     Then deck client "A" screen stops containing "gg-a-2"
     When deck client "A" selects session "gg-b-1"
     And deck client "A" sends "G"
+    # With `default` folded its rows are hidden, so the last stop is that
+    # folded group's own header -- again a stop that did not exist before
+    # R137. One `↑` from it is gg-b-1, the last VISIBLE row, which is what
+    # this step always meant to pin.
+    And deck client "A" sends "k"
     Then deck client "A" has session "gg-b-1" selected
     When deck client "A" exits cleanly
 
