@@ -1,5 +1,5 @@
 @session-groups
-Feature: SPEC §11's group navigation and order (Phase 4c Tier 1 -- GH #31, #33, #34)
+Feature: SPEC §11's group navigation and order (Phase 4c Tier 1+2 -- GH #31, #32, #33, #34)
   SPEC §13.5 has named features/session_groups.feature since Phase 4b and it
   was never written -- group behaviour has been spread across ten other
   feature files ever since. This file owns Tier 1's three independent
@@ -7,7 +7,11 @@ Feature: SPEC §11's group navigation and order (Phase 4c Tier 1 -- GH #31, #33,
   (R136, GH #31), a group header click works while a preview is live and
   not only in list mode (R138, GH #33), and `[ui] default_group_first` can
   render the implicit default group first instead of last (R139, GH #34).
-  R137's header-cursor work (GH #25/#32) is Tier 2 and out of scope here.
+  R137's header-cursor work (GH #25/#32, Tier 2, task 015/D.4) lands
+  further down this file: the header as a cursor stop reachable by the
+  arrow keys, `right` explicitly unfolding a folded group under that
+  cursor, and a session-scoped key staying inert while the cursor sits
+  on a header rather than a session row.
 
   Background:
     Given a long-running fake "claude" binary is on PATH for future deck clients
@@ -108,4 +112,50 @@ Feature: SPEC §11's group navigation and order (Phase 4c Tier 1 -- GH #31, #33,
     And deck client "A" sends "k"
     Then deck client "A" has session "kbfollow-1" selected
     And deck client "A" screen contains "kbfollow-1"
+    When deck client "A" exits cleanly
+
+  @issue-32-header-cursor-reachable-by-arrow-keys
+  Scenario: the header cursor is reachable with the arrow keys, and c folds the group under it
+    Given deck client "A" is started
+    When deck client "A" creates shell session "hdrnav-default"
+    And deck client "A" creates shell session "hdrnav-other"
+    And the state database session "hdrnav-other" is in group "hdrnav-workspace"
+    Then deck client "A" screen contains "hdrnav-workspace"
+    And deck client "A" screen contains "hdrnav-other"
+    When deck client "A" selects session "hdrnav-other"
+    And deck client "A" sends "[A"
+    And deck client "A" sends "c"
+    Then deck client "A" screen stops containing "hdrnav-other"
+    And deck client "A" screen contains "hdrnav-workspace"
+    When deck client "A" exits cleanly
+
+  @issue-32-header-cursor-unfold-with-right
+  Scenario: right explicitly unfolds a folded group under the header cursor
+    Given deck client "A" is started
+    When deck client "A" creates shell session "hdrunfold-default"
+    And deck client "A" creates shell session "hdrunfold-other"
+    And the state database session "hdrunfold-other" is in group "hdrunfold-workspace"
+    Then deck client "A" screen contains "hdrunfold-workspace"
+    And deck client "A" screen contains "hdrunfold-other"
+    When deck client "A" selects session "hdrunfold-other"
+    And deck client "A" sends "[D"
+    Then deck client "A" screen stops containing "hdrunfold-other"
+    And deck client "A" screen contains "hdrunfold-workspace"
+    When deck client "A" sends "[C"
+    Then deck client "A" screen contains "hdrunfold-other"
+    When deck client "A" exits cleanly
+
+  @issue-32-session-scoped-key-inert-on-header
+  Scenario: a session-scoped key does nothing while the cursor is on a header
+    Given deck client "A" is started
+    When deck client "A" creates shell session "hdrinert-default"
+    And deck client "A" creates shell session "hdrinert-other"
+    And the state database session "hdrinert-other" is in group "hdrinert-workspace"
+    Then deck client "A" screen contains "hdrinert-workspace"
+    And deck client "A" screen contains "hdrinert-other"
+    When deck client "A" selects session "hdrinert-other"
+    And deck client "A" sends "[A"
+    And deck client "A" sends "i"
+    Then deck client "A" screen contains "hdrinert-other"
+    And deck client "A" screen does not contain "closes detail"
     When deck client "A" exits cleanly
