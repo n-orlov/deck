@@ -83,7 +83,7 @@ onto a hidden or filtered-out header (cure-01-05, `4e30475`).
 
 **Commits.** `0d46c454`, `38e29a3f`, `505256da` (task 012) ·
 `7f0a4e4d`, `73828a8b` (task 013) · `1804a728`, `5b9aee67` (task 014) ·
-`ef1af220`, `bedf7ee6` (task 015) · `cdce264c` (cure-01-01) ·
+`ef1af220`, `bedf7ee6` (task 015) · `cdce2641` (cure-01-01) ·
 `e23bc499` (cure-01-02) · `3529eb90` (cure-01-04) · `4e30475c` (cure-01-05).
 
 **Test IDs.** `TestRepeatedCFoldsNoMoreThanOneGroup`,
@@ -118,7 +118,7 @@ cursor lands on next. Fixed by resolving the title by claim, not cursor
 (cure-01-03, `c864e6b`), with a feature-level PTY scenario proving the
 fold is allowed while the pane keeps the keyboard (`5da35c5`).
 
-**Commits.** `1ba7007e` (task 005) · `c864e6b9`, `5da35c5c` (cure-01-03).
+**Commits.** `1ba7007e` (task 005) · `c864e6b9`, `5da35c55` (cure-01-03).
 
 **Test IDs.**
 `TestInteractiveHeaderPressTogglesCollapseWithoutResize`,
