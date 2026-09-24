@@ -530,6 +530,32 @@ func (m Model) pageSelection(delta int) sidebarCursor {
 	return visible[pos]
 }
 
+// headerSelectionCue answers the gutter glyph and background token a
+// group header's own sidebarEntry wants painted (cure-01-02, review
+// findings R136/R137: "neither header has a selection cue" --
+// TestReviewHeaderCursorHasVisibleSidebarCue). It reuses sidebarGutterBar
+// verbatim (rows' own "> "/accent selection cue, task 011) rather than
+// inventing a second gutter glyph, so a header's cursor and a row's read
+// as the same visual language, and reuses sidebarSelectionToken for the
+// same reason: the background painted behind a selected header is exactly
+// the background painted behind a selected row (`selection`/
+// `selection_idle`, focus-aware). The glyph survives NO_COLOR (it is a
+// literal "> ", never only a colour); the background does not, which is
+// why the glyph carries the cue on its own -- SPEC §11's "visibly
+// distinguishes" holds true in monochrome/ASCII output specifically
+// because of the glyph, not despite dropping the background there.
+func (m Model) headerSelectionCue(groupID int64) (string, theme.Token) {
+	selected := false
+	if gid, ok := m.selected.GroupID(); ok && gid == groupID {
+		selected = true
+	}
+	gutter, _ := m.sidebarGutterBar(selected, false)
+	if !selected {
+		return gutter, theme.Token("")
+	}
+	return gutter, m.sidebarSelectionToken()
+}
+
 // groupHeaderText renders one group's header line (SPEC requirement 30,
 // rewritten for R129/task 011): a collapse-state marker, the group's name
 // ("default" for the implicit group), and its member count --
