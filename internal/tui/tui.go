@@ -2492,24 +2492,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// session appears in its own, still-uncollapsed bucket:
 			// cursorNamesVisibleStop trivially returns true for any header
 			// whose bucket still exists, so the transition was never caught.
-			// selectedGroupHadNoRows records whether the CURRENTLY selected
-			// header's own bucket had zero members in the PRE-reload session
-			// list (m.sessions, not yet overwritten below), so the fix just
-			// past the cursorNamesVisibleStop check can walk the cursor onto
-			// the group's first row the moment that transition (nothing
-			// under the header -> something under the header) actually
-			// happens, and leave every other header selection exactly as
-			// cursorNamesVisibleStop already decided otherwise.
-			selectedGroupHadNoRows := false
-			if gid, ok := m.selected.GroupID(); ok {
-				selectedGroupHadNoRows = true
-				for _, s := range m.sessions {
-					if sessionGroupID(s) == gid {
-						selectedGroupHadNoRows = false
-						break
-					}
-				}
-			}
+			// selectedGroupHadNoRows (group.go) captures that, from the
+			// PRE-reload session list (m.sessions, not yet overwritten
+			// below), BEFORE selectVisibleStopAfterReload gets a chance to
+			// act on it further down.
+			selectedGroupHadNoRows := m.selectedGroupHadNoRows()
 			// sortSessionsByAttentionStable, not the plain
 			// sortSessionsByAttention: a genuine tie on both rank and
 			// StatusAt (task 005/I-1's finding -- two co-created sessions
@@ -2573,25 +2560,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// header included -- sits nearest, never a hidden row or an
 			// absent header (SPEC's own "selection never lands on a hidden
 			// row" for §11.8, extended here to a header whose bucket the
-			// filter itself removed).
-			if !m.cursorNamesVisibleStop(m.selected) {
-				m.selected = m.nearestVisibleSelection(m.selected)
-			} else if selectedGroupHadNoRows {
-				// cure-01-05 follow-up (task 022 sweep): cursorNamesVisibleStop
-				// just confirmed the header itself is still a real, visible
-				// stop -- true of every header regardless of what's under it,
-				// which is exactly why the empty-bucket-gains-a-row transition
-				// needs its own check rather than folding into that one. Only
-				// walk onto the group's first row when this reload actually
-				// gave the header something to show (firstVisibleRowInGroup's
-				// ok=false leaves the header selected, same as an empty or
-				// fully collapsed bucket always has).
-				if gid, ok := m.selected.GroupID(); ok {
-					if first, ok := m.firstVisibleRowInGroup(gid); ok {
-						m.selected = first
-					}
-				}
-			}
+			// filter itself removed), and selectVisibleStopAfterReload
+			// (group.go) also walks a still-valid header cursor onto its own
+			// bucket's first row when selectedGroupHadNoRows says this reload
+			// is the one that just gave that header something to show (task
+			// 022 sweep follow-up above).
+			m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
 			// Requirement 52: the one-shot new-session intent (see
 			// pendingSelectSessionID's doc comment) overrides the
 			// preserved-selection result above whenever the id it is

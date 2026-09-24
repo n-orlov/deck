@@ -128,10 +128,12 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// list": unlike Enter below, Esc discards the query entirely and
 		// returns to the unfiltered list, not merely closing the text
 		// field with the query still applied.
+		selectedGroupHadNoRows := m.selectedGroupHadNoRows()
 		m.filtering = false
 		m.filterQuery = ""
 		m.sessions = m.filteredSessions()
-		m.setSelection(m.nearestVisibleSelection(m.selected))
+		m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
+		m.followSelectionViewport()
 		return m, nil
 	case "enter":
 		// Closes the text field only; the query and the narrowed list it
@@ -150,8 +152,23 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filterQuery += string(runes)
 		}
 	}
+	// cure-01-05 follow-up (task 022 sweep): fail-before was
+	// features/filter.feature's own "dd found through / tombstones an
+	// archived row" scenario, red at 340b4d6 ("after scenario hook failed:
+	// timed out waiting for frame \"again\"") -- archiving the sidebar's
+	// only session left m.selected on the (now empty) default group's
+	// header, exactly like sessionsLoaded's own analogous case above, and
+	// this handler's unconditional nearestVisibleSelection(m.selected) call
+	// used to just hand that same header cursor straight back (a header
+	// that is still visible is always its own "nearest visible stop"),
+	// leaving the filtered-in archived row unreachable by `d`/`dd` even
+	// though it was the only row on screen. selectedGroupHadNoRows must be
+	// read from m.selected/m.sessions BEFORE filteredSessions() below
+	// overwrites the list this keystroke just narrowed or widened.
+	selectedGroupHadNoRows := m.selectedGroupHadNoRows()
 	m.sessions = m.filteredSessions()
-	m.setSelection(m.nearestVisibleSelection(m.selected))
+	m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
+	m.followSelectionViewport()
 	return m, nil
 }
 

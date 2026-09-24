@@ -307,6 +307,46 @@ func TestFilterReachesAnArchivedRowHiddenFromTheDefaultList(t *testing.T) {
 	}
 }
 
+// TestFilterOntoOnlyMatchFollowsSelectionOffAnEmptyHeader is a
+// sweep-found regression (task 022, not one of cure-01-05's own five --
+// discovered re-running the whole suite unnarrowed at 340b4d6 and
+// bisected to updateFilter's own unconditional nearestVisibleSelection
+// call). Fail-before was features/filter.feature's "dd found through /
+// tombstones an archived row" scenario, which timed out waiting for the
+// dd confirmation's own "press d again" indicator: archiving the
+// sidebar's only session leaves m.selected on the (now empty) default
+// group's header (cursorNamesVisibleStop/nearestVisibleSelection,
+// cure-01-05's own header-only-load fix), and a header that is still
+// visible was always its own "nearest visible stop" -- so typing a filter
+// query that surfaces exactly that one archived row, through the ONLY
+// route back to it, left the header selected and every row-only action
+// (d included) inert against it (cure-01-01, F1). Reproduced here
+// directly through Model.Update key events, no PTY/tmux involved.
+func TestFilterOntoOnlyMatchFollowsSelectionOffAnEmptyHeader(t *testing.T) {
+	model := newFilterTestModel(nil)
+	model.archivedSessions = []store.Session{
+		{ID: "s-old", Name: "retired-agent", GroupName: "", Agent: "shell", Status: "stopped", ArchivedAt: 999},
+	}
+	got, _ := model.Update(sessionsLoaded{})
+	model = got.(Model)
+	if !model.selected.IsHeader() {
+		t.Fatalf("fixture: zero active sessions left a non-header cursor %+v", model.selected)
+	}
+	got, _ = model.Update(key("/"))
+	model = got.(Model)
+	for _, r := range "retired-agent" {
+		got, _ = model.Update(key(string(r)))
+		model = got.(Model)
+	}
+	if model.selected.IsHeader() {
+		t.Fatalf("selection stuck on the default group's header %+v once the filter surfaced its only match; d/dd would be inert (cure-01-01)", model.selected)
+	}
+	idx, ok := model.selected.SessionIndex()
+	if !ok || idx != 0 || model.sessions[idx].ID != "s-old" {
+		t.Fatalf("selection = %+v, want the row naming the filter's one match", model.selected)
+	}
+}
+
 // TestFilterStatesItIsInForceOnScreen proves SPEC.md:319-320: "the sidebar
 // states the filter is in force so a hidden row is never mistaken for a
 // deleted one" -- both while actively typing and after Enter has closed
