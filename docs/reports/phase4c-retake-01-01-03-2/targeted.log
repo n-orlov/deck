@@ -1,0 +1,12 @@
+=== RUN   TestPendingSelectSessionIDSelectsNewRowNotIndexZero
+--- PASS: TestPendingSelectSessionIDSelectsNewRowNotIndexZero (0.00s)
+=== RUN   TestPendingSelectSessionIDIsOneShot
+--- PASS: TestPendingSelectSessionIDIsOneShot (0.00s)
+=== RUN   TestPendingSelectSessionIDNeverAppearing
+--- PASS: TestPendingSelectSessionIDNeverAppearing (0.00s)
+=== RUN   TestPendingSelectSessionIDRespectsActiveFilter
+--- PASS: TestPendingSelectSessionIDRespectsActiveFilter (0.00s)
+=== RUN   TestPendingSelectSessionIDScrollsIntoView
+--- PASS: TestPendingSelectSessionIDScrollsIntoView (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.021s
