@@ -444,6 +444,56 @@ func (m Model) firstVisibleRowInGroup(groupID int64) (sidebarCursor, bool) {
 	return rowCursor(0), false
 }
 
+// selectedGroupHadNoRows reports, from the CURRENT (pre-reload) m.sessions,
+// whether the currently selected header's own bucket has zero members --
+// false unconditionally for a row cursor. Every caller that is about to
+// recompute m.sessions (sessionsLoaded, updateFilter's live-narrowing
+// edits) calls this BEFORE that recompute, then passes the result into
+// selectVisibleStopAfterReload once the new m.sessions is in place, so
+// the empty-bucket-gains-a-row transition can be told apart from a
+// header whose bucket already had rows (and must stay exactly where
+// cursorNamesVisibleStop already puts it).
+func (m Model) selectedGroupHadNoRows() bool {
+	gid, ok := m.selected.GroupID()
+	if !ok {
+		return false
+	}
+	for _, s := range m.sessions {
+		if sessionGroupID(s) == gid {
+			return false
+		}
+	}
+	return true
+}
+
+// selectVisibleStopAfterReload normalizes m.selected once m.sessions has
+// just been recomputed by a reload or a live filter/sort edit (cure-01-05
+// plus its task-022-sweep follow-up). An invalid cursor -- one
+// cursorNamesVisibleStop no longer recognizes as a real, visible stop --
+// walks onto nearestVisibleSelection exactly as cure-01-05 already did. A
+// cursor cursorNamesVisibleStop still accepts (every header always
+// qualifies, whatever is or is not under it) additionally walks onto its
+// own bucket's first row when selectedGroupHadNoRows (captured by the
+// caller from the PRE-reload state) says that bucket just gained one --
+// the transition cursorNamesVisibleStop cannot see on its own, since it
+// never asked "visible stop" to mean "the BEST visible stop", only "A
+// visible stop". Every other header selection is left exactly where
+// cursorNamesVisibleStop already decided.
+func (m *Model) selectVisibleStopAfterReload(selectedGroupHadNoRows bool) {
+	if !m.cursorNamesVisibleStop(m.selected) {
+		m.selected = m.nearestVisibleSelection(m.selected)
+		return
+	}
+	if !selectedGroupHadNoRows {
+		return
+	}
+	if gid, ok := m.selected.GroupID(); ok {
+		if first, ok := m.firstVisibleRowInGroup(gid); ok {
+			m.selected = first
+		}
+	}
+}
+
 // nearestVisibleSelection returns the closest visible stop to from IN
 // VISUAL ORDER, searching forward first (so expanding/collapsing near the
 // top of the list keeps selection moving in the direction of travel) and
