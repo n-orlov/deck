@@ -1,14 +1,13 @@
 # Phase 4c — ten-run stability sweep (retake, retake-01-01-05)
 
 Sweep re-taken (re-recorded) with `ci/stability.sh 10` at code sha
-**`9487955`** (`94879552cd246b973b15fe2675054bc4d6ab5a17`) — `main` ==
-`origin/main` at the time of this retake, clean tree. This is the tree
-`cure-01-01-2` (`3d058b5`, R136/R137: selection never lands on a hidden row
-or absent header) leaves after task 015's list-footer cure (`10c5021`) and
-the docs-only `022` re-gate (`806414a`) and `retake-01-01-03-2` (`9487955`
-itself) landed on top — the first prior sweep recorded here
-(`da92f63`) predates `cure-01-01-2`, so this retake supersedes it at the
-current final sha.
+**`610be00`** (`610be0069b6bef53d3a3d0e5b5f0bd478b8c4b8c`) — the tree
+`cure-01-01-3` (610be00, "tui: never let a background arrival steal an
+explicitly navigated header-only-sidebar cursor", R136/R137, SPEC §11,
+#31, #32) leaves; `main` == `origin/main` at the time of this retake,
+clean tree, verified by `git merge-base --is-ancestor 610be00 HEAD`. This
+retake supersedes the prior recording here (sha `9487955`, predates
+`cure-01-01-3`) at the current final code sha.
 
 Each run invokes `ci/run.sh go test -p=1 -count=1 ./...` from a clean state
 (fresh per-run container, `-count=1` disables the test cache) and is
@@ -43,5 +42,5 @@ this sha.
 
 Raw combined script output (all ten `=== RUN N ===` markers plus the final
 `10/10 passed` summary line) was preserved in the sweep's own tmp working
-directory (`/tmp/deck-stability.sv96GL`) from the run that produced these
+directory (`/tmp/deck-stability.YwRUdZ`) from the run that produced these
 logs; the per-run logs above are the ones actually committed as evidence.
