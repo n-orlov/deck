@@ -493,15 +493,30 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	// reads m.settings.DefaultGroupFirst directly on every call -- it is
 	// never cached into a separate group list the way m.sessions caches
 	// session order -- so refreshing the resolved field here is the whole
-	// of the live-apply wiring this field needs; no resort call like
+	// of the re-GROUPING wiring this field needs; no resort call like
 	// resortSessionsLive is required because the very next render already
-	// calls groupSessions() fresh. Guarded by EnvOverrides the same way
-	// every other ScopeGlobal field is, even though config.LoadFrom
-	// defines no DECK_DEFAULT_GROUP_FIRST override today (task 001's own
-	// note): an override path added later must not have to remember to
-	// add this check too.
+	// calls groupSessions() fresh and m.sessions itself never changes
+	// order. Guarded by EnvOverrides the same way every other ScopeGlobal
+	// field is, even though config.LoadFrom defines no
+	// DECK_DEFAULT_GROUP_FIRST override today (task 001's own note): an
+	// override path added later must not have to remember to add this
+	// check too.
+	//
+	// cure-01-05 (R136/SPEC §11, F6 review finding): re-bucketing the
+	// SAME sessions/headers into a new group order can still move the
+	// selected row or header cursor's own rendered entry span far from
+	// where a PRIOR render's sidebarScroll left the viewport -- toggling
+	// this flag alone moved the whole default group from last to first,
+	// carrying the selection from the bottom of the sidebar to the top,
+	// with nothing else in this call path re-clamping the scroll offset
+	// to follow it. followSelectionViewport re-derives the selection's
+	// current entry span from the just-changed grouping and re-clamps
+	// m.sidebarScroll to it -- a no-op when the selection happens to stay
+	// in view, exactly like every other selection-changing gesture task
+	// 007/R136 already wires it into (m.setSelection's own doc comment).
 	if _, overridden := m.settings.EnvOverrides["ui.default_group_first"]; !overridden && m.settingsEdits.DefaultGroupFirst != previous.DefaultGroupFirst {
 		m.settings.DefaultGroupFirst = m.settingsEdits.DefaultGroupFirst
+		m.followSelectionViewport()
 	}
 	return cmd
 }
