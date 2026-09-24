@@ -4,20 +4,63 @@ Companion to [`phase4c.md`](phase4c.md) (the per-requirement evidence report
 for R136-R139): what that report does not carry — the review-raised
 behavioural findings this cure wave fixed, where each fix now lives in the
 tree (`file:line`), the two known advisory flake classes, and the
-iterations 48-54 infrastructure stall. Written at the final code sha
-`1ad530b3c63335c6a06ca07950640dafe410d75b`; every commit after it touches
-only `docs/` (`da92f63`, `6d861a0`, `8eca5bf`, this file's own commit), so
-every `file:line` below resolves identically at `1ad530b` and at this
-file's own commit.
+iterations 48-54 infrastructure stall. Re-taken (retake-01-01-08) at the
+tree `cure-01-01-2` leaves; the final code sha is now
+`10c5021f1f70549d54f6717a697c69ed6fe2b797` (task 015's list-footer cure,
+which landed after the prior version of this file was written at the then-
+final `1ad530b`). Every commit after `10c5021` up to `HEAD` touches only
+`docs/` (`806414a`, `9487955`, `9c1c84b`, `db924a3`, `149b5cf`, this file's
+own commit), so every `file:line` below resolves identically at `10c5021`
+and at this file's own commit.
 
 ## 1. Retained findings — review-raised, cured in place
 
-Each of these was filed as a blocking finding against the original phase
-4c landing (`/run/ralphd/review-findings.json`, iteration 64) and cured in
-a dedicated `cure-01-0N` commit under operator ruling 001. All are
+F1-F8 below were each filed as a blocking finding against the original
+phase 4c landing (`/run/ralphd/review-findings.json`, iteration 64) and
+cured in a dedicated `cure-01-0N` commit under operator ruling 001. F0 is
+different — a later sweep over this cure wave's own tree, not the
+iteration-64 review, found two more escapes of the same reload-selection
+seam plus a rejected footer deliverable; both were cured the same way
+(in place, on this tree) and are recorded here for the same reason: this
+file is where a fix's `file:line` lives. F1-F8 are all
 `curable: true` and none was waived — see `phase4c.md` for the
 fail-before test text and probe citations; this section names only where
 the fix itself now lives.
+
+### F0 (sweep-found, not in the original review-findings.json) — a reload could still land selection on a hidden row or an absent header, and the header-promotion rule over-fired
+
+Two more escapes of the same R136/R137 reload-selection seam F6 and task
+022's own sweep cures already narrowed, found by a later sweep over this
+cure wave's own tree and fixed in `cure-01-01-2` (`3d058b5`):
+`TestReview113NewSessionIntentCannotSelectFoldedRow`,
+`TestReview113ArchivedReloadCannotLeaveAbsentHeader`,
+`TestReview113ArchivedReloadCannotSelectHiddenRow` and
+`TestReview113ExplicitHeaderSurvivesBackgroundArrival` were all red before
+the fix (`artifacts/review113/hidden-stop-probes.log`), and separately,
+task 015's `10c5021` fixed a review rejection of task 015's own original
+footer deliverable (the list footer named none of the header cursor's
+fold keys, and the detail-dialog footer naming them was unreachable since
+`i` is inert on a header):
+
+- `internal/tui/tui.go:2514`, `internal/tui/tui.go:2583` —
+  `selectVisibleStopAfterReload`'s header-gains-its-first-row promotion is
+  now gated on `hadNoSessionsAtAll` (the whole sidebar had zero sessions
+  before the reload), not merely the selected header's own bucket, so a
+  header the user deliberately navigated to while other sessions were
+  already on screen survives a background arrival.
+- `internal/tui/tui.go:2597` — `sessionsLoaded`'s `pendingSelectSessionID`
+  one-shot override now unfolds the new session's own group first when it
+  is collapsed, before selecting the row.
+- `internal/tui/tui.go:2637` (selection preserve-by-id) and
+  `internal/tui/tui.go:2656` (`selectVisibleStopAfterReload(false)`) —
+  `archivedSessionsLoaded` now runs the same preserve-by-id/normalize dance
+  `sessionsLoaded` already does, instead of only clamping a raw row index.
+- `internal/tui/tui.go:6521` — `headerCursorFooterCue`, wired into
+  `footerLineContent`'s SPEC §11.3 status-reason slot: while the cursor is
+  on a group header the LIST footer (the only surface on screen at that
+  point) now names `c folds/unfolds it · ← folds · → unfolds`. Fail-before
+  at `3d058b5` (`artifacts/task-015-list-footer-fail-before.log`),
+  `TestListFooterNamesTheHeaderCursorFoldKeys`.
 
 ### F1 — session-scoped keys were not unconditionally inert on a header
 
@@ -39,8 +82,8 @@ detail-mode `r`/`l` never asked the shared guard at all (`len(m.sessions)
 `cursorGroupID` resolves a header cursor's own id with no session lookup.
 Cured in `3529eb90`:
 
-- `internal/tui/tui.go:4063` (`c`), `internal/tui/tui.go:4080` (`left`),
-  `internal/tui/tui.go:4089` (`right`) — the stale `len(m.sessions) > 0`
+- `internal/tui/tui.go:4080` (`c`), `internal/tui/tui.go:4118` (`left`),
+  `internal/tui/tui.go:4135` (`right`) — the stale `len(m.sessions) > 0`
   guard is removed from all three handlers; `!m.help && !m.detail` is
   unchanged.
 
@@ -65,7 +108,7 @@ normalize onto a hidden or absent stop. Cured in `4e30475c`:
 - `internal/tui/settings.go:519` — `settingsApplyLiveFields`'s
   `default_group_first` branch now calls `m.followSelectionViewport()`
   after flipping the flag.
-- `internal/tui/tui.go:2594` — `sessionsLoaded`'s reload path calls the
+- `internal/tui/tui.go:2617` — `sessionsLoaded`'s reload path calls the
   same `m.followSelectionViewport()` once the preserved/normalized cursor
   is resolved.
 
@@ -77,9 +120,9 @@ row cursor onto the group's header — silently blanking the border title
 while the pane still held the keyboard. Cured in `c864e6b9` (unit
 fixture) and `5da35c55` (live-PTY feature scenario):
 
-- `internal/tui/tui.go:5851` — new `interactiveTargetSession`, keyed off
+- `internal/tui/tui.go:5903` — new `interactiveTargetSession`, keyed off
   `m.interactiveWindowTarget` rather than the cursor.
-- `internal/tui/tui.go:6290` — `previewTitle` now prefers
+- `internal/tui/tui.go:6339` — `previewTitle` now prefers
   `interactiveTargetSession` over `m.selectedSession()`.
 
 ### F8 (residual) — probe-report wording overstated a compile failure and cited the wrong issue
@@ -135,14 +178,15 @@ proceed" rule, and neither sweep nor gate encountered the outage.
 ## 5. How to re-check every citation in this file
 
 ```
-git show --stat --format='' 1ad530b3c63335c6a06ca07950640dafe410d75b
-git diff --stat 1ad530b3c63335c6a06ca07950640dafe410d75b..HEAD -- '*.go' '*.feature'   # empty
-sed -n '69,90p'  internal/tui/rename.go
-sed -n '4055,4095p' internal/tui/tui.go
-sed -n '640,660p'  internal/tui/group.go
-sed -n '505,520p'  internal/tui/settings.go
-sed -n '2585,2596p' internal/tui/tui.go
-sed -n '5845,5860p' internal/tui/tui.go
-sed -n '6285,6292p' internal/tui/tui.go
+git show --stat --format='' 10c5021f1f70549d54f6717a697c69ed6fe2b797
+git diff --stat 10c5021f1f70549d54f6717a697c69ed6fe2b797..HEAD -- '*.go' '*.feature'   # empty
+sed -n '69,90p'   internal/tui/rename.go
+sed -n '2510,2660p' internal/tui/tui.go
+sed -n '4078,4145p' internal/tui/tui.go
+sed -n '640,660p'   internal/tui/group.go
+sed -n '505,520p'   internal/tui/settings.go
+sed -n '5900,5906p' internal/tui/tui.go
+sed -n '6337,6350p' internal/tui/tui.go
+sed -n '6518,6530p' internal/tui/tui.go
 grep -n '^--- FAIL\|^FAIL' docs/reports/phase4c-stability10/run-*.log   # empty
 ```
