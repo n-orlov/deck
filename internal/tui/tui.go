@@ -2497,6 +2497,21 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// below), BEFORE selectVisibleStopAfterReload gets a chance to
 			// act on it further down.
 			selectedGroupHadNoRows := m.selectedGroupHadNoRows()
+			// cure-01-01-2 (R136/SPEC §11): selectedGroupHadNoRows alone
+			// cannot tell a deliberate navigation stop on an existing,
+			// still-empty header (other groups already have visible rows)
+			// apart from the ONE case the promotion below actually exists
+			// for -- a brand new client whose zero-value cursor got
+			// auto-promoted to a header because there was NOTHING ELSE to
+			// select yet (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection,
+			// task 022 sweep). hadNoSessionsAtAll captures that distinction
+			// from the SAME pre-reload m.sessions: true only when the WHOLE
+			// sidebar was header-only, never merely this one bucket among
+			// others. A user who pressed g/Down/etc to land on an existing
+			// empty header while other sessions were already on screen
+			// keeps that header across a background arrival with no local
+			// creation intent (TestReview113ExplicitHeaderSurvivesBackgroundArrival).
+			hadNoSessionsAtAll := len(m.sessions) == 0
 			// sortSessionsByAttentionStable, not the plain
 			// sortSessionsByAttention: a genuine tie on both rank and
 			// StatusAt (task 005/I-1's finding -- two co-created sessions
@@ -2565,7 +2580,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// bucket's first row when selectedGroupHadNoRows says this reload
 			// is the one that just gave that header something to show (task
 			// 022 sweep follow-up above).
-			m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
+			m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll)
 			// Requirement 52: the one-shot new-session intent (see
 			// pendingSelectSessionID's doc comment) overrides the
 			// preserved-selection result above whenever the id it is
@@ -2573,9 +2588,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// never m.baseSessions -- so a live filter query that hides
 			// the new session leaves the selection (and the query)
 			// untouched instead of yanking the view to a row the filter
-			// itself is hiding.
+			// itself is hiding. cure-01-01-2 (R137): the new session's own
+			// group may be folded (a create issued while the sidebar has
+			// that group collapsed) -- selecting a row its own fold hides
+			// satisfies neither "selects the newly created session" nor
+			// "exposes its complete row", so the group is unfolded first,
+			// exactly as if the user had pressed Right/c themselves.
 			if m.pendingSelectSessionID != "" {
 				if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
+					if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
+						m.setGroupCollapsed(gid, false)
+					}
 					m.selected = rowCursor(idx)
 					m.pendingSelectSessionID = ""
 					m.scrollSessionIntoView(idx)
@@ -2599,13 +2622,39 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// wiping it to empty, matching sessionsLoaded's own
 		// error-preserves-the-last-good-frame convention elsewhere in
 		// this switch.
+		//
+		// cure-01-01-2 (R136/SPEC §11): this used to only clamp a raw row
+		// index into bounds, which says nothing about whether that index
+		// (or an untouched header cursor) still names a visible stop --
+		// an archive match disappearing can empty a selected header's
+		// bucket entirely, or leave a row cursor's OWN session gone while
+		// the survivor's group is folded. Mirrors sessionsLoaded's own
+		// preserve-by-id-then-normalize dance immediately above; no
+		// pendingSelectSessionID override applies here (an archived-pool
+		// refresh is never a local creation) and no header ever gains a
+		// row from this path, so selectVisibleStopAfterReload's promotion
+		// branch is never armed (false).
+		var selectedID string
+		selectedWasRow := false
+		if idx, ok := m.selected.SessionIndex(); ok {
+			selectedWasRow = true
+			if idx >= 0 && idx < len(m.sessions) {
+				selectedID = m.sessions[idx].ID
+			}
+		}
 		if msg.err == nil {
 			m.archivedSessions = msg.sessions
 		}
 		m.sessions = m.filteredSessions()
-		if idx, ok := m.selected.SessionIndex(); ok && idx >= len(m.sessions) {
-			m.selected = rowCursor(max(0, len(m.sessions)-1))
+		if selectedWasRow {
+			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+				m.selected = rowCursor(idx)
+			} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+				m.selected = rowCursor(max(0, len(m.sessions)-1))
+			}
 		}
+		m.selectVisibleStopAfterReload(false)
+		m.followSelectionViewport()
 	case eventLogLoaded:
 		// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
 		// consumed. m.eventLogRows/m.eventLogErr are what eventLogBody
