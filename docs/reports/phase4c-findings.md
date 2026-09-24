@@ -4,14 +4,20 @@ Companion to [`phase4c.md`](phase4c.md) (the per-requirement evidence report
 for R136-R139): what that report does not carry — the review-raised
 behavioural findings this cure wave fixed, where each fix now lives in the
 tree (`file:line`), the two known advisory flake classes, and the
-iterations 48-54 infrastructure stall. Re-taken (retake-01-01-08) at the
-tree `cure-01-01-2` leaves; the final code sha is now
-`10c5021f1f70549d54f6717a697c69ed6fe2b797` (task 015's list-footer cure,
-which landed after the prior version of this file was written at the then-
-final `1ad530b`). Every commit after `10c5021` up to `HEAD` touches only
-`docs/` (`806414a`, `9487955`, `9c1c84b`, `db924a3`, `149b5cf`, this file's
-own commit), so every `file:line` below resolves identically at `10c5021`
-and at this file's own commit.
+iterations 48-54 infrastructure stall. Re-taken a second time
+(`retake-01-01-08`) at the tree `cure-01-01-3` leaves; the final code sha is
+now `610be0093db4c10c920b28e40b73efad4efee59f` (cure-01-01-3, the fix that
+makes `Model.selectedByUser` tell an explicitly navigated header-only-
+sidebar cursor apart from `cure-01-01-2`'s automatic-promotion case). Every
+commit after `610be00` up to `HEAD` touches only `docs/`
+(`90f698f`, `68a38ae`, `027415c`, `40bd883`, this file's own commit,
+confirmed via `git show --stat --format=''`), so every `file:line` below
+resolves identically at `610be00` and at this file's own commit. The
+previous retake (against `10c5021`, before `cure-01-01-3` landed) is
+superseded; this pass adds a new F0-2 sub-finding for `cure-01-01-3` itself
+and re-verifies every other `file:line` at the current line numbers (they
+shifted: `cure-01-01-3` inserted ~29 lines into `internal/tui/tui.go` ahead
+of the F2 handlers).
 
 ## 1. Retained findings — review-raised, cured in place
 
@@ -42,25 +48,54 @@ footer deliverable (the list footer named none of the header cursor's
 fold keys, and the detail-dialog footer naming them was unreachable since
 `i` is inert on a header):
 
-- `internal/tui/tui.go:2514`, `internal/tui/tui.go:2583` —
-  `selectVisibleStopAfterReload`'s header-gains-its-first-row promotion is
-  now gated on `hadNoSessionsAtAll` (the whole sidebar had zero sessions
-  before the reload), not merely the selected header's own bucket, so a
-  header the user deliberately navigated to while other sessions were
-  already on screen survives a background arrival.
-- `internal/tui/tui.go:2597` — `sessionsLoaded`'s `pendingSelectSessionID`
+- `internal/tui/tui.go:2500` (`selectedGroupHadNoRows` capture) through
+  `internal/tui/tui.go:2612` — `selectVisibleStopAfterReload`'s
+  header-gains-its-first-row promotion is gated on `hadNoSessionsAtAll`
+  (the whole sidebar had zero sessions before the reload), not merely the
+  selected header's own bucket, so a header the user deliberately
+  navigated to while other sessions were already on screen survives a
+  background arrival.
+- `internal/tui/tui.go:2626` — `sessionsLoaded`'s `pendingSelectSessionID`
   one-shot override now unfolds the new session's own group first when it
   is collapsed, before selecting the row.
-- `internal/tui/tui.go:2637` (selection preserve-by-id) and
-  `internal/tui/tui.go:2656` (`selectVisibleStopAfterReload(false)`) —
+- `internal/tui/tui.go:2678` (selection preserve-by-id) and
+  `internal/tui/tui.go:2685` (`selectVisibleStopAfterReload(false)`) —
   `archivedSessionsLoaded` now runs the same preserve-by-id/normalize dance
   `sessionsLoaded` already does, instead of only clamping a raw row index.
-- `internal/tui/tui.go:6521` — `headerCursorFooterCue`, wired into
-  `footerLineContent`'s SPEC §11.3 status-reason slot: while the cursor is
+- `internal/tui/tui.go:5075` (wired into `footerLineContent`'s SPEC §11.3
+  status-reason slot) and `internal/tui/tui.go:6551`
+  (`headerCursorFooterCue`'s own definition): while the cursor is
   on a group header the LIST footer (the only surface on screen at that
   point) now names `c folds/unfolds it · ← folds · → unfolds`. Fail-before
   at `3d058b5` (`artifacts/task-015-list-footer-fail-before.log`),
   `TestListFooterNamesTheHeaderCursorFoldKeys`.
+
+### F0-2 (sweep-found, cure-01-01-3) — the header-promotion rule still could not tell a deliberate navigation from its own automatic case
+
+`cure-01-01-2`'s `hadNoSessionsAtAll` heuristic still could not tell an
+explicitly navigated header on a header-only sidebar apart from the
+automatic zero-value-cursor promotion it exists for
+(`TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection`): both look
+identical from the pre-reload state alone (whole sidebar header-only, the
+selected header's own bucket empty). Fixed in `cure-01-01-3` (`610be00`);
+fail-before HEAD `10c5021`, review's own transitions log
+(`artifacts/review132/transitions.log`): "background arrival stole
+explicitly navigated header on header-only sidebar: {1 0 2} -> {0 0 0};
+pending=\"\"", `TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival`
+(committed as `TestCure010103ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival`,
+`internal/tui/cure_01_01_3_header_cursor_test.go:22`):
+
+- `internal/tui/tui.go:365`-`384` — new `Model.selectedByUser` field, set
+  the moment `setSelection` runs (the ONE seam every deliberate selection
+  gesture — up/down, PgUp/PgDn, space, `c`/left/right, `g`/`G`, both `/`
+  filter paths, and a sidebar mouse click — assigns `m.selected` through)
+  and never cleared again; never persisted (in-memory `Model` field only).
+- `internal/tui/tui.go:5885`-`5888` — `setSelection` now sets
+  `m.selectedByUser = true` alongside the existing `m.selected = c` and
+  `m.followSelectionViewport()` calls.
+- `internal/tui/tui.go:2612` — `sessionsLoaded`'s promotion call is now
+  gated on `!m.selectedByUser` too, so it fires only for the genuinely
+  automatic case.
 
 ### F1 — session-scoped keys were not unconditionally inert on a header
 
@@ -82,8 +117,8 @@ detail-mode `r`/`l` never asked the shared guard at all (`len(m.sessions)
 `cursorGroupID` resolves a header cursor's own id with no session lookup.
 Cured in `3529eb90`:
 
-- `internal/tui/tui.go:4080` (`c`), `internal/tui/tui.go:4118` (`left`),
-  `internal/tui/tui.go:4135` (`right`) — the stale `len(m.sessions) > 0`
+- `internal/tui/tui.go:4140` (`c`), `internal/tui/tui.go:4157` (`left`),
+  `internal/tui/tui.go:4166` (`right`) — the stale `len(m.sessions) > 0`
   guard is removed from all three handlers; `!m.help && !m.detail` is
   unchanged.
 
@@ -108,7 +143,7 @@ normalize onto a hidden or absent stop. Cured in `4e30475c`:
 - `internal/tui/settings.go:519` — `settingsApplyLiveFields`'s
   `default_group_first` branch now calls `m.followSelectionViewport()`
   after flipping the flag.
-- `internal/tui/tui.go:2617` — `sessionsLoaded`'s reload path calls the
+- `internal/tui/tui.go:2646` — `sessionsLoaded`'s reload path calls the
   same `m.followSelectionViewport()` once the preserved/normalized cursor
   is resolved.
 
@@ -120,9 +155,9 @@ row cursor onto the group's header — silently blanking the border title
 while the pane still held the keyboard. Cured in `c864e6b9` (unit
 fixture) and `5da35c55` (live-PTY feature scenario):
 
-- `internal/tui/tui.go:5903` — new `interactiveTargetSession`, keyed off
+- `internal/tui/tui.go:5933` — new `interactiveTargetSession`, keyed off
   `m.interactiveWindowTarget` rather than the cursor.
-- `internal/tui/tui.go:6339` — `previewTitle` now prefers
+- `internal/tui/tui.go:6369` — `previewTitle` now prefers
   `interactiveTargetSession` over `m.selectedSession()`.
 
 ### F8 (residual) — probe-report wording overstated a compile failure and cited the wrong issue
@@ -178,15 +213,17 @@ proceed" rule, and neither sweep nor gate encountered the outage.
 ## 5. How to re-check every citation in this file
 
 ```
-git show --stat --format='' 10c5021f1f70549d54f6717a697c69ed6fe2b797
-git diff --stat 10c5021f1f70549d54f6717a697c69ed6fe2b797..HEAD -- '*.go' '*.feature'   # empty
+git show --stat --format='' 610be0093db4c10c920b28e40b73efad4efee59f
+git diff --stat 610be0093db4c10c920b28e40b73efad4efee59f..HEAD -- '*.go' '*.feature'   # empty
 sed -n '69,90p'   internal/tui/rename.go
-sed -n '2510,2660p' internal/tui/tui.go
-sed -n '4078,4145p' internal/tui/tui.go
+sed -n '360,400p'  internal/tui/tui.go
+sed -n '2495,2690p' internal/tui/tui.go
+sed -n '4109,4172p' internal/tui/tui.go
 sed -n '640,660p'   internal/tui/group.go
 sed -n '505,520p'   internal/tui/settings.go
-sed -n '5900,5906p' internal/tui/tui.go
-sed -n '6337,6350p' internal/tui/tui.go
-sed -n '6518,6530p' internal/tui/tui.go
+sed -n '5880,5940p' internal/tui/tui.go
+sed -n '6365,6375p' internal/tui/tui.go
+sed -n '5070,5077p' internal/tui/tui.go
+sed -n '6520,6555p' internal/tui/tui.go
 grep -n '^--- FAIL\|^FAIL' docs/reports/phase4c-stability10/run-*.log   # empty
 ```
