@@ -5654,11 +5654,25 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	// Task 084: sessionPos counts only rendered SESSION rows, continuing
 	// across group boundaries -- a workspace header never advances or
 	// resets it, so the stripe phase a session gets does not depend on
-	// which group happens to precede it, and headers themselves stay on
-	// theme.Background (sidebarRowLines is never called for a header).
+	// which group happens to precede it.
+	//
+	// cure-01-02/R136/R137: a header's own selection cue is composed the
+	// same way a row's is (headerSelectionGutter below reuses
+	// sidebarGutterBar, the exact glyph1/accent pair rows already carry),
+	// so the cursor resting on a header is visible under NO_COLOR too --
+	// the literal "> " glyph survives colour being stripped, unlike a
+	// background token alone (canvasBackground is a no-op there). Every
+	// header reserves this same 2-column gutter regardless of selection
+	// (like a row's own gutter), so a header's rendered width never shifts
+	// when the cursor moves onto or off of it; groupHeaderText's own name
+	// budget is shrunk by that reserved width up front so its elision (and
+	// SPEC §11's "the chevron and (n) never do") stays correct once
+	// sidebarContentLine/fullBoxContentLine subtract the gutter for real.
 	sessionPos := 0
 	for _, group := range m.groupSessions() {
-		entries = append(entries, sidebarEntry{text: m.groupHeaderText(group, contentWidth), kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID})
+		headerGutter, headerBg := m.headerSelectionCue(group.GroupID)
+		headerText := m.groupHeaderText(group, max(contentWidth-stringWidth(headerGutter), 0))
+		entries = append(entries, sidebarEntry{text: headerText, kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID, gutter: headerGutter, bg: headerBg})
 		if m.isGroupCollapsed(group.GroupID) {
 			continue
 		}
