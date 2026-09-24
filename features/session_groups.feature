@@ -78,6 +78,46 @@ Feature: SPEC §11's group navigation and order (Phase 4c Tier 1+2 -- GH #31, #3
     Then deck client "A" screen contains "deck - sessions"
     And deck client "A" exits cleanly
 
+  # R138/SPEC §11.6 (SPEC.md:1706-1710), cure-01-03: the scenario above
+  # folds ANOTHER group's header while the interactive session sits in the
+  # implicit default group, which can never hit the real defect. Folding the
+  # interactive session's OWN group is equally legal (the pane keeps the
+  # keyboard) and is the case that broke: setGroupCollapsed re-targets a row
+  # cursor onto its own group's header as that group folds, and the preview
+  # border's title used to be read off that cursor, so the target session's
+  # name vanished from the border of the pane still holding the keyboard.
+  # The sibling session in the same group is the fold's own observable --
+  # the target's name cannot be, because the whole point is that it stays on
+  # screen in the preview border.
+  @issue-33-header-click-on-the-interactive-session-own-group
+  Scenario: folding the interactive session's own group keeps that session's name in the live preview border, with its window geometry and ownership untouched
+    Given deck client "A" is started
+    When deck client "A" creates shell session "hdrown-default"
+    And deck client "A" creates shell session "hdrown-target"
+    And deck client "A" creates shell session "hdrown-sibling"
+    And the state database session "hdrown-target" is in group "hdrown-workspace"
+    And the state database session "hdrown-sibling" is in group "hdrown-workspace"
+    Then deck client "A" screen contains "hdrown-workspace"
+    And deck client "A" screen contains "hdrown-target"
+    And deck client "A" screen contains "hdrown-sibling"
+    When deck client "A" selects session "hdrown-target"
+    And deck client "A" enters interactive mode
+    Then deck client "A" preview top border contains "hdrown-target"
+    And the private tmux window for session "hdrown-target" is captured as "own-group-fold"
+    And the private tmux window ownership claim for session "hdrown-target" is captured as "own-group-fold"
+    When deck client "A" clicks on the row containing "hdrown-workspace"
+    Then deck client "A" screen stops containing "hdrown-sibling"
+    And deck client "A" preview top border contains "hdrown-target"
+    And the private tmux window for session "hdrown-target" still matches "own-group-fold"
+    And the private tmux window ownership claim for session "hdrown-target" still matches "own-group-fold"
+    When deck client "A" clicks on the row containing "hdrown-workspace"
+    Then deck client "A" screen contains "hdrown-sibling"
+    And deck client "A" preview top border contains "hdrown-target"
+    And the private tmux window for session "hdrown-target" still matches "own-group-fold"
+    When deck client "A" leaves interactive mode
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" exits cleanly
+
   @issue-31-viewport-follows-keyboard-cursor
   Scenario: the sidebar viewport follows the cursor on every keyboard move, not only the mouse wheel
     Given deck client "A" is started
