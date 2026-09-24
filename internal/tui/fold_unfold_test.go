@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
 
@@ -312,4 +315,142 @@ func TestLeftRightNoopUnderOverlaysAndWithNoSessions(t *testing.T) {
 	_ = updated.(Model) // must not panic with no sessions to select from
 	updated, _ = empty.Update(key("right"))
 	_ = updated.(Model) // must not panic with no sessions to select from
+}
+
+// TestFoldUnfoldHeaderWithZeroTotalSessions is cure-01-04's own coverage
+// for F2/R137: "any group, including an empty one and structural
+// default, can be folded/unfolded by c/left/right" -- on a sidebar with
+// NO SESSIONS AT ALL, not merely one populated group alongside an empty
+// one (that weaker case is TestLeftRightFoldUnfoldEmptyDefinedGroup
+// above, which is exactly the shipped test the review found missed this:
+// its one populated group "a" meant every c/left/right press still had a
+// len(m.sessions) > 0 fixture to fall back on even if the header-cursor
+// resolution itself had been broken).
+//
+// Failure against the unguarded-len(m.sessions) tree (git revert of this
+// task's tui.go hunk): c/left leave collapsed=false (want true) and right
+// leaves collapsed=true (want false) for every case below, because the
+// `c`/`left`/`right` handlers required len(m.sessions) > 0 even though
+// cursorGroupID resolves a header cursor's own id with no session lookup
+// at all -- see this task's commit message for the exact revert probe.
+func TestFoldUnfoldHeaderWithZeroTotalSessions(t *testing.T) {
+	const namedID = int64(7)
+	const defaultID = int64(0) // the always-present structural default group
+
+	for _, gid := range []int64{namedID, defaultID} {
+		name := "named"
+		if gid == defaultID {
+			name = "default"
+		}
+		t.Run(name+"/c", func(t *testing.T) {
+			m := groupTestModel(nil)
+			m.allGroups = []store.Group{{ID: namedID, Name: "empty"}}
+			m.selected = headerCursor(gid)
+
+			updated, _ := m.Update(key("c"))
+			got := updated.(Model)
+			if !got.isGroupCollapsed(gid) {
+				t.Fatalf("c on header %d with zero total sessions: collapsed=%v, want true", gid, got.isGroupCollapsed(gid))
+			}
+			if want := headerCursor(gid); got.selected != want {
+				t.Fatalf("c on header %d moved the cursor to %+v, want %+v (unchanged)", gid, got.selected, want)
+			}
+
+			updated, _ = got.Update(key("c"))
+			got = updated.(Model)
+			if got.isGroupCollapsed(gid) {
+				t.Fatalf("second c on header %d with zero total sessions left collapsed=true, want the toggle to have unfolded it", gid)
+			}
+		})
+		t.Run(name+"/left-then-right", func(t *testing.T) {
+			m := groupTestModel(nil)
+			m.allGroups = []store.Group{{ID: namedID, Name: "empty"}}
+			m.selected = headerCursor(gid)
+
+			updated, _ := m.Update(key("left"))
+			got := updated.(Model)
+			if !got.isGroupCollapsed(gid) {
+				t.Fatalf("left on header %d with zero total sessions: collapsed=%v, want true", gid, got.isGroupCollapsed(gid))
+			}
+			if want := headerCursor(gid); got.selected != want {
+				t.Fatalf("left on header %d moved the cursor to %+v, want %+v (unchanged)", gid, got.selected, want)
+			}
+
+			// left again is a no-op, never a toggle.
+			updated, _ = got.Update(key("left"))
+			got = updated.(Model)
+			if !got.isGroupCollapsed(gid) {
+				t.Fatalf("repeated left on header %d unfolded it; left must never toggle", gid)
+			}
+
+			updated, _ = got.Update(key("right"))
+			got = updated.(Model)
+			if got.isGroupCollapsed(gid) {
+				t.Fatalf("right on header %d with zero total sessions: collapsed=%v, want false", gid, got.isGroupCollapsed(gid))
+			}
+		})
+	}
+
+	// Overlays still make c/left/right inert even when the cursor already
+	// names a real header and there are zero total sessions -- the fix
+	// removed the stale len(m.sessions) > 0 guard, not the !m.help/!m.detail
+	// ones.
+	t.Run("overlays stay no-ops", func(t *testing.T) {
+		for _, key1 := range []string{"c", "left", "right"} {
+			m := groupTestModel(nil)
+			m.allGroups = []store.Group{{ID: namedID, Name: "empty"}}
+			m.selected = headerCursor(namedID)
+			m.collapsedGroups = map[int64]bool{namedID: key1 == "right"}
+
+			m.help = true
+			updated, _ := m.Update(key(key1))
+			got := updated.(Model)
+			if got.isGroupCollapsed(namedID) != (key1 == "right") {
+				t.Fatalf("%s changed collapse state under help overlay with zero total sessions", key1)
+			}
+
+			m.help = false
+			m.detail = true
+			updated, _ = m.Update(key(key1))
+			got = updated.(Model)
+			if got.isGroupCollapsed(namedID) != (key1 == "right") {
+				t.Fatalf("%s changed collapse state under the detail overlay with zero total sessions", key1)
+			}
+		}
+	})
+
+	// A store attached still gets persistCollapsedGroups' non-nil command
+	// out of the fixed c/left/right handlers, exactly as it does from a
+	// populated group -- this path was unreachable before the fix, since
+	// the stale len(m.sessions) > 0 guard returned early before ever
+	// calling persistCollapsedGroups.
+	t.Run("persists when a store is attached", func(t *testing.T) {
+		home := t.TempDir()
+		db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+
+		group, err := db.CreateGroup(context.Background(), "empty-defined")
+		if err != nil {
+			t.Fatalf("CreateGroup: %v", err)
+		}
+
+		for _, k := range []string{"c", "left", "right"} {
+			t.Run(k, func(t *testing.T) {
+				m := New(db, config.Settings{}, "")
+				m.allGroups = []store.Group{group}
+				m.selected = headerCursor(group.ID)
+
+				_, cmd := m.Update(key(k))
+				if cmd == nil {
+					t.Fatalf("%s on a zero-session header with a store attached returned a nil cmd, want persistCollapsedGroups' command", k)
+				}
+				if msg, ok := cmd().(uiStatePersisted); !ok || msg.err != nil {
+					t.Fatalf("%s command = %+v, want a successful uiStatePersisted", k, cmd())
+				}
+			})
+		}
+	})
 }
