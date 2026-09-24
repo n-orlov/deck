@@ -4005,7 +4005,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// never actually wired to anything, so every keypress of `g` was
 			// silently doing collapse instead of the documented top/bottom jump.
 			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
-			if !m.help && !m.detail && len(m.sessions) > 0 {
+			//
+			// Deliberately NOT gated on len(m.sessions) > 0 (cure-01-04, F2/R137,
+			// same cure-012-01 reasoning as g/G below): a group -- including the
+			// implicit default group (id 0) -- can be entirely empty while still
+			// holding a real, addressable header cursor stop, and that header
+			// must still fold/unfold. cursorGroupID resolves a header cursor's
+			// own id directly, with no m.sessions lookup, so it is already safe
+			// with zero total sessions; only this stale guard blocked it.
+			if !m.help && !m.detail {
 				if groupID, ok := m.cursorGroupID(); ok {
 					m.toggleGroupCollapse(groupID)
 					m.setSelection(m.selected)
@@ -4020,8 +4028,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// rather than flipping back. Same guards, same group resolution
 			// (cursorGroupID: the cursor's own header id, or the group id of
 			// the session under a row cursor) and the same ui_state
-			// persistence as `c`.
-			if !m.help && !m.detail && len(m.sessions) > 0 {
+			// persistence as `c`. Deliberately NOT gated on len(m.sessions) > 0
+			// (cure-01-04, F2/R137) -- see `c`'s own comment above.
+			if !m.help && !m.detail {
 				if groupID, ok := m.cursorGroupID(); ok {
 					m.setGroupCollapsed(groupID, true)
 					m.setSelection(m.selected)
@@ -4029,7 +4038,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "right":
-			if !m.help && !m.detail && len(m.sessions) > 0 {
+			// Same cure-01-04 reasoning as `c`/left above.
+			if !m.help && !m.detail {
 				if groupID, ok := m.cursorGroupID(); ok {
 					m.setGroupCollapsed(groupID, false)
 					m.setSelection(m.selected)
