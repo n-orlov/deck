@@ -3375,43 +3375,46 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// whatever that other key would normally have done.
 		if m.pendingDelete {
 			m.pendingDelete = false
-			// A non-empty mark set (task 112's batch dd) never gates on
-			// m.selected's own canDelete -- the confirm opens for the
-			// MARKED set regardless of the cursor's current session, and
-			// (task 012/D.1) regardless of whether the cursor even names a
-			// session right now (it may be resting on a header). Only the
-			// single-row path below still requires a selected, deletable
-			// row.
-			if msg.String() == "d" && len(m.sessions) > 0 && len(m.marked) > 0 {
-				m.deleteConfirming = true
-				m.deleteNote = ""
-				m.deleteScroll = 0
-				// cure-01-05: the bulk confirm offers the same
-				// non-default purge choice the single-session dialog
-				// does, just resolved per session at submit time
-				// (transcriptPathFor has no single session to call
-				// eagerly here) -- so only the cycled VALUE resets;
-				// deletePurgePath/OK stay meaningless for a batch and
-				// are left alone.
-				m.bulkDeletePurgeValue = "keep"
-				m.deletePurgeValue = ""
-				m.deletePurgePath = ""
-				m.deletePurgeOK = false
-			} else if msg.String() == "d" && len(m.sessions) > 0 && !m.guardSessionScopedKey("d") {
-				// task 013/D.2: the single-row second `d` asks the ONE shared
-				// guard the header question (it cannot run after the guard --
-				// this intercept has to swallow and clear the indicator for
-				// every key, guarded ones included -- so it calls the guard
-				// instead of carrying a second selectedSession check of its
-				// own). The guard having let this through means the cursor
-				// resolves to a session, so selectedSession is ok here.
-				session, _ := m.selectedSession()
-				if canDelete(session) {
+			// task cure-01-01 (F1, R137, SPEC §11): the second `d` asks the
+			// ONE shared guard the header question -- for BOTH the batch
+			// path and the single-row path -- before either one opens the
+			// confirm dialog. It cannot run after the guard (this intercept
+			// has to swallow and clear the indicator for every key, guarded
+			// ones included) so it calls the guard itself rather than
+			// carrying a second selectedSession check of its own.
+			//
+			// A non-empty mark set (task 112's batch dd) used to be exempt
+			// from this question entirely -- the confirm opened for the
+			// MARKED set regardless of the cursor. Review found that
+			// exemption wrong (F1): the batch path is exactly as inert on a
+			// header as the single-row path, so it now asks the same guard.
+			if msg.String() == "d" && len(m.sessions) > 0 && !m.guardSessionScopedKey("d") {
+				if len(m.marked) > 0 {
 					m.deleteConfirming = true
 					m.deleteNote = ""
 					m.deleteScroll = 0
-					m.deletePurgeValue = "keep"
-					m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
+					// cure-01-05: the bulk confirm offers the same
+					// non-default purge choice the single-session dialog
+					// does, just resolved per session at submit time
+					// (transcriptPathFor has no single session to call
+					// eagerly here) -- so only the cycled VALUE resets;
+					// deletePurgePath/OK stay meaningless for a batch and
+					// are left alone.
+					m.bulkDeletePurgeValue = "keep"
+					m.deletePurgeValue = ""
+					m.deletePurgePath = ""
+					m.deletePurgeOK = false
+				} else {
+					// The guard having let this through means the cursor
+					// resolves to a session, so selectedSession is ok here.
+					session, _ := m.selectedSession()
+					if canDelete(session) {
+						m.deleteConfirming = true
+						m.deleteNote = ""
+						m.deleteScroll = 0
+						m.deletePurgeValue = "keep"
+						m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
+					}
 				}
 			}
 			return m, nil
@@ -3606,10 +3609,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return result
 				}
 			}
-			// task 013/D.2: the guard above already refused this keypress
-			// when there were no marks AND no selected session (a header
-			// cursor with nothing marked); reaching here with no marks means
-			// selectedSession is guaranteed ok.
+			// task 013/D.2 + cure-01-01 (F1): the guard above already refused
+			// this keypress outright when the cursor rests on a header, marks
+			// or no marks -- reaching here (with no marks) means selectedSession
+			// is guaranteed ok.
 			session, _ := m.selectedSession()
 			// Task 807 (review finding 2): the single-row path now consults
 			// the same canKill the footer's x slot already used, instead of
@@ -3731,13 +3734,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// either another `d` (opens the confirm dialog) or clears this
 			// with no destructive action.
 			//
-			// task 013/D.2: the shared guard above has already refused this
-			// key outright when the cursor rests on a header with no marks in
-			// force, so the indicator can no longer be raised for a
-			// selection that names no session at all. The len check stays for
-			// the one case the guard deliberately exempts -- a non-empty mark
-			// set, task 112's batch dd -- where m.sessions may still be
-			// empty.
+			// task 013/D.2 + cure-01-01 (F1): the shared guard above has
+			// already refused this key outright when the cursor rests on a
+			// header, marks or no marks -- there is no exemption left, so
+			// the indicator can no longer be raised at all for a header
+			// cursor. The len check stays only as a defensive belt for an
+			// empty session list.
 			if len(m.sessions) > 0 {
 				m.pendingDelete = true
 			}

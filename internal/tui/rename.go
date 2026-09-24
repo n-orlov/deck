@@ -59,27 +59,42 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		m.detail = false
 	case "r":
-		if len(m.sessions) > 0 {
-			session, _ := m.selectedSession()
-			m.renaming = true
-			m.renameValue = session.Name
-			m.renamePrefilled = true
-			m.renameNote = ""
+		// task cure-01-01 (F1, R137, SPEC §11): this used to check only
+		// `len(m.sessions) > 0`, which says nothing about whether the
+		// CURSOR currently names one of those sessions -- with the cursor
+		// on a group header this opened rename with no session behind it.
+		// Routed through the same shared guardSessionScopedKey every
+		// top-level session-scoped binding uses, under the literal "r" key
+		// (already in sessionScopedKeys for the unrelated top-level resume
+		// binding -- both share the one question this guard answers: does
+		// the cursor name a session).
+		if m.guardSessionScopedKey("r") {
+			return m, nil
 		}
+		session, _ := m.selectedSession()
+		m.renaming = true
+		m.renameValue = session.Name
+		m.renamePrefilled = true
+		m.renameNote = ""
 	case "l":
 		// Task 023 (SPEC §6.2/§11.4, PRD R108): the launch-inputs editor,
 		// reachable ONLY from inside `i` detail, exactly like "r" above.
-		if len(m.sessions) > 0 {
-			session, _ := m.selectedSession()
-			m.launchInputsEditing = true
-			m.launchInputsField = 0
-			m.launchInputsPreLaunch = session.PreLaunch
-			m.launchInputsPostDestroy = session.PostDestroy
-			m.launchInputsLaunchArgs = launchArgsToText(session.LaunchArgs)
-			m.launchInputsLoginShell = session.LoginShell
-			m.launchInputsNote = ""
-			m.launchInputsScroll = 0
+		//
+		// task cure-01-01 (F1, R137): same fix as "r" above -- guarded by
+		// the shared rule instead of a bare `len(m.sessions) > 0` that
+		// ignored the cursor.
+		if m.guardSessionScopedKey("l") {
+			return m, nil
 		}
+		session, _ := m.selectedSession()
+		m.launchInputsEditing = true
+		m.launchInputsField = 0
+		m.launchInputsPreLaunch = session.PreLaunch
+		m.launchInputsPostDestroy = session.PostDestroy
+		m.launchInputsLaunchArgs = launchArgsToText(session.LaunchArgs)
+		m.launchInputsLoginShell = session.LoginShell
+		m.launchInputsNote = ""
+		m.launchInputsScroll = 0
 	case "g":
 		// R130 part 2 (SPEC §11): the group-move picker, reachable ONLY
 		// from inside `i` detail, exactly like "r"/"l" above. Collision
