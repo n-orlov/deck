@@ -202,10 +202,25 @@ func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 		{name: "enter", keys: []string{"enter"}},
 		{name: "a", keys: []string{"a"}},
 		{name: "x", keys: []string{"x"}},
+		// task cure-01-01 (F1, R137): x with a non-empty mark set used to be
+		// exempt from the header guard (task 112's batch path). Pinned here
+		// alongside the unmarked case above so the two can never drift apart
+		// on the header question again.
+		{name: "x (marked)", keys: []string{"x"}, setup: func(m Model) Model {
+			m.marked = map[string]bool{"s1": true}
+			return m
+		}},
 		// Both halves of the chord are asserted, not just the end state:
 		// the first `d` is the press that used to raise m.pendingDelete on
 		// a header without ever consulting the shared guard.
 		{name: "dd", keys: []string{"d", "d"}},
+		// task cure-01-01 (F1, R137): same exemption removal as "x (marked)"
+		// above, but for the whole dd chord -- both presses, not merely the
+		// first, must stay inert with a non-empty mark set on a header.
+		{name: "dd (marked)", keys: []string{"d", "d"}, setup: func(m Model) Model {
+			m.marked = map[string]bool{"s1": true}
+			return m
+		}},
 		{name: "r", keys: []string{"r"}},
 		{name: "R", keys: []string{"R"}},
 		{name: "i", keys: []string{"i"}},
@@ -219,6 +234,18 @@ func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 		{name: "A", keys: []string{"A"}},
 		{name: "U", keys: []string{"U"}},
 		{name: "detail g (move-group picker)", keys: []string{"g"}, setup: func(m Model) Model {
+			m.detail = true
+			return m
+		}},
+		// task cure-01-01 (F1, R137): rename.go's detail-mode "r" (rename)
+		// and "l" (launch-inputs) used to check only `len(m.sessions) > 0`,
+		// which ignores the cursor entirely -- both opened their editor with
+		// the cursor on a header. Now routed through the same shared guard.
+		{name: "detail r (rename)", keys: []string{"r"}, setup: func(m Model) Model {
+			m.detail = true
+			return m
+		}},
+		{name: "detail l (launch inputs)", keys: []string{"l"}, setup: func(m Model) Model {
 			m.detail = true
 			return m
 		}},
@@ -256,21 +283,62 @@ func TestFirstDOfDDAsksTheSharedGuardOnAHeader(t *testing.T) {
 		t.Fatalf("the first d of dd raised m.pendingDelete while the cursor rested on a group header: false -> true")
 	}
 
-	// The same key with a non-empty mark set is task 112's batch dd, which
-	// acts on the marked set and not on the cursor's row -- so the guard
-	// must NOT gate it, header cursor or not. Pinned here so the exemption
-	// stays deliberate rather than becoming collateral of the check above.
+	// task cure-01-01 (F1, R137): a non-empty mark set used to exempt dd
+	// from this same guard on the theory that batch dd acts on the marked
+	// set rather than the cursor's row, so a header cursor "must not" gate
+	// it. Review found that theory wrong -- SPEC §11 makes dd inert on a
+	// header with no exception, batch or otherwise -- so this now pins the
+	// OPPOSITE claim: the guard must refuse "d" here too, and the first d of
+	// a marked dd on a header must not raise m.pendingDelete or touch the
+	// mark set.
 	batch := sessionScopedKeyGuardFixture()
 	batch.marked = map[string]bool{"s1": true}
-	if batch.guardSessionScopedKey("d") {
-		t.Fatalf("guardSessionScopedKey(%q) = true with a non-empty mark set; batch dd acts on the marked set, so a header cursor must not gate it", "d")
+	if !batch.guardSessionScopedKey("d") {
+		t.Fatalf("guardSessionScopedKey(%q) = false with a non-empty mark set and the cursor on a header; batch dd must be inert on a header exactly like the single-row path", "d")
 	}
-	batchUpdated, _ := batch.Update(key("d"))
+	batchUpdated, batchCmd := batch.Update(key("d"))
 	batchAfter, ok := batchUpdated.(Model)
 	if !ok {
 		t.Fatalf("Update(%q) returned %T, not tui.Model", "d", batchUpdated)
 	}
-	if !batchAfter.pendingDelete {
-		t.Fatalf("the first d of a batch dd did not raise m.pendingDelete with a non-empty mark set")
+	if batchCmd != nil {
+		t.Fatalf("the first d of a marked dd on a header returned a non-nil tea.Cmd")
+	}
+	if batchAfter.pendingDelete {
+		t.Fatalf("the first d of a marked dd raised m.pendingDelete while the cursor rested on a group header: false -> true")
+	}
+	if len(batchAfter.marked) != 1 || !batchAfter.marked["s1"] {
+		t.Fatalf("the first d of a marked dd on a header mutated the mark set: %v", batchAfter.marked)
+	}
+}
+
+// TestSecondDOfMarkedDDInertOnHeader covers the OTHER half of the dd chord
+// cure-01-01 fixed: tui.go's m.pendingDelete intercept used to open the bulk
+// delete confirm dialog for a non-empty mark set unconditionally, without
+// ever asking the shared guard whether the cursor names a session. This
+// constructs the intercept's own precondition directly (m.pendingDelete
+// already true, as if a first "d" had just been pressed) with the cursor on
+// a header and a non-empty mark set, and asserts the second "d" opens
+// nothing and mutates nothing.
+func TestSecondDOfMarkedDDInertOnHeader(t *testing.T) {
+	m := sessionScopedKeyGuardFixture()
+	m.marked = map[string]bool{"s1": true}
+	m.pendingDelete = true
+	updated, cmd := m.Update(key("d"))
+	after, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("Update(%q) returned %T, not tui.Model", "d", updated)
+	}
+	if cmd != nil {
+		t.Fatalf("the second d of a marked dd on a header returned a non-nil tea.Cmd")
+	}
+	if after.pendingDelete {
+		t.Fatalf("the second d of dd did not clear m.pendingDelete")
+	}
+	if after.deleteConfirming {
+		t.Fatalf("the second d of a marked dd opened the bulk delete confirm dialog while the cursor rested on a group header")
+	}
+	if len(after.marked) != 1 || !after.marked["s1"] {
+		t.Fatalf("the second d of a marked dd on a header mutated the mark set: %v", after.marked)
 	}
 }

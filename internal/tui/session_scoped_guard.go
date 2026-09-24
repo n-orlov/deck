@@ -17,21 +17,18 @@ package tui
 // (jump to the first visual stop, tui.go) that happens to share the same
 // letter -- the two are guarded through this one shared map under
 // distinct keys so neither collides with or gates the other.
+//
+// "l" is the `i` detail dialog's own launch-inputs entry (rename.go, task
+// 023, SPEC §6.2/§11.4). Unlike "g" it needs no synthetic key: the bare
+// literal "l" is not bound to anything at the top level of Model.Update,
+// so there is nothing for it to collide with there, and the requirement is
+// the same either way -- the cursor must name a session before this key
+// does anything.
 var sessionScopedKeys = map[string]bool{
 	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
 	"i": true, "e": true, "P": true, "p": true, "Y": true, "m": true,
-	"A": true, "U": true, "s": true, "z": true, "detail:g": true,
+	"A": true, "U": true, "s": true, "z": true, "l": true, "detail:g": true,
 }
-
-// markBatchKeys are the two session-scoped keys task 112 gave a second,
-// batch meaning: with a non-empty mark set, `x` kills and `dd` deletes the
-// WHOLE marked set rather than the cursor's own row, so neither may be
-// gated by a header cursor while marks are in force -- the batch does not
-// need the cursor to name anything. With an empty mark set both act on the
-// cursor's row alone and are guarded exactly like every other key above.
-// This is one map rather than two ad-hoc `key == "x"` tests so the two
-// batch keys can never drift apart on the header question.
-var markBatchKeys = map[string]bool{"x": true, "d": true}
 
 // guardSessionScopedKey is the ONE place task 013/D.2 decides whether a
 // session-scoped keypress is allowed to reach its own handler at all. Before
@@ -51,9 +48,14 @@ var markBatchKeys = map[string]bool{"x": true, "d": true}
 // header or because m.sessions is empty or the cursor has drifted out of
 // range (hasSelectedSession covers both).
 //
-// The two markBatchKeys carry one deliberate exception: a non-empty mark
-// set (task 112) means they act on the WHOLE marked batch instead of the
-// cursor's own row, so a header cursor must never gate that batch path.
+// task cure-01-01 (F1, R137, SPEC §11): `x` and `dd` used to carry a
+// deliberate exception here for a non-empty mark set (task 112's batch
+// path), on the theory that a batch action needs no session named by the
+// cursor. Review found that theory wrong: SPEC §11 makes every one of
+// these keys inert on a header with NO exception, and the batch path is no
+// different from the single-row path in that respect -- a header cursor
+// must gate `x` and both presses of `dd` exactly the same whether or not
+// marks are in force. There is no exemption left to carve out.
 //
 // `d` is in the map above and goes through this guard TWICE per dd chord,
 // because both halves of the chord mutate: the first `d` raises
@@ -66,9 +68,6 @@ var markBatchKeys = map[string]bool{"x": true, "d": true}
 // check of its own.
 func (m Model) guardSessionScopedKey(key string) bool {
 	if !sessionScopedKeys[key] {
-		return false
-	}
-	if markBatchKeys[key] && len(m.marked) > 0 {
 		return false
 	}
 	return !m.hasSelectedSession()
