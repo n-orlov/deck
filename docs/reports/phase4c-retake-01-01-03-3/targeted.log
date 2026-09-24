@@ -1,0 +1,10 @@
+=== RUN   TestReview113ExplicitHeaderSurvivesBackgroundArrival
+--- PASS: TestReview113ExplicitHeaderSurvivesBackgroundArrival (0.00s)
+=== RUN   TestReview113NewSessionIntentCannotSelectFoldedRow
+--- PASS: TestReview113NewSessionIntentCannotSelectFoldedRow (0.00s)
+=== RUN   TestReview113ArchivedReloadCannotLeaveAbsentHeader
+--- PASS: TestReview113ArchivedReloadCannotLeaveAbsentHeader (0.00s)
+=== RUN   TestReview113ArchivedReloadCannotSelectHiddenRow
+--- PASS: TestReview113ArchivedReloadCannotSelectHiddenRow (0.00s)
+PASS
+ok  	github.com/n-orlov/deck/internal/tui	0.018s
