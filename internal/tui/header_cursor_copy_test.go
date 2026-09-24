@@ -169,3 +169,78 @@ func TestFooterLegendStaysClosedAgainstSpecForHeaderCursorKeys(t *testing.T) {
 		}
 	}
 }
+
+// newHeaderCursorListModel builds a two-group list-mode model with the
+// cursor parked on the SECOND group's header, which is the position the
+// list footer has to describe: `i` (and every other session-scoped key) is
+// inert there, so the detail dialog's own footer -- the surface
+// TestDetailFooterNamesTheHeaderCursorFooterLine above pins -- cannot be
+// opened from this position at all. Without the list footer saying it, a
+// user who navigates onto a header sees no advertisement of `c`, `←` or
+// `→` anywhere on screen.
+func newHeaderCursorListModel(ascii bool) Model {
+	m := New(nil, config.Settings{ASCII: ascii}, "")
+	m.width, m.height = 120, 40
+	groupWork := int64(7)
+	m.sessions = []store.Session{
+		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", Slug: "alpha"},
+		{ID: "s2", Name: "beta", Agent: "shell", Status: "running", Slug: "beta", GroupName: "work", GroupID: &groupWork},
+	}
+	m.selected = headerCursor(7)
+	return m
+}
+
+// TestListFooterNamesTheHeaderCursorFoldKeys is the list-mode half of D.4's
+// "Footer and `?` help must say what the cursor can do in each position":
+// while the cursor rests on a group header there is no selected session, so
+// §11.3's status-reason slot on the footer's left is empty -- and that is
+// where the header cursor's own keys belong. footerLegend's curated glyph
+// set is NOT touched (see TestFooterLegendStaysClosedAgainstSpecForHeaderCursorKeys):
+// this is a contextual cue in the reason slot, exactly like
+// interactiveScrollCue is for interactive mode.
+//
+// Fails before task 015's list-footer fix with the footer rendering only the
+// curated legend:
+//
+//	list footer on a group header does not name "c folds/unfolds": "↑↓ move · ..."
+func TestListFooterNamesTheHeaderCursorFoldKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		ascii bool
+		want  []string
+	}{
+		{"unicode", false, []string{"group header", "c folds/unfolds", "← folds", "→ unfolds"}},
+		{"ascii", true, []string{"group header", "c folds/unfolds", "left folds", "right unfolds"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newHeaderCursorListModel(tc.ascii)
+			footer := m.footerLineContent()
+			for _, want := range tc.want {
+				if !strings.Contains(footer, want) {
+					t.Errorf("list footer on a group header does not name %q: %q", want, footer)
+				}
+			}
+			// The curated legend still shares the line (SPEC §11.3: the
+			// reason slot never squeezes the legend out entirely).
+			if !strings.Contains(footer, "?") || !strings.Contains(footer, "q") {
+				t.Errorf("list footer on a group header lost the curated legend: %q", footer)
+			}
+		})
+	}
+}
+
+// TestListFooterKeepsTheStatusReasonOnARow pins the other side of the same
+// slot: with the cursor back on a session row, the footer's left is §7's
+// status reason exactly as before, never the header cue.
+func TestListFooterKeepsTheStatusReasonOnARow(t *testing.T) {
+	m := newHeaderCursorListModel(false)
+	m.sessions[0].Status = "stopped"
+	m.selected = rowCursor(0)
+	footer := m.footerLineContent()
+	if !strings.Contains(footer, "resumable") {
+		t.Errorf("list footer on a stopped row lost its status reason: %q", footer)
+	}
+	if strings.Contains(footer, "group header") {
+		t.Errorf("list footer on a session row advertises the header cursor's own keys: %q", footer)
+	}
+}
