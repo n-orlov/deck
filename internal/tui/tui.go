@@ -2531,6 +2531,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected = rowCursor(max(0, len(m.sessions)-1))
 				}
 			}
+			// cure-01-05 (R137/F6): the preserve-by-id/clamp dance above only
+			// ever produces a row index that is IN BOUNDS -- it says nothing
+			// about whether that row (or an untouched header cursor) is a
+			// stop this reload's own sidebar still renders as visible. A
+			// persisted fold can land a restart's very first reload on a row
+			// hidden by its own collapsed group; a filter query that costs a
+			// selected header its last match removes that header's bucket
+			// entirely; and a header-only load (every group has zero members)
+			// leaves a fresh model's zero-value row cursor naming no row at
+			// all. cursorNamesVisibleStop catches all three, and
+			// nearestVisibleSelection walks onto whatever visible stop -- a
+			// header included -- sits nearest, never a hidden row or an
+			// absent header (SPEC's own "selection never lands on a hidden
+			// row" for §11.8, extended here to a header whose bucket the
+			// filter itself removed).
+			if !m.cursorNamesVisibleStop(m.selected) {
+				m.selected = m.nearestVisibleSelection(m.selected)
+			}
 			// Requirement 52: the one-shot new-session intent (see
 			// pendingSelectSessionID's doc comment) overrides the
 			// preserved-selection result above whenever the id it is
@@ -2546,6 +2564,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.scrollSessionIntoView(idx)
 				}
 			}
+			// cure-01-05 (R136/SPEC §11: "the viewport follows the
+			// selection"): whatever m.selected ended up as above -- the SAME
+			// row/header the preserve-by-id path kept, the stop
+			// cursorNamesVisibleStop's fallback just normalized onto, or
+			// pendingSelectSessionID's own fresh row -- may have moved to a
+			// different rendered position than it held before this reload
+			// (a rename that changes a header's alphabetical slot is the
+			// clearest case), so the scroll offset a PRIOR render computed is
+			// not assumed to still be valid. followSelectionViewport is a
+			// no-op when the selection is already fully in view.
+			m.followSelectionViewport()
 		}
 	case archivedSessionsLoaded:
 		// Task 123/I-10: refreshes the filter's archived-side search pool.

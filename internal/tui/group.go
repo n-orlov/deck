@@ -333,6 +333,25 @@ func (m Model) isStopVisible(c sidebarCursor) bool {
 	return ok && m.isSessionVisible(idx)
 }
 
+// cursorNamesVisibleStop reports whether c currently names a real,
+// visible sidebar entry (cure-01-05, R137: "selection never names a
+// hidden row or a filtered-out header"). Unlike isStopVisible, which
+// trusts any header cursor unconditionally (a group's own collapse never
+// hides its own header line), this also requires the header's BUCKET to
+// still exist in m.visualOrder() at all -- the case isStopVisible cannot
+// see: a header cursor whose group has lost its bucket entirely, e.g. a
+// filter query that leaves that group with zero matches (groupSessions'
+// own doc comment: "Under an active filter only groups with a match
+// render").
+func (m Model) cursorNamesVisibleStop(c sidebarCursor) bool {
+	for _, o := range m.visibleSessionIndices() {
+		if o == c {
+			return true
+		}
+	}
+	return false
+}
+
 // cursorGroupID resolves the durable group id the CURRENT cursor names --
 // the group a row cursor's session belongs to (sessionGroupID), or a
 // header cursor's own id directly -- for `c`'s collapse toggle (task
@@ -401,18 +420,25 @@ func (m Model) visibleSessionIndices() []sidebarCursor {
 // nearestVisibleSelection returns the closest visible stop to from IN
 // VISUAL ORDER, searching forward first (so expanding/collapsing near the
 // top of the list keeps selection moving in the direction of travel) and
-// then backward, or rowCursor(0) when nothing is visible (an empty list
-// is handled by every caller already, since m.selected is meaningless
-// there). from's own session index (if it is a row cursor) is clamped
-// into m.sessions' current bounds first, exactly as the bare int version
-// of this function used to clamp from itself -- a header cursor never
-// needs clamping, since a group id does not go stale the way a session
-// index does when m.sessions shrinks.
+// then backward, or rowCursor(0) when nothing is visible at all. from's
+// own session index (if it is a row cursor) is clamped into m.sessions'
+// current bounds first, exactly as the bare int version of this function
+// used to clamp from itself -- a header cursor never needs clamping,
+// since a group id does not go stale the way a session index does when
+// m.sessions shrinks.
+//
+// cure-01-05 (R137/F6): this used to short-circuit to rowCursor(0)
+// whenever len(m.sessions) == 0, on the premise that an empty session
+// list means "nothing is visible" -- true before task 012/D.1 made
+// headers navigable stops of their own, false the moment a header-only
+// sidebar (every group has zero members, or every session is filtered
+// out while at least one group still has a match) is reachable. A
+// from-cursor that happens to be a row is simply left unable to match
+// anything in visualOrder when there are no rows at all -- the walk
+// below then falls through to whatever header IS visible, exactly as it
+// already does for a row cursor stranded by a collapsed group.
 func (m Model) nearestVisibleSelection(from sidebarCursor) sidebarCursor {
-	if len(m.sessions) == 0 {
-		return rowCursor(0)
-	}
-	if idx, ok := from.SessionIndex(); ok {
+	if idx, ok := from.SessionIndex(); ok && len(m.sessions) > 0 {
 		if idx < 0 {
 			idx = 0
 		}
