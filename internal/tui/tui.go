@@ -5775,6 +5775,36 @@ func (m Model) selectedSession() (store.Session, bool) {
 	return m.sessions[idx], true
 }
 
+// interactiveTargetSession resolves the session interactive mode is
+// actually attached to (SPEC §11.6, R138) -- the one previewTitle names --
+// independent of m.selected. A header press that folds the interactive
+// session's own group deliberately re-targets the cursor onto that
+// group's header (setGroupCollapsed's own doc: "a row cursor whose
+// session belongs to the group being folded... lands on that same
+// group's own header"), so selectedSession's cursor-based lookup stops
+// resolving to it the moment that happens, even though interactive mode
+// itself, its target, transport and window geometry are all untouched by
+// a fold (folding never calls enterInteractive/exitInteractive).
+// m.interactiveWindowTarget -- the deck_<slug> window name claimed at
+// entry (enterInteractiveBody) -- is the identity that DOES survive a
+// fold, so this re-derives the session by regenerating each candidate's
+// own window target (tmux.SessionName, a pure string computation, no
+// tmux call) and matching it, rather than trusting the cursor. ok is
+// false when interactive mode is off, no target was claimed, or the
+// claimed session has since left m.sessions (e.g. deleted mid-session).
+func (m Model) interactiveTargetSession() (store.Session, bool) {
+	if !m.interactive || m.interactiveWindowTarget == "" {
+		return store.Session{}, false
+	}
+	for _, session := range m.sessions {
+		target, err := tmux.SessionName(session.Slug)
+		if err == nil && target == m.interactiveWindowTarget {
+			return session, true
+		}
+	}
+	return store.Session{}, false
+}
+
 // followSelectionViewport scrolls the sidebar viewport (SPEC requirement
 // 52-style) so the CURRENT selection's own entry-line span (its two
 // sidebarLineRow entries, sidebarEntries) ends up fully inside the
@@ -6178,6 +6208,15 @@ func (m Model) sidebarRowBackground(selected, stripe bool) theme.Token {
 // name is still never in the title, so nothing that locates a row by name
 // in list mode is affected.
 //
+// R138/SPEC §11.6: the name comes from interactiveTargetSession first --
+// resolved off m.interactiveWindowTarget, the claim made at entry, which
+// survives a fold of the target's own group even though that fold
+// deliberately re-targets the CURSOR onto the group's header
+// (setGroupCollapsed's own doc) -- falling back to the cursor-based
+// selectedSession only when no window target was claimed at all (a
+// fixture that sets m.interactive directly without going through
+// enterInteractiveBody; every real entry sets interactiveWindowTarget).
+//
 // PRD Part II requirement 46 also lands here: interactive mode fits the
 // window to the panel's own content box (enterInteractive), so
 // contentWidth/Height and the real pane size are always equal -- stating
@@ -6192,7 +6231,9 @@ func (m Model) sidebarRowBackground(selected, stripe bool) theme.Token {
 func (m Model) previewTitle() string {
 	if m.interactive {
 		name := ""
-		if session, ok := m.selectedSession(); ok {
+		if session, ok := m.interactiveTargetSession(); ok {
+			name = session.Name + " "
+		} else if session, ok := m.selectedSession(); ok {
 			name = session.Name + " "
 		}
 		width, height := m.previewContentSize()
