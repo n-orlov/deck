@@ -5043,6 +5043,9 @@ func (m Model) footerLineContent() string {
 	width, _ := m.frameSize()
 	reason := m.selectedRowReason()
 	if reason == "" {
+		reason = m.headerCursorFooterCue()
+	}
+	if reason == "" {
 		return m.footerLegendWithin(width)
 	}
 	const gap = "    "
@@ -6485,6 +6488,45 @@ func (m Model) selectedRowReason() string {
 	default:
 		return ""
 	}
+}
+
+// headerCursorFooterCue is task 015/D.4's LIST-mode half of the PRD's
+// "Footer and `?` help must say what the cursor can do in each position"
+// (PRD phase4c, R137). While the cursor rests on a group header there is
+// no selected session at all, so selectedRowReason() above is empty by
+// construction and §11.3's status-reason slot on the footer's left is
+// free -- and that is exactly the position whose keys are otherwise
+// invisible: every session-scoped key (task 013's shared guard), `i`
+// among them, is inert on a header, so the detail dialog's own footer
+// line cannot even be reached from here. This names the three keys that
+// DO act here, and attributes them to the header the cursor rests on
+// rather than to a selected row (`c`'s old, now-false description).
+//
+// It is a contextual cue in the reason slot, in the same shape as
+// interactiveScrollCue is for interactive mode -- deliberately NOT a new
+// footerLegend entry: SPEC §11.3's fixed set is closed against SPEC.md's
+// own prose in both directions (footer_bindings_parity_test.go's
+// TestFooterLegendGlyphSetIsClosedAgainstSpec) and SPEC.md is read-only
+// to this phase, so adding `c`/`←`/`→` glyphs there would fail that guard
+// against a spec this job may not amend. See footerLegend's own doc and
+// TestFooterLegendStaysClosedAgainstSpecForHeaderCursorKeys.
+//
+// Both fold directions are named unconditionally, whichever way the group
+// is currently folded: `c` toggles, `←` folds and `→` unfolds (task 014),
+// and a cue that hid the inapplicable one would advertise a different set
+// of keys on every press of the very keys it describes. footerLineContent
+// shares the line the same way it shares it with a long §7 reason -- the
+// legend keeps its half and whole trailing entries drop -- so this cue
+// can never push the footer into a second physical line.
+func (m Model) headerCursorFooterCue() string {
+	if _, ok := m.selected.GroupID(); !ok {
+		return ""
+	}
+	sep := m.glyph(" · ", " - ")
+	return "group header" + sep + m.glyph(
+		"c folds/unfolds it · ← folds · → unfolds",
+		"c folds/unfolds it - left folds - right unfolds",
+	)
 }
 
 // profileBadge renders the bracketed permission-profile badge shown next to
