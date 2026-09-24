@@ -118,6 +118,44 @@ func TestCure0105FilteredReloadNeverSelectsAbsentHeader(t *testing.T) {
 	assertSelectionInView(t, got, "filtered reload after selected group's last match disappears")
 }
 
+// TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection is a
+// sweep-found regression (task 022, not one of review64's own five --
+// discovered re-running the whole suite unnarrowed at the final code sha
+// and bisected to this commit): fail-before was
+// cmd/deck's own TestDeckBinaryRefreshesAllConcurrentClients, which timed
+// out waiting for "resumable" -- a concurrent client that starts before
+// any session exists gets its zero-value rowCursor(0) promoted to
+// headerCursor(defaultGroupID) by TestCure0105HeaderOnlyLoadReachableByArrows's
+// own fix above, and cursorNamesVisibleStop trivially returns true for
+// any header whose bucket still exists -- so once a session actually
+// appeared in that exact, uncollapsed default group on the NEXT reload,
+// nothing ever walked the cursor back onto it: the header stayed
+// selected forever, and every row-only action (kill included) went
+// inert against a header with no exemption (cure-01-01). This is
+// reproduced here directly against Model.Update with two sessionsLoaded
+// calls -- a header-only load, then a load naming one session in that
+// same header's group -- with no PTY/tmux involved.
+func TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection(t *testing.T) {
+	m := groupTestModel(nil)
+	next, _ := m.Update(sessionsLoaded{groups: []store.Group{{ID: 0, Name: "default"}}})
+	m = next.(Model)
+	if !m.selected.IsHeader() {
+		t.Fatalf("fixture: header-only load left non-header cursor %+v", m.selected)
+	}
+	next, _ = m.Update(sessionsLoaded{
+		sessions: []store.Session{{ID: "s1", Name: "shared session", Status: "running"}},
+		groups:   []store.Group{{ID: 0, Name: "default"}},
+	})
+	got := next.(Model)
+	if got.selected.IsHeader() {
+		t.Fatalf("selection stuck on header %+v after a session appeared in its own uncollapsed group; x/dd/detail r/l would all be inert (cure-01-01)", got.selected)
+	}
+	idx, ok := got.selected.SessionIndex()
+	if !ok || idx != 0 {
+		t.Fatalf("selection = %+v, want the row naming the one new session", got.selected)
+	}
+}
+
 // TestCure0105RestartNeverSelectsCollapsedRow is the review's
 // TestReviewRestartNeverSelectsCollapsedRow: failed with "first reload
 // after restart selects hidden row {kind:0 index:0 groupID:0} in

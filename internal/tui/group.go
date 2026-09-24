@@ -417,6 +417,33 @@ func (m Model) visibleSessionIndices() []sidebarCursor {
 	return out
 }
 
+// firstVisibleRowInGroup returns the first visible row cursor in
+// groupID's own bucket, in visualOrder (the group's own
+// first-appearance-within-a-bucket row) -- cure-01-05 follow-up (task
+// 022 sweep): the seam that lets a header cursor step onto a row that
+// just appeared in its own, still-uncollapsed group, the one transition
+// cursorNamesVisibleStop cannot see because a header is always visible
+// regardless of what (if anything) is under it. ok is false when the
+// group has no visible row at all (empty, or every member hidden by its
+// own collapse) -- the caller then leaves the header selected, exactly
+// as cursorNamesVisibleStop's own fallback already does for that case.
+func (m Model) firstVisibleRowInGroup(groupID int64) (sidebarCursor, bool) {
+	inGroup := false
+	for _, c := range m.visualOrder() {
+		if gid, ok := c.GroupID(); ok {
+			inGroup = gid == groupID
+			continue
+		}
+		if !inGroup {
+			continue
+		}
+		if idx, ok := c.SessionIndex(); ok && m.isSessionVisible(idx) {
+			return c, true
+		}
+	}
+	return rowCursor(0), false
+}
+
 // nearestVisibleSelection returns the closest visible stop to from IN
 // VISUAL ORDER, searching forward first (so expanding/collapsing near the
 // top of the list keeps selection moving in the direction of travel) and
