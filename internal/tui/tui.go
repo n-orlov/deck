@@ -362,6 +362,26 @@ type Model struct {
 	// so every fixture that never sets this explicitly keeps selecting row
 	// 0 exactly as before.
 	selected sidebarCursor
+	// selectedByUser (cure-01-01-3, R137/R136/SPEC §11) is set the moment
+	// setSelection runs -- the ONE seam every deliberate selection gesture
+	// (up/down, PgUp/PgDn, space, `c`/left/right, `g`/`G`, both `/` filter
+	// paths, and a sidebar mouse click) assigns m.selected through -- and
+	// never cleared again for the life of the model. It exists only to
+	// tell a header the zero-value cursor's own automatic startup
+	// promotion landed on (selectedByUser still false: nobody has ever
+	// navigated) apart from a header the user explicitly walked onto,
+	// including one navigated to while the WHOLE sidebar was still
+	// header-only. selectVisibleStopAfterReload's hadNoSessionsAtAll
+	// promotion (tui.go's sessionsLoaded case) is gated on
+	// !selectedByUser so it only ever fires for the automatic case it was
+	// built for (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection)
+	// and never steals a header the user deliberately selected
+	// (TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival,
+	// fail-before 10c5021: "background arrival stole explicitly navigated
+	// header on header-only sidebar"). Never persisted (ui_state or
+	// otherwise) -- purely in-memory for this run's Model, matching every
+	// other in-flight cursor state.
+	selectedByUser bool
 	// pendingSelectSessionID is requirement 52's one-shot "select the
 	// session I just created" intent: submitCreate's shellCreated success
 	// path (below) records the new session's id here rather than acting
@@ -2579,8 +2599,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// (group.go) also walks a still-valid header cursor onto its own
 			// bucket's first row when selectedGroupHadNoRows says this reload
 			// is the one that just gave that header something to show (task
-			// 022 sweep follow-up above).
-			m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll)
+			// 022 sweep follow-up above). cure-01-01-3 (R136/R137, SPEC
+			// §11): this promotion exists ONLY for the automatic
+			// zero-value-cursor case
+			// (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection) --
+			// gated on !m.selectedByUser so a header the user actually walked
+			// onto (g/Down etc, setSelection's own seam) keeps its identity
+			// across a background arrival even when the WHOLE sidebar was
+			// header-only at the time
+			// (TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival,
+			// fail-before 10c5021).
+			m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll && !m.selectedByUser)
 			// Requirement 52: the one-shot new-session intent (see
 			// pendingSelectSessionID's doc comment) overrides the
 			// preserved-selection result above whenever the id it is
@@ -5855,6 +5884,7 @@ func (m *Model) resortSessionsLive() {
 // without touching m.selected at all, the opposite half of the contract.
 func (m *Model) setSelection(c sidebarCursor) {
 	m.selected = c
+	m.selectedByUser = true
 	m.followSelectionViewport()
 }
 
