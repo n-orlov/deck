@@ -19,8 +19,10 @@ import (
 // context, the same margin followSelectionViewport already gives every
 // ordinary selection move), on the very keypress that acts, for every key
 // SPEC/the PRD name as session- or header-scoped plus every plain
-// navigation key -- and does NOT end for the four keys that neither move
-// nor act on the selection (`?`, `q`, `<`, `>`).
+// navigation key -- and does NOT end for the keys that name no selection
+// (`?`, `q`, `<`, `>`, settings, filter toggles and the other global
+// bindings; TestDriftPreservingKeysLeaveTheDriftInPlace and
+// TestDriftPreservingGlobalKeysLeaveTheDriftInPlace).
 //
 // Before this task's fix (HEAD 5dfbdfc), guardSessionScopedKey only ever
 // answered the header question; nothing anywhere cleared
@@ -127,7 +129,8 @@ func assertDriftEndedWithContext(t *testing.T, label string, m Model) {
 // driftEndingKeyFollowTestCases is task 005's own table: every
 // sessionScopedKeys entry (bar "detail:g", a synthetic key with no real
 // tea.KeyMsg -- see TestDriftEndingDetailGKey below), the header fold keys
-// (c/left/right), and every plain navigation key.
+// (c/left/right), `F` (force-attach, SPEC §11's list names it beside `↵`),
+// and every plain navigation key.
 func driftEndingKeyFollowTestCases() []string {
 	var keys []string
 	for k := range sessionScopedKeys {
@@ -136,7 +139,7 @@ func driftEndingKeyFollowTestCases() []string {
 		}
 		keys = append(keys, k)
 	}
-	keys = append(keys, "c", "left", "right")
+	keys = append(keys, "F", "c", "left", "right")
 	keys = append(keys, "up", "down", "k", "j", "pgup", "pgdown", "g", "G", " ")
 	return keys
 }
@@ -217,26 +220,49 @@ func TestWheelDriftDDRaisesConfirmWithTargetVisible(t *testing.T) {
 	assertDriftEndedWithContext(t, "second d of dd (confirm open)", second)
 }
 
-// driftPreservingTestKeys is success criterion 4's own table: the four
-// keys SPEC's drift rule exempts because they neither move nor act on the
-// selection -- `?` (help), `q` (quit), `<`/`>` (sidebar WIDTH, never
-// scroll or selection).
+// assertDriftLeftInPlace runs one key from a fresh drift and fails unless
+// both the drift flag and the wheel's own sidebarScroll survive it.
+func assertDriftLeftInPlace(t *testing.T, k string) {
+	t.Helper()
+	m := drift005DriftedModel(t, 30, 24, 6)
+	driftedScroll := m.sidebarScroll
+	updated, _ := m.Update(key(k))
+	out, ok := updated.(Model)
+	if !ok {
+		t.Fatalf("Update(%q) returned %T, not tui.Model", k, updated)
+	}
+	if !out.sidebarScrollDrifted {
+		t.Fatalf("key %q cleared the drift flag; SPEC §11 says a key that names no selection leaves the drift alone", k)
+	}
+	if out.sidebarScroll != driftedScroll {
+		t.Fatalf("key %q moved sidebarScroll from %d to %d while claiming to leave the drift in place", k, driftedScroll, out.sidebarScroll)
+	}
+}
+
+// TestDriftPreservingKeysLeaveTheDriftInPlace is success criterion 4: the
+// keys SPEC's drift rule names outright as naming no selection -- `?`
+// (help), `q` (quit), `<`/`>` (sidebar WIDTH, never scroll or selection).
 func TestDriftPreservingKeysLeaveTheDriftInPlace(t *testing.T) {
 	for _, k := range []string{"?", "q", "<", ">"} {
 		t.Run(fmt.Sprintf("key=%q", k), func(t *testing.T) {
-			m := drift005DriftedModel(t, 30, 24, 6)
-			driftedScroll := m.sidebarScroll
-			updated, _ := m.Update(key(k))
-			out, ok := updated.(Model)
-			if !ok {
-				t.Fatalf("Update(%q) returned %T, not tui.Model", k, updated)
-			}
-			if !out.sidebarScrollDrifted {
-				t.Fatalf("key %q cleared the drift flag; SPEC §11 says it neither moves nor acts on the selection", k)
-			}
-			if out.sidebarScroll != driftedScroll {
-				t.Fatalf("key %q moved sidebarScroll from %d to %d while claiming to leave the drift in place", k, driftedScroll, out.sidebarScroll)
-			}
+			assertDriftLeftInPlace(t, k)
+		})
+	}
+}
+
+// TestDriftPreservingGlobalKeysLeaveTheDriftInPlace covers the rest of
+// SPEC §11's "keys that name no selection (... settings) leave the drift
+// alone" and the PRD R142's "settings, filter toggles": `,` (settings),
+// `/` (the filter field), `t` (theme picker), plus the other global
+// bindings that act on no selected row -- `n` (create), `E` (event log),
+// `|` (layout mode), `u` (undo the last kill, whatever is selected),
+// `esc` (clears marks/held filter) and `ctrl+c`. The first attempt at this
+// task ended the drift on every one of these (an exclusion list that only
+// spared ?/q/ctrl+c/</>), which review caught for `,`, `/` and `t`.
+func TestDriftPreservingGlobalKeysLeaveTheDriftInPlace(t *testing.T) {
+	for _, k := range []string{",", "/", "t", "n", "E", "|", "u", "esc", "ctrl+c"} {
+		t.Run(fmt.Sprintf("key=%q", k), func(t *testing.T) {
+			assertDriftLeftInPlace(t, k)
 		})
 	}
 }

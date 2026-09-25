@@ -30,20 +30,39 @@ var sessionScopedKeys = map[string]bool{
 	"A": true, "U": true, "s": true, "z": true, "l": true, "detail:g": true,
 }
 
-// driftEndingExcludedKeys is task 005's (R142/GH #40) short exception list
-// to the drift-ending rule guardSessionScopedKey enforces below: SPEC §11
-// says a wheel drift "ends at the next key that moves or acts on the
-// selection", and these four are the only bindings this package reaches
-// through this guard's own call site that do neither -- "?" opens help
-// without ever touching the sidebar list, "q"/"ctrl+c" quit outright, and
-// "<"/">" resize the sidebar's WIDTH, never its scroll offset or its
-// selection. Every other key that reaches guardSessionScopedKey -- every
-// sessionScopedKeys entry above, the header fold keys (`c`, `left`,
-// `right`, all three of which re-invoke setSelection immediately after
-// this guard runs), and every plain navigation key (up/down/pgup/pgdn/g/G/
-// space) -- ends the drift on this very keypress instead.
-var driftEndingExcludedKeys = map[string]bool{
-	"?": true, "q": true, "ctrl+c": true, "<": true, ">": true,
+// driftEndingKeys is task 005's (R142/GH #40) closed list of the keys that
+// end a wheel drift through guardSessionScopedKey below. SPEC §11: a drift
+// ends at "the user's next key that either moves the selection or acts on
+// it" -- every session- or header-scoped key first brings the selection
+// back into view -- while "keys that name no selection (`?`, `q`, `<`/`>`,
+// settings) leave the drift alone"; the PRD's R142 adds filter toggles to
+// that second list.
+//
+// It is deliberately an allow-list, not an exclusion list: an earlier
+// version of this task ended the drift on every key the guard let through
+// except `?`/`q`/`ctrl+c`/`<`/`>`, which silently swept in `,` (settings),
+// `/` (the filter field), `t` (the theme picker) and every other global
+// binding that names no selection. A key that is not listed here -- any
+// global binding today, and any binding a later task adds without deciding
+// otherwise -- leaves the drift in place.
+//
+// The members are: every sessionScopedKeys entry (checked directly in
+// guardSessionScopedKey, so a key added to that map inherits this too),
+// `F` (force-attach, `↵`'s own twin, named in SPEC §11's list), the header
+// fold keys (`c`, `left`, `right`, all three of which re-invoke
+// setSelection immediately after this guard runs), and every plain
+// navigation key (up/k, down/j, pgup/pgdown, g/G, space's attention walk).
+var driftEndingKeys = map[string]bool{
+	"F": true,
+	"c": true, "left": true, "right": true,
+	"up": true, "k": true, "down": true, "j": true,
+	"pgup": true, "pgdown": true, "g": true, "G": true, " ": true,
+}
+
+// endsDrift reports whether key is one of the keys driftEndingKeys and
+// sessionScopedKeys together name as moving or acting on the selection.
+func endsDrift(key string) bool {
+	return sessionScopedKeys[key] || driftEndingKeys[key]
 }
 
 // guardSessionScopedKey is the ONE place task 013/D.2 decides whether a
@@ -88,8 +107,8 @@ var driftEndingExcludedKeys = map[string]bool{
 // intercepted by an overlay reaches, and rename.go's three `i`-detail-
 // dialog calls -- is unchanged; only this function's own body grew a new
 // side effect) that brings a drifted selection back into view. Whenever
-// the key is let through (refuse comes back false) and it is not in
-// driftEndingExcludedKeys above, a drift in force is followed with one row
+// the key is let through (refuse comes back false) and endsDrift names it
+// (driftEndingKeys above), a drift in force is followed with one row
 // of context (followSelectionViewport, the same margin every ordinary
 // setSelection call already uses) and cleared on this exact keypress --
 // before the caller's own switch/case body ever runs, so an action that
@@ -101,7 +120,7 @@ var driftEndingExcludedKeys = map[string]bool{
 // the selection, which a swallowed key by definition does not.
 func (m *Model) guardSessionScopedKey(key string) bool {
 	refuse := sessionScopedKeys[key] && !m.hasSelectedSession()
-	if !refuse && m.sidebarScrollDrifted && !driftEndingExcludedKeys[key] {
+	if !refuse && m.sidebarScrollDrifted && endsDrift(key) {
 		m.followSelectionViewport()
 		m.sidebarScrollDrifted = false
 	}
