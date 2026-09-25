@@ -30,6 +30,22 @@ var sessionScopedKeys = map[string]bool{
 	"A": true, "U": true, "s": true, "z": true, "l": true, "detail:g": true,
 }
 
+// driftEndingExcludedKeys is task 005's (R142/GH #40) short exception list
+// to the drift-ending rule guardSessionScopedKey enforces below: SPEC §11
+// says a wheel drift "ends at the next key that moves or acts on the
+// selection", and these four are the only bindings this package reaches
+// through this guard's own call site that do neither -- "?" opens help
+// without ever touching the sidebar list, "q"/"ctrl+c" quit outright, and
+// "<"/">" resize the sidebar's WIDTH, never its scroll offset or its
+// selection. Every other key that reaches guardSessionScopedKey -- every
+// sessionScopedKeys entry above, the header fold keys (`c`, `left`,
+// `right`, all three of which re-invoke setSelection immediately after
+// this guard runs), and every plain navigation key (up/down/pgup/pgdn/g/G/
+// space) -- ends the drift on this very keypress instead.
+var driftEndingExcludedKeys = map[string]bool{
+	"?": true, "q": true, "ctrl+c": true, "<": true, ">": true,
+}
+
 // guardSessionScopedKey is the ONE place task 013/D.2 decides whether a
 // session-scoped keypress is allowed to reach its own handler at all. Before
 // this guard existed, every one of the bindings above (bar one: rename.go's
@@ -66,9 +82,28 @@ var sessionScopedKeys = map[string]bool{
 // keys this guard would otherwise refuse) and so asks this guard itself
 // rather than re-deciding the header question with a second selectedSession
 // check of its own.
-func (m Model) guardSessionScopedKey(key string) bool {
-	if !sessionScopedKeys[key] {
-		return false
+//
+// task 005 (R142/GH #40): this is also now the ONE shared site (this
+// package's every call site -- tui.go's pre-switch call every key not
+// intercepted by an overlay reaches, and rename.go's three `i`-detail-
+// dialog calls -- is unchanged; only this function's own body grew a new
+// side effect) that brings a drifted selection back into view. Whenever
+// the key is let through (refuse comes back false) and it is not in
+// driftEndingExcludedKeys above, a drift in force is followed with one row
+// of context (followSelectionViewport, the same margin every ordinary
+// setSelection call already uses) and cleared on this exact keypress --
+// before the caller's own switch/case body ever runs, so an action that
+// mutates on the very same press (dd's confirm, task 013's `i`, rename.go's
+// `r`/`l`/detail `g`) already has the target row on screen by the time it
+// acts. A refused key (sessionScopedKeys[key] true, no selected session)
+// never reaches this: a header cursor names no row to bring into view, and
+// SPEC's rule only ends the drift on a key that actually moves or acts on
+// the selection, which a swallowed key by definition does not.
+func (m *Model) guardSessionScopedKey(key string) bool {
+	refuse := sessionScopedKeys[key] && !m.hasSelectedSession()
+	if !refuse && m.sidebarScrollDrifted && !driftEndingExcludedKeys[key] {
+		m.followSelectionViewport()
+		m.sidebarScrollDrifted = false
 	}
-	return !m.hasSelectedSession()
+	return refuse
 }
