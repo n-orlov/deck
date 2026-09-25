@@ -13,12 +13,19 @@
 #                                         table.
 #   flaky-go.txt, flaky-features.txt   — one line per test/scenario that
 #                                         failed once then passed on retry.
+#   coverage-summary.txt                — ci/suite.sh's own package-by-package
+#                                         table (unit + features/ black-box),
+#                                         reprinted verbatim (R146 criterion 3).
 # A missing file (e.g. features/ never ran because the unit pass itself
 # never produced output) is skipped rather than treated as an error, so a
 # partial ci-results directory still renders whatever it has.
+#
+# An optional second argument is the Allure report link (R146 criterion 3);
+# omitted, the summary simply has no "Allure report" line.
 set -eu
 
-outdir=${1:?"usage: ci/summary.sh <ci/suite.sh output dir>"}
+outdir=${1:?"usage: ci/summary.sh <ci/suite.sh output dir> [<allure report link>]"}
+report_link=${2:-}
 
 total_tests=0
 total_failures=0
@@ -45,6 +52,10 @@ total_pass=$((total_tests - total_failures))
 
 echo "### CI suite summary"
 echo
+if [ -n "$report_link" ]; then
+    echo "Allure report: $report_link"
+    echo
+fi
 echo "| metric | count |"
 echo "| --- | --- |"
 echo "| pass | $total_pass |"
@@ -74,4 +85,13 @@ if [ -s "$times" ]; then
     done
 else
     echo "(no timed testsuite entries found)"
+fi
+
+if [ -f "$outdir/coverage-summary.txt" ]; then
+    echo
+    echo "#### coverage (unit -coverprofile, features/ black-box GOCOVERDIR)"
+    echo
+    echo '```'
+    cat "$outdir/coverage-summary.txt"
+    echo '```'
 fi

@@ -132,6 +132,230 @@ jobs:
         if: steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure'
         run: exit 1
 
+  # R146: build the Allure report from the JUnit results `suite` produced,
+  # carry history forward from the previously published report, and merge
+  # the result into a persisted `gh-pages` branch tree that accumulates
+  # every still-live report (the site root, plus every open PR's own
+  # `/pr/<n>/` subtree). `actions/deploy-pages` always replaces the *whole*
+  # Pages site with whatever artifact it is handed, so the only way for a
+  # main-triggered deploy to not erase a live PR preview (or vice versa) is
+  # for every deploy's own artifact to already contain the full tree; this
+  # job is what assembles that tree. It never holds `pages: write` or
+  # `id-token: write` -- only `publish` below does -- so it cannot deploy
+  # anything itself; it only stages the merged tree as a Pages artifact for
+  # `publish` to hand to `actions/deploy-pages`, and separately pushes that
+  # same tree to `gh-pages` as durable storage across runs (a plain data
+  # branch this workflow reads back next time; never the Pages *source*,
+  # which stays "GitHub Actions"/build_type=workflow throughout -- nothing
+  # here ever touches the repository's Pages settings).
+  report:
+    name: report (Allure)
+    needs: [lint, suite]
+    runs-on: [self-hosted, linux, x64, deck]
+    if: >-
+      always()
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && needs.suite.result != 'skipped'
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      # The pinned version ci/allure-report.sh fetches when `allure` is not
+      # already on PATH; bumped only here, the same convention as
+      # ci/suite.sh's own GOTESTSUM_VERSION.
+      ALLURE_VERSION: "2.34.1"
+    outputs:
+      link: ${{ steps.target.outputs.link }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download this run's raw results
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-results-${{ github.run_id }}
+          path: ci-results
+
+      - name: Where this run publishes
+        id: target
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            n=${{ github.event.pull_request.number }}
+            echo "mode=pr" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$n" >> "$GITHUB_OUTPUT"
+            echo "link=https://n-orlov.github.io/deck/pr/$n/" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=root" >> "$GITHUB_OUTPUT"
+            echo "link=https://n-orlov.github.io/deck/" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java (Allure's own runtime; ci/Dockerfile stays untouched)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Fetch the persisted site tree (gh-pages), or start an empty one
+        id: site
+        # A second checkout of this same repo, at `main` (a ref that always
+        # exists), purely so this step inherits actions/checkout's own
+        # persisted-credentials setup (an extraheader in this checkout's own
+        # local .git/config) instead of a token spelled out anywhere in this
+        # workflow. Once that is in place, plain git commands against
+        # `origin` from inside `site/` are already authenticated, whether
+        # `gh-pages` exists yet (checked out for real) or not (a fresh
+        # orphan branch, the first-run case).
+        run: |
+          set -eu
+          git init -q site
+          git -C site remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Give the site checkout the same credentials as this run's own checkout
+        run: |
+          set -eu
+          header=$(git config --get http.https://github.com/.extraheader || true)
+          if [ -n "$header" ]; then
+            git -C site config --local "http.https://github.com/.extraheader" "$header"
+          fi
+
+      - name: Check out gh-pages, or start it as an orphan
+        run: |
+          set -eu
+          cd site
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch --quiet --depth 1 origin gh-pages
+            git checkout -q -B gh-pages origin/gh-pages
+          else
+            echo "no gh-pages branch yet -- starting an empty site" >&2
+            git checkout -q --orphan gh-pages
+          fi
+
+      - name: Generate the Allure report (history carried over on a root publish, if any)
+        run: |
+          set -eu
+          history_dir=""
+          if [ "${{ steps.target.outputs.mode }}" = "root" ] && [ -d site/history ]; then
+            history_dir=site/history
+          fi
+          ci/allure-report.sh ci-results allure-report "$history_dir"
+
+      - name: Merge the new report into the persisted site tree
+        run: |
+          set -eu
+          mkdir -p site/.new-report
+          cp -a allure-report/. site/.new-report/
+          if [ "${{ steps.target.outputs.mode }}" = "root" ]; then
+            ci/allure-site.sh site root
+          else
+            ci/allure-site.sh site pr "${{ steps.target.outputs.pr_number }}"
+          fi
+
+      - name: Persist the merged site tree to gh-pages
+        run: |
+          set -eu
+          cd site
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no site changes to persist"
+          else
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -q -m "allure: ${{ steps.target.outputs.mode }} report for run ${{ github.run_id }}"
+            git push -q origin gh-pages
+          fi
+
+      - name: Upload the rendered report as a workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report-${{ github.run_id }}
+          path: allure-report
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload the merged site tree as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Job summary (Allure report link, coverage totals)
+        if: always()
+        run: |
+          set -eu
+          ci/summary.sh ci-results "${{ steps.target.outputs.link }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # R146: the only job with `pages: write`/`id-token: write` in this
+  # workflow -- `report` above assembles the artifact but never deploys it.
+  # Runs on a GitHub-hosted runner: deploying is one API call through
+  # `actions/deploy-pages`, needs neither the deck slots nor docker, and
+  # keeps those two shared self-hosted slots free for the next queued run.
+  publish:
+    name: publish (Pages)
+    needs: report
+    if: needs.report.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # R146: exactly one PR comment carrying the report link, created or
+  # updated depending on whether a comment with the marker HTML string
+  # already exists -- never appended as a fresh comment on every run.
+  pr-comment:
+    name: PR comment (Allure link)
+    needs: [report, publish]
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Create or update the PR's Allure link comment
+        uses: actions/github-script@v7
+        env:
+          REPORT_LINK: ${{ needs.report.outputs.link }}
+        with:
+          script: |
+            const marker = "<!-- deck-allure-report -->";
+            const link = process.env.REPORT_LINK;
+            const body = `${marker}\nAllure report for this PR: ${link}`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
   # R145: a red main/nightly run POSTs exactly one message with the run URL.
   # This is its own job, not a step inside `suite`, because `suite` has
   # `needs: lint`: when lint fails fast, `suite` is skipped outright and a
