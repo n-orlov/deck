@@ -729,14 +729,14 @@ func TestEnterInteractiveRefusesBelowTheSevenRowFloorWithoutAnyTmuxCall(t *testi
 	if cmd != nil {
 		t.Fatalf("enterInteractive returned a non-nil cmd on the floor refusal path, want nil")
 	}
-	if !strings.Contains(got.attachError, "7-row floor") {
-		t.Fatalf("attachError %q does not name the 7-row floor", got.attachError)
+	if got.entryRefusal.kind != entryRefusalRowFloor {
+		t.Fatalf("entryRefusal.kind = %q, want %q", got.entryRefusal.kind, entryRefusalRowFloor)
 	}
-	if !strings.Contains(got.attachError, "press a to attach") {
-		t.Fatalf("attachError %q does not offer the a-to-attach alternative (PRD II-47)", got.attachError)
+	if !strings.Contains(got.entryRefusal.reason, "7-row floor") {
+		t.Fatalf("entryRefusal.reason %q does not name the 7-row floor", got.entryRefusal.reason)
 	}
-	if !strings.Contains(got.attachError, fmt.Sprintf("%d inner rows", height)) {
-		t.Fatalf("attachError %q does not name the measured inner-row count %d", got.attachError, height)
+	if !strings.Contains(got.entryRefusal.reason, fmt.Sprintf("%d inner rows", height)) {
+		t.Fatalf("entryRefusal.reason %q does not name the measured inner-row count %d", got.entryRefusal.reason, height)
 	}
 }
 
@@ -810,13 +810,13 @@ func TestWindowShrinkBelowTheFloorLeavesInteractiveModeAndRestoresTheList(t *tes
 	if got.interactiveWindowTarget != "" || got.interactiveOwnership != nil || got.interactiveGrid != nil || got.interactiveDispatcher != nil {
 		t.Fatalf("the below-floor shrink left interactive state behind: %+v", got)
 	}
-	if !strings.Contains(got.attachError, "7-row floor") {
-		t.Fatalf("attachError %q does not name the 7-row floor", got.attachError)
+	if got.entryRefusal.kind != entryRefusalShrank {
+		t.Fatalf("entryRefusal.kind = %q, want %q", got.entryRefusal.kind, entryRefusalRowFloor)
 	}
-	if !strings.Contains(got.attachError, "press a to attach") {
-		t.Fatalf("attachError %q does not offer the a-to-attach alternative (PRD II-47)", got.attachError)
+	if !strings.Contains(got.entryRefusal.reason, "7-row floor") {
+		t.Fatalf("entryRefusal.reason %q does not name the 7-row floor", got.entryRefusal.reason)
 	}
-	if !strings.Contains(got.attachError, fmt.Sprintf("%d inner rows", wantHeight)) {
-		t.Fatalf("attachError %q does not name the measured inner-row count %d", got.attachError, wantHeight)
+	if !strings.Contains(got.entryRefusal.reason, fmt.Sprintf("%d inner rows", wantHeight)) {
+		t.Fatalf("entryRefusal.reason %q does not name the measured inner-row count %d", got.entryRefusal.reason, wantHeight)
 	}
 }

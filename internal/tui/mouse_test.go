@@ -179,8 +179,8 @@ func TestClickSidebarRowEntersInteractiveModeOnOnePress(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("enterInteractive returned a non-nil cmd on the floor refusal path, want nil")
 	}
-	if !strings.Contains(got.attachError, "7-row floor") {
-		t.Fatalf("attachError %q does not name the 7-row floor -- the single click did not reach enterInteractive at all (task 311's own claim)", got.attachError)
+	if !strings.Contains(got.entryRefusal.reason, "7-row floor") || got.entryRefusal.kind != entryRefusalRowFloor {
+		t.Fatalf("entryRefusal = %+v does not name the 7-row floor -- the single click did not reach enterInteractive at all (task 311's own claim)", got.entryRefusal)
 	}
 }
 

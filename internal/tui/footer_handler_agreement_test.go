@@ -58,18 +58,12 @@ type footerAgreementRecorder struct {
 // at "Refusal case 1" -- the floor -- before enterInteractive makes any
 // tmux call at all. That is what makes `\u21b5` observable here with no tmux
 // server present: the floor refusal is reachable only past the eligibility
-// gate, so its message (footerAgreementPastEligibilityGate) is a faithful
-// "the handler acted on this row" signal, while a row canReachPane rejects
-// stops earlier with the "resume it first" message instead.
+// gate, so task 007/R143 (GH #38) moved the "handler acted" signal from
+// attachError's text to m.entryRefusal.active: any active refusal proves
+// the ladder ran past canReachPane's own eligibility check.
 const (
 	footerAgreementFrameWidth  = 80
 	footerAgreementFrameHeight = 9
-
-	// footerAgreementPastEligibilityGate appears in BOTH of enterInteractive's
-	// preview-size refusals (too-small width and the 7-row floor) and in
-	// neither the eligibility refusal nor the nil-client degrade, so testing
-	// for it does not pin which of the two size messages the frame produces.
-	footerAgreementPastEligibilityGate = "press a to attach instead"
 )
 
 // buildFooterAgreementModel wires a fresh Model with every footer-action
@@ -270,13 +264,15 @@ func footerAgreementKeys() []footerAgreementKey {
 			// eligibility gate -- the preview-size floor, on this fixture's
 			// 80x9 frame -- rather than a service call: enterInteractive's
 			// success path needs a live tmux server, which no unit test in
-			// this package has. A row canReachPane rejects stops at the
-			// "resume it first" message instead and never reaches the floor,
-			// so the two are distinguishable without any tmux call.
+			// this package has. Task 007/R143 (GH #38) moved the refusal
+			// signal off attachError's text onto m.entryRefusal -- a row
+			// canReachPane rejects sets kind entryRefusalStopped and never
+			// reaches the floor, so the two stay distinguishable by kind
+			// alone, without any tmux call.
 			glyph: "\u21b5",
 			press: func(m Model) Model { return pressAndRun(m, "enter") },
 			acted: func(after Model, _ *footerAgreementRecorder) bool {
-				return strings.Contains(after.attachError, footerAgreementPastEligibilityGate)
+				return after.entryRefusal.active && after.entryRefusal.kind != entryRefusalStopped
 			},
 		},
 		{

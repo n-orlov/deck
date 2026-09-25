@@ -1,0 +1,42 @@
+== colour / width=60 ==
+"\x1b[48;2;239;68;68m╭──────────────────────────────────────────────────────────╮\x1b[0m"
+"\x1b[48;2;239;68;68m│                   NOT ATTACHED: alpha                    │\x1b[0m"
+"\x1b[48;2;239;68;68m│        another client is attached to this session        │\x1b[0m"
+"\x1b[48;2;239;68;68m│ F forces entry, a attaches instead — keys go to the list │\x1b[0m"
+"\x1b[48;2;239;68;68m╰──────────────────────────────────────────────────────────╯\x1b[0m"
+== colour / width=5 ==
+"\x1b[48;2;239;68;68m╭───╮\x1b[0m"
+"\x1b[48;2;239;68;68m│ N │\x1b[0m"
+"\x1b[48;2;239;68;68m│ a │\x1b[0m"
+"\x1b[48;2;239;68;68m│ F │\x1b[0m"
+"\x1b[48;2;239;68;68m╰───╯\x1b[0m"
+== colour / width=4 ==
+(nil)
+== NO_COLOR / width=60 ==
+"\x1b[1;7m╭──────────────────────────────────────────────────────────╮\x1b[0m"
+"\x1b[1;7m│                   NOT ATTACHED: alpha                    │\x1b[0m"
+"\x1b[1;7m│        another client is attached to this session        │\x1b[0m"
+"\x1b[1;7m│ F forces entry, a attaches instead — keys go to the list │\x1b[0m"
+"\x1b[1;7m╰──────────────────────────────────────────────────────────╯\x1b[0m"
+== NO_COLOR / width=5 ==
+"\x1b[1;7m╭───╮\x1b[0m"
+"\x1b[1;7m│ N │\x1b[0m"
+"\x1b[1;7m│ a │\x1b[0m"
+"\x1b[1;7m│ F │\x1b[0m"
+"\x1b[1;7m╰───╯\x1b[0m"
+== NO_COLOR / width=4 ==
+(nil)
+== ascii / width=60 ==
+"\x1b[48;2;239;68;68m+----------------------------------------------------------+\x1b[0m"
+"\x1b[48;2;239;68;68m|                   NOT ATTACHED: alpha                    |\x1b[0m"
+"\x1b[48;2;239;68;68m|        another client is attached to this session        |\x1b[0m"
+"\x1b[48;2;239;68;68m| F forces entry, a attaches instead — keys go to the list |\x1b[0m"
+"\x1b[48;2;239;68;68m+----------------------------------------------------------+\x1b[0m"
+== ascii / width=5 ==
+"\x1b[48;2;239;68;68m+---+\x1b[0m"
+"\x1b[48;2;239;68;68m| N |\x1b[0m"
+"\x1b[48;2;239;68;68m| a |\x1b[0m"
+"\x1b[48;2;239;68;68m| F |\x1b[0m"
+"\x1b[48;2;239;68;68m+---+\x1b[0m"
+== ascii / width=4 ==
+(nil)

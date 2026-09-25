@@ -355,7 +355,7 @@ func TestRefusedForceRecordsNoPrepareAttach(t *testing.T) {
 			got.exitInteractive()
 			continue
 		}
-		if !strings.Contains(got.attachError, "a live process holds ownership of this window") {
+		if got.entryRefusal.kind != entryRefusalOwnedElsewhere || !strings.Contains(got.entryRefusal.reason, "a live process holds ownership of this window") {
 			// A different refusal (a transport hiccup unrelated to the
 			// force-claim race) -- not the property this test needs;
 			// try another round.

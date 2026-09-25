@@ -24,43 +24,48 @@ import (
 // window is ever touched on either path), so they must keep naming only
 // `a` and never mention `F`.
 func TestContentionRefusalsNameFFloorAndNoWidthRefusalsDoNot(t *testing.T) {
+	// Task 007/R143 (GH #38) moved the way-out text off attachError's
+	// string onto entryRefusalWayOut(kind), rendered in the §11.9 banner's
+	// own line 3 rather than the footer -- these four checks now read that
+	// function's output for each refusal's own kind instead of a raw
+	// attachError string.
 	t.Run("attached client", func(t *testing.T) {
 		got := attachedClientRefusalMessage(t)
 		if !strings.Contains(got, "F") {
-			t.Fatalf("attached-client refusal %q does not name F", got)
+			t.Fatalf("attached-client refusal way-out %q does not name F", got)
 		}
-		if !strings.Contains(got, "press a to attach") {
-			t.Fatalf("attached-client refusal %q lost the press-a-to-attach offer", got)
+		if !strings.Contains(got, "a attaches instead") {
+			t.Fatalf("attached-client refusal way-out %q lost the a-attaches-instead offer", got)
 		}
 	})
 
 	t.Run("live ownership", func(t *testing.T) {
 		got := liveOwnershipRefusalMessage(t)
 		if !strings.Contains(got, "F") {
-			t.Fatalf("live-ownership refusal %q does not name F", got)
+			t.Fatalf("live-ownership refusal way-out %q does not name F", got)
 		}
-		if !strings.Contains(got, "press a to attach") {
-			t.Fatalf("live-ownership refusal %q lost the press-a-to-attach offer", got)
+		if !strings.Contains(got, "a attaches instead") {
+			t.Fatalf("live-ownership refusal way-out %q lost the a-attaches-instead offer", got)
 		}
 	})
 
 	t.Run("7-row floor", func(t *testing.T) {
 		got := floorRefusalMessage(t)
 		if strings.Contains(got, "F") {
-			t.Fatalf("floor refusal %q offers F, but F cannot do anything about a squeezed preview box", got)
+			t.Fatalf("floor refusal way-out %q offers F, but F cannot do anything about a squeezed preview box", got)
 		}
-		if !strings.Contains(got, "press a to attach") {
-			t.Fatalf("floor refusal %q lost the press-a-to-attach offer", got)
+		if !strings.Contains(got, "a attaches instead") {
+			t.Fatalf("floor refusal way-out %q lost the a-attaches-instead offer", got)
 		}
 	})
 
 	t.Run("no width", func(t *testing.T) {
 		got := noWidthRefusalMessage(t)
 		if strings.Contains(got, "F") {
-			t.Fatalf("no-width refusal %q offers F, but F cannot do anything about a preview panel with no width at all", got)
+			t.Fatalf("no-width refusal way-out %q offers F, but F cannot do anything about a preview panel with no width at all", got)
 		}
-		if !strings.Contains(got, "press a to attach") {
-			t.Fatalf("no-width refusal %q lost the press-a-to-attach offer", got)
+		if strings.Contains(got, "a attaches instead") {
+			t.Fatalf("no-width refusal way-out %q offers a, but the \"other\" kind names neither key", got)
 		}
 	})
 }
@@ -95,7 +100,7 @@ func attachedClientRefusalMessage(t *testing.T) string {
 	if got.interactive {
 		t.Fatalf("enterInteractive (force=false) entered while a real client was attached")
 	}
-	return got.attachError
+	return entryRefusalWayOut(got.entryRefusal.kind)
 }
 
 // liveOwnershipRefusalMessage reproduces
@@ -132,7 +137,7 @@ func liveOwnershipRefusalMessage(t *testing.T) string {
 	if got.interactive {
 		t.Fatalf("enterInteractive entered despite a live ownership holder")
 	}
-	return got.attachError
+	return entryRefusalWayOut(got.entryRefusal.kind)
 }
 
 // floorRefusalMessage reuses
@@ -156,7 +161,7 @@ func floorRefusalMessage(t *testing.T) string {
 	if got.interactive {
 		t.Fatalf("enterInteractive entered interactive mode below the %d-row floor", interactiveMinInnerRows)
 	}
-	return got.attachError
+	return entryRefusalWayOut(got.entryRefusal.kind)
 }
 
 // noWidthRefusalMessage drives previewContentSize's width<=0 branch (the
@@ -182,5 +187,5 @@ func noWidthRefusalMessage(t *testing.T) string {
 	if got.interactive {
 		t.Fatalf("enterInteractive entered interactive mode with no preview width at all")
 	}
-	return got.attachError
+	return entryRefusalWayOut(got.entryRefusal.kind)
 }

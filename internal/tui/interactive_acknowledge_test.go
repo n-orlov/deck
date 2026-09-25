@@ -72,8 +72,8 @@ func TestEnterInteractiveRefusalDoesNotRecordAttachment(t *testing.T) {
 	if got.interactive {
 		t.Fatalf("enterInteractive entered interactive mode below the row floor")
 	}
-	if !strings.Contains(got.attachError, "floor") {
-		t.Fatalf("attachError = %q, want the row-floor refusal", got.attachError)
+	if !strings.Contains(got.entryRefusal.reason, "floor") || got.entryRefusal.kind != entryRefusalRowFloor {
+		t.Fatalf("entryRefusal = %+v, want the row-floor refusal", got.entryRefusal)
 	}
 	if calls != 0 {
 		t.Fatalf("prepareAttach was called %d time(s) on a refused entry, want 0 -- a refusal must not answer or acknowledge the row", calls)
@@ -103,8 +103,8 @@ func TestEnterInteractiveAttachmentFailureUnwinds(t *testing.T) {
 	if got.interactive {
 		t.Fatalf("enterInteractive entered interactive mode despite the attachment record failing")
 	}
-	if !strings.Contains(got.attachError, "state.db is locked") {
-		t.Fatalf("attachError = %q, want it to carry the store's own error", got.attachError)
+	if !strings.Contains(got.entryRefusal.reason, "state.db is locked") || got.entryRefusal.kind != entryRefusalOther {
+		t.Fatalf("entryRefusal = %+v, want it to carry the store's own error", got.entryRefusal)
 	}
 
 	got.prepareAttach = func(context.Context, string) error { return nil }

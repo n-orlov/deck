@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
@@ -126,8 +125,8 @@ func TestFailedFitUnwindRestoresGeometryAndClearsIsizeRecord(t *testing.T) {
 	if got.interactive {
 		t.Fatalf("entry entered interactive mode even though the fit fails")
 	}
-	if !strings.HasPrefix(got.attachError, "Cannot enter interactive mode: ") {
-		t.Fatalf("failed entry did not refuse with the ladder's own wording: attachError=%q", got.attachError)
+	if !got.entryRefusal.active || got.entryRefusal.kind != entryRefusalOther {
+		t.Fatalf("failed entry did not refuse via the ladder's own entryRefusal (other kind): entryRefusal=%+v attachError=%q", got.entryRefusal, got.attachError)
 	}
 
 	geometryAfter, err := client.CaptureWindowGeometry(ctx, windowTarget)

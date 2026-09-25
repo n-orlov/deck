@@ -95,8 +95,8 @@ func TestForceEntersDespiteAnAttachedClient(t *testing.T) {
 	if plainGot.interactive {
 		t.Fatalf("enterInteractive (force=false) entered while a real client was attached")
 	}
-	if !strings.Contains(plainGot.attachError, "another client is attached") {
-		t.Fatalf("enterInteractive (force=false) attachError = %q, want the attached-client refusal", plainGot.attachError)
+	if !plainGot.entryRefusal.active || plainGot.entryRefusal.kind != entryRefusalAttachedElsewhere || !strings.Contains(plainGot.entryRefusal.reason, "another client is attached") {
+		t.Fatalf("enterInteractive (force=false) entryRefusal = %+v, want the attached-client refusal", plainGot.entryRefusal)
 	}
 
 	next, _ := m.enterInteractiveBody(true)
@@ -140,8 +140,8 @@ func TestForceStillRefusesAStoppedRow(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("F returned a non-nil cmd on the stopped-session refusal, want nil")
 	}
-	if !strings.Contains(got.attachError, stoppedSessionRefusalTail) {
-		t.Fatalf("attachError = %q, want the stopped-session refusal %q", got.attachError, stoppedSessionRefusalTail)
+	if !strings.Contains(got.entryRefusal.reason, stoppedSessionRefusalTail) || got.entryRefusal.kind != entryRefusalStopped {
+		t.Fatalf("entryRefusal = %+v, want the stopped-session refusal %q", got.entryRefusal, stoppedSessionRefusalTail)
 	}
 }
 
@@ -166,8 +166,8 @@ func TestForceStillRefusesBelowTheFloor(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("F returned a non-nil cmd on the floor refusal, want nil")
 	}
-	if !strings.Contains(got.attachError, "7-row floor") {
-		t.Fatalf("attachError = %q, want the 7-row floor refusal", got.attachError)
+	if got.entryRefusal.kind != entryRefusalRowFloor || !strings.Contains(got.entryRefusal.reason, "7-row floor") {
+		t.Fatalf("entryRefusal = %+v, want the 7-row floor refusal", got.entryRefusal)
 	}
 }
 
