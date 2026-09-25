@@ -2732,7 +2732,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.selectVisibleStopAfterReload(false)
-		m.followSelectionViewport()
+		// R142/GH #40: an archived-pool refresh is a background reload
+		// too, so a live wheel drift keeps its own (re-clamped) offset
+		// here exactly as it does in sessionsLoaded above.
+		if m.sidebarScrollDrifted {
+			m.clampDriftedSidebarScroll()
+		} else {
+			m.followSelectionViewport()
+		}
 	case eventLogLoaded:
 		// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
 		// consumed. m.eventLogRows/m.eventLogErr are what eventLogBody
