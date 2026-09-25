@@ -59,7 +59,13 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 180 || 30 }}
     env:
-      DECK_CI_OUT: ${{ github.workspace }}/ci-results
+      # Relative, not github.workspace-absolute: ci/run.sh's sibling mounts
+      # this same checkout at /w and runs with that as its WORKDIR, so a
+      # relative path resolves to the identical directory whether the shell
+      # invoking `ci/run.sh` runs on the host (this step) or inside the
+      # sibling container (ci/suite.sh itself) -- an absolute host path
+      # would not exist inside the container's own root filesystem.
+      DECK_CI_OUT: ci-results
       # nightly-only race detector, per R145; ci/suite.sh switches its
       # -covermode to atomic automatically whenever this mentions -race.
       DECK_CI_GO_EXTRA_FLAGS: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '-race' || '' }}
@@ -107,9 +113,11 @@ jobs:
         run: |
           set -eu
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          msg="deck CI red: ${{ github.event_name }} on ${{ github.ref_name }} -- ${run_url}"
+          payload=$(python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$msg")
           curl -fsS -X POST "http://100.71.162.65:8090/notify" \
-            -H "Content-Type: text/plain" \
-            --data "deck CI red: ${{ github.event_name }} on ${{ github.ref_name }} -- ${run_url}"
+            -H "Content-Type: application/json" \
+            --data "$payload"
 
       - name: Fail the job if the suite or the nightly stability run failed
         if: steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure'

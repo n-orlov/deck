@@ -53,6 +53,18 @@ if [ -z "$outdir" ]; then
     outdir=$(mktemp -d "${TMPDIR:-/tmp}/deck-ci-suite.XXXXXX")
 fi
 mkdir -p "$outdir"
+# Canonicalize to an absolute path now, once. features/TestFeatures's own
+# test binary runs with its CWD set to the features/ package directory (an
+# ordinary `go test` behaviour, not something this script controls), which
+# is NOT $repo_root -- so a relative DECK_CI_OUT (e.g. the CI workflow's
+# "ci-results", chosen so the *host* steps outside the sibling container can
+# use it relative to their own checkout) would make that binary's own
+# DECK_GODOG_JUNIT open fail with "no such file or directory" even though
+# the exact same relative path is valid from repo_root. Every use of
+# $outdir below (unit_coverprofile, go_junit, features_junit, covdir, ...)
+# is now absolute, so it resolves the same regardless of which process's
+# CWD interprets it.
+outdir=$(cd "$outdir" && pwd)
 echo "ci/suite.sh: writing JUnit/flaky/log files to $outdir"
 
 overall_status=0
