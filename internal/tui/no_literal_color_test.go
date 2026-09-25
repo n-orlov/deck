@@ -18,7 +18,14 @@ package tui
 //     0 selects no colour, it only clears attributes, and every dialog/list
 //     renderer that shares a background across several foreground runs
 //     (settings.go's settingsRenderRow, theme_color.go's colorToken/
-//     bgColorToken) legitimately emits it once per composed line.
+//     bgColorToken) legitimately emits it once per composed line. "\x1b[7m"/
+//     "\x1b[27m" (reverse video on/off, theme_color.go's reverseVideo, task
+//     003/R141) are exempted for the identical reason: 7/27 select no
+//     colour either, they only invert/restore whatever foreground and
+//     background are already active -- exactly the attribute-not-colour
+//     carve-out 0 already has, and precisely why R141 (SPEC §11: the header
+//     cursor cue must survive NO_COLOR/ascii) reaches for this pair rather
+//     than a theme token in the first place.
 //
 // Demonstrate-then-revert: temporarily add `const literalRed = "\x1b[31m"`
 // to tui.go and rerun this test -- it goes red, confirming the check is
@@ -68,8 +75,8 @@ func TestNoColorLiterals(t *testing.T) {
 		}
 		for _, m := range rawSGRLiteralRe.FindAllStringSubmatch(src, -1) {
 			code := m[1]
-			if code == "0" {
-				continue // bare reset, not a colour selection
+			if code == "0" || code == "7" || code == "27" {
+				continue // bare reset / reverse-video on/off: attributes, not a colour selection
 			}
 			t.Errorf("%s: raw SGR colour escape literal %q found -- colour must be emitted through colorToken/bgColorToken from a theme token, not a hardcoded escape sequence", name, m[0])
 		}

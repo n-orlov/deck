@@ -97,11 +97,11 @@ func TestGroupHeaderTextCountsPopulatedAndEmptyGroups(t *testing.T) {
 	}
 	empty := sidebarGroup{Name: "sprint work"} // no Sessions: defined but empty
 
-	gotPopulated := m.groupHeaderText(populated, 60)
+	gotPopulated := m.groupHeaderText(populated, 60, false)
 	if !strings.Contains(gotPopulated, "(3)") {
 		t.Fatalf("groupHeaderText(populated) = %q, want it to contain %q", gotPopulated, "(3)")
 	}
-	gotEmpty := m.groupHeaderText(empty, 60)
+	gotEmpty := m.groupHeaderText(empty, 60, false)
 	if !strings.Contains(gotEmpty, "(0)") {
 		t.Fatalf("groupHeaderText(empty) = %q, want it to contain %q (a defined-but-empty group still renders)", gotEmpty, "(0)")
 	}
