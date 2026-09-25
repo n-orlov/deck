@@ -220,23 +220,56 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Then deck client "A" screen contains "WIDENOW"
     When deck client "A" exits cleanly
 
-  @requirement-33-preview-gesture-no-ops
-  Scenario: clicking, double-clicking or scrolling over the PASSIVE preview panel does nothing
+  @requirement-33-preview-wheel-no-op
+  Scenario: scrolling over the PASSIVE preview panel does nothing
     # Scoped to passive preview (task 064/II-45): this session is never
-    # selected into interactive mode, so the gestures below land on the
-    # passive preview -- the panel that never accepts input outside
-    # interactive mode. It says nothing about a click landing on the live
-    # pane while interactive mode is active, which is a different surface
-    # with its own forwarding contract (task 061).
+    # selected into interactive mode, so the gesture below lands on the
+    # passive preview -- the panel that, outside interactive mode, only
+    # ever accepts the one left-press gesture task 010/R144 (GH #37) gave
+    # it (see the round-trip scenario below); every OTHER gesture,
+    # including the wheel exercised here, still does nothing. It says
+    # nothing about a gesture landing on the live pane while interactive
+    # mode is active, which is a different surface with its own
+    # forwarding contract (task 061).
+    #
+    # A plain click and a double-click used to be asserted here too, back
+    # when a click over the preview was itself a no-op; task 010 (R144,
+    # GH #37) made a left press over the preview enter interactive mode on
+    # the current selection, so asserting "the frame does not change" for
+    # a click here would now fail by design -- that gesture's own coverage
+    # moved to the round-trip scenario below (and to
+    # internal/tui/mouse_preview_enter_test.go's unit tests), rather than
+    # staying pinned to a claim that is no longer true.
     Given deck client "A" is started
     When deck client "A" creates shell session "preview-gesture-noop"
     And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" captures its frame as "before-preview-mouse-bindings"
-    And deck client "A" clicks at column 70 row 15
-    And deck client "A" double-clicks at column 70 row 15
     And deck client "A" scrolls the wheel up at column 70 row 15
     And deck client "A" scrolls the wheel down at column 70 row 15
     Then deck client "A" frame still matches the captured "before-preview-mouse-bindings" frame
+    When deck client "A" exits cleanly
+
+  @requirement-37-preview-click-enters-and-empty-sidebar-click-leaves
+  Scenario: clicking the preview enters interactive mode and records the same attachment enter does, and clicking below the last row leaves
+    # Task 011 (B.5, R144, GH #37): the preview click's own entry (task
+    # 010) records the exact durable attachment `↵`/RecordAttachment
+    # records -- an `attached` event, once the session's status is one
+    # RecordAttachment actually answers (`waiting`, here) -- and a left
+    # press over the sidebar's empty padding, where there is no row to
+    # re-target and so nothing left to fall through to except Ctrl+Q's
+    # own exitInteractive, is the second, equally deliberate way back to
+    # the list.
+    Given deck client "A" is started
+    When deck client "A" creates shell session "mouse-attach-rt"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And the state database session "mouse-attach-rt" has status "waiting" 5 seconds ago
+    And within one configured reconcile interval deck client "A" screen contains "waiting"
+    And deck client "A" clicks at column 70 row 15
+    Then deck client "A" screen contains "interactive"
+    And deck client "A" screen contains "Ctrl+Q"
+    And the state database session "mouse-attach-rt" has 1 attached event
+    When deck client "A" clicks at column 10 row 15
+    Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
 
   @requirement-37-deck-mouse-disables-gestures @requirement-41-keyboard-still-works
