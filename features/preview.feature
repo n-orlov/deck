@@ -267,14 +267,23 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" exits cleanly
 
   @requirement-25-preview-gesture-no-ops
-  Scenario: clicking or scrolling over the preview panel does nothing
+  Scenario: scrolling over the passive preview panel does nothing
+    # task 010 (R144, GH #37) made a left press over the passive preview
+    # enter interactive mode on the current selection (SPEC.md's SS11.8
+    # table, "click the passive preview | enter ... interactive preview"),
+    # so this scenario's own click/double-click assertions -- true when it
+    # was written, false since that commit -- were dropped rather than
+    # left pinned to a claim the product no longer makes; the wheel is the
+    # only gesture the passive preview still turns into a no-op. The
+    # click's own new behaviour is covered by features/mouse.feature's
+    # @requirement-37-preview-click-enters-and-empty-sidebar-click-leaves
+    # scenario and internal/tui/mouse_preview_enter_test.go's unit tests,
+    # not re-asserted here.
     Given deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" captures its frame as "before-preview-gesture"
-    When deck client "solo" clicks at column 70 row 15
-    And deck client "solo" double-clicks at column 70 row 15
-    And deck client "solo" scrolls the wheel up at column 70 row 15
+    When deck client "solo" scrolls the wheel up at column 70 row 15
     And deck client "solo" scrolls the wheel down at column 70 row 15
     Then deck client "solo" frame still matches the captured "before-preview-gesture" frame
     And deck client "solo" exits cleanly
