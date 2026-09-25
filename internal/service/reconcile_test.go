@@ -298,6 +298,91 @@ func TestRecordedProbeLosesToHookThatBecomesFreshDuringClassification(t *testing
 	}
 }
 
+// TestProbeReconcileTreatsAVanishedPaneAsARemovalRace pins GH #36 / R140's
+// probe-capture half: a probe-eligible pane that vanishes between
+// reconcile's own single tmux List call (which is what supplies
+// observed.Panes[0].ID for every row in the same pass) and that row's own
+// later CapturePane must not fail the whole reconcile -- it is a removal
+// race, exactly like a session/window disappearing already is, and the
+// row's stored status must be left untouched for a later pass to pick up.
+//
+// The race is manufactured at a real synchronization point the production
+// code itself provides, not by sleep-timed guessing: a second,
+// earlier-created probe-eligible "trigger" row is classified (its own
+// adapter.Probe call, deliberately hooked here) strictly AFTER reconcile's
+// one-shot List call has already captured the target's live pane id, and
+// strictly BEFORE the per-row loop reaches the target's own row (store.
+// ListSessions orders by created_at). The trigger's Probe callback kills
+// the target's real pane at exactly that moment, using the target's own
+// pane id captured at creation time -- so by the time reconcile calls
+// CapturePane for the target, tmux's own "can't find pane: <id>" is a
+// genuine result of a real removal, not a simulated error.
+func TestProbeReconcileTreatsAVanishedPaneAsARemovalRace(t *testing.T) {
+	cwd := t.TempDir()
+	svc, db, _, socket := newAgentTestService(t, nil, "probe-vanish")
+	clock, err := config.NewClock("2025-01-02T03:04:05Z", "45s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Clock = clock
+	now := svc.Clock.Now().UnixMilli()
+	const staleAfter = 45 * time.Second
+	stale := now - staleAfter.Milliseconds()
+
+	// The trigger is created (and therefore listed) before the target, so
+	// store.ListSessions -- and the per-row loop that walks its result --
+	// reaches it first.
+	trigger, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000028", Name: "race trigger", CWD: cwd,
+		Agent: "claude", CapturedPath: "/bin", Status: "running", StatusSource: "hook", StatusAt: stale, CreatedAt: now - 1000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: trigger.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "echo trigger; sleep 30"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-000000000029", Name: "vanishing target", CWD: cwd,
+		Agent: "claude", CapturedPath: "/bin", Status: "running", StatusSource: "hook", StatusAt: stale, CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPane, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: target.Slug, CWD: cwd, Command: []string{"/bin/sh", "-c", "echo target; sleep 30"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targetPane.Panes) != 1 {
+		t.Fatalf("target panes = %#v, want exactly 1", targetPane.Panes)
+	}
+	targetPaneID := targetPane.Panes[0].ID
+
+	svc.Agents.Register(racingProbeAdapter{Adapter: agent.NewClaude(), probe: func() (string, string) {
+		if err := exec.Command("tmux", "-L", socket, "kill-pane", "-t", targetPaneID).Run(); err != nil {
+			t.Fatalf("kill target pane mid-probe: %v", err)
+		}
+		return "", ""
+	}})
+
+	if err := svc.ReconcileWithProbes(context.Background(), staleAfter); err != nil {
+		t.Fatalf("probe reconcile returned an error for a pane removal race: %v", err)
+	}
+
+	got, err := db.GetSession(context.Background(), target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "running" || got.StatusSource != "hook" || got.StatusAt != stale {
+		t.Fatalf("vanished-pane race changed the target row = %#v", got)
+	}
+	var probeEvents int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = ? AND kind LIKE 'probe.%'`, target.ID).Scan(&probeEvents); err != nil || probeEvents != 0 {
+		t.Fatalf("target probe events = %d, %v; want 0", probeEvents, err)
+	}
+}
+
 func TestProbeReconcileNeverProbesShell(t *testing.T) {
 	cwd := t.TempDir()
 	svc, db, _, _ := newAgentTestService(t, nil, "shell-no-probe")
